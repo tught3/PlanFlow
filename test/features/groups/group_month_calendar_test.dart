@@ -24,10 +24,16 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: GroupMonthCalendar(
-              events: [event],
-              focusedMonth: DateTime(now.year, now.month),
-              onMonthChanged: (_) {},
+            // 실제 화면(GroupEventListScreen._buildCalendarView)에서 이
+            // 위젯은 항상 ListView 안에서 스크롤된다. 고정 뷰포트인
+            // Scaffold.body에 바로 넣으면 콘텐츠가 조금만 커져도 거짓
+            // 오버플로우가 난다.
+            body: SingleChildScrollView(
+              child: GroupMonthCalendar(
+                events: [event],
+                focusedMonth: DateTime(now.year, now.month),
+                onMonthChanged: (_) {},
+              ),
             ),
           ),
         ),

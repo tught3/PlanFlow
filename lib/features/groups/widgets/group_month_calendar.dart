@@ -290,7 +290,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     final isCurrentMonth = day.month == _focusedMonth.month;
     final isToday = day == todayDay;
     final isSelected = day == _selectedDay;
-    final eventCount = _dayIndex[day]?.length ?? 0;
+    final memberLines = _buildMemberCountLines(day);
 
     Color circleColor = Colors.transparent;
     Color textColor;
@@ -317,8 +317,9 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
       child: GestureDetector(
         onTap: () => _selectDay(day),
         child: Container(
-          height: 52,
+          constraints: const BoxConstraints(minHeight: 52),
           alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
             // 오늘 날짜 칸 전체에 아주 연한 파란 배경(선택 시엔 진한 강조가
             // 우선하므로 배경을 얹지 않는다).
@@ -339,6 +340,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
             ),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               AnimatedContainer(
@@ -361,17 +363,23 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                 ),
               ),
               const SizedBox(height: 3),
-              // 일정 개수 ("n건" 텍스트만, 배경/동그라미 없음)
-              if (eventCount > 0)
-                Text(
-                  '$eventCount건',
-                  style: TextStyle(
-                    fontSize: 10,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                    color: isCurrentMonth
-                        ? PlanFlowColors.primary
-                        : PlanFlowColors.textDisabled,
+              // 멤버별 "이름 N건" 줄. 홈 위젯(그룹 달력 위젯)과 동일하게
+              // 인원이 늘어날수록 줄 수가 늘어난다. 줄이 너무 많아지면
+              // 마지막 줄을 "+N명"으로 대체한다(위젯의 overflow 패턴과 동일).
+              if (memberLines.isNotEmpty)
+                ...memberLines.map(
+                  (line) => Text(
+                    line,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      height: 1.3,
+                      fontWeight: FontWeight.w700,
+                      color: isCurrentMonth
+                          ? PlanFlowColors.primary
+                          : PlanFlowColors.textDisabled,
+                    ),
                   ),
                 )
               else
@@ -381,6 +389,35 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
         ),
       ),
     );
+  }
+
+  /// 그날 그룹 일정을 작성자(createdBy)별로 집계해 "이름 N건" 줄 목록을
+  /// 만든다. 건수가 많은 순으로 정렬하고, 표시할 멤버가 너무 많으면
+  /// 마지막 줄을 "+N명"으로 요약한다(칸이 무한정 늘어나는 것을 방지).
+  List<String> _buildMemberCountLines(DateTime day) {
+    final dayEvents = _dayIndex[day];
+    if (dayEvents == null || dayEvents.isEmpty) {
+      return const <String>[];
+    }
+    final counts = <String, int>{};
+    for (final event in dayEvents) {
+      counts.update(event.createdBy, (value) => value + 1, ifAbsent: () => 1);
+    }
+    final entries = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    const maxVisibleMembers = 4;
+    if (entries.length <= maxVisibleMembers) {
+      return entries
+          .map((e) => '${widget.ownerNameOf?.call(e.key) ?? '멤버'} ${e.value}건')
+          .toList(growable: false);
+    }
+    final visible = entries.take(maxVisibleMembers - 1);
+    final hiddenMemberCount = entries.length - (maxVisibleMembers - 1);
+    return [
+      ...visible.map((e) => '${widget.ownerNameOf?.call(e.key) ?? '멤버'} ${e.value}건'),
+      '+$hiddenMemberCount명',
+    ];
   }
 
   // ─── 선택된 날짜의 일정 목록 ────────────────────────────────────────────────
