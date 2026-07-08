@@ -464,26 +464,20 @@ abstract class BasePlanFlowWidgetProvider(
     }
 
     /**
-     * [overflowCount]는 숨겨진 전체 개수(미리보기로 쓰는 [previewTitle] 포함)다.
-     * "제목 외 N건"에서 N은 그 제목을 뺀 "나머지" 개수여야 하므로
-     * overflowCount-1을 쓴다. 그대로 overflowCount를 쓰면 미리보기 제목이
-     * 이중으로 세져 실제보다 1개 많은 것처럼 표시된다(예: 숨김 2건인데
-     * "출발 외 2건"으로 떠서 총 3건처럼 보임 — 사용자 지적으로 발견).
+     * 숨겨진 일정 개수를 "+N건"으로 표시한다. [overflowCount]는 화면에
+     * 보이지 않는(=마지막 칸에 다 못 들어간) 실제 일정 수다.
+     *
+     * 과거엔 "제목 외 N건"처럼 첫 숨김 일정 제목을 미리보기로 함께 넣었는데,
+     * 한 줄 안에서 제목과 개수가 폭을 두고 경쟁하다 ellipsize가 뒤쪽(개수)을
+     * 잘라 "몇 건 더 있는지"가 안 보이는 문제가 있었다(사용자 지적).
+     * 개수는 절대 잘리면 안 되는 핵심 정보이므로 제목 미리보기를 버리고
+     * 개수만 남긴다.
      */
-    protected fun formatOverflowLabel(
-        previewTitle: String?,
-        overflowCount: Int,
-    ): String? {
+    protected fun formatOverflowLabel(overflowCount: Int): String? {
         if (overflowCount <= 0) {
             return null
         }
-
-        val title = previewTitle?.trim()?.takeIf { it.isNotBlank() }
-        return when {
-            title == null -> "+${overflowCount}건"
-            overflowCount == 1 -> title
-            else -> "$title 외 ${overflowCount - 1}건"
-        }
+        return "+${overflowCount}건"
     }
 
     protected fun bindWeekAction(context: Context, views: RemoteViews, viewId: Int, action: String, providerClass: Class<*>) {
@@ -838,10 +832,7 @@ class PlanFlowVerticalScheduleWidgetProvider :
             }
             // overflow 라벨 (6번째 슬롯)
             val verticalOverflow = (allDayEvents.size - maxVisibleVertical).coerceAtLeast(0)
-            val verticalOverflowLabel = formatOverflowLabel(
-                allDayEvents.drop(maxVisibleVertical).firstOrNull()?.title,
-                verticalOverflow,
-            )
+            val verticalOverflowLabel = formatOverflowLabel(verticalOverflow)
             if (verticalOverflowLabel != null) {
                 views.setTextViewText(verticalOverflowViewId, verticalOverflowLabel)
                 views.setViewVisibility(verticalOverflowViewId, View.VISIBLE)
@@ -874,10 +865,7 @@ class PlanFlowVerticalScheduleWidgetProvider :
             // SharedPreferences 경로 overflow 라벨
             val totalVerticalCount = widgetData.getInt("day_offset_${dayOffset}_count", 0)
             val verticalOverflow = (totalVerticalCount - maxVisibleVertical).coerceAtLeast(0)
-            val verticalOverflowPreviewTitle =
-                widgetData.getString("day_offset_${dayOffset}_overflow_preview_title", null)
-                    ?: widgetData.getString("${dayPrefix}_6_title", null)
-            val verticalOverflowLabel = formatOverflowLabel(verticalOverflowPreviewTitle, verticalOverflow)
+            val verticalOverflowLabel = formatOverflowLabel(verticalOverflow)
             if (verticalOverflowLabel != null) {
                 views.setTextViewText(verticalOverflowViewId, verticalOverflowLabel)
                 views.setViewVisibility(verticalOverflowViewId, View.VISIBLE)
@@ -1036,7 +1024,7 @@ class PlanFlowWeeklyWidgetProvider :
                 val visibleEvents = if (hasOverflow) dayEvents.take(1) else dayEvents
                 val overflow = (fullDayEvents.size - visibleEvents.size).coerceAtLeast(0)
                 // 좁은 칸이라 넘친 일정 제목을 미리보기로 넣지 않고 "+N건"만 표시한다.
-                val overflowLabel = formatOverflowLabel(null, overflow)
+                val overflowLabel = formatOverflowLabel(overflow)
                 bindEventText(
                     views,
                     event1Ids[index],
@@ -1086,7 +1074,7 @@ class PlanFlowWeeklyWidgetProvider :
                 } else {
                     0
                 }
-                val overflowLabel = formatOverflowLabel(null, legacyOverflow)
+                val overflowLabel = formatOverflowLabel(legacyOverflow)
 
                 bindEventText(views, event1Ids[index], e1Title, null, e1Critical,
                     emptyText = if (e1Title == null && e2Title == null && legacyOverflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
@@ -1202,7 +1190,7 @@ class PlanFlowWeeklyListWidgetProvider :
             }
             // \uc138\ub85c\ud615 \uc704\uc82f\uc740 \ub118\uce5c \uc77c\uc815\uc758 \uc81c\ubaa9 \ubbf8\ub9ac\ubcf4\uae30 \uc5c6\uc774 \ud56d\uc0c1 "+N\uac74"\ub9cc \ud45c\uc2dc\ud55c\ub2e4
             // (\ub9c8\uc9c0\ub9c9 \uce78\uc744 \ub300\uccb4\ud558\ub294 \uc790\ub9ac\ub77c \uc81c\ubaa9\uae4c\uc9c0 \ub123\uc73c\uba74 \uc881\uc544\uc11c \uc798\ub9ac\uae30 \uc27d\ub2e4).
-            val overflowLabel = formatOverflowLabel(null, overflow)
+            val overflowLabel = formatOverflowLabel(overflow)
 
             if (rawEvents.isNotEmpty()) {
                 val eventIds = intArrayOf(
@@ -1459,10 +1447,7 @@ class PlanFlowMonthlyWidgetProvider :
                             .toSet()
                         val hiddenEvents = dayEvents.filterNot { visibleEventIds.contains(it.id) }
                         val overflow = hiddenEvents.size
-                        val overflowLabel = formatOverflowLabel(
-                            hiddenEvents.firstOrNull()?.title,
-                            overflow,
-                        )
+                        val overflowLabel = formatOverflowLabel(overflow)
                         if (overflowLabel != null) {
                             views.setTextViewText(overflowId, overflowLabel)
                             views.setViewVisibility(overflowId, View.VISIBLE)
@@ -1565,10 +1550,7 @@ class PlanFlowMonthlyWidgetProvider :
                 } else {
                     0
                 }
-                val overflowLabel = formatOverflowLabel(
-                    widgetData.getString("${prefix}_overflow_preview_title", null),
-                    overflow,
-                )
+                val overflowLabel = formatOverflowLabel(overflow)
 
                 views.setTextViewText(dayId, dayText ?: "")
                 views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)

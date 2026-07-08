@@ -693,7 +693,7 @@ class _CalendarMiniEventList extends StatelessWidget {
     }
     // 개인 일정 + 그룹 일정을 합쳐 셀 높이(고정 행 수)를 넘지 않게 예산을
     // 나눈다. 개인 일정을 먼저 채우고, 남는 행에 그룹 일정을 채운 뒤,
-    // 양쪽에서 못 들어간 만큼을 하나의 +N개 라벨로 합쳐 보여준다.
+    // 양쪽에서 못 들어간 만큼을 하나의 "+N건" 라벨로 합쳐 보여준다.
     //
     // 과거엔 넘치는 일정이 하나라도 있으면 무조건 행 하나를 미리 비워
     // (_calendarMiniMonthEventRows-1)까지만 채웠는데, 그 결과 4번째 행에
@@ -737,7 +737,10 @@ class _CalendarMiniEventList extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(right: 1),
                 child: Text(
-                  '+$hiddenCount개',
+                  // 넘친 일정 개수만 표시한다(제목 미리보기 없이). 홈 위젯과
+                  // 단위·표기를 "+N건"으로 통일 — 제목을 함께 넣으면 제목이
+                  // 길 때 개수가 잘려 안 보이는 문제가 있었다(사용자 지적).
+                  '+$hiddenCount건',
                   maxLines: 1,
                   textAlign: TextAlign.right,
                   overflow: TextOverflow.ellipsis,
