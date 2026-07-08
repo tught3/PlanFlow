@@ -303,6 +303,7 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.groupEventsForGroup,
       builder: (context, state) => GroupEventListScreen(
         initialGroupId: state.pathParameters['groupId']?.trim(),
+        initialSelectedDate: _parseRouteDate(state.uri.queryParameters['date']),
       ),
     ),
     GoRoute(

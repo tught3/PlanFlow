@@ -866,14 +866,17 @@ String? resolveHomeWidgetRoute(Uri? uri) {
           ? AppRoutes.groupInviteLinkFor(groupId: groupId, token: token)
           : AppRoutes.groups;
     case 'group-calendar':
-      // 홈 위젯 탭: planflow://group-calendar?groupId=<gid>
-      // → 해당 그룹의 이벤트 목록(캘린더 보기)으로 이동
+      // 홈 위젯 탭: planflow://group-calendar?groupId=<gid>[&date=yyyy-MM-dd]
+      // → 해당 그룹의 이벤트 목록(캘린더 보기)으로 이동. 날짜 셀을 탭한
+      // 경우 date가 함께 오며, 그 날짜의 캘린더 보기로 바로 진입한다
+      // (query를 그대로 붙여 router의 _parseRouteDate가 읽게 한다).
       final gcGroupId = uri.queryParameters['groupId']?.trim() ??
           uri.queryParameters['group_id']?.trim() ??
           '';
-      return gcGroupId.isNotEmpty
+      final gcBase = gcGroupId.isNotEmpty
           ? AppRoutes.groupEventsForId(gcGroupId)
           : AppRoutes.groupEvents;
+      return '$gcBase$query';
   }
 
   if (uri.path == '/voice') {

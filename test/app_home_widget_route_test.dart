@@ -51,6 +51,30 @@ void main() {
     );
   });
 
+  test(
+      'resolveHomeWidgetRoute maps group calendar links, carrying date '
+      'through so a widget day-cell tap opens that date (not always today)',
+      () {
+    expect(
+      resolveHomeWidgetRoute(
+        Uri.parse('planflow://group-calendar?groupId=group-1'),
+      ),
+      '${AppRoutes.groupEventsForId('group-1')}?groupId=group-1',
+    );
+    expect(
+      resolveHomeWidgetRoute(
+        Uri.parse(
+          'planflow://group-calendar?groupId=group-1&date=2026-07-15',
+        ),
+      ),
+      '${AppRoutes.groupEventsForId('group-1')}?groupId=group-1&date=2026-07-15',
+    );
+    expect(
+      resolveHomeWidgetRoute(Uri.parse('planflow://group-calendar')),
+      AppRoutes.groupEvents,
+    );
+  });
+
   test('resolveHomeWidgetRoute maps group invite links', () {
     expect(
       resolveHomeWidgetRoute(

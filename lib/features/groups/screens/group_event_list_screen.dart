@@ -30,17 +30,23 @@ class GroupEventListScreen extends StatefulWidget {
     String? currentUserIdOverride,
     String? initialGroupId,
     String? initialMemberFilterUserId,
+    DateTime? initialSelectedDate,
   })  : _provider = provider,
         _groupRepository = groupRepository,
         _currentUserIdOverride = currentUserIdOverride,
         _initialGroupId = initialGroupId,
-        _initialMemberFilterUserId = initialMemberFilterUserId;
+        _initialMemberFilterUserId = initialMemberFilterUserId,
+        _initialSelectedDate = initialSelectedDate;
 
   final GroupEventProvider? _provider;
   final GroupRepository? _groupRepository;
   final String? _currentUserIdOverride;
   final String? _initialGroupId;
   final String? _initialMemberFilterUserId;
+
+  /// 홈 위젯의 날짜 클릭 딥링크(`planflow://group-calendar?groupId=..&date=..`)로
+  /// 진입했을 때, 이 날짜를 캘린더 보기로 강제 전환해 바로 보여준다.
+  final DateTime? _initialSelectedDate;
 
   @override
   State<GroupEventListScreen> createState() => _GroupEventListScreenState();
@@ -74,6 +80,14 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
     _memberFilterUserId = widget._initialMemberFilterUserId;
     // nowLocal()이 초기화된 _provider에 의존하므로 initState에서 설정
     _focusedMonth = _provider.nowLocal();
+    final initialDate = widget._initialSelectedDate;
+    if (initialDate != null) {
+      // 홈 위젯 날짜 클릭 딥링크로 진입: 그 날짜가 있는 달로 포커스를 옮기고
+      // 캘린더 보기를 강제해 바로 그 날짜의 일정이 보이게 한다.
+      _focusedMonth = DateTime(initialDate.year, initialDate.month);
+      _viewMode = _GroupEventsViewMode.calendar;
+      unawaited(_loadMonth(_focusedMonth));
+    }
     unawaited(_load());
     unawaited(_restoreViewMode());
   }
@@ -394,6 +408,7 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
             unawaited(_loadMonth(month));
           },
           onEventTap: _openDetail,
+          initialSelectedDay: widget._initialSelectedDate,
         ),
       ],
     );

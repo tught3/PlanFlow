@@ -33,7 +33,10 @@ import java.time.format.DateTimeFormatter
  *   ※ 과거 셀별 키(gw_<gid>_c<i>_d/_m/_t/_n/_names)는 더 이상 사용하지 않는다.
  *      달 그리드/타이틀은 오프셋 기준으로 이 provider가 직접 계산한다.
  *
- * 딥링크: planflow://group-calendar?groupId=<gid>
+ * 딥링크: planflow://group-calendar?groupId=<gid>[&date=yyyy-MM-dd]
+ *   - date 없음: 위젯 전체(헤더 등) 탭 — 그룹 캘린더 화면으로 진입(기본 보기).
+ *   - date 있음: 날짜 셀 탭 — 그 날짜를 캘린더 보기로 강제 진입해 해당 날짜의
+ *     그룹일정을 바로 보여준다.
  */
 class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
 
@@ -239,6 +242,15 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
                 views.setTextViewText(countViewId, "")
                 views.setViewVisibility(countViewId, View.GONE)
             }
+
+            // 날짜 셀 탭 → 그 날짜의 그룹일정으로 딥링크(위젯 전체 탭의 groupId-only
+            // 링크보다 우선 적용됨: RemoteViews는 자식 뷰에 명시적으로 설정된
+            // PendingIntent가 있으면 그 영역에서는 부모의 것 대신 자식 것을 쓴다).
+            val dayDeepLink = buildDeepLinkIntent(context, gid, day)
+            views.setOnClickPendingIntent(dayViewId, dayDeepLink)
+            if (cellContainerId != 0) {
+                views.setOnClickPendingIntent(cellContainerId, dayDeepLink)
+            }
         }
     }
 
@@ -363,20 +375,33 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         )
     }
 
-    private fun buildDeepLinkIntent(context: Context, gid: String): PendingIntent {
-        val uri = Uri.Builder()
+    /**
+     * 그룹 달력 딥링크 PendingIntent를 만든다. [date]가 주어지면
+     * `planflow://group-calendar?groupId=<gid>&date=yyyy-MM-dd`로,
+     * 앱은 그 날짜를 캘린더 보기로 강제 진입해 해당 날짜의 그룹일정을 바로
+     * 보여준다(날짜 셀 클릭용). [date]가 null이면 groupId만 넣어 위젯 전체
+     * 탭(헤더 등)의 기본 진입 링크로 쓴다.
+     */
+    private fun buildDeepLinkIntent(context: Context, gid: String, date: LocalDate? = null): PendingIntent {
+        val uriBuilder = Uri.Builder()
             .scheme("planflow")
             .authority("group-calendar")
             .appendQueryParameter("groupId", gid)
-            .build()
+        if (date != null) {
+            uriBuilder.appendQueryParameter("date", date.format(OCCURRENCE_DATE_FORMATTER))
+        }
+        val uri = uriBuilder.build()
         val intent = Intent(Intent.ACTION_VIEW, uri).apply {
             setClass(context, MainActivity::class.java)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+        // gid(+날짜) 기반 요청 코드로 셀마다 서로 다른 PendingIntent가 되게 한다.
+        // 같지 않으면 FLAG_UPDATE_CURRENT가 이전 셀의 date extra로 덮어써 모든 셀이
+        // 같은(마지막) 날짜로 열리는 문제가 생긴다.
+        val requestKey = if (date != null) "deeplink_${gid}_$date" else "deeplink_$gid"
         return PendingIntent.getActivity(
             context,
-            // gid 기반 요청 코드 (충돌 방지)
-            ("deeplink_$gid").hashCode() and 0x7FFFFFFF,
+            requestKey.hashCode() and 0x7FFFFFFF,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

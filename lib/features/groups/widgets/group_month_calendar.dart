@@ -18,6 +18,7 @@ class GroupMonthCalendar extends StatefulWidget {
     this.ownerNameOf,
     required this.onMonthChanged,
     this.onEventTap,
+    this.initialSelectedDay,
   });
 
   /// 표시할 그룹 일정 목록. 반복 일정은 내부에서 전개한다.
@@ -25,6 +26,12 @@ class GroupMonthCalendar extends StatefulWidget {
 
   /// 현재 표시 중인 월 (day는 무시, year+month 기준).
   final DateTime focusedMonth;
+
+  /// 위젯 첫 생성 시 선택돼 있어야 할 날짜(예: 홈 위젯 날짜 클릭 딥링크로
+  /// 진입한 경우). null이면 기존 기본 규칙([_defaultSelectedDay]: 오늘이
+  /// 이 달에 있으면 오늘, 아니면 1일)을 그대로 따른다. initState에서만
+  /// 한 번 반영되며, 이후 리빌드에는 영향을 주지 않는다.
+  final DateTime? initialSelectedDay;
 
   /// createdBy(userId) → 표시할 이름. null이면 소유자 행을 숨긴다.
   final String? Function(String createdBy)? ownerNameOf;
@@ -53,7 +60,10 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
   void initState() {
     super.initState();
     _focusedMonth = _monthOnly(widget.focusedMonth);
-    _selectedDay = _defaultSelectedDay(_focusedMonth);
+    final initialDay = widget.initialSelectedDay;
+    _selectedDay = initialDay != null
+        ? DateTime(initialDay.year, initialDay.month, initialDay.day)
+        : _defaultSelectedDay(_focusedMonth);
     _rebuildIndex();
   }
 
