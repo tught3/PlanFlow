@@ -15,6 +15,8 @@ enum VoiceConversationAction {
   deleteConfirmed,
   deleteCanceled,
   createEvent,
+  confirmConvertToPersonal,
+  convertToPersonalConfirmed,
 }
 
 class VoiceConversationDeleteAction {
@@ -33,6 +35,7 @@ class VoiceConversationSession {
     this.selectedEvents = const <EventModel>[],
     this.focusedEvent,
     this.pendingDelete,
+    this.pendingConvert,
     this.pendingTitleSearchText,
   });
 
@@ -40,6 +43,7 @@ class VoiceConversationSession {
   final List<EventModel> selectedEvents;
   final EventModel? focusedEvent;
   final VoiceConversationDeleteAction? pendingDelete;
+  final EventModel? pendingConvert;
   final String? pendingTitleSearchText;
 
   VoiceConversationSession copyWith({
@@ -47,10 +51,12 @@ class VoiceConversationSession {
     List<EventModel>? selectedEvents,
     EventModel? focusedEvent,
     VoiceConversationDeleteAction? pendingDelete,
+    EventModel? pendingConvert,
     String? pendingTitleSearchText,
     bool clearPendingAction = false,
     bool clearFocusedEvent = false,
     bool clearPendingTitleSearch = false,
+    bool clearPendingConvert = false,
   }) {
     return VoiceConversationSession(
       visibleEvents: visibleEvents ?? this.visibleEvents,
@@ -59,6 +65,10 @@ class VoiceConversationSession {
           clearFocusedEvent ? null : focusedEvent ?? this.focusedEvent,
       pendingDelete:
           clearPendingAction ? null : pendingDelete ?? this.pendingDelete,
+      pendingConvert:
+          clearPendingConvert || clearPendingAction
+              ? null
+              : pendingConvert ?? this.pendingConvert,
       pendingTitleSearchText: clearPendingTitleSearch
           ? null
           : pendingTitleSearchText ?? this.pendingTitleSearchText,
@@ -134,6 +144,12 @@ class VoiceConversationResult {
       VoiceConversationAction.deleteCanceled => '삭제를 취소했어요.',
       VoiceConversationAction.createEvent =>
         draftEvent == null ? '일정 정보를 파악하지 못했어요.' : '일정을 만들어 드릴까요? 확인 후 저장해 주세요.',
+      VoiceConversationAction.confirmConvertToPersonal => targetEvent == null
+          ? '옮길 일정을 찾지 못했어요.'
+          : '"${targetEvent!.title}" 일정을 개인 일정으로 옮길까요? 팀원들 화면에서도 사라져요.',
+      VoiceConversationAction.convertToPersonalConfirmed => targetEvent == null
+          ? '개인 일정으로 옮길게요.'
+          : '"${targetEvent!.title}" 일정을 개인 일정으로 옮길게요.',
       VoiceConversationAction.none =>
         targetEvent == null ? '이해한 일정을 찾지 못했어요.' : '해당 일정을 선택했어요.',
     };
@@ -172,6 +188,7 @@ class VoiceConversationController {
       List<EventModel>.unmodifiable(_state.visibleEvents);
   EventModel? get focusedEvent => _state.focusedEvent;
   VoiceConversationDeleteAction? get pendingDelete => _state.pendingDelete;
+  EventModel? get pendingConvert => _state.pendingConvert;
 
   void replaceEvents(Iterable<EventModel> events) {
     _state.replaceEvents(events);
@@ -183,6 +200,7 @@ class VoiceConversationController {
       ..selectedEvents = const <EventModel>[]
       ..focusedEvent = null
       ..pendingDelete = null
+      ..pendingConvert = null
       ..pendingTitleSearchText = null;
   }
 
@@ -240,6 +258,7 @@ class VoiceConversationController {
             ..focusedEvent = matched.length == 1 ? matched.first : null
             ..selectedEvents = const <EventModel>[]
             ..pendingDelete = null
+            ..pendingConvert = null
             ..pendingTitleSearchText = null;
           return _finish(
             state,
@@ -296,6 +315,7 @@ class VoiceConversationController {
       final confirmed = state.pendingDelete!;
       state
         ..pendingDelete = null
+        ..pendingConvert = null
         ..focusedEvent = confirmed.event
         ..selectedEvents = const <EventModel>[]
         ..pendingTitleSearchText = null;
@@ -316,6 +336,7 @@ class VoiceConversationController {
       final canceled = state.pendingDelete!;
       state
         ..pendingDelete = null
+        ..pendingConvert = null
         ..pendingTitleSearchText = null;
       return _finish(
         state,
@@ -330,6 +351,72 @@ class VoiceConversationController {
       );
     }
 
+    if (state.pendingConvert != null && _isConvertConfirmation(text)) {
+      final confirmed = state.pendingConvert!;
+      state
+        ..pendingConvert = null
+        ..focusedEvent = confirmed
+        ..selectedEvents = const <EventModel>[]
+        ..pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.convertToPersonalConfirmed,
+          inputText: input,
+          targetEvent: confirmed,
+        ),
+      );
+    }
+
+    if (state.pendingConvert != null && _isDeleteRejection(text)) {
+      state
+        ..pendingConvert = null
+        ..pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          assistantMessage: '개인 일정으로 옮기지 않을게요.',
+        ),
+      );
+    }
+
+    if (state.pendingConvert == null && _isConvertToPersonalIntent(text, route: route)) {
+      final target = _resolveFollowUpTarget(text, state, route: route);
+      if (target == null) {
+        state.pendingTitleSearchText = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.none,
+            inputText: input,
+            assistantMessage: state.visibleEvents.isEmpty
+                ? '먼저 일정을 조회해 주세요.'
+                : '옮길 일정을 찾지 못했어요. 몇 번째 일정인지 다시 말해 주세요.',
+          ),
+        );
+      }
+      state
+        ..pendingConvert = target
+        ..pendingDelete = null
+        ..focusedEvent = target
+        ..selectedEvents = const <EventModel>[]
+        ..pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.confirmConvertToPersonal,
+          inputText: input,
+          targetEvent: target,
+        ),
+      );
+    }
+
     final multiTargets = _resolveExplicitFollowUpTargets(text, state);
     if (_isModificationIntent(text, route: route) && multiTargets.length > 1) {
       state
@@ -337,6 +424,7 @@ class VoiceConversationController {
         ..selectedEvents = multiTargets
         ..focusedEvent = null
         ..pendingDelete = null
+        ..pendingConvert = null
         ..pendingTitleSearchText = null;
       return _finish(
         state,
@@ -374,7 +462,8 @@ class VoiceConversationController {
       state
         ..focusedEvent = target
         ..selectedEvents = const <EventModel>[]
-        ..pendingDelete = null;
+        ..pendingDelete = null
+        ..pendingConvert = null;
       state.pendingTitleSearchText = null;
       return _finish(
         state,
@@ -398,6 +487,7 @@ class VoiceConversationController {
           ..visibleEvents = ambiguous
           ..focusedEvent = null
           ..pendingDelete = null
+          ..pendingConvert = null
           ..pendingTitleSearchText = null;
         return _finish(
           state,
@@ -455,6 +545,7 @@ class VoiceConversationController {
           ..visibleEvents = ambiguous
           ..focusedEvent = null
           ..pendingDelete = null
+          ..pendingConvert = null
           ..pendingTitleSearchText = null;
         return _finish(
           state,
@@ -478,6 +569,7 @@ class VoiceConversationController {
         state
           ..focusedEvent = target
           ..pendingDelete = pending
+          ..pendingConvert = null
           ..selectedEvents = const <EventModel>[]
           ..pendingTitleSearchText = null;
         return _finish(
@@ -506,6 +598,7 @@ class VoiceConversationController {
         ..focusedEvent = matched.length == 1 ? matched.first : null
         ..selectedEvents = const <EventModel>[]
         ..pendingDelete = null
+        ..pendingConvert = null
         ..pendingTitleSearchText = null;
       return _finish(
         state,
@@ -589,6 +682,7 @@ class VoiceConversationController {
         ..focusedEvent = matched.length == 1 ? matched.first : null
         ..selectedEvents = const <EventModel>[]
         ..pendingDelete = null
+        ..pendingConvert = null
         ..pendingTitleSearchText = null;
       return _finish(
         state,
@@ -759,6 +853,15 @@ class VoiceConversationController {
         text.contains('있어?');
   }
 
+  bool _isConvertToPersonalIntent(String text, {VoiceCommandRouteResult? route}) {
+    final resolvedRoute = route ?? _router.route(text);
+    if (resolvedRoute.requestedChanges.contains('convert_to_personal')) {
+      return true;
+    }
+    return RegExp(r'(개인\s*일정|내\s*일정)\s*(?:으로|로)\s*(?:바꿔|변경|옮겨|전환|돌려|이동)')
+        .hasMatch(text);
+  }
+
   bool _isLocationIntent(String text, {VoiceCommandRouteResult? route}) {
     final resolvedRoute = route ?? _router.route(text);
     return resolvedRoute.requestedChanges.contains('location') ||
@@ -828,6 +931,26 @@ class VoiceConversationController {
         normalized.contains('취소') ||
         normalized.contains('하지마') ||
         normalized.contains('보류');
+  }
+
+  // 삭제 확인(_isDeleteConfirmation)과 달리 '삭제/지워/없애' 키워드를 요구하지
+  // 않는 일반 긍정 확인. "개인 일정으로 옮길까요?" 같은 확인 질문에 단순히
+  // "응"/"네"로만 답해도 확정되어야 한다.
+  bool _isConvertConfirmation(String text) {
+    final normalized = _compact(text);
+    if (normalized.contains('아니')) {
+      return false;
+    }
+    return normalized.contains('응') ||
+        normalized.contains('네') ||
+        normalized.contains('어') ||
+        normalized.contains('그래') ||
+        normalized.contains('맞아') ||
+        normalized.contains('확인') ||
+        normalized.contains('좋아') ||
+        normalized.contains('옮겨') ||
+        normalized.contains('바꿔') ||
+        normalized.contains('해줘');
   }
 
   EventModel? _resolveFollowUpTarget(
@@ -1697,6 +1820,7 @@ class _VoiceConversationState {
     this.selectedEvents = const <EventModel>[],
     this.focusedEvent,
     this.pendingDelete,
+    this.pendingConvert,
     this.pendingTitleSearchText,
   }) : events = List<EventModel>.of(events) {
     VoiceConversationController._sortEvents(this.events);
@@ -1716,6 +1840,7 @@ class _VoiceConversationState {
       selectedEvents: session.selectedEvents,
       focusedEvent: session.focusedEvent,
       pendingDelete: session.pendingDelete,
+      pendingConvert: session.pendingConvert,
       pendingTitleSearchText: session.pendingTitleSearchText,
     );
   }
@@ -1725,6 +1850,7 @@ class _VoiceConversationState {
   List<EventModel> selectedEvents;
   EventModel? focusedEvent;
   VoiceConversationDeleteAction? pendingDelete;
+  EventModel? pendingConvert;
   String? pendingTitleSearchText;
 
   void replaceEvents(Iterable<EventModel> nextEvents) {
@@ -1740,6 +1866,7 @@ class _VoiceConversationState {
       selectedEvents: List<EventModel>.unmodifiable(selectedEvents),
       focusedEvent: focusedEvent,
       pendingDelete: pendingDelete,
+      pendingConvert: pendingConvert,
       pendingTitleSearchText: pendingTitleSearchText,
     );
   }

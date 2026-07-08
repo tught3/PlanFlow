@@ -12,6 +12,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
 import '../../features/groups/repositories/group_repository.dart';
+import '../../features/groups/services/group_event_share_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -387,28 +388,38 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
       // 대상이 그룹 일정으로 병합된 후보라면(음성으로 순번/시간 매칭돼
       // 들어온 경우), 개인 이벤트 화면/저장 경로 대신 그룹 전용 경로로
-      // 라우팅한다. 삭제는 이번 범위 밖이라 안내만 하고 개인 삭제로
-      // 넘어가지 않게 막는다.
+      // 라우팅한다.
       final targetGroupEvent = result.targetEvent == null
           ? null
           : _groupEventById[result.targetEvent!.id];
 
-      if (result.deleteConfirmed && result.targetEvent != null) {
-        if (targetGroupEvent != null) {
+      if (result.action == VoiceConversationAction.convertToPersonalConfirmed &&
+          result.targetEvent != null) {
+        if (targetGroupEvent == null) {
           if (mounted) {
             setState(() {
               _messages.add(
-                const _ConversationMessage.assistant(
-                  '그룹 일정은 아직 음성으로 삭제할 수 없어요. 그룹 화면에서 삭제해 주세요.',
-                ),
+                const _ConversationMessage.assistant('이미 개인 일정이에요.'),
               );
             });
           }
           return;
         }
-        final deleted = await _deleteEvent(result.targetEvent!);
-        if (!deleted) {
+        final converted = await _convertGroupEventToPersonal(targetGroupEvent);
+        if (!converted) {
           return;
+        }
+      } else if (result.deleteConfirmed && result.targetEvent != null) {
+        if (targetGroupEvent != null) {
+          final canceled = await _cancelGroupEvent(targetGroupEvent);
+          if (!canceled) {
+            return;
+          }
+        } else {
+          final deleted = await _deleteEvent(result.targetEvent!);
+          if (!deleted) {
+            return;
+          }
         }
       } else if (targetGroupEvent != null &&
           (result.action == VoiceConversationAction.confirmedEdit ||
@@ -977,9 +988,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// [GroupEventRepository.updateGroupEvent]로 저장한다. 그룹 일정
   /// 편집 화면이 따로 없고 개인 전용 event_edit_screen을 재사용할 수 없으므로,
   /// 편집 화면 이동 없이 이 함수에서 바로 저장까지 마친다.
-  /// 지원 범위: 제목은 변경하지 않음(음성 흐름에 제목 변경 의도가 없음),
-  /// 장소·시간·주/일/월 반복만 반영한다. 반복은 그룹 스키마가 요일(BYDAY)을
-  /// 지원하지 않아 FREQ 단위(daily/weekly/monthly)로 다운그레이드한다.
+  /// 지원 범위: 제목·장소·시간·주/일/월 반복을 반영한다. 반복은 그룹 스키마가
+  /// 요일(BYDAY)을 지원하지 않아 FREQ 단위(daily/weekly/monthly)로 다운그레이드한다.
   Future<bool> _applyGroupEventVoiceUpdate(
     VoiceConversationResult result,
     GroupEventModel groupEvent,
@@ -990,6 +1000,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     final locationText = result.locationText?.trim();
     if (locationText != null && locationText.isNotEmpty) {
       updated = updated.copyWith(location: locationText);
+      changed = true;
+    }
+
+    final newTitle = _extractGroupTitleChange(result.inputText);
+    if (newTitle != null && newTitle.isNotEmpty && newTitle != updated.title) {
+      updated = updated.copyWith(title: newTitle);
       changed = true;
     }
 
@@ -1063,6 +1079,126 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       }
       return false;
     }
+  }
+
+  /// 그룹 일정 음성 삭제. 그룹 일정은 하드 삭제 API가 없으므로
+  /// [GroupEventRepository.cancelGroupEvent]로 소프트 취소한다.
+  Future<bool> _cancelGroupEvent(GroupEventModel groupEvent) async {
+    try {
+      await _groupEventRepository.cancelGroupEvent(groupEvent.id);
+      _groupEventById.remove(groupEvent.id);
+      _events = _events
+          .where((event) => event.id != groupEvent.id)
+          .toList(growable: false);
+      _conversation.replaceEvents(_events);
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_group_cancel',
+        eventId: groupEvent.id,
+        startAt: groupEvent.startAt,
+      );
+      await _loadEvents();
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '팀 일정을 삭제했어요. 팀원들 화면에서도 사라져요.',
+            ),
+          );
+        });
+      }
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('VoiceConversationScreen group cancel failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '이 팀 일정은 만든 사람이나 팀 리더만 삭제할 수 있어요.',
+            ),
+          );
+        });
+      }
+      return false;
+    }
+  }
+
+  /// 그룹 일정을 개인 일정으로 옮긴다(취소-우선 + 보상 롤백). 먼저 그룹
+  /// 일정을 취소(cancelGroupEvent)하고, 그 다음 개인 일정을 생성한다.
+  /// 개인 일정 생성이 실패하면 방금 취소한 그룹 일정을 다시 active로
+  /// 되돌려(보상 롤백) 데이터가 양쪽 모두에서 사라지지 않게 한다.
+  Future<bool> _convertGroupEventToPersonal(GroupEventModel g) async {
+    GroupEventModel cancelled;
+    try {
+      cancelled = await _groupEventRepository.cancelGroupEvent(g.id);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VoiceConversationScreen group cancel for convert failed: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '이 팀 일정은 만든 사람이나 팀 리더만 개인 일정으로 옮길 수 있어요.',
+            ),
+          );
+        });
+      }
+      return false;
+    }
+
+    try {
+      final userId = authProvider.userId ?? '';
+      final draft = _personalEventFromGroupEvent(g, userId);
+      await _repository.createEvent(draft);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VoiceConversationScreen personal create for convert failed: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      try {
+        await _groupEventRepository.updateGroupEvent(
+          cancelled.copyWith(
+            status: 'active',
+            clearCancelledAt: true,
+            clearCancelledBy: true,
+          ),
+        );
+      } catch (_) {
+        // 복구 실패는 조용히 무시(그룹 일정은 취소 상태로 남되, 개인 일정도
+        // 안 생겼으므로 데이터 유실은 아님 — 사용자가 그룹 화면에서 직접
+        // 복구해야 함).
+      }
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '개인 일정으로 옮기지 못했어요. 팀 일정은 그대로 두었어요.',
+            ),
+          );
+        });
+      }
+      return false;
+    }
+
+    _groupEventById.remove(g.id);
+    _events = _events.where((event) => event.id != g.id).toList(growable: false);
+    _conversation.replaceEvents(_events);
+    EventRefreshBus.instance.notifyChanged(
+      reason: 'voice_conversation_group_to_personal',
+      eventId: g.id,
+      startAt: g.startAt,
+    );
+    await _loadEvents();
+    if (mounted) {
+      setState(() {
+        _messages.add(
+          _ConversationMessage.assistant(_convertSuccessMessage(g)),
+        );
+      });
+    }
+    return true;
   }
 
   Future<void> _stopVoiceBeforeNavigation() async {
@@ -1387,6 +1523,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return '삭제를 진행했어요.';
       case VoiceConversationAction.deleteCanceled:
         return '삭제를 취소했어요.';
+      case VoiceConversationAction.confirmConvertToPersonal:
+        final title = result.targetEvent?.title ?? '선택한 일정';
+        return '$title 일정을 개인 일정으로 옮길까요? 옮기려면 아래에서 응답해 주세요.';
+      case VoiceConversationAction.convertToPersonalConfirmed:
+        return '개인 일정으로 옮기는 중이에요.';
       case VoiceConversationAction.createEvent:
         if (result.draftEvent == null) return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
         return '일정 편집 화면을 열게요. 내용 확인 후 저장해 주세요.';
@@ -2289,6 +2430,54 @@ String _groupRecurrenceTypeFromRule(String rrule) {
     return 'monthly';
   }
   return 'none';
+}
+
+/// "제목을 '주간 회의'로 바꿔줘", "이름을 팀 워크숍으로 변경해줘"처럼
+/// 그룹 일정 제목 변경 발화에서 새 제목만 뽑아낸다. 매치되지 않으면 null.
+String? _extractGroupTitleChange(String text) {
+  final match = RegExp(
+    '(?:제목|이름|명칭)\\s*(?:을|를|은|는)?\\s*[\'"]?(.+?)[\'"]?\\s*(?:으로|로)\\s*(?:변경|바꿔|수정|고쳐)',
+  ).firstMatch(text);
+  if (match == null) {
+    return null;
+  }
+  final extracted = match.group(1)?.trim();
+  if (extracted == null || extracted.isEmpty) {
+    return null;
+  }
+  return extracted;
+}
+
+/// 그룹 일정을 개인 일정으로 옮길 때 만들 개인 EventModel 초안.
+/// id는 빈 문자열로 두어 [EventRepository.createEvent]가 신규 생성으로
+/// 처리하게 한다.
+EventModel _personalEventFromGroupEvent(GroupEventModel g, String userId) {
+  return EventModel(
+    id: '',
+    userId: userId,
+    title: g.title,
+    startAt: g.startAt,
+    endAt: g.endAt,
+    location: g.location,
+    memo: g.description,
+    isAllDay: g.allDay,
+    recurrenceRule: recurrenceRuleFromGroupRecurrence(
+      g.recurrenceType,
+      g.startAt,
+      g.recurrenceUntil,
+    ),
+    category: '기타',
+    source: 'manual',
+    createdAt: DateTime.now().toUtc(),
+  );
+}
+
+String _convertSuccessMessage(GroupEventModel g) {
+  const base = '팀 일정을 개인 일정으로 옮겼어요.';
+  if (g.recurrenceType == 'weekly') {
+    return '$base 매주 반복은 시작 요일 기준으로 옮겼어요. 여러 요일이었다면 다시 확인해 주세요.';
+  }
+  return base;
 }
 
 String _formatLocalTime(DateTime value) {

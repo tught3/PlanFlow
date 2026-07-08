@@ -148,3 +148,38 @@ class GroupEventShareService {
     ].join('|');
   }
 }
+
+/// 그룹 일정의 recurrenceType(+recurrenceUntil)을 개인 일정의 RRULE 문자열로
+/// 역변환한다. 그룹 스키마는 요일(BYDAY)을 저장하지 않으므로, startAt의
+/// 실제 요일로 단일 요일을 역추론해 넣는다(다중 요일이었다면 애초에
+/// 그룹 저장 시점에 정보가 소실돼 복원 불가).
+String? recurrenceRuleFromGroupRecurrence(
+  String recurrenceType,
+  DateTime startAtUtc,
+  DateTime? recurrenceUntil,
+) {
+  final byDayCodes = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+  final byDay = byDayCodes[planflowLocal(startAtUtc).weekday - 1];
+  String? base;
+  switch (recurrenceType) {
+    case 'daily':
+      base = 'FREQ=DAILY';
+      break;
+    case 'weekly':
+      base = 'FREQ=WEEKLY;BYDAY=$byDay';
+      break;
+    case 'monthly':
+      base = 'FREQ=MONTHLY';
+      break;
+    default:
+      return null;
+  }
+  if (recurrenceUntil != null) {
+    final until = recurrenceUntil.toUtc();
+    final y = until.year.toString().padLeft(4, '0');
+    final m = until.month.toString().padLeft(2, '0');
+    final d = until.day.toString().padLeft(2, '0');
+    base += ';UNTIL=$y$m${d}T235959Z';
+  }
+  return base;
+}

@@ -616,6 +616,60 @@ void main() {
       expect(controller.focusedEvent?.id, 'afternoon');
     });
 
+    test('개인 일정 전환 발화는 확인 질문을 만들고 응답으로 확정된다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('morning', '오전 진료', DateTime(2026, 5, 7, 9)),
+          _event('afternoon', '팀 회의', DateTime(2026, 5, 7, 15)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final confirmAsk = controller.handle('오후 3시 일정 개인 일정으로 바꿔줘');
+      expect(confirmAsk.action, VoiceConversationAction.confirmConvertToPersonal);
+      expect(confirmAsk.targetEvent?.id, 'afternoon');
+      expect(controller.pendingConvert?.id, 'afternoon');
+
+      final confirmed = controller.handle('응');
+      expect(confirmed.action, VoiceConversationAction.convertToPersonalConfirmed);
+      expect(confirmed.targetEvent?.id, 'afternoon');
+      expect(controller.pendingConvert, isNull);
+    });
+
+    test('개인 일정 전환 확인 질문을 거절하면 대기 상태만 지운다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('afternoon', '팀 회의', DateTime(2026, 5, 7, 15)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+      controller.handle('오후 3시 일정 개인 일정으로 바꿔줘');
+
+      final rejected = controller.handle('아니 취소해');
+      expect(rejected.action, VoiceConversationAction.none);
+      expect(controller.pendingConvert, isNull);
+    });
+
+    test(
+        '회귀: 장소 변경 발화는 개인 일정 전환으로 새지 않는다 '
+        '("장소를 바꿔줘"의 "바꿔"가 전환 의도로 오탐되면 안 됨)', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('afternoon', '팀 회의', DateTime(2026, 5, 7, 15)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('오후 3시 일정 장소를 본관으로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.locationText, '본관');
+      expect(controller.pendingConvert, isNull);
+    });
+
     test(
         '명확한 새 일정 생성 명령은 조회로 남아있던 기존 일정과 제목이 우연히 겹쳐도 '
         '그 일정을 편집하지 않고 새 일정 생성으로 처리한다', () {

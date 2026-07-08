@@ -86,6 +86,7 @@ class _FakeEventRepository extends EventRepository {
   final List<EventModel> events;
   final List<String> deletedIds = <String>[];
   final List<EventModel> updatedEvents = <EventModel>[];
+  final List<EventModel> createdEvents = <EventModel>[];
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => events;
@@ -101,7 +102,10 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<EventModel> createEvent(EventModel event) async => event;
+  Future<EventModel> createEvent(EventModel event) async {
+    createdEvents.add(event);
+    return event;
+  }
 
   @override
   Future<EventModel> updateEvent(EventModel event) async {
@@ -194,10 +198,13 @@ class _FakeGroupRepository extends GroupRepository {
 }
 
 class _FakeGroupEventRepository extends GroupEventRepository {
-  _FakeGroupEventRepository(this.events);
+  _FakeGroupEventRepository(this.events, {this.cancelShouldFail = false});
 
   final List<GroupEventModel> events;
   final List<GroupEventModel> updatedEvents = <GroupEventModel>[];
+  final List<String> cancelledIds = <String>[];
+  // 테스트에서 "권한 없는 사용자" 등 취소 실패 케이스를 재현하기 위한 플래그.
+  final bool cancelShouldFail;
 
   @override
   Future<List<GroupEventModel>> getEventsForGroup(
@@ -224,8 +231,22 @@ class _FakeGroupEventRepository extends GroupEventRepository {
   }
 
   @override
-  Future<GroupEventModel> cancelGroupEvent(String eventId) {
-    throw UnimplementedError();
+  Future<GroupEventModel> cancelGroupEvent(String eventId) async {
+    if (cancelShouldFail) {
+      throw StateError('활성 일정만 취소할 수 있습니다.');
+    }
+    cancelledIds.add(eventId);
+    final index = events.indexWhere((candidate) => candidate.id == eventId);
+    if (index < 0) {
+      throw StateError('일정을 찾지 못했어요.');
+    }
+    final cancelled = events[index].copyWith(
+      status: 'cancelled',
+      cancelledAt: DateTime.now().toUtc(),
+      cancelledBy: 'tester',
+    );
+    events[index] = cancelled;
+    return cancelled;
   }
 
   @override
@@ -960,6 +981,188 @@ void main() {
     expect(personalRepository.updatedEvents, isEmpty);
     expect(groupEventRepository.updatedEvents, hasLength(1));
     expect(groupEventRepository.updatedEvents.single.location, '본관 3층');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 팀 일정을 개인 일정으로 옮긴다', (tester) async {
+    final groupEvent = GroupEventModel(
+      id: 'group-event-1',
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime(2026, 5, 22, 14).toUtc(),
+      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      createdBy: 'leader-1',
+      location: '회의실',
+    );
+    final personalRepository = _FakeEventRepository(const <EventModel>[]);
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository =
+        _FakeGroupEventRepository(<GroupEventModel>[groupEvent]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: personalRepository,
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+        initialText: '5월 22일 일정 다 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '첫번째 일정 개인 일정으로 바꿔줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '응');
+    await tester.tap(find.text('전송'));
+    for (var i = 0;
+        i < 20 && groupEventRepository.cancelledIds.isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+
+    expect(groupEventRepository.cancelledIds, contains('group-event-1'));
+    expect(personalRepository.createdEvents, hasLength(1));
+    expect(personalRepository.createdEvents.single.title, '팀 회의');
+    expect(personalRepository.createdEvents.single.source, 'manual');
+    expect(personalRepository.createdEvents.single.startAt, groupEvent.startAt);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다',
+      (tester) async {
+    final groupEvent = GroupEventModel(
+      id: 'group-event-1',
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime(2026, 5, 22, 14).toUtc(),
+      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      createdBy: 'leader-1',
+      location: '회의실',
+    );
+    final personalRepository = _FakeEventRepository(const <EventModel>[]);
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository(
+      <GroupEventModel>[groupEvent],
+      cancelShouldFail: true,
+    );
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: personalRepository,
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+        initialText: '5월 22일 일정 다 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '첫번째 일정 개인 일정으로 바꿔줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '응');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    expect(personalRepository.createdEvents, isEmpty);
+    expect(find.textContaining('개인 일정으로 옮길 수 있어요'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 팀 일정 삭제를 실제로 취소 처리한다', (tester) async {
+    final groupEvent = GroupEventModel(
+      id: 'group-event-1',
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime(2026, 5, 22, 14).toUtc(),
+      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      createdBy: 'leader-1',
+      location: '회의실',
+    );
+    final personalRepository = _FakeEventRepository(const <EventModel>[]);
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository =
+        _FakeGroupEventRepository(<GroupEventModel>[groupEvent]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: personalRepository,
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+        initialText: '5월 22일 일정 다 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '첫번째 일정 삭제해줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '응 삭제해줘');
+    await tester.tap(find.text('전송'));
+    for (var i = 0;
+        i < 20 && groupEventRepository.cancelledIds.isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+
+    expect(groupEventRepository.cancelledIds, contains('group-event-1'));
+    expect(find.textContaining('아직 음성으로 삭제할 수 없어요'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 팀 일정 제목 변경을 GroupEventRepository로 라우팅한다',
+      (tester) async {
+    final groupEvent = GroupEventModel(
+      id: 'group-event-1',
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime(2026, 5, 22, 14).toUtc(),
+      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      createdBy: 'leader-1',
+      location: '회의실',
+    );
+    final personalRepository = _FakeEventRepository(const <EventModel>[]);
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository =
+        _FakeGroupEventRepository(<GroupEventModel>[groupEvent]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: personalRepository,
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+        initialText: '5월 22일 일정 다 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '첫번째 일정 제목을 주간 회의로 바꿔줘');
+    await tester.tap(find.text('전송'));
+    for (var i = 0;
+        i < 20 && groupEventRepository.updatedEvents.isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(groupEventRepository.updatedEvents, hasLength(1));
+    expect(groupEventRepository.updatedEvents.single.title, '주간 회의');
+    expect(personalRepository.updatedEvents, isEmpty);
     expect(tester.takeException(), isNull);
   });
 }

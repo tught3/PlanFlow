@@ -204,5 +204,55 @@ void main() {
       expect(add.intent, VoiceCommandPipelineIntent.add);
       expect(query.intent, VoiceCommandPipelineIntent.query);
     });
+
+    test('팀 일정을 개인 일정으로 변경 요청은 convert_to_personal로 분류한다', () {
+      final plan = pipeline.analyze(
+        '이 팀 일정 개인 일정으로 바꿔줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.requestedChanges, contains('convert_to_personal'));
+    });
+
+    test('내 일정으로 옮겨줘는 convert_to_personal로 분류한다', () {
+      final plan = pipeline.analyze(
+        '내 일정으로 옮겨줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.requestedChanges, contains('convert_to_personal'));
+    });
+
+    test('개인일정으로 변경해줘는 convert_to_personal로 분류한다', () {
+      final plan = pipeline.analyze(
+        '개인일정으로 변경해줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.requestedChanges, contains('convert_to_personal'));
+    });
+
+    test('장소를 강남으로 바꿔줘는 convert_to_personal을 감지하지 않는다 (회귀)', () {
+      final plan = pipeline.analyze(
+        '장소를 강남으로 바꿔줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.requestedChanges, isNot(contains('convert_to_personal')));
+    });
+
+    test('제목을 회의로 바꿔줘는 convert_to_personal을 감지하지 않는다 (회귀)', () {
+      final plan = pipeline.analyze(
+        '제목을 회의로 바꿔줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.requestedChanges, isNot(contains('convert_to_personal')));
+    });
   });
 }

@@ -252,6 +252,12 @@ class VoiceCommandPipeline {
     } else if (_isCriticalTrueCommand(normalized)) {
       changes.add('is_critical_true');
     }
+    if (RegExp(
+      r'(개인\s*일정|내\s*일정|개인)\s*(?:으로|로)\s*(?:바꿔|변경|옮겨|전환|돌려|이동)'
+      r'|(?:팀|그룹)\s*(?:에서|일정).*(?:빼|제외|해제)',
+    ).hasMatch(normalized)) {
+      changes.add('convert_to_personal');
+    }
     return changes.toList(growable: false);
   }
 
