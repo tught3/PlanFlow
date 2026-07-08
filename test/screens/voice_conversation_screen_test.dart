@@ -8,6 +8,11 @@ import 'package:planflow/core/local_time.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/repositories/group_event_repository.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -142,6 +147,96 @@ class _SlowSecondListEventRepository extends EventRepository {
 
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {}
+}
+
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository(this.groups);
+
+  final List<GroupModel> groups;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+class _FakeGroupEventRepository extends GroupEventRepository {
+  _FakeGroupEventRepository(this.events);
+
+  final List<GroupEventModel> events;
+  final List<GroupEventModel> updatedEvents = <GroupEventModel>[];
+
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return events.where((event) => event.groupId == groupId).toList();
+  }
+
+  @override
+  Future<GroupEventModel> createGroupEvent(GroupEventModel event) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) async {
+    updatedEvents.add(event);
+    final index = events.indexWhere((candidate) => candidate.id == event.id);
+    if (index >= 0) {
+      events[index] = event;
+    }
+    return event;
+  }
+
+  @override
+  Future<GroupEventModel> cancelGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> archiveGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
 }
 
 class _FakeLocationLookupService extends LocationLookupService {
@@ -782,6 +877,89 @@ void main() {
 
     expect(repository.updatedEvents, hasLength(1));
     expect(repository.updatedEvents.single.isCritical, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 그룹 일정을 후보 목록에 병합해 순번 매칭에 포함한다', (tester) async {
+    final personalEvent = EventModel(
+      id: 'personal-1',
+      userId: 'user-1',
+      title: '개인 방문 일정',
+      startAt: DateTime(2026, 5, 22, 9).toUtc(),
+    );
+    final groupEvent = GroupEventModel(
+      id: 'group-event-1',
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime(2026, 5, 22, 14).toUtc(),
+      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      createdBy: 'leader-1',
+      location: '회의실',
+    );
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository =
+        _FakeGroupEventRepository(<GroupEventModel>[groupEvent]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: _FakeEventRepository(<EventModel>[personalEvent]),
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+        initialText: '5월 22일 일정 다 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 개인 일정(9시)과 그룹 일정(14시)이 시간순으로 함께 후보 목록에 잡혀야 한다.
+    expect(find.textContaining('일정 2개를 찾았어요'), findsOneWidget);
+    expect(find.text('개인 방문 일정'), findsOneWidget);
+    expect(find.text('팀 회의'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다', (tester) async {
+    final groupEvent = GroupEventModel(
+      id: 'group-event-1',
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime(2026, 5, 22, 14).toUtc(),
+      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      createdBy: 'leader-1',
+      location: '회의실',
+    );
+    final personalRepository = _FakeEventRepository(const <EventModel>[]);
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository =
+        _FakeGroupEventRepository(<GroupEventModel>[groupEvent]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: personalRepository,
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+        initialText: '5월 22일 일정 다 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '첫번째 일정 장소를 본관 3층으로 바꿔줘');
+    await tester.tap(find.text('전송'));
+    for (var i = 0;
+        i < 20 && groupEventRepository.updatedEvents.isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // 그룹 일정이 개인 리포지토리가 아니라 그룹 리포지토리로 저장돼야 한다.
+    expect(personalRepository.updatedEvents, isEmpty);
+    expect(groupEventRepository.updatedEvents, hasLength(1));
+    expect(groupEventRepository.updatedEvents.single.location, '본관 3층');
     expect(tester.takeException(), isNull);
   });
 }

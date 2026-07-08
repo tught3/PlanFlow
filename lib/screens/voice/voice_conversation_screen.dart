@@ -9,6 +9,9 @@ import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../features/groups/models/group_event_model.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
+import '../../features/groups/repositories/group_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -35,6 +38,8 @@ class VoiceConversationScreen extends StatefulWidget {
   const VoiceConversationScreen({
     super.key,
     this.repository,
+    this.groupRepository,
+    this.groupEventRepository,
     this.sttService = const SttService(),
     this.locationLookupService,
     this.permissionService,
@@ -44,6 +49,8 @@ class VoiceConversationScreen extends StatefulWidget {
   });
 
   final EventRepository? repository;
+  final GroupRepository? groupRepository;
+  final GroupEventRepository? groupEventRepository;
   final SttService sttService;
   final LocationLookupService? locationLookupService;
   final AppPermissionService? permissionService;
@@ -75,10 +82,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   late final EventRepository _repository =
       widget.repository ?? EventRepository.supabase();
+  late final GroupRepository _groupRepository =
+      widget.groupRepository ?? GroupRepository.supabase();
+  late final GroupEventRepository _groupEventRepository =
+      widget.groupEventRepository ?? GroupEventRepository.supabase();
   late final VoiceConversationController _conversation =
       VoiceConversationController(events: const <EventModel>[]);
 
   List<EventModel> _events = const <EventModel>[];
+  // 그룹 일정을 개인 EventModel로 변환해 음성 후보 목록에 병합할 때, id로
+  // 원본 GroupEventModel을 역참조하기 위한 레지스트리. 수정 라우팅 분기에서
+  // "이 id가 그룹 일정인가"를 판정하는 데 쓴다.
+  Map<String, GroupEventModel> _groupEventById = <String, GroupEventModel>{};
   final Set<String> _deletedEventIds = <String>{};
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -219,10 +234,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     setState(() => _isLoading = true);
     try {
       final userId = usesInjectedRepository ? null : authProvider.userId;
-      final events = await _repository.listEvents(userId: userId);
+      final events = await _fetchAndRegisterMergedEvents(userId: userId);
       if (!mounted) return;
       debugPrint(
-        'VoiceConversationScreen load events success: ${events.length}',
+        'VoiceConversationScreen load events success: ${events.length} '
+        '(group=${_groupEventById.length})',
       );
       setState(() {
         _events = events;
@@ -240,6 +256,71 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           ),
         );
       });
+    }
+  }
+
+  /// 개인 일정과 사용자가 속한 그룹의 그룹 일정을 함께 불러와 시간순으로
+  /// 병합한다. 그룹 일정은 [_eventModelFromGroupEvent]로 개인 EventModel
+  /// 형태로 변환해 컨트롤러의 순번/시간 매칭 로직을 그대로 재사용하되,
+  /// 원본은 [_groupEventById]에 등록해 나중에 수정 라우팅에서 역참조한다.
+  Future<List<EventModel>> _fetchAndRegisterMergedEvents({
+    String? userId,
+  }) async {
+    final personalEvents = await _repository.listEvents(userId: userId);
+    final groupCandidates = await _loadGroupEventCandidates();
+    _groupEventById = groupCandidates.byId;
+    final merged = <EventModel>[...personalEvents, ...groupCandidates.events];
+    merged.sort((a, b) {
+      final left = a.startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final right = b.startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return left.compareTo(right);
+    });
+    return merged;
+  }
+
+  /// 사용자가 속한 모든 그룹의 그룹 일정을 조회해 개인 EventModel 형태로
+  /// 변환한다. 그룹 기능을 쓰지 않는 사용자이거나 조회가 실패해도(권한 없음,
+  /// 네트워크 오류 등) 개인 일정 음성 흐름 자체는 깨지지 않도록 여기서
+  /// 예외를 흡수하고 빈 결과를 반환한다.
+  Future<
+      ({
+        List<EventModel> events,
+        Map<String, GroupEventModel> byId,
+      })> _loadGroupEventCandidates() async {
+    try {
+      final groups = await _groupRepository.listGroups();
+      if (groups.isEmpty) {
+        return (
+          events: const <EventModel>[],
+          byId: const <String, GroupEventModel>{},
+        );
+      }
+      final from = DateTime.utc(2000);
+      final to = DateTime.utc(2100);
+      final converted = <EventModel>[];
+      final byId = <String, GroupEventModel>{};
+      for (final group in groups) {
+        final groupEvents = await _groupEventRepository.getEventsForGroup(
+          group.id,
+          from,
+          to,
+        );
+        for (final groupEvent in groupEvents) {
+          if (!groupEvent.isActive) {
+            continue;
+          }
+          final eventModel = _eventModelFromGroupEvent(groupEvent);
+          converted.add(eventModel);
+          byId[eventModel.id] = groupEvent;
+        }
+      }
+      return (events: converted, byId: byId);
+    } catch (error) {
+      debugPrint('VoiceConversationScreen group events load failed: $error');
+      return (
+        events: const <EventModel>[],
+        byId: const <String, GroupEventModel>{},
+      );
     }
   }
 
@@ -293,7 +374,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       final canLoadEvents = widget.repository != null ||
           (AppEnv.isSupabaseReady && authProvider.isSignedIn);
       if (_events.isEmpty && canLoadEvents) {
-        _events = await _repository.listEvents(
+        _events = await _fetchAndRegisterMergedEvents(
           userId: widget.repository == null ? authProvider.userId : null,
         );
       }
@@ -304,9 +385,37 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         'action=${result.action.name} visible=${result.visibleEvents.length}',
       );
 
+      // 대상이 그룹 일정으로 병합된 후보라면(음성으로 순번/시간 매칭돼
+      // 들어온 경우), 개인 이벤트 화면/저장 경로 대신 그룹 전용 경로로
+      // 라우팅한다. 삭제는 이번 범위 밖이라 안내만 하고 개인 삭제로
+      // 넘어가지 않게 막는다.
+      final targetGroupEvent = result.targetEvent == null
+          ? null
+          : _groupEventById[result.targetEvent!.id];
+
       if (result.deleteConfirmed && result.targetEvent != null) {
+        if (targetGroupEvent != null) {
+          if (mounted) {
+            setState(() {
+              _messages.add(
+                const _ConversationMessage.assistant(
+                  '그룹 일정은 아직 음성으로 삭제할 수 없어요. 그룹 화면에서 삭제해 주세요.',
+                ),
+              );
+            });
+          }
+          return;
+        }
         final deleted = await _deleteEvent(result.targetEvent!);
         if (!deleted) {
+          return;
+        }
+      } else if (targetGroupEvent != null &&
+          (result.action == VoiceConversationAction.confirmedEdit ||
+              result.requiresEditScreenNavigation)) {
+        final updated =
+            await _applyGroupEventVoiceUpdate(result, targetGroupEvent);
+        if (!updated) {
           return;
         }
       } else if (result.action == VoiceConversationAction.confirmedEdit &&
@@ -856,6 +965,98 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           _messages.add(
             const _ConversationMessage.assistant(
               '일정 변경 저장에 실패했어요. 잠시 후 다시 시도해 주세요.',
+            ),
+          );
+        });
+      }
+      return false;
+    }
+  }
+
+  /// 그룹 일정 대상 음성 수정 라우팅. 개인 [_repository.updateEvent] 대신
+  /// [GroupEventRepository.updateGroupEvent]로 저장한다. 그룹 일정
+  /// 편집 화면이 따로 없고 개인 전용 event_edit_screen을 재사용할 수 없으므로,
+  /// 편집 화면 이동 없이 이 함수에서 바로 저장까지 마친다.
+  /// 지원 범위: 제목은 변경하지 않음(음성 흐름에 제목 변경 의도가 없음),
+  /// 장소·시간·주/일/월 반복만 반영한다. 반복은 그룹 스키마가 요일(BYDAY)을
+  /// 지원하지 않아 FREQ 단위(daily/weekly/monthly)로 다운그레이드한다.
+  Future<bool> _applyGroupEventVoiceUpdate(
+    VoiceConversationResult result,
+    GroupEventModel groupEvent,
+  ) async {
+    var updated = groupEvent;
+    var changed = false;
+
+    final locationText = result.locationText?.trim();
+    if (locationText != null && locationText.isNotEmpty) {
+      updated = updated.copyWith(location: locationText);
+      changed = true;
+    }
+
+    final draft = result.draftEvent;
+    if (draft != null) {
+      if (draft.startAt != null) {
+        final newStart = draft.startAt!;
+        final originalDuration = updated.endAt.difference(updated.startAt);
+        final newEnd = draft.endAt ??
+            newStart.add(
+              originalDuration.isNegative ||
+                      originalDuration == Duration.zero
+                  ? const Duration(hours: 1)
+                  : originalDuration,
+            );
+        updated = updated.copyWith(startAt: newStart, endAt: newEnd);
+        changed = true;
+      }
+      final requestedRule = draft.recurrenceRule?.trim();
+      if (requestedRule != null && requestedRule.isNotEmpty) {
+        final nextRecurrenceType = _groupRecurrenceTypeFromRule(requestedRule);
+        if (nextRecurrenceType != updated.recurrenceType) {
+          updated = updated.copyWith(recurrenceType: nextRecurrenceType);
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) {
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '그룹 일정에는 아직 지원하지 않는 변경이에요. 장소·시간·주/일/월 반복만 바꿀 수 있어요.',
+            ),
+          );
+        });
+      }
+      return false;
+    }
+
+    try {
+      final saved = await _groupEventRepository.updateGroupEvent(updated);
+      _groupEventById[saved.id] = saved;
+      _events = _events
+          .map(
+            (candidate) => candidate.id == saved.id
+                ? _eventModelFromGroupEvent(saved)
+                : candidate,
+          )
+          .toList(growable: false);
+      _conversation.replaceEvents(_events);
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_group_update',
+        eventId: saved.id,
+        startAt: saved.startAt,
+      );
+      await _loadEvents();
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('VoiceConversationScreen group update failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '그룹 일정 변경 저장에 실패했어요. 잠시 후 다시 시도해 주세요.',
             ),
           );
         });
@@ -2030,6 +2231,64 @@ EventModel _copyEventWithCritical(
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
   );
+}
+
+/// 그룹 일정(GroupEventModel)을 음성 대화 컨트롤러가 다루는 개인 EventModel
+/// 형태로 변환한다. 원본과 동일한 id를 유지해야 [_groupEventById] 레지스트리로
+/// 역참조할 수 있다. GroupEventModel엔 좌표(location_lat/lng)·참석자 등
+/// 개인 일정 전용 필드가 없으므로 해당 필드는 비워둔다.
+EventModel _eventModelFromGroupEvent(GroupEventModel groupEvent) {
+  return EventModel(
+    id: groupEvent.id,
+    userId: groupEvent.createdBy,
+    title: groupEvent.title,
+    startAt: groupEvent.startAt,
+    endAt: groupEvent.endAt,
+    location: groupEvent.location,
+    memo: groupEvent.description,
+    isAllDay: groupEvent.allDay,
+    recurrenceRule: _recurrenceRuleFromGroupRecurrenceType(
+      groupEvent.recurrenceType,
+    ),
+    category: '기타',
+    source: 'group',
+    createdAt: groupEvent.createdAt,
+    updatedAt: groupEvent.updatedAt,
+  );
+}
+
+/// 그룹 일정의 recurrenceType(none/daily/weekly/monthly)을 개인 EventModel이
+/// 쓰는 RRULE 근사치로 변환한다. 요일(BYDAY) 지정은 그룹 스키마가 지원하지
+/// 않으므로 FREQ 단위까지만 표현한다.
+String? _recurrenceRuleFromGroupRecurrenceType(String recurrenceType) {
+  switch (recurrenceType) {
+    case 'daily':
+      return 'FREQ=DAILY';
+    case 'weekly':
+      return 'FREQ=WEEKLY';
+    case 'monthly':
+      return 'FREQ=MONTHLY';
+    default:
+      return null;
+  }
+}
+
+/// 음성 파이프라인이 만든 RRULE(요일 등 세부 포함 가능)을 그룹 일정 스키마가
+/// 지원하는 recurrenceType(none/daily/weekly/monthly)으로 다운그레이드한다.
+/// 예: "FREQ=WEEKLY;BYDAY=FR" -> "weekly" (요일 정보는 그룹 스키마에 저장할
+/// 곳이 없어 버려진다 — 의도된 동작, PlanFlow_CLAUDE 작업 지시 참조).
+String _groupRecurrenceTypeFromRule(String rrule) {
+  final upper = rrule.toUpperCase();
+  if (upper.contains('FREQ=DAILY')) {
+    return 'daily';
+  }
+  if (upper.contains('FREQ=WEEKLY')) {
+    return 'weekly';
+  }
+  if (upper.contains('FREQ=MONTHLY')) {
+    return 'monthly';
+  }
+  return 'none';
 }
 
 String _formatLocalTime(DateTime value) {

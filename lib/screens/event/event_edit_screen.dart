@@ -116,6 +116,18 @@ class EventEditScreen extends StatefulWidget {
     return hasCoordinates;
   }
 
+  /// DB 저장 `notify_at`에서 역산한 분 단위 오프셋을 검증하고,
+  /// 유효 범위(0~1440분)를 벗어나면 기본값으로 폴백한다.
+  /// 예: 일정이 7일 뒤로 이동했으나 notify_at이 예전 값이면
+  /// 역산값이 10000분+ 같은 비정상값이 되는데, 이를 60분(기본값)으로 클램프.
+  @visibleForTesting
+  static Duration? normalizeReminderOffset(int minutesDifference) {
+    if (minutesDifference < 0 || minutesDifference > 1440) {
+      return const Duration(minutes: 60); // 유효 범위 벗어남 → 기본값(1시간)으로 폴백
+    }
+    return Duration(minutes: minutesDifference);
+  }
+
   @override
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
@@ -1801,11 +1813,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
       final minutes = startAt.difference(notifyAt).inMinutes;
-      if (minutes < 0) {
-        return;
-      }
+      final normalized = EventEditScreen.normalizeReminderOffset(minutes);
       setState(() {
-        _reminderOffset = Duration(minutes: minutes);
+        _reminderOffset = normalized;
       });
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen reminder load skipped: $error');

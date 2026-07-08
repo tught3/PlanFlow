@@ -119,6 +119,50 @@ void main() {
     });
   });
 
+  group('normalizeReminderOffset', () {
+    test('정상 범위 내 값(60분)은 그대로 유지', () {
+      final result = EventEditScreen.normalizeReminderOffset(60);
+      expect(result, const Duration(minutes: 60));
+    });
+
+    test('정상 범위 내 값(30분)은 그대로 유지', () {
+      final result = EventEditScreen.normalizeReminderOffset(30);
+      expect(result, const Duration(minutes: 30));
+    });
+
+    test('정상 범위 내 최대값(1440분)은 그대로 유지', () {
+      final result = EventEditScreen.normalizeReminderOffset(1440);
+      expect(result, const Duration(minutes: 1440));
+    });
+
+    test('정상 범위 내 최소값(0분)은 그대로 유지', () {
+      final result = EventEditScreen.normalizeReminderOffset(0);
+      expect(result, const Duration(minutes: 0));
+    });
+
+    test('음수(-30분)는 기본값(60분)으로 폴백', () {
+      final result = EventEditScreen.normalizeReminderOffset(-30);
+      expect(result, const Duration(minutes: 60));
+    });
+
+    test('범위 초과 비정상값(10140분)은 기본값(60분)으로 폴백', () {
+      // 일정이 7일 뒤로 이동했을 때 역산값: 7*24*60 + 60 = 10140분
+      // 이것이 "169시간 전" 같은 비정상 표시를 만드는 경우
+      final result = EventEditScreen.normalizeReminderOffset(10140);
+      expect(result, const Duration(minutes: 60));
+    });
+
+    test('범위 초과 다른 값(2000분)도 기본값(60분)으로 폴백', () {
+      final result = EventEditScreen.normalizeReminderOffset(2000);
+      expect(result, const Duration(minutes: 60));
+    });
+
+    test('범위 경계 바로 위(1441분)는 기본값으로 폴백', () {
+      final result = EventEditScreen.normalizeReminderOffset(1441);
+      expect(result, const Duration(minutes: 60));
+    });
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     SharedPreferencesAsyncPlatform.instance =

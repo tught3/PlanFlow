@@ -183,6 +183,83 @@ void main() {
       );
     });
 
+    test(
+        'recurrence follow-up with an explicit weekday sets RRULE and anchors '
+        'the start date to that weekday', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '아침 미팅', DateTime(2026, 5, 7, 9)),
+          _event('second', '점심 확인', DateTime(2026, 5, 7, 12)),
+          _event('third', '오후 방문', DateTime(2026, 5, 7, 15)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('세 번째 일정을 매주 금요일마다 반복으로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'third');
+      expect(result.requiresEditScreenNavigation, isTrue);
+      expect(result.draftEvent, isNotNull);
+      expect(result.draftEvent!.recurrenceRule, contains('FREQ=WEEKLY'));
+      expect(result.draftEvent!.recurrenceRule, contains('BYDAY=FR'));
+      // "금요일"이 함께 언급됐으므로 반복 요일에 맞춰 시작일도 가장 가까운
+      // 금요일로 앵커링되는 것이 자연스럽다(2026-5-7은 목요일 -> 5-8 금요일).
+      expect(
+        planflowLocal(result.draftEvent!.startAt!),
+        DateTime(2026, 5, 8, 15),
+      );
+    });
+
+    test(
+        'recurrence follow-up without a weekday only changes RRULE and keeps '
+        'the original start time', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '아침 미팅', DateTime(2026, 5, 7, 9)),
+          _event('second', '점심 확인', DateTime(2026, 5, 7, 12)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('1번 일정 매월 반복으로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'first');
+      expect(result.draftEvent, isNotNull);
+      expect(result.draftEvent!.recurrenceRule, 'FREQ=MONTHLY');
+      // 요일/날짜 언급이 없으므로 시작 시각은 원래 값 그대로 유지돼야 한다.
+      expect(
+        planflowLocal(result.draftEvent!.startAt!),
+        DateTime(2026, 5, 7, 9),
+      );
+    });
+
+    test(
+        'recurrence follow-up combined with an explicit weekday shift applies '
+        'both changes', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '아침 미팅', DateTime(2026, 5, 7, 9)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result =
+          controller.handle('1번 일정 다음주 금요일로 옮기고 매주 반복해줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.draftEvent, isNotNull);
+      expect(result.draftEvent!.recurrenceRule, contains('FREQ=WEEKLY'));
+      expect(
+        planflowLocal(result.draftEvent!.startAt!).weekday,
+        DateTime.friday,
+      );
+    });
+
     test('time follow-up creates a shifted draft event for edit screen', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

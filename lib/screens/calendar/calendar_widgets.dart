@@ -898,11 +898,11 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
     final segment = _multiDaySegment(event, day);
     final isMultiDay = event.isMultiDay;
     final bg = isMultiDay
-        ? const Color(0xFFD9E9FF)
+        ? calendarGroupEventColor.withValues(alpha: 0.14)
         : isSelected
             ? Colors.white.withValues(alpha: 0.2)
-            : const Color(0xFFD9E9FF);
-    final fg = isSelected ? Colors.white : PlanFlowColors.primary;
+            : calendarGroupEventColor.withValues(alpha: 0.14);
+    final fg = isSelected ? Colors.white : calendarGroupEventColor;
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
     final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
@@ -926,7 +926,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                   right: Radius.circular(segment.$2 ? 3 : 0),
                 ),
                 border: Border.all(
-                  color: PlanFlowColors.primaryMid.withValues(alpha: 0.18),
+                  color: calendarGroupEventColor.withValues(alpha: 0.18),
                   width: 0.4,
                 ),
               ),
@@ -1153,7 +1153,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
     final startAt = event.startAt;
     final endAt = event.endAt;
     final timeLabel = _formatOverlayTimeRange(startAt, endAt);
-    const accentColor = Color(0xFF2E6DA4);
+    const accentColor = calendarGroupEventColor;
 
     return Card(
       color: accentColor.withValues(alpha: 0.08),
@@ -1204,7 +1204,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                             '그룹',
                             style: TextStyle(
                               fontSize: 9,
-                              color: PlanFlowColors.primaryMid,
+                              color: calendarGroupEventColor,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -1213,7 +1213,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                           Text(
                             event.groupName!,
                             style: theme.textTheme.labelLarge?.copyWith(
-                              color: PlanFlowColors.primaryMid,
+                              color: calendarGroupEventColor,
                               fontSize: 10,
                             ),
                           ),
@@ -1224,7 +1224,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                       Text(
                         timeLabel,
                         style: theme.textTheme.labelLarge?.copyWith(
-                          color: PlanFlowColors.primaryMid,
+                          color: calendarGroupEventColor,
                           fontSize: 10,
                         ),
                       ),

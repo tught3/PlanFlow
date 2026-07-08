@@ -1091,9 +1091,20 @@ class VoiceConversationController {
     VoiceCommandRouteResult? route,
   }) {
     final resolvedRoute = route ?? _router.route(text);
+    // "매주 금요일마다 반복으로 바꿔줘"처럼 반복설정 변경 의도가 감지되면,
+    // 신규 생성 경로(GptService().parseSchedule)와 동일한 결정적 로컬 파서로
+    // RRULE을 계산해둔다. 시간 변경이 없어도(반복만 바뀌는 경우) 이 draft가
+    // 만들어져야 하므로 아래 게이트/분기 각각에 반영한다.
+    final requestsRecurrenceChange =
+        resolvedRoute.requestedChanges.contains('recurrence_rule');
+    final requestedRecurrenceRule = requestsRecurrenceChange
+        ? GptService().localRecurrenceRuleFromRawText(text)
+        : null;
+
     if (!resolvedRoute.requestedChanges.contains('start_at') &&
         !_hasRelativeDateShiftCue(text) &&
-        !_hasExplicitDateOrTimeCue(text)) {
+        !_hasExplicitDateOrTimeCue(text) &&
+        requestedRecurrenceRule == null) {
       return null;
     }
 
@@ -1129,7 +1140,7 @@ class VoiceConversationController {
         participants: event.participants,
         targets: event.targets,
         isCritical: event.isCritical,
-        recurrenceRule: event.recurrenceRule,
+        recurrenceRule: requestedRecurrenceRule ?? event.recurrenceRule,
         isAllDay: event.isAllDay,
         isMultiDay: event.isMultiDay,
         parentEventId: event.parentEventId,
@@ -1147,6 +1158,12 @@ class VoiceConversationController {
 
     final shiftDays = _relativeDateShiftDays(text);
     if (shiftDays == null || event.startAt == null) {
+      // 시간 이동 없이 반복설정만 바뀌는 경우("매주 금요일마다 반복으로
+      // 바꿔줘"): 시작 시각은 그대로 두고 recurrenceRule만 교체한 draft를
+      // 만든다.
+      if (requestedRecurrenceRule != null) {
+        return event.copyWith(recurrenceRule: requestedRecurrenceRule);
+      }
       return null;
     }
 
@@ -1172,7 +1189,7 @@ class VoiceConversationController {
       participants: event.participants,
       targets: event.targets,
       isCritical: event.isCritical,
-      recurrenceRule: event.recurrenceRule,
+      recurrenceRule: requestedRecurrenceRule ?? event.recurrenceRule,
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
       parentEventId: event.parentEventId,

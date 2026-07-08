@@ -219,6 +219,16 @@ class GptService {
     return _inferStartAtFromRawText(rawText);
   }
 
+  /// 원문에 명시된 반복 표현("매주 금요일", "격주 화요일", "매월 15일" 등)을
+  /// GPT 호출 없이 결정적 정규식으로 해석해 iCal RRULE로 반환한다.
+  /// [_normalizeRecurrenceFromRawText]가 GPT 파싱 결과보다 이 로컬 판정을
+  /// 우선하는 것과 동일한 원칙 — 명시적 반복 표현은 애매할 여지가 없으므로
+  /// 음성 수정 흐름처럼 네트워크 호출 없이 즉시 반복설정을 반영해야 하는
+  /// 곳에서 재사용한다.
+  String? localRecurrenceRuleFromRawText(String rawText) {
+    return _localRecurrenceRuleFromRawText(rawText);
+  }
+
   Future<String> generateMorningBriefing(String rawText) {
     return generateBriefing(rawText: rawText, isMorning: true);
   }
