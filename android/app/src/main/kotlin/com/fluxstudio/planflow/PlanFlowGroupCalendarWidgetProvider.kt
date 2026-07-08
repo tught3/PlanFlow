@@ -8,6 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.text.TextPaint
+import android.text.TextUtils
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetPlugin
@@ -41,6 +44,13 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         private const val GROUP_MONTH_WIDGET_OFFSET_KEY = "gw_month_offset"
         private val OCCURRENCE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
         private val PLANFLOW_ZONE = ZoneId.of("Asia/Seoul")
+
+        // planflow_group_calendar_widget.xml의 cell_N_count textSize(8.5sp bold)와 반드시 일치시킬 것.
+        private const val CELL_COUNT_TEXT_SIZE_SP = 8.5f
+        // cell_N_container의 paddingLeft(1dp) + paddingRight(1dp) 합.
+        private const val CELL_CONTAINER_HORIZONTAL_PADDING_DP = 2f
+        // 위젯 옵션 조회 실패 시 폴백으로 쓸 셀 텍스트 폭(dp 상당).
+        private const val FALLBACK_CELL_TEXT_WIDTH_DP = 100f
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -162,6 +172,19 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         // 발생분 파싱: 날짜 문자열 → 이름별 개수 맵
         val occurrencesByDay: Map<LocalDate, Map<String, Int>> = parseOccurrences(prefs, gid)
 
+        // 셀 요약 텍스트("이름 N개")가 칸 폭을 넘지 않도록, 실제 렌더 폭을 미리 측정해둔다.
+        // 위젯당 1회만 계산(셀마다 반복 계산할 필요 없음). 측정 실패 시 안전한 폴백 폭 사용.
+        val cellTextWidthPx = measureCellTextWidthPx(context, appWidgetId)
+        val summaryTextPaint = TextPaint().apply {
+            isAntiAlias = true
+            isFakeBoldText = true
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                CELL_COUNT_TEXT_SIZE_SP,
+                context.resources.displayMetrics,
+            )
+        }
+
         for (i in 0 until 42) {
             val day = cellDays[i]
             val inMonth = day.year == monthStart.year && day.month == monthStart.month
@@ -203,7 +226,9 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
             val summaryText = namesForDay
                 ?.entries
                 ?.sortedByDescending { it.value }
-                ?.joinToString("\n") { (name, count) -> "$name ${count}개" }
+                ?.joinToString("\n") { (name, count) ->
+                    buildFittedSummaryLine(name, count, summaryTextPaint, cellTextWidthPx)
+                }
                 ?.takeIf { it.isNotBlank() }
 
             if (summaryText != null) {
@@ -229,6 +254,55 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
 
     private fun formatMonthTitle(monthStart: LocalDate): String {
         return "${monthStart.year}년 ${monthStart.monthValue}월"
+    }
+
+    /**
+     * 위젯 인스턴스의 실제 폭(OPTION_APPWIDGET_MIN_WIDTH)을 읽어 셀 하나("42칸 그리드"는 7열)당
+     * 텍스트가 쓸 수 있는 폭(px)을 추정한다. 옵션 조회 실패/값 없음이면 폴백 폭을 반환한다.
+     * 런처마다 실제 렌더 크기가 조금씩 다를 수 있어 완벽한 정확도는 보장하지 않으며,
+     * 크래시 없이 안전하게 동작하는 것을 우선한다.
+     */
+    private fun measureCellTextWidthPx(context: Context, appWidgetId: Int): Int {
+        val density = context.resources.displayMetrics.density
+        val fallbackPx = (FALLBACK_CELL_TEXT_WIDTH_DP * density).toInt().coerceAtLeast(1)
+        return try {
+            val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(appWidgetId)
+            val minWidthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
+            if (minWidthDp <= 0) {
+                fallbackPx
+            } else {
+                val totalWidthPx = minWidthDp * density
+                val cellWidthPx = totalWidthPx / 7f
+                val horizontalPaddingPx = CELL_CONTAINER_HORIZONTAL_PADDING_DP * density
+                (cellWidthPx - horizontalPaddingPx).toInt().coerceAtLeast(1)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("GroupCalendarWidget", "cell width measure failed for $appWidgetId: ${e.message}", e)
+            fallbackPx
+        }
+    }
+
+    /**
+     * "이름 N개" 한 줄을 셀 텍스트 폭(availableWidthPx)에 맞춘다. " N개" 접미사는 항상 완전하게
+     * 유지하고, 이름 부분만 남는 폭에 맞춰 TextUtils.ellipsize로 말줄임표를 붙여 자른다.
+     * 측정/자르기 도중 예외가 나면 자르지 않은 원본 "이름 N개"로 폴백한다(안전성 우선).
+     */
+    private fun buildFittedSummaryLine(
+        name: String,
+        count: Int,
+        paint: TextPaint,
+        availableWidthPx: Int,
+    ): String {
+        val suffix = " ${count}개"
+        return try {
+            val suffixWidth = paint.measureText(suffix)
+            val availableForName = (availableWidthPx - suffixWidth).coerceAtLeast(0f)
+            val fittedName = TextUtils.ellipsize(name, paint, availableForName, TextUtils.TruncateAt.END)
+            "$fittedName$suffix"
+        } catch (e: Exception) {
+            android.util.Log.e("GroupCalendarWidget", "summary line fit failed: ${e.message}", e)
+            "$name$suffix"
+        }
     }
 
     /** gw_<gid>_occurrences_json을 파싱해 날짜별 {이름: 개수} 맵을 만든다. 실패 시 빈 맵으로 폴백. */

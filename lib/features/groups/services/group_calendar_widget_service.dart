@@ -226,11 +226,12 @@ class GroupCalendarWidgetService {
 
   /// 그룹 멤버 표시 이름을 계산한다.
   ///
-  /// 기본값은 이름의 첫 글자(성)만 사용한다(예: 김철수 → "김"). 같은 첫 글자를
-  /// 가진 멤버가 2명 이상이면, 가입(참여) 순서 — `joinedAt`(없으면 `createdAt`,
-  /// 그마저 없으면 `id`) 기준으로 앞선 사람부터 A/B/C 접미사를 붙인다
-  /// (예: "김A", "김B"). 이 방식은 위젯의 자동 표시용이며, 사용자가 그룹
-  /// 멤버 화면에서 표시 이름을 직접 바꾸면 그 이름이 우선 사용된다.
+  /// 기본값은 이름 전체를 그대로 사용한다(예: "김철수" → "김철수"). 완전히
+  /// 동일한 이름을 가진 멤버가 2명 이상이면, 가입(참여) 순서 —
+  /// `joinedAt`(없으면 `createdAt`, 그마저 없으면 `id`) 기준으로 앞선
+  /// 사람부터 A/B/C 접미사를 붙인다(예: "김철수A", "김철수B"). 이 방식은
+  /// 위젯의 자동 표시용이며, 사용자가 그룹 멤버 화면에서 표시 이름을 직접
+  /// 바꾸면 그 이름이 우선 사용된다.
   @visibleForTesting
   static Map<String, String> buildDisambiguatedDisplayNames(
     List<GroupMemberModel> members,
@@ -245,15 +246,15 @@ class GroupCalendarWidgetService {
         return aJoin.compareTo(bJoin);
       });
 
-    final bySurname = <String, List<GroupMemberModel>>{};
+    final byName = <String, List<GroupMemberModel>>{};
     for (final member in sorted) {
       final name = member.effectiveDisplayName;
-      final surname = name.isEmpty ? '?' : name.substring(0, 1);
-      bySurname.putIfAbsent(surname, () => <GroupMemberModel>[]).add(member);
+      final key = name.isEmpty ? '?' : name;
+      byName.putIfAbsent(key, () => <GroupMemberModel>[]).add(member);
     }
 
     final result = <String, String>{};
-    for (final entry in bySurname.entries) {
+    for (final entry in byName.entries) {
       final group = entry.value;
       if (group.length == 1) {
         result[group.first.userId] = entry.key;

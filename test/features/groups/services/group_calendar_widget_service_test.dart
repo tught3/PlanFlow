@@ -120,7 +120,7 @@ void main() {
           joinedAt: joinedAt,
         );
 
-    test('성이 겹치지 않으면 성 한 글자만 사용한다', () {
+    test('기본값은 이름 전체를 그대로 사용한다', () {
       final members = [
         member('u1', '김철수', DateTime(2026, 1, 1)),
         member('u2', '박민지', DateTime(2026, 1, 2)),
@@ -131,12 +131,12 @@ void main() {
         members,
       );
 
-      expect(names['u1'], '김');
-      expect(names['u2'], '박');
-      expect(names['u3'], '이');
+      expect(names['u1'], '김철수');
+      expect(names['u2'], '박민지');
+      expect(names['u3'], '이정훈');
     });
 
-    test('성이 겹치면 가입 순서대로 A/B/C를 붙인다', () {
+    test('성만 겹치고 전체 이름이 다르면 접미사 없이 각각 전체 이름을 사용한다', () {
       final members = [
         member('u_later', '김민수', DateTime(2026, 2, 1)),
         member('u_first', '김철수', DateTime(2026, 1, 1)),
@@ -147,9 +147,25 @@ void main() {
         members,
       );
 
-      expect(names['u_first'], '김A');
-      expect(names['u_later'], '김B');
-      expect(names['u3'], '이');
+      expect(names['u_first'], '김철수');
+      expect(names['u_later'], '김민수');
+      expect(names['u3'], '이정훈');
+    });
+
+    test('전체 이름이 완전히 같으면 가입 순서대로 A/B/C를 붙인다', () {
+      final members = [
+        member('u_later', '김철수', DateTime(2026, 2, 1)),
+        member('u_first', '김철수', DateTime(2026, 1, 1)),
+        member('u3', '이정훈', DateTime(2026, 1, 3)),
+      ];
+
+      final names = GroupCalendarWidgetService.buildDisambiguatedDisplayNames(
+        members,
+      );
+
+      expect(names['u_first'], '김철수A');
+      expect(names['u_later'], '김철수B');
+      expect(names['u3'], '이정훈');
     });
   });
 
@@ -204,8 +220,8 @@ void main() {
     final todayStr = ymd(DateTime(today.year, today.month, today.day));
     final todayItems = items.where((e) => e['d'] == todayStr).toList();
 
-    expect(todayItems.where((e) => e['n'] == '김').length, 2);
-    expect(todayItems.where((e) => e['n'] == '박').length, 1);
+    expect(todayItems.where((e) => e['n'] == '김철수').length, 2);
+    expect(todayItems.where((e) => e['n'] == '박민지').length, 1);
     // critical 필드는 그룹 이벤트에 존재하지 않으므로 넣지 않는다.
     for (final item in items) {
       expect(item.containsKey('critical'), isFalse);
@@ -264,7 +280,7 @@ void main() {
     expect(dates, contains(ymd(DateTime(futureMonth.year, futureMonth.month, futureMonth.day))));
   });
 
-  test('동명이인(성 겹침) A/B/C 표시이름이 occurrences_json의 n 필드에 정확히 반영된다', () async {
+  test('동명이인(전체 이름 동일) A/B/C 표시이름이 occurrences_json의 n 필드에 정확히 반영된다', () async {
     final today = planflowNow();
     GroupMemberModel member(String userId, String name, DateTime joinedAt) =>
         GroupMemberModel(
@@ -289,7 +305,7 @@ void main() {
         <GroupModel>[_group('g1', '팀 A')],
         <GroupMemberModel>[
           member('u_first', '김철수', DateTime(2026, 1, 1)),
-          member('u_later', '김민수', DateTime(2026, 2, 1)),
+          member('u_later', '김철수', DateTime(2026, 2, 1)),
         ],
       ),
       eventRepository: _FakeEventRepo(<GroupEventModel>[
@@ -307,7 +323,7 @@ void main() {
         .cast<Map<String, dynamic>>();
     final names = items.map((e) => e['n']).toSet();
 
-    expect(names, contains('김A'));
-    expect(names, contains('김B'));
+    expect(names, contains('김철수A'));
+    expect(names, contains('김철수B'));
   });
 }
