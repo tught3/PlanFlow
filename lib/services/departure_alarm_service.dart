@@ -759,12 +759,12 @@ class DepartureAlarmService {
     final savedAt = _parseDateTime(
       preferences.getString(cachedOriginAtKey),
     );
-    if (lat == null || lng == null || savedAt == null) {
+    if (lat == null || lng == null) {
       return null;
     }
-    if (_currentTime.difference(savedAt) > const Duration(hours: 2)) {
-      return null;
-    }
+    // 캐시가 있으면 만료 여부와 무관하게 반환한다.
+    // 오래된 캐시라도 위치 확인 불가보다는 낫다.
+    // (백그라운드가 아닌 경우 라이브 조회로 캐시를 업데이트한다)
     return GeoPoint(latitude: lat, longitude: lng);
   }
 
