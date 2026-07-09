@@ -74,9 +74,14 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
+    // 초기 로드 시에는 widget._initialGroupId를, 새로고침 시에는 현재 선택된
+    // 그룹을 유지한다. 이렇게 해야 하위 화면(대시보드/일정/멤버)에서 새로고침할
+    // 때 선택 그룹이 바뀌지 않는다.
+    final preferredGroupId =
+        widget._initialGroupId ?? _contextProvider.selectedGroup?.id;
     await _contextProvider.load(
       userId,
-      preferredGroupId: widget._initialGroupId,
+      preferredGroupId: preferredGroupId,
     );
     await _inviteProvider.load(userId);
     if (mounted) {

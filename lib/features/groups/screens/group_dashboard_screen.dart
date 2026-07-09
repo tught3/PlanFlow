@@ -53,7 +53,12 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId, preferredGroupId: widget._initialGroupId);
+    // 초기 로드 시에는 widget._initialGroupId를, 새로고침 시에는 현재 선택된
+    // 그룹을 유지한다. 이렇게 해야 그룹 상세 하위 화면에서 새로고침할 때
+    // 선택 그룹이 바뀌지 않는다.
+    final preferredGroupId =
+        widget._initialGroupId ?? _provider.state.selectedGroup?.id;
+    await _provider.load(userId, preferredGroupId: preferredGroupId);
   }
 
   Future<void> _openMemberSharedEventsSheet(
