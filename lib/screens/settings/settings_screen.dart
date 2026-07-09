@@ -108,7 +108,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   static const String _deviceCalendarSyncedPrefsKey =
       'settings:device_calendar_synced';
 
-  AppLifecycleState? _previousLifecycleState;
+  // 탭 이동 등의 작은 lifecycle 변화가 아닌, 실제 앱 백그라운드→포그라운드 복귀만 감지하기 위한 상태 추적
+  // resumed로 초기화해 앱 시작 직후 첫 이벤트에서 동기화 방지
+  AppLifecycleState _previousLifecycleState = AppLifecycleState.resumed;
 
   late final SettingsRepository _settingsRepository;
   late final SettingsProvider _settingsProvider;
