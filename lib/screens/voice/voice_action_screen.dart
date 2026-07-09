@@ -37,6 +37,7 @@ import '../calendar/calendar_screen.dart'
     show
         calendarCriticalEventTextColor,
         calendarGroupEventColor,
+        calendarMultiDayEventTextColor,
         calendarRecurringEventColor;
 part 'voice_action_widgets.dart';
 
@@ -1777,6 +1778,16 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       parts.add(edited.isCritical ? '중요 일정' : '중요 표시 해제');
     }
 
+    if (edited.isMultiDay &&
+        !original.isMultiDay &&
+        edited.endAt != null) {
+      final newEnd = planflowLocal(edited.endAt!);
+      const weekdays = ['', '월', '화', '수', '목', '금', '토', '일'];
+      parts.add(
+        '연속 일정(~${newEnd.month}/${newEnd.day}(${weekdays[newEnd.weekday]}))',
+      );
+    }
+
     return parts.isEmpty ? null : parts.join(', ');
   }
 
@@ -1987,9 +1998,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final requestedStartLocal = _inferRequestedStartLocal(event);
     final requestedLocation = _inferRequestedLocation();
     final requestedCritical = _inferRequestedCriticalFlag();
+    final requestedMultiDayEndLocal = _inferRequestedMultiDayEndLocal(event);
     if (requestedStartLocal == null &&
         requestedLocation == null &&
-        requestedCritical == null) {
+        requestedCritical == null &&
+        requestedMultiDayEndLocal == null) {
       return event;
     }
 
@@ -2003,11 +2016,23 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final nextStartUtc = requestedStartLocal == null
         ? event.startAt
         : planflowLocalDateTimeToUtc(requestedStartLocal);
-    final nextEndUtc = requestedStartLocal == null
-        ? event.endAt
-        : duration == null || duration.isNegative || duration == Duration.zero
-            ? event.endAt
-            : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration));
+
+    DateTime? nextEndUtc;
+    var nextIsMultiDay = event.isMultiDay;
+    if (requestedMultiDayEndLocal != null) {
+      // "연속 일정으로 바꿔줘"류: 종료일을 명시된 날짜로 바꾸고, 시작일과
+      // 다른 날이면 연속(멀티데이) 일정으로 표시한다.
+      nextEndUtc = planflowLocalDateTimeToUtc(requestedMultiDayEndLocal);
+      nextIsMultiDay = nextStartUtc != null &&
+          !planflowIsSameLocalDay(nextStartUtc, nextEndUtc);
+    } else if (requestedStartLocal != null) {
+      nextEndUtc =
+          duration == null || duration.isNegative || duration == Duration.zero
+              ? event.endAt
+              : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration));
+    } else {
+      nextEndUtc = event.endAt;
+    }
 
     return EventModel(
       id: event.id,
@@ -2026,7 +2051,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       isCritical: requestedCritical ?? event.isCritical,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,
-      isMultiDay: event.isMultiDay,
+      isMultiDay: nextIsMultiDay,
       parentEventId: event.parentEventId,
       category: event.category,
       source: event.source,
@@ -2091,10 +2116,91 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
   }
 
-  DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
+  /// "연속 일정으로 바꿔줘"류 발화에서 종료일을 추론한다. 파이프라인이
+  /// `multi_day` 변경 신호를 감지했을 때만 동작해 오탐(관련 없는 "N일" 언급)을
+  /// 막는다. 지원 표현:
+  /// - "N일간/N일 동안/N일 연속": 종료일 = 시작일 + (N-1)일
+  /// - "N박(M일)?": 2박3일이면 3일짜리, 숫자만(2박)이면 N+1일짜리로 계산
+  /// - "…까지": 명시된 날짜를 그대로 종료일로 사용
+  DateTime? _inferRequestedMultiDayEndLocal(EventModel event) {
+    if (!_requestedChanges.contains('multi_day')) {
+      return null;
+    }
+    if (event.startAt == null) {
+      return null;
+    }
+    final originalStartLocal = planflowLocal(event.startAt!);
+    // start_at 변경 신호와 함께 잡히면 파이프라인이 날짜 구간을 targetText로
+    // 분리해버릴 수 있어(changeText에서 "…까지" 부분이 빠짐), 여기서는 항상
+    // 정제된 원문 전체를 본다.
+    final text = _normalizedRawText;
+
+    DateTime endLocalFromDayCount(int totalDays) {
+      final endDate = originalStartLocal.add(Duration(days: totalDays - 1));
+      return DateTime(
+        endDate.year,
+        endDate.month,
+        endDate.day,
+        originalStartLocal.hour,
+        originalStartLocal.minute,
+      );
+    }
+
+    final nightsAndDays =
+        RegExp(r'(\d{1,2})\s*박\s*(?:(\d{1,2})\s*일)?').firstMatch(text);
+    if (nightsAndDays != null) {
+      final nights = int.tryParse(nightsAndDays.group(1) ?? '');
+      final explicitDays = int.tryParse(nightsAndDays.group(2) ?? '');
+      final totalDays = explicitDays ?? (nights == null ? null : nights + 1);
+      if (totalDays != null && totalDays > 1) {
+        return endLocalFromDayCount(totalDays);
+      }
+    }
+
+    final durationMatch = RegExp(
+      r'(\d{1,2}|[일이삼사오육칠팔구십]{1,2})\s*일\s*(?:간|동안|연속)',
+    ).firstMatch(text);
+    if (durationMatch != null) {
+      final totalDays = _koreanNumber(durationMatch.group(1));
+      if (totalDays != null && totalDays > 1) {
+        return endLocalFromDayCount(totalDays);
+      }
+    }
+
     final dateMatches = RegExp(
       r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
     ).allMatches(text).toList(growable: false);
+    for (final match in dateMatches.reversed) {
+      if (!text.substring(match.end).trimLeft().startsWith('까지')) {
+        continue;
+      }
+      final snippet = text.substring(match.start, match.end);
+      final parsed = GptService(now: () => originalStartLocal)
+          .inferStartAtFromRawText(snippet);
+      if (parsed != null) {
+        return DateTime(
+          parsed.year,
+          parsed.month,
+          parsed.day,
+          originalStartLocal.hour,
+          originalStartLocal.minute,
+        );
+      }
+    }
+    return null;
+  }
+
+  DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
+    final allMatches = RegExp(
+      r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
+    ).allMatches(text).toList(growable: false);
+    // "…까지"로 끝나는 날짜는 연속 일정의 종료일 지정이지 시작일 변경이
+    // 아니므로 시작일 후보에서 제외한다.
+    final dateMatches = allMatches
+        .where(
+          (match) => !text.substring(match.end).trimLeft().startsWith('까지'),
+        )
+        .toList(growable: false);
     if (dateMatches.isEmpty) {
       return null;
     }

@@ -258,6 +258,10 @@ class VoiceCommandPipeline {
     ).hasMatch(normalized)) {
       changes.add('convert_to_personal');
     }
+    if (RegExp(r'연속\s*(?:일정)?\s*(?:으로|로)?\s*(?:바꿔|변경|만들|전환)')
+        .hasMatch(normalized)) {
+      changes.add('multi_day');
+    }
     return changes.toList(growable: false);
   }
 

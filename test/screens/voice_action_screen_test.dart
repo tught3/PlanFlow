@@ -2081,6 +2081,108 @@ void main() {
     expect(find.text('중요'), findsOneWidget);
     expect(find.text('반복'), findsOneWidget);
   });
+
+  testWidgets('"N일간 연속 일정으로 바꿔줘"는 종료일을 시작일+N-1일로 설정한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime(2026, 8, 3, 10),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 3일간 연속 일정으로 바꿔줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('연속 일정(~8/5(수))'), findsOneWidget);
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 탭'), findsOneWidget);
+    expect(repository.updatedEvents, hasLength(1));
+    final updated = repository.updatedEvents.single;
+    expect(updated.isMultiDay, isTrue);
+    final endLocal = updated.endAt!.toLocal();
+    expect(endLocal.month, 8);
+    expect(endLocal.day, 5);
+  });
+
+  testWidgets('"…까지 연속으로 바꿔줘"는 명시된 날짜를 종료일로 사용한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime(2026, 8, 3, 10),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 8월 5일까지 연속으로 바꿔줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 탭'), findsOneWidget);
+    expect(repository.updatedEvents, hasLength(1));
+    final updated = repository.updatedEvents.single;
+    expect(updated.isMultiDay, isTrue);
+    final endLocal = updated.endAt!.toLocal();
+    expect(endLocal.month, 8);
+    expect(endLocal.day, 5);
+  });
 }
 
 EventModel _event({

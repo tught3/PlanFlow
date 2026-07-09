@@ -1293,6 +1293,9 @@ class _EventCandidateCard extends StatelessWidget {
     if (text.contains('개인 일정으로 전환') || isGroupEvent) {
       return calendarGroupEventColor;
     }
+    if (text.contains('연속 일정') || event.isMultiDay) {
+      return calendarMultiDayEventTextColor;
+    }
     if (_isRecurring) {
       return calendarRecurringEventColor;
     }
@@ -1312,6 +1315,8 @@ class _EventCandidateCard extends StatelessWidget {
         const _StatusTag(label: '중요', color: calendarCriticalEventTextColor),
       if (isGroupEvent)
         const _StatusTag(label: '팀 일정', color: calendarGroupEventColor),
+      if (event.isMultiDay)
+        const _StatusTag(label: '연속', color: calendarMultiDayEventTextColor),
       if (_isRecurring)
         const _StatusTag(label: '반복', color: calendarRecurringEventColor),
     ];
