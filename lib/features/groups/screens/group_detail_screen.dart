@@ -673,11 +673,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         icon: Icons.dashboard_outlined,
         label: '대시보드',
         route: AppRoutes.groupDashboardForId(widget.groupId),
+        extra: _provider,
       ),
       _ActionItem(
         icon: Icons.event_available_outlined,
         label: '그룹 일정',
         route: AppRoutes.groupEventsForId(widget.groupId),
+        extra: _provider,
       ),
       _ActionItem(
         icon: Icons.mail_outline,
@@ -689,6 +691,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         icon: Icons.groups_2_outlined,
         label: '멤버 관리',
         route: AppRoutes.groupMembersForId(widget.groupId),
+        extra: _provider,
       ),
     ];
     return GridView.builder(

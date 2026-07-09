@@ -25,6 +25,9 @@ import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
 import '../features/groups/screens/group_member_screen.dart';
 import '../features/groups/providers/group_context_provider.dart';
+import '../features/groups/providers/group_dashboard_provider.dart';
+import '../features/groups/providers/group_event_provider.dart';
+import '../features/groups/providers/group_member_provider.dart';
 import '../features/admin/admin_tester_dashboard_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
@@ -295,22 +298,40 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.groupMembersForGroup,
-      builder: (context, state) => GroupMemberScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
-      ),
+      builder: (context, state) {
+        final contextProvider = _groupContextProviderExtra(state);
+        return GroupMemberScreen(
+          provider: contextProvider != null
+              ? GroupMemberProvider(contextProvider: contextProvider)
+              : null,
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+        );
+      },
     ),
     GoRoute(
       path: AppRoutes.groupEventsForGroup,
-      builder: (context, state) => GroupEventListScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
-        initialSelectedDate: _parseRouteDate(state.uri.queryParameters['date']),
-      ),
+      builder: (context, state) {
+        final contextProvider = _groupContextProviderExtra(state);
+        return GroupEventListScreen(
+          provider: contextProvider != null
+              ? GroupEventProvider(contextProvider: contextProvider)
+              : null,
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+          initialSelectedDate: _parseRouteDate(state.uri.queryParameters['date']),
+        );
+      },
     ),
     GoRoute(
       path: AppRoutes.groupDashboardForGroup,
-      builder: (context, state) => GroupDashboardScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
-      ),
+      builder: (context, state) {
+        final contextProvider = _groupContextProviderExtra(state);
+        return GroupDashboardScreen(
+          provider: contextProvider != null
+              ? GroupDashboardProvider(contextProvider: contextProvider)
+              : null,
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+        );
+      },
     ),
     GoRoute(
       path: AppRoutes.groupEventCreateForGroup,
