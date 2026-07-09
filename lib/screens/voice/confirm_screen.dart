@@ -1462,8 +1462,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       if (mounted) {
-        // 저장 성공 SnackBar는 바로 뒤이은 홈 화면 전환과 겹쳐 잔상으로 보이므로
-        // 띄우지 않는다. 홈 진입 + 목록에 새 일정 표시가 저장 완료 피드백을 대신한다.
+        // 저장 성공 SnackBar는 바로 뒤이은 일정탭 화면 전환과 겹쳐 잔상으로 보이므로
+        // 띄우지 않는다. 일정탭 진입 + 목록에 새 일정 표시가 저장 완료 피드백을 대신한다.
         // (저장 실패 시에는 화면이 그대로라 SnackBar를 정상 표시한다.)
         // 단, 개인 일정 없이 그룹에만 공유한 경우에는 다른 피드백 수단이 없으므로 메시지를 띄운다.
         if (savedEvent == null) {
@@ -1643,7 +1643,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!mounted) {
       return;
     }
-    context.go(AppRoutes.calendar);
+    context.go(AppRoutes.home);
   }
 
   /// 저장 전 오전/오후 확인은 [_showTimePeriodClarificationDialog] 모달이
