@@ -124,11 +124,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     // 탭 이동 등의 작은 변화가 아닌, 실제로 백그라운드에서 포그라운드로 복귀한 경우에만 동기화 실행
-    // (paused/inactive → resumed 전환만 감지)
+    // (paused → resumed 전환만 감지, inactive는 제외 - S8에서 탭 전환 시 false positive 발생)
     if (state == AppLifecycleState.resumed &&
-        (_previousLifecycleState == AppLifecycleState.paused ||
-            _previousLifecycleState == AppLifecycleState.inactive ||
-            _previousLifecycleState == AppLifecycleState.hidden)) {
+        _previousLifecycleState == AppLifecycleState.paused) {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_resumed',
       ));
