@@ -28,10 +28,16 @@ import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../services/recurrence_edit_scope.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_date_range_parser.dart';
 import '../../services/voice_text_cleanup_service.dart';
 import '../../widgets/planflow_action_buttons.dart';
+import '../calendar/calendar_screen.dart'
+    show
+        calendarCriticalEventTextColor,
+        calendarGroupEventColor,
+        calendarRecurringEventColor;
 part 'voice_action_widgets.dart';
 
 enum VoiceScheduleAction { add, edit, delete, query, choose }
@@ -1329,10 +1335,25 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     if (_isLocationFieldAddition) {
       editedEvent = (await _eventWithResolvedVoiceLocation(editedEvent)).event;
     }
+
+    RecurrenceEditScope? recurrenceScope;
+    if ((event.recurrenceRule ?? '').trim().isNotEmpty) {
+      if (!mounted) return;
+      recurrenceScope = await chooseRecurrenceEditScope(context);
+      if (recurrenceScope == null) {
+        // 사용자가 범위 선택을 취소함: 저장하지 않는다.
+        return;
+      }
+    }
+
     final previousStartAt = event.startAt;
     setState(() => _isSaving = true);
     try {
-      final savedEvent = await _repository.updateEvent(editedEvent);
+      final savedEvent = await _saveWithRecurrenceScope(
+        event: event,
+        editedEvent: editedEvent,
+        scope: recurrenceScope,
+      );
       final userId = _resolveUserId();
       unawaited(
         _runDirectSaveFollowUps(
@@ -1362,6 +1383,54 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  /// [scope]가 null(비반복 일정)이면 그냥 덮어써 저장한다. 반복 일정이면
+  /// 선택한 범위에 맞춰 원본 계열을 자르고 새 계열을 분리하거나(single/future),
+  /// 계열 전체를 그대로 수정한다(all). [event_edit_screen.dart]의
+  /// `_saveEvent` 반복 범위 분기와 동일한 규칙을 따른다.
+  Future<EventModel> _saveWithRecurrenceScope({
+    required EventModel event,
+    required EventModel editedEvent,
+    required RecurrenceEditScope? scope,
+  }) async {
+    if (scope == RecurrenceEditScope.single) {
+      return _repository.createEvent(
+        detachedRecurringVoiceEvent(
+          editedEvent,
+          parentEventId: event.id,
+          keepRecurrence: false,
+        ),
+      );
+    }
+    if (scope == RecurrenceEditScope.future) {
+      final originalStart = event.startAt;
+      final targetDate = editedEvent.startAt ?? originalStart;
+      final isAnchorOccurrence = originalStart == null ||
+          (targetDate != null &&
+              planflowIsSameLocalDay(originalStart, targetDate));
+      if (isAnchorOccurrence) {
+        return _repository.updateEvent(editedEvent);
+      }
+      final truncatedRule = truncateRRuleBefore(
+        event.recurrenceRule,
+        targetDate!,
+      );
+      await _repository.updateEvent(
+        event.copyWith(
+          recurrenceRule: truncatedRule,
+          clearRecurrenceRule: truncatedRule == null,
+        ),
+      );
+      return _repository.createEvent(
+        detachedRecurringVoiceEvent(
+          editedEvent,
+          parentEventId: event.id,
+          keepRecurrence: true,
+        ),
+      );
+    }
+    return _repository.updateEvent(editedEvent);
   }
 
   /// 그룹 일정 대상 음성 수정. 개인 [_repository.updateEvent] 대신

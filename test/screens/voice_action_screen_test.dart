@@ -1932,6 +1932,155 @@ void main() {
     // 실패했으므로 캘린더 탭으로 이동하지 않는다.
     expect(find.text('일정 탭'), findsNothing);
   });
+
+  testWidgets('반복 개인 일정을 바로 저장하면 범위 선택 모달이 뜨고, "이 일정만"은 원본을 건드리지 않고 분리된 이벤트만 만든다',
+      (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime(2026, 5, 8, 10), // 금요일
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=FR',
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 중요하게 표시해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('반복 일정 수정'), findsOneWidget);
+    expect(repository.updatedEvents, isEmpty);
+    expect(repository.createdEvents, isEmpty);
+
+    await tester.tap(find.text('이 일정만'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 탭'), findsOneWidget);
+    expect(repository.updatedEvents, isEmpty);
+    expect(repository.createdEvents, hasLength(1));
+    final created = repository.createdEvents.single;
+    expect(created.parentEventId, 'event-1');
+    expect(created.recurrenceRule, isNull);
+    expect(created.isCritical, isTrue);
+  });
+
+  testWidgets('반복 개인 일정 수정에서 "전체 반복 일정"을 고르면 원본 계열을 그대로 덮어쓴다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime(2026, 5, 8, 10),
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=FR',
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 중요하게 표시해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('전체 반복 일정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 탭'), findsOneWidget);
+    expect(repository.createdEvents, isEmpty);
+    expect(repository.updatedEvents, hasLength(1));
+    final updated = repository.updatedEvents.single;
+    expect(updated.id, 'event-1');
+    expect(updated.recurrenceRule, 'FREQ=WEEKLY;BYDAY=FR');
+    expect(updated.isCritical, isTrue);
+  });
+
+  testWidgets('중요·반복 일정 후보 카드는 종류를 나타내는 배지를 보여준다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime.now().add(const Duration(days: 1)),
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=FR',
+          isCritical: true,
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 장소 알려줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('중요'), findsOneWidget);
+    expect(find.text('반복'), findsOneWidget);
+  });
 }
 
 EventModel _event({
@@ -1940,6 +2089,8 @@ EventModel _event({
   DateTime? startAt,
   String? location,
   String? memo,
+  String? recurrenceRule,
+  bool isCritical = false,
 }) {
   return EventModel(
     id: id,
@@ -1948,6 +2099,8 @@ EventModel _event({
     startAt: startAt ?? DateTime(2026, 5, 5, 10),
     location: location ?? (title.contains('한강') ? '한강' : null),
     memo: memo,
+    recurrenceRule: recurrenceRule,
+    isCritical: isCritical,
   );
 }
 

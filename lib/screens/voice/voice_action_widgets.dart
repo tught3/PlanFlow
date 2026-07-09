@@ -1281,6 +1281,24 @@ class _EventCandidateCard extends StatelessWidget {
   /// 변경사항을 바로 저장하는 콜백. null이면 바로저장 버튼 표시 안 함.
   final VoidCallback? onDirectApply;
 
+  bool get _isRecurring => (event.recurrenceRule ?? '').trim().isNotEmpty;
+
+  /// 변경 미리보기 텍스트/화살표 아이콘 색상. 무엇이 바뀌는지(중요 표시 추가)와
+  /// 이 카드가 어떤 종류의 일정인지(팀 일정)를 함께 반영해 우선순위대로 고른다.
+  Color _changePreviewColor() {
+    final text = changePreviewText ?? '';
+    if (text.contains('중요 일정')) {
+      return calendarCriticalEventTextColor;
+    }
+    if (text.contains('개인 일정으로 전환') || isGroupEvent) {
+      return calendarGroupEventColor;
+    }
+    if (_isRecurring) {
+      return calendarRecurringEventColor;
+    }
+    return PlanFlowColors.primary;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1289,6 +1307,14 @@ class _EventCandidateCard extends StatelessWidget {
         event.startAt == null ? null : planflowLocal(event.startAt!);
     final hasDirectApply = onDirectApply != null;
     final canTap = !disabled && onTap != null;
+    final statusTags = <Widget>[
+      if (event.isCritical)
+        const _StatusTag(label: '중요', color: calendarCriticalEventTextColor),
+      if (isGroupEvent)
+        const _StatusTag(label: '팀 일정', color: calendarGroupEventColor),
+      if (_isRecurring)
+        const _StatusTag(label: '반복', color: calendarRecurringEventColor),
+    ];
 
     return Card(
       key: isDanger
@@ -1328,6 +1354,14 @@ class _EventCandidateCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
+                        if (statusTags.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: statusTags,
+                          ),
+                        ],
                         const SizedBox(height: 4),
                         Text(
                           startAt == null
@@ -1344,20 +1378,24 @@ class _EventCandidateCard extends StatelessWidget {
                           ),
                         ),
                         if (changePreviewText != null) ...[
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 5),
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.arrow_forward,
-                                size: 13,
-                                color: PlanFlowColors.primary,
+                                size: 16,
+                                color: _changePreviewColor(),
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                changePreviewText!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: PlanFlowColors.primary,
-                                  fontWeight: FontWeight.w700,
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  changePreviewText!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: _changePreviewColor(),
+                                  ),
                                 ),
                               ),
                             ],
@@ -1430,6 +1468,35 @@ class _EventCandidateCard extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 후보 카드에 붙는 작은 색상 배지. "중요"/"팀 일정"/"반복"처럼 일정의
+/// 종류·상태를 한눈에 구분할 수 있게 한다.
+class _StatusTag extends StatelessWidget {
+  const _StatusTag({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: color,
         ),
       ),
     );
