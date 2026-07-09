@@ -12,6 +12,10 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../features/groups/models/group_event_model.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
+import '../../features/groups/repositories/group_repository.dart';
+import '../../features/groups/services/group_event_share_service.dart';
 import '../../services/app_feedback_service.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -38,6 +42,8 @@ class VoiceActionScreen extends StatefulWidget {
     required this.rawText,
     required this.action,
     this.eventRepository,
+    this.groupRepository,
+    this.groupEventRepository,
     this.gptService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
@@ -55,6 +61,8 @@ class VoiceActionScreen extends StatefulWidget {
   final String rawText;
   final VoiceScheduleAction action;
   final EventRepository? eventRepository;
+  final GroupRepository? groupRepository;
+  final GroupEventRepository? groupEventRepository;
   final GptService? gptService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
@@ -72,6 +80,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     with WidgetsBindingObserver {
   final List<EventModel> _events = <EventModel>[];
   final Set<String> _selectedDeleteEventIds = <String>{};
+  // 그룹 일정을 개인 EventModel로 변환해 후보 목록에 병합할 때, id로 원본
+  // GroupEventModel을 역참조하기 위한 레지스트리. 저장/삭제/전환 라우팅 분기에서
+  // "이 id가 그룹 일정인가"를 판정하는 데 쓴다.
+  Map<String, GroupEventModel> _groupEventById = <String, GroupEventModel>{};
   bool _isLoading = true;
   bool _isDeleting = false;
   bool _isSaving = false;
@@ -87,6 +99,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
+  GroupRepository get _groupRepository =>
+      widget.groupRepository ?? GroupRepository.supabase();
+  GroupEventRepository get _groupEventRepository =>
+      widget.groupEventRepository ?? GroupEventRepository.supabase();
 
   bool get _isDelete => _selectedAction == VoiceScheduleAction.delete;
   bool get _isEdit => _selectedAction == VoiceScheduleAction.edit;
@@ -100,6 +116,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       _routeResult?.requestedChanges ?? const <String>[];
   bool get _isLocationFieldAddition =>
       _isEdit && _requestedChanges.contains('location');
+  // 그룹 일정을 개인 일정으로 전환하는 발화인지. 같은 발화에 날짜/장소 등 다른
+  // 필드 변경 신호가 함께 잡혀도(예: "이 팀 일정 개인 일정으로 바꿔줘 이번 주
+  // 금요일"), 전환 의도가 다른 필드 추론보다 항상 우선한다.
+  bool get _isConvertToPersonalRequested =>
+      _requestedChanges.contains('convert_to_personal');
 
   @override
   void initState() {
@@ -230,6 +251,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     if (_isAdd) {
       setState(() {
         _events.clear();
+        _groupEventById = <String, GroupEventModel>{};
         _message = null;
         _candidateLoadDiagnostics = null;
         _candidateLoadSnapshot = null;
@@ -268,7 +290,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         return;
       }
 
-      final events = await _repository.listEvents(userId: userId);
+      final personalEvents = await _repository.listEvents(userId: userId);
+      final groupCandidates = await _loadGroupEventCandidates();
+      final events = <EventModel>[
+        ...personalEvents,
+        ...groupCandidates.events,
+      ];
       if (events.isEmpty && allowAutoSyncRetry && _canAutoRetryEmptyLoad) {
         await _syncAndReloadCandidates();
         return;
@@ -341,6 +368,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           diagnostics: diagnostics,
           events: ranked,
         );
+        _groupEventById = groupCandidates.byId;
         _events
           ..clear()
           ..addAll(ranked);
@@ -369,6 +397,93 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         _candidateLoadSnapshot = null;
         _isLoading = false;
       });
+    }
+  }
+
+  /// 사용자가 속한 모든 그룹의 그룹 일정을 조회해 개인 EventModel 형태로
+  /// 변환한다. 그룹 기능을 쓰지 않는 사용자이거나 조회가 실패해도(권한 없음,
+  /// 네트워크 오류 등) 개인 일정 음성 흐름 자체는 깨지지 않도록 여기서
+  /// 예외를 흡수하고 빈 결과를 반환한다.
+  Future<
+      ({
+        List<EventModel> events,
+        Map<String, GroupEventModel> byId,
+      })> _loadGroupEventCandidates() async {
+    try {
+      final groups = await _groupRepository.listGroups();
+      if (groups.isEmpty) {
+        return (
+          events: const <EventModel>[],
+          byId: const <String, GroupEventModel>{},
+        );
+      }
+      final from = DateTime.utc(2000);
+      final to = DateTime.utc(2100);
+      final converted = <EventModel>[];
+      final byId = <String, GroupEventModel>{};
+      for (final group in groups) {
+        final groupEvents = await _groupEventRepository.getEventsForGroup(
+          group.id,
+          from,
+          to,
+        );
+        for (final groupEvent in groupEvents) {
+          if (!groupEvent.isActive) {
+            continue;
+          }
+          final eventModel = _eventModelFromGroupEvent(groupEvent);
+          converted.add(eventModel);
+          byId[eventModel.id] = groupEvent;
+        }
+      }
+      return (events: converted, byId: byId);
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen group events load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return (
+        events: const <EventModel>[],
+        byId: const <String, GroupEventModel>{},
+      );
+    }
+  }
+
+  /// 그룹 일정(GroupEventModel)을 이 화면의 후보 목록/랭킹 로직이 다루는 개인
+  /// EventModel 형태로 변환한다. 원본과 동일한 id를 유지해야 [_groupEventById]
+  /// 레지스트리로 역참조할 수 있다. GroupEventModel엔 좌표(location_lat/lng)·
+  /// 참석자 등 개인 일정 전용 필드가 없으므로 해당 필드는 비워둔다.
+  EventModel _eventModelFromGroupEvent(GroupEventModel groupEvent) {
+    return EventModel(
+      id: groupEvent.id,
+      userId: groupEvent.createdBy,
+      title: groupEvent.title,
+      startAt: groupEvent.startAt,
+      endAt: groupEvent.endAt,
+      location: groupEvent.location,
+      memo: groupEvent.description,
+      isAllDay: groupEvent.allDay,
+      recurrenceRule: _recurrenceRuleFromGroupRecurrenceType(
+        groupEvent.recurrenceType,
+      ),
+      category: '기타',
+      source: 'group',
+      createdAt: groupEvent.createdAt,
+      updatedAt: groupEvent.updatedAt,
+    );
+  }
+
+  /// 그룹 일정의 recurrenceType(none/daily/weekly/monthly)을 개인 EventModel이
+  /// 쓰는 RRULE 근사치로 변환한다. 요일(BYDAY) 지정은 그룹 스키마가 지원하지
+  /// 않으므로 FREQ 단위까지만 표현한다.
+  String? _recurrenceRuleFromGroupRecurrenceType(String recurrenceType) {
+    switch (recurrenceType) {
+      case 'daily':
+        return 'FREQ=DAILY';
+      case 'weekly':
+        return 'FREQ=WEEKLY';
+      case 'monthly':
+        return 'FREQ=MONTHLY';
+      default:
+        return null;
     }
   }
 
@@ -1201,6 +1316,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   /// 음성 명령으로 파악한 변경값을 편집화면 없이 바로 저장한다.
   Future<void> _applyAndSave(EventModel event) async {
+    final groupEvent = _groupEventById[event.id];
+    if (groupEvent != null) {
+      if (_isConvertToPersonalRequested) {
+        await _convertGroupEventToPersonal(groupEvent);
+      } else {
+        await _applyGroupEventVoiceUpdate(event, groupEvent);
+      }
+      return;
+    }
     var editedEvent = _eventWithRequestedVoiceChanges(event);
     if (_isLocationFieldAddition) {
       editedEvent = (await _eventWithResolvedVoiceLocation(editedEvent)).event;
@@ -1238,6 +1362,192 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  /// 그룹 일정 대상 음성 수정. 개인 [_repository.updateEvent] 대신
+  /// [GroupEventRepository.updateGroupEvent]로 저장한다. 그룹 일정 편집
+  /// 화면이 따로 없고 개인 전용 event_edit_screen을 재사용할 수 없으므로,
+  /// 편집 화면 이동 없이 이 함수에서 바로 저장까지 마친다.
+  /// 지원 범위: 제목·장소·시간을 반영한다.
+  Future<void> _applyGroupEventVoiceUpdate(
+    EventModel event,
+    GroupEventModel groupEvent,
+  ) async {
+    var updated = groupEvent;
+    var changed = false;
+
+    final requestedLocation = _inferRequestedLocation();
+    if (requestedLocation != null && requestedLocation.trim().isNotEmpty) {
+      updated = updated.copyWith(location: requestedLocation.trim());
+      changed = true;
+    }
+
+    final newTitle = _extractGroupTitleChange(_normalizedRawText);
+    if (newTitle != null && newTitle.isNotEmpty && newTitle != updated.title) {
+      updated = updated.copyWith(title: newTitle);
+      changed = true;
+    }
+
+    final requestedStartLocal = _inferRequestedStartLocal(event);
+    if (requestedStartLocal != null) {
+      final newStart = planflowLocalDateTimeToUtc(requestedStartLocal);
+      final originalDuration = updated.endAt.difference(updated.startAt);
+      final newEnd = newStart.add(
+        originalDuration.isNegative || originalDuration == Duration.zero
+            ? const Duration(hours: 1)
+            : originalDuration,
+      );
+      updated = updated.copyWith(startAt: newStart, endAt: newEnd);
+      changed = true;
+    }
+
+    if (!changed) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('그룹 일정에는 아직 지원하지 않는 변경이에요. 제목·장소·시간만 바꿀 수 있어요.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final saved = await _groupEventRepository.updateGroupEvent(updated);
+      _groupEventById[saved.id] = saved;
+      final savedAsEvent = _eventModelFromGroupEvent(saved);
+      final index = _events.indexWhere((candidate) => candidate.id == saved.id);
+      if (index != -1) {
+        _events[index] = savedAsEvent;
+      }
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_group_direct_apply',
+        eventId: saved.id,
+        startAt: saved.startAt,
+      );
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('팀 일정을 저장했어요.')),
+      );
+      context.go(AppRoutes.calendar);
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen group direct save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('그룹 일정을 저장하지 못했어요. 다시 시도해 주세요.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// 그룹 일정을 개인 일정으로 옮긴다(취소-우선 + 보상 롤백). 먼저 그룹
+  /// 일정을 취소(cancelGroupEvent)하고, 그 다음 개인 일정을 생성한다.
+  /// 개인 일정 생성이 실패하면 방금 취소한 그룹 일정을 다시 active로
+  /// 되돌려(보상 롤백) 데이터가 양쪽 모두에서 사라지지 않게 한다.
+  Future<void> _convertGroupEventToPersonal(GroupEventModel g) async {
+    setState(() => _isSaving = true);
+    GroupEventModel cancelled;
+    try {
+      cancelled = await _groupEventRepository.cancelGroupEvent(g.id);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VoiceActionScreen group cancel for convert failed: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('이 팀 일정은 만든 사람이나 팀 리더만 개인 일정으로 옮길 수 있어요.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final userId = _resolveUserId() ?? '';
+      final draft = _personalEventFromGroupEvent(g, userId);
+      await _repository.createEvent(draft);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VoiceActionScreen personal create for convert failed: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      try {
+        await _groupEventRepository.updateGroupEvent(
+          cancelled.copyWith(
+            status: 'active',
+            clearCancelledAt: true,
+            clearCancelledBy: true,
+          ),
+        );
+      } catch (_) {
+        // 복구 실패는 조용히 무시(그룹 일정은 취소 상태로 남되, 개인 일정도
+        // 안 생겼으므로 데이터 유실은 아님 — 사용자가 그룹 화면에서 직접
+        // 복구해야 함).
+      }
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('개인 일정으로 옮기지 못했어요. 팀 일정은 그대로 두었어요.')),
+        );
+      }
+      return;
+    }
+
+    _groupEventById.remove(g.id);
+    setState(() {
+      _events.removeWhere((event) => event.id == g.id);
+      _selectedDeleteEventIds.remove(g.id);
+      _isSaving = false;
+    });
+    EventRefreshBus.instance.notifyChanged(
+      reason: 'voice_group_to_personal',
+      eventId: g.id,
+      startAt: g.startAt,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_convertSuccessMessage(g))),
+    );
+    context.go(AppRoutes.calendar);
+  }
+
+  /// 그룹 일정을 개인 일정으로 옮길 때 만들 개인 EventModel 초안.
+  /// id는 빈 문자열로 두어 [EventRepository.createEvent]가 신규 생성으로
+  /// 처리하게 한다.
+  EventModel _personalEventFromGroupEvent(GroupEventModel g, String userId) {
+    return EventModel(
+      id: '',
+      userId: userId,
+      title: g.title,
+      startAt: g.startAt,
+      endAt: g.endAt,
+      location: g.location,
+      memo: g.description,
+      isAllDay: g.allDay,
+      recurrenceRule: recurrenceRuleFromGroupRecurrence(
+        g.recurrenceType,
+        g.startAt,
+        g.recurrenceUntil,
+      ),
+      category: '기타',
+      source: 'manual',
+      createdAt: DateTime.now().toUtc(),
+    );
+  }
+
+  String _convertSuccessMessage(GroupEventModel g) {
+    const base = '팀 일정을 개인 일정으로 옮겼어요.';
+    if (g.recurrenceType == 'weekly') {
+      return '$base 매주 반복은 시작 요일 기준으로 옮겼어요. 여러 요일이었다면 다시 확인해 주세요.';
+    }
+    return base;
   }
 
   Future<void> _runDirectSaveFollowUps({
@@ -1402,6 +1712,17 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   Future<void> _openEdit(EventModel event) async {
+    if (_groupEventById[event.id] != null) {
+      // 그룹 일정 전용 편집 화면이 없어 개인 일정 편집 화면(event_edit_screen)을
+      // 재사용할 수 없다. 카드 버튼이 이미 비활성화돼 있어야 하지만, 방어적으로
+      // 여기서도 다시 한 번 막는다.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('팀 일정은 "바로 저장"으로만 바꿀 수 있어요.')),
+        );
+      }
+      return;
+    }
     final requestedLocation = _inferRequestedLocation();
     if (_isLocationFieldAddition &&
         requestedLocation != null &&
@@ -1587,6 +1908,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   EventModel _eventWithRequestedVoiceChanges(EventModel event) {
+    // 그룹 일정을 개인 일정으로 전환하는 발화라면, 같은 발화에 날짜 등 다른
+    // 필드 변경 신호가 함께 잡혔더라도(예: "이 팀 일정 개인 일정으로 바꿔줘
+    // 이번 주 금요일") 전환 의도가 항상 우선한다. 다른 필드 추론을 건너뛰지
+    // 않으면 날짜 변경 카드로 잘못 라우팅되어 전환 의도가 무시된다.
+    if (_isConvertToPersonalRequested && _groupEventById[event.id] != null) {
+      return event;
+    }
     final requestedStartLocal = _inferRequestedStartLocal(event);
     final requestedLocation = _inferRequestedLocation();
     final requestedCritical = _inferRequestedCriticalFlag();
@@ -1929,10 +2257,28 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     });
 
     try {
+      // 선택 목록에 개인 일정과 그룹 일정이 섞여 있을 수 있으므로(다중 선택
+      // 삭제) 이벤트별로 저장소를 분기한다. 개인 일정은 하드 삭제, 그룹
+      // 일정은 소프트 취소(cancelGroupEvent)로 처리한다.
+      final personalEventsDeleted = <EventModel>[];
       for (final event in events) {
-        await _repository.deleteEvent(event.id, userId: userId);
+        final groupEvent = _groupEventById[event.id];
+        if (groupEvent != null) {
+          await _groupEventRepository.cancelGroupEvent(groupEvent.id);
+          _groupEventById.remove(event.id);
+        } else {
+          await _repository.deleteEvent(event.id, userId: userId);
+          personalEventsDeleted.add(event);
+        }
       }
-      unawaited(_runDeleteFollowUps(userId: userId, events: List.of(events)));
+      if (personalEventsDeleted.isNotEmpty) {
+        unawaited(
+          _runDeleteFollowUps(
+            userId: userId,
+            events: List.of(personalEventsDeleted),
+          ),
+        );
+      }
       if (!mounted) {
         return;
       }
@@ -2254,6 +2600,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                   onToggleDeleteSelection: _toggleDeleteSelection,
                   onDelete: _confirmDelete,
                   buildChangePreviewText: _buildChangePreviewText,
+                  groupEventIds: _groupEventById.keys.toSet(),
+                  isConvertToPersonalRequested: _isConvertToPersonalRequested,
+                  onConvertToPersonal: (event) {
+                    final groupEvent = _groupEventById[event.id];
+                    if (groupEvent != null) {
+                      unawaited(_convertGroupEventToPersonal(groupEvent));
+                    }
+                  },
                 ),
             ],
           ),

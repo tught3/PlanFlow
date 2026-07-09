@@ -27,6 +27,9 @@ class _VoiceCandidateSection extends StatelessWidget {
     required this.onToggleDeleteSelection,
     required this.onDelete,
     required this.buildChangePreviewText,
+    this.groupEventIds = const <String>{},
+    this.isConvertToPersonalRequested = false,
+    this.onConvertToPersonal,
     this.diagnostics,
     this.message,
   });
@@ -58,6 +61,14 @@ class _VoiceCandidateSection extends StatelessWidget {
   final void Function(EventModel event, bool selected) onToggleDeleteSelection;
   final void Function(EventModel event) onDelete;
   final String? Function(EventModel event) buildChangePreviewText;
+  /// 그룹 일정으로 병합된 후보의 id 집합. 카드가 그룹 일정인지 판정해
+  /// "직접 편집" 버튼을 숨기고 전환 라벨을 붙이는 데 쓴다.
+  final Set<String> groupEventIds;
+  /// 이번 발화가 그룹 일정을 개인 일정으로 전환하라는 요청인지.
+  final bool isConvertToPersonalRequested;
+  /// 그룹 일정을 개인 일정으로 전환하는 콜백. isConvertToPersonalRequested가
+  /// true이고 카드가 그룹 일정일 때만 쓰인다.
+  final void Function(EventModel event)? onConvertToPersonal;
 
   bool get _isQuery => action == VoiceScheduleAction.query;
   bool get _isDelete => action == VoiceScheduleAction.delete;
@@ -167,25 +178,52 @@ class _VoiceCandidateSection extends StatelessWidget {
           const SizedBox.shrink()
         else
           ...events.map((event) {
-            final changePreview =
-                _isEdit ? buildChangePreviewText(event) : null;
+            final isGroupEvent = groupEventIds.contains(event.id);
+            final isConvertTarget =
+                isGroupEvent && _isEdit && isConvertToPersonalRequested;
+            final changePreview = isConvertTarget
+                ? '개인 일정으로 전환'
+                : _isEdit
+                    ? buildChangePreviewText(event)
+                    : null;
+            final effectiveActionLabel =
+                isConvertTarget ? '개인 일정으로 전환' : actionLabel;
+            final effectiveActionIcon =
+                isConvertTarget ? Icons.person_outline : actionIcon;
+            final VoidCallback? onDirectApply;
+            if (isConvertTarget) {
+              onDirectApply = onConvertToPersonal == null
+                  ? null
+                  : () => onConvertToPersonal!(event);
+            } else if (_isEdit &&
+                changePreview != null &&
+                allowDirectApply &&
+                !forceManualEdit) {
+              onDirectApply = () => onApplyAndSave(event);
+            } else if (isGroupEvent && _isEdit && changePreview != null) {
+              // 그룹 일정은 개인 전용 편집 화면이 없으므로, 변경이 감지되면
+              // allowDirectApply 여부와 무관하게 "바로 저장" 경로로만 반영한다.
+              onDirectApply = () => onApplyAndSave(event);
+            } else {
+              onDirectApply = null;
+            }
+            // 그룹 일정은 개인 전용 편집 화면(_openEdit)을 재사용할 수 없으므로
+            // "직접 편집"/단일 액션 버튼(onTap)을 비활성화한다.
+            final VoidCallback? onTap = isGroupEvent
+                ? null
+                : () => _isEdit ? onOpenEdit(event) : onOpenQueryResult(event);
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _EventCandidateCard(
                 event: event,
-                actionLabel: actionLabel,
-                actionIcon: actionIcon,
+                actionLabel: effectiveActionLabel,
+                actionIcon: effectiveActionIcon,
                 isDanger: false,
                 disabled: disabled,
-                onTap: () =>
-                    _isEdit ? onOpenEdit(event) : onOpenQueryResult(event),
+                isGroupEvent: isGroupEvent,
+                onTap: onTap,
                 changePreviewText: changePreview,
-                onDirectApply: (_isEdit &&
-                        changePreview != null &&
-                        allowDirectApply &&
-                        !forceManualEdit)
-                    ? () => onApplyAndSave(event)
-                    : null,
+                onDirectApply: onDirectApply,
               ),
             );
           }),
@@ -903,6 +941,22 @@ class _VoiceLocationResolution {
   final String message;
 }
 
+/// "제목을 '주간 회의'로 바꿔줘", "이름을 팀 워크숍으로 변경해줘"처럼
+/// 그룹 일정 제목 변경 발화에서 새 제목만 뽑아낸다. 매치되지 않으면 null.
+String? _extractGroupTitleChange(String text) {
+  final match = RegExp(
+    '(?:제목|이름|명칭)\\s*(?:을|를|은|는)?\\s*[\'"]?(.+?)[\'"]?\\s*(?:으로|로)\\s*(?:변경|바꿔|수정|고쳐)',
+  ).firstMatch(text);
+  if (match == null) {
+    return null;
+  }
+  final extracted = match.group(1)?.trim();
+  if (extracted == null || extracted.isEmpty) {
+    return null;
+  }
+  return extracted;
+}
+
 class _CandidateLoadDiagnostics {
   const _CandidateLoadDiagnostics({
     required this.action,
@@ -1202,6 +1256,7 @@ class _EventCandidateCard extends StatelessWidget {
     required this.isDanger,
     required this.disabled,
     required this.onTap,
+    this.isGroupEvent = false,
     this.changePreviewText,
     this.onDirectApply,
   });
@@ -1211,7 +1266,14 @@ class _EventCandidateCard extends StatelessWidget {
   final IconData actionIcon;
   final bool isDanger;
   final bool disabled;
-  final VoidCallback onTap;
+
+  /// null이면 이 카드에서 "직접 편집"/단일 액션 버튼 탭을 비활성화한다.
+  /// 그룹 일정은 개인 전용 편집 화면(event_edit_screen)을 재사용할 수 없어
+  /// 호출부가 null을 넘긴다.
+  final VoidCallback? onTap;
+
+  /// 그룹 일정으로 병합된 후보인지. true면 "직접 편집" 버튼을 숨긴다.
+  final bool isGroupEvent;
 
   /// 감지된 변경 내용 요약 (예: "1/22(수) 오전 9시"). null이면 표시 안 함.
   final String? changePreviewText;
@@ -1226,6 +1288,7 @@ class _EventCandidateCard extends StatelessWidget {
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
     final hasDirectApply = onDirectApply != null;
+    final canTap = !disabled && onTap != null;
 
     return Card(
       key: isDanger
@@ -1244,7 +1307,7 @@ class _EventCandidateCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: disabled ? null : onTap,
+        onTap: canTap ? onTap : null,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -1320,7 +1383,7 @@ class _EventCandidateCard extends StatelessWidget {
                         key: isDanger
                             ? ValueKey('voice-delete-button-${event.id}')
                             : null,
-                        onPressed: disabled ? null : onTap,
+                        onPressed: canTap ? onTap : null,
                         icon: Icon(actionIcon, size: 18),
                         label: Text(
                           actionLabel,
@@ -1341,7 +1404,7 @@ class _EventCandidateCard extends StatelessWidget {
                   ],
                 ],
               ),
-              // 변경사항이 감지된 경우: 바로저장 + 직접편집 버튼 행
+              // 변경사항이 감지된 경우: 바로저장 (+ 그룹 일정이 아니면 직접편집) 버튼 행
               if (hasDirectApply) ...[
                 const SizedBox(height: 10),
                 Row(
@@ -1353,11 +1416,15 @@ class _EventCandidateCard extends StatelessWidget {
                         label: const Text('바로 저장'),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: disabled ? null : onTap,
-                      child: const Text('직접 편집'),
-                    ),
+                    // 그룹 일정은 개인 전용 편집 화면이 없어 "직접 편집" 버튼을
+                    // 표시하지 않는다.
+                    if (!isGroupEvent) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: canTap ? onTap : null,
+                        child: const Text('직접 편집'),
+                      ),
+                    ],
                   ],
                 ),
               ],

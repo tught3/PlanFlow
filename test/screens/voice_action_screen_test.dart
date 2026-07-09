@@ -4,6 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/repositories/group_event_repository.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/voice/voice_action_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
@@ -1677,6 +1682,256 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('그룹 일정도 수정 후보 목록에 함께 나타난다', (tester) async {
+    final repository = _FakeEventRepository(events: const []);
+    final groupRepository = _FakeGroupRepository([
+      _group(id: 'group-1'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository([
+      _groupEvent(
+        id: 'group-event-1',
+        groupId: 'group-1',
+        title: '여름워크숍',
+      ),
+    ]);
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '여름워크숍 일정 확인',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            groupRepository: groupRepository,
+            groupEventRepository: groupEventRepository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('여름워크숍'), findsOneWidget);
+  });
+
+  testWidgets(
+      '날짜 변경과 개인전환이 동시에 섞인 발화는 그룹 일정을 날짜변경이 아닌 개인전환으로 라우팅한다 (핵심 회귀)',
+      (tester) async {
+    final repository = _FakeEventRepository(events: const []);
+    final groupRepository = _FakeGroupRepository([
+      _group(id: 'group-1'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository([
+      _groupEvent(
+        id: 'group-event-1',
+        groupId: 'group-1',
+        title: '여름워크숍',
+      ),
+    ]);
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            // 날짜 신호("이번 주 금요일")와 개인전환 신호("개인 일정으로 바꿔줘")가
+            // 한 발화에 동시에 존재하는 회귀 시나리오.
+            rawText: '여름워크숍 이 팀 일정 개인 일정으로 바꿔줘 이번 주 금요일',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            groupRepository: groupRepository,
+            groupEventRepository: groupEventRepository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    // 날짜 변경 카드가 아니라 "개인 일정으로 전환" 카드로 라우팅돼야 한다.
+    expect(find.text('개인 일정으로 전환'), findsWidgets);
+    expect(find.text('직접 편집'), findsNothing);
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    // 개인 전환 경로(취소 + 개인 일정 생성)를 탔는지 확인 — 날짜변경 경로인
+    // updateEvent/updateGroupEvent가 아니라 cancelGroupEvent + createEvent가
+    // 호출돼야 한다.
+    expect(groupEventRepository.cancelledIds, ['group-event-1']);
+    expect(groupEventRepository.updatedEvents, isEmpty);
+    expect(repository.createdEvents, hasLength(1));
+    expect(repository.createdEvents.single.title, '여름워크숍');
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+
+  testWidgets('그룹 일정 수정(전환 아님)은 바로 저장 시 updateGroupEvent로 라우팅되고 개인 저장소는 호출되지 않는다',
+      (tester) async {
+    final repository = _FakeEventRepository(events: const []);
+    final groupRepository = _FakeGroupRepository([
+      _group(id: 'group-1'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository([
+      _groupEvent(
+        id: 'group-event-1',
+        groupId: 'group-1',
+        title: '여름워크숍',
+        location: '본사',
+      ),
+    ]);
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '여름워크숍 일정 장소 강남역으로 변경',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            groupRepository: groupRepository,
+            groupEventRepository: groupEventRepository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(groupEventRepository.updatedEvents, hasLength(1));
+    expect(groupEventRepository.updatedEvents.single.location, '강남역');
+    expect(repository.updatedEvents, isEmpty);
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+
+  testWidgets('그룹 일정 삭제는 cancelGroupEvent로 라우팅되고 개인 deleteEvent는 호출되지 않는다',
+      (tester) async {
+    final repository = _FakeEventRepository(events: const []);
+    final groupRepository = _FakeGroupRepository([
+      _group(id: 'group-1'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository([
+      _groupEvent(
+        id: 'group-event-1',
+        groupId: 'group-1',
+        title: '여름워크숍',
+      ),
+    ]);
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '여름워크숍 삭제해줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            groupRepository: groupRepository,
+            groupEventRepository: groupEventRepository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('voice-delete-button-0-group-event-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('voice-confirm-delete-group-event-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(groupEventRepository.cancelledIds, ['group-event-1']);
+    expect(repository.deletedEventIds, isEmpty);
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+
+  testWidgets('개인 전환 중 그룹 취소가 실패하면 개인 일정이 생성되지 않는다 (원자성)', (tester) async {
+    final repository = _FakeEventRepository(events: const []);
+    final groupRepository = _FakeGroupRepository([
+      _group(id: 'group-1'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository(
+      [
+        _groupEvent(
+          id: 'group-event-1',
+          groupId: 'group-1',
+          title: '여름워크숍',
+        ),
+      ],
+      cancelShouldFail: true,
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '여름워크숍 이 팀 일정 개인 일정으로 바꿔줘 이번 주 금요일',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            groupRepository: groupRepository,
+            groupEventRepository: groupEventRepository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    // 취소가 실패했으므로 개인 일정 생성 시도 자체가 없어야 한다(원자성).
+    expect(repository.createdEvents, isEmpty);
+    // 실패했으므로 캘린더 탭으로 이동하지 않는다.
+    expect(find.text('일정 탭'), findsNothing);
+  });
 }
 
 EventModel _event({
@@ -1702,11 +1957,15 @@ class _FakeEventRepository extends EventRepository {
 
   final List<EventModel> _events;
   final List<EventModel> updatedEvents = <EventModel>[];
+  final List<EventModel> createdEvents = <EventModel>[];
   final List<String> deletedEventIds = <String>[];
   int listEventsCallCount = 0;
 
   @override
-  Future<EventModel> createEvent(EventModel event) async => event;
+  Future<EventModel> createEvent(EventModel event) async {
+    createdEvents.add(event);
+    return event;
+  }
 
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {
@@ -1734,6 +1993,141 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) async {
     updatedEvents.add(event);
     return event;
+  }
+}
+
+GroupModel _group({required String id}) {
+  return GroupModel(
+    id: id,
+    createdBy: 'user-1',
+    name: '테스트 그룹',
+  );
+}
+
+GroupEventModel _groupEvent({
+  required String id,
+  required String groupId,
+  required String title,
+  DateTime? startAt,
+  DateTime? endAt,
+  String? location,
+}) {
+  final start = startAt ?? DateTime.now().add(const Duration(days: 1));
+  return GroupEventModel(
+    id: id,
+    groupId: groupId,
+    title: title,
+    startAt: start,
+    endAt: endAt ?? start.add(const Duration(hours: 1)),
+    createdBy: 'user-1',
+    location: location,
+  );
+}
+
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository(this.groups);
+
+  final List<GroupModel> groups;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+class _FakeGroupEventRepository extends GroupEventRepository {
+  _FakeGroupEventRepository(this.events, {this.cancelShouldFail = false});
+
+  final List<GroupEventModel> events;
+  final List<GroupEventModel> updatedEvents = <GroupEventModel>[];
+  final List<String> cancelledIds = <String>[];
+  // 테스트에서 "권한 없는 사용자" 등 취소 실패 케이스를 재현하기 위한 플래그.
+  final bool cancelShouldFail;
+
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return events.where((event) => event.groupId == groupId).toList();
+  }
+
+  @override
+  Future<GroupEventModel> createGroupEvent(GroupEventModel event) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) async {
+    updatedEvents.add(event);
+    final index = events.indexWhere((candidate) => candidate.id == event.id);
+    if (index >= 0) {
+      events[index] = event;
+    }
+    return event;
+  }
+
+  @override
+  Future<GroupEventModel> cancelGroupEvent(String eventId) async {
+    if (cancelShouldFail) {
+      throw StateError('활성 일정만 취소할 수 있습니다.');
+    }
+    cancelledIds.add(eventId);
+    final index = events.indexWhere((candidate) => candidate.id == eventId);
+    if (index < 0) {
+      throw StateError('일정을 찾지 못했어요.');
+    }
+    final cancelled = events[index].copyWith(
+      status: 'cancelled',
+      cancelledAt: DateTime.now().toUtc(),
+      cancelledBy: 'tester',
+    );
+    events[index] = cancelled;
+    return cancelled;
+  }
+
+  @override
+  Future<GroupEventModel> archiveGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) async {
+    return events.firstWhere((candidate) => candidate.id == eventId);
   }
 }
 
