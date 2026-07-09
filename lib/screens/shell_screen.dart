@@ -94,6 +94,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
   bool _onboardingDecisionPending = false;
+  // 탭 이동 등의 작은 lifecycle 변화가 아닌, 실제 앱 백그라운드→포그라운드 복귀만 감지하기 위한 상태 추적
+  AppLifecycleState? _previousLifecycleState;
 
   @override
   void initState() {
@@ -121,12 +123,18 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
+    // 탭 이동 등의 작은 변화가 아닌, 실제로 백그라운드에서 포그라운드로 복귀한 경우에만 동기화 실행
+    // (paused/inactive → resumed 전환만 감지)
+    if (state == AppLifecycleState.resumed &&
+        (_previousLifecycleState == AppLifecycleState.paused ||
+            _previousLifecycleState == AppLifecycleState.inactive ||
+            _previousLifecycleState == AppLifecycleState.hidden)) {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_resumed',
       ));
       unawaited(_refreshDepartureAlarmsAndMonitor());
     }
+    _previousLifecycleState = state;
   }
 
   void _handleAuthChanged() {
