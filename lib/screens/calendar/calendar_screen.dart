@@ -37,8 +37,10 @@ const calendarCriticalMultiDayAccentColor = Color(0xFFE98B86);
 // 홈 위젯의 CRITICAL_TEXT_COLOR(0xFFD94444)와 톤을 맞춘 인앱 캘린더 중요 일정 텍스트 색상.
 const calendarCriticalEventTextColor = Color(0xFFD94444);
 const calendarGroupEventColor = Color(0xFF7C3AED);
-// 반복 일정 강조용 색상. 연속(멀티데이) 일정의 초록 계열과는 구분되는 톤.
-const calendarRecurringEventColor = Color(0xFF1F8A5F);
+// 반복 일정 강조용 색상(호박색). 연속(멀티데이) 일정은 이미 위 초록 계열
+// (calendarMultiDayEventTextColor)을 쓰고 있어, 반복 일정은 겹치지 않게
+// 별도 색으로 구분한다.
+const calendarRecurringEventColor = Color(0xFFB8720A);
 
 Color _categoryColor(String category) {
   return PlanFlowEventCategories.colorOf(category);

@@ -1380,7 +1380,7 @@ class _EventCandidateCard extends StatelessWidget {
                         if (changePreviewText != null) ...[
                           const SizedBox(height: 5),
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Icon(
                                 Icons.arrow_forward,
