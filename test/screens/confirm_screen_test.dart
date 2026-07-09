@@ -171,7 +171,7 @@ void main() {
     );
   });
 
-  testWidgets('ConfirmScreen save leaves voice stack for home tab',
+  testWidgets('ConfirmScreen save leaves voice stack for calendar tab',
       (tester) async {
     final repository = _FakeEventRepository();
 
@@ -200,7 +200,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.createdEvents, hasLength(1));
-    expect(find.text('홈'), findsOneWidget);
+    expect(find.text('일정'), findsOneWidget);
     expect(find.text('음성 입력'), findsNothing);
   });
 

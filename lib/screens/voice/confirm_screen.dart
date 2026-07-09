@@ -1643,7 +1643,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!mounted) {
       return;
     }
-    context.go(AppRoutes.home);
+    // 저장 후 일정탭으로 이동 (음성입력 화면으로 돌아가지 않음)
+    context.go(AppRoutes.calendar);
   }
 
   /// 저장 전 오전/오후 확인은 [_showTimePeriodClarificationDialog] 모달이
