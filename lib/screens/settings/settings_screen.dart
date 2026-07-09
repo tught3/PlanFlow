@@ -108,6 +108,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   static const String _deviceCalendarSyncedPrefsKey =
       'settings:device_calendar_synced';
 
+  AppLifecycleState? _previousLifecycleState;
+
   late final SettingsRepository _settingsRepository;
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
@@ -337,9 +339,14 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    super.didChangeAppLifecycleState(state);
+    // 탭 이동 등의 작은 lifecycle 변화가 아닌, 실제로 백그라운드에서 포그라운드로 복귀한 경우에만 상태 갱신 실행
+    // (paused → resumed 전환만 감지, inactive는 제외 - S8에서 탭 전환 시 false positive 발생)
+    if (state == AppLifecycleState.resumed &&
+        _previousLifecycleState == AppLifecycleState.paused) {
       unawaited(_refreshCalendarConnectionState(runAutoRetry: true));
     }
+    _previousLifecycleState = state;
   }
 
   void _handleCalendarRefreshSignal() {
