@@ -1485,8 +1485,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
         if (savedEvent != null) {
           // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
-          // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 홈 이동.
-          // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 홈 이동.
+          // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 일정탭 이동.
+          // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 일정탭 이동.
           final openedPermissionSettings =
               await _showAlarmPermissionGuardIfNeeded();
           if (mounted) {
