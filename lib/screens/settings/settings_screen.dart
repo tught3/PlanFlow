@@ -111,6 +111,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   // 탭 이동 등의 작은 lifecycle 변화가 아닌, 실제 앱 백그라운드→포그라운드 복귀만 감지하기 위한 상태 추적
   // resumed로 초기화해 앱 시작 직후 첫 이벤트에서 동기화 방지
   AppLifecycleState _previousLifecycleState = AppLifecycleState.resumed;
+  DateTime? _lastLifecycleRefreshAt;
 
   late final SettingsRepository _settingsRepository;
   late final SettingsProvider _settingsProvider;
@@ -346,7 +347,14 @@ class _SettingsScreenState extends State<SettingsScreen>
     // (paused → resumed 전환만 감지, inactive는 제외 - S8에서 탭 전환 시 false positive 발생)
     if (state == AppLifecycleState.resumed &&
         _previousLifecycleState == AppLifecycleState.paused) {
-      unawaited(_refreshCalendarConnectionState(runAutoRetry: true));
+      // S8에서 탭 전환 시에도 paused→resumed 전환이 발생할 수 있어 시간 기반 debounce 추가
+      // 최소 3초 간격으로만 동기화 실행 (실제 백그라운드 복귀는 보통 수 초 이상 간격)
+      final now = DateTime.now();
+      if (_lastLifecycleRefreshAt == null ||
+          now.difference(_lastLifecycleRefreshAt!).inSeconds >= 3) {
+        _lastLifecycleRefreshAt = now;
+        unawaited(_refreshCalendarConnectionState(runAutoRetry: true));
+      }
     }
     _previousLifecycleState = state;
   }
