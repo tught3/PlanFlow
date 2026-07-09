@@ -37,6 +37,7 @@ import '../calendar/calendar_screen.dart'
     show
         calendarCriticalEventTextColor,
         calendarGroupEventColor,
+        calendarMultiDayEventBackgroundColor,
         calendarMultiDayEventTextColor,
         calendarRecurringEventColor;
 part 'voice_action_widgets.dart';

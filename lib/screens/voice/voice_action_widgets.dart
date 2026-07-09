@@ -61,11 +61,14 @@ class _VoiceCandidateSection extends StatelessWidget {
   final void Function(EventModel event, bool selected) onToggleDeleteSelection;
   final void Function(EventModel event) onDelete;
   final String? Function(EventModel event) buildChangePreviewText;
+
   /// 그룹 일정으로 병합된 후보의 id 집합. 카드가 그룹 일정인지 판정해
   /// "직접 편집" 버튼을 숨기고 전환 라벨을 붙이는 데 쓴다.
   final Set<String> groupEventIds;
+
   /// 이번 발화가 그룹 일정을 개인 일정으로 전환하라는 요청인지.
   final bool isConvertToPersonalRequested;
+
   /// 그룹 일정을 개인 일정으로 전환하는 콜백. isConvertToPersonalRequested가
   /// true이고 카드가 그룹 일정일 때만 쓰인다.
   final void Function(EventModel event)? onConvertToPersonal;
@@ -1316,7 +1319,11 @@ class _EventCandidateCard extends StatelessWidget {
       if (isGroupEvent)
         const _StatusTag(label: '팀 일정', color: calendarGroupEventColor),
       if (event.isMultiDay)
-        const _StatusTag(label: '연속', color: calendarMultiDayEventTextColor),
+        const _StatusTag(
+          label: '연속',
+          color: calendarMultiDayEventTextColor,
+          backgroundColor: calendarMultiDayEventBackgroundColor,
+        ),
       if (_isRecurring)
         const _StatusTag(label: '반복', color: calendarRecurringEventColor),
     ];
@@ -1482,17 +1489,23 @@ class _EventCandidateCard extends StatelessWidget {
 /// 후보 카드에 붙는 작은 색상 배지. "중요"/"팀 일정"/"반복"처럼 일정의
 /// 종류·상태를 한눈에 구분할 수 있게 한다.
 class _StatusTag extends StatelessWidget {
-  const _StatusTag({required this.label, required this.color});
+  const _StatusTag(
+      {required this.label, required this.color, this.backgroundColor});
 
   final String label;
   final Color color;
+
+  /// 지정하지 않으면 [color]의 12% 투명도를 배경으로 쓴다. 연속(멀티데이)
+  /// 일정처럼 캘린더 화면에 이미 전용 배경색(연한 민트 등)이 있는 경우,
+  /// 그 색을 그대로 넘겨 배지와 캘린더가 같은 톤으로 보이게 한다.
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: backgroundColor ?? color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.4), width: 0.6),
       ),
