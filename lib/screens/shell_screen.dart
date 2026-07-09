@@ -95,7 +95,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
   bool _onboardingDecisionPending = false;
   // 탭 이동 등의 작은 lifecycle 변화가 아닌, 실제 앱 백그라운드→포그라운드 복귀만 감지하기 위한 상태 추적
-  AppLifecycleState? _previousLifecycleState;
+  // resumed로 초기화해 앱 시작 직후 첫 이벤트에서 동기화 방지
+  AppLifecycleState _previousLifecycleState = AppLifecycleState.resumed;
 
   @override
   void initState() {
