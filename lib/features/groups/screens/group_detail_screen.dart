@@ -78,10 +78,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     });
     try {
       final userId = _currentUserId();
+      // preferredGroupId로 widget.groupId를 전달하면 GroupContextProvider가
+      // 해당 그룹을 선택하거나, 유효하지 않으면 예외를 던진다.
+      // 따라서 이후 별도 검증 없이 바로 그룹 상세 정보를 조회한다.
       await _provider.load(userId, preferredGroupId: widget.groupId);
-      if (_provider.selectedGroup?.id != widget.groupId) {
-        throw StateError('선택할 수 없는 그룹입니다.');
-      }
       final group = await _repository.fetchGroup(widget.groupId);
       if (!mounted) return;
       setState(() {

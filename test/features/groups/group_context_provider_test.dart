@@ -290,7 +290,7 @@ void main() {
     expect(provider.selectedGroupRole, 'member');
   });
 
-  test('invalid preferred group id falls back without throwing', () async {
+  test('invalid preferred group id throws StateError', () async {
     final provider = GroupContextProvider(
       repository: FakeGroupRepository(
         groups: <GroupModel>[
@@ -315,6 +315,38 @@ void main() {
     );
 
     await provider.load('user-1', preferredGroupId: 'missing-group');
+
+    // invalid preferredGroupId가 명시된 경우 StateError를 던지고 에러 상태가 된다
+    expect(provider.error, contains('선택할 수 없는 그룹입니다'));
+    expect(provider.selectedGroup, isNull);
+  });
+
+  test('empty/null preferred group id falls back to auto selection', () async {
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-leader',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-leader': <GroupMemberModel>[
+            _member(
+              id: 'leader-1',
+              groupId: 'group-leader',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+
+    // empty string이나 null은 자동 선택 로직을 실행한다
+    await provider.load('user-1', preferredGroupId: '');
 
     expect(provider.error, isNull);
     expect(provider.selectedGroup?.id, 'group-leader');

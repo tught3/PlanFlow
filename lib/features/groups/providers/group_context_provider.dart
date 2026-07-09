@@ -186,14 +186,24 @@ class GroupContextProvider extends ChangeNotifier {
     Map<String, GroupMemberModel> memberships, {
     String? preferredGroupId,
   }) async {
+    // preferredGroupId가 명시적으로 전달된 경우 최우선으로 사용.
+    // 그룹 상세/대시보드/일정/초대/멤버 화면처럼 특정 그룹 컨텍스트로
+    // 진입하는 경우 해당 그룹이 반드시 선택되어야 하위 화면이 정상 동작한다.
     final normalizedPreferredGroupId = preferredGroupId?.trim();
     if (normalizedPreferredGroupId != null &&
-        normalizedPreferredGroupId.isNotEmpty &&
-        groups.any((group) => group.id == normalizedPreferredGroupId) &&
-        memberships.containsKey(normalizedPreferredGroupId)) {
-      return normalizedPreferredGroupId;
+        normalizedPreferredGroupId.isNotEmpty) {
+      // 그룹 목록에 존재하고 활성 멤버십이 있으면 즉시 반환
+      if (groups.any((group) => group.id == normalizedPreferredGroupId) &&
+          memberships.containsKey(normalizedPreferredGroupId)) {
+        return normalizedPreferredGroupId;
+      }
+      // preferredGroupId가 명시됐지만 유효하지 않으면 예외 발생.
+      // 이전에는 조용히 다른 그룹을 선택했지만, 그러면 하위 화면에서
+      // "선택할 수 없는 그룹입니다" 오류가 발생하므로 여기서 먼저 차단한다.
+      throw StateError('선택할 수 없는 그룹입니다.');
     }
 
+    // preferredGroupId가 없거나 비어있는 경우에만 자동 선택 로직 실행
     final storedSelectedGroupId = await _readSelectedGroupId();
     if (storedSelectedGroupId != null &&
         groups.any((group) => group.id == storedSelectedGroupId) &&
