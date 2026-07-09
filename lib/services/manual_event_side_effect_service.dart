@@ -977,6 +977,19 @@ class ManualEventSideEffectService {
       return null;
     }
     final permissionService = AppPermissionService();
+
+    // 먼저 마지막으로 알려진 위치(캐시된 위치)를 시도합니다.
+    // 이 방법은 권한 체크가 필요 없고 즉시 결과를 반환합니다.
+    try {
+      final lastKnown = await permissionService.getLastKnownLocation();
+      if (lastKnown != null) {
+        return lastKnown;
+      }
+    } catch (error) {
+      debugPrint('Failed to get last known location: $error');
+    }
+
+    // 캐시된 위치가 없으면 현재 위치를 가져옵니다.
     return permissionService.getCurrentLocationWithPermission(
       requestIfMissing: false,
     );
