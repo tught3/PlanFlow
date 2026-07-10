@@ -116,10 +116,10 @@ void main() {
 
       final result = controller.handle('3번째 일정에 원주세브란스기독병원 장소 추가해줘');
 
-      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.action, VoiceConversationAction.openEditScreen);
       expect(result.targetEvent?.id, 'third');
       expect(result.locationText, '원주세브란스기독병원');
-      expect(result.requiresEditScreenNavigation, isFalse);
+      expect(result.requiresEditScreenNavigation, isTrue);
       expect(result.requiresDeleteConfirmation, isFalse);
       expect(controller.focusedEvent?.id, 'third');
     });
@@ -248,8 +248,7 @@ void main() {
       );
       controller.handle('오늘 일정 알려줘');
 
-      final result =
-          controller.handle('1번 일정 다음주 금요일로 옮기고 매주 반복해줘');
+      final result = controller.handle('1번 일정 다음주 금요일로 옮기고 매주 반복해줘');
 
       expect(result.action, VoiceConversationAction.openEditScreen);
       expect(result.draftEvent, isNotNull);
@@ -460,7 +459,7 @@ void main() {
 
       final result = controller.handle('4번에 강릉 건도리횟집 장소추가');
 
-      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.action, VoiceConversationAction.openEditScreen);
       expect(result.targetEvent?.id, 'fourth');
       expect(result.locationText, '강릉 건도리횟집');
     });
@@ -476,9 +475,62 @@ void main() {
 
       final result = controller.handle('그 일정 장소를 원주세브란스기독병원으로 바꿔줘');
 
-      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.action, VoiceConversationAction.openEditScreen);
       expect(result.targetEvent?.id, 'visit');
       expect(result.locationText, '원주세브란스기독병원');
+      expect(result.requiresEditScreenNavigation, isTrue);
+    });
+
+    test('시간과 장소를 함께 바꾸면 하나의 편집 초안으로 묶는다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '첫 일정', DateTime(2026, 5, 7, 9)),
+          _event('second', '둘째 일정', DateTime(2026, 5, 7, 10)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle(
+        '두번째 일정을 오후 5시로 바꿔주고 장소를 서울오크우드 호텔로 바꿔줘',
+      );
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'second');
+      expect(result.locationText, '서울오크우드 호텔');
+      expect(planflowLocal(result.draftEvent!.startAt!).hour, 17);
+      expect(result.requiresEditScreenNavigation, isTrue);
+    });
+
+    test('내일이라는 대상 힌트로 중요한 일정을 바꿔도 날짜는 유지한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('symposium', '타발리스 심포지엄', DateTime(2026, 5, 8, 9)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+
+      final result = controller.handle('내일 타발리스 심포지엄 일정 중요한일정으로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, 'symposium');
+      expect(result.criticalValue, isTrue);
+      expect(result.draftEvent, isNull);
+    });
+
+    test('대상 날짜와 변경 날짜를 분리해 편집 초안에 반영한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('symposium', '타발리스 심포지엄', DateTime(2026, 5, 12, 9)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+
+      final result = controller.handle('12일에 타발리스심포지엄일정 11일로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'symposium');
+      expect(planflowLocal(result.draftEvent!.startAt!).day, 11);
     });
 
     test('ordinal follow-up can mark an event as 중요한 일정', () {
@@ -498,15 +550,8 @@ void main() {
       expect(result.criticalValue, isTrue);
     });
 
-    test(
-        '제목만 겹치는 후속 명령은 추측으로 편집하지 않고 다시 물어본다 '
-        '(순번/명시적 시간 지정 없이는 제목 부분일치로 대상을 추론하지 않음)',
-        () {
-      // 기존 일정 변경은 "몇 시 일정을 바꿔줘"처럼 명시적 시간을 짚거나,
-      // 조회 후 "몇 번째 일정"처럼 순번으로 지정할 때만 이뤄져야 한다.
-      // 텍스트에 우연히 등장하는 제목 단어로 대상을 추측하면, 관련 없는
-      // 일정을 사용자 모르게 바꿔버릴 위험이 있다(실증: "모란역으로 가기
-      // 일정생성해줘"가 옛 "가기" 일정을 편집해버린 버그).
+    test('충분히 구체적인 전체 제목이 한 건과 일치하면 수정 대상으로 선택한다', () {
+      // 짧은 부분 일치가 아닌 전체 제목의 단일 일치는 안전한 명시적 대상이다.
       final controller = VoiceConversationController(
         events: <EventModel>[
           _event('meeting', '내일 회의', DateTime(2026, 5, 8, 9)),
@@ -518,8 +563,8 @@ void main() {
 
       final result = controller.handle('내일 회의 중요한 일정으로 표시해줘');
 
-      expect(result.action, VoiceConversationAction.none);
-      expect(result.targetEvent, isNull);
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, 'meeting');
     });
 
     test('ordinal follow-up can unset 중요한 일정', () {
@@ -627,12 +672,14 @@ void main() {
       controller.handle('오늘 일정 알려줘');
 
       final confirmAsk = controller.handle('오후 3시 일정 개인 일정으로 바꿔줘');
-      expect(confirmAsk.action, VoiceConversationAction.confirmConvertToPersonal);
+      expect(
+          confirmAsk.action, VoiceConversationAction.confirmConvertToPersonal);
       expect(confirmAsk.targetEvent?.id, 'afternoon');
       expect(controller.pendingConvert?.id, 'afternoon');
 
       final confirmed = controller.handle('응');
-      expect(confirmed.action, VoiceConversationAction.convertToPersonalConfirmed);
+      expect(
+          confirmed.action, VoiceConversationAction.convertToPersonalConfirmed);
       expect(confirmed.targetEvent?.id, 'afternoon');
       expect(controller.pendingConvert, isNull);
     });
@@ -665,7 +712,7 @@ void main() {
 
       final result = controller.handle('오후 3시 일정 장소를 본관으로 바꿔줘');
 
-      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.action, VoiceConversationAction.openEditScreen);
       expect(result.locationText, '본관');
       expect(controller.pendingConvert, isNull);
     });
@@ -687,8 +734,7 @@ void main() {
       expect(showResult.action, VoiceConversationAction.showEvents);
       expect(controller.focusedEvent?.id, 'existing-1');
 
-      final result =
-          controller.handle('오늘 오후2시에 모란역으로 가기 일정생성해줘');
+      final result = controller.handle('오늘 오후2시에 모란역으로 가기 일정생성해줘');
 
       expect(result.action, VoiceConversationAction.createEvent);
       expect(result.targetEvent, isNull);

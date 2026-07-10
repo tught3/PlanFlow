@@ -71,6 +71,19 @@ void main() {
       expect(plan.safeDirectApply, isTrue);
     });
 
+    test('시간과 장소를 함께 바꾸는 명령에서 장소 값만 분리한다', () {
+      final plan = pipeline.analyze(
+        '두번째 일정을 오후 5시로 바꿔주고 장소를 서울오크우드 호텔로 바꿔줘',
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.intent, VoiceCommandPipelineIntent.edit);
+      expect(
+          plan.requestedChanges, containsAll(<String>['start_at', 'location']));
+      expect(plan.targetText, contains('두번째 일정'));
+      expect(plan.requestedFieldValues['location'], '서울오크우드 호텔');
+    });
+
     test('중요한 일정 동의어는 is_critical_true로 분류한다', () {
       final plan = pipeline.analyze(
         '이 일정 중요한 일정으로 표시해줘',

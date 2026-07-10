@@ -441,12 +441,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
-        final validatedLocation = await GptService().validateLocation(result.locationText!);
-        if (validatedLocation != null) {
-          await _openEditWithLocation(result.targetEvent!, validatedLocation);
-        } else {
-          await _openGeneralEditScreen(result.targetEvent!);
-        }
+        await _openEditWithVoiceChanges(result);
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText == null) {
@@ -876,40 +871,47 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     await _loadEvents();
   }
 
-  Future<void> _openEditWithLocation(
-    EventModel event,
-    String locationText,
+  Future<void> _openEditWithVoiceChanges(
+    VoiceConversationResult result,
   ) async {
-    await _stopVoiceBeforeNavigation();
-    final picked = await widget.locationPicker(
-      // ignore: use_build_context_synchronously
-      context: context,
-      query: locationText,
-      locationLookupService: widget.locationLookupService,
-      appPermissionService: widget.permissionService,
-    );
-    if (!mounted || picked == null) {
+    final target = result.targetEvent;
+    if (target == null) {
       return;
     }
+    await _stopVoiceBeforeNavigation();
+    var edited = result.draftEvent ?? target;
+    final locationText = result.locationText?.trim();
+    if (locationText != null && locationText.isNotEmpty) {
+      LocationLookupResult? resolved;
+      try {
+        final lookup = widget.locationLookupService ?? LocationLookupService();
+        final results = await lookup.search(locationText);
+        for (final candidate in results) {
+          if (lookup.resultLabelSimilarity(locationText, candidate) >= 0.51) {
+            resolved = candidate;
+            break;
+          }
+        }
+      } catch (error) {
+        debugPrint('VoiceConversationScreen location prefill skipped: $error');
+      }
 
-    final resolvedLabel = picked.bestPlaceLabel.trim();
-    final edited = _copyEventWithLocation(
-      event,
-      location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
-      locationLat: picked.latitude,
-      locationLng: picked.longitude,
-    );
+      final resolvedLabel = resolved?.bestPlaceLabel.trim() ?? '';
+      edited = _copyEventWithLocation(
+        edited,
+        location: resolvedLabel.isNotEmpty ? resolvedLabel : locationText,
+        locationLat: resolved?.latitude,
+        locationLng: resolved?.longitude,
+      );
+    }
+    if (result.criticalValue != null) {
+      edited = _copyEventWithCritical(
+        edited,
+        isCritical: result.criticalValue!,
+      );
+    }
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          edited.locationLat != null
-              ? '장소가 입력되었습니다. 지도 위치를 확인하고 저장해 주세요.'
-              : '장소 이름을 입력했습니다. 지도 위치를 확인하고 저장해 주세요.',
-        ),
-      ),
-    );
     await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
     await _loadEvents();
   }
@@ -1016,8 +1018,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         final originalDuration = updated.endAt.difference(updated.startAt);
         final newEnd = draft.endAt ??
             newStart.add(
-              originalDuration.isNegative ||
-                      originalDuration == Duration.zero
+              originalDuration.isNegative || originalDuration == Duration.zero
                   ? const Duration(hours: 1)
                   : originalDuration,
             );
@@ -1183,7 +1184,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
 
     _groupEventById.remove(g.id);
-    _events = _events.where((event) => event.id != g.id).toList(growable: false);
+    _events =
+        _events.where((event) => event.id != g.id).toList(growable: false);
     _conversation.replaceEvents(_events);
     EventRefreshBus.instance.notifyChanged(
       reason: 'voice_conversation_group_to_personal',
@@ -1529,7 +1531,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       case VoiceConversationAction.convertToPersonalConfirmed:
         return '개인 일정으로 옮기는 중이에요.';
       case VoiceConversationAction.createEvent:
-        if (result.draftEvent == null) return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
+        if (result.draftEvent == null) {
+          return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
+        }
         return '일정 편집 화면을 열게요. 내용 확인 후 저장해 주세요.';
       case VoiceConversationAction.none:
         if (result.selectedEvents.length > 1) {
@@ -1640,7 +1644,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                   keepListening: _keepListening,
                   voicePausedByUser: _voicePausedByUser,
                   isRestartPending: _isRestartPending,
-                  onListen: () => _startConversationListen(resetRetryPolicy: true),
+                  onListen: () =>
+                      _startConversationListen(resetRetryPolicy: true),
                   onStopListening: _pauseVoiceInput,
                   onSubmit: () => _submitText(null),
                   onChanged: _handleInputChanged,
@@ -1751,7 +1756,9 @@ class _VoiceStatusBubble extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: isUnstable ? colorScheme.error : PlanFlowColors.primary,
+                      color: isUnstable
+                          ? colorScheme.error
+                          : PlanFlowColors.primary,
                       fontWeight: FontWeight.w800,
                     ),
               ),

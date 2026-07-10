@@ -793,9 +793,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 장소 변경을 편집 화면 없이 바로 저장한다', (tester) async {
+  testWidgets('AI 일정 대화는 장소 변경을 지도 대신 편집 화면에 미리 채운다', (tester) async {
     final stt = _FakeSttService();
     var pickerCalls = 0;
+    EventModel? editDraft;
     final repository = _FakeEventRepository(<EventModel>[
       EventModel(
         id: 'event-1',
@@ -837,10 +838,10 @@ void main() {
         ),
         GoRoute(
           path: AppRoutes.eventEditWithId,
-          builder: (context, state) => const Text(
-            '편집 화면',
-            textDirection: TextDirection.ltr,
-          ),
+          builder: (context, state) {
+            editDraft = state.extra as EventModel?;
+            return const Text('편집 화면', textDirection: TextDirection.ltr);
+          },
         ),
       ],
     );
@@ -856,16 +857,17 @@ void main() {
     await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
     stt.completeSuccess('그 일정에 강릉 건도리횟집 장소추가');
-    for (var i = 0; i < 20 && repository.updatedEvents.isEmpty; i += 1) {
+    for (var i = 0; i < 20 && editDraft == null; i += 1) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    await tester.pump();
 
-    expect(find.text('편집 화면'), findsNothing);
-    expect(pickerCalls, 1);
-    expect(repository.updatedEvents, hasLength(1));
-    expect(repository.updatedEvents.single.location, '강릉 건도리횟집');
-    expect(repository.updatedEvents.single.locationLat, 37.7519);
-    expect(repository.updatedEvents.single.locationLng, 128.8761);
+    expect(find.text('편집 화면'), findsOneWidget);
+    expect(pickerCalls, 0);
+    expect(repository.updatedEvents, isEmpty);
+    expect(editDraft?.location, '강릉 건도리횟집');
+    expect(editDraft?.locationLat, isNotNull);
+    expect(editDraft?.locationLng, isNotNull);
     expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -941,7 +943,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다', (tester) async {
+  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다',
+      (tester) async {
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
@@ -1033,8 +1036,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다',
-      (tester) async {
+  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다', (tester) async {
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
