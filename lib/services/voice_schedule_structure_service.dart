@@ -39,10 +39,8 @@ class VoiceSchedulePeopleFields {
   final List<String> participants;
   final List<String> targets;
 
-  List<String> get all => <String>{
-        ...participants,
-        ...targets,
-      }.toList(growable: false);
+  List<String> get all =>
+      <String>{...participants, ...targets}.toList(growable: false);
 }
 
 class VoiceScheduleDateRange {
@@ -61,8 +59,46 @@ class VoiceScheduleDateRange {
   final bool isMultiDay;
 }
 
+class VoiceLocationCandidate {
+  const VoiceLocationCandidate({
+    required this.label,
+    required this.source,
+    required this.score,
+    this.signals = const <String>[],
+  });
+
+  final String label;
+  final String source;
+  final double score;
+  final List<String> signals;
+
+  bool get canAutoConfirm =>
+      score >= VoiceScheduleStructureService.autoConfirmLocationScore;
+
+  bool get needsConfirmation =>
+      score >= VoiceScheduleStructureService.confirmLocationScore &&
+      score < VoiceScheduleStructureService.autoConfirmLocationScore;
+
+  VoiceLocationCandidate copyWith({
+    String? label,
+    String? source,
+    double? score,
+    List<String>? signals,
+  }) {
+    return VoiceLocationCandidate(
+      label: label ?? this.label,
+      source: source ?? this.source,
+      score: score ?? this.score,
+      signals: signals ?? this.signals,
+    );
+  }
+}
+
 class VoiceScheduleStructureService {
   const VoiceScheduleStructureService();
+
+  static const double autoConfirmLocationScore = 0.75;
+  static const double confirmLocationScore = 0.45;
 
   static const String _personSuffixPattern =
       r'팀장님|팀장|원장님|원장|교수님|교수|과장님|과장|부장님|부장|차장님|차장|대표님|대표|선생님|대리님|대리|고객님|고객|님';
@@ -119,10 +155,7 @@ class VoiceScheduleStructureService {
     );
   }
 
-  VoiceScheduleDateRange? extractDateRange(
-    String rawText, {
-    DateTime? now,
-  }) {
+  VoiceScheduleDateRange? extractDateRange(String rawText, {DateTime? now}) {
     final source = normalizeText(rawText, '');
     if (source.isEmpty) {
       return null;
@@ -172,7 +205,8 @@ class VoiceScheduleStructureService {
         }
       }
       if (start.isBefore(
-              DateTime(reference.year, reference.month, reference.day)) &&
+            DateTime(reference.year, reference.month, reference.day),
+          ) &&
           match.namedGroup('startYear') == null &&
           start.year == reference.year) {
         start = DateTime(start.year + 1, start.month, start.day);
@@ -243,8 +277,7 @@ class VoiceScheduleStructureService {
     if (month == null || day == null) {
       return null;
     }
-    final year =
-        int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
+    final year = int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
     final start = DateTime(year, month, day);
     if (start.year != year || start.month != month || start.day != day) {
       return null;
@@ -268,8 +301,9 @@ class VoiceScheduleStructureService {
     String source,
     DateTime reference,
   ) {
-    final match = RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?')
-        .firstMatch(source);
+    final match = RegExp(
+      r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?',
+    ).firstMatch(source);
     if (match == null) {
       return null;
     }
@@ -290,7 +324,11 @@ class VoiceScheduleStructureService {
     final today = DateTime(reference.year, reference.month, reference.day);
     DateTime? start;
     for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
-      final candidate = DateTime(reference.year, reference.month + monthOffset, day);
+      final candidate = DateTime(
+        reference.year,
+        reference.month + monthOffset,
+        day,
+      );
       if (candidate.day != day) {
         continue;
       }
@@ -324,10 +362,7 @@ class VoiceScheduleStructureService {
     return DateTime(year, month + 1, 0).day;
   }
 
-  String stripDateRangeExpression(
-    String text, {
-    DateTime? now,
-  }) {
+  String stripDateRangeExpression(String text, {DateTime? now}) {
     final range = extractDateRange(text, now: now);
     if (range == null) {
       return _stripDateRangeParticles(text);
@@ -345,18 +380,13 @@ class VoiceScheduleStructureService {
 
   String stripExplicitMemoClause(String text) {
     return text
-        .replaceFirst(
-          RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
-          ' ',
-        )
+        .replaceFirst(RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'), ' ')
         .trim();
   }
 
   String? extractExplicitMemo(String rawText) {
     final source = normalizeText(rawText, '');
-    final match = RegExp(
-      r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$',
-    ).firstMatch(source);
+    final match = RegExp(r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$').firstMatch(source);
     if (match == null) {
       return null;
     }
@@ -368,8 +398,9 @@ class VoiceScheduleStructureService {
 
     final cleaned = normalizeText(memo, '');
     final stripped = stripExplicitMemoClause(cleaned);
-    final normalized =
-        normalizeSpacingForSchedule(stripScheduleNoise(stripped));
+    final normalized = normalizeSpacingForSchedule(
+      stripScheduleNoise(stripped),
+    );
     if (normalized.isEmpty || isOnlyScheduleMetadata(normalized)) {
       return null;
     }
@@ -430,9 +461,7 @@ class VoiceScheduleStructureService {
       RegExp(r'(?:매주|매월|매년|격주|매일)'),
       RegExp(r'(?:부터|까지|동안|정각|정도|쯤|예정)'),
       RegExp(r'(^|\s)경(?=\s|$)'),
-      RegExp(
-        r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)',
-      ),
+      RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
     ];
     if (!preserveRelativeDayWords) {
       patterns.add(RegExp(r'(?:오늘|내일|모레|글피)'));
@@ -525,7 +554,9 @@ class VoiceScheduleStructureService {
     );
     if (fallback.isNotEmpty) {
       return ensurePeopleInTitle(
-          normalizeSpacingForSchedule(fallback), rawText);
+        normalizeSpacingForSchedule(fallback),
+        rawText,
+      );
     }
 
     return '일정';
@@ -541,15 +572,10 @@ class VoiceScheduleStructureService {
     title = _stripLeadingRecurrenceExpression(title);
     title = title
         .replaceAll(
-          RegExp(
-            r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)',
-          ),
+          RegExp(r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)'),
           ' ',
         )
-        .replaceAll(
-          RegExp(r'(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
-          ' ',
-        )
+        .replaceAll(RegExp(r'(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'), ' ')
         .replaceAll(RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)'), ' ')
         .replaceAll(
           RegExp(
@@ -557,10 +583,7 @@ class VoiceScheduleStructureService {
           ),
           ' ',
         )
-        .replaceAll(
-          RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}\s*일'),
-          ' ',
-        )
+        .replaceAll(RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}\s*일'), ' ')
         .replaceAll(
           RegExp(
             r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?[가-힣0-9]{1,8}\s*시(?:\s*[가-힣0-9]{1,8}\s*분?|\s*반)?',
@@ -572,7 +595,9 @@ class VoiceScheduleStructureService {
         // "2시간 뒤에" -> GPT가 "2시간"만 떼고 "뒤에"만 남긴 경우 등 처리.
         // 단어 경계(공백/문자열 시작·끝)로만 매칭해 "뒤풀이" 등 일반 단어 오제거 방지.
         .replaceAll(
-          RegExp(r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])'),
+          RegExp(
+            r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])',
+          ),
           ' ',
         )
         .replaceAll(
@@ -591,19 +616,15 @@ class VoiceScheduleStructureService {
           ),
           ' ',
         )
-        .replaceAll(
-          RegExp(r'\d{1,2}\s*(?:일|주|개월|달)\s*(?:간|동안)'),
-          ' ',
-        )
+        .replaceAll(RegExp(r'\d{1,2}\s*(?:일|주|개월|달)\s*(?:간|동안)'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    title = preserveLeadingLocationTitle(
-      title,
-      rawText: referenceText ?? text,
-    );
+    title = preserveLeadingLocationTitle(title, rawText: referenceText ?? text);
 
-    final hasRecurrenceIntent =
-        _hasRecurrenceIntent(structure, referenceText ?? text);
+    final hasRecurrenceIntent = _hasRecurrenceIntent(
+      structure,
+      referenceText ?? text,
+    );
     title = _stripTrailingRecurrenceCommand(
       title,
       hasRecurrenceIntent: hasRecurrenceIntent,
@@ -643,10 +664,7 @@ class VoiceScheduleStructureService {
     );
   }
 
-  bool _hasRecurrenceIntent(
-    VoiceScheduleStructure structure,
-    String rawText,
-  ) {
+  bool _hasRecurrenceIntent(VoiceScheduleStructure structure, String rawText) {
     final recurrence = structure.explicitFieldClauses['recurrence_rule'];
     if (recurrence != null && recurrence.trim().isNotEmpty) {
       return true;
@@ -665,10 +683,7 @@ class VoiceScheduleStructureService {
     }
     return normalizeSpacingForSchedule(
       title
-          .replaceAll(
-            RegExp(r'\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)\s*$'),
-            '',
-          )
+          .replaceAll(RegExp(r'\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)\s*$'), '')
           .replaceAll(RegExp(r'^\s*\d{1,2}\s*일\s+'), '')
           .trim(),
     );
@@ -686,24 +701,14 @@ class VoiceScheduleStructureService {
       RegExp(
         r'^\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일(?:\s+|$)',
       ),
-      RegExp(
-        r'^\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)(?:\s+|$)',
-      ),
-      RegExp(
-        r'^\s*[월화수목금토일]\s*요일(?:\s+|$)',
-      ),
-      RegExp(
-        r'^\s*매월\s*\d{1,2}\s*일(?:\s+|$)',
-      ),
-      RegExp(
-        r'^\s*매년\s*\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s+|$)',
-      ),
+      RegExp(r'^\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)(?:\s+|$)'),
+      RegExp(r'^\s*[월화수목금토일]\s*요일(?:\s+|$)'),
+      RegExp(r'^\s*매월\s*\d{1,2}\s*일(?:\s+|$)'),
+      RegExp(r'^\s*매년\s*\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s+|$)'),
       RegExp(
         r'^\s*(?:\d{4}\s*년\s*)?\d{1,2}\s*일(?:\s*(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?)?(?:에|부터)?\s*',
       ),
-      RegExp(
-        r'^\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)(?:\s+|$)',
-      ),
+      RegExp(r'^\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)(?:\s+|$)'),
     ];
     for (final pattern in patterns) {
       result = result.replaceFirst(pattern, '');
@@ -720,9 +725,7 @@ class VoiceScheduleStructureService {
     final targets = <String>{
       ..._peopleNearPattern(
         source,
-        RegExp(
-          '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))\\s*(?:께|한테|에게)',
-        ),
+        RegExp('([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))\\s*(?:께|한테|에게)'),
       ),
       ..._peopleNearPattern(
         source,
@@ -741,9 +744,7 @@ class VoiceScheduleStructureService {
     }.toList(growable: false);
     final allPeople = _peopleNearPattern(
       source,
-      RegExp(
-        '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))',
-      ),
+      RegExp('([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))'),
     );
     final participants = <String>{
       ...allPeople.where((person) => !targets.contains(person)),
@@ -929,6 +930,200 @@ class VoiceScheduleStructureService {
     return null;
   }
 
+  List<VoiceLocationCandidate> scoreLocationCandidates({
+    String? location,
+    required String rawText,
+    required String title,
+  }) {
+    final candidates = <String, VoiceLocationCandidate>{};
+
+    void addCandidate(
+      String? label, {
+      required String source,
+      required double score,
+      required Iterable<String> signals,
+      bool preserveAmbiguity = false,
+    }) {
+      final normalized = preserveAmbiguity
+          ? normalizeSpacingForSchedule(
+              _stripLeadingTimePrefix(normalizeText(label, '')),
+            )
+          : _normalizeLocationCandidate(label ?? '');
+      if (normalized == null || normalized.isEmpty) {
+        return;
+      }
+      if (!preserveAmbiguity && _isInvalidLocationCandidate(normalized)) {
+        return;
+      }
+      final key = normalized.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      final existing = candidates[key];
+      final mergedSignals = <String>{
+        ...?existing?.signals,
+        ...signals,
+      }.toList(growable: false);
+      final mergedScore = existing == null
+          ? score
+          : existing.score > score
+              ? existing.score
+              : score;
+      candidates[key] = VoiceLocationCandidate(
+        label: normalized,
+        source: existing?.source ?? source,
+        score: mergedScore.clamp(0.0, 1.0).toDouble(),
+        signals: mergedSignals,
+      );
+    }
+
+    final source = stripScheduleNoise(
+      normalizeText(rawText, ''),
+      preserveRelativeDayWords: false,
+    );
+    final normalizedTitle = normalizeText(title, '');
+    final explicitLocation = _normalizeLocationCandidate(location ?? '');
+    if (explicitLocation != null) {
+      addCandidate(
+        explicitLocation,
+        source: 'parsed_location',
+        score: _scoreParsedLocation(explicitLocation, source, normalizedTitle),
+        signals: _locationSignals(explicitLocation, source, normalizedTitle),
+      );
+    }
+
+    final leadingMemoPlace = RegExp(
+      r'^(.{2,40}?)에서\s+.+?\s+메모(?:에|에는|로|으로|를|은|는)?\s+',
+    ).firstMatch(source);
+    addCandidate(
+      leadingMemoPlace?.group(1)?.trim(),
+      source: 'leading_memo_location',
+      score: 0.82,
+      signals: const <String>['explicit_particle', 'memo_context'],
+    );
+
+    addCandidate(
+      extractLeadingLocation(source),
+      source: 'leading_location',
+      score: 0.82,
+      signals: const <String>['explicit_particle'],
+    );
+    addCandidate(
+      extractMidLocation(source),
+      source: 'mid_location',
+      score: 0.82,
+      signals: const <String>['place_keyword', 'action_context'],
+    );
+    addCandidate(
+      _extractTrailingPlaceKeywordLocation(source),
+      source: 'trailing_place_keyword',
+      score: 0.80,
+      signals: const <String>['place_keyword', 'action_context'],
+    );
+    addCandidate(
+      _extractAmbiguousDepartmentLocation(source),
+      source: 'ambiguous_department',
+      score: 0.50,
+      signals: const <String>['ambiguous_department', 'action_context'],
+      preserveAmbiguity: true,
+    );
+
+    final inferredFromDeparture = RegExp(
+      r'([가-힣A-Za-z0-9·.]{2,})\s*(?:에서\s*)?출발',
+    ).firstMatch(source);
+    addCandidate(
+      inferredFromDeparture?.group(1)?.trim(),
+      source: 'departure',
+      score: 0.68,
+      signals: const <String>['departure_context'],
+    );
+
+    final inferredFromTitle = RegExp(
+      r'([가-힣A-Za-z0-9·.]{2,})\s*(?:출발|도착)$',
+    ).firstMatch(normalizedTitle);
+    addCandidate(
+      inferredFromTitle?.group(1)?.trim(),
+      source: 'title_departure',
+      score: 0.62,
+      signals: const <String>['title_departure_context'],
+    );
+
+    final scored = candidates.values.toList(growable: false)
+      ..sort((a, b) {
+        final scoreCompare = b.score.compareTo(a.score);
+        if (scoreCompare != 0) {
+          return scoreCompare;
+        }
+        return a.label.length.compareTo(b.label.length);
+      });
+    return scored;
+  }
+
+  double _scoreParsedLocation(String location, String rawText, String title) {
+    var score = 0.58;
+    final signals = _locationSignals(location, rawText, title);
+    if (signals.contains('place_keyword')) {
+      score += 0.18;
+    }
+    if (signals.contains('explicit_particle')) {
+      score += 0.14;
+    }
+    if (signals.contains('action_context')) {
+      score += 0.08;
+    }
+    if (signals.contains('ambiguous_department')) {
+      score -= 0.18;
+    }
+    return score.clamp(0.0, 1.0).toDouble();
+  }
+
+  List<String> _locationSignals(String location, String rawText, String title) {
+    final signals = <String>{};
+    final compactLocation = location.replaceAll(RegExp(r'\s+'), '');
+    final source = '$rawText $title';
+    if (_hasStrongPlaceKeyword(compactLocation)) {
+      signals.add('place_keyword');
+    }
+    if (_isAmbiguousDepartmentLocation(compactLocation)) {
+      signals.add('ambiguous_department');
+    }
+    if (RegExp(
+      '${RegExp.escape(location)}\\s*(?:에서|에|로|으로)',
+    ).hasMatch(source)) {
+      signals.add('explicit_particle');
+    }
+    if (RegExp(
+      '${RegExp.escape(location)}.{0,8}(?:방문|가서|가기|도착|출발|만나|문의|확인|말하기)',
+    ).hasMatch(source)) {
+      signals.add('action_context');
+    }
+    return signals.toList(growable: false);
+  }
+
+  String? _extractTrailingPlaceKeywordLocation(String text) {
+    final match = RegExp(
+      r'([가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,5}(?:병원|의원|센터|약국|식당|카페|호텔|학교|학원|은행|마트|공원|주차장|지점|건물|오피스|스튜디오|헬스장|편의점|아웃렛|주유소|시장|횟집|맛집|가게|본점|역|공항|터미널|항|구청|시청|주민센터|보건소|회관|체육관|경기장|빌딩|타워|아파트|빌라|오피스텔|주택|펜션|모텔|단지|타운하우스)(?:\s+[가-힣A-Za-z0-9·.]{1,8}(?:과|팀|부서))?)\s*(?:방문|가서|가기|도착|출발|만나|문의|확인|말하기)',
+    ).firstMatch(text);
+    return match?.group(1)?.trim();
+  }
+
+  String? _extractAmbiguousDepartmentLocation(String text) {
+    final match = RegExp(
+      r'((?:[가-힣A-Za-z0-9·.]{0,12}(?:약재|약제)[가-힣A-Za-z0-9·.]{0,6}|[가-힣A-Za-z0-9·.]{2,10}(?:과|팀|부서)))\s*(?:방문|가서|가기|문의|확인|말하기|만나)',
+    ).firstMatch(text);
+    return match?.group(1)?.trim();
+  }
+
+  bool _hasStrongPlaceKeyword(String compact) {
+    return RegExp(
+      r'(병원|의원|센터|약국|식당|카페|호텔|학교|학원|은행|마트|공원|주차장|지점|건물|오피스|스튜디오|헬스장|편의점|아웃렛|주유소|시장|횟집|맛집|가게|본점|역|공항|터미널|항|구청|시청|주민센터|보건소|회관|체육관|경기장|빌딩|타워|아파트|빌라|오피스텔|주택|펜션|모텔|단지|타운하우스)',
+    ).hasMatch(compact);
+  }
+
+  bool _isAmbiguousDepartmentLocation(String compact) {
+    if (RegExp(r'(병원|의원|센터|약국)').hasMatch(compact)) {
+      return false;
+    }
+    return RegExp(r'(약재|약제|과$|팀$|부서$)').hasMatch(compact);
+  }
+
   String? _normalizeLocationCandidate(String text) {
     final normalized = normalizeSpacingForSchedule(text);
     if (normalized.isEmpty) {
@@ -1031,8 +1226,9 @@ class VoiceScheduleStructureService {
     if (normalizedTitle.isEmpty) {
       return true;
     }
-    final leadingDay =
-        RegExp(r'(오늘|내일|모레|글피)').firstMatch(structure.leadingTimeCue ?? '');
+    final leadingDay = RegExp(
+      r'(오늘|내일|모레|글피)',
+    ).firstMatch(structure.leadingTimeCue ?? '');
     if (leadingDay != null &&
         normalizedTitle.startsWith(leadingDay.group(1)!)) {
       return true;
@@ -1042,8 +1238,9 @@ class VoiceScheduleStructureService {
     if (normalizedTokens.isEmpty || structuredTokens.isEmpty) {
       return false;
     }
-    final missingFromStructured =
-        normalizedTokens.where((token) => !structuredTokens.contains(token));
+    final missingFromStructured = normalizedTokens.where(
+      (token) => !structuredTokens.contains(token),
+    );
     final structuredHasMoreMeaning =
         structuredTokens.length > normalizedTokens.length;
     if (missingFromStructured.isEmpty && structuredHasMoreMeaning) {
@@ -1205,10 +1402,7 @@ class VoiceScheduleStructureService {
     return location;
   }
 
-  String preserveLeadingLocationTitle(
-    String text, {
-    String? rawText,
-  }) {
+  String preserveLeadingLocationTitle(String text, {String? rawText}) {
     final normalized = text.trim();
     if (normalized.isEmpty) {
       return normalized;
@@ -1253,10 +1447,7 @@ class VoiceScheduleStructureService {
     if (firstToken.isEmpty) {
       return '';
     }
-    final stripped = firstToken.replaceFirst(
-      RegExp(r'(?:에서|에|로|으로)$'),
-      '',
-    );
+    final stripped = firstToken.replaceFirst(RegExp(r'(?:에서|에|로|으로)$'), '');
     if (stripped.isEmpty) {
       return '';
     }
@@ -1293,10 +1484,9 @@ class VoiceScheduleStructureService {
       return text.trim();
     }
     final location = match.group(0)?.trim();
-    final locationHead = RegExp(r'^([가-힣A-Za-z0-9·.]{2,})')
-        .firstMatch(location ?? '')
-        ?.group(1)
-        ?.trim();
+    final locationHead = RegExp(
+      r'^([가-힣A-Za-z0-9·.]{2,})',
+    ).firstMatch(location ?? '')?.group(1)?.trim();
     if (locationHead == null || _isInvalidLocationCandidate(locationHead)) {
       return text.trim();
     }
@@ -1336,9 +1526,7 @@ class VoiceScheduleStructureService {
     // 순수 동사형(어미 "-ㄴ/은/는/고/서" 등으로 끝나는 짧은 조각)을 비명사로 거부.
     // 단, 3글자 이상의 명사 후보는 통과시켜 "강남역" 등을 보호.
     if (normalized.length <= 4 &&
-        RegExp(
-          r'[가-힣](?:간|온|한|된|된다|하고|해서|이고|이며)$',
-        ).hasMatch(normalized)) {
+        RegExp(r'[가-힣](?:간|온|한|된|된다|하고|해서|이고|이며)$').hasMatch(normalized)) {
       return true;
     }
     return false;
@@ -1462,9 +1650,7 @@ class VoiceScheduleStructureService {
     }
     // STT가 '내일모레'를 '내일모래'(붙은 형태)로 인식한 경우 먼저 교정한 뒤,
     // 단독 '모래'(=모레)도 교정한다.
-    return text
-        .replaceAll('내일모래', '내일모레')
-        .replaceAllMapped(
+    return text.replaceAll('내일모래', '내일모레').replaceAllMapped(
           RegExp(r'(^|\s)모래(?=\s|$)'),
           (match) => '${match.group(1) ?? ''}모레',
         );
@@ -1492,9 +1678,7 @@ class VoiceScheduleStructureService {
       RegExp(
         r'^\s*(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s*(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?)?(?:에|부터)?\s*',
       ),
-      RegExp(
-        r'^\s*(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)(?:부터)?\s*',
-      ),
+      RegExp(r'^\s*(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)(?:부터)?\s*'),
       RegExp(r'^\s*(?:오늘|내일|모레|글피)(?:에|부터)?\s+'),
     ];
 
@@ -1509,10 +1693,9 @@ class VoiceScheduleStructureService {
 
   Map<String, String> _extractExplicitFieldClauses(String text) {
     final clauses = <String, String>{};
-    final memo = RegExp(r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$')
-        .firstMatch(text)
-        ?.group(1)
-        ?.trim();
+    final memo = RegExp(
+      r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$',
+    ).firstMatch(text)?.group(1)?.trim();
     if (memo != null && memo.isNotEmpty) {
       clauses['memo'] = memo;
     }
@@ -1524,8 +1707,9 @@ class VoiceScheduleStructureService {
       clauses['recurrence_rule'] = recurrence;
     }
 
-    final allDay =
-        RegExp(r'(하루\s*종일|하루종일|종일|온종일)').firstMatch(text)?.group(0)?.trim();
+    final allDay = RegExp(
+      r'(하루\s*종일|하루종일|종일|온종일)',
+    ).firstMatch(text)?.group(0)?.trim();
     if (allDay != null && allDay.isNotEmpty) {
       clauses['is_all_day'] = allDay;
     }
@@ -1534,10 +1718,7 @@ class VoiceScheduleStructureService {
 
   String _stripExplicitFieldClauses(String text) {
     return normalizeSpacingForSchedule(
-      text.replaceFirst(
-        RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
-        ' ',
-      ),
+      text.replaceFirst(RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'), ' '),
     );
   }
 }

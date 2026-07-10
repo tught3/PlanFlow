@@ -111,6 +111,8 @@ abstract class ConfirmScreenBackend {
     required String location,
   });
 
+  Future<List<String>> fetchRecentLocations({required String userId});
+
   Future<void> insertPreActions(List<Map<String, dynamic>> payloads);
 
   Future<void> insertReminders(List<Map<String, dynamic>> payloads);
@@ -143,10 +145,7 @@ class _PostSaveFollowUpResult {
 
 /// 그룹 리더의 "그룹에 일정을 공유할까요?" 다이얼로그 응답.
 class _LeaderShareChoice {
-  const _LeaderShareChoice({
-    required this.share,
-    required this.dontAskAgain,
-  });
+  const _LeaderShareChoice({required this.share, required this.dontAskAgain});
 
   final bool share;
   final bool dontAskAgain;
@@ -162,6 +161,256 @@ class _AlarmScheduleFailure {
   final String label;
   final NotificationScheduleStatus status;
   final String message;
+}
+
+enum _LocationChoiceAction { use, none, delete }
+
+class _ScoredLocationChoice {
+  const _ScoredLocationChoice({
+    required this.label,
+    required this.query,
+    required this.score,
+    required this.signals,
+    required this.source,
+    this.result,
+    this.similarity,
+  });
+
+  final String label;
+  final String query;
+  final double score;
+  final List<String> signals;
+  final String source;
+  final LocationLookupResult? result;
+  final double? similarity;
+}
+
+class _LocationChoiceSelection {
+  const _LocationChoiceSelection({required this.action, this.choice});
+
+  final _LocationChoiceAction action;
+  final _ScoredLocationChoice? choice;
+}
+
+class _VoiceLocationCandidateSheet extends StatefulWidget {
+  const _VoiceLocationCandidateSheet({
+    required this.choices,
+    required this.hasExistingLocation,
+  });
+
+  final List<_ScoredLocationChoice> choices;
+  final bool hasExistingLocation;
+
+  @override
+  State<_VoiceLocationCandidateSheet> createState() =>
+      _VoiceLocationCandidateSheetState();
+}
+
+class _VoiceLocationCandidateSheetState
+    extends State<_VoiceLocationCandidateSheet> {
+  final Set<int> _selectedIndices = <int>{};
+
+  String _formatSignals(List<String> signals) {
+    final signalLabels = <String>[];
+    for (final signal in signals) {
+      switch (signal) {
+        case 'location_history':
+          signalLabels.add('이전 방문');
+        case 'lookup_similarity':
+          signalLabels.add('지도 검색');
+        case 'lookup_low_similarity':
+          signalLabels.add('지도 참고');
+        default:
+          // 기타 신호는 표시하지 않음
+          break;
+      }
+    }
+    return signalLabels.isEmpty ? '' : signalLabels.join(' · ');
+  }
+
+  String _formatSource(String source) {
+    switch (source) {
+      case 'location_history':
+        return '방문 기록';
+      case 'location_lookup':
+        return '지도 검색';
+      default:
+        return '음성 인식';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasSelection = _selectedIndices.isNotEmpty;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '장소 후보를 선택해 주세요',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (hasSelection)
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _selectedIndices.clear();
+                      });
+                    },
+                    child: const Text('선택 해제'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: widget.choices.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final choice = widget.choices[index];
+                  final isSelected = _selectedIndices.contains(index);
+                  final signalText = _formatSignals(choice.signals);
+                  final sourceText = _formatSource(choice.source);
+
+                  return ListTile(
+                    key: ValueKey('voice-location-candidate-$index'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      index == 0 ? Icons.place : Icons.place_outlined,
+                    ),
+                    title: Text(choice.label),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          index == 0
+                              ? '추천 · 신뢰도 ${(choice.score * 100).round()}%'
+                              : '신뢰도 ${(choice.score * 100).round()}%',
+                        ),
+                        if (signalText.isNotEmpty || sourceText.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              [sourceText, signalText]
+                                  .where((s) => s.isNotEmpty)
+                                  .join(' · '),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.outline,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    trailing: hasSelection
+                        ? Checkbox(
+                            value: isSelected,
+                            onChanged: (value) {
+                              setState(() {
+                                if (value == true) {
+                                  _selectedIndices.add(index);
+                                } else {
+                                  _selectedIndices.remove(index);
+                                }
+                              });
+                            },
+                          )
+                        : null,
+                    onTap: () {
+                      if (hasSelection) {
+                        setState(() {
+                          if (_selectedIndices.contains(index)) {
+                            _selectedIndices.remove(index);
+                          } else {
+                            _selectedIndices.add(index);
+                          }
+                        });
+                      } else {
+                        // 즉시 선택
+                        Navigator.of(context).pop(
+                          _LocationChoiceSelection(
+                            action: _LocationChoiceAction.use,
+                            choice: choice,
+                          ),
+                        );
+                      }
+                    },
+                    onLongPress: () {
+                      setState(() {
+                        if (_selectedIndices.contains(index)) {
+                          _selectedIndices.remove(index);
+                        } else {
+                          _selectedIndices.add(index);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              key: const ValueKey('voice-location-none'),
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.not_listed_location_outlined),
+              title: const Text('장소 없음'),
+              onTap: () => Navigator.of(context).pop(
+                const _LocationChoiceSelection(
+                  action: _LocationChoiceAction.none,
+                ),
+              ),
+            ),
+            if (widget.hasExistingLocation)
+              ListTile(
+                key: const ValueKey('voice-location-delete'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('장소 삭제'),
+                onTap: () => Navigator.of(context).pop(
+                  const _LocationChoiceSelection(
+                    action: _LocationChoiceAction.delete,
+                  ),
+                ),
+              ),
+            if (hasSelection) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // 첫 번째 선택된 항목만 반환 (다중 선택 지원을 위한 확장 가능한 구조)
+                    final firstIndex = _selectedIndices.first;
+                    Navigator.of(context).pop(
+                      _LocationChoiceSelection(
+                        action: _LocationChoiceAction.use,
+                        choice: widget.choices[firstIndex],
+                      ),
+                    );
+                  },
+                  child: Text(
+                    _selectedIndices.length == 1
+                        ? '선택 완료'
+                        : '${_selectedIndices.length}개 선택 완료',
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
@@ -206,6 +455,32 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   }
 
   @override
+  Future<List<String>> fetchRecentLocations({required String userId}) async {
+    final response = await _client
+        .from('location_history')
+        .select('location, visited_at')
+        .eq('user_id', userId)
+        .not('location', 'is', null)
+        .order('visited_at', ascending: false)
+        .limit(30);
+
+    final locations = <String>[];
+    final seen = <String>{};
+    for (final row in response as List<dynamic>) {
+      final rowMap = Map<String, dynamic>.from(row as Map);
+      final location = rowMap['location']?.toString().trim();
+      if (location == null || location.isEmpty) {
+        continue;
+      }
+      final key = location.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      if (seen.add(key)) {
+        locations.add(location);
+      }
+    }
+    return locations;
+  }
+
+  @override
   Future<void> insertPreActions(List<Map<String, dynamic>> payloads) async {
     if (payloads.isEmpty) {
       return;
@@ -234,6 +509,12 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
 
 class _ConfirmScreenState extends State<ConfirmScreen>
     with WidgetsBindingObserver {
+  static const double _locationAutoConfirmScore =
+      VoiceScheduleStructureService.autoConfirmLocationScore;
+  static const double _locationConfirmScore =
+      VoiceScheduleStructureService.confirmLocationScore;
+  static const double _locationLookupSimilarityThreshold = 0.51;
+
   // 권한 설정 화면으로 이동 중일 때 true — 앱 복귀(resumed) 시 저장 후 목적지로 이동
   bool _pendingNavigateAfterSave = false;
 
@@ -275,6 +556,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   int? _ambiguousTimeHour;
   int? _ambiguousTimeMinute;
   bool _hasPromptedTimePeriodClarification = false;
+  bool _hasResolvedVoiceLocationCandidates = false;
+  bool _isPromptingVoiceLocationCandidates = false;
+  bool _voiceLocationRejected = false;
+  List<_ScoredLocationChoice> _voiceLocationChoices =
+      const <_ScoredLocationChoice>[];
   Map<String, dynamic>? _initialParsedForLearning;
   GroupContextProvider? _groupContextProvider;
   bool _ownsGroupContextProvider = false;
@@ -294,8 +580,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _initialParsedForLearning = Map<String, dynamic>.from(
       widget.parsedSchedule,
     );
-    final rawTextForLocalParse =
-        _stringValue(widget.parsedSchedule['raw_text']);
+    final rawTextForLocalParse = _stringValue(
+      widget.parsedSchedule['raw_text'],
+    );
     final parsedTitle = _stringValue(widget.parsedSchedule['title']) ?? '';
     // parse_pending이면 GPT 결과를 기다리는 동안 제목이 비어 보임.
     // rawText로 로컬 파싱 제목을 즉시 채워 1초대에 표시되도록 한다.
@@ -303,8 +590,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final initialTitle = parsedTitle.isNotEmpty
         ? parsedTitle
         : (rawTextForLocalParse != null && rawTextForLocalParse.isNotEmpty
-            ? const VoiceScheduleStructureService()
-                .normalizeLocalVoiceTitle(rawTextForLocalParse)
+            ? const VoiceScheduleStructureService().normalizeLocalVoiceTitle(
+                rawTextForLocalParse,
+              )
             : '');
     _titleController = TextEditingController(text: initialTitle);
     _locationController = TextEditingController(
@@ -360,7 +648,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeHydrateParsedSchedule();
-      unawaited(_resolveLocationCoordinatesIfNeeded());
+      unawaited(_prepareVoiceLocationCandidates(allowPrompt: true));
       _maybePromptTimePeriodClarification();
     });
   }
@@ -469,8 +757,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<Set<String>> _readLastSharedGroupIds(String userId) async {
     try {
       final preferences = await SharedPreferences.getInstance();
-      final stored =
-          preferences.getStringList(_lastSharedGroupsPrefKey(userId));
+      final stored = preferences.getStringList(
+        _lastSharedGroupsPrefKey(userId),
+      );
       if (stored == null || stored.isEmpty) {
         return const <String>{};
       }
@@ -596,8 +885,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (group == null) {
       return;
     }
-    final isLeaderOfGroup = _groupContextProvider?.leaderGroups
-            .any((leaderGroup) => leaderGroup.id == group.id) ??
+    final isLeaderOfGroup = _groupContextProvider?.leaderGroups.any(
+          (leaderGroup) => leaderGroup.id == group.id,
+        ) ??
         false;
     if (!isLeaderOfGroup) {
       return;
@@ -638,9 +928,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
-  Future<_LeaderShareChoice?> _showLeaderShareConfirmDialog(
-    String groupName,
-  ) {
+  Future<_LeaderShareChoice?> _showLeaderShareConfirmDialog(String groupName) {
     var dontAskAgain = false;
     return showDialog<_LeaderShareChoice>(
       context: context,
@@ -674,8 +962,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                 PlanFlowActionButtons(
                   buttons: [
                     PlanFlowActionButton(
-                      buttonKey:
-                          const ValueKey('leader-share-decline-button'),
+                      buttonKey: const ValueKey('leader-share-decline-button'),
                       label: '아니요',
                       type: ActionButtonType.secondary,
                       flex: 1,
@@ -829,16 +1116,266 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       normalizedCandidate.replaceAll(RegExp(r'\s+'), ''),
     );
     return title
-        .replaceFirst(
-          RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'),
-          '',
-        )
-        .replaceFirst(
-          RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'),
-          '',
-        )
+        .replaceFirst(RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'), '')
+        .replaceFirst(RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  Future<void> _prepareVoiceLocationCandidates({
+    required bool allowPrompt,
+  }) async {
+    if (_hasResolvedVoiceLocationCandidates ||
+        _isPromptingVoiceLocationCandidates ||
+        _voiceLocationRejected ||
+        _locationEditedByUser) {
+      return;
+    }
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']) ?? '';
+    final title = _titleController.text.trim();
+    final parsedLocation = _locationController.text.trim();
+    if (rawText.isEmpty && parsedLocation.isEmpty) {
+      _hasResolvedVoiceLocationCandidates = true;
+      return;
+    }
+
+    final baseCandidates =
+        const VoiceScheduleStructureService().scoreLocationCandidates(
+      location: parsedLocation.isEmpty ? null : parsedLocation,
+      rawText: rawText,
+      title: title,
+    );
+    if (baseCandidates.isEmpty) {
+      _hasResolvedVoiceLocationCandidates = true;
+      if (parsedLocation.isNotEmpty) {
+        unawaited(_resolveLocationCoordinatesIfNeeded());
+      }
+      return;
+    }
+
+    final choices = await _buildScoredLocationChoices(baseCandidates);
+    if (!mounted || _locationEditedByUser || _voiceLocationRejected) {
+      return;
+    }
+    _voiceLocationChoices = choices;
+    final top = choices.isEmpty ? null : choices.first;
+    if (top == null || top.score < _locationConfirmScore) {
+      setState(() {
+        _voiceLocationRejected = true;
+        _hasResolvedVoiceLocationCandidates = true;
+        _locationController.clear();
+        _locationLat = null;
+        _locationLng = null;
+        _resolvedLocationLabel = null;
+      });
+      _hasResolvedVoiceLocationCandidates = true;
+      return;
+    }
+    if (top.score >= _locationAutoConfirmScore) {
+      _applyLocationChoice(top, removeFromTitle: true);
+      _hasResolvedVoiceLocationCandidates = true;
+      unawaited(_resolveLocationCoordinatesIfNeeded());
+      return;
+    }
+    if (allowPrompt) {
+      await _promptVoiceLocationCandidates();
+    }
+  }
+
+  Future<List<_ScoredLocationChoice>> _buildScoredLocationChoices(
+    List<VoiceLocationCandidate> baseCandidates,
+  ) async {
+    final choices = <String, _ScoredLocationChoice>{};
+
+    void addChoice(_ScoredLocationChoice choice) {
+      final key = choice.label.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      final existing = choices[key];
+      if (existing == null || choice.score > existing.score) {
+        choices[key] = choice;
+      }
+    }
+
+    for (final candidate in baseCandidates.take(4)) {
+      addChoice(
+        _ScoredLocationChoice(
+          label: candidate.label,
+          query: candidate.label,
+          score: candidate.score,
+          signals: candidate.signals,
+          source: candidate.source,
+        ),
+      );
+    }
+
+    final userId = _resolveUserId();
+    if (userId != null) {
+      try {
+        final recentLocations = await widget.backend.fetchRecentLocations(
+          userId: userId,
+        );
+        for (final candidate in baseCandidates.take(4)) {
+          for (final recent in recentLocations.take(12)) {
+            final similarity = widget.locationLookupService.labelSimilarity(
+              candidate.label,
+              recent,
+            );
+            if (similarity < _locationLookupSimilarityThreshold) {
+              continue;
+            }
+            addChoice(
+              _ScoredLocationChoice(
+                label: recent,
+                query: candidate.label,
+                score: (candidate.score + 0.16 + similarity * 0.08)
+                    .clamp(0.0, 1.0)
+                    .toDouble(),
+                signals: <String>[...candidate.signals, 'location_history'],
+                source: 'location_history',
+              ),
+            );
+          }
+        }
+      } catch (error) {
+        debugPrint('ConfirmScreen recent location lookup skipped: $error');
+      }
+    }
+
+    for (final candidate in baseCandidates.take(3)) {
+      if (candidate.score < _locationConfirmScore) {
+        continue;
+      }
+      try {
+        final results = await widget.locationLookupService.search(
+          candidate.label,
+          origin: null,
+        );
+        for (final result in results.take(3)) {
+          final label = result.bestPlaceLabel.trim();
+          if (label.isEmpty) {
+            continue;
+          }
+          final similarity = widget.locationLookupService.resultLabelSimilarity(
+            candidate.label,
+            result,
+          );
+          final lookupBoost =
+              similarity >= _locationLookupSimilarityThreshold ? 0.18 : -0.12;
+          addChoice(
+            _ScoredLocationChoice(
+              label: label,
+              query: candidate.label,
+              score: (candidate.score + lookupBoost + similarity * 0.08)
+                  .clamp(0.0, 1.0)
+                  .toDouble(),
+              signals: <String>[
+                ...candidate.signals,
+                similarity >= _locationLookupSimilarityThreshold
+                    ? 'lookup_similarity'
+                    : 'lookup_low_similarity',
+              ],
+              source: 'location_lookup',
+              result: result,
+              similarity: similarity,
+            ),
+          );
+        }
+      } catch (error) {
+        debugPrint('ConfirmScreen candidate location lookup skipped: $error');
+      }
+    }
+
+    final sorted = choices.values.toList(growable: false)
+      ..sort((a, b) {
+        final scoreCompare = b.score.compareTo(a.score);
+        if (scoreCompare != 0) {
+          return scoreCompare;
+        }
+        return a.label.length.compareTo(b.label.length);
+      });
+    return sorted.take(5).toList(growable: false);
+  }
+
+  Future<void> _promptVoiceLocationCandidates() async {
+    if (_isPromptingVoiceLocationCandidates ||
+        _voiceLocationChoices.isEmpty ||
+        !mounted) {
+      return;
+    }
+    _isPromptingVoiceLocationCandidates = true;
+    final selection = await showModalBottomSheet<_LocationChoiceSelection>(
+      context: context,
+      builder: (context) => _VoiceLocationCandidateSheet(
+        choices: _voiceLocationChoices,
+        hasExistingLocation: _locationController.text.trim().isNotEmpty,
+      ),
+    );
+    _isPromptingVoiceLocationCandidates = false;
+    if (!mounted) {
+      return;
+    }
+    switch (selection?.action) {
+      case _LocationChoiceAction.use:
+        final choice = selection?.choice;
+        if (choice != null) {
+          _applyLocationChoice(choice, removeFromTitle: true);
+          _hasResolvedVoiceLocationCandidates = true;
+          unawaited(_resolveLocationCoordinatesIfNeeded());
+        }
+        return;
+      case _LocationChoiceAction.none:
+        setState(() {
+          _voiceLocationRejected = true;
+          _hasResolvedVoiceLocationCandidates = true;
+          _locationController.clear();
+          _locationLat = null;
+          _locationLng = null;
+          _resolvedLocationLabel = null;
+        });
+        return;
+      case _LocationChoiceAction.delete:
+        setState(() {
+          _voiceLocationRejected = true;
+          _hasResolvedVoiceLocationCandidates = true;
+          _locationController.clear();
+          _locationLat = null;
+          _locationLng = null;
+          _resolvedLocationLabel = null;
+        });
+        return;
+      case null:
+        setState(() {
+          _voiceLocationRejected = true;
+          _hasResolvedVoiceLocationCandidates = true;
+        });
+        return;
+    }
+  }
+
+  void _applyLocationChoice(
+    _ScoredLocationChoice choice, {
+    required bool removeFromTitle,
+  }) {
+    _isApplyingHydration = true;
+    setState(() {
+      _locationController.text = choice.label;
+      if (choice.result != null &&
+          (choice.similarity ?? 1) >= _locationLookupSimilarityThreshold) {
+        _locationLat = choice.result!.latitude;
+        _locationLng = choice.result!.longitude;
+        _resolvedLocationLabel = choice.label;
+      } else {
+        _locationLat = null;
+        _locationLng = null;
+        _resolvedLocationLabel = null;
+      }
+    });
+    _isApplyingHydration = false;
+    if (removeFromTitle) {
+      _removeResolvedLocationFromTitle(
+        previousLocationText: choice.query,
+        resolvedLocationText: choice.label,
+      );
+    }
   }
 
   Future<void> _lookupLocation() async {
@@ -909,6 +1446,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<void> _resolveLocationCoordinatesIfNeeded() async {
     final query = _locationController.text.trim();
     if (_locationEditedByUser ||
+        _voiceLocationRejected ||
         query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
         (_locationLat != null && _locationLng != null)) {
@@ -922,9 +1460,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     try {
       final gpsFuture = _permissionService
-          .getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      )
+          .getCurrentLocationWithPermission(requestIfMissing: false)
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('ConfirmScreen background GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
@@ -944,6 +1480,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final selected = results.first;
       final resolvedLabel = selected.bestPlaceLabel.trim();
+      final similarity = widget.locationLookupService.resultLabelSimilarity(
+        query,
+        selected,
+      );
+      if (similarity < _locationLookupSimilarityThreshold) {
+        DiagLogger.log(
+          'GeoResolve',
+          '건너뜀: 쿼리="$query" 선택="${selected.name}" 유사도=${similarity.toStringAsFixed(2)}',
+        );
+        return;
+      }
       _isApplyingHydration = true;
       setState(() {
         if (resolvedLabel.isNotEmpty) {
@@ -973,6 +1520,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<void> _ensureLocationCoordinatesBeforeSave() async {
     final query = _locationController.text.trim();
     if (query.isEmpty ||
+        _voiceLocationRejected ||
         _shouldSkipAutomaticLocationResolution(query) ||
         (_locationLat != null && _locationLng != null)) {
       // 이미 좌표가 있거나 개인 별칭이면 스킵
@@ -992,9 +1540,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     try {
       final gpsFuture = _permissionService
-          .getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      )
+          .getCurrentLocationWithPermission(requestIfMissing: false)
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('ConfirmScreen save-time GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
@@ -1022,6 +1568,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final selected = results.first;
       final resolvedLabel = selected.bestPlaceLabel.trim();
+      final similarity = widget.locationLookupService.resultLabelSimilarity(
+        query,
+        selected,
+      );
+      if (similarity < _locationLookupSimilarityThreshold) {
+        DiagLogger.log(
+          'GeoResolve',
+          '건너뜀: 쿼리="$query" 선택="${selected.name}" 유사도=${similarity.toStringAsFixed(2)}',
+        );
+        return;
+      }
       _isApplyingHydration = true;
       setState(() {
         if (resolvedLabel.isNotEmpty) {
@@ -1055,6 +1612,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   bool _shouldSkipAutomaticLocationResolution(String query) {
+    if (_voiceLocationRejected) {
+      return true;
+    }
     final normalized = query.replaceAll(RegExp(r'\s+'), '');
     if (normalized.isEmpty) {
       return true;
@@ -1128,9 +1688,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       if (parsed['parse_failed'] == true) {
-        unawaited(
-          AnalyticsService.logScheduleParseFailed(reason: 'fallback'),
-        );
+        unawaited(AnalyticsService.logScheduleParseFailed(reason: 'fallback'));
       }
 
       if (parsed['parse_failed'] != true) {
@@ -1196,12 +1754,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
       });
       _isApplyingHydration = false;
-      unawaited(_resolveLocationCoordinatesIfNeeded());
+      _hasResolvedVoiceLocationCandidates = false;
+      _voiceLocationRejected = false;
+      unawaited(_prepareVoiceLocationCandidates(allowPrompt: true));
     } catch (error) {
       if (mounted) {
-        unawaited(
-          AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'),
-        );
+        unawaited(AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'));
         setState(() {
           _hydrateMessage = '일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.';
         });
@@ -1341,6 +1899,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
+    await _prepareVoiceLocationCandidates(allowPrompt: true);
+    if (!mounted) {
+      return;
+    }
+
     await _ensureLocationCoordinatesBeforeSave();
     if (!mounted) {
       return;
@@ -1392,8 +1955,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
       if (duplicateWarningEvents.isNotEmpty) {
         unawaited(AnalyticsService.logConflictDetected());
-        final shouldContinue =
-            await _showOverlapWarning(duplicateWarningEvents);
+        final shouldContinue = await _showOverlapWarning(
+          duplicateWarningEvents,
+        );
         if (!shouldContinue || !mounted) {
           return;
         }
@@ -1787,15 +2351,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return values[rawText.replaceAll(' ', '')];
   }
 
-  Future<void> _recordVoiceCorrectionLearning({
-    required String userId,
-  }) async {
+  Future<void> _recordVoiceCorrectionLearning({required String userId}) async {
     if (!AppEnv.isSupabaseReady) {
       return;
     }
     try {
-      final settings =
-          await SettingsRepository.supabase().fetchSettings(userId);
+      final settings = await SettingsRepository.supabase().fetchSettings(
+        userId,
+      );
       if (settings?.voiceCorrectionLearningEnabled == false) {
         return;
       }
@@ -1803,8 +2366,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           VoiceCorrectionRuleRepository.supabase();
       final rules = <VoiceCorrectionRule>[];
 
-      final originalStt =
-          _stringValue(widget.parsedSchedule['stt_original_text']);
+      final originalStt = _stringValue(
+        widget.parsedSchedule['stt_original_text'],
+      );
       final rawText = _stringValue(widget.parsedSchedule['raw_text']);
       if (widget.parsedSchedule['manual_text_confirmed'] == true &&
           originalStt != null &&
@@ -1823,10 +2387,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final initial = _initialParsedForLearning ?? widget.parsedSchedule;
       rules.addAll(
-        _extractParseCorrectionRules(
-          userId: userId,
-          initial: initial,
-        ),
+        _extractParseCorrectionRules(userId: userId, initial: initial),
       );
 
       var recorded = false;
@@ -1926,42 +2487,37 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       () => widget.backend.insertPreActions(preActionPayloads),
       label: 'pre_actions',
     );
-    await _tryFollowUp(
-      () {
-        DiagLogger.log('SmartPrep',
-            'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"');
-        return widget.smartPreparationAlarmService.schedulePayloads(
-          eventId: event.id,
-          eventTitle: event.title,
-          payloads: preActionPayloads,
-          notificationKeyPrefix: 'pre_action',
-        );
-      },
-      label: 'smart_preparation_alarm_notifications',
-    );
+    await _tryFollowUp(() {
+      DiagLogger.log(
+        'SmartPrep',
+        'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"',
+      );
+      return widget.smartPreparationAlarmService.schedulePayloads(
+        eventId: event.id,
+        eventTitle: event.title,
+        payloads: preActionPayloads,
+        notificationKeyPrefix: 'pre_action',
+      );
+    }, label: 'smart_preparation_alarm_notifications');
     await _tryFollowUp(
       () => widget.backend.insertReminders(reminderPayloads),
       label: 'reminders',
     );
-    await _tryFollowUp(
-      () async {
-        final result = await const DepartureAlarmService().scheduleForEvent(
-          event,
-          safetyMarginOverride: departureSafetyMargin,
-        );
-        final hasCoords =
-            event.locationLat != null && event.locationLng != null;
-        // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
-        DiagLogger.log(
-          'DepartureAlarm',
-          result.isScheduled
-              ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
-              : 'skipped reason=${result.skippedReason ?? 'unknown'} '
-                  'hasCoords=$hasCoords loc="${event.location ?? ''}"',
-        );
-      },
-      label: 'departure_alarm',
-    );
+    await _tryFollowUp(() async {
+      final result = await const DepartureAlarmService().scheduleForEvent(
+        event,
+        safetyMarginOverride: departureSafetyMargin,
+      );
+      final hasCoords = event.locationLat != null && event.locationLng != null;
+      // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
+      DiagLogger.log(
+        'DepartureAlarm',
+        result.isScheduled
+            ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
+            : 'skipped reason=${result.skippedReason ?? 'unknown'} '
+                'hasCoords=$hasCoords loc="${event.location ?? ''}"',
+      );
+    }, label: 'departure_alarm');
 
     final location = _emptyToNull(_locationController.text);
     if (location != null) {
@@ -2017,26 +2573,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           eventStartAt.isAfter(reminderNow)) {
         eventReminderNotifyAt = eventStartAt;
       }
-      await _tryFollowUp(
-        () async {
-          final result =
-              await widget.notificationService.scheduleEventReminderWithResult(
-            id: widget.notificationService.notificationIdFor(
-              '${event.id}:push',
-            ),
-            title: event.title,
-            body: '일정 시작: ${event.title}',
-            notifyAt: eventReminderNotifyAt,
-            payload: 'event:${event.id}',
-          );
-          _recordAlarmScheduleResult(
-            result,
-            label: 'local_event_reminder',
-            failures: alarmFailures,
-          );
-        },
-        label: 'local_event_reminder',
-      );
+      await _tryFollowUp(() async {
+        final result =
+            await widget.notificationService.scheduleEventReminderWithResult(
+          id: widget.notificationService.notificationIdFor(
+            '${event.id}:push',
+          ),
+          title: event.title,
+          body: '일정 시작: ${event.title}',
+          notifyAt: eventReminderNotifyAt,
+          payload: 'event:${event.id}',
+        );
+        _recordAlarmScheduleResult(
+          result,
+          label: 'local_event_reminder',
+          failures: alarmFailures,
+        );
+      }, label: 'local_event_reminder');
     }
     return _PostSaveFollowUpResult(alarmFailures: alarmFailures);
   }
@@ -2063,26 +2616,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    await _tryFollowUp(
-      () async {
-        final result =
-            await widget.notificationService.scheduleCriticalAlarmWithResult(
-          id: widget.notificationService.notificationIdFor(
-            '${event.id}:critical',
-          ),
-          title: event.title,
-          notifyAt: notifyAt,
-          body: '중요 일정이 곧 시작됩니다.',
-          payload: 'event:${event.id}',
-        );
-        _recordAlarmScheduleResult(
-          result,
-          label: 'critical_alarm',
-          failures: alarmFailures,
-        );
-      },
-      label: 'critical_alarm',
-    );
+    await _tryFollowUp(() async {
+      final result =
+          await widget.notificationService.scheduleCriticalAlarmWithResult(
+        id: widget.notificationService.notificationIdFor(
+          '${event.id}:critical',
+        ),
+        title: event.title,
+        notifyAt: notifyAt,
+        body: '중요 일정이 곧 시작됩니다.',
+        payload: 'event:${event.id}',
+      );
+      _recordAlarmScheduleResult(
+        result,
+        label: 'critical_alarm',
+        failures: alarmFailures,
+      );
+    }, label: 'critical_alarm');
   }
 
   void _recordAlarmScheduleResult(
@@ -2370,8 +2920,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           emptyTitle: fallbackEvent.startAt == null
               ? '예정된 일정이 없어요'
               : fallbackEvent.title,
-          nextTravelBufferMinutes:
-              await _resolveTravelBufferMinutesForWidget(nextEvent),
+          nextTravelBufferMinutes: await _resolveTravelBufferMinutesForWidget(
+            nextEvent,
+          ),
         ),
       );
     } catch (e) {
@@ -2531,10 +3082,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _saveTargetTouchedByUser = true;
         });
       },
-      onPickGroups:
-          _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
-      selectedGroupCount:
-          selectedGroups.isEmpty ? 1 : selectedGroups.length,
+      onPickGroups: _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
+      selectedGroupCount: selectedGroups.isEmpty ? 1 : selectedGroups.length,
       totalGroupCount: _allActiveGroups.length,
     );
   }
@@ -2659,8 +3208,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         Card(
                           color: theme.colorScheme.errorContainer,
                           child: const Padding(
-                            padding:
-                                EdgeInsets.all(AppConstants.defaultPadding),
+                            padding: EdgeInsets.all(
+                              AppConstants.defaultPadding,
+                            ),
                             child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                           ),
                         ),
@@ -2761,8 +3311,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         icon: _isSaving
                             ? const SizedBox.square(
                                 dimension: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.save),
                         label: Text(_isSaving ? '저장 중' : '일정 저장'),
@@ -2864,10 +3415,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 }
 
 class _AmbiguousMeridiemClock {
-  const _AmbiguousMeridiemClock({
-    required this.hour,
-    required this.minute,
-  });
+  const _AmbiguousMeridiemClock({required this.hour, required this.minute});
 
   factory _AmbiguousMeridiemClock.fromDateTime(DateTime value) {
     final hour = value.hour == 0

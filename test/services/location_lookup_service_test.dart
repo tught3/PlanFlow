@@ -66,30 +66,32 @@ void main() {
     );
   });
 
-  test('LocationLookupService uses proxy url before client secret headers',
-      () async {
-    final service = LocationLookupService(
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      proxyUrl: 'https://example.supabase.co/functions/v1/naver-geocode',
-      tmapApiKey: '',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        expect(request.url.host, 'example.supabase.co');
-        expect(request.url.queryParameters['query'], 'Seoul Station');
-        expect(request.headers.containsKey('X-NCP-APIGW-API-KEY'), isFalse);
-        return http.Response(
-          '{"addresses":[{"roadAddress":"Seoul Station","x":"126.9707","y":"37.5547"}]}',
-          200,
-        );
-      }),
-    );
+  test(
+    'LocationLookupService uses proxy url before client secret headers',
+    () async {
+      final service = LocationLookupService(
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        proxyUrl: 'https://example.supabase.co/functions/v1/naver-geocode',
+        tmapApiKey: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          expect(request.url.host, 'example.supabase.co');
+          expect(request.url.queryParameters['query'], 'Seoul Station');
+          expect(request.headers.containsKey('X-NCP-APIGW-API-KEY'), isFalse);
+          return http.Response(
+            '{"addresses":[{"roadAddress":"Seoul Station","x":"126.9707","y":"37.5547"}]}',
+            200,
+          );
+        }),
+      );
 
-    final results = await service.search('Seoul Station');
+      final results = await service.search('Seoul Station');
 
-    expect(results, hasLength(1));
-    expect(results.single.latitude, 37.5547);
-  });
+      expect(results, hasLength(1));
+      expect(results.single.latitude, 37.5547);
+    },
+  );
 
   test('LocationLookupService merges TMAP POI results before Naver', () async {
     final hosts = <String>[];
@@ -127,156 +129,163 @@ void main() {
     expect(results.single.longitude, 127.9197);
   });
 
-  test('LocationLookupService ranks branch candidates by current location',
-      () async {
-    final service = LocationLookupService(
-      tmapApiKey: 'tmap-key',
-      clientId: '',
-      clientSecret: '',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        if (request.url.host == 'apis.openapi.sk.com') {
-          return http.Response.bytes(
-            utf8.encode(
-              '{"searchPoiInfo":{"pois":{"poi":['
-              '{"name":"삼성전자서비스 용산센터","upperAddrName":"서울","middleAddrName":"용산구","lowerAddrName":"한강로동","frontLon":"126.9640","frontLat":"37.5298"},'
-              '{"name":"삼성전자서비스 성남센터","upperAddrName":"경기도","middleAddrName":"성남시","lowerAddrName":"수정구","frontLon":"127.1260","frontLat":"37.4200"}'
-              ']}}}',
-            ),
-            200,
-            headers: const <String, String>{
-              'content-type': 'application/json; charset=utf-8',
-            },
-          );
-        }
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
+  test(
+    'LocationLookupService ranks branch candidates by current location',
+    () async {
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: '',
+        clientSecret: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          if (request.url.host == 'apis.openapi.sk.com') {
+            return http.Response.bytes(
+              utf8.encode(
+                '{"searchPoiInfo":{"pois":{"poi":['
+                '{"name":"삼성전자서비스 용산센터","upperAddrName":"서울","middleAddrName":"용산구","lowerAddrName":"한강로동","frontLon":"126.9640","frontLat":"37.5298"},'
+                '{"name":"삼성전자서비스 성남센터","upperAddrName":"경기도","middleAddrName":"성남시","lowerAddrName":"수정구","frontLon":"127.1260","frontLat":"37.4200"}'
+                ']}}}',
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
 
-    final results = await service.search(
-      '삼성서비스센터',
-      origin: const GeoPoint(latitude: 37.4210, longitude: 127.1250),
-    );
+      final results = await service.search(
+        '삼성서비스센터',
+        origin: const GeoPoint(latitude: 37.4210, longitude: 127.1250),
+      );
 
-    expect(results, hasLength(2));
-    expect(results.first.name, '삼성전자서비스 성남센터');
-  });
-
-  test('LocationLookupService preserves explicit region intent over distance',
-      () async {
-    final service = LocationLookupService(
-      tmapApiKey: 'tmap-key',
-      clientId: '',
-      clientSecret: '',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        if (request.url.host == 'apis.openapi.sk.com') {
-          return http.Response.bytes(
-            utf8.encode(
-              '{"searchPoiInfo":{"pois":{"poi":['
-              '{"name":"삼성전자서비스 용산센터","upperAddrName":"서울","middleAddrName":"용산구","lowerAddrName":"한강로동","frontLon":"126.9640","frontLat":"37.5298"},'
-              '{"name":"삼성전자서비스 성남센터","upperAddrName":"경기도","middleAddrName":"성남시","lowerAddrName":"수정구","frontLon":"127.1260","frontLat":"37.4200"}'
-              ']}}}',
-            ),
-            200,
-            headers: const <String, String>{
-              'content-type': 'application/json; charset=utf-8',
-            },
-          );
-        }
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
-
-    final results = await service.search(
-      '용산 삼성서비스센터',
-      origin: const GeoPoint(latitude: 37.4210, longitude: 127.1250),
-    );
-
-    expect(results, hasLength(2));
-    expect(results.first.name, '삼성전자서비스 용산센터');
-  });
-
-  test('LocationLookupService ranks query relevance before provider preference',
-      () async {
-    final service = LocationLookupService(
-      tmapApiKey: 'tmap-key',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      proxyUrl: '',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        if (request.url.host == 'apis.openapi.sk.com') {
-          return http.Response.bytes(
-            utf8.encode(
-              '{"searchPoiInfo":{"pois":{"poi":['
-              '{"name":"해링턴플레이스","upperAddrName":"서울","middleAddrName":"강남구","lowerAddrName":"역삼동","frontLon":"127.0300","frontLat":"37.5000"}'
-              ']}}}',
-            ),
-            200,
-            headers: const <String, String>{
-              'content-type': 'application/json; charset=utf-8',
-            },
-          );
-        }
-        if (request.url.host == 'naveropenapi.apigw.ntruss.com') {
-          return http.Response.bytes(
-            utf8.encode(
-              '{"addresses":[{"roadAddress":"경기 성남시 분당구 대장동 해링턴플레이스","jibunAddress":"경기 성남시 분당구 대장동","x":"127.0700","y":"37.3700"}]}',
-            ),
-            200,
-            headers: const <String, String>{
-              'content-type': 'application/json; charset=utf-8',
-            },
-          );
-        }
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
-
-    final results = await service.search(
-      '대장동 해링턴플레이스',
-      preferredProvider: LocationLookupProvider.tmap,
-    );
-
-    expect(results, hasLength(2));
-    expect(results.first.label, contains('대장동'));
-    expect(results.first.provider, LocationLookupProvider.naver);
-  });
+      expect(results, hasLength(2));
+      expect(results.first.name, '삼성전자서비스 성남센터');
+    },
+  );
 
   test(
-      'LocationLookupService retries local fallback queries when exact search is empty',
-      () async {
-    final requests = <String>[];
-    final service = LocationLookupService(
-      tmapApiKey: '',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        final query = request.url.queryParameters['query'] ??
-            request.url.queryParameters['searchKeyword'] ??
-            '';
-        requests.add('naver:$query');
+    'LocationLookupService preserves explicit region intent over distance',
+    () async {
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: '',
+        clientSecret: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          if (request.url.host == 'apis.openapi.sk.com') {
+            return http.Response.bytes(
+              utf8.encode(
+                '{"searchPoiInfo":{"pois":{"poi":['
+                '{"name":"삼성전자서비스 용산센터","upperAddrName":"서울","middleAddrName":"용산구","lowerAddrName":"한강로동","frontLon":"126.9640","frontLat":"37.5298"},'
+                '{"name":"삼성전자서비스 성남센터","upperAddrName":"경기도","middleAddrName":"성남시","lowerAddrName":"수정구","frontLon":"127.1260","frontLat":"37.4200"}'
+                ']}}}',
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
 
-        if (query == '강남역') {
-          return http.Response(
-            '{"addresses":[{"roadAddress":"Gangnam Station","jibunAddress":"Gangnam","x":"127.001","y":"37.566"}]}',
-            200,
-          );
-        }
+      final results = await service.search(
+        '용산 삼성서비스센터',
+        origin: const GeoPoint(latitude: 37.4210, longitude: 127.1250),
+      );
 
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
+      expect(results, hasLength(2));
+      expect(results.first.name, '삼성전자서비스 용산센터');
+    },
+  );
 
-    final result = await service.search('강남역에서');
+  test(
+    'LocationLookupService ranks query relevance before provider preference',
+    () async {
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        proxyUrl: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          if (request.url.host == 'apis.openapi.sk.com') {
+            return http.Response.bytes(
+              utf8.encode(
+                '{"searchPoiInfo":{"pois":{"poi":['
+                '{"name":"해링턴플레이스","upperAddrName":"서울","middleAddrName":"강남구","lowerAddrName":"역삼동","frontLon":"127.0300","frontLat":"37.5000"}'
+                ']}}}',
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+          if (request.url.host == 'naveropenapi.apigw.ntruss.com') {
+            return http.Response.bytes(
+              utf8.encode(
+                '{"addresses":[{"roadAddress":"경기 성남시 분당구 대장동 해링턴플레이스","jibunAddress":"경기 성남시 분당구 대장동","x":"127.0700","y":"37.3700"}]}',
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
 
-    expect(requests, contains('naver:강남역에서'));
-    expect(requests, contains('naver:강남역'));
-    expect(result, hasLength(1));
-    expect(result.single.name, 'Gangnam Station');
-  });
+      final results = await service.search(
+        '대장동 해링턴플레이스',
+        preferredProvider: LocationLookupProvider.tmap,
+      );
+
+      expect(results, hasLength(2));
+      expect(results.first.label, contains('대장동'));
+      expect(results.first.provider, LocationLookupProvider.naver);
+    },
+  );
+
+  test(
+    'LocationLookupService retries local fallback queries when exact search is empty',
+    () async {
+      final requests = <String>[];
+      final service = LocationLookupService(
+        tmapApiKey: '',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          final query = request.url.queryParameters['query'] ??
+              request.url.queryParameters['searchKeyword'] ??
+              '';
+          requests.add('naver:$query');
+
+          if (query == '강남역') {
+            return http.Response(
+              '{"addresses":[{"roadAddress":"Gangnam Station","jibunAddress":"Gangnam","x":"127.001","y":"37.566"}]}',
+              200,
+            );
+          }
+
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
+
+      final result = await service.search('강남역에서');
+
+      expect(requests, contains('naver:강남역에서'));
+      expect(requests, contains('naver:강남역'));
+      expect(result, hasLength(1));
+      expect(result.single.name, 'Gangnam Station');
+    },
+  );
 
   test('LocationLookupService builds deduped fallback query suggestions', () {
     final service = LocationLookupService(
@@ -290,10 +299,7 @@ void main() {
 
     expect(fallbackQueries, contains('강남역앞'));
     expect(fallbackQueries, contains('앞 강남역'));
-    expect(
-      fallbackQueries,
-      hasLength(fallbackQueries.toSet().length),
-    );
+    expect(fallbackQueries, hasLength(fallbackQueries.toSet().length));
   });
 
   test(
@@ -427,68 +433,72 @@ void main() {
     expect(result.results.single.name, '래온동물병원');
   });
 
-  test('LocationLookupService does not auto-resolve broad medical categories',
-      () async {
-    final requests = <String>[];
-    final service = LocationLookupService(
-      tmapApiKey: 'tmap-key',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        requests.add(request.url.toString());
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
+  test(
+    'LocationLookupService does not auto-resolve broad medical categories',
+    () async {
+      final requests = <String>[];
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          requests.add(request.url.toString());
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
 
-    for (final query in const <String>[
-      '병원',
-      '병원 방문',
-      '병원 미팅',
-      '병원 진료',
-      '치과 예약',
-      '약국 가기',
-    ]) {
-      final result = await service.searchWithFallback(query);
-      expect(result.results, isEmpty, reason: query);
-      expect(result.searchedQueries, isEmpty, reason: query);
-      expect(result.fallbackQueries, isEmpty, reason: query);
-    }
-    expect(requests, isEmpty);
-  });
+      for (final query in const <String>[
+        '병원',
+        '병원 방문',
+        '병원 미팅',
+        '병원 진료',
+        '치과 예약',
+        '약국 가기',
+      ]) {
+        final result = await service.searchWithFallback(query);
+        expect(result.results, isEmpty, reason: query);
+        expect(result.searchedQueries, isEmpty, reason: query);
+        expect(result.fallbackQueries, isEmpty, reason: query);
+      }
+      expect(requests, isEmpty);
+    },
+  );
 
-  test('LocationLookupService still resolves region-qualified hospital queries',
-      () async {
-    final requests = <String>[];
-    final service = LocationLookupService(
-      tmapApiKey: '',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        final query = request.url.queryParameters['query'] ?? '';
-        requests.add(query);
-        if (query == '성남 병원') {
-          return http.Response.bytes(
-            utf8.encode(
-              '{"addresses":[{"roadAddress":"경기도 성남시 병원로 1","x":"127.126","y":"37.42"}]}',
-            ),
-            200,
-            headers: const <String, String>{
-              'content-type': 'application/json; charset=utf-8',
-            },
-          );
-        }
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
+  test(
+    'LocationLookupService still resolves region-qualified hospital queries',
+    () async {
+      final requests = <String>[];
+      final service = LocationLookupService(
+        tmapApiKey: '',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          final query = request.url.queryParameters['query'] ?? '';
+          requests.add(query);
+          if (query == '성남 병원') {
+            return http.Response.bytes(
+              utf8.encode(
+                '{"addresses":[{"roadAddress":"경기도 성남시 병원로 1","x":"127.126","y":"37.42"}]}',
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
 
-    final result = await service.searchWithFallback('성남 병원');
+      final result = await service.searchWithFallback('성남 병원');
 
-    expect(requests, contains('성남 병원'));
-    expect(result.results, hasLength(1));
-    expect(result.results.single.latitude, 37.42);
-  });
+      expect(requests, contains('성남 병원'));
+      expect(result.results, hasLength(1));
+      expect(result.results.single.latitude, 37.42);
+    },
+  );
 
   test('LocationLookupService expands Wonju Christian hospital aliases', () {
     final service = LocationLookupService(
@@ -502,128 +512,134 @@ void main() {
 
     expect(fallbackQueries, contains('원주세브란스기독병원'));
     expect(fallbackQueries, contains('연세대학교 원주세브란스기독병원'));
-    expect(
-      fallbackQueries,
-      hasLength(fallbackQueries.toSet().length),
-    );
-  });
-
-  test('LocationLookupService resolves Wonju Christian alias through fallback',
-      () async {
-    final requests = <String>[];
-    final service = LocationLookupService(
-      tmapApiKey: '',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        final query = request.url.queryParameters['query'] ??
-            request.url.queryParameters['searchKeyword'] ??
-            '';
-        requests.add(query);
-
-        if (query == '원주세브란스기독병원') {
-          return http.Response.bytes(
-            utf8.encode(
-              '{"addresses":[{"roadAddress":"강원특별자치도 원주시 일산로 20","jibunAddress":"강원특별자치도 원주시 일산동 162","x":"127.9458","y":"37.3495"}]}',
-            ),
-            200,
-            headers: const <String, String>{
-              'content-type': 'application/json; charset=utf-8',
-            },
-          );
-        }
-
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
-
-    final result = await service.searchWithFallback('원주기독');
-
-    expect(requests, contains('원주기독'));
-    expect(requests, contains('원주세브란스기독병원'));
-    expect(result.results, hasLength(1));
-    expect(result.results.single.latitude, 37.3495);
-    expect(result.results.single.longitude, 127.9458);
+    expect(fallbackQueries, hasLength(fallbackQueries.toSet().length));
   });
 
   test(
-      'LocationLookupService searchWithFallback exposes metadata for retry suggestions',
-      () async {
-    final service = LocationLookupService(
-      tmapApiKey: '',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        final query = request.url.queryParameters['query'] ??
-            request.url.queryParameters['searchKeyword'] ??
-            '';
-        if (query == '강남역') {
-          return http.Response(
-            '{"addresses":[{"roadAddress":"Gangnam Station","jibunAddress":"Gangnam","x":"127.001","y":"37.566"}]}',
-            200,
-          );
-        }
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
+    'LocationLookupService resolves Wonju Christian alias through fallback',
+    () async {
+      final requests = <String>[];
+      final service = LocationLookupService(
+        tmapApiKey: '',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          final query = request.url.queryParameters['query'] ??
+              request.url.queryParameters['searchKeyword'] ??
+              '';
+          requests.add(query);
 
-    final result = await service.searchWithFallback('강남역에서');
+          if (query == '원주세브란스기독병원') {
+            return http.Response.bytes(
+              utf8.encode(
+                '{"addresses":[{"roadAddress":"강원특별자치도 원주시 일산로 20","jibunAddress":"강원특별자치도 원주시 일산동 162","x":"127.9458","y":"37.3495"}]}',
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
 
-    expect(result.searchedQueries, contains('강남역에서'));
-    expect(result.fallbackQueries, contains('강남역'));
-    expect(result.searchedQueries, contains('강남역'));
-    expect(result.results, hasLength(1));
-  });
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
 
-  test('LocationLookupService returns Korean region hints for simple names',
-      () async {
-    final service = LocationLookupService();
+      final result = await service.searchWithFallback('원주기독');
 
-    final results = await service.search('서울');
-
-    expect(results, hasLength(1));
-    expect(results.single.provider, LocationLookupProvider.manual);
-    expect(results.single.name, '서울');
-    expect(results.single.label, '서울');
-    expect(results.single.latitude, closeTo(37.5665, 0.0001));
-    expect(results.single.longitude, closeTo(126.978, 0.0001));
-  });
+      expect(requests, contains('원주기독'));
+      expect(requests, contains('원주세브란스기독병원'));
+      expect(result.results, hasLength(1));
+      expect(result.results.single.latitude, 37.3495);
+      expect(result.results.single.longitude, 127.9458);
+    },
+  );
 
   test(
-      'LocationLookupService throws auth failure if fallback search still empty',
-      () async {
-    final service = LocationLookupService(
-      tmapApiKey: '',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      googleMapsApiKey: '',
-      httpClientFactory: () => MockClient((request) async {
-        final host = request.url.host;
-        final query = request.url.queryParameters['query'] ??
-            request.url.queryParameters['searchKeyword'] ??
-            '';
-
-        if (host.contains('naveropenapi.apigw.ntruss.com')) {
+    'LocationLookupService searchWithFallback exposes metadata for retry suggestions',
+    () async {
+      final service = LocationLookupService(
+        tmapApiKey: '',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          final query = request.url.queryParameters['query'] ??
+              request.url.queryParameters['searchKeyword'] ??
+              '';
           if (query == '강남역') {
-            return http.Response('unauthorized', 401);
+            return http.Response(
+              '{"addresses":[{"roadAddress":"Gangnam Station","jibunAddress":"Gangnam","x":"127.001","y":"37.566"}]}',
+              200,
+            );
           }
           return http.Response('{"addresses":[]}', 200);
-        }
+        }),
+      );
 
-        return http.Response('{"addresses":[]}', 200);
-      }),
-    );
+      final result = await service.searchWithFallback('강남역에서');
 
-    expect(
-      () => service.search('강남역에서'),
-      throwsA(
-        isA<LocationLookupException>()
-            .having((error) => error.isAuthFailure, 'isAuthFailure', isTrue),
-      ),
-    );
-  });
+      expect(result.searchedQueries, contains('강남역에서'));
+      expect(result.fallbackQueries, contains('강남역'));
+      expect(result.searchedQueries, contains('강남역'));
+      expect(result.results, hasLength(1));
+    },
+  );
+
+  test(
+    'LocationLookupService returns Korean region hints for simple names',
+    () async {
+      final service = LocationLookupService();
+
+      final results = await service.search('서울');
+
+      expect(results, hasLength(1));
+      expect(results.single.provider, LocationLookupProvider.manual);
+      expect(results.single.name, '서울');
+      expect(results.single.label, '서울');
+      expect(results.single.latitude, closeTo(37.5665, 0.0001));
+      expect(results.single.longitude, closeTo(126.978, 0.0001));
+    },
+  );
+
+  test(
+    'LocationLookupService throws auth failure if fallback search still empty',
+    () async {
+      final service = LocationLookupService(
+        tmapApiKey: '',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          final host = request.url.host;
+          final query = request.url.queryParameters['query'] ??
+              request.url.queryParameters['searchKeyword'] ??
+              '';
+
+          if (host.contains('naveropenapi.apigw.ntruss.com')) {
+            if (query == '강남역') {
+              return http.Response('unauthorized', 401);
+            }
+            return http.Response('{"addresses":[]}', 200);
+          }
+
+          return http.Response('{"addresses":[]}', 200);
+        }),
+      );
+
+      expect(
+        () => service.search('강남역에서'),
+        throwsA(
+          isA<LocationLookupException>().having(
+            (error) => error.isAuthFailure,
+            'isAuthFailure',
+            isTrue,
+          ),
+        ),
+      );
+    },
+  );
 
   // ──────────────────────────────────────────────────────────────────────────
   // sortByRelevance — 검색어 유사도 정렬 (순수 함수, API 호출 없음)
@@ -637,6 +653,14 @@ void main() {
         longitude: 0.0,
         provider: LocationLookupProvider.tmap,
       );
+
+  test('labelSimilarity exposes the 51 percent location match boundary', () {
+    final service = LocationLookupService();
+
+    expect(service.labelSimilarity('약재', '왕초약재'), lessThan(0.51));
+    expect(service.labelSimilarity('원주기독', '원주기독병원'), greaterThan(0.51));
+    expect(service.resultLabelSimilarity('강남역', makeResult('강남역')), 1);
+  });
 
   // ──────────────────────────────────────────────────────────────────────────
   // static 캐시 / in-flight 중복제거 / fallback 캡
@@ -664,9 +688,7 @@ void main() {
 
   /// 빈 결과 tmap 응답 픽스처.
   http.Response tmapEmptyResponse() => http.Response.bytes(
-        utf8.encode(
-          '{"searchPoiInfo":{"pois":{"poi":[]}}}',
-        ),
+        utf8.encode('{"searchPoiInfo":{"pois":{"poi":[]}}}'),
         200,
         headers: const <String, String>{
           'content-type': 'application/json; charset=utf-8',
@@ -674,8 +696,7 @@ void main() {
       );
 
   /// 빈 결과 naver/google 응답 픽스처.
-  http.Response emptyResponse() =>
-      http.Response('{"addresses":[]}', 200);
+  http.Response emptyResponse() => http.Response('{"addresses":[]}', 200);
 
   group('캐시 / in-flight 중복제거 / fallback 캡', () {
     setUp(() {
@@ -704,8 +725,11 @@ void main() {
       await service.searchWithFallback('강남역');
       await service.searchWithFallback('강남역'); // 캐시 적중 — HTTP 없어야 함
 
-      expect(tmapCallCount, equals(1),
-          reason: '캐시 적중 시 tmap HTTP는 1회만 호출돼야 한다');
+      expect(
+        tmapCallCount,
+        equals(1),
+        reason: '캐시 적중 시 tmap HTTP는 1회만 호출돼야 한다',
+      );
     });
 
     test('결과 없는(빈) query 2회 → 2회째 tmap 0회(네거티브 캐시)', () async {
@@ -731,10 +755,12 @@ void main() {
 
       await service.searchWithFallback('존재하지않는장소xyz'); // 네거티브 캐시 적중
 
-      expect(countAfterFirst, greaterThan(0),
-          reason: '첫 번째 검색은 tmap을 호출해야 한다');
-      expect(tmapCallCount, equals(countAfterFirst),
-          reason: '두 번째 검색은 네거티브 캐시 적중으로 tmap HTTP를 추가 호출하지 않아야 한다');
+      expect(countAfterFirst, greaterThan(0), reason: '첫 번째 검색은 tmap을 호출해야 한다');
+      expect(
+        tmapCallCount,
+        equals(countAfterFirst),
+        reason: '두 번째 검색은 네거티브 캐시 적중으로 tmap HTTP를 추가 호출하지 않아야 한다',
+      );
     });
 
     test('같은 query 동시(Future.wait) → tmap 1회(in-flight dedup)', () async {
@@ -760,10 +786,16 @@ void main() {
         service.searchWithFallback('강남역'),
       ]);
 
-      expect(tmapCallCount, equals(1),
-          reason: 'in-flight dedup: 동시 동일 쿼리는 tmap을 1회만 호출해야 한다');
-      expect(results[0].results, equals(results[1].results),
-          reason: '두 결과는 동일해야 한다');
+      expect(
+        tmapCallCount,
+        equals(1),
+        reason: 'in-flight dedup: 동시 동일 쿼리는 tmap을 1회만 호출해야 한다',
+      );
+      expect(
+        results[0].results,
+        equals(results[1].results),
+        reason: '두 결과는 동일해야 한다',
+      );
     });
 
     test('fallback 캡: 끝까지 못 찾는 query → tmap 호출 ≤ 6회', () async {
@@ -802,8 +834,12 @@ void main() {
         // fallback 캡(콜 수)만 검증하므로 결과/예외는 무시한다.
       }
 
-      expect(tmapCallCount, lessThanOrEqualTo(6),
-          reason: 'fallback 캡(_maxFallbackQueries=5): 한 검색이 tmap ≤ 1+5 = 6콜이어야 한다');
+      expect(
+        tmapCallCount,
+        lessThanOrEqualTo(6),
+        reason:
+            'fallback 캡(_maxFallbackQueries=5): 한 검색이 tmap ≤ 1+5 = 6콜이어야 한다',
+      );
     });
 
     test('401 응답 → authFailure 있으면 캐싱 안 됨: 다음 검색이 다시 HTTP 시도', () async {
@@ -842,8 +878,11 @@ void main() {
         // 예상된 예외.
       }
 
-      expect(requestCount, greaterThan(requestsAfterFirst),
-          reason: 'authFailure 시 결과가 캐싱되지 않아야 하므로 두 번째 검색도 HTTP를 시도해야 한다');
+      expect(
+        requestCount,
+        greaterThan(requestsAfterFirst),
+        reason: 'authFailure 시 결과가 캐싱되지 않아야 하므로 두 번째 검색도 HTTP를 시도해야 한다',
+      );
     });
   });
 
@@ -866,14 +905,17 @@ void main() {
       final sorted = service.sortByRelevance('수진역', input);
 
       // '수진역' 또는 '수진역 8호선'이 앞쪽에 와야 함
-      final shortIndex = sorted.indexWhere((r) =>
-          r.name == '수진역' || r.name == '수진역 8호선');
-      final longIndex =
-          sorted.indexWhere((r) => r.name == '수진역코아루천년가 정문');
+      final shortIndex = sorted.indexWhere(
+        (r) => r.name == '수진역' || r.name == '수진역 8호선',
+      );
+      final longIndex = sorted.indexWhere((r) => r.name == '수진역코아루천년가 정문');
 
-      expect(shortIndex, lessThan(longIndex),
-          reason: '유사도 높은 결과("수진역" 또는 "수진역 8호선")가 '
-              '"수진역코아루천년가 정문"보다 앞에 위치해야 합니다');
+      expect(
+        shortIndex,
+        lessThan(longIndex),
+        reason: '유사도 높은 결과("수진역" 또는 "수진역 8호선")가 '
+            '"수진역코아루천년가 정문"보다 앞에 위치해야 합니다',
+      );
       // 첫 번째 결과가 '수진역' 또는 '수진역 8호선'이어야 함 (버그 케이스: 1순위가 엉뚱한 결과)
       expect(
         sorted.first.name == '수진역' || sorted.first.name == '수진역 8호선',
@@ -884,8 +926,8 @@ void main() {
 
     test('정확 일치가 접두 일치보다 우선순위가 높다', () {
       final input = [
-        makeResult('수진역사거리'),   // 접두 일치
-        makeResult('수진역'),         // 정확 일치
+        makeResult('수진역사거리'), // 접두 일치
+        makeResult('수진역'), // 정확 일치
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -894,8 +936,8 @@ void main() {
 
     test('접두 일치가 내부 포함보다 우선순위가 높다', () {
       final input = [
-        makeResult('역수진홀'),       // 내부 포함
-        makeResult('수진역사거리'),   // 접두 일치
+        makeResult('역수진홀'), // 내부 포함
+        makeResult('수진역사거리'), // 접두 일치
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -905,8 +947,8 @@ void main() {
     test('교통 키워드(역) 포함 결과에 가산점이 붙는다', () {
       // '수진역' 검색 시 역 이름이 없는 결과보다 역 포함 결과가 앞에 와야 함
       final input = [
-        makeResult('수진 코아루천년가'),   // 역 키워드 없음
-        makeResult('수진역 8호선'),         // 역 키워드 포함
+        makeResult('수진 코아루천년가'), // 역 키워드 없음
+        makeResult('수진역 8호선'), // 역 키워드 포함
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -915,9 +957,9 @@ void main() {
 
     test('이름 길이가 짧을수록(군더더기 적을수록) 더 높은 점수를 받는다', () {
       final input = [
-        makeResult('수진역광장아파트단지'),  // 길이 가장 긺 (접두 일치, extraChars 큼)
-        makeResult('수진역사거리'),            // 중간 (접두 일치, extraChars 작음)
-        makeResult('수진역'),                  // 가장 짧음 (정확 일치)
+        makeResult('수진역광장아파트단지'), // 길이 가장 긺 (접두 일치, extraChars 큼)
+        makeResult('수진역사거리'), // 중간 (접두 일치, extraChars 작음)
+        makeResult('수진역'), // 가장 짧음 (정확 일치)
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -989,8 +1031,8 @@ void main() {
           return http.Response(
             jsonEncode({
               'searchPoiInfo': <String, dynamic>{
-                'pois': <String, dynamic>{'poi': const <dynamic>[]}
-              }
+                'pois': <String, dynamic>{'poi': const <dynamic>[]},
+              },
             }),
             200,
           );
@@ -1003,8 +1045,7 @@ void main() {
       return (client: client, tmapCallCount: () => tmapCalls);
     }
 
-    test('예산 부족 시 fallback 루프가 중단되어 tmap 호출이 예산으로 제한된다',
-        () async {
+    test('예산 부족 시 fallback 루프가 중단되어 tmap 호출이 예산으로 제한된다', () async {
       // rateLimit=2: 원본 쿼리가 1회 소비, fallback 1회 더 가능, 그 다음은
       // remainingBudget=0 으로 중단.
       // 게이트가 없으면 원본 1 + fallback 5 = 6회가 다 호출된다.
@@ -1028,19 +1069,22 @@ void main() {
 
       // 핵심 단언: tmap HTTP 호출은 정확히 2회여야 한다 (원본 1 + fallback 1).
       // 6회가 됐다면 게이트가 동작하지 않은 것 (폭주 회귀).
-      expect(mock.tmapCallCount(), 2,
-          reason:
-              'rateLimit=2일 때 원본(1) + fallback(1) = 2회에서 예산 게이트가 '
-              '중단시켜야 함. 6회면 게이트 미동작(폭주 회귀).');
+      expect(
+        mock.tmapCallCount(),
+        2,
+        reason: 'rateLimit=2일 때 원본(1) + fallback(1) = 2회에서 예산 게이트가 '
+            '중단시켜야 함. 6회면 게이트 미동작(폭주 회귀).',
+      );
       expect(await guard.remainingBudget(ApiName.tmapPoi), 0);
     });
 
-    test('예산이 충분하면 fallback 게이트가 정상 동작을 막지 않는다 (회귀 없음)',
-        () async {
+    test('예산이 충분하면 fallback 게이트가 정상 동작을 막지 않는다 (회귀 없음)', () async {
       final guard = ApiUsageGuard(
         configs: {
-          ApiName.tmapPoi:
-              const ApiRateConfig(windowSeconds: 60, rateLimit: 100),
+          ApiName.tmapPoi: const ApiRateConfig(
+            windowSeconds: 60,
+            rateLimit: 100,
+          ),
         },
       );
       final mock = emptyResultsClient();
@@ -1058,19 +1102,23 @@ void main() {
 
       // maxTmapCallsPerSearch(=6)회로 정상 동작 — 게이트가 예산을 쓸데없이
       // 조이지 않는다.
-      expect(mock.tmapCallCount(), LocationLookupService.maxTmapCallsPerSearch,
-          reason: '예산 충분 시 원본+fallback 전부 시도 = 6회여야 함');
+      expect(
+        mock.tmapCallCount(),
+        LocationLookupService.maxTmapCallsPerSearch,
+        reason: '예산 충분 시 원본+fallback 전부 시도 = 6회여야 함',
+      );
     });
 
-    test('이미 예산이 고갈된 상태면 원본 쿼리 tmap 호출 1회로만 끝난다',
-        () async {
+    test('이미 예산이 고갈된 상태면 원본 쿼리 tmap 호출 1회로만 끝난다', () async {
       // home_screen 게이트가 패스를 중단한 뒤, 남은 예산 1로 사용자가 직접
       // 검색하는 상황. search()는 원본 1회만 tmap을 쓰고 fallback은 예산 0으로
       // 즉시 중단한다.
       final guard = ApiUsageGuard(
         configs: {
-          ApiName.tmapPoi:
-              const ApiRateConfig(windowSeconds: 60, rateLimit: 60),
+          ApiName.tmapPoi: const ApiRateConfig(
+            windowSeconds: 60,
+            rateLimit: 60,
+          ),
         },
       );
       for (var i = 0; i < 59; i++) {
@@ -1091,9 +1139,12 @@ void main() {
 
       await service.search('성남 래온동물병원');
 
-      expect(mock.tmapCallCount(), 1,
-          reason: '예산 1 남은 상태에선 원본 쿼리만 tmap 1회 호출하고 '
-              'fallback은 예산 게이트로 즉시 중단해야 함');
+      expect(
+        mock.tmapCallCount(),
+        1,
+        reason: '예산 1 남은 상태에선 원본 쿼리만 tmap 1회 호출하고 '
+            'fallback은 예산 게이트로 즉시 중단해야 함',
+      );
     });
   });
 }

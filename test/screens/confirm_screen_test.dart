@@ -39,58 +39,60 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen schedules critical alarm when important is enabled',
-      (tester) async {
-    final backend = _FakeConfirmBackend();
-    final notifications = _FakeNotificationService();
-    final repository = _FakeEventRepository();
+    'ConfirmScreen schedules critical alarm when important is enabled',
+    (tester) async {
+      final backend = _FakeConfirmBackend();
+      final notifications = _FakeNotificationService();
+      final repository = _FakeEventRepository();
 
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            isCritical: true,
-            startAt: DateTime.now().add(const Duration(hours: 2)),
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(
+              isCritical: true,
+              startAt: DateTime.now().add(const Duration(hours: 2)),
+            ),
+            backend: backend,
+            eventRepository: repository,
+            notificationService: notifications,
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
           ),
-          backend: backend,
-          eventRepository: repository,
-          notificationService: notifications,
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    for (var i = 0;
-        i < 30 &&
-            (notifications.criticalAlarmTitles.isEmpty ||
-                backend.reminderPayloads
-                    .where((row) => row['type'] == 'system_alarm')
-                    .isEmpty);
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      for (var i = 0;
+          i < 30 &&
+              (notifications.criticalAlarmTitles.isEmpty ||
+                  backend.reminderPayloads
+                      .where((row) => row['type'] == 'system_alarm')
+                      .isEmpty);
+          i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
-    expect(repository.createdEvents, hasLength(1));
-    expect(
-      backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
-      hasLength(1),
-    );
-    expect(notifications.criticalAlarmTitles, contains('성남 출발'));
-    expect(
-      notifications.criticalAlarmNotifyAts.single.difference(
-        repository.createdEvents.single.startAt!,
-      ),
-      Duration.zero,
-    );
-  });
+      expect(repository.createdEvents, hasLength(1));
+      expect(
+        backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
+        hasLength(1),
+      );
+      expect(notifications.criticalAlarmTitles, contains('성남 출발'));
+      expect(
+        notifications.criticalAlarmNotifyAts.single.difference(
+          repository.createdEvents.single.startAt!,
+        ),
+        Duration.zero,
+      );
+    },
+  );
 
-  testWidgets('ConfirmScreen surfaces local reminder scheduling failures',
-      (tester) async {
+  testWidgets('ConfirmScreen surfaces local reminder scheduling failures', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final notifyAt = DateTime.now().add(const Duration(hours: 2));
     final notifications = _FakeNotificationService(
@@ -130,14 +132,12 @@ void main() {
 
     expect(repository.createdEvents, hasLength(1));
     expect(notifications.eventReminderTitles, contains('성남 출발'));
-    expect(
-      find.text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.'),
-      findsOneWidget,
-    );
+    expect(find.text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.'), findsOneWidget);
   });
 
-  testWidgets('ConfirmScreen preserves parsed recurrence when saving',
-      (tester) async {
+  testWidgets('ConfirmScreen preserves parsed recurrence when saving', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -171,8 +171,9 @@ void main() {
     );
   });
 
-  testWidgets('ConfirmScreen save leaves voice stack for calendar tab',
-      (tester) async {
+  testWidgets('ConfirmScreen save leaves voice stack for calendar tab', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -204,32 +205,35 @@ void main() {
     expect(find.text('음성 입력'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen shows login guidance when save session is missing',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _ThrowingEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+  testWidgets(
+    'ConfirmScreen shows login guidance when save session is missing',
+    (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _ThrowingEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    await tester.pump(const Duration(milliseconds: 200));
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('로그인 상태를 다시 확인해 주세요.'), findsOneWidget);
-  });
+      expect(find.text('로그인 상태를 다시 확인해 주세요.'), findsOneWidget);
+    },
+  );
 
-  testWidgets('ConfirmScreen warns before saving overlapping events',
-      (tester) async {
+  testWidgets('ConfirmScreen warns before saving overlapping events', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final existingStart = DateTime.now().add(const Duration(hours: 3));
     repository.createdEvents.add(
@@ -278,44 +282,50 @@ void main() {
     expect(find.text('일정이 겹쳐요'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen opens location picker even when location is empty',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(location: ''),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+  testWidgets(
+    'ConfirmScreen opens location picker even when location is empty',
+    (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(location: ''),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _FakeEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
-    await tester.tap(find.byTooltip('지도에서 위치 선택'));
-    await tester.pump(const Duration(milliseconds: 500));
-    if (find.text('위치 권한이 필요해요').evaluate().isNotEmpty) {
-      await tester.tap(find.text('계속 선택'));
+      await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
+      await tester.tap(find.byTooltip('지도에서 위치 선택'));
       await tester.pump(const Duration(milliseconds: 500));
-    }
-    for (var i = 0;
-        i < 20 && find.text('지도에서 장소 선택').evaluate().isEmpty;
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+      if (find.text('위치 권한이 필요해요').evaluate().isNotEmpty) {
+        await tester.tap(find.text('계속 선택'));
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      for (var i = 0;
+          i < 20 && find.text('지도에서 장소 선택').evaluate().isEmpty;
+          i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
-    expect(find.text('지도에서 장소 선택'), findsOneWidget);
-    expect(find.byKey(const ValueKey('location-search-field')), findsOneWidget);
-    expect(find.text('검색'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 5));
-  });
+      expect(find.text('지도에서 장소 선택'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('location-search-field')),
+        findsOneWidget,
+      );
+      expect(find.text('검색'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+    },
+  );
 
-  testWidgets('ConfirmScreen auto-resolves parsed voice location coordinates',
-      (tester) async {
+  testWidgets('ConfirmScreen auto-resolves parsed voice location coordinates', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -365,8 +375,9 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
-  testWidgets('ConfirmScreen keeps empty details section collapsed',
-      (tester) async {
+  testWidgets('ConfirmScreen keeps empty details section collapsed', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
@@ -386,8 +397,9 @@ void main() {
     expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen keeps details collapsed for memo-only parses',
-      (tester) async {
+  testWidgets('ConfirmScreen keeps details collapsed for memo-only parses', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
@@ -412,8 +424,9 @@ void main() {
     expect(find.text('AI가 만든 설명'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen waits for location coordinates before saving',
-      (tester) async {
+  testWidgets('ConfirmScreen waits for location coordinates before saving', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final lookup = _DelayedSingleLocationLookupService();
 
@@ -451,8 +464,112 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
-  testWidgets('ConfirmScreen does not auto-resolve personal place aliases',
-      (tester) async {
+  testWidgets('ConfirmScreen asks user to choose ambiguous voice locations', (
+    tester,
+  ) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '약재과 가서 말하기',
+            location: '약재과',
+            rawText: '약재과 가서 말하기',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _HerbLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    for (var i = 0;
+        i < 20 && find.text('장소 후보를 선택해 주세요').evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('장소 후보를 선택해 주세요'), findsOneWidget);
+    expect(find.textContaining('추천'), findsOneWidget);
+    expect(find.text('약재과'), findsWidgets);
+    expect(find.text('왕초약재'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('voice-location-none')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(saved.title, '약재과 가서 말하기');
+    expect(saved.location, isNull);
+    expect(saved.locationLat, isNull);
+    expect(saved.locationLng, isNull);
+  });
+
+  testWidgets('ConfirmScreen ranks similar recent locations above new lookup', (
+    tester,
+  ) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '약재과 가서 말하기',
+            location: '약재과',
+            rawText: '약재과 가서 말하기',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(
+            recentLocations: const <String>['약재과 본관'],
+          ),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _HerbLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    for (var i = 0;
+        i < 20 && find.text('장소 후보를 선택해 주세요').evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // 개선된 UI: 즉시 선택 기능 유지(onTap으로 바로 선택)
+    // 스크롤하여 항목을 보이게 한 뒤 tap
+    final candidate0Finder = find.byKey(const ValueKey('voice-location-candidate-0'));
+    await tester.ensureVisible(candidate0Finder);
+    await tester.pumpAndSettle();
+    await tester.tap(candidate0Finder);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(repository.createdEvents.single.location, '약재과 본관');
+  });
+
+  testWidgets('ConfirmScreen does not auto-resolve personal place aliases', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -477,10 +594,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final locationField = _textFieldWithLabel('장소');
-    expect(
-      tester.widget<TextFormField>(locationField).controller?.text,
-      '원주집',
-    );
+    expect(tester.widget<TextFormField>(locationField).controller?.text, '원주집');
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
@@ -493,48 +607,47 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
-      (tester) async {
-    final parseCompleter = Completer<Map<String, dynamic>>();
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            title: '초기 제목',
-            location: '',
-            memo: null,
-            rawText: '내일 오전 9시에 대전출발',
-          )
-            ..['parse_pending'] = true
-            ..['manual_text_confirmed'] = true,
-          gptService: _DeferredGptService(parseCompleter.future),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
+    'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
+    (tester) async {
+      final parseCompleter = Completer<Map<String, dynamic>>();
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(
+              title: '초기 제목',
+              location: '',
+              memo: null,
+              rawText: '내일 오전 9시에 대전출발',
+            )
+              ..['parse_pending'] = true
+              ..['manual_text_confirmed'] = true,
+            gptService: _DeferredGptService(parseCompleter.future),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _FakeEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.pump();
+      await tester.pump();
 
-    await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.tap(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 250));
+      await tester.ensureVisible(find.text('설명 · 준비물'));
+      await tester.tap(find.text('설명 · 준비물'));
+      await tester.pump(const Duration(milliseconds: 250));
 
-    final titleField = _textFieldWithLabel('제목');
-    final locationField = _textFieldWithLabel('장소');
-    final memoField = _textFieldWithLabel('설명');
+      final titleField = _textFieldWithLabel('제목');
+      final locationField = _textFieldWithLabel('장소');
+      final memoField = _textFieldWithLabel('설명');
 
-    expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
+      expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
 
-    await tester.enterText(titleField, '사용자 제목');
-    await tester.enterText(memoField, '사용자 메모');
-    await tester.pump();
+      await tester.enterText(titleField, '사용자 제목');
+      await tester.enterText(memoField, '사용자 메모');
+      await tester.pump();
 
-    parseCompleter.complete(
-      <String, dynamic>{
+      parseCompleter.complete(<String, dynamic>{
         'title': 'AI 제목',
         'location': 'AI 장소',
         'memo': 'AI 메모',
@@ -544,20 +657,29 @@ void main() {
         'is_critical': false,
         'pre_actions': <Map<String, dynamic>>[],
         'parse_failed': false,
-      },
-    );
-    await tester.pump(const Duration(milliseconds: 200));
+      });
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(tester.widget<TextFormField>(titleField).controller?.text, '사용자 제목');
-    expect(
-        tester.widget<TextFormField>(locationField).controller?.text, 'AI 장소');
-    expect(tester.widget<TextFormField>(memoField).controller?.text, '사용자 메모');
-    expect(find.text('AI 제목'), findsNothing);
-    expect(find.text('AI 메모'), findsNothing);
-  });
+      expect(
+        tester.widget<TextFormField>(titleField).controller?.text,
+        '사용자 제목',
+      );
+      expect(
+        tester.widget<TextFormField>(locationField).controller?.text,
+        'AI 장소',
+      );
+      expect(
+        tester.widget<TextFormField>(memoField).controller?.text,
+        '사용자 메모',
+      );
+      expect(find.text('AI 제목'), findsNothing);
+      expect(find.text('AI 메모'), findsNothing);
+    },
+  );
 
-  testWidgets('ConfirmScreen stores Korean wall time as UTC once',
-      (tester) async {
+  testWidgets('ConfirmScreen stores Korean wall time as UTC once', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     // 과거 날짜는 _safeStartAt이 now()로 보정하므로(1일 이상 과거면 클램프),
     // 캘린더가 지나도 깨지지 않도록 항상 미래인 내년 날짜를 쓴다.
@@ -593,8 +715,9 @@ void main() {
     expect(saved.isMultiDay, isTrue);
   });
 
-  testWidgets('ConfirmScreen lets users choose PM for ambiguous evening time',
-      (tester) async {
+  testWidgets('ConfirmScreen lets users choose PM for ambiguous evening time', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final start = DateTime(2030, 6, 13, 7, 40);
 
@@ -634,15 +757,14 @@ void main() {
     expect(planflowLocal(saved.startAt!), DateTime(2030, 6, 13, 19, 40));
   });
 
-  testWidgets('ConfirmScreen shows supplies as compact editable rows',
-      (tester) async {
+  testWidgets('ConfirmScreen shows supplies as compact editable rows', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            supplies: const <String>['물', '충전기'],
-          ),
+          parsedSchedule: _parsedSchedule(supplies: const <String>['물', '충전기']),
           backend: _FakeConfirmBackend(),
           eventRepository: _FakeEventRepository(),
           notificationService: _FakeNotificationService(),
@@ -666,490 +788,497 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen saves both personal and group event when 개인 + 그룹 is selected',
-      (tester) async {
-    final contextProvider = GroupContextProvider(
-      repository: _FakeGroupRepository(
-        groups: <GroupModel>[
-          GroupModel(
-            id: 'group-1',
-            createdBy: 'leader-1',
-            name: '우리 팀',
-            createdAt: DateTime.utc(2026, 6, 11),
-          ),
-        ],
-        membersByGroupId: <String, List<GroupMemberModel>>{
-          'group-1': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-1',
-              groupId: 'group-1',
-              userId: 'user-1',
-              role: 'member',
+    'ConfirmScreen saves both personal and group event when 개인 + 그룹 is selected',
+    (tester) async {
+      final contextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'leader-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
             ),
           ],
-        },
-      ),
-    );
-    final repository = _FakeEventRepository();
-    final groupEventRepository = _FakeGroupEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: repository,
-          groupContextProvider: contextProvider,
-          groupEventRepository: groupEventRepository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      final repository = _FakeEventRepository();
+      final groupEventRepository = _FakeGroupEventRepository();
 
-    expect(find.text('저장 범위'), findsOneWidget);
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: repository,
+            groupContextProvider: contextProvider,
+            groupEventRepository: groupEventRepository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('개인 + 우리 팀'));
-    await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('저장 범위'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    for (var i = 0;
-        i < 30 &&
-            (repository.createdEvents.isEmpty ||
-                groupEventRepository.createdEvents.isEmpty);
-        i += 1) {
+      await tester.tap(find.text('개인 + 우리 팀'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      for (var i = 0;
+          i < 30 &&
+              (repository.createdEvents.isEmpty ||
+                  groupEventRepository.createdEvents.isEmpty);
+          i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(repository.createdEvents, hasLength(1));
+      expect(groupEventRepository.createdEvents, hasLength(1));
+      expect(
+        groupEventRepository.createdEvents.single.personalEventId,
+        repository.createdEvents.single.id,
+      );
+    },
+  );
+
+  testWidgets(
+    'ConfirmScreen saves only a group event when 그룹만 is selected (no personal copy)',
+    (tester) async {
+      final contextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'leader-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
+            ),
+          ],
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
+        ),
+      );
+      final repository = _FakeEventRepository();
+      final groupEventRepository = _FakeGroupEventRepository();
+
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: repository,
+            groupContextProvider: contextProvider,
+            groupEventRepository: groupEventRepository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('저장 범위'), findsOneWidget);
+
+      await tester.tap(find.text('우리 팀만'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      for (var i = 0;
+          i < 30 && groupEventRepository.createdEvents.isEmpty;
+          i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       await tester.pump(const Duration(milliseconds: 100));
-    }
 
-    expect(repository.createdEvents, hasLength(1));
-    expect(groupEventRepository.createdEvents, hasLength(1));
-    expect(
-      groupEventRepository.createdEvents.single.personalEventId,
-      repository.createdEvents.single.id,
-    );
-  });
+      // 개인 일정 사본은 생성되지 않고, 그룹 일정만 생성되며 연결된 개인
+      // 일정이 없으므로 personalEventId는 null이어야 한다.
+      expect(repository.createdEvents, isEmpty);
+      expect(groupEventRepository.createdEvents, hasLength(1));
+      expect(groupEventRepository.createdEvents.single.personalEventId, isNull);
+
+      // 개인 저장이 없을 때는 평소(억제되는) 성공 메시지 대신 그룹 공유
+      // 안내 메시지가 대체로 표시되어야 한다(사용자 피드백 유지).
+      expect(find.text('그룹에 일정을 공유했어요.'), findsOneWidget);
+    },
+  );
 
   testWidgets(
-      'ConfirmScreen saves only a group event when 그룹만 is selected (no personal copy)',
-      (tester) async {
-    final contextProvider = GroupContextProvider(
-      repository: _FakeGroupRepository(
-        groups: <GroupModel>[
-          GroupModel(
-            id: 'group-1',
-            createdBy: 'leader-1',
-            name: '우리 팀',
-            createdAt: DateTime.utc(2026, 6, 11),
+    'ConfirmScreen without a selected group hides save-scope card and saves personal only',
+    (tester) async {
+      final repository = _FakeEventRepository();
+
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: repository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
           ),
-        ],
-        membersByGroupId: <String, List<GroupMemberModel>>{
-          'group-1': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-1',
-              groupId: 'group-1',
-              userId: 'user-1',
-              role: 'member',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('저장 범위'), findsNothing);
+
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(repository.createdEvents, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'ConfirmScreen asks a group leader to share before saving and persists the choice with 다시 보지 않기',
+    (tester) async {
+      final contextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'user-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
             ),
           ],
-        },
-      ),
-    );
-    final repository = _FakeEventRepository();
-    final groupEventRepository = _FakeGroupEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: repository,
-          groupContextProvider: contextProvider,
-          groupEventRepository: groupEventRepository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      final repository = _FakeEventRepository();
+      final groupEventRepository = _FakeGroupEventRepository();
 
-    expect(find.text('저장 범위'), findsOneWidget);
-
-    await tester.tap(find.text('우리 팀만'));
-    await tester.pump(const Duration(milliseconds: 200));
-
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    for (var i = 0;
-        i < 30 && groupEventRepository.createdEvents.isEmpty;
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    await tester.pump(const Duration(milliseconds: 100));
-
-    // 개인 일정 사본은 생성되지 않고, 그룹 일정만 생성되며 연결된 개인
-    // 일정이 없으므로 personalEventId는 null이어야 한다.
-    expect(repository.createdEvents, isEmpty);
-    expect(groupEventRepository.createdEvents, hasLength(1));
-    expect(groupEventRepository.createdEvents.single.personalEventId, isNull);
-
-    // 개인 저장이 없을 때는 평소(억제되는) 성공 메시지 대신 그룹 공유
-    // 안내 메시지가 대체로 표시되어야 한다(사용자 피드백 유지).
-    expect(find.text('그룹에 일정을 공유했어요.'), findsOneWidget);
-  });
-
-  testWidgets(
-      'ConfirmScreen without a selected group hides save-scope card and saves personal only',
-      (tester) async {
-    final repository = _FakeEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: repository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('저장 범위'), findsNothing);
-
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(repository.createdEvents, hasLength(1));
-  });
-
-  testWidgets(
-      'ConfirmScreen asks a group leader to share before saving and persists the choice with 다시 보지 않기',
-      (tester) async {
-    final contextProvider = GroupContextProvider(
-      repository: _FakeGroupRepository(
-        groups: <GroupModel>[
-          GroupModel(
-            id: 'group-1',
-            createdBy: 'user-1',
-            name: '우리 팀',
-            createdAt: DateTime.utc(2026, 6, 11),
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: repository,
+            groupContextProvider: contextProvider,
+            groupEventRepository: groupEventRepository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
           ),
-        ],
-        membersByGroupId: <String, List<GroupMemberModel>>{
-          'group-1': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-1',
-              groupId: 'group-1',
-              userId: 'user-1',
-              role: 'leader',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('그룹에 일정을 공유할까요?'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('leader-share-dialog-dont-ask-again')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('leader-share-accept-button')),
+      );
+      await tester.pumpAndSettle();
+
+      for (var i = 0;
+          i < 30 &&
+              (repository.createdEvents.isEmpty ||
+                  groupEventRepository.createdEvents.isEmpty);
+          i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(repository.createdEvents, hasLength(1));
+      expect(groupEventRepository.createdEvents, hasLength(1));
+
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getBool('planflow:group_auto_share:v1:user-1:group-1'),
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'ConfirmScreen does not ask again once the leader has already decided',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'planflow:group_auto_share:v1:user-1:group-1': true,
+      });
+      final contextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'user-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
             ),
           ],
-        },
-      ),
-    );
-    final repository = _FakeEventRepository();
-    final groupEventRepository = _FakeGroupEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: repository,
-          groupContextProvider: contextProvider,
-          groupEventRepository: groupEventRepository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      final repository = _FakeEventRepository();
+      final groupEventRepository = _FakeGroupEventRepository();
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: repository,
+            groupContextProvider: contextProvider,
+            groupEventRepository: groupEventRepository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('그룹에 일정을 공유할까요?'), findsOneWidget);
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey('leader-share-dialog-dont-ask-again')),
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('leader-share-accept-button')));
-    await tester.pumpAndSettle();
+      expect(find.text('그룹에 일정을 공유할까요?'), findsNothing);
 
-    for (var i = 0;
-        i < 30 &&
-            (repository.createdEvents.isEmpty ||
-                groupEventRepository.createdEvents.isEmpty);
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+      for (var i = 0;
+          i < 30 &&
+              (repository.createdEvents.isEmpty ||
+                  groupEventRepository.createdEvents.isEmpty);
+          i += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
-    expect(repository.createdEvents, hasLength(1));
-    expect(groupEventRepository.createdEvents, hasLength(1));
-
-    final preferences = await SharedPreferences.getInstance();
-    expect(
-      preferences.getBool('planflow:group_auto_share:v1:user-1:group-1'),
-      isTrue,
-    );
-  });
+      expect(repository.createdEvents, hasLength(1));
+      expect(groupEventRepository.createdEvents, hasLength(1));
+    },
+  );
 
   testWidgets(
-      'ConfirmScreen does not ask again once the leader has already decided',
-      (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      'planflow:group_auto_share:v1:user-1:group-1': true,
-    });
-    final contextProvider = GroupContextProvider(
-      repository: _FakeGroupRepository(
-        groups: <GroupModel>[
-          GroupModel(
-            id: 'group-1',
-            createdBy: 'user-1',
-            name: '우리 팀',
-            createdAt: DateTime.utc(2026, 6, 11),
-          ),
-        ],
-        membersByGroupId: <String, List<GroupMemberModel>>{
-          'group-1': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-1',
-              groupId: 'group-1',
-              userId: 'user-1',
-              role: 'leader',
+    'ConfirmScreen defaults the group picker to the most recently shared groups',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'planflow:group_last_shared_ids:v1:user-1': <String>['group-2'],
+      });
+      final contextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'user-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
+            ),
+            GroupModel(
+              id: 'group-2',
+              createdBy: 'leader-2',
+              name: '동아리',
+              createdAt: DateTime.utc(2026, 6, 12),
             ),
           ],
-        },
-      ),
-    );
-    final repository = _FakeEventRepository();
-    final groupEventRepository = _FakeGroupEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: repository,
-          groupContextProvider: contextProvider,
-          groupEventRepository: groupEventRepository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+            'group-2': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-2',
+                groupId: 'group-2',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _FakeEventRepository(),
+            groupContextProvider: contextProvider,
+            groupEventRepository: _FakeGroupEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('그룹에 일정을 공유할까요?'), findsNothing);
-
-    for (var i = 0;
-        i < 30 &&
-            (repository.createdEvents.isEmpty ||
-                groupEventRepository.createdEvents.isEmpty);
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(repository.createdEvents, hasLength(1));
-    expect(groupEventRepository.createdEvents, hasLength(1));
-  });
+      // provider.selectedGroup 기본값(리더 그룹인 group-1)이 아니라, 마지막으로
+      // 공유했던 group-2가 저장 범위 카드에 반영돼야 한다.
+      expect(find.text('개인 + 동아리'), findsOneWidget);
+      expect(find.text('개인 + 우리 팀'), findsNothing);
+    },
+  );
 
   testWidgets(
-      'ConfirmScreen defaults the group picker to the most recently shared groups',
-      (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      'planflow:group_last_shared_ids:v1:user-1': <String>['group-2'],
-    });
-    final contextProvider = GroupContextProvider(
-      repository: _FakeGroupRepository(
-        groups: <GroupModel>[
-          GroupModel(
-            id: 'group-1',
-            createdBy: 'user-1',
-            name: '우리 팀',
-            createdAt: DateTime.utc(2026, 6, 11),
-          ),
-          GroupModel(
-            id: 'group-2',
-            createdBy: 'leader-2',
-            name: '동아리',
-            createdAt: DateTime.utc(2026, 6, 12),
-          ),
-        ],
-        membersByGroupId: <String, List<GroupMemberModel>>{
-          'group-1': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-1',
-              groupId: 'group-1',
-              userId: 'user-1',
-              role: 'leader',
+    'ConfirmScreen saves both personal and group event when 개인 + 그룹 is selected',
+    (tester) async {
+      final contextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'leader-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
             ),
           ],
-          'group-2': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-2',
-              groupId: 'group-2',
-              userId: 'user-1',
-              role: 'member',
-            ),
-          ],
-        },
-      ),
-    );
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          groupContextProvider: contextProvider,
-          groupEventRepository: _FakeGroupEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      final eventRepository = _FakeEventRepository();
+      final groupEventRepository = _FakeGroupEventRepository();
 
-    // provider.selectedGroup 기본값(리더 그룹인 group-1)이 아니라, 마지막으로
-    // 공유했던 group-2가 저장 범위 카드에 반영돼야 한다.
-    expect(find.text('개인 + 동아리'), findsOneWidget);
-    expect(find.text('개인 + 우리 팀'), findsNothing);
-  });
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: eventRepository,
+            groupContextProvider: contextProvider,
+            groupEventRepository: groupEventRepository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('저장 범위'), findsOneWidget);
+
+      await tester.tap(find.text('개인 + 우리 팀'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(eventRepository.createdEvents, hasLength(1));
+      expect(groupEventRepository.createdEvents, hasLength(1));
+      expect(
+        groupEventRepository.createdEvents.single.personalEventId,
+        eventRepository.createdEvents.single.id,
+      );
+    },
+  );
 
   testWidgets(
-      'ConfirmScreen saves both personal and group event when 개인 + 그룹 is selected',
-      (tester) async {
-    final contextProvider = GroupContextProvider(
-      repository: _FakeGroupRepository(
-        groups: <GroupModel>[
-          GroupModel(
-            id: 'group-1',
-            createdBy: 'leader-1',
-            name: '우리 팀',
-            createdAt: DateTime.utc(2026, 6, 11),
+    'ConfirmScreen without a selected group hides save-scope card and saves personal only',
+    (tester) async {
+      final eventRepository = _FakeEventRepository();
+
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: eventRepository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
           ),
-        ],
-        membersByGroupId: <String, List<GroupMemberModel>>{
-          'group-1': <GroupMemberModel>[
-            GroupMemberModel(
-              id: 'member-1',
-              groupId: 'group-1',
-              userId: 'user-1',
-              role: 'member',
-            ),
-          ],
-        },
-      ),
-    );
-    final eventRepository = _FakeEventRepository();
-    final groupEventRepository = _FakeGroupEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: eventRepository,
-          groupContextProvider: contextProvider,
-          groupEventRepository: groupEventRepository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('저장 범위'), findsOneWidget);
+      expect(find.text('저장 범위'), findsNothing);
 
-    await tester.tap(find.text('개인 + 우리 팀'));
-    await tester.pump(const Duration(milliseconds: 200));
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(eventRepository.createdEvents, hasLength(1));
-    expect(groupEventRepository.createdEvents, hasLength(1));
-    expect(
-      groupEventRepository.createdEvents.single.personalEventId,
-      eventRepository.createdEvents.single.id,
-    );
-  });
-
-  testWidgets(
-      'ConfirmScreen without a selected group hides save-scope card and saves personal only',
-      (tester) async {
-    final eventRepository = _FakeEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: eventRepository,
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('저장 범위'), findsNothing);
-
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(eventRepository.createdEvents, hasLength(1));
-  });
+      expect(eventRepository.createdEvents, hasLength(1));
+    },
+  );
 }
 
 Widget _testApp(Widget child) {
   final router = GoRouter(
     initialLocation: AppRoutes.confirm,
     routes: [
-      GoRoute(
-        path: AppRoutes.confirm,
-        builder: (_, __) => child,
-      ),
+      GoRoute(path: AppRoutes.confirm, builder: (_, __) => child),
       GoRoute(
         path: AppRoutes.home,
         builder: (_, __) => const Scaffold(body: Text('홈')),
@@ -1189,10 +1318,7 @@ Widget _voiceStackTestApp(Widget confirmScreen) {
           ),
         ),
       ),
-      GoRoute(
-        path: AppRoutes.confirm,
-        builder: (_, __) => confirmScreen,
-      ),
+      GoRoute(path: AppRoutes.confirm, builder: (_, __) => confirmScreen),
       GoRoute(
         path: AppRoutes.calendar,
         builder: (_, __) => const Scaffold(body: Text('일정')),
@@ -1313,7 +1439,28 @@ class _RestaurantLocationLookupService extends LocationLookupService {
   }
 }
 
+class _HerbLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
+  }) async {
+    return const <LocationLookupResult>[
+      LocationLookupResult(
+        name: '왕초약재',
+        address: '강원특별자치도 원주시 어느길 2',
+        latitude: 37.3,
+        longitude: 127.9,
+      ),
+    ];
+  }
+}
+
 class _FakeConfirmBackend extends ConfirmScreenBackend {
+  _FakeConfirmBackend({this.recentLocations = const <String>[]});
+
+  final List<String> recentLocations;
   final reminderPayloads = <Map<String, dynamic>>[];
 
   @override
@@ -1322,6 +1469,11 @@ class _FakeConfirmBackend extends ConfirmScreenBackend {
     required String location,
   }) async {
     return const <String>[];
+  }
+
+  @override
+  Future<List<String>> fetchRecentLocations({required String userId}) async {
+    return recentLocations;
   }
 
   @override
@@ -1402,10 +1554,7 @@ class _FakeEventRepository extends EventRepository {
 }
 
 class _FakeGroupRepository extends GroupRepository {
-  _FakeGroupRepository({
-    required this.groups,
-    required this.membersByGroupId,
-  });
+  _FakeGroupRepository({required this.groups, required this.membersByGroupId});
 
   final List<GroupModel> groups;
   final Map<String, List<GroupMemberModel>> membersByGroupId;
@@ -1463,9 +1612,7 @@ class _FakeGroupEventRepository extends GroupEventRepository {
 
   @override
   Future<GroupEventModel> createGroupEvent(GroupEventModel event) async {
-    final saved = event.copyWith(
-      id: 'group-event-${createdEvents.length + 1}',
-    );
+    final saved = event.copyWith(id: 'group-event-${createdEvents.length + 1}');
     createdEvents.add(saved);
     return saved;
   }

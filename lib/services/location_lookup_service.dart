@@ -8,12 +8,7 @@ import '../core/env.dart';
 import 'api_usage_guard.dart';
 import 'app_permission_service.dart';
 
-enum LocationLookupProvider {
-  tmap,
-  naver,
-  google,
-  manual,
-}
+enum LocationLookupProvider { tmap, naver, google, manual }
 
 extension LocationLookupProviderLabel on LocationLookupProvider {
   String get providerLabel => switch (this) {
@@ -83,10 +78,7 @@ class LocationLookupSearchResult {
 
 /// 캐시 항목 — 결과와 만료 시각을 묶음.
 class _LookupCacheEntry {
-  _LookupCacheEntry({
-    required this.result,
-    required this.expiresAt,
-  });
+  _LookupCacheEntry({required this.result, required this.expiresAt});
 
   final LocationLookupSearchResult result;
   final DateTime expiresAt;
@@ -257,8 +249,9 @@ class LocationLookupService {
     LocationLookupException? authFailure;
     final fallbackQueries = buildRetryQueries(normalized);
 
-    await _searchAllProviders(normalized, results, searchedQueries, origin,
-        (error) {
+    await _searchAllProviders(normalized, results, searchedQueries, origin, (
+      error,
+    ) {
       authFailure ??= error;
     });
 
@@ -278,10 +271,15 @@ class LocationLookupService {
         if (tmapRemaining <= 0) {
           break;
         }
-        await _searchAllProviders(retryQuery, results, searchedQueries, origin,
-            (error) {
-          authFailure ??= error;
-        });
+        await _searchAllProviders(
+          retryQuery,
+          results,
+          searchedQueries,
+          origin,
+          (error) {
+            authFailure ??= error;
+          },
+        );
         if (results.isNotEmpty) {
           break;
         }
@@ -334,9 +332,9 @@ class LocationLookupService {
       }
     }
 
-    final normalizedTokens = _tokenize(normalized)
-        .where((token) => token.isNotEmpty)
-        .toList(growable: false);
+    final normalizedTokens = _tokenize(
+      normalized,
+    ).where((token) => token.isNotEmpty).toList(growable: false);
     final particleCleanTokens = normalizedTokens
         .map(_removeKoreanParticleSuffix)
         .where((token) => token.isNotEmpty)
@@ -347,19 +345,31 @@ class LocationLookupService {
         .toList(growable: false);
 
     if (particleCleanTokens.isNotEmpty) {
-      _addQueryVariant(variants, particleCleanTokens.join(' '),
-          original: normalized);
-      _addQueryVariant(variants, particleCleanTokens.join(''),
-          original: normalized);
+      _addQueryVariant(
+        variants,
+        particleCleanTokens.join(' '),
+        original: normalized,
+      );
+      _addQueryVariant(
+        variants,
+        particleCleanTokens.join(''),
+        original: normalized,
+      );
       if (particleCleanTokens.length >= 2) {
-        _addQueryVariant(variants, particleCleanTokens.reversed.join(' '),
-            original: normalized);
+        _addQueryVariant(
+          variants,
+          particleCleanTokens.reversed.join(' '),
+          original: normalized,
+        );
       }
     }
 
     if (fallbackTokens.isNotEmpty) {
-      _addQueryVariant(variants, fallbackTokens.join(' '),
-          original: normalized);
+      _addQueryVariant(
+        variants,
+        fallbackTokens.join(' '),
+        original: normalized,
+      );
       _addQueryVariant(variants, fallbackTokens.join(''), original: normalized);
       if (fallbackTokens.length >= 2) {
         _addQueryVariant(
@@ -379,8 +389,11 @@ class LocationLookupService {
     final bareRegionVariants = <String>{};
 
     for (final region in _matchedKoreanRegionHints(normalized)) {
-      _addQueryVariant(bareRegionVariants, region.displayName,
-          original: normalized);
+      _addQueryVariant(
+        bareRegionVariants,
+        region.displayName,
+        original: normalized,
+      );
       final coreTokens = fallbackTokens
           .where((token) => !_containsAlias(token, region))
           .toList(growable: false);
@@ -538,16 +551,17 @@ class LocationLookupService {
     final client = _httpClientFactory();
     try {
       final response = await (useProxy
-              ? client.get(proxyUri, headers: const <String, String>{
-                  'accept': 'application/json',
-                })
+              ? client.get(
+                  proxyUri,
+                  headers: const <String, String>{
+                    'accept': 'application/json',
+                  },
+                )
               : client.get(
                   Uri.https(
                     'naveropenapi.apigw.ntruss.com',
                     '/map-geocode/v2/geocode',
-                    <String, String>{
-                      'query': normalized,
-                    },
+                    <String, String>{'query': normalized},
                   ),
                   headers: <String, String>{
                     'X-NCP-APIGW-API-KEY-ID': _clientId,
@@ -686,15 +700,16 @@ class LocationLookupService {
     try {
       final response = await client.get(
         Uri.https(
-            'maps.googleapis.com', '/maps/api/geocode/json', <String, String>{
-          'address': normalized,
-          'region': 'kr',
-          'language': 'ko',
-          'key': _googleMapsApiKey,
-        }),
-        headers: const <String, String>{
-          'accept': 'application/json',
-        },
+          'maps.googleapis.com',
+          '/maps/api/geocode/json',
+          <String, String>{
+            'address': normalized,
+            'region': 'kr',
+            'language': 'ko',
+            'key': _googleMapsApiKey,
+          },
+        ),
+        headers: const <String, String>{'accept': 'application/json'},
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 401 || response.statusCode == 403) {
@@ -787,9 +802,12 @@ class LocationLookupService {
       roadName,
       [buildingNo1, buildingNo2].where((part) => part.isNotEmpty).join('-'),
     ].where((part) => part.isNotEmpty).join(' ');
-    final jibunAddress = [upperAddr, middleAddr, lowerAddr, detailAddr]
-        .where((part) => part.isNotEmpty)
-        .join(' ');
+    final jibunAddress = [
+      upperAddr,
+      middleAddr,
+      lowerAddr,
+      detailAddr,
+    ].where((part) => part.isNotEmpty).join(' ');
     return LocationLookupResult(
       name: name.isNotEmpty
           ? name
@@ -824,7 +842,8 @@ class LocationLookupService {
   }
 
   List<LocationLookupResult> _dedupeResults(
-      List<LocationLookupResult> results) {
+    List<LocationLookupResult> results,
+  ) {
     final seen = <String>{};
     final deduped = <LocationLookupResult>[];
     for (final result in results) {
@@ -847,7 +866,8 @@ class LocationLookupService {
       return results;
     }
     final originalIndex = <LocationLookupResult, int>{
-      for (var index = 0; index < results.length; index++) results[index]: index,
+      for (var index = 0; index < results.length; index++)
+        results[index]: index,
     };
     final ranked = List<LocationLookupResult>.of(results);
     ranked.sort((a, b) {
@@ -921,7 +941,8 @@ class LocationLookupService {
         // 완전 무관한 결과와 동일하게(0점) 취급되면 실제로 찾던 곳이 밀려난다.
         final nameDistance = _editDistance(nameCompact, normalizedQuery);
         final nameMaxLen = math.max(nameCompact.length, normalizedQuery.length);
-        if (nameMaxLen >= 3 && nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
+        if (nameMaxLen >= 3 &&
+            nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
           score += (70 - nameDistance * 15).clamp(0, 70).toDouble();
         }
       }
@@ -994,6 +1015,39 @@ class LocationLookupService {
     );
   }
 
+  double labelSimilarity(String query, String label) {
+    final normalizedQuery = _compactSearchText(query);
+    final normalizedLabel = _compactSearchText(label);
+    if (normalizedQuery.isEmpty || normalizedLabel.isEmpty) {
+      return 0;
+    }
+    if (normalizedQuery == normalizedLabel) {
+      return 1;
+    }
+    if (normalizedLabel.contains(normalizedQuery) ||
+        normalizedQuery.contains(normalizedLabel)) {
+      final shorter = math.min(normalizedQuery.length, normalizedLabel.length);
+      final longer = math.max(normalizedQuery.length, normalizedLabel.length);
+      return (shorter / longer).clamp(0.0, 1.0).toDouble();
+    }
+    final distance = _editDistance(normalizedQuery, normalizedLabel);
+    final maxLength = math.max(normalizedQuery.length, normalizedLabel.length);
+    if (maxLength == 0) {
+      return 0;
+    }
+    return (1 - (distance / maxLength)).clamp(0.0, 1.0).toDouble();
+  }
+
+  double resultLabelSimilarity(String query, LocationLookupResult result) {
+    final nameSimilarity = labelSimilarity(query, result.name);
+    final bestLabelSimilarity = labelSimilarity(query, result.bestPlaceLabel);
+    final addressSimilarity = labelSimilarity(query, result.address);
+    return math.max(
+      nameSimilarity,
+      math.max(bestLabelSimilarity, addressSimilarity),
+    );
+  }
+
   /// 두 문자열의 Levenshtein 편집거리(치환/삽입/삭제 1회당 1).
   int _editDistance(String a, String b) {
     if (a == b) {
@@ -1012,10 +1066,12 @@ class LocationLookupService {
       for (var j = 0; j < b.length; j++) {
         final deletionCost = previousRow[j + 1] + 1;
         final insertionCost = currentRow[j] + 1;
-        final substitutionCost =
-            previousRow[j] + (a[i] == b[j] ? 0 : 1);
-        currentRow[j + 1] =
-            [deletionCost, insertionCost, substitutionCost].reduce(math.min);
+        final substitutionCost = previousRow[j] + (a[i] == b[j] ? 0 : 1);
+        currentRow[j + 1] = [
+          deletionCost,
+          insertionCost,
+          substitutionCost,
+        ].reduce(math.min);
       }
       previousRow = currentRow;
     }
@@ -1034,10 +1090,10 @@ class LocationLookupService {
   }
 
   String _compactSearchText(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[\s\p{P}\p{S}]', unicode: true), '');
+    return value.trim().toLowerCase().replaceAll(
+          RegExp(r'[\s\p{P}\p{S}]', unicode: true),
+          '',
+        );
   }
 
   double _distanceMeters(GeoPoint origin, LocationLookupResult result) {
@@ -1138,15 +1194,14 @@ class LocationLookupService {
     return value;
   }
 
-  List<_KoreanRegionHint> _matchedKoreanRegionHints(
-    String query,
-  ) {
+  List<_KoreanRegionHint> _matchedKoreanRegionHints(String query) {
     final normalized = query.replaceAll(' ', '');
     final regionSet = <String>{};
     final matchedRegions = <_KoreanRegionHint>[];
     for (final region in _koreanRegionHints) {
-      final isMatched = region.aliases
-          .any((alias) => normalized == alias || normalized.startsWith(alias));
+      final isMatched = region.aliases.any(
+        (alias) => normalized == alias || normalized.startsWith(alias),
+      );
       if (!isMatched) {
         continue;
       }
@@ -1158,8 +1213,9 @@ class LocationLookupService {
   }
 
   bool _containsAlias(String token, _KoreanRegionHint region) {
-    return region.aliases
-        .any((alias) => token == alias || token.contains(alias));
+    return region.aliases.any(
+      (alias) => token == alias || token.contains(alias),
+    );
   }
 
   bool _isBroadGenericPlaceQuery(String query) {
@@ -1237,10 +1293,7 @@ class LocationLookupService {
       return null;
     }
     return uri.replace(
-      queryParameters: <String, String>{
-        ...uri.queryParameters,
-        'query': query,
-      },
+      queryParameters: <String, String>{...uri.queryParameters, 'query': query},
     );
   }
 }
@@ -1380,10 +1433,7 @@ const List<_KoreanRegionHint> _koreanRegionHints = <_KoreanRegionHint>[
 ];
 
 class _KnownPlaceAlias {
-  const _KnownPlaceAlias({
-    required this.aliases,
-    required this.queries,
-  });
+  const _KnownPlaceAlias({required this.aliases, required this.queries});
 
   final List<String> aliases;
   final List<String> queries;
@@ -1398,13 +1448,7 @@ class _KnownPlaceAlias {
   }
 }
 
-const Set<String> _genericPlaceWords = <String>{
-  '병원',
-  '의원',
-  '치과',
-  '한의원',
-  '약국',
-};
+const Set<String> _genericPlaceWords = <String>{'병원', '의원', '치과', '한의원', '약국'};
 
 const Set<String> _genericPlaceActionWords = <String>{
   '방문',
@@ -1435,10 +1479,6 @@ const List<_KnownPlaceAlias> _knownPlaceAliases = <_KnownPlaceAlias>[
       '원주세브란스',
       '원주세브란스기독',
     ],
-    queries: <String>[
-      '원주세브란스기독병원',
-      '원주 세브란스 기독병원',
-      '연세대학교 원주세브란스기독병원',
-    ],
+    queries: <String>['원주세브란스기독병원', '원주 세브란스 기독병원', '연세대학교 원주세브란스기독병원'],
   ),
 ];

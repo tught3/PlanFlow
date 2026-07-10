@@ -56,19 +56,21 @@ void main() {
       expect(result.explicitFieldClauses['recurrence_rule'], '매주');
     });
 
-    test('removes recurrence command words from title without dropping object',
-        () {
-      const rawText = '매주 월요일 오전 7시에 태블릿 계기판찍기 반복설정';
-      final structure = service.analyze(rawText);
-      final title = service.normalizeLocalVoiceTitle(
-        rawText,
-        referenceText: rawText,
-        structured: structure,
-      );
+    test(
+      'removes recurrence command words from title without dropping object',
+      () {
+        const rawText = '매주 월요일 오전 7시에 태블릿 계기판찍기 반복설정';
+        final structure = service.analyze(rawText);
+        final title = service.normalizeLocalVoiceTitle(
+          rawText,
+          referenceText: rawText,
+          structured: structure,
+        );
 
-      expect(title, '태블릿 계기판 찍기');
-      expect(structure.explicitFieldClauses['recurrence_rule'], '매주');
-    });
+        expect(title, '태블릿 계기판 찍기');
+        expect(structure.explicitFieldClauses['recurrence_rule'], '매주');
+      },
+    );
 
     test('removes trailing repeat word from monthly recurrence title', () {
       const rawText = '매월 1일 톨비 작성 반복';
@@ -90,24 +92,27 @@ void main() {
       expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
     });
 
-    test('keeps day-only date cues as this month or next month when needed', () {
-      final currentMonth = service.extractDateRange(
-        '28일 계룡으로 엄마 만나러 가기',
-        now: DateTime(2026, 6, 10, 12),
-      );
-      final nextMonth = service.extractDateRange(
-        '28일 계룡으로 엄마 만나러 가기',
-        now: DateTime(2026, 6, 29, 12),
-      );
+    test(
+      'keeps day-only date cues as this month or next month when needed',
+      () {
+        final currentMonth = service.extractDateRange(
+          '28일 계룡으로 엄마 만나러 가기',
+          now: DateTime(2026, 6, 10, 12),
+        );
+        final nextMonth = service.extractDateRange(
+          '28일 계룡으로 엄마 만나러 가기',
+          now: DateTime(2026, 6, 29, 12),
+        );
 
-      expect(currentMonth, isNotNull);
-      expect(currentMonth!.startAt, DateTime(2026, 6, 28));
-      expect(currentMonth.endAt, DateTime(2026, 6, 28, 23, 59, 59));
+        expect(currentMonth, isNotNull);
+        expect(currentMonth!.startAt, DateTime(2026, 6, 28));
+        expect(currentMonth.endAt, DateTime(2026, 6, 28, 23, 59, 59));
 
-      expect(nextMonth, isNotNull);
-      expect(nextMonth!.startAt, DateTime(2026, 7, 28));
-      expect(nextMonth.endAt, DateTime(2026, 7, 28, 23, 59, 59));
-    });
+        expect(nextMonth, isNotNull);
+        expect(nextMonth!.startAt, DateTime(2026, 7, 28));
+        expect(nextMonth.endAt, DateTime(2026, 7, 28, 23, 59, 59));
+      },
+    );
 
     test('removes ordinal monthly recurrence phrase from the title', () {
       const rawText = '매월 첫 번째 월요일 법인카드 정리 반복';
@@ -240,21 +245,23 @@ void main() {
       expect(title.contains('1일'), isFalse);
     });
 
-    test('extracts location after a person name (drops person/title prefix)',
-        () {
-      const rawText = '장재균 그룹장님 원주 세브란스 기독병원에 와서 백순구 의료원장님 만남';
+    test(
+      'extracts location after a person name (drops person/title prefix)',
+      () {
+        const rawText = '장재균 그룹장님 원주 세브란스 기독병원에 와서 백순구 의료원장님 만남';
 
-      // 사람 이름/직급(장재균 그룹장님)을 제외하고 장소만 추출
-      expect(service.extractLeadingLocation(rawText), '원주 세브란스 기독병원');
-      expect(service.extractMidLocation(rawText), '원주 세브란스 기독병원');
+        // 사람 이름/직급(장재균 그룹장님)을 제외하고 장소만 추출
+        expect(service.extractLeadingLocation(rawText), '원주 세브란스 기독병원');
+        expect(service.extractMidLocation(rawText), '원주 세브란스 기독병원');
 
-      final location = service.normalizeScheduleLocation(
-        location: null,
-        rawText: rawText,
-        title: rawText,
-      );
-      expect(location, '원주 세브란스 기독병원');
-    });
+        final location = service.normalizeScheduleLocation(
+          location: null,
+          rawText: rawText,
+          title: rawText,
+        );
+        expect(location, '원주 세브란스 기독병원');
+      },
+    );
 
     // [PREVENT] "모란역으로"가 greedy 매칭으로 "모란역으"+"로"로 잘려, 장소·제목·
     // 지도 검색이 모두 "모란역으"로 깨지던 버그. "으로" 조사를 온전히 떼야 한다.
@@ -270,6 +277,31 @@ void main() {
         rawText: '모란역으로 가기',
       );
       expect(title, isNot(contains('모란역으 ')));
+    });
+
+    test('scores ambiguous department-like location below auto-confirm', () {
+      final candidates = service.scoreLocationCandidates(
+        location: null,
+        rawText: '약재과 가서 말하기',
+        title: '약재과 가서 말하기',
+      );
+
+      expect(candidates.first.label, '약재과');
+      expect(candidates.first.score, greaterThanOrEqualTo(0.45));
+      expect(candidates.first.score, lessThan(0.75));
+      expect(candidates.first.needsConfirmation, isTrue);
+    });
+
+    test('scores hospital department context above ambiguous department', () {
+      final candidates = service.scoreLocationCandidates(
+        location: null,
+        rawText: '원주세브란스병원 약제과 방문',
+        title: '원주세브란스병원 약제과 방문',
+      );
+
+      expect(candidates.first.label, contains('원주세브란스병원'));
+      expect(candidates.first.score, greaterThanOrEqualTo(0.75));
+      expect(candidates.first.canAutoConfirm, isTrue);
     });
 
     test('keeps organization-like leading names in the title', () {
@@ -411,10 +443,7 @@ void main() {
         ),
         isNull,
       );
-      expect(
-        service.extractLeadingLocation('오전에 경조사 신청 4만원 하기'),
-        isNull,
-      );
+      expect(service.extractLeadingLocation('오전에 경조사 신청 4만원 하기'), isNull);
       expect(
         service.shouldPreferStructuredTitle(
           normalizedTitle: '조사 신청 4만원 하기',
@@ -448,8 +477,11 @@ void main() {
         structured: structure,
       );
 
-      expect(parsedTitle.split(RegExp(r'\s+')), isNot(contains('에서')),
-          reason: '단독 조사 "에서"는 제목 토큰으로 남으면 안 된다');
+      expect(
+        parsedTitle.split(RegExp(r'\s+')),
+        isNot(contains('에서')),
+        reason: '단독 조사 "에서"는 제목 토큰으로 남으면 안 된다',
+      );
       expect(parsedTitle, contains('만남'));
     });
 
@@ -495,23 +527,17 @@ void main() {
     // 버그: rawText 자체가 "뒤에…"로 시작하면 extractPeopleFields가 "뒤에"를
     // 사람으로 오인 추출해, _stripOrphanTimeParticles로 제거한 "뒤에"를
     // ensurePeopleInTitle 마지막에 사람 이름으로 제목 앞에 다시 붙이던 현상.
-    test(
-      'ensurePeopleInTitle이 사람으로 오인된 시간조사("뒤에")를 제목에 복원하지 않는다',
-      () {
-        const text = '뒤에 확인 메세지 출력';
-        final parsed = service.normalizeParsedScheduleTitle(text, rawText: text);
-        expect(parsed, isNot(contains('뒤에')));
-        expect(parsed, contains('확인'));
-        // 진짜 사람 이름은 보존돼야 한다.
-        expect(
-          service.normalizeParsedScheduleTitle(
-            '엄마 만나러 가기',
-            rawText: '엄마 만나러 가기',
-          ),
-          contains('엄마'),
-        );
-      },
-    );
+    test('ensurePeopleInTitle이 사람으로 오인된 시간조사("뒤에")를 제목에 복원하지 않는다', () {
+      const text = '뒤에 확인 메세지 출력';
+      final parsed = service.normalizeParsedScheduleTitle(text, rawText: text);
+      expect(parsed, isNot(contains('뒤에')));
+      expect(parsed, contains('확인'));
+      // 진짜 사람 이름은 보존돼야 한다.
+      expect(
+        service.normalizeParsedScheduleTitle('엄마 만나러 가기', rawText: '엄마 만나러 가기'),
+        contains('엄마'),
+      );
+    });
 
     test(
       'normalizeLocalVoiceTitle strips orphan time particle "뒤에" from local title',
@@ -538,22 +564,19 @@ void main() {
       },
     );
 
-    test(
-      'strips orphan "후에" from GPT title (e.g. "1시간 후에 전화" → "전화")',
-      () {
-        // GPT가 "1시간 후에"를 날짜로 처리한 뒤 "후에 전화"를 반환하는 경우.
-        // normalizeParsedScheduleTitle은 내부 경로(structuredTitle 선택 등)에 따라
-        // 결과가 달라질 수 있으므로, 공통 출구인 ensurePeopleInTitle 직전에 실제로
-        // stripOrphanTimeParticles가 작동하는지 확인하기 위해 rawText와 title을
-        // "후에"가 단독 토큰으로만 남는 형태로 설정한다.
-        const rawText = '5분 후에 물 마시기 저장';
-        final parsedTitle = service.normalizeParsedScheduleTitle(
-          '후에 물 마시기',
-          rawText: rawText,
-        );
-        expect(parsedTitle, isNot(contains('후에')));
-        expect(parsedTitle, contains('물 마시기'));
-      },
-    );
+    test('strips orphan "후에" from GPT title (e.g. "1시간 후에 전화" → "전화")', () {
+      // GPT가 "1시간 후에"를 날짜로 처리한 뒤 "후에 전화"를 반환하는 경우.
+      // normalizeParsedScheduleTitle은 내부 경로(structuredTitle 선택 등)에 따라
+      // 결과가 달라질 수 있으므로, 공통 출구인 ensurePeopleInTitle 직전에 실제로
+      // stripOrphanTimeParticles가 작동하는지 확인하기 위해 rawText와 title을
+      // "후에"가 단독 토큰으로만 남는 형태로 설정한다.
+      const rawText = '5분 후에 물 마시기 저장';
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '후에 물 마시기',
+        rawText: rawText,
+      );
+      expect(parsedTitle, isNot(contains('후에')));
+      expect(parsedTitle, contains('물 마시기'));
+    });
   });
 }
