@@ -756,9 +756,6 @@ class DepartureAlarmService {
     final preferences = await SharedPreferences.getInstance();
     final lat = preferences.getDouble(cachedOriginLatKey);
     final lng = preferences.getDouble(cachedOriginLngKey);
-    final savedAt = _parseDateTime(
-      preferences.getString(cachedOriginAtKey),
-    );
     if (lat == null || lng == null) {
       return null;
     }

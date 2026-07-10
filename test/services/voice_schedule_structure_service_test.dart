@@ -90,7 +90,8 @@ void main() {
       expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
     });
 
-    test('keeps day-only date cues as this month or next month when needed', () {
+    test('keeps day-only date cues as this month or next month when needed',
+        () {
       final currentMonth = service.extractDateRange(
         '28일 계룡으로 엄마 만나러 가기',
         now: DateTime(2026, 6, 10, 12),
@@ -254,6 +255,33 @@ void main() {
         title: rawText,
       );
       expect(location, '원주 세브란스 기독병원');
+    });
+
+    test('scores ambiguous department-like location below auto-confirm', () {
+      final candidates = service.scoreLocationCandidates(
+        location: '약재과',
+        rawText: '약재과 가서 말하기',
+        title: '약재과 가서 말하기',
+      );
+
+      expect(candidates, isNotEmpty);
+      expect(candidates.first.label, '약재과');
+      expect(candidates.first.score, greaterThanOrEqualTo(0.45));
+      expect(candidates.first.score, lessThan(0.75));
+      expect(candidates.first.needsConfirmation, isTrue);
+    });
+
+    test('scores hospital context above ambiguous department', () {
+      final candidates = service.scoreLocationCandidates(
+        location: '약제과',
+        rawText: '원주세브란스병원 약제과 방문',
+        title: '원주세브란스병원 약제과 방문',
+      );
+
+      expect(candidates, isNotEmpty);
+      expect(candidates.first.label, contains('원주세브란스병원'));
+      expect(candidates.first.score, greaterThanOrEqualTo(0.75));
+      expect(candidates.first.canAutoConfirm, isTrue);
     });
 
     // [PREVENT] "모란역으로"가 greedy 매칭으로 "모란역으"+"로"로 잘려, 장소·제목·
@@ -499,7 +527,8 @@ void main() {
       'ensurePeopleInTitle이 사람으로 오인된 시간조사("뒤에")를 제목에 복원하지 않는다',
       () {
         const text = '뒤에 확인 메세지 출력';
-        final parsed = service.normalizeParsedScheduleTitle(text, rawText: text);
+        final parsed =
+            service.normalizeParsedScheduleTitle(text, rawText: text);
         expect(parsed, isNot(contains('뒤에')));
         expect(parsed, contains('확인'));
         // 진짜 사람 이름은 보존돼야 한다.

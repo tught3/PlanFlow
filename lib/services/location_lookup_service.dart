@@ -847,7 +847,8 @@ class LocationLookupService {
       return results;
     }
     final originalIndex = <LocationLookupResult, int>{
-      for (var index = 0; index < results.length; index++) results[index]: index,
+      for (var index = 0; index < results.length; index++)
+        results[index]: index,
     };
     final ranked = List<LocationLookupResult>.of(results);
     ranked.sort((a, b) {
@@ -921,7 +922,8 @@ class LocationLookupService {
         // 완전 무관한 결과와 동일하게(0점) 취급되면 실제로 찾던 곳이 밀려난다.
         final nameDistance = _editDistance(nameCompact, normalizedQuery);
         final nameMaxLen = math.max(nameCompact.length, normalizedQuery.length);
-        if (nameMaxLen >= 3 && nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
+        if (nameMaxLen >= 3 &&
+            nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
           score += (70 - nameDistance * 15).clamp(0, 70).toDouble();
         }
       }
@@ -994,6 +996,45 @@ class LocationLookupService {
     );
   }
 
+  double labelSimilarity(String query, String label) {
+    final normalizedQuery = _compactSearchText(query);
+    final normalizedLabel = _compactSearchText(label);
+    if (normalizedQuery.isEmpty || normalizedLabel.isEmpty) {
+      return 0.0;
+    }
+    if (normalizedQuery == normalizedLabel) {
+      return 1.0;
+    }
+
+    final maxLength = math.max(normalizedQuery.length, normalizedLabel.length);
+    if (maxLength == 0) {
+      return 0.0;
+    }
+
+    final distance = _editDistance(normalizedQuery, normalizedLabel);
+    var similarity = 1 - (distance / maxLength);
+    if (normalizedLabel.contains(normalizedQuery) ||
+        normalizedQuery.contains(normalizedLabel)) {
+      final overlap = math.min(normalizedQuery.length, normalizedLabel.length);
+      similarity = math.max(similarity, overlap / maxLength);
+    }
+    return similarity.clamp(0.0, 1.0).toDouble();
+  }
+
+  double resultLabelSimilarity(String query, LocationLookupResult result) {
+    final labels = <String>[
+      result.bestPlaceLabel,
+      result.name,
+      result.label,
+      result.address,
+    ];
+    var best = 0.0;
+    for (final label in labels) {
+      best = math.max(best, labelSimilarity(query, label));
+    }
+    return best;
+  }
+
   /// 두 문자열의 Levenshtein 편집거리(치환/삽입/삭제 1회당 1).
   int _editDistance(String a, String b) {
     if (a == b) {
@@ -1012,8 +1053,7 @@ class LocationLookupService {
       for (var j = 0; j < b.length; j++) {
         final deletionCost = previousRow[j + 1] + 1;
         final insertionCost = currentRow[j] + 1;
-        final substitutionCost =
-            previousRow[j] + (a[i] == b[j] ? 0 : 1);
+        final substitutionCost = previousRow[j] + (a[i] == b[j] ? 0 : 1);
         currentRow[j + 1] =
             [deletionCost, insertionCost, substitutionCost].reduce(math.min);
       }

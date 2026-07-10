@@ -61,8 +61,46 @@ class VoiceScheduleDateRange {
   final bool isMultiDay;
 }
 
+class VoiceLocationCandidate {
+  const VoiceLocationCandidate({
+    required this.label,
+    required this.source,
+    required this.score,
+    required this.signals,
+  });
+
+  final String label;
+  final String source;
+  final double score;
+  final List<String> signals;
+
+  bool get canAutoConfirm =>
+      score >= VoiceScheduleStructureService.autoConfirmLocationScore;
+
+  bool get needsConfirmation =>
+      score >= VoiceScheduleStructureService.confirmLocationScore &&
+      score < VoiceScheduleStructureService.autoConfirmLocationScore;
+
+  VoiceLocationCandidate copyWith({
+    String? label,
+    String? source,
+    double? score,
+    List<String>? signals,
+  }) {
+    return VoiceLocationCandidate(
+      label: label ?? this.label,
+      source: source ?? this.source,
+      score: score ?? this.score,
+      signals: signals ?? this.signals,
+    );
+  }
+}
+
 class VoiceScheduleStructureService {
   const VoiceScheduleStructureService();
+
+  static const double autoConfirmLocationScore = 0.75;
+  static const double confirmLocationScore = 0.45;
 
   static const String _personSuffixPattern =
       r'팀장님|팀장|원장님|원장|교수님|교수|과장님|과장|부장님|부장|차장님|차장|대표님|대표|선생님|대리님|대리|고객님|고객|님';
@@ -243,8 +281,7 @@ class VoiceScheduleStructureService {
     if (month == null || day == null) {
       return null;
     }
-    final year =
-        int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
+    final year = int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
     final start = DateTime(year, month, day);
     if (start.year != year || start.month != month || start.day != day) {
       return null;
@@ -268,8 +305,8 @@ class VoiceScheduleStructureService {
     String source,
     DateTime reference,
   ) {
-    final match = RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?')
-        .firstMatch(source);
+    final match =
+        RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?').firstMatch(source);
     if (match == null) {
       return null;
     }
@@ -290,7 +327,8 @@ class VoiceScheduleStructureService {
     final today = DateTime(reference.year, reference.month, reference.day);
     DateTime? start;
     for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
-      final candidate = DateTime(reference.year, reference.month + monthOffset, day);
+      final candidate =
+          DateTime(reference.year, reference.month + monthOffset, day);
       if (candidate.day != day) {
         continue;
       }
@@ -572,7 +610,8 @@ class VoiceScheduleStructureService {
         // "2시간 뒤에" -> GPT가 "2시간"만 떼고 "뒤에"만 남긴 경우 등 처리.
         // 단어 경계(공백/문자열 시작·끝)로만 매칭해 "뒤풀이" 등 일반 단어 오제거 방지.
         .replaceAll(
-          RegExp(r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])'),
+          RegExp(
+              r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])'),
           ' ',
         )
         .replaceAll(
@@ -927,6 +966,252 @@ class VoiceScheduleStructureService {
     }
 
     return null;
+  }
+
+  List<VoiceLocationCandidate> scoreLocationCandidates({
+    String? location,
+    String? rawText,
+    String? title,
+  }) {
+    final sourceText = normalizeText(rawText, '');
+    final titleText = normalizeText(title, '');
+    final candidates = <String, VoiceLocationCandidate>{};
+
+    void addCandidate(
+      String? candidateText, {
+      required String source,
+      required double baseScore,
+      required List<String> signals,
+      bool preserveAmbiguity = false,
+    }) {
+      final normalizedCandidate = _normalizeLocationCandidate(
+        candidateText ?? '',
+      );
+      if (normalizedCandidate == null ||
+          (_isInvalidLocationCandidate(normalizedCandidate) &&
+              !preserveAmbiguity)) {
+        return;
+      }
+
+      final score = _scoreLocationCandidate(
+        normalizedCandidate,
+        source: source,
+        baseScore: baseScore,
+        rawText: sourceText,
+        title: titleText,
+        preserveAmbiguity: preserveAmbiguity,
+      );
+      final existing = candidates[normalizedCandidate];
+      final mergedSignals = <String>{
+        if (existing != null) ...existing.signals,
+        ...signals,
+      }.toList(growable: false);
+      final merged = VoiceLocationCandidate(
+        label: normalizedCandidate,
+        source: source,
+        score: existing == null
+            ? score
+            : score > existing.score
+                ? score
+                : existing.score,
+        signals: mergedSignals,
+      );
+      candidates[normalizedCandidate] = merged;
+    }
+
+    if (location != null && location.trim().isNotEmpty) {
+      addCandidate(
+        location,
+        source: 'parsed-location',
+        baseScore: 0.62,
+        signals: const <String>['parsed-location'],
+      );
+    }
+
+    final normalizedFromRaw = normalizeScheduleLocation(
+      location: null,
+      rawText: sourceText,
+      title: titleText,
+    );
+    if (normalizedFromRaw != null && normalizedFromRaw.isNotEmpty) {
+      addCandidate(
+        normalizedFromRaw,
+        source: 'raw-text',
+        baseScore: 0.58,
+        signals: const <String>['raw-text'],
+      );
+    }
+
+    final normalizedFromTitle = normalizeScheduleLocation(
+      location: null,
+      rawText: titleText,
+      title: titleText,
+    );
+    if (normalizedFromTitle != null && normalizedFromTitle.isNotEmpty) {
+      addCandidate(
+        normalizedFromTitle,
+        source: 'title',
+        baseScore: 0.54,
+        signals: const <String>['title'],
+      );
+    }
+
+    final leadingLocation = extractLeadingLocation(sourceText);
+    if (leadingLocation != null && leadingLocation.isNotEmpty) {
+      addCandidate(
+        leadingLocation,
+        source: 'leading-location',
+        baseScore: 0.7,
+        signals: const <String>['leading-location'],
+      );
+    }
+
+    final midLocation = extractMidLocation(sourceText);
+    if (midLocation != null && midLocation.isNotEmpty) {
+      addCandidate(
+        midLocation,
+        source: 'mid-location',
+        baseScore: 0.72,
+        signals: const <String>['mid-location'],
+      );
+    }
+
+    final trailingLocation = _extractTrailingPlaceKeywordLocation(sourceText);
+    if (trailingLocation != null && trailingLocation.isNotEmpty) {
+      addCandidate(
+        trailingLocation,
+        source: 'trailing-location',
+        baseScore: 0.56,
+        signals: const <String>['trailing-location'],
+      );
+    }
+
+    final ambiguousDepartmentLocation = _extractAmbiguousDepartmentLocation(
+      sourceText,
+    );
+    if (ambiguousDepartmentLocation != null &&
+        ambiguousDepartmentLocation.isNotEmpty) {
+      addCandidate(
+        ambiguousDepartmentLocation,
+        source: 'ambiguous-department',
+        baseScore: 0.4,
+        signals: const <String>['ambiguous-department'],
+        preserveAmbiguity: true,
+      );
+    }
+
+    final scoreList = candidates.values.toList(growable: false)
+      ..sort((a, b) => b.score.compareTo(a.score));
+    return scoreList;
+  }
+
+  double _scoreLocationCandidate(
+    String candidate, {
+    required String source,
+    required double baseScore,
+    required String rawText,
+    required String title,
+    required bool preserveAmbiguity,
+  }) {
+    var score = baseScore;
+    final compactCandidate = candidate.replaceAll(RegExp(r'\s+'), '');
+    final compactSource = '$rawText $title'.replaceAll(RegExp(r'\s+'), '');
+    final isAmbiguousDepartment =
+        preserveAmbiguity || _isAmbiguousDepartmentLocation(candidate);
+    final locationContext = _hasStrongPlaceKeyword(rawText) ||
+        _hasStrongPlaceKeyword(title) ||
+        compactSource.contains(compactCandidate);
+
+    if (isAmbiguousDepartment) {
+      score = score.clamp(0.0, 0.48).toDouble();
+      if (locationContext) {
+        score += 0.12;
+      }
+      if (RegExp(r'(가서|가기|방문|찾아|진료|검사|상담|회의|미팅|도착|출발)').hasMatch(rawText)) {
+        score += 0.08;
+      }
+      if (RegExp(r'(병원|의원|센터|과|팀|부서|진료과)').hasMatch(compactCandidate)) {
+        score += 0.04;
+      }
+      return score.clamp(0.0, 1.0).toDouble();
+    }
+
+    switch (source) {
+      case 'parsed-location':
+        score += 0.08;
+        break;
+      case 'raw-text':
+        score += 0.06;
+        break;
+      case 'title':
+        score += 0.03;
+        break;
+      case 'leading-location':
+        score += 0.12;
+        break;
+      case 'mid-location':
+        score += 0.1;
+        break;
+      case 'trailing-location':
+        score += 0.04;
+        break;
+    }
+
+    if (locationContext) {
+      score += 0.1;
+    }
+    if (RegExp(r'(가서|가기|방문|찾아|진료|검사|상담|회의|미팅|도착|출발)').hasMatch(rawText)) {
+      score += 0.06;
+    }
+    if (RegExp(r'(병원|의원|센터|역|공항|터미널|호텔|학교|학원|은행|시청|구청)').hasMatch(candidate)) {
+      score += 0.08;
+    }
+    if (compactCandidate.length <= 3 &&
+        RegExp(r'(과|팀|부서|실|관|원|센터)$').hasMatch(candidate)) {
+      score -= 0.08;
+    }
+    return score.clamp(0.0, 1.0).toDouble();
+  }
+
+  bool _isAmbiguousDepartmentLocation(String text) {
+    final normalized = normalizeText(text, '').replaceAll(RegExp(r'\s+'), '');
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return RegExp(
+      r'(약제과|약재과|진료과|원무과|접수과|외래과|인사팀|총무팀|재무팀|관리팀|구매팀|개발팀|행정팀|운영팀|서비스팀|영업팀|지원팀|부서|팀|과)$',
+    ).hasMatch(normalized);
+  }
+
+  String? _extractTrailingPlaceKeywordLocation(String text) {
+    final match = RegExp(
+      r'([가-힣A-Za-z0-9·.]{2,}(?:병원|의원|센터|역|공항|터미널|호텔|학교|학원|은행|시청|구청|주민센터|회관|체육관|경기장|빌딩|타워|아파트|빌라|오피스텔|주택|펜션|모텔|단지|타운하우스))'
+      r'(?:\s*(?:에서|에|로|으로))?',
+    ).firstMatch(text);
+    final location = match?.group(1)?.trim();
+    if (location == null ||
+        location.isEmpty ||
+        _isInvalidLocationCandidate(location)) {
+      return null;
+    }
+    return location;
+  }
+
+  String? _extractAmbiguousDepartmentLocation(String text) {
+    final match = RegExp(
+            r'([가-힣A-Za-z0-9·.]{1,20}(?:약제과|약재과|진료과|원무과|접수과|외래과|인사팀|총무팀|재무팀|관리팀|구매팀|개발팀|행정팀|운영팀|서비스팀|영업팀|지원팀|부서|팀|과))')
+        .firstMatch(text);
+    final candidate = match?.group(1)?.trim();
+    if (candidate == null || candidate.isEmpty) {
+      return null;
+    }
+    return candidate;
+  }
+
+  bool _hasStrongPlaceKeyword(String text) {
+    return RegExp(
+      r'(병원|의원|센터|역|공항|터미널|호텔|학교|학원|은행|시청|구청|주민센터|회관|체육관|경기장|빌딩|타워|아파트|빌라|오피스텔|주택|펜션|모텔|단지|타운하우스)',
+    ).hasMatch(text);
   }
 
   String? _normalizeLocationCandidate(String text) {
@@ -1462,9 +1747,7 @@ class VoiceScheduleStructureService {
     }
     // STT가 '내일모레'를 '내일모래'(붙은 형태)로 인식한 경우 먼저 교정한 뒤,
     // 단독 '모래'(=모레)도 교정한다.
-    return text
-        .replaceAll('내일모래', '내일모레')
-        .replaceAllMapped(
+    return text.replaceAll('내일모래', '내일모레').replaceAllMapped(
           RegExp(r'(^|\s)모래(?=\s|$)'),
           (match) => '${match.group(1) ?? ''}모레',
         );

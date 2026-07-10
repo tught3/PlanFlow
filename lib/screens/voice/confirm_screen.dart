@@ -111,6 +111,10 @@ abstract class ConfirmScreenBackend {
     required String location,
   });
 
+  Future<List<String>> fetchRecentLocations({
+    required String userId,
+  });
+
   Future<void> insertPreActions(List<Map<String, dynamic>> payloads);
 
   Future<void> insertReminders(List<Map<String, dynamic>> payloads);
@@ -164,6 +168,48 @@ class _AlarmScheduleFailure {
   final String message;
 }
 
+enum _LocationChoiceAction { use, none, delete }
+
+class _ScoredLocationChoice {
+  const _ScoredLocationChoice({
+    required this.label,
+    required this.score,
+    required this.source,
+    required this.signals,
+  });
+
+  final String label;
+  final double score;
+  final String source;
+  final List<String> signals;
+
+  bool get canAutoConfirm =>
+      score >= VoiceScheduleStructureService.autoConfirmLocationScore;
+
+  bool get needsConfirmation =>
+      score >= VoiceScheduleStructureService.confirmLocationScore &&
+      score < VoiceScheduleStructureService.autoConfirmLocationScore;
+}
+
+class _LocationChoiceSelection {
+  const _LocationChoiceSelection({
+    required this.action,
+    this.choice,
+  });
+
+  const _LocationChoiceSelection.use(_ScoredLocationChoice choice)
+      : this(action: _LocationChoiceAction.use, choice: choice);
+
+  const _LocationChoiceSelection.none()
+      : this(action: _LocationChoiceAction.none);
+
+  const _LocationChoiceSelection.delete()
+      : this(action: _LocationChoiceAction.delete);
+
+  final _LocationChoiceAction action;
+  final _ScoredLocationChoice? choice;
+}
+
 class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   const SupabaseConfirmScreenBackend();
 
@@ -206,6 +252,35 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   }
 
   @override
+  Future<List<String>> fetchRecentLocations({
+    required String userId,
+  }) async {
+    final response = await _client
+        .from('location_history')
+        .select('location, visited_at')
+        .eq('user_id', userId)
+        .order('visited_at', ascending: false)
+        .limit(30);
+
+    final locations = <String>[];
+    final seen = <String>{};
+    for (final row in response as List<dynamic>) {
+      final rowMap = Map<String, dynamic>.from(row as Map);
+      final location = rowMap['location']?.toString().trim() ?? '';
+      if (location.isEmpty) {
+        continue;
+      }
+      final normalized = location.replaceAll(RegExp(r'\s+'), ' ');
+      if (seen.contains(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      locations.add(normalized);
+    }
+    return locations;
+  }
+
+  @override
   Future<void> insertPreActions(List<Map<String, dynamic>> payloads) async {
     if (payloads.isEmpty) {
       return;
@@ -234,6 +309,10 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
 
 class _ConfirmScreenState extends State<ConfirmScreen>
     with WidgetsBindingObserver {
+  static const double _locationConfirmScore =
+      VoiceScheduleStructureService.confirmLocationScore;
+  static const double _locationLookupSimilarityThreshold = 0.51;
+
   // 권한 설정 화면으로 이동 중일 때 true — 앱 복귀(resumed) 시 저장 후 목적지로 이동
   bool _pendingNavigateAfterSave = false;
 
@@ -275,6 +354,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   int? _ambiguousTimeHour;
   int? _ambiguousTimeMinute;
   bool _hasPromptedTimePeriodClarification = false;
+  bool _hasResolvedVoiceLocationCandidates = false;
+  bool _isPromptingVoiceLocationCandidates = false;
+  bool _voiceLocationRejected = false;
   Map<String, dynamic>? _initialParsedForLearning;
   GroupContextProvider? _groupContextProvider;
   bool _ownsGroupContextProvider = false;
@@ -360,7 +442,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeHydrateParsedSchedule();
-      unawaited(_resolveLocationCoordinatesIfNeeded());
+      unawaited(_prepareVoiceLocationCandidates(allowPrompt: true));
       _maybePromptTimePeriodClarification();
     });
   }
@@ -674,8 +756,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                 PlanFlowActionButtons(
                   buttons: [
                     PlanFlowActionButton(
-                      buttonKey:
-                          const ValueKey('leader-share-decline-button'),
+                      buttonKey: const ValueKey('leader-share-decline-button'),
                       label: '아니요',
                       type: ActionButtonType.secondary,
                       flex: 1,
@@ -761,6 +842,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   void _markLocationEdited() {
     if (!_isApplyingHydration) {
       _locationEditedByUser = true;
+      _voiceLocationRejected = false;
+      _hasResolvedVoiceLocationCandidates = false;
     }
   }
 
@@ -906,11 +989,271 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
+  Future<void> _prepareVoiceLocationCandidates({
+    required bool allowPrompt,
+  }) async {
+    if (_hasResolvedVoiceLocationCandidates ||
+        _isPromptingVoiceLocationCandidates ||
+        _voiceLocationRejected) {
+      return;
+    }
+
+    final query = _locationController.text.trim();
+    if (query.isEmpty ||
+        _locationEditedByUser ||
+        _shouldSkipAutomaticLocationResolution(query) ||
+        (_locationLat != null && _locationLng != null)) {
+      _hasResolvedVoiceLocationCandidates = true;
+      return;
+    }
+
+    final choices = await _buildScoredLocationChoices();
+    if (!mounted ||
+        query != _locationController.text.trim() ||
+        _locationEditedByUser) {
+      return;
+    }
+
+    if (choices.isEmpty) {
+      _hasResolvedVoiceLocationCandidates = true;
+      return;
+    }
+
+    final topChoice = choices.first;
+    if (topChoice.score < _locationConfirmScore) {
+      _voiceLocationRejected = true;
+      _hasResolvedVoiceLocationCandidates = true;
+      _clearLocationSelection(keepTitle: true);
+      return;
+    }
+
+    if (topChoice.canAutoConfirm) {
+      _hasResolvedVoiceLocationCandidates = true;
+      await _applyLocationChoice(
+        _LocationChoiceSelection.use(topChoice),
+        shouldResolveCoordinates: true,
+      );
+      return;
+    }
+
+    if (!allowPrompt) {
+      return;
+    }
+
+    _isPromptingVoiceLocationCandidates = true;
+    try {
+      final selection = await _promptVoiceLocationCandidates(choices);
+      if (!mounted || selection == null) {
+        return;
+      }
+      _hasResolvedVoiceLocationCandidates = true;
+      await _applyLocationChoice(selection);
+    } finally {
+      _isPromptingVoiceLocationCandidates = false;
+    }
+  }
+
+  Future<List<_ScoredLocationChoice>> _buildScoredLocationChoices() async {
+    final structure = const VoiceScheduleStructureService();
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']) ?? '';
+    final locationQuery = _locationController.text.trim();
+    final parsedLocation = _locationController.text.trim().isNotEmpty
+        ? _locationController.text.trim()
+        : _stringValue(widget.parsedSchedule['location']);
+    final title = _titleController.text.trim().isNotEmpty
+        ? _titleController.text.trim()
+        : _stringValue(widget.parsedSchedule['title']);
+
+    final baseCandidates = structure
+        .scoreLocationCandidates(
+          location: parsedLocation,
+          rawText: rawText,
+          title: title,
+        )
+        .map(
+          (candidate) => _ScoredLocationChoice(
+            label: candidate.label,
+            score: candidate.score,
+            source: candidate.source,
+            signals: candidate.signals,
+          ),
+        )
+        .toList(growable: true);
+
+    final userId = _resolveUserId();
+    if (userId != null) {
+      try {
+        final recentLocations = await widget.backend.fetchRecentLocations(
+          userId: userId,
+        );
+        for (final recent in recentLocations) {
+          final recentScore = _scoreRecentLocationCandidate(
+            recent,
+            locationQuery: locationQuery,
+            rawText: rawText,
+            title: title,
+            structure: structure,
+          );
+          if (recentScore < _locationConfirmScore) {
+            continue;
+          }
+          baseCandidates.add(
+            _ScoredLocationChoice(
+              label: recent,
+              score: recentScore,
+              source: 'recent-history',
+              signals: const <String>['recent-history'],
+            ),
+          );
+        }
+      } catch (error) {
+        debugPrint('ConfirmScreen recent location lookup skipped: $error');
+      }
+    }
+
+    final merged = <String, _ScoredLocationChoice>{};
+    for (final candidate in baseCandidates) {
+      final existing = merged[candidate.label];
+      if (existing == null || candidate.score > existing.score) {
+        merged[candidate.label] = candidate;
+      }
+    }
+
+    final choices = merged.values.toList(growable: false)
+      ..sort((a, b) {
+        final scoreCompare = b.score.compareTo(a.score);
+        if (scoreCompare != 0) {
+          return scoreCompare;
+        }
+        return a.label.compareTo(b.label);
+      });
+    return choices;
+  }
+
+  double _scoreRecentLocationCandidate(
+    String recentLocation, {
+    required String? locationQuery,
+    required String? rawText,
+    required String? title,
+    required VoiceScheduleStructureService structure,
+  }) {
+    final queries = <String>[
+      if (locationQuery != null && locationQuery.isNotEmpty) locationQuery,
+      if (rawText != null && rawText.isNotEmpty) rawText,
+      if (title != null && title.isNotEmpty) title,
+    ];
+    final similarity = queries.isEmpty
+        ? widget.locationLookupService.labelSimilarity(
+            recentLocation,
+            recentLocation,
+          )
+        : queries
+            .map(
+              (query) => widget.locationLookupService.labelSimilarity(
+                query,
+                recentLocation,
+              ),
+            )
+            .reduce((a, b) => a > b ? a : b);
+    if (similarity < 0.35) {
+      return similarity;
+    }
+    final structureSimilarity = structure.scoreLocationCandidates(
+      location: recentLocation,
+      rawText: rawText,
+      title: title,
+    );
+    final structureScore = structureSimilarity.isNotEmpty
+        ? structureSimilarity.first.score
+        : similarity;
+    return (structureScore + 0.12 + similarity * 0.05)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
+  Future<_LocationChoiceSelection?> _promptVoiceLocationCandidates(
+    List<_ScoredLocationChoice> choices,
+  ) async {
+    if (!mounted || choices.isEmpty) {
+      return null;
+    }
+    final hasExistingLocation = _locationController.text.trim().isNotEmpty;
+    return showDialog<_LocationChoiceSelection>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: _VoiceLocationCandidateSheet(
+          choices: choices,
+          hasExistingLocation: hasExistingLocation,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _applyLocationChoice(
+    _LocationChoiceSelection selection, {
+    bool shouldResolveCoordinates = true,
+  }) async {
+    switch (selection.action) {
+      case _LocationChoiceAction.use:
+        final chosen = selection.choice;
+        if (chosen == null) {
+          return;
+        }
+        await _applyResolvedLocationLabel(chosen.label);
+        if (shouldResolveCoordinates) {
+          await _resolveLocationCoordinatesIfNeeded();
+        }
+        break;
+      case _LocationChoiceAction.none:
+      case _LocationChoiceAction.delete:
+        _clearLocationSelection(keepTitle: true);
+        break;
+    }
+  }
+
+  Future<void> _applyResolvedLocationLabel(String label) async {
+    final trimmed = label.trim();
+    if (trimmed.isEmpty || !mounted) {
+      return;
+    }
+    final previousLocationText = _locationController.text.trim();
+    setState(() {
+      _locationController.text = trimmed;
+      _locationLat = null;
+      _locationLng = null;
+      _resolvedLocationLabel = trimmed;
+      _voiceLocationRejected = false;
+    });
+    _removeResolvedLocationFromTitle(
+      previousLocationText: previousLocationText,
+      resolvedLocationText: trimmed,
+    );
+  }
+
+  void _clearLocationSelection({required bool keepTitle}) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _locationController.text = '';
+      _locationLat = null;
+      _locationLng = null;
+      _resolvedLocationLabel = null;
+      _voiceLocationRejected = true;
+    });
+    if (!keepTitle) {
+      _titleController.clear();
+    }
+  }
+
   Future<void> _resolveLocationCoordinatesIfNeeded() async {
     final query = _locationController.text.trim();
     if (_locationEditedByUser ||
         query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
+        _voiceLocationRejected ||
         (_locationLat != null && _locationLng != null)) {
       return;
     }
@@ -943,6 +1286,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       final selected = results.first;
+      final similarity =
+          widget.locationLookupService.resultLabelSimilarity(query, selected);
+      if (similarity < _locationLookupSimilarityThreshold) {
+        debugPrint(
+          'ConfirmScreen automatic location resolution skipped for low similarity '
+          '($similarity < $_locationLookupSimilarityThreshold): $query -> ${selected.name}',
+        );
+        return;
+      }
       final resolvedLabel = selected.bestPlaceLabel.trim();
       _isApplyingHydration = true;
       setState(() {
@@ -974,6 +1326,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final query = _locationController.text.trim();
     if (query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
+        _voiceLocationRejected ||
         (_locationLat != null && _locationLng != null)) {
       // 이미 좌표가 있거나 개인 별칭이면 스킵
       DiagLogger.log(
@@ -1021,6 +1374,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       final selected = results.first;
+      final similarity =
+          widget.locationLookupService.resultLabelSimilarity(query, selected);
+      if (similarity < _locationLookupSimilarityThreshold) {
+        DiagLogger.log(
+          'GeoResolve',
+          '실패: 쿼리="$query" similarity=$similarity < $_locationLookupSimilarityThreshold',
+        );
+        return;
+      }
       final resolvedLabel = selected.bestPlaceLabel.trim();
       _isApplyingHydration = true;
       setState(() {
@@ -1196,7 +1558,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
       });
       _isApplyingHydration = false;
-      unawaited(_resolveLocationCoordinatesIfNeeded());
+      unawaited(_prepareVoiceLocationCandidates(allowPrompt: true));
     } catch (error) {
       if (mounted) {
         unawaited(
@@ -1341,6 +1703,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
+    await _prepareVoiceLocationCandidates(allowPrompt: true);
+    if (!mounted) {
+      return;
+    }
     await _ensureLocationCoordinatesBeforeSave();
     if (!mounted) {
       return;
@@ -2531,10 +2897,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _saveTargetTouchedByUser = true;
         });
       },
-      onPickGroups:
-          _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
-      selectedGroupCount:
-          selectedGroups.isEmpty ? 1 : selectedGroups.length,
+      onPickGroups: _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
+      selectedGroupCount: selectedGroups.isEmpty ? 1 : selectedGroups.length,
       totalGroupCount: _allActiveGroups.length,
     );
   }
@@ -2969,6 +3333,137 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _VoiceLocationCandidateSheet extends StatefulWidget {
+  const _VoiceLocationCandidateSheet({
+    required this.choices,
+    required this.hasExistingLocation,
+  });
+
+  final List<_ScoredLocationChoice> choices;
+  final bool hasExistingLocation;
+
+  @override
+  State<_VoiceLocationCandidateSheet> createState() =>
+      _VoiceLocationCandidateSheetState();
+}
+
+class _VoiceLocationCandidateSheetState
+    extends State<_VoiceLocationCandidateSheet> {
+  final int _selectedIndex = 0;
+  final _LocationChoiceAction _selectedAction = _LocationChoiceAction.use;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    final sheetHeight = MediaQuery.of(context).size.height * 0.72;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomPadding),
+        child: SizedBox(
+          height: sheetHeight,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '장소 후보를 선택해 주세요',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '첫 번째 후보가 기본값이에요. 장소가 아니면 없음을 선택해도 돼요.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...[
+                for (var index = 0; index < widget.choices.length; index += 1)
+                  ListTile(
+                    key: ValueKey('voice-location-candidate-$index'),
+                    selected: _selectedAction == _LocationChoiceAction.use &&
+                        _selectedIndex == index,
+                    selectedColor: PlanFlowColors.primaryMid,
+                    onTap: () {
+                      Navigator.of(context).pop(
+                        _LocationChoiceSelection.use(
+                          widget.choices[index],
+                        ),
+                      );
+                    },
+                    leading: Icon(
+                      _selectedAction == _LocationChoiceAction.use &&
+                              _selectedIndex == index
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      color: PlanFlowColors.primaryMid,
+                    ),
+                    title: Text(
+                      widget.choices[index].label,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: index == 0 ? FontWeight.w700 : null,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '점수 ${(widget.choices[index].score * 100).round()}% · ${widget.choices[index].source}',
+                    ),
+                  ),
+                ListTile(
+                  key: const ValueKey('voice-location-none'),
+                  selected: _selectedAction == _LocationChoiceAction.none,
+                  selectedColor: PlanFlowColors.primaryMid,
+                  onTap: () {
+                    Navigator.of(context)
+                        .pop(const _LocationChoiceSelection.none());
+                  },
+                  leading: Icon(
+                    _selectedAction == _LocationChoiceAction.none
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    color: PlanFlowColors.primaryMid,
+                  ),
+                  title: const Text('장소 없음'),
+                  subtitle: const Text('장소를 비워 두고 제목만 저장해요.'),
+                ),
+                if (widget.hasExistingLocation)
+                  ListTile(
+                    key: const ValueKey('voice-location-delete'),
+                    selected: _selectedAction == _LocationChoiceAction.delete,
+                    selectedColor: PlanFlowColors.primaryMid,
+                    onTap: () {
+                      Navigator.of(context).pop(
+                        const _LocationChoiceSelection.delete(),
+                      );
+                    },
+                    leading: Icon(
+                      _selectedAction == _LocationChoiceAction.delete
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      color: PlanFlowColors.primaryMid,
+                    ),
+                    title: const Text('장소 삭제'),
+                    subtitle: const Text('이미 들어간 장소를 지워요.'),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -451,6 +451,175 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
+  testWidgets('ConfirmScreen asks user to choose ambiguous voice locations',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '약재과 가서 말하기',
+            location: '약재과',
+            rawText: '약재과 가서 말하기',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _HerbLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    for (var i = 0;
+        i < 20 && find.text('장소 후보를 선택해 주세요').evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.byKey(const ValueKey('voice-location-candidate-0')),
+        findsOneWidget);
+    expect(find.text('약재과'), findsWidgets);
+
+    final sheetScroll = find
+        .descendant(
+          of: find.byType(SingleChildScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .last;
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('voice-location-none')),
+      120,
+      scrollable: sheetScroll,
+    );
+    await tester.tap(find.byKey(const ValueKey('voice-location-none')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final saved = repository.createdEvents.single;
+    expect(saved.title, '약재과 가서 말하기');
+    expect(saved.location, isNull);
+    expect(saved.locationLat, isNull);
+    expect(saved.locationLng, isNull);
+  });
+
+  testWidgets(
+      'ConfirmScreen does not auto-replace low-similarity lookup results',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '약재과 가서 말하기',
+            location: '약재과',
+            rawText: '약재과 가서 말하기',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _HerbLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    for (var i = 0;
+        i < 20 && find.text('장소 후보를 선택해 주세요').evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final sheetScroll = find
+        .descendant(
+          of: find.byType(SingleChildScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .last;
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('voice-location-candidate-0')),
+      120,
+      scrollable: sheetScroll,
+    );
+    await tester.tap(find.byKey(const ValueKey('voice-location-candidate-0')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final saved = repository.createdEvents.single;
+    expect(saved.location, '약재과');
+    expect(saved.locationLat, isNull);
+    expect(saved.locationLng, isNull);
+    expect(find.text('왕초약재'), findsNothing);
+  });
+
+  testWidgets('ConfirmScreen lets users delete an existing location',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '약재과 가서 말하기',
+            location: '약재과',
+            rawText: '약재과 가서 말하기',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _HerbLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    for (var i = 0;
+        i < 20 && find.text('장소 후보를 선택해 주세요').evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final sheetScroll = find
+        .descendant(
+          of: find.byType(SingleChildScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .last;
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('voice-location-delete')),
+      120,
+      scrollable: sheetScroll,
+    );
+    await tester.tap(find.byKey(const ValueKey('voice-location-delete')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final saved = repository.createdEvents.single;
+    expect(saved.location, isNull);
+    expect(saved.locationLat, isNull);
+    expect(saved.locationLng, isNull);
+  });
+
   testWidgets('ConfirmScreen does not auto-resolve personal place aliases',
       (tester) async {
     final repository = _FakeEventRepository();
@@ -1313,7 +1482,30 @@ class _RestaurantLocationLookupService extends LocationLookupService {
   }
 }
 
+class _HerbLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
+  }) async {
+    return const <LocationLookupResult>[
+      LocationLookupResult(
+        name: '왕초약재',
+        address: '강원특별자치도 원주시',
+        latitude: 37.3421,
+        longitude: 127.9199,
+      ),
+    ];
+  }
+}
+
 class _FakeConfirmBackend extends ConfirmScreenBackend {
+  _FakeConfirmBackend({
+    List<String> recentLocations = const <String>[],
+  }) : _recentLocations = recentLocations;
+
+  final List<String> _recentLocations;
   final reminderPayloads = <Map<String, dynamic>>[];
 
   @override
@@ -1322,6 +1514,13 @@ class _FakeConfirmBackend extends ConfirmScreenBackend {
     required String location,
   }) async {
     return const <String>[];
+  }
+
+  @override
+  Future<List<String>> fetchRecentLocations({
+    required String userId,
+  }) async {
+    return _recentLocations;
   }
 
   @override
