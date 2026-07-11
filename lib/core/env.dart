@@ -31,6 +31,7 @@ class AppEnv {
   }
 
   static String get naverClientId => _envValue('NAVER_CLIENT_ID');
+  static String get kasiHolidayApiKey => _envValue('KASI_HOLIDAY_API_KEY');
   static String get authRedirectUrl => 'planflow://auth-callback';
 
   static bool get hasValidSupabaseConfig {
@@ -117,6 +118,8 @@ class AppEnv {
       'GOOGLE_SERVER_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID'),
       'NAVER_CLIENT_ID' => const String.fromEnvironment('NAVER_CLIENT_ID'),
+      'KASI_HOLIDAY_API_KEY' =>
+        const String.fromEnvironment('KASI_HOLIDAY_API_KEY'),
       _ => '',
     };
   }

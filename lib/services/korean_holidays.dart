@@ -22,6 +22,18 @@ class KoreanHolidays {
     (7, 17): '제헌절',
   };
 
+  /// [KasiHolidayService]가 한국천문연구원 공공 API에서 받아온 "그 해의
+  /// 실제 쉬는 날" 데이터. 연도별로 채워지며, 있으면 [_fixed]/[_lunarForYear]
+  /// 계산값보다 우선한다(임시공휴일·선거일 등 계산으로 알 수 없는 항목도
+  /// 포함되므로 더 정확하다). 없는 연도는 계산값(klc)으로 그대로 동작한다.
+  static final Map<int, Map<(int, int), String>> _liveOverride = {};
+
+  /// [KasiHolidayService]가 API 응답을 파싱한 뒤 호출한다. 제헌절은 이
+  /// 데이터에 포함돼 있지 않아야 한다(호출부에서 이미 걸러냄).
+  static void applyLiveData(int year, Map<(int, int), String> dayOff) {
+    _liveOverride[year] = Map.unmodifiable(dayOff);
+  }
+
   /// 음력 기반 공휴일 (연도별 양력 환산).
   /// 설날·추석은 전날/당일/다음날(3일) 포함.
   ///
@@ -172,7 +184,15 @@ class KoreanHolidays {
 
   /// 모든 공휴일(고정일 + 음력 + 대체)을 한 Map으로 반환.
   /// 제헌절(_commemorativeOnly)은 포함하지 않는다.
+  ///
+  /// [_liveOverride]에 해당 연도 데이터가 있으면(KasiHolidayService가
+  /// 공공 API에서 받아온 값) 그걸 우선 반환한다 — 임시공휴일·선거일처럼
+  /// 계산으로는 알 수 없는 항목까지 포함해 더 정확하다. 없으면 klc 계산값.
   static Map<(int, int), String> _allForYear(int year) {
+    final live = _liveOverride[year];
+    if (live != null) {
+      return live;
+    }
     final result = <(int, int), String>{};
     result.addAll(_fixed);
     result.addAll(_lunarForYear(year));

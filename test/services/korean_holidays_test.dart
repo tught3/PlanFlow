@@ -80,6 +80,36 @@ void main() {
     });
   });
 
+  group('KoreanHolidays.applyLiveData (KASI 공공 API 반영)', () {
+    // 실제 서비스와 겹치지 않도록 테스트 전용 연도(2099)를 쓴다.
+    test('실 데이터가 있으면 계산값 대신 그 데이터를 우선 사용한다', () {
+      KoreanHolidays.applyLiveData(2099, {
+        (5, 1): '노동절',
+        (6, 3): '전국동시지방선거',
+      });
+
+      expect(KoreanHolidays.isDayOff(DateTime(2099, 5, 1)), isTrue);
+      expect(KoreanHolidays.holidayName(DateTime(2099, 5, 1)), '노동절');
+      expect(KoreanHolidays.isDayOff(DateTime(2099, 6, 3)), isTrue);
+      expect(
+        KoreanHolidays.holidayName(DateTime(2099, 6, 3)),
+        '전국동시지방선거',
+      );
+      // 실 데이터에 없는 계산 전용 공휴일(개천절 등)은 실 데이터가 있는
+      // 연도에서는 더 이상 계산값을 쓰지 않으므로 감지되지 않는다(의도된
+      // 동작 — 실 데이터가 그 해의 완전한 목록이라고 신뢰).
+      expect(KoreanHolidays.isDayOff(DateTime(2099, 10, 3)), isFalse);
+    });
+
+    test('제헌절은 실 데이터가 있어도 _commemorativeOnly로 계속 이름이 나온다', () {
+      KoreanHolidays.applyLiveData(2098, {(10, 3): '개천절'});
+      // KasiHolidayService가 제헌절을 실 데이터에서 걸러내므로, 실 데이터에
+      // 제헌절이 없더라도 holidayName은 _commemorativeOnly로 여전히 반환.
+      expect(KoreanHolidays.holidayName(DateTime(2098, 7, 17)), '제헌절');
+      expect(KoreanHolidays.isDayOff(DateTime(2098, 7, 17)), isFalse);
+    });
+  });
+
   group('KoreanHolidays.isHoliday (lunar)', () {
     for (final entry in {
       '설날연휴 첫날(2026)': DateTime(2026, 2, 16),

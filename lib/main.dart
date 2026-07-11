@@ -20,6 +20,7 @@ import 'providers/auth_provider.dart';
 import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/event_prefetch_service.dart';
+import 'services/kasi_holiday_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,7 +42,22 @@ Future<void> _initializePlatformServices() async {
     _initializeFirebaseServices(),
     _initializeNaverMap(),
     _initializeSupabase(),
+    _primeHolidayCache(),
   ]);
+}
+
+/// 한국천문연구원 공공 API로 올해·작년·내년 공휴일 데이터를 백그라운드로
+/// 받아와 [KoreanHolidays]에 반영한다. 실패해도 klc 계산값으로 계속
+/// 동작하므로 앱 시작을 막지 않는다(fail-open, 결과를 기다리지 않음).
+Future<void> _primeHolidayCache() async {
+  try {
+    final thisYear = DateTime.now().year;
+    await KasiHolidayService.instance.primeYears(
+      [thisYear - 1, thisYear, thisYear + 1],
+    );
+  } catch (error) {
+    debugPrint('Holiday cache priming skipped: $error');
+  }
 }
 
 Future<void> _initializeFirebaseServices() async {

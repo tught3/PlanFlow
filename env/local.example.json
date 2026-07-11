@@ -7,5 +7,6 @@
   "GOOGLE_MAPS_API_KEY": "your-google-maps-api-key",
   "TMAP_API_KEY": "your-tmap-api-key",
   "NAVER_MAP_CLIENT_ID": "your-naver-map-client-id",
-  "NAVER_MAP_PROXY_URL": "https://your-project.supabase.co/functions/v1/naver-geocode"
+  "NAVER_MAP_PROXY_URL": "https://your-project.supabase.co/functions/v1/naver-geocode",
+  "KASI_HOLIDAY_API_KEY": "your-kasi-holiday-api-key"
 }
