@@ -439,6 +439,28 @@ void main() {
     expect(wednesday.hasCritical, isTrue);
   });
 
+  test(
+      'HomeWidgetSchedulePayloadBuilder fills holidayName/isDayOff for month cells',
+      () {
+    final octoberPayload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-10-05T04:00:00Z'),
+      events: const <EventModel>[],
+    );
+    final gaecheonjeolCell =
+        octoberPayload.monthCells.firstWhere((cell) => cell.day == 3);
+    expect(gaecheonjeolCell.holidayName, '개천절');
+    expect(gaecheonjeolCell.isDayOff, isTrue);
+
+    final julyPayload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-07-05T04:00:00Z'),
+      events: const <EventModel>[],
+    );
+    final jeheonjeolCell =
+        julyPayload.monthCells.firstWhere((cell) => cell.day == 17);
+    expect(jeheonjeolCell.holidayName, '제헌절');
+    expect(jeheonjeolCell.isDayOff, isFalse);
+  });
+
   test('HomeWidgetSchedulePayloadBuilder uses local day for tomorrow fallback',
       () {
     final now = DateTime.parse('2026-05-20T16:30:00Z');

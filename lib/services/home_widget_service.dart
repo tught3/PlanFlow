@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import 'home_widget_platform.dart';
+import 'korean_holidays.dart';
 import 'travel_time_buffer_service.dart';
 
 class HomeWidgetNextEventData {
@@ -90,6 +91,8 @@ class HomeWidgetMonthCellData {
     this.events = const <HomeWidgetListEventData>[],
     this.overflowCount = 0,
     this.overflowPreviewTitle,
+    this.holidayName,
+    this.isDayOff = false,
   });
 
   final int cellIndex;
@@ -99,6 +102,12 @@ class HomeWidgetMonthCellData {
   final List<HomeWidgetListEventData> events;
   final int overflowCount;
   final String? overflowPreviewTitle;
+
+  /// 공휴일/기념일 이름 (예: '개천절', '제헌절'). 해당 없으면 null.
+  final String? holidayName;
+
+  /// 실제 "쉬는 날"(휴무)이면 true. 제헌절처럼 이름은 있어도 평일이면 false.
+  final bool isDayOff;
 }
 
 class HomeWidgetSchedulePayload {
@@ -409,6 +418,8 @@ class HomeWidgetSchedulePayloadBuilder {
             : hiddenEvents.first.title.trim().isEmpty
                 ? null
                 : hiddenEvents.first.title.trim(),
+        holidayName: KoreanHolidays.holidayName(day),
+        isDayOff: KoreanHolidays.isDayOff(day),
       );
     });
   }
@@ -1390,6 +1401,16 @@ class HomeWidgetService {
       success = await _saveOptionalValue(
             '${keyPrefix}_${cellIndex}_overflow_preview_title',
             cell?.overflowPreviewTitle,
+          ) &&
+          success;
+      success = await _saveValue(
+            '${keyPrefix}_${cellIndex}_holiday_name',
+            cell?.holidayName ?? '',
+          ) &&
+          success;
+      success = await _saveValue(
+            '${keyPrefix}_${cellIndex}_is_day_off',
+            cell?.isDayOff ?? false,
           ) &&
           success;
       final events = cell?.events

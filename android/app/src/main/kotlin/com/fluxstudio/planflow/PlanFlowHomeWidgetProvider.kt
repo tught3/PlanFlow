@@ -221,6 +221,7 @@ abstract class BasePlanFlowWidgetProvider(
             "한글날",
             "성탄절",
             "부처님오신날",
+            "제헌절",
             "휴일",
         )
         return keywords.any { keyword ->
@@ -1386,6 +1387,9 @@ class PlanFlowMonthlyWidgetProvider :
                         .takeIf { it != 0 }
                     val day = cellDays[slot - 1]
                     val inMonth = day.year == monthStart.year && day.month == monthStart.month
+                    val isDayOffFromPrefs = widgetData.getBoolean("${cellPrefix}_${slot}_is_day_off", false)
+                    val holidayNameFromPrefs = widgetData.getString("${cellPrefix}_${slot}_holiday_name", null)
+                        ?.takeIf { it.isNotBlank() }
 
                     if (cellContainerId != null) {
                         views.setViewVisibility(
@@ -1401,7 +1405,7 @@ class PlanFlowMonthlyWidgetProvider :
                         views.setTextViewText(dayId, day.dayOfMonth.toString())
                         views.setViewVisibility(dayId, View.VISIBLE)
                         val isToday = day == todayDate()
-                        val isHoliday = hasHolidayEvent(rawEvents, day)
+                        val isHoliday = hasHolidayEvent(rawEvents, day) || isDayOffFromPrefs
                         views.setTextColor(
                             dayId,
                             when {
@@ -1461,7 +1465,18 @@ class PlanFlowMonthlyWidgetProvider :
                         if (eventId == 0) continue
                         val event = slotMap[slot - 1][eventSlot - 1]
                         if (event == null) {
-                            views.setViewVisibility(eventId, View.GONE)
+                            if (eventSlot == 1 && holidayNameFromPrefs != null) {
+                                views.setTextViewText(eventId, holidayNameFromPrefs)
+                                views.setInt(eventId, "setBackgroundResource", android.R.color.transparent)
+                                views.setViewPadding(eventId, 0, 0, 0, 0)
+                                views.setTextColor(
+                                    eventId,
+                                    if (isDayOffFromPrefs) HOLIDAY_TEXT_COLOR else MUTED_TEXT_COLOR,
+                                )
+                                views.setViewVisibility(eventId, View.VISIBLE)
+                            } else {
+                                views.setViewVisibility(eventId, View.GONE)
+                            }
                             continue
                         }
 
@@ -1515,6 +1530,9 @@ class PlanFlowMonthlyWidgetProvider :
                     .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_overflow_count")
                 val fallbackCell = fallbackCells?.getOrNull(slot - 1)
                 val targetDate = cellDate ?: fallbackCell?.third ?: continue
+                val isDayOffFromPrefs = widgetData.getBoolean("${prefix}_is_day_off", false)
+                val holidayNameFromPrefs = widgetData.getString("${prefix}_holiday_name", null)
+                    ?.takeIf { it.isNotBlank() }
 
                 if (dayId == 0) {
                     continue
@@ -1555,7 +1573,7 @@ class PlanFlowMonthlyWidgetProvider :
                 views.setTextViewText(dayId, dayText ?: "")
                 views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
                 val isToday = targetDate == todayDate()
-                val isHoliday = hasHolidayEvent(rawEvents, targetDate)
+                val isHoliday = hasHolidayEvent(rawEvents, targetDate) || isDayOffFromPrefs
                 views.setTextColor(
                     dayId,
                     when {
@@ -1645,6 +1663,13 @@ class PlanFlowMonthlyWidgetProvider :
                         val isBarContinuation = !showTitle && (segment == "middle" || segment == "end")
                         if (isBarContinuation && rawTitle != null) {
                             views.setTextViewText(eventId, "")
+                            views.setViewVisibility(eventId, View.VISIBLE)
+                        } else if (eventSlot == 1 && rawTitle == null && holidayNameFromPrefs != null) {
+                            views.setTextViewText(eventId, holidayNameFromPrefs)
+                            views.setTextColor(
+                                eventId,
+                                if (isDayOffFromPrefs) HOLIDAY_TEXT_COLOR else MUTED_TEXT_COLOR,
+                            )
                             views.setViewVisibility(eventId, View.VISIBLE)
                         } else {
                             bindEventText(views, eventId, rawTitle, null, isCritical = eventCritical, isMuted = !inMonth)
