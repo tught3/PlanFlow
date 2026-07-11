@@ -59,6 +59,27 @@ void main() {
     });
   });
 
+  group('KoreanHolidays 음력 계산(klc) 확장 범위', () {
+    // 과거엔 2026~2035년만 하드코딩돼 있어 2036년 이후는 음력 공휴일이
+    // 전혀 표시되지 않았다. klc 패키지 도입 후에는 실시간 계산이라 별도
+    // 표 갱신 없이 2050년까지 자동으로 동작해야 한다.
+    test('2036년(과거 표 범위 밖) 설날이 정상 계산된다', () {
+      expect(KoreanHolidays.holidayName(DateTime(2036, 1, 28)), '설날');
+    });
+
+    test('2050년(klc 지원 상한 근접) 설날이 정상 계산된다', () {
+      expect(KoreanHolidays.holidayName(DateTime(2050, 1, 23)), '설날');
+    });
+
+    test('klc 지원 범위를 벗어난 연도는 예외 없이 조용히 빈 결과를 준다', () {
+      expect(
+        () => KoreanHolidays.isDayOff(DateTime(3000, 1, 1)),
+        returnsNormally,
+      );
+      expect(KoreanHolidays.holidayName(DateTime(3000, 2, 17)), isNull);
+    });
+  });
+
   group('KoreanHolidays.isHoliday (lunar)', () {
     for (final entry in {
       '설날연휴 첫날(2026)': DateTime(2026, 2, 16),

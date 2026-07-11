@@ -1,3 +1,5 @@
+import 'package:klc/klc.dart' as klc;
+
 class KoreanHolidays {
   KoreanHolidays._();
 
@@ -20,113 +22,50 @@ class KoreanHolidays {
     (7, 17): '제헌절',
   };
 
-  /// 음력 기반 공휴일 (연도별 양력 환산 lookup).
+  /// 음력 기반 공휴일 (연도별 양력 환산).
   /// 설날·추석은 전날/당일/다음날(3일) 포함.
+  ///
+  /// 한국천문연구원(KASI) 데이터 기반의 klc 패키지로 음력→양력을 실시간
+  /// 계산한다(지원 범위: 1391~2050년, 그 밖의 연도는 빈 맵 반환).
+  /// 과거엔 연도별 양력 날짜를 하드코딩한 표였으나, 매 10년마다 표를
+  /// 늘려줘야 하는 유지보수 부담이 있어 계산식으로 교체했다.
   static Map<(int, int), String> _lunarForYear(int year) {
-    switch (year) {
-      case 2026:
-        return {
-          (2, 16): '설날연휴',
-          (2, 17): '설날',
-          (2, 18): '설날연휴',
-          (5, 24): '부처님오신날',
-          (9, 24): '추석연휴',
-          (9, 25): '추석',
-          (9, 26): '추석연휴',
-        };
-      case 2027:
-        return {
-          (2, 6): '설날연휴',
-          (2, 7): '설날',
-          (2, 8): '설날연휴',
-          (5, 13): '부처님오신날',
-          (9, 14): '추석연휴',
-          (9, 15): '추석',
-          (9, 16): '추석연휴',
-        };
-      case 2028:
-        return {
-          (1, 26): '설날연휴',
-          (1, 27): '설날',
-          (1, 28): '설날연휴',
-          (5, 2): '부처님오신날',
-          (10, 2): '추석연휴',
-          (10, 3): '추석',
-          (10, 4): '추석연휴',
-        };
-      case 2029:
-        return {
-          (2, 12): '설날연휴',
-          (2, 13): '설날',
-          (2, 14): '설날연휴',
-          (5, 20): '부처님오신날',
-          (9, 21): '추석연휴',
-          (9, 22): '추석',
-          (9, 23): '추석연휴',
-        };
-      case 2030:
-        return {
-          (2, 2): '설날연휴',
-          (2, 3): '설날',
-          (2, 4): '설날연휴',
-          (5, 9): '부처님오신날',
-          (9, 11): '추석연휴',
-          (9, 12): '추석',
-          (9, 13): '추석연휴',
-        };
-      case 2031:
-        return {
-          (1, 22): '설날연휴',
-          (1, 23): '설날',
-          (1, 24): '설날연휴',
-          (5, 28): '부처님오신날',
-          (9, 30): '추석연휴',
-          (10, 1): '추석',
-          (10, 2): '추석연휴',
-        };
-      case 2032:
-        return {
-          (2, 10): '설날연휴',
-          (2, 11): '설날',
-          (2, 12): '설날연휴',
-          (5, 16): '부처님오신날',
-          (9, 18): '추석연휴',
-          (9, 19): '추석',
-          (9, 20): '추석연휴',
-        };
-      case 2033:
-        return {
-          (1, 30): '설날연휴',
-          (1, 31): '설날',
-          (2, 1): '설날연휴',
-          (5, 6): '부처님오신날',
-          (9, 7): '추석연휴',
-          (9, 8): '추석',
-          (9, 9): '추석연휴',
-        };
-      case 2034:
-        return {
-          (2, 18): '설날연휴',
-          (2, 19): '설날',
-          (2, 20): '설날연휴',
-          (5, 25): '부처님오신날',
-          (9, 26): '추석연휴',
-          (9, 27): '추석',
-          (9, 28): '추석연휴',
-        };
-      case 2035:
-        return {
-          (2, 7): '설날연휴',
-          (2, 8): '설날',
-          (2, 9): '설날연휴',
-          (5, 15): '부처님오신날',
-          (9, 15): '추석연휴',
-          (9, 16): '추석',
-          (9, 17): '추석연휴',
-        };
-      default:
-        return const <(int, int), String>{};
+    (int, int)? solarFor(int lunarMonth, int lunarDay) {
+      final valid = klc.setLunarDate(year, lunarMonth, lunarDay, false);
+      if (!valid) {
+        return null;
+      }
+      return (klc.getSolarMonth(), klc.getSolarDay());
     }
+
+    (int, int) shiftDays((int, int) monthDay, int deltaDays) {
+      final shifted = DateTime(year, monthDay.$1, monthDay.$2)
+          .add(Duration(days: deltaDays));
+      return (shifted.month, shifted.day);
+    }
+
+    final result = <(int, int), String>{};
+
+    final seol = solarFor(1, 1);
+    if (seol != null) {
+      result[shiftDays(seol, -1)] = '설날연휴';
+      result[seol] = '설날';
+      result[shiftDays(seol, 1)] = '설날연휴';
+    }
+
+    final buddha = solarFor(4, 8);
+    if (buddha != null) {
+      result[buddha] = '부처님오신날';
+    }
+
+    final chuseok = solarFor(8, 15);
+    if (chuseok != null) {
+      result[shiftDays(chuseok, -1)] = '추석연휴';
+      result[chuseok] = '추석';
+      result[shiftDays(chuseok, 1)] = '추석연휴';
+    }
+
+    return result;
   }
 
   /// 대체공휴일 대상 + 예외 발생 조건.
