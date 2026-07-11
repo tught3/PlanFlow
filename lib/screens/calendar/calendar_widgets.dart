@@ -6,12 +6,16 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
     required this.eventCount,
     required this.onAdd,
     required this.onVoice,
+    this.holidayName,
+    this.isHoliday = false,
   });
 
   final String selectedDateLabel;
   final int eventCount;
   final VoidCallback onAdd;
   final VoidCallback onVoice;
+  final String? holidayName;
+  final bool isHoliday;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +39,36 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
           ),
         );
 
+        // 공휴일 이름 칩(쉬는 날이면 빨강, 아니면 secondary 톤)
+        final holidayChip = holidayName != null
+            ? Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: isHoliday
+                      ? calendarCriticalEventMarkerColor.withValues(alpha: 0.15)
+                      : PlanFlowColors.textSecondary.withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: isHoliday
+                        ? calendarCriticalEventMarkerColor
+                        : PlanFlowColors.textSecondary,
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  holidayName!,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: isHoliday
+                        ? calendarCriticalEventMarkerColor
+                        : PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              )
+            : null;
+
         if (isNarrow) {
           return Wrap(
             spacing: 8,
@@ -51,6 +85,7 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              if (holidayChip != null) holidayChip,
               countBadge,
               TextButton.icon(
                 onPressed: onAdd,
@@ -69,14 +104,25 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
         return Row(
           children: [
             Expanded(
-              child: Text(
-                selectedDateLabel,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: PlanFlowColors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      selectedDateLabel,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (holidayChip != null) ...[
+                    const SizedBox(width: 8),
+                    holidayChip,
+                  ],
+                ],
               ),
             ),
+            const SizedBox(width: 8),
             countBadge,
             const SizedBox(width: 8),
             TextButton.icon(
@@ -650,6 +696,8 @@ class _MiniCalendarGrid extends StatelessWidget {
                                       overflowCount: cell.overflowCount,
                                       isSelected: isSelected,
                                       day: dayDate,
+                                      holidayName: cell.holidayName,
+                                      isHoliday: cell.isHoliday,
                                     ),
                                   ),
                                 ],
@@ -678,6 +726,8 @@ class _CalendarMiniEventList extends StatelessWidget {
     required this.overflowCount,
     required this.isSelected,
     required this.day,
+    this.holidayName,
+    this.isHoliday = false,
   });
 
   final List<EventModel> events;
@@ -685,15 +735,20 @@ class _CalendarMiniEventList extends StatelessWidget {
   final int overflowCount;
   final bool isSelected;
   final DateTime day;
+  final String? holidayName;
+  final bool isHoliday;
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty && overlayEvents.isEmpty && overflowCount <= 0) {
+    if (events.isEmpty && overlayEvents.isEmpty && overflowCount <= 0 && holidayName == null) {
       return const SizedBox.shrink();
     }
     // 개인 일정 + 그룹 일정을 합쳐 셀 높이(고정 행 수)를 넘지 않게 예산을
     // 나눈다. 개인 일정을 먼저 채우고, 남는 행에 그룹 일정을 채운 뒤,
     // 양쪽에서 못 들어간 만큼을 하나의 "+N건" 라벨로 합쳐 보여준다.
+    //
+    // 공휴일 이름이 있으면 첫 행(1행)을 차지하므로 나머지 행에만 이벤트를
+    // 표시한다.
     //
     // 과거엔 넘치는 일정이 하나라도 있으면 무조건 행 하나를 미리 비워
     // (_calendarMiniMonthEventRows-1)까지만 채웠는데, 그 결과 4번째 행에
@@ -701,22 +756,50 @@ class _CalendarMiniEventList extends StatelessWidget {
     // 동일 버그와 같은 원인, 사용자 지적으로 함께 발견). 예산 전체
     // (_calendarMiniMonthEventRows)를 그대로 쓰고, 그 예산을 넘는 만큼만
     // hiddenCount로 표시한다.
+
+    // 공휴일 라벨이 차지할 행 수
+    final holidayRowCount = holidayName != null ? 1 : 0;
+    final maxEventRows = _calendarMiniMonthEventRows - holidayRowCount;
+
     final totalItems = events.length + overlayEvents.length;
-    const maxVisibleRows = _calendarMiniMonthEventRows;
-    final displayEvents = events.length > maxVisibleRows
-        ? events.take(maxVisibleRows).toList(growable: false)
+    final displayEvents = events.length > maxEventRows
+        ? events.take(maxEventRows).toList(growable: false)
         : events;
-    final remainingRows = maxVisibleRows - displayEvents.length;
+    final remainingRows = maxEventRows - displayEvents.length;
     final displayOverlayEvents = remainingRows > 0
         ? overlayEvents.take(remainingRows).toList(growable: false)
         : const <CalendarOverlayItem>[];
     final hiddenCount = (totalItems + overflowCount) -
         displayEvents.length -
         displayOverlayEvents.length;
+
     return Column(
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 공휴일 라벨(쉬는 날이면 빨강, 아니면 차분한 톤)
+        if (holidayName != null)
+          SizedBox(
+            height: 9,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text(
+                holidayName!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 6.8,
+                  height: 1.0,
+                  color: isSelected
+                      ? Colors.white
+                      : isHoliday
+                          ? calendarCriticalEventMarkerColor
+                          : PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
         for (final event in displayEvents)
           _CalendarMiniEventLabel(
             event: event,

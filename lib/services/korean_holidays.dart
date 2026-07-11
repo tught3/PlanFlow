@@ -1,17 +1,23 @@
 class KoreanHolidays {
   KoreanHolidays._();
 
-  /// 양력 고정일 공휴일: (month, day) → 이름
+  /// 양력 고정일 "쉬는 날"(공휴일): (month, day) → 이름
   static const Map<(int, int), String> _fixed = {
     (1, 1): '신정',
     (3, 1): '삼일절',
     (5, 5): '어린이날',
     (6, 6): '현충일',
-    (7, 17): '제헌절',
     (8, 15): '광복절',
     (10, 3): '개천절',
     (10, 9): '한글날',
     (12, 25): '성탄절',
+  };
+
+  /// 국경일이지만 "쉬는 날"이 아닌 기념일: (month, day) → 이름.
+  /// 이름은 표시하되 날짜 숫자를 빨간(휴무) 색으로 칠하지 않는다.
+  /// 제헌절은 2008년부터 공휴일(비휴무)에서 제외돼 실제로는 평일이다.
+  static const Map<(int, int), String> _commemorativeOnly = {
+    (7, 17): '제헌절',
   };
 
   /// 음력 기반 공휴일 (연도별 양력 환산 lookup).
@@ -226,6 +232,7 @@ class KoreanHolidays {
   }
 
   /// 모든 공휴일(고정일 + 음력 + 대체)을 한 Map으로 반환.
+  /// 제헌절(_commemorativeOnly)은 포함하지 않는다.
   static Map<(int, int), String> _allForYear(int year) {
     final result = <(int, int), String>{};
     result.addAll(_fixed);
@@ -236,14 +243,27 @@ class KoreanHolidays {
     return result;
   }
 
-  /// 주어진 날짜가 한국 공휴일이면 true.
-  static bool isHoliday(DateTime date) {
+  /// 주어진 날짜가 한국 쉬는 날(공휴일)이면 true.
+  /// 제헌절은 제외 (2008년부터 평일).
+  static bool isDayOff(DateTime date) {
     return _allForYear(date.year).containsKey((date.month, date.day));
   }
 
+  /// 주어진 날짜가 한국 공휴일이면 true.
+  /// isDayOff()와 동일한 로직으로 하위호환성 유지.
+  static bool isHoliday(DateTime date) {
+    return isDayOff(date);
+  }
+
   /// 주어진 날짜의 공휴일명, 아니면 null.
+  /// 쉬는 날(isDayOff) 또는 국경일(제헌절)인 경우 이름을 반환.
   static String? holidayName(DateTime date) {
-    return _allForYear(date.year)[(date.month, date.day)];
+    final (month, day) = (date.month, date.day);
+    final allDays = _allForYear(date.year);
+    if (allDays.containsKey((month, day))) {
+      return allDays[(month, day)];
+    }
+    return _commemorativeOnly[(month, day)];
   }
 
   /// 주어진 날짜가 공휴일이거나 주말(토/일)이면 true.

@@ -291,14 +291,15 @@ void main() {
         home: CalendarScreen(
           eventRepository: repository,
           userId: 'user-1',
-          initialDate: DateTime(2026, 7, 1),
+          initialDate: DateTime(2026, 10, 1),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
+    // 개천절(10/3)은 실제 쉬는 날이므로 빨간색으로 표시된다.
     final dayLabel = tester.widget<Text>(
-      find.byKey(const ValueKey('calendar-mini-day-2026-7-17')),
+      find.byKey(const ValueKey('calendar-mini-day-2026-10-3')),
     );
     expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
   });

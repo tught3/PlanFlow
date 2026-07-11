@@ -230,6 +230,7 @@ class CalendarMiniMonthCellData {
     required this.overlayEvents,
     required this.overflowCount,
     required this.isHoliday,
+    this.holidayName,
   });
 
   final int index;
@@ -240,6 +241,7 @@ class CalendarMiniMonthCellData {
   final List<CalendarOverlayItem> overlayEvents;
   final int overflowCount;
   final bool isHoliday;
+  final String? holidayName;
 }
 
 @visibleForTesting
@@ -410,9 +412,10 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       overlayEvents: overlayItemsByCell[index],
       overflowCount: overflowCounts[index],
       isHoliday: day != null &&
-          (KoreanHolidays.isHoliday(day) ||
+          (KoreanHolidays.isDayOff(day) ||
               _eventsForLocalDay(sortedEvents, day)
                   .any((event) => _looksLikeHolidayTitle(event.title))),
+      holidayName: day == null ? null : KoreanHolidays.holidayName(day),
     );
   }, growable: false);
 }
@@ -489,6 +492,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _searchController.dispose();
     super.dispose();
   }
+
+  String? get _selectedDateHolidayName =>
+      KoreanHolidays.holidayName(_selectedDate);
 
   void _handleEventRefresh() {
     final signal = EventRefreshBus.instance.latest.value;
@@ -1224,6 +1230,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _CalendarSelectedDateHeader(
                       selectedDateLabel: selectedDateLabel,
                       eventCount: totalDayEventCount,
+                      holidayName: _selectedDateHolidayName,
+                      isHoliday: KoreanHolidays.isDayOff(_selectedDate),
                       onAdd: () =>
                           context.push(_eventEditRouteForDay(_selectedDate)),
                       onVoice: () => context.push(AppRoutes.voice),
