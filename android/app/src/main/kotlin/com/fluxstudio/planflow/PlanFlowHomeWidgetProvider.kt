@@ -221,8 +221,11 @@ abstract class BasePlanFlowWidgetProvider(
             "한글날",
             "성탄절",
             "부처님오신날",
-            "제헌절",
             "휴일",
+            // 주의: "제헌절"은 여기 넣지 않는다. 2008년부터 비휴무 국경일이라
+            // 동기화된 캘린더 이벤트 제목에 "제헌절"이 있어도 날짜를
+            // 빨간색(휴무)으로 칠하면 안 된다. (holiday_name prefs는 이름
+            // 표시용으로 별도 처리되며 이 함수와 무관)
         )
         return keywords.any { keyword ->
             normalized.contains(keyword.replace("\\s+".toRegex(), "").lowercase(Locale.KOREA))

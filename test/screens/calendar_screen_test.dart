@@ -304,6 +304,40 @@ void main() {
     expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
   });
 
+  testWidgets(
+      'CalendarScreen does not paint 제헌절 red even if a synced event is titled 제헌절',
+      (tester) async {
+    // 제헌절은 2008년부터 비휴무 국경일이라, 동기화된 캘린더에 "제헌절"이라는
+    // 제목의 이벤트가 있어도 날짜 숫자를 빨간색(휴무)으로 칠하면 안 된다.
+    final repository = _AsyncEventRepository([
+      Future.value(<EventModel>[
+        EventModel(
+          id: 'synced-jeheonjeol',
+          userId: 'user-1',
+          title: '제헌절',
+          startAt: DateTime.utc(2026, 7, 17),
+          source: 'google_calendar',
+        ),
+      ]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: DateTime(2026, 7, 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dayLabel = tester.widget<Text>(
+      find.byKey(const ValueKey('calendar-mini-day-2026-7-17')),
+    );
+    expect(dayLabel.style?.color, isNot(calendarCriticalEventMarkerColor));
+  });
+
   testWidgets('CalendarScreen shows cross-month range on selected end day',
       (tester) async {
     final selectedDay = DateTime(2026, 6);
