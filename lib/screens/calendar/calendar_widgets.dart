@@ -777,28 +777,38 @@ class _CalendarMiniEventList extends StatelessWidget {
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 공휴일 라벨(쉬는 날이면 빨강, 아니면 차분한 톤)
+        // 공휴일 라벨(쉬는 날이면 빨강, 아니면 차분한 톤).
+        // 셀 폭이 넓을수록(태블릿 등) 글씨도 비례해서 커지도록 LayoutBuilder로
+        // 셀 폭을 재서 폰 기준(약 44px) 대비 배율을 곱한다. 행 높이는 다른
+        // 이벤트 행들과 맞춰 9로 고정(넘치면 레이아웃 오버플로 위험).
         if (holidayName != null)
-          SizedBox(
-            height: 9,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Text(
-                holidayName!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 6.8,
-                  height: 1.0,
-                  color: isSelected
-                      ? Colors.white
-                      : isHoliday
-                          ? calendarCriticalEventMarkerColor
-                          : PlanFlowColors.textSecondary,
-                  fontWeight: FontWeight.w700,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final scale =
+                  (constraints.maxWidth / 44).clamp(1.0, 1.4);
+              final fontSize = 6.8 * scale;
+              return SizedBox(
+                height: 9,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Text(
+                    holidayName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      height: 1.0,
+                      color: isSelected
+                          ? Colors.white
+                          : isHoliday
+                              ? calendarCriticalEventMarkerColor
+                              : PlanFlowColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         for (final event in displayEvents)
           _CalendarMiniEventLabel(
