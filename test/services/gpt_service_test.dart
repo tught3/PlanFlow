@@ -740,6 +740,58 @@ void main() {
       );
     });
 
+    test('public local inference handles numeric day offsets', () {
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('3일 뒤에 회의'),
+        DateTime(2026, 5, 10, 9),
+      );
+    });
+
+    test('public local inference handles native Korean day-count words', () {
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('사흘 후에 등산'),
+        DateTime(2026, 5, 10, 9),
+      );
+    });
+
+    test('public local inference handles 일주일 뒤 as 7 days later', () {
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('일주일 뒤에 검진'),
+        DateTime(2026, 5, 14, 9),
+      );
+    });
+
+    test('public local inference handles 한달 뒤 as 1 month later', () {
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('한달 뒤에 계약 갱신'),
+        DateTime(2026, 6, 7, 9),
+      );
+    });
+
     test('public local inference handles natural Korean half-hour words', () {
       final now = DateTime(2026, 5, 7, 9, 30);
       final service = GptService(

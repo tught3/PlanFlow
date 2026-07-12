@@ -2193,7 +2193,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
     final allMatches = RegExp(
-      r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
+      r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|'
+      r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|'
+      r'(?:하루|이틀|사흘|나흘|닷새|엿새|이레|여드레|아흐레|열흘)\s*(?:뒤|후)|'
+      r'\d{1,3}\s*일\s*(?:뒤|후)|'
+      r'일주일\s*(?:뒤|후)|한\s*주(?:일)?\s*(?:뒤|후)|\d{1,2}\s*주(?:일)?\s*(?:뒤|후)|'
+      r'한\s*달\s*(?:뒤|후)|\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)',
     ).allMatches(text).toList(growable: false);
     // "…까지"로 끝나는 날짜는 연속 일정의 종료일 지정이지 시작일 변경이
     // 아니므로 시작일 후보에서 제외한다.

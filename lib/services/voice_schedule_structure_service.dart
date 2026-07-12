@@ -268,8 +268,11 @@ class VoiceScheduleStructureService {
     String source,
     DateTime reference,
   ) {
-    final match = RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?')
-        .firstMatch(source);
+    // "3일 뒤/후"는 날짜의 일(day-of-month)이 아니라 상대 날짜(오늘로부터
+    // N일 뒤)이므로 여기서 걸러내고 별도 상대 날짜 처리 경로로 넘긴다.
+    final match =
+        RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?(?!\s*(?:뒤|후))')
+            .firstMatch(source);
     if (match == null) {
       return null;
     }

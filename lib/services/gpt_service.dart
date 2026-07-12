@@ -1310,6 +1310,56 @@ $_scheduleSystemPrompt
       return today;
     }
 
+    // 순우리말 날짜 수사("하루/이틀/사흘..." 뒤/후)를 숫자로 환산.
+    const nativeDayCounts = {
+      '하루': 1,
+      '이틀': 2,
+      '사흘': 3,
+      '나흘': 4,
+      '닷새': 5,
+      '엿새': 6,
+      '이레': 7,
+      '여드레': 8,
+      '아흐레': 9,
+      '열흘': 10,
+    };
+    for (final entry in nativeDayCounts.entries) {
+      if (RegExp('${entry.key}\\s*(?:뒤|후)').hasMatch(text)) {
+        return today.add(Duration(days: entry.value));
+      }
+    }
+
+    // "3일 뒤/후"처럼 숫자로 지정한 일 단위 상대 날짜.
+    final dayOffset = RegExp(
+      r'(?:지금으로부터\s*)?(?<days>\d{1,3})\s*일\s*(?:뒤|후)',
+    ).firstMatch(text);
+    if (dayOffset != null) {
+      final days = int.tryParse(dayOffset.namedGroup('days') ?? '');
+      if (days != null && days >= 0) {
+        return today.add(Duration(days: days));
+      }
+    }
+
+    // "일주일 뒤"/"한 주 뒤"(=7일), "N주(일) 뒤"(숫자 주 단위).
+    if (RegExp(r'일\s*주일\s*(?:뒤|후)|한\s*주(?:일)?\s*(?:뒤|후)')
+        .hasMatch(text)) {
+      return today.add(const Duration(days: 7));
+    }
+    final weekOffset = RegExp(
+      r'(?:지금으로부터\s*)?(?<weeks>\d{1,2})\s*주(?:일)?\s*(?:뒤|후)',
+    ).firstMatch(text);
+    if (weekOffset != null) {
+      final weeks = int.tryParse(weekOffset.namedGroup('weeks') ?? '');
+      if (weeks != null && weeks >= 0) {
+        return today.add(Duration(days: weeks * 7));
+      }
+    }
+
+    // "한 달 뒤"(순우리말 "한"=1)는 숫자 정규식(monthOffset)이 못 잡으므로 먼저 처리.
+    if (RegExp(r'한\s*달\s*(?:뒤|후)').hasMatch(text)) {
+      return DateTime(today.year, today.month + 1, today.day);
+    }
+
     final monthOffset = RegExp(
       r'(?:지금으로부터\s*)?(?<months>\d{1,2})\s*(?:개월|달|월)\s*(?:뒤|후)',
     ).firstMatch(text);

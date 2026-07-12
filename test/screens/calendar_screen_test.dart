@@ -444,6 +444,80 @@ void main() {
   });
 
   testWidgets(
+      'CalendarScreen이 개인+팀 동시저장된 일정을 중복 표시하지 않고 팀 공유 뱃지만 붙인다',
+      (tester) async {
+    final selectedDay = DateTime(2026, 6, 15);
+    final repository = _AsyncEventRepository([
+      Future.value(<EventModel>[
+        EventModel(
+          id: 'personal-1',
+          userId: 'user-1',
+          title: 'A일정',
+          startAt: selectedDay.add(const Duration(hours: 9)),
+          endAt: selectedDay.add(const Duration(hours: 10)),
+          groupEventId: 'group-event-1',
+        ),
+      ]),
+    ]);
+    final groupOverlayProvider = GroupCalendarOverlayProvider(
+      contextProvider: GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
+          ],
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              _member(
+                id: 'leader-row',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+          },
+        ),
+      ),
+      repository: _FakeGroupEventRepository(
+        <String, List<GroupEventModel>>{
+          'group-1': <GroupEventModel>[
+            _groupEvent(
+              id: 'group-event-1',
+              groupId: 'group-1',
+              title: 'A일정',
+              startAt: selectedDay.add(const Duration(hours: 9)),
+              endAt: selectedDay.add(const Duration(hours: 10)),
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: selectedDay,
+          groupCalendarOverlayProvider: groupOverlayProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 하단 day 목록에는 "A일정"이 (개인+팀 오버레이 중복 없이) 딱 한 번만
+    // 보인다 — 미니 달력 셀 라벨은 원래도 별도 렌더 영역이라 세지 않는다.
+    final dayEventsList =
+        find.byKey(const ValueKey('calendar-day-events-list'));
+    expect(
+      find.descendant(of: dayEventsList, matching: find.text('A일정')),
+      findsOneWidget,
+    );
+    expect(find.text('팀 A일정'), findsNothing);
+    // 대신 팀 공유 뱃지가 붙는다.
+    expect(find.text('팀 공유'), findsOneWidget);
+  });
+
+  testWidgets(
       'CalendarScreen mini-month grid shows a marker for a day with only group events (no personal events)',
       (tester) async {
     final groupOnlyDay = DateTime(2026, 6, 18);

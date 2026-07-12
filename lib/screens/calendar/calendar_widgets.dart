@@ -1132,15 +1132,49 @@ class _EventAgendaCard extends StatelessWidget {
                         ),
                       ),
                     if (timeLabel != null) const SizedBox(height: 4),
-                    Text(
-                      event.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: accentColor,
-                        fontSize: 13,
-                        fontWeight: event.isCritical
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            event.title,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: accentColor,
+                              fontSize: 13,
+                              fontWeight: event.isCritical
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // 팀에도 동시에 공유된 개인 일정임을 알리는 작은
+                        // 뱃지. 팀 오버레이 항목과 중복 표시하지 않는 대신
+                        // 이걸로 "공유됨"을 알려준다.
+                        if (event.groupEventId != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: calendarGroupEventColor
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '팀 공유',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: calendarGroupEventColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     if (event.location != null) ...[
                       const SizedBox(height: 4),

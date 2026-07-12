@@ -692,10 +692,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
     final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
+    // 개인 일정으로 이미 저장된(=groupEventId로 연결된) 그룹 일정은 오버레이로
+    // 또 그리지 않는다. 안 그러면 "A일정"(개인)과 "팀 A일정"(오버레이)이
+    // 같은 날 두 줄로 중복 표시된다(같은 일정을 개인+팀 동시 저장했을 때).
+    final linkedGroupEventIds = _visibleEvents
+        .map((event) => event.groupEventId)
+        .whereType<String>()
+        .toSet();
     return groupOverlayProvider.items
         .where((event) {
           final start = event.startAt;
           if (start == null) {
+            return false;
+          }
+          if (event.isGroup && linkedGroupEventIds.contains(event.id)) {
             return false;
           }
           // UTC 원시값이 아닌 로컬(KST) 날짜 기준으로 비교해야, 월 경계
