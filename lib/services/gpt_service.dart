@@ -297,11 +297,13 @@ class GptService {
         return null;
       }
 
+      final accessToken =
+          Supabase.instance.client.auth.currentSession?.accessToken;
       final response = await client
           .post(
             _endpoint,
             headers: <String, String>{
-              'Authorization': 'Bearer ${AppEnv.supabaseAnonKey}',
+              'Authorization': 'Bearer ${accessToken ?? AppEnv.supabaseAnonKey}',
               'apikey': AppEnv.supabaseAnonKey,
               'Content-Type': 'application/json',
             },

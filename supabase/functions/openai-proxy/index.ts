@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { verifyUser } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,11 @@ serve(async (req) => {
 
   if (req.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
+  }
+
+  const auth = await verifyUser(req);
+  if (!auth.ok) {
+    return json({ error: auth.error }, auth.status);
   }
 
   const openAiApiKey = getOpenAIApiKey() ?? "";

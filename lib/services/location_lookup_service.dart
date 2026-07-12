@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import 'api_usage_guard.dart';
@@ -537,9 +538,13 @@ class LocationLookupService {
 
     final client = _httpClientFactory();
     try {
+      final accessToken =
+          Supabase.instance.client.auth.currentSession?.accessToken;
       final response = await (useProxy
-              ? client.get(proxyUri, headers: const <String, String>{
+              ? client.get(proxyUri, headers: <String, String>{
                   'accept': 'application/json',
+                  if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+                  'apikey': AppEnv.supabaseAnonKey,
                 })
               : client.get(
                   Uri.https(
