@@ -30,6 +30,8 @@ Future<void> main() async {
   }
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
   ]);
   FlutterError.onError = FlutterError.presentError;
 
