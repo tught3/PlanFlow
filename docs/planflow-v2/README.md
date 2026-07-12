@@ -29,3 +29,10 @@
 - 개인 MVP 안정화는 유지
 - 팀 기능은 별도 모듈로 설계
 - 1차 배포 코드와 DB/RLS에는 영향을 주지 않음
+
+## 7차-D-1 실제 워커 검증
+
+- PlanFlow 실제 Worker 1개가 ASSIGN를 읽고 docs-only 안전 수정을 수행했습니다.
+- COMPLETE와 Reviewer PASS로 실제 실행 경로를 검증했습니다.
+
+마지막 업데이트: 2026-07-12
