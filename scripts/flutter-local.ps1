@@ -13,8 +13,6 @@ $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ProjectGradleHome = Join-Path $ProjectRoot '.gradle-local\gradle-home'
 New-Item -ItemType Directory -Force -Path $ProjectGradleHome | Out-Null
 $env:GRADLE_USER_HOME = $ProjectGradleHome
-$env:GRADLE_OPTS = (($env:GRADLE_OPTS, '-Dorg.gradle.vfs.watch=false', '-Dorg.gradle.parallel=false') |
-  Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' '
 
 $session = $null
 $exitCode = 0

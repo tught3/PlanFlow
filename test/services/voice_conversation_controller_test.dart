@@ -22,6 +22,24 @@ void main() {
       expect(planflowLocal(result.draftEvent!.startAt!).hour, 16);
       expect(result.draftEvent?.id, 'meeting');
     });
+
+    test('일정 시간 필드명을 포함한 수정도 조회된 제목과 매칭한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)),
+        ],
+        now: () => DateTime(2026, 7, 13, 9),
+      );
+      controller.handle('내일 일정 보여줘');
+
+      final result = controller.handle(
+        '김민수와 프로젝트 회의 일정 시간을 오후 4시로 변경해 줘',
+      );
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'meeting');
+      expect(planflowLocal(result.draftEvent!.startAt!).hour, 16);
+    });
   });
 
   group('VoiceConversationController', () {
