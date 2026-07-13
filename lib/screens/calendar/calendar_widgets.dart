@@ -42,10 +42,7 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
         // 공휴일 이름 칩(쉬는 날이면 빨강, 아니면 secondary 톤)
         final holidayChip = holidayName != null
             ? Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: isHoliday
                       ? calendarCriticalEventMarkerColor.withValues(alpha: 0.15)
@@ -339,30 +336,30 @@ class _CalendarStatusCard extends StatelessWidget {
     final theme = Theme.of(context);
     final (icon, title, body) = switch (state) {
       _CalendarLoadState.supabaseMissing => (
-          Icons.cloud_off_outlined,
-          'Supabase 설정이 필요해요',
-          '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
-        ),
+        Icons.cloud_off_outlined,
+        'Supabase 설정이 필요해요',
+        '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
+      ),
       _CalendarLoadState.signedOut => (
-          Icons.lock_outline,
-          '로그인이 필요해요',
-          '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
-        ),
+        Icons.lock_outline,
+        '로그인이 필요해요',
+        '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
+      ),
       _CalendarLoadState.error => (
-          Icons.error_outline,
-          '캘린더 불러오기 실패',
-          message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
-        ),
+        Icons.error_outline,
+        '캘린더 불러오기 실패',
+        message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
+      ),
       _CalendarLoadState.loading => (
-          Icons.hourglass_top_outlined,
-          '캘린더 확인 중',
-          '잠시만 기다려 주세요.',
-        ),
+        Icons.hourglass_top_outlined,
+        '캘린더 확인 중',
+        '잠시만 기다려 주세요.',
+      ),
       _CalendarLoadState.ready => (
-          Icons.check_circle_outline,
-          '정상',
-          '캘린더 데이터를 불러왔어요.',
-        ),
+        Icons.check_circle_outline,
+        '정상',
+        '캘린더 데이터를 불러왔어요.',
+      ),
     };
 
     return Container(
@@ -459,14 +456,9 @@ class _MonthHeader extends StatelessWidget {
             onPressed: onToday,
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
-              side: BorderSide(
-                color: Colors.white.withValues(alpha: 0.7),
-              ),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
               backgroundColor: Colors.white.withValues(alpha: 0.08),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               minimumSize: const Size(0, 38),
               visualDensity: VisualDensity.compact,
               shape: RoundedRectangleBorder(
@@ -519,10 +511,7 @@ class _MiniCalendarGrid extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -541,8 +530,8 @@ class _MiniCalendarGrid extends StatelessWidget {
                         color: isSunday
                             ? const Color(0xFFB42318)
                             : isSaturday
-                                ? PlanFlowColors.primaryMid
-                                : PlanFlowColors.textSecondary,
+                            ? PlanFlowColors.primaryMid
+                            : PlanFlowColors.textSecondary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -569,146 +558,134 @@ class _MiniCalendarGrid extends StatelessWidget {
                 ),
               ),
               child: Column(
-                children: List.generate(
-                  rows,
-                  (weekIndex) {
-                    return Row(
-                      children: List.generate(7, (dayIndex) {
-                        final cellIndex = weekIndex * 7 + dayIndex;
-                        final cellBorder = BoxDecoration(
-                          border: Border(
-                            right: BorderSide(
-                              color: PlanFlowColors.calendarGridLine,
-                              width: 1,
-                            ),
-                            bottom: BorderSide(
-                              color: PlanFlowColors.calendarGridLine,
-                              width: 1,
-                            ),
+                children: List.generate(rows, (weekIndex) {
+                  return Row(
+                    children: List.generate(7, (dayIndex) {
+                      final cellIndex = weekIndex * 7 + dayIndex;
+                      final cellBorder = BoxDecoration(
+                        border: Border(
+                          right: BorderSide(
+                            color: PlanFlowColors.calendarGridLine,
+                            width: 1,
                           ),
-                        );
-                        if (cellIndex >= monthCells.length) {
-                          return Expanded(
-                            child: Container(
-                              height: 74,
-                              decoration: cellBorder,
-                            ),
-                          );
-                        }
-                        final cell = monthCells[cellIndex];
-                        final dayDate = cell.date;
-                        if (dayDate == null) {
-                          return Expanded(
-                            child: Container(
-                              height: 74,
-                              decoration: cellBorder,
-                            ),
-                          );
-                        }
-                        final dayNumber = cell.dayNumber ?? dayDate.day;
-
-                        final isToday = today.year == dayDate.year &&
-                            today.month == dayDate.month &&
-                            today.day == dayDate.day;
-                        final isSelected =
-                            selectedDate.year == dayDate.year &&
-                                selectedDate.month == dayDate.month &&
-                                selectedDate.day == dayDate.day;
-
+                          bottom: BorderSide(
+                            color: PlanFlowColors.calendarGridLine,
+                            width: 1,
+                          ),
+                        ),
+                      );
+                      if (cellIndex >= monthCells.length) {
                         return Expanded(
-                          child: GestureDetector(
-                            onTap: () => onDaySelected(dayDate),
-                            child: Container(
-                              key: ValueKey(
-                                'calendar-mini-cell-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                              ),
-                              height: 74,
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? PlanFlowColors.primaryMid
-                                    : isToday
-                                        ? PlanFlowColors.calendarTodayCellBg
-                                        : PlanFlowColors.surface,
-                                border: Border(
-                                  right: BorderSide(
-                                    color: PlanFlowColors.calendarGridLine,
-                                    width: 1,
-                                  ),
-                                  bottom: BorderSide(
-                                    color: PlanFlowColors.calendarGridLine,
-                                    width: 1,
-                                  ),
+                          child: Container(height: 74, decoration: cellBorder),
+                        );
+                      }
+                      final cell = monthCells[cellIndex];
+                      final dayDate = cell.date;
+                      if (dayDate == null) {
+                        return Expanded(
+                          child: Container(height: 74, decoration: cellBorder),
+                        );
+                      }
+                      final dayNumber = cell.dayNumber ?? dayDate.day;
+
+                      final isToday =
+                          today.year == dayDate.year &&
+                          today.month == dayDate.month &&
+                          today.day == dayDate.day;
+                      final isSelected =
+                          selectedDate.year == dayDate.year &&
+                          selectedDate.month == dayDate.month &&
+                          selectedDate.day == dayDate.day;
+
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () => onDaySelected(dayDate),
+                          child: Container(
+                            key: ValueKey(
+                              'calendar-mini-cell-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                            ),
+                            height: 74,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? PlanFlowColors.primaryMid
+                                  : isToday
+                                  ? PlanFlowColors.calendarTodayCellBg
+                                  : PlanFlowColors.surface,
+                              border: Border(
+                                right: BorderSide(
+                                  color: PlanFlowColors.calendarGridLine,
+                                  width: 1,
+                                ),
+                                bottom: BorderSide(
+                                  color: PlanFlowColors.calendarGridLine,
+                                  width: 1,
                                 ),
                               ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 3,
-                                    ),
-                                    child: Center(
-                                      child: Container(
-                                        width: 20,
-                                        height: 20,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? PlanFlowColors.primaryMid
-                                              : isToday
-                                                  ? PlanFlowColors
-                                                      .calendarTodayCircle
-                                                  : Colors.transparent,
-                                          shape: BoxShape.circle,
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                  ),
+                                  child: Center(
+                                    child: Container(
+                                      width: 20,
+                                      height: 20,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? PlanFlowColors.primaryMid
+                                            : isToday
+                                            ? PlanFlowColors.calendarTodayCircle
+                                            : Colors.transparent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text(
+                                        '$dayNumber',
+                                        key: ValueKey(
+                                          'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
                                         ),
-                                        child: Text(
-                                          '$dayNumber',
-                                          key: ValueKey(
-                                            'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                                          ),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: isToday || isSelected
-                                                ? FontWeight.w700
-                                                : FontWeight.w400,
-                                            color: isSelected || isToday
-                                                ? Colors.white
-                                                : cell.isHoliday
-                                                    ? calendarCriticalEventMarkerColor
-                                                    : PlanFlowColors
-                                                        .textPrimary,
-                                          ),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: isToday || isSelected
+                                              ? FontWeight.w700
+                                              : FontWeight.w400,
+                                          color: isSelected || isToday
+                                              ? Colors.white
+                                              : cell.isHoliday
+                                              ? calendarCriticalEventMarkerColor
+                                              : PlanFlowColors.textPrimary,
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Expanded(
-                                    child: _CalendarMiniEventList(
-                                      key: ValueKey(
-                                        'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                                      ),
-                                      events: cell.events,
-                                      overlayEvents: cell.overlayEvents,
-                                      overflowCount: cell.overflowCount,
-                                      isSelected: isSelected,
-                                      day: dayDate,
-                                      holidayName: cell.holidayName,
-                                      isHoliday: cell.isHoliday,
+                                ),
+                                const SizedBox(height: 2),
+                                Expanded(
+                                  child: _CalendarMiniEventList(
+                                    key: ValueKey(
+                                      'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
                                     ),
+                                    events: cell.events,
+                                    overlayEvents: cell.overlayEvents,
+                                    overflowCount: cell.overflowCount,
+                                    isSelected: isSelected,
+                                    day: dayDate,
+                                    holidayName: cell.holidayName,
+                                    isHoliday: cell.isHoliday,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
-                        );
-                      }),
-                    );
-                  },
-                ),
+                        ),
+                      );
+                    }),
+                  );
+                }),
               ),
             ),
           ],
@@ -740,15 +717,18 @@ class _CalendarMiniEventList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty && overlayEvents.isEmpty && overflowCount <= 0 && holidayName == null) {
+    if (events.isEmpty &&
+        overlayEvents.isEmpty &&
+        overflowCount <= 0 &&
+        holidayName == null) {
       return const SizedBox.shrink();
     }
     // 개인 일정 + 그룹 일정을 합쳐 셀 높이(고정 행 수)를 넘지 않게 예산을
     // 나눈다. 개인 일정을 먼저 채우고, 남는 행에 그룹 일정을 채운 뒤,
     // 양쪽에서 못 들어간 만큼을 하나의 "+N건" 라벨로 합쳐 보여준다.
     //
-    // 공휴일 이름이 있으면 첫 행(1행)을 차지하므로 나머지 행에만 이벤트를
-    // 표시한다.
+    // 공휴일 이름이 있으면 한 행을 차지하므로 나머지 행에만 이벤트를
+    // 표시한다. 연속 일정 밴드의 행 정렬을 위해 라벨은 이벤트 뒤에 둔다.
     //
     // 과거엔 넘치는 일정이 하나라도 있으면 무조건 행 하나를 미리 비워
     // (_calendarMiniMonthEventRows-1)까지만 채웠는데, 그 결과 4번째 행에
@@ -769,7 +749,8 @@ class _CalendarMiniEventList extends StatelessWidget {
     final displayOverlayEvents = remainingRows > 0
         ? overlayEvents.take(remainingRows).toList(growable: false)
         : const <CalendarOverlayItem>[];
-    final hiddenCount = (totalItems + overflowCount) -
+    final hiddenCount =
+        (totalItems + overflowCount) -
         displayEvents.length -
         displayOverlayEvents.length;
 
@@ -777,15 +758,24 @@ class _CalendarMiniEventList extends StatelessWidget {
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 공휴일 라벨(쉬는 날이면 빨강, 아니면 차분한 톤).
-        // 셀 폭이 넓을수록(태블릿 등) 글씨도 비례해서 커지도록 LayoutBuilder로
-        // 셀 폭을 재서 폰 기준(약 44px) 대비 배율을 곱한다. 행 높이는 다른
-        // 이벤트 행들과 맞춰 9로 고정(넘치면 레이아웃 오버플로 위험).
+        for (final event in displayEvents)
+          _CalendarMiniEventLabel(
+            event: event,
+            isSelected: isSelected,
+            day: day,
+          ),
+        for (final event in displayOverlayEvents)
+          _CalendarMiniOverlayLabel(
+            event: event,
+            isSelected: isSelected,
+            day: day,
+          ),
+        // 공휴일 라벨(쉬는 날이면 빨강, 아니면 차분한 톤)은 이벤트 뒤에
+        // 배치해 연속 일정 밴드가 인접한 날짜 셀과 같은 행을 유지한다.
         if (holidayName != null)
           LayoutBuilder(
             builder: (context, constraints) {
-              final scale =
-                  (constraints.maxWidth / 44).clamp(1.0, 1.4);
+              final scale = (constraints.maxWidth / 44).clamp(1.0, 1.4);
               final fontSize = 6.8 * scale;
               return SizedBox(
                 height: 9,
@@ -801,26 +791,14 @@ class _CalendarMiniEventList extends StatelessWidget {
                       color: isSelected
                           ? Colors.white
                           : isHoliday
-                              ? calendarCriticalEventMarkerColor
-                              : PlanFlowColors.textSecondary,
+                          ? calendarCriticalEventMarkerColor
+                          : PlanFlowColors.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
               );
             },
-          ),
-        for (final event in displayEvents)
-          _CalendarMiniEventLabel(
-            event: event,
-            isSelected: isSelected,
-            day: day,
-          ),
-        for (final event in displayOverlayEvents)
-          _CalendarMiniOverlayLabel(
-            event: event,
-            isSelected: isSelected,
-            day: day,
           ),
         if (hiddenCount > 0)
           SizedBox(
@@ -874,21 +852,21 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final bg = isMultiDay
         ? calendarMultiDayEventBackgroundColor
         : isSelected
-            ? event.isCritical
-                ? calendarCriticalEventTextColor.withValues(alpha: 0.35)
-                : Colors.white.withValues(alpha: 0.18)
-            : event.isCritical
-                ? calendarCriticalEventTextColor.withValues(alpha: 0.20)
-                : _categoryColor(event.category).withValues(alpha: 0.16);
+        ? event.isCritical
+              ? calendarCriticalEventTextColor.withValues(alpha: 0.35)
+              : Colors.white.withValues(alpha: 0.18)
+        : event.isCritical
+        ? calendarCriticalEventTextColor.withValues(alpha: 0.20)
+        : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isMultiDay
         ? calendarMultiDayEventTextColor
         : isSelected
-            ? event.isCritical
-                ? calendarCriticalEventTextColor
-                : Colors.white
-            : event.isCritical
-                ? calendarCriticalEventTextColor
-                : _categoryColor(event.category);
+        ? event.isCritical
+              ? calendarCriticalEventTextColor
+              : Colors.white
+        : event.isCritical
+        ? calendarCriticalEventTextColor
+        : _categoryColor(event.category);
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
     // Neighboring day cells have 1.5px margins on each side, so extending
@@ -896,6 +874,9 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
     final extendRight = isMultiDay && !segment.$2 ? 1.5 : 0.0;
     return SizedBox(
+      key: ValueKey(
+        'calendar-mini-event-${event.id}-${day.year}-${day.month}-${day.day}',
+      ),
       height: 9,
       child: Stack(
         clipBehavior: Clip.none,
@@ -930,16 +911,15 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: hPadding,
-                      ).copyWith(
-                        top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
-                      ),
+                      padding: EdgeInsets.symmetric(horizontal: hPadding)
+                          .copyWith(
+                            top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
+                          ),
                       child: Text(
                         showTitle
                             ? (event.isAllDay && !isMultiDay
-                                ? '종일 ${event.title}'
-                                : event.title)
+                                  ? '종일 ${event.title}'
+                                  : event.title)
                             : '',
                         maxLines: 1,
                         softWrap: false,
@@ -973,7 +953,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final last = _calendarDisplayEndDay(event.startAt!, event.endAt!);
     return (
       current == first || current.weekday == DateTime.sunday,
-      current == last || current.weekday == DateTime.saturday
+      current == last || current.weekday == DateTime.saturday,
     );
   }
 }
@@ -996,8 +976,8 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
     final bg = isMultiDay
         ? calendarGroupEventColor.withValues(alpha: 0.14)
         : isSelected
-            ? Colors.white.withValues(alpha: 0.2)
-            : calendarGroupEventColor.withValues(alpha: 0.14);
+        ? Colors.white.withValues(alpha: 0.2)
+        : calendarGroupEventColor.withValues(alpha: 0.14);
     final fg = isSelected ? Colors.white : calendarGroupEventColor;
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
@@ -1030,14 +1010,13 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: hPadding,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: hPadding),
                   child: Text(
                     showTitle
-                        ? (event.groupName != null && event.groupName!.isNotEmpty
-                            ? '팀 ${event.title}'
-                            : event.title)
+                        ? (event.groupName != null &&
+                                  event.groupName!.isNotEmpty
+                              ? '팀 ${event.title}'
+                              : event.title)
                         : '',
                     maxLines: 1,
                     softWrap: false,
@@ -1067,17 +1046,14 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
     final last = event.localEnd;
     return (
       current == first || current.weekday == DateTime.sunday,
-      current == last || current.weekday == DateTime.saturday
+      current == last || current.weekday == DateTime.saturday,
     );
   }
 }
 
 // --- Event Agenda Card ---
 class _EventAgendaCard extends StatelessWidget {
-  const _EventAgendaCard({
-    required this.event,
-    this.onTap,
-  });
+  const _EventAgendaCard({required this.event, this.onTap});
 
   final EventModel event;
   final VoidCallback? onTap;
@@ -1160,8 +1136,9 @@ class _EventAgendaCard extends StatelessWidget {
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: calendarGroupEventColor
-                                  .withValues(alpha: 0.12),
+                              color: calendarGroupEventColor.withValues(
+                                alpha: 0.12,
+                              ),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -1268,11 +1245,7 @@ class _EventAgendaCard extends StatelessWidget {
 
 // --- Group Overlay Agenda Card ---
 class _GroupOverlayAgendaCard extends StatelessWidget {
-  const _GroupOverlayAgendaCard({
-    super.key,
-    required this.event,
-    this.onTap,
-  });
+  const _GroupOverlayAgendaCard({super.key, required this.event, this.onTap});
 
   final CalendarOverlayItem event;
   final VoidCallback? onTap;
@@ -1439,9 +1412,7 @@ class _CalendarGroupContextChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              label == '개인 모드'
-                  ? Icons.person_outline
-                  : Icons.groups_outlined,
+              label == '개인 모드' ? Icons.person_outline : Icons.groups_outlined,
               size: 14,
               color: PlanFlowColors.primaryMid,
             ),
@@ -1463,10 +1434,7 @@ class _CalendarGroupContextChip extends StatelessWidget {
 
 /// 개인/그룹 일정 목록 섹션 제목 (개수 배지 포함).
 class _AgendaSectionHeader extends StatelessWidget {
-  const _AgendaSectionHeader({
-    required this.title,
-    required this.count,
-  });
+  const _AgendaSectionHeader({required this.title, required this.count});
 
   final String title;
   final int count;
@@ -1599,10 +1567,7 @@ class _EmptyAgendaCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),

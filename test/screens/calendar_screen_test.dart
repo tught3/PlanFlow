@@ -23,13 +23,10 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  testWidgets('CalendarScreen does not show a loading panel while loading',
-      (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: CalendarScreen(),
-      ),
-    );
+  testWidgets('CalendarScreen does not show a loading panel while loading', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
 
     await tester.pumpAndSettle();
 
@@ -39,67 +36,68 @@ void main() {
   });
 
   test(
-      'mergeCalendarEventsAfterReload preserves existing events after suspiciously small reload',
-      () {
-    final now = DateTime.now();
-    final merged = mergeCalendarEventsAfterReload(
-      previous: [
-        _event('old-1', '기존 일정 1', now.add(const Duration(minutes: 1))),
-        _event('old-2', '기존 일정 2', now.add(const Duration(minutes: 2))),
-      ],
-      loaded: [
-        _event('new-1', '새 일정', now.add(const Duration(minutes: 3))),
-      ],
-    );
+    'mergeCalendarEventsAfterReload preserves existing events after suspiciously small reload',
+    () {
+      final now = DateTime.now();
+      final merged = mergeCalendarEventsAfterReload(
+        previous: [
+          _event('old-1', '기존 일정 1', now.add(const Duration(minutes: 1))),
+          _event('old-2', '기존 일정 2', now.add(const Duration(minutes: 2))),
+        ],
+        loaded: [_event('new-1', '새 일정', now.add(const Duration(minutes: 3)))],
+      );
 
-    expect(merged.map((event) => event.id), ['old-1', 'old-2', 'new-1']);
-  });
+      expect(merged.map((event) => event.id), ['old-1', 'old-2', 'new-1']);
+    },
+  );
 
   testWidgets(
-      'CalendarScreen runs a queued reload after refresh signal arrives while loading',
-      (tester) async {
-    // 자정 경계 flaky 방지: 실제 현재시각 대신 오늘 정오로 고정해
-    // now+1h/+2h가 같은 날(오늘 뷰)에 머물게 한다.
-    final today = DateTime.now();
-    final now = DateTime(today.year, today.month, today.day, 12);
-    final firstLoad = Completer<List<EventModel>>();
-    final repository = _AsyncEventRepository([
-      firstLoad.future,
-      Future.value([
-        _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
-        _event('new-1', '새 일정', now.add(const Duration(hours: 2))),
-      ]),
-    ]);
+    'CalendarScreen runs a queued reload after refresh signal arrives while loading',
+    (tester) async {
+      // 자정 경계 flaky 방지: 실제 현재시각 대신 오늘 정오로 고정해
+      // now+1h/+2h가 같은 날(오늘 뷰)에 머물게 한다.
+      final today = DateTime.now();
+      final now = DateTime(today.year, today.month, today.day, 12);
+      final firstLoad = Completer<List<EventModel>>();
+      final repository = _AsyncEventRepository([
+        firstLoad.future,
+        Future.value([
+          _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
+          _event('new-1', '새 일정', now.add(const Duration(hours: 2))),
+        ]),
+      ]);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: now,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: now,
+          ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    EventRefreshBus.instance.notifyChanged(
-      reason: 'test_queued',
-      startAt: now,
-    );
-    await tester.pump();
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'test_queued',
+        startAt: now,
+      );
+      await tester.pump();
 
-    firstLoad.complete([
-      _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
-    ]);
-    await tester.pumpAndSettle();
+      firstLoad.complete([
+        _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
+      ]);
+      await tester.pumpAndSettle();
 
-    expect(repository.listCalls, 2);
-    expect(find.text('기존 일정'), findsWidgets);
-    expect(find.text('새 일정'), findsWidgets);
-  });
+      expect(repository.listCalls, 2);
+      expect(find.text('기존 일정'), findsWidgets);
+      expect(find.text('새 일정'), findsWidgets);
+    },
+  );
 
-  testWidgets('CalendarScreen opens selected day sheet from initialDate',
-      (tester) async {
+  testWidgets('CalendarScreen opens selected day sheet from initialDate', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 5, 15, 9);
     final repository = _AsyncEventRepository([
       Future.value([
@@ -123,32 +121,26 @@ void main() {
       find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
       findsOneWidget,
     );
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('선택한 날짜 일정'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('선택한 날짜 일정')),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('다른 날짜 일정'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('다른 날짜 일정')),
       findsNothing,
     );
   });
 
-  testWidgets('CalendarScreen direct add passes selected date to edit route',
-      (tester) async {
+  testWidgets('CalendarScreen direct add passes selected date to edit route', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(900, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final selectedDay = DateTime(2026, 6, 15, 9);
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
+    final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -225,41 +217,40 @@ void main() {
   });
 
   test(
-      'calendar mini month cells reserve multi-day bands and overflow after four slots',
-      () {
-    final cells = buildCalendarMiniMonthCells(
-      focusedMonth: DateTime(2026, 6),
-      events: <EventModel>[
-        EventModel(
-          id: 'multi',
-          userId: 'user-1',
-          title: '연속 일정',
-          startAt: DateTime(2026, 6, 1, 9),
-          endAt: DateTime(2026, 6, 3, 9),
-          isMultiDay: true,
-        ),
-        _event('a', 'A', DateTime(2026, 6, 1, 10)),
-        _event('b', 'B', DateTime(2026, 6, 1, 11)),
-        _event('c', 'C', DateTime(2026, 6, 1, 12)),
-        _event('d', 'D', DateTime(2026, 6, 1, 13)),
-        _event('e', 'E', DateTime(2026, 6, 1, 14)),
-      ],
-    );
+    'calendar mini month cells reserve multi-day bands and overflow after four slots',
+    () {
+      final cells = buildCalendarMiniMonthCells(
+        focusedMonth: DateTime(2026, 6),
+        events: <EventModel>[
+          EventModel(
+            id: 'multi',
+            userId: 'user-1',
+            title: '연속 일정',
+            startAt: DateTime(2026, 6, 1, 9),
+            endAt: DateTime(2026, 6, 3, 9),
+            isMultiDay: true,
+          ),
+          _event('a', 'A', DateTime(2026, 6, 1, 10)),
+          _event('b', 'B', DateTime(2026, 6, 1, 11)),
+          _event('c', 'C', DateTime(2026, 6, 1, 12)),
+          _event('d', 'D', DateTime(2026, 6, 1, 13)),
+          _event('e', 'E', DateTime(2026, 6, 1, 14)),
+        ],
+      );
 
-    final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
-    final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
+      final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
+      final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
 
-    expect(day1.events.length, 4);
-    expect(day1.events.first.id, 'multi');
-    expect(day1.overflowCount, 2);
-    expect(day2.events.first.id, 'multi');
-  });
+      expect(day1.events.length, 4);
+      expect(day1.events.first.id, 'multi');
+      expect(day1.overflowCount, 2);
+      expect(day2.events.first.id, 'multi');
+    },
+  );
 
   testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {
     final repository = _AsyncEventRepository([
-      Future.value([
-        _event('holiday', '현충일', DateTime(2026, 6, 6, 9)),
-      ]),
+      Future.value([_event('holiday', '현충일', DateTime(2026, 6, 6, 9))]),
     ]);
 
     await tester.pumpWidget(
@@ -280,66 +271,121 @@ void main() {
   });
 
   testWidgets(
-      'CalendarScreen paints built-in holiday red even without imported events',
-      (tester) async {
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
+    'CalendarScreen paints built-in holiday red even without imported events',
+    (tester) async {
+      final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: DateTime(2026, 10, 1),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: DateTime(2026, 10, 1),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // 개천절(10/3)은 실제 쉬는 날이므로 빨간색으로 표시된다.
-    final dayLabel = tester.widget<Text>(
-      find.byKey(const ValueKey('calendar-mini-day-2026-10-3')),
-    );
-    expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
-  });
+      // 개천절(10/3)은 실제 쉬는 날이므로 빨간색으로 표시된다.
+      final dayLabel = tester.widget<Text>(
+        find.byKey(const ValueKey('calendar-mini-day-2026-10-3')),
+      );
+      expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
+    },
+  );
 
   testWidgets(
-      'CalendarScreen does not paint 제헌절 red even if a synced event is titled 제헌절',
-      (tester) async {
-    // 제헌절은 2008년부터 비휴무 국경일이라, 동기화된 캘린더에 "제헌절"이라는
-    // 제목의 이벤트가 있어도 날짜 숫자를 빨간색(휴무)으로 칠하면 안 된다.
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[
-        EventModel(
-          id: 'synced-jeheonjeol',
-          userId: 'user-1',
-          title: '제헌절',
-          startAt: DateTime.utc(2026, 7, 17),
-          source: 'google_calendar',
+    'CalendarScreen paints restored 제헌절 red even if a synced event is titled 제헌절',
+    (tester) async {
+      // 2026년부터 제헌절은 다시 쉬는 날이므로 날짜 숫자를 빨간색으로 표시한다.
+      final repository = _AsyncEventRepository([
+        Future.value(<EventModel>[
+          EventModel(
+            id: 'synced-jeheonjeol',
+            userId: 'user-1',
+            title: '제헌절',
+            startAt: DateTime.utc(2026, 7, 17),
+            source: 'google_calendar',
+          ),
+        ]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: DateTime(2026, 7, 1),
+          ),
         ),
-      ]),
-    ]);
+      );
+      await tester.pumpAndSettle();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: DateTime(2026, 7, 1),
+      final dayLabel = tester.widget<Text>(
+        find.byKey(const ValueKey('calendar-mini-day-2026-7-17')),
+      );
+      expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
+    },
+  );
+
+  testWidgets(
+    'CalendarScreen aligns a Constitution Day range before its holiday label',
+    (tester) async {
+      final repository = _AsyncEventRepository([
+        Future.value(<EventModel>[
+          EventModel(
+            id: 'constitution-range',
+            userId: 'user-1',
+            title: '연속 일정',
+            startAt: DateTime(2026, 7, 17, 9),
+            endAt: DateTime(2026, 7, 18, 18),
+            isMultiDay: true,
+          ),
+        ]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: DateTime(2026, 7, 1),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final dayLabel = tester.widget<Text>(
-      find.byKey(const ValueKey('calendar-mini-day-2026-7-17')),
-    );
-    expect(dayLabel.style?.color, isNot(calendarCriticalEventMarkerColor));
-  });
+      final constitutionDayEvents = find.byKey(
+        const ValueKey('calendar-mini-events-2026-7-17'),
+      );
+      final constitutionRangeStart = find.byKey(
+        const ValueKey('calendar-mini-event-constitution-range-2026-7-17'),
+      );
+      final constitutionRangeEnd = find.byKey(
+        const ValueKey('calendar-mini-event-constitution-range-2026-7-18'),
+      );
+      final holidayLabel = find.descendant(
+        of: constitutionDayEvents,
+        matching: find.text('제헌절'),
+      );
 
-  testWidgets('CalendarScreen shows cross-month range on selected end day',
-      (tester) async {
+      expect(constitutionRangeStart, findsOneWidget);
+      expect(constitutionRangeEnd, findsOneWidget);
+      expect(holidayLabel, findsOneWidget);
+      expect(
+        tester.getTopLeft(constitutionRangeStart).dy,
+        tester.getTopLeft(constitutionRangeEnd).dy,
+      );
+      expect(
+        tester.getTopLeft(constitutionRangeStart).dy,
+        lessThan(tester.getTopLeft(holidayLabel).dy),
+      );
+    },
+  );
+
+  testWidgets('CalendarScreen shows cross-month range on selected end day', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 6);
     final repository = _AsyncEventRepository([
       Future.value([
@@ -366,44 +412,39 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('원주집방문'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('원주집방문')),
       findsOneWidget,
     );
   });
 
   testWidgets(
-      'CalendarScreen shows group overlay events in the day sheet and context chip',
-      (tester) async {
-    final selectedDay = DateTime(2026, 6, 15);
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
-    final groupOverlayProvider = GroupCalendarOverlayProvider(
-      contextProvider: GroupContextProvider(
-        repository: _FakeGroupRepository(
-          groups: <GroupModel>[
-            _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
-          ],
-          membersByGroupId: <String, List<GroupMemberModel>>{
-            'group-1': <GroupMemberModel>[
-              _member(
-                id: 'leader-row',
-                groupId: 'group-1',
-                userId: 'user-1',
-                role: 'leader',
-              ),
+    'CalendarScreen shows group overlay events in the day sheet and context chip',
+    (tester) async {
+      final selectedDay = DateTime(2026, 6, 15);
+      final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
+      final groupOverlayProvider = GroupCalendarOverlayProvider(
+        contextProvider: GroupContextProvider(
+          repository: _FakeGroupRepository(
+            groups: <GroupModel>[
+              _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
             ],
-          },
+            membersByGroupId: <String, List<GroupMemberModel>>{
+              'group-1': <GroupMemberModel>[
+                _member(
+                  id: 'leader-row',
+                  groupId: 'group-1',
+                  userId: 'user-1',
+                  role: 'leader',
+                ),
+              ],
+            },
+          ),
         ),
-      ),
-      repository: _FakeGroupEventRepository(
-        <String, List<GroupEventModel>>{
+        repository: _FakeGroupEventRepository(<String, List<GroupEventModel>>{
           'group-1': <GroupEventModel>[
             _groupEvent(
               id: 'group-event-1',
@@ -413,39 +454,37 @@ void main() {
               endAt: selectedDay.add(const Duration(hours: 10)),
             ),
           ],
-        },
-      ),
-    );
+        }),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: selectedDay,
-          groupCalendarOverlayProvider: groupOverlayProvider,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: selectedDay,
+            groupCalendarOverlayProvider: groupOverlayProvider,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // 그룹 컨텍스트 칩이 선택된 그룹 이름을 표시한다.
-    expect(find.text('서울1팀'), findsWidgets);
+      // 그룹 컨텍스트 칩이 선택된 그룹 이름을 표시한다.
+      expect(find.text('서울1팀'), findsWidgets);
 
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
-    expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('팀 회의'),
-      ),
-      findsOneWidget,
-    );
-  });
+      final dayEventsList = find.byKey(
+        const ValueKey('calendar-day-events-list'),
+      );
+      expect(
+        find.descendant(of: dayEventsList, matching: find.text('팀 회의')),
+        findsOneWidget,
+      );
+    },
+  );
 
-  testWidgets(
-      'CalendarScreen이 개인+팀 동시저장된 일정을 중복 표시하지 않고 팀 공유 뱃지만 붙인다',
-      (tester) async {
+  testWidgets('CalendarScreen이 개인+팀 동시저장된 일정을 중복 표시하지 않고 팀 공유 뱃지만 붙인다', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 6, 15);
     final repository = _AsyncEventRepository([
       Future.value(<EventModel>[
@@ -477,19 +516,17 @@ void main() {
           },
         ),
       ),
-      repository: _FakeGroupEventRepository(
-        <String, List<GroupEventModel>>{
-          'group-1': <GroupEventModel>[
-            _groupEvent(
-              id: 'group-event-1',
-              groupId: 'group-1',
-              title: 'A일정',
-              startAt: selectedDay.add(const Duration(hours: 9)),
-              endAt: selectedDay.add(const Duration(hours: 10)),
-            ),
-          ],
-        },
-      ),
+      repository: _FakeGroupEventRepository(<String, List<GroupEventModel>>{
+        'group-1': <GroupEventModel>[
+          _groupEvent(
+            id: 'group-event-1',
+            groupId: 'group-1',
+            title: 'A일정',
+            startAt: selectedDay.add(const Duration(hours: 9)),
+            endAt: selectedDay.add(const Duration(hours: 10)),
+          ),
+        ],
+      }),
     );
 
     await tester.pumpWidget(
@@ -506,8 +543,9 @@ void main() {
 
     // 하단 day 목록에는 "A일정"이 (개인+팀 오버레이 중복 없이) 딱 한 번만
     // 보인다 — 미니 달력 셀 라벨은 원래도 별도 렌더 영역이라 세지 않는다.
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
       find.descendant(of: dayEventsList, matching: find.text('A일정')),
       findsOneWidget,
@@ -518,36 +556,33 @@ void main() {
   });
 
   testWidgets(
-      'CalendarScreen mini-month grid shows a marker for a day with only group events (no personal events)',
-      (tester) async {
-    final groupOnlyDay = DateTime(2026, 6, 18);
-    // 리뷰 지적(HIGH) 회귀 방지: 개인 일정이 0개인 날짜라도 그룹 일정이
-    // 있으면 미니 달력 셀이 SizedBox.shrink()로 완전히 비어 보이면 안 된다.
-    // 선택된 날짜로 바로 진입해 day sheet가 자동으로 열리는 기존 패턴을
-    // 재사용한다(수동 셀 탭은 안정적인 위치 식별자가 없어 사용하지 않음).
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
-    final groupOverlayProvider = GroupCalendarOverlayProvider(
-      contextProvider: GroupContextProvider(
-        repository: _FakeGroupRepository(
-          groups: <GroupModel>[
-            _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
-          ],
-          membersByGroupId: <String, List<GroupMemberModel>>{
-            'group-1': <GroupMemberModel>[
-              _member(
-                id: 'leader-row',
-                groupId: 'group-1',
-                userId: 'user-1',
-                role: 'leader',
-              ),
+    'CalendarScreen mini-month grid shows a marker for a day with only group events (no personal events)',
+    (tester) async {
+      final groupOnlyDay = DateTime(2026, 6, 18);
+      // 리뷰 지적(HIGH) 회귀 방지: 개인 일정이 0개인 날짜라도 그룹 일정이
+      // 있으면 미니 달력 셀이 SizedBox.shrink()로 완전히 비어 보이면 안 된다.
+      // 선택된 날짜로 바로 진입해 day sheet가 자동으로 열리는 기존 패턴을
+      // 재사용한다(수동 셀 탭은 안정적인 위치 식별자가 없어 사용하지 않음).
+      final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
+      final groupOverlayProvider = GroupCalendarOverlayProvider(
+        contextProvider: GroupContextProvider(
+          repository: _FakeGroupRepository(
+            groups: <GroupModel>[
+              _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
             ],
-          },
+            membersByGroupId: <String, List<GroupMemberModel>>{
+              'group-1': <GroupMemberModel>[
+                _member(
+                  id: 'leader-row',
+                  groupId: 'group-1',
+                  userId: 'user-1',
+                  role: 'leader',
+                ),
+              ],
+            },
+          ),
         ),
-      ),
-      repository: _FakeGroupEventRepository(
-        <String, List<GroupEventModel>>{
+        repository: _FakeGroupEventRepository(<String, List<GroupEventModel>>{
           'group-1': <GroupEventModel>[
             _groupEvent(
               id: 'group-event-only',
@@ -557,81 +592,81 @@ void main() {
               endAt: groupOnlyDay.add(const Duration(hours: 10)),
             ),
           ],
-        },
-      ),
-    );
+        }),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: groupOnlyDay,
-          groupCalendarOverlayProvider: groupOverlayProvider,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: groupOnlyDay,
+            groupCalendarOverlayProvider: groupOverlayProvider,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // 개인 일정이 0개인 날짜라도 day sheet의 그룹 일정 섹션에 해당 일정이
-    // 표시되어야 한다(과거엔 미니그리드 셀 렌더 로직이 개인 일정 0건이면
-    // 그룹 일정과 무관하게 SizedBox.shrink()를 반환해 완전히 숨겨졌음).
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
-    expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('개인 일정 없는 날 그룹 회의'),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('CalendarScreen shows personal mode chip when no group selected',
-      (tester) async {
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: DateTime(2026, 6, 1),
+      // 개인 일정이 0개인 날짜라도 day sheet의 그룹 일정 섹션에 해당 일정이
+      // 표시되어야 한다(과거엔 미니그리드 셀 렌더 로직이 개인 일정 0건이면
+      // 그룹 일정과 무관하게 SizedBox.shrink()를 반환해 완전히 숨겨졌음).
+      final dayEventsList = find.byKey(
+        const ValueKey('calendar-day-events-list'),
+      );
+      expect(
+        find.descendant(
+          of: dayEventsList,
+          matching: find.text('개인 일정 없는 날 그룹 회의'),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('개인 모드'), findsWidgets);
-  });
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets(
-      'CalendarScreen shows instruction badge for a personal event with unconfirmed leader comment',
-      (tester) async {
-    final selectedDay = DateTime(2026, 6, 20, 9);
-    final repository = _AsyncEventRepository([
-      Future.value([
-        _event('personal-1', '지시받은 일정', selectedDay),
-      ]),
-    ]);
+    'CalendarScreen shows personal mode chip when no group selected',
+    (tester) async {
+      final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: selectedDay,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: DateTime(2026, 6, 1),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // Supabase 미초기화 환경(테스트)에서는 _loadGroupInstructionBadges가
-    // AppEnv.isSupabaseReady 가드로 스킵되므로 badge 없이 이벤트 카드만 보인다.
-    expect(find.text('지시받은 일정'), findsWidgets);
-  });
+      expect(find.text('개인 모드'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'CalendarScreen shows instruction badge for a personal event with unconfirmed leader comment',
+    (tester) async {
+      final selectedDay = DateTime(2026, 6, 20, 9);
+      final repository = _AsyncEventRepository([
+        Future.value([_event('personal-1', '지시받은 일정', selectedDay)]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: selectedDay,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Supabase 미초기화 환경(테스트)에서는 _loadGroupInstructionBadges가
+      // AppEnv.isSupabaseReady 가드로 스킵되므로 badge 없이 이벤트 카드만 보인다.
+      expect(find.text('지시받은 일정'), findsWidgets);
+    },
+  );
 }
 
 EventModel _event(String id, String title, DateTime startAt) {
@@ -729,10 +764,7 @@ GroupEventModel _groupEvent({
 }
 
 class _FakeGroupRepository extends GroupRepository {
-  _FakeGroupRepository({
-    required this.groups,
-    required this.membersByGroupId,
-  });
+  _FakeGroupRepository({required this.groups, required this.membersByGroupId});
 
   final List<GroupModel> groups;
   final Map<String, List<GroupMemberModel>> membersByGroupId;
