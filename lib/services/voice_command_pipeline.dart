@@ -133,15 +133,15 @@ class VoiceCommandPipeline {
   }) {
     final normalized = normalizeManagementText(text);
     final strongScheduleAdd = _hasStrongScheduleCreationCue(normalized);
-    if (strongScheduleAdd && !_hasExplicitManagementDeleteCue(normalized)) {
-      return VoiceCommandPipelineIntent.add;
-    }
     if (_hasDeleteIntentCue(normalized)) {
       return VoiceCommandPipelineIntent.delete;
     }
     if (RegExp(r'(수정|변경|바꿔|미뤄|밀어|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)')
         .hasMatch(normalized)) {
       return VoiceCommandPipelineIntent.edit;
+    }
+    if (strongScheduleAdd && !_hasExplicitManagementDeleteCue(normalized)) {
+      return VoiceCommandPipelineIntent.add;
     }
     if (_isClearLocationFieldAddition(normalized)) {
       return VoiceCommandPipelineIntent.edit;

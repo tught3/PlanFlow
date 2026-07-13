@@ -3,6 +3,18 @@ import 'package:planflow/services/voice_command_pipeline.dart';
 import 'package:planflow/services/voice_text_cleanup_service.dart';
 
 void main() {
+  group('수정 명령 우선 분류', () {
+    const pipeline = VoiceCommandPipeline();
+
+    test('회의 제목과 시간이 있어도 바꿔줘는 새 일정 생성이 아니다', () {
+      final plan = pipeline.analyze('김민수와 프로젝트 회의 일정을 오후 4시로 바꿔줘');
+
+      expect(plan.intent, VoiceCommandPipelineIntent.edit);
+      expect(plan.targetText, contains('김민수와 프로젝트 회의'));
+      expect(plan.requestedChanges, contains('start_at'));
+    });
+  });
+
   group('VoiceCommandPipeline', () {
     const pipeline = VoiceCommandPipeline();
 

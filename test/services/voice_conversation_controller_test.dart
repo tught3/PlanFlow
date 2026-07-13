@@ -4,6 +4,26 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/voice_conversation_controller.dart';
 
 void main() {
+  group('음성 수정 대상 매칭', () {
+    test('STT로 이름 일부가 빠져도 단일 제목 토큰 일치 수정은 기존 일정을 연다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)),
+          _event('other', '디자인 프로젝트 회의', DateTime(2026, 7, 14, 16)),
+        ],
+        now: () => DateTime(2026, 7, 13, 9),
+      );
+      controller.handle('내일 일정 보여줘');
+
+      final result = controller.handle('민수와 프로젝트 회의 일정을 오후 4시로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'meeting');
+      expect(planflowLocal(result.draftEvent!.startAt!).hour, 16);
+      expect(result.draftEvent?.id, 'meeting');
+    });
+  });
+
   group('VoiceConversationController', () {
     test('absolute date query filters visible events for that day', () {
       final controller = VoiceConversationController(

@@ -997,6 +997,26 @@ class VoiceConversationController {
       return null;
     }
 
+    // 수정 명령은 제목/참석자 토큰으로도 기존 일정을 찾는다. 다만 한 단어
+    // 부분 일치로 임의 수정하는 회귀를 막기 위해, 두 토큰 이상이 단 하나의
+    // 일정에 일치할 때만 대상 추론을 허용한다.
+    if (_isModificationIntent(text, route: route)) {
+      final targetText = route?.targetText.trim();
+      final queryTokens = _queryTokensForTitleSearch(
+        targetText == null || targetText.isEmpty ? text : targetText,
+      );
+      if (queryTokens.length >= 2) {
+        final pool =
+            state.visibleEvents.isNotEmpty ? state.visibleEvents : state.events;
+        final matches = pool
+            .where((event) => _eventMatchesTitleOrPeople(event, queryTokens))
+            .toList(growable: false);
+        if (matches.length == 1) {
+          return matches.single;
+        }
+      }
+    }
+
     // 제목 부분일치 추론은 쓰지 않는다. 기존 일정 변경은 사용자가 명시적으로
     // "몇 시 일정을 이걸로 바꿔줘"처럼 시간을 짚어 말하거나(아래 시간 매칭),
     // 조회 후 "몇 번째 일정"처럼 순번으로 지정하는 방식으로만 이뤄져야 한다.
