@@ -19,6 +19,22 @@
 <!-- 작업 경로: E:\FluxStudio\planflow -->
 <!-- 생성: 2026-05-24 09:48 -->
 
+## 사용자 확정 선호
+<!-- 04_Memory/Preference status:confirmed 항목 자동 반영. 원본 수정은 04_Memory/Preference/*.md에서, 승인/반려는 run.py memory confirm/reject로. -->
+- **S23 테스트기기에 release APK를 설치할 때 INSTALL_FAILED_UPDATE_INCOMPATIBLE(서명 불일치)로 실패하면, 매번 물어보지 않고 adb uninstall 후 재설치를 즉시 진행한다.**
+  - Why: 서버 계정 데이터는 Supabase에 있어 재로그인으로 복구되고, 로컬 캐시만 날아가는테스트기기 한정 저위험 작업이라 CEO가 반복 확인 없이 자동 진행을 승인함(2026-07-04). How to apply: PlanFlow 등 어떤 프로젝트든 S23 설치 중 이 에러가 나오면 확인 없이 adb uninstall <package> 후 adb install -r <apk>로 즉시 재설치한다. 프로덕션 서버 데이터나 다른 기기(S8 등)에는 적용하지 않는다 — S23 로컬 테스트 설치에만 한정.
+- **marketing-skills 플러그인처럼 상시 활성화 비용이 큰(~7,733 토큰/세션) 플러그인은 자동으로 켜지 않고, 관련 주제(ASO·구독전환·referral·paywall·이메일마케팅·가격정책·카피라이팅 등)가 나오면 먼저 사용자에게 활성화 여부를 물어본 뒤 사용한다.**
+  - Why: always-on 비용이 개발 작업 세션에서 낭비되므로, 사용자가 필요할 때만 쓰길 원함. How to apply: 마케팅 관련 주제가 대화에 등장하면 작업 전에 '마케팅 스킬 플러그인 활성화할까요?'라고 먼저 물어보고 허락받은 후 해당 스킬(/paywalls, /referrals 등)을 사용한다.
+- **워크트리에서 작업을 마치면 기능적으로 문제가 없는 한(빌드/테스트 그린, 회귀 위험 낮음) main으로 머지·푸시하는 것을 기본값으로 제안한다. 충돌이 발생하면 임의로 강제 처리(-X ours/강제푸시/리셋)하지 않고 대기 후 사용자에게 확인한다.**
+  - Why(2026-06-30 CEO 방침): 워크트리 브랜치에 작업이 고립되면 잊혀지거나 다이버전스가 깊어진다. main에 빨리 합치는 게 깔끔하지만, 충돌·기능 위험은 사용자만 아는 맥락이라 판단을 넘긴다. How to apply: 워크트리 작업 완료 보고 시 'main으로 머지·푸시할까요?'를 기본 제안으로 붙인다. 단순 non-fast-forward는 pull --rebase로 자동 해소하되, 같은 줄 머지 충돌·기능 회귀 신호가 보이면 진행을 멈추고 충돌 내용을 요약해 물어본다.
+- **장시간 실행되는 작업(테스트 스위트, 빌드, 백그라운드 명령 등)을 띄운 뒤에는 시키지 않아도 스스로 주기적으로 상태를 확인하고 진단한다. 5분 넘는 프로세스는 자동 점검 대상이며, 사용자가 먼저 물어서 확인하게 되면 그 자체가 실패다.**
+  - Why: CLAUDE.md 리소스 규칙에 '30초 이상 무변화 시 즉시 상태 확인'이 명시돼 있음에도 반복적으로 어겨 CEO가 여러 번 지적함(2026-06-26 재지적, 2026-07-03 재발). How to apply: 백그라운드 작업 완료 알림을 받으면 즉시 로그를 확인하고 다음 단계로 진행하며, 완료를 기다리는 동안 사용자 입력 없이 손 놓고 방치하지 않는다. 변화 없으면 멈춤으로 진단(프로세스 생존/입력대기/병목)한다.
+- **사용자가 어느 세션에서든(각 프로젝트 세션·FluxOS 큐 등 어디든) 지시에 '제발'이라는 단어를 쓰면, 그 지시는 반복 확인 없이 1회만 관찰해도 즉시 확정(confirmed)하고 바로 실행한다. 단, 그 지시가 '되돌리기 어려운 작업(구조 변경·데이터 삭제·외부 API 실제 호출·사업적 판단)'에 영향을 미치면 '제발'이라도 예외 없이 먼저 사용자에게 확인받고 진행한다 — ai-behavior-rules.md의 '반드시 질문' 조건은 그대로 유지된다.**
+  - Why: 사용자가 '제발'을 강조·최우선 신호로 직접 지정함(2026-07-03). 다만 최초 등록 시도가 안전 분류기에 '되돌리기 어려운 작업까지 무조건 실행'으로 해석될 위험이 있다고 차단돼, 사용자가 직접 '구조 변경·데이터 삭제· 외부 API 실제 호출·사업적 판단에 영향 있으면 물어보고 진행'이라는 예외를 명시적으로 재확인함(2026-07-03). How to apply: '제발'이 포함된 지시는 원칙적으로 질문 없이 즉시 실행하되, 그 실행이 되돌리기 어려운 작업 범주에 해당하면 '제발'이라도 예외 없이 먼저 확인을 받는다. 나머지(되돌리기 쉬운 작업)는 기존 '질문 타이밍 기준'의 질문 없이 진행 조건과 동일하게 취급.
+- **모든 상태·판단은 추측이 아니라 실측 근거(로그, 실제 조회 결과, 코드 확인)에 기반해서 보고한다. python datetime.now()는 UTC이므로 사용자에게 말할 때는 KST(+9) 환산값을 함께 제시한다.**
+  - Why: 근거 없는 추측이 잘못된 조치로 이어져 문제를 키운다. 실제로 시각 착오(UTC를 그대로 KST처럼 말해 '9시간+ lock 만료 버그'로 오진단, 실제론 1시간 미만 정상 lock)로 문제를 키운 사례가 있었다. How to apply: 상태/숫자는 추정하지 말고 실측(audit_tasks, load_locks, git status 등)으로 집계해 보고한다. '확실하냐'는 질문엔 100% 보장 대신 보장 가능한 범위를 정직하게 말한다.
+
+
 # Codex Common Rules
 <!-- 프로젝트 공통 Codex 작업 규칙 -->
 
@@ -30,6 +46,28 @@
 - Claude Code가 인증, 한도, 연결 문제로 실패하면 FluxOS의 Codex-only fallback을 사용하되, 최종 보고에 fallback 사유를 명시한다.
 - 긴급 단순 수정으로 파이프라인을 생략한 경우에는 생략 사유, 변경 범위, 검증 결과를 최종 보고에 반드시 남긴다.
 - 프로젝트 세션을 직접 열어야 하는 경우에도 먼저 `python E:\FluxStudio\.fluxos\run.py session start --project <Project> --source <session> --label "<세션명>" --cwd "<프로젝트경로>"` 또는 기존 세션에 `session attach`로 FluxOS 메타를 붙이고, 가능하면 `FLUXOS_SESSION_ID`, `FLUXOS_SESSION_PROJECT`, `FLUXOS_SESSION_TASK_ID`, `FLUXOS_SESSION_OWNER`, `FLUXOS_SESSION_SOURCE`, `FLUXOS_SESSION_LABEL`, `FLUXOS_SESSION_NOTE`, `FLUXOS_SESSION_CWD`를 함께 전달한다.
+
+### 개발 지시 → 실행자 자동 선택 (Codex 위임 포함)
+- 개발·수정·리팩토링 작업은 기존 FluxOS 파이프라인과 모델 라우터를 사용한다(메인 세션이 직접 구현하지 말고 등록·계획 후 진행).
+- 계획 뒤 구현 실행자는 라우터가 자동 선택한다. 사용자가 명시적으로 Codex 위임을 요청한 경우에만 그 작업의 task metadata(`execution_policy=claude_plan_codex_implement`)로 해당 작업만 Codex 경로로 보낸다(전역 설정·기존 정책 변경 없음, 미지정 작업은 기존 중앙정책을 따른다).
+- **[명령] 이 세션이 Claude Code Desktop(`CLAUDE_CODE_ENTRYPOINT=claude-desktop`)이고 사용자 지시가 저장소 변경 개발 작업(버그 수정·기능 추가·리팩토링 등)이면, 직접 Edit/Write로 구현하지 말고 반드시 아래 staged 시퀀스를 한 응답(턴) 안에서 순서대로 실행하며 각 단계 전환 시 짧은 한국어 `[작업 진행]` 메시지를 사용자에게 직접 출력한다(가시 진행 알림).** 채팅 메시지는 이 task를 자동 생성하지 않으므로(자동 트리거 배선 없음) 어시스턴트가 직접 실행해야만 파이프라인이 발화한다. hook은 채팅 가시 출력을 강제하지 못하므로 이 진행 메시지는 어시스턴트가 본문에 직접 렌더해야 한다.
+  1. `python E:\FluxStudio\.fluxos\run.py pipeline "<사용자 지시>" --project <감지한 프로젝트> --source claude-desktop --execution-policy codex --gate-session <이 세션 id> --no-wait` 실행 → 출력의 `TASK_ID:` 줄에서 task_id를 얻는다(계획 동기 수행 + Codex 실제 dispatch 후 즉시 반환).
+  2. 그 직후 **[작업 진행] msg1**(계획 완료·Codex 전달·구현 모델·구현 중)을 출력한다.
+  3. `run.py progress-wait --task <id> --until done` 실행(구현 done 회수까지 블록) → 반환 텍스트를 **msg2**로 출력(구현 결과 수신·1차검토 진행 중). 차단/실패면 그 메시지가 원인·사용자 확인 대기로 오니 그대로 출력하고 중단.
+  4. `run.py progress-wait --task <id> --until review1` → **msg3** 출력(1차검토 통과·최종 QA 중, 또는 수정 필요 알림). REVIEW_ERROR는 통과로 표기하지 않는다.
+  5. `run.py progress-wait --task <id> --until terminal` → 완료까지 블록.
+  6. 마지막에 실행 요약 카드가 담긴 최종 report(`run.py report-last` 또는 progress-wait terminal 완료 후)를 응답 맨 위에 싣고 상세는 아래 둔다.
+  - 진행 메시지 값은 모두 progress-wait 실측 출력에서 오며 추측하지 않는다. 같은 단계 메시지를 두 번 출력하지 않는다(각 `--until` 경계는 서로 다른 단계). 긴 작업으로 progress-wait가 타임아웃하면(아직 진행 중) 같은 `--until`로 다시 호출해 terminal까지 이어간다. Desktop 세션이 파이프라인 등록 없이 프로젝트 소스를 직접 편집하려 하면 PreToolUse 게이트(`desktop_pipeline_gate`)가 차단하고 이 시퀀스를 안내한다.
+- 질문·설명·읽기전용 조사·계획만 요청·"직접 구현/조사만"(사용자 override)은 저장소 변경이 아니므로 위 명령 대상이 아니며, 어시스턴트가 직접 답한다. Claude Code CLI·데몬·CI·서브에이전트·직접 API 출처에는 이 Desktop 자동 파이프라인을 적용하지 않는다. 전환일·구현 모델·fallback 순서 등 가변 정책은 이 문서에 하드코딩하지 않고 중앙 코드(`config.py`·`ai_schedule.py`)가 정한다.
+- 계획 단계에서 그 지시가 실제 저장소 변경이 필요한지 구조화 값(`requires_repository_changes`/`task_intent`)으로 판정해 남긴다. 질문·설명·읽기전용 조사·계획만 요청이면 변경 불필요로, "직접 구현/조사만"은 사용자 override로 처리하며, 판정이 없거나 모호하면 자동 Codex를 적용하지 않고 기존 중앙정책을 따른다(fail-closed).
+- 구현자와 검토자는 분리한다(구현자와 다른 세션의 독립 1차검토 + 별도 2차검토). 구현 세션의 자기승인(done 내 자기평가)을 정식 검토로 인정하지 않는다.
+- Claude 최종 단계는 중복 코드리뷰가 아니라 과정 감사(process QA)다: 계획이 요구를 반영했는지, 독립 1차검토가 실제로 검증했는지, PASS가 증거로 정당한지, 테스트가 사용자 요구를 증명하는지를 확인하고, 근거 없는 통과는 되돌린다.
+- Claude Desktop 개발작업 완료 시, FluxOS가 실제 실행 기록(구현 모델·독립 1차검토 모델·최종 QA 결과·테스트·최종 상태)에서 생성한 실행 요약 카드가 최종 보고 맨 위에 온다. 이 카드를 최종 응답 상단에 그대로 싣고 상세 보고는 그 아래 유지한다. 카드 값은 기억·추측이 아니라 실제 아티팩트에서 오며, 실행되지 않은 단계나 확인되지 않은 토큰·비용은 추측하지 않는다(미기록/미포집으로 둔다).
+- 새 Claude Desktop 세션에서는 첫 사용자 응답 맨 위에, 현재 FluxOS 파이프라인·정책 상태를 요약한 세션 배너를 한 번만 표시한다(세션당 1회). 세션 생성 직후 무입력 자동 출력은 Desktop 제약상 불가하여 UserPromptSubmit hook가 배너를 주입하고 모델이 첫 응답에 렌더하는 방식이다. 배너는 관찰·안내 전용이며 실행 정책을 바꾸지 않는다. 검증된 Desktop origin·등록 프로젝트에서만 표시하고 다른 출처(Claude Code/CLI/데몬/CI/API)에는 표시하지 않으며, 중앙 FluxOS를 못 찾으면 성공 배너 대신 경고를 낸다. 배너 값은 실제 런타임 상태에서 읽고 날짜·모델 라우팅을 문서에 하드코딩하지 않는다.
+- Claude Desktop 개발 작업 진행 중에는 주요 단계 전환(계획 확정·구현 완료/실패·1차검토·수정/모델 승격·최종 QA·승인 대기/차단)에서만 한국어 `[작업 진행 상황]`을 표시한다(현재 단계·현재 단계의 실제 모델·완료 단계의 실제 소요시간). 저수준 로그나 명령 한 줄마다 표시하지 않는다. 값은 실제 단계 이벤트(`run.py progress --task <id>`)에서만 읽고 단계·모델·시간을 추측하지 않으며, 계산 불가한 시간은 미기록으로 둔다. 실시간 메시지 수정은 Desktop 제약상 불가하므로 기존 메시지를 덮어쓰지 말고 전환 시 스냅샷을 새로 보여준다. 최종 완료 카드에는 단계별 소요시간을 포함한다. 질문·조사에는 진행 표시를 하지 않는다.
+- 검증된 Claude Desktop 세션에서는 세션 배너와 별개로, **모든 사용자 응답 맨 위에** 한국어 `[요청 처리 상태]`를 한 번 표시한다(매 응답, 4줄 안팎 간결). 방금 요청의 출처·요청 유형(개발/질문/조사)·저장소 변경 필요·적용 정책·현재 단계를 실제 데이터에서만 채운다(추측 금지). 개발작업으로 파이프라인에 등록하면 `run.py request-status --task <id>`의 실측 출력을 쓰고, 직접 답하면 "Claude 직접 응답 / Codex 실행: 없음"으로, 계획 확정 전에는 "판정 대기 / 계획 분석 중"으로 표기하며 확정 전 Codex 적용으로 표기하지 않는다. 개발 완료 시 이 상태 아래에 기존 Phase 4 실행 요약 카드를 결합한다. 사용자 노출 문구(상태·단계·판정·사유)는 전부 한국어로 렌더한다(내부 코드/JSON 키는 영어 유지). 다른 출처에는 이 상태를 적용하지 않는다.
+- 실제 검증(테스트·독립 1차검토·2차검토)을 통과하기 전에는 사용자에게 완료보고를 하지 않는다.
+- 날짜·가격·구체 모델명·fallback 순서 같은 가변 정책은 이 문서에 하드코딩하지 않고 중앙 코드/설정(`config.py`·`ai_schedule.py`·`plans.json`)에 둔다.
 
 ## 기본 원칙
 - 기본 응답 언어는 한국어다.
@@ -184,8 +222,10 @@ tags: [layer/truth, type/gov, ai/all]
 
 ## 장시간 명령 운영
 - 장시간 명령은 가능하면 타임아웃, 로그 파일, 진행 확인 방법을 붙여 실행한다.
-- 30초 이상 변화가 없으면 프로세스 CPU/RAM, 하위 프로세스, 로그 tail, 네트워크 대기 여부를 확인한다.
-- 같은 명령을 무작정 반복하지 않는다. 범위를 줄이거나 다른 검증 경로로 우회한다.
+- 30초 이상 변화가 없으면 대기·반복 확인을 기본값으로 삼지 않는다. 먼저 프로세스 CPU/RAM·하위 프로세스·로그·네트워크·입력 대기·락을 확인해 정지 지점을 분류하고 근거를 남긴다.
+- 분류 뒤에는 해당 원인에 맞는 가장 좁고 안전한 복구를 자동 적용한다(타임아웃/명령 경로 조정, 범위 축소, 정상 대체 경로 사용, 자신이 만든 잔여 프로세스 정리, 확인된 안전 락 해제 등). 복구 결과를 검증한 뒤 원래 작업을 즉시 재개한다.
+- 같은 명령을 무작정 반복하거나 원인 미확정 상태에서 주기 감시만 하지 않는다. 주기 감시는 원인이 확인된 외부 의존성·공유 자원 대기 또는 복구 효과 검증에만 쓴다.
+- 다른 세션 소유 가능성이 있는 프로세스·락·배포·데이터는 소유권을 확인하기 전 자동 종료·해제·변경하지 않는다. 파괴적·되돌릴 수 없는·외부 영향이 있는 복구만 사용자 확인 후 진행한다.
 - 병렬 실행은 파일/모듈/저장소가 겹치지 않을 때만 사용하고, 완료된 하위 작업은 즉시 닫는다.
 
 ## 완료 기준
@@ -227,6 +267,7 @@ tags: [layer/truth, type/gov, ai/all]
   - **애매하면 질문 쪽으로 기운다**(fail-safe — exhausted 모드의 fail-closed 철학과 동일한 임계값 철학 재사용, 새로 발명하지 않음).
 - 난이도와 모델이 맞지 않으면 모델 변경 후 진행
 - **작업이 끝나면 완료 보고 전에 스스로 Review를 수행한다**: 이번 작업에서 배운 것, 재발 방지 후보, 자동화 후보, 기존 규칙과의 충돌 여부를 스스로 점검한 뒤 보고한다(구 Obsidian Vault 흡수, 2026-07-03).
+- **작업 예상시간 선언 + 2배 초과 시 실측 재점검 + 뻔한 블로커 자동해결(2026-07-13, CEO 강한 반복 지시, E:\FluxStudio 전역·전 AI·모든 경로 공통)**: (1) 모든 작업, 특히 백그라운드 작업(테스트·빌드·커밋·긴 명령)을 시작할 때 원래 걸리는 **예상시간을 근거와 함께 전달**한다(예: FluxOS pre-commit 훅 커밋 ~2-3분, 전체 테스트 ~X분). (2) 예상시간의 **2배를 넘기면 무작정 더 기다리지 말고 실측으로 현재 상태를 재점검**한다 — 진행 중인가/멈췄나/오류·실패했나/락 존재/staged 여부/프로세스 생존/로그 tail을 확인하고, 지금까지 걸린 시간 대비 결과물이 맞는지 판단한 뒤 **근본원인을 찾아 해결**한다(같은 방식으로 재대기 금지). (3) 원인이 뻔하고 되돌리기 쉬운 블로커는 **사용자 지시 없이 스스로 해결**한다: 신규 파일이면 커밋 전 자동 `git add`(pathspec 매칭 실패 예방), stale `index.lock`(죽은 프로세스 것)은 제거 후 재시도(원자 시퀀스 `rm -f lock; git commit` + 락 경합 시 자동 재시도 루프), 포트충돌·미스테이징 등도 즉시 처리. (4) **리소스 최소**: 이 재점검·재시도 로직은 무겁지 않게 — 짧은 상태확인(로그 tail·상태파일 읽기) 위주, 무거운 전체 스캔·sleep 폴링 루프 금지, 완료 알림/이벤트 우선, 폴링 불가피하면 긴 간격. (기존 "AI가 직접 할 수 있는 건 바로 실행"·"장시간 작업 스스로 확인" 원칙의 강화·구체화.)
 
 ## 응답 원칙
 - 한국어로 응답
@@ -385,6 +426,96 @@ Claude Code 앱에서 Agent 도구로 여러 서브에이전트를 한 메시지
 
 **(최종 확인 — 재부팅 후 정정된 근본원인)** 사용자가 앱을 완전히 재부팅하자 즉시 4개 task_id 전부에 대해 harness가 자동으로 `status: failed` 알림을 보내며 사유를 명시했다: "Background agent ... was running when the previous Claude Code process exited and did not complete. Its in-process state was lost." 이는 (2)~(4)에서 추정했던 "완료됐는데 UI만 stale"이 아니라, **실제로는 이전 Claude Code 프로세스가 죽을 때 그 백그라운드 에이전트들의 진행상태가 함께 유실되며 좀비로 남아 있었다**는 뜻이다(TaskOutput(block=true)로 결과를 회수했던 시점엔 정상 완료였으나, 그 이후 무언가의 이유로 프로세스/세션이 비정상 종료됐고 그 좀비 흔적이 배지에 계속 남음). 새 프로세스(재부팅 후)가 기동되며 고아 상태를 스캔해 명시적으로 failed 처리하고 나서야 배지가 사라졌다. 근본원인 정정: "UI 프론트엔드 동기화 버그"가 아니라 **"백그라운드 에이전트의 진행상태가 상위 프로세스 비정상종료에 취약하고, 그 좀비 상태는 같은 프로세스 재시작 없이는 절대 스스로 해소되지 않는다"**가 맞다. 방지책 최종: (8) 배지가 오래 남아 TaskOutput/TaskStop 둘 다 "no task found"인데도 화면에서 안 사라지면, 카드 삭제를 반복 시도하지 말고 곧바로 **앱 완전 재부팅**으로 넘어간다(추정 단계 건너뛰기 — 재부팅이 유일하게 확인된 해결책). (9) 재부팅 시 harness가 스스로 좀비를 감지해 `failed` 알림을 보내는 것이 정상 동작이며, 이 알림의 "in-process state was lost" 문구가 뜨면 그건 실제 새 문제가 아니라 이 방지책이 다루는 바로 그 정리 과정이 끝났다는 신호다. 이미 TaskOutput(block=true)로 결과를 회수해 활용까지 끝낸 작업이었다면 재작업 불필요.
 
+### [PREVENT] Claude Code 한도 이중 모델 구현 완료 확인 (2026-07-03)
+CEO 지시(2026-07-03): 주간(weekly) + 5시간 롤링(five_hour) 한도를 독립 추적. 지시 시점에 이미 완전 구현되어 있었음을 확인. 재발 방지: test_p0_199_claude_dual_quota_weekly_five_hour가 이중 한도 모델의 모든 동작을 검증함.
+
+### [PREVENT] Android 화면 회전 설정 시스템 간섭 (2026-07-03)
+AndroidManifest.xml의 android:configChanges에 orientation을 포함하면 앱이 시스템 전체 화면 회전 설정을 변경할 수 있음. FluxStudio 프로젝트들(MenuFlow, PlanFlow, ValueFlow)이 이 설정으로 인해 사용자 기기의 자동 회전 설정을 계속 켜는 문제 발생.
+
+### [PREVENT] S23 무선디버깅 mDNS 재연결 실패 시 좌표만 반복 재시도 (2026-07-04)
+adb 무선 디버깅(mDNS 자동연결)이 세션 중간에 갑자기 끊기는 경우, 근본 원인 진단 없이 화면 탭 좌표를 반복 추측하며 시간을 낭비했다. 실측 조사 결과: (1) Windows 방화벽의 mDNS(UDP 5353) inbound 규칙은 Private/Domain/Public 전부 Allow로 이미 정상이라 원인이 아님(Get-NetFirewallRule로 확인). (2) adb kill-server/start-server로 mdns 데몬을 재기동해도 'adb mdns services'가 계속 비어있다면, 이는 컴퓨터 쪽이 아니라 폰 쪽 문제(화면 꺼짐/잠김 상태에서 삼성 기기가 무선 디버깅 브로드캐스트를 일시 중단하는 경우가 많음)일 가능성이 크다. 수정: E:\AI_WIKI\scripts\adb-mdns-diagnose.ps1 신규 작성 — adb 서버 재시작 후 짧은 간격으로 재시도(기본 5회x3초)하며 대상 기기(roster의 s23 슬롯 serial과 getprop ro.serialno 비교) 연결 여부를 확인하고, 그래도 못 찾으면 폰 화면 켜기/Wi-Fi 확인/토글 재시작 체크리스트를 한국어로 즉시 출력한다. 교훈: 무선 기기 연결 실패 시 좌표 재시도나 추측 대신 이 스크립트로 먼저 원인(방화벽 vs mdns데몬 vs 폰상태)을 구분해야 한다. 부수적으로 이 파일 작성 중 PowerShell이 UTF-8 BOM 없는 .ps1의 한글 주석을 시스템 코드페이지로 오인식해 파싱 에러를 낸 것도 확인 — 한글 포함 신규 .ps1은 항상 UTF-8 BOM으로 저장해야 함(기존 AI_WIKI 공통규칙에 이미 있는 원칙의 재확인).
+
+### [PREVENT] feature/groups-port를 운영 main(+70)에 병합 - 6파일 자동해소 검증 (2026-07-04)
+그룹 다중공유·팀나가기·구글로그인복구 브랜치가 운영 19커밋(오전오후모달전환·강조스타일·PlanFlowActionButtons통일 등)과 6개 파일(AndroidManifest/pubspec/app.dart/settings_widgets/confirm_screen/confirm_screen_test)에서 겹침. git merge(ort strategy)가 충돌마커 없이 자동해소했으나, 과거 -X ours로 기능이 조용히 드롭된 사고가 있어 자동해소 결과를 맹신하지 않고 6개 파일 전부 코드레벨로 직접 대조(grep으로 양쪽 함수/필드명 존재 확인)해 병합 정합성을 실측 검증함.
+
+### [PREVENT] PowerShell Mandatory 파라미터 누락 시 무한 대화형 프롬프트 대기로 조용히 멈춤 (2026-07-04)
+deploy-play-internal.ps1의 -ProjectKey는 [Parameter(Mandatory=true)]인데 이를 빠뜨리고 백그라운드/비대화형으로 호출. PowerShell이 누락된 필수 파라미터 값을 콘솔에서 물어보려 대기하는데, 비대화형 실행 환경이라 입력을 영원히 못 받아 에러도 CPU사용도 없이 조용히 멈춤(95분+2회 재현, 상태파일/로그 0바이트, 자식프로세스 0개, CPU 0.9초 고정이 유일한 단서). Read-Host 등 명시적 대화형 코드가 없어 grep으로도 못 잡히는 은닉된 hang 패턴.
+
+### [PREVENT] mDNS 중복 광고 시 flutter devices가 구분자 붙은 adb 시리얼을 못 찾음 (2026-07-04)
+adb가 같은 무선디버깅 기기를 두 번 mDNS로 광고받으면 시리얼에 '(2)._adb-tls-connect._tcp' 구분자를 붙이는데(예: adb-R3CW90940TA-L7evoK (2)._adb-tls-connect._tcp), raw adb -s는 이 전체 문자열로 정상 통신되지만 flutter devices/flutter run -d는 구분자 없는 원래 이름만 찾아 'device not found'/unsupported로 오판한다. 실제로는 연결이 끊긴 게 아니라 Flutter 자체 기기탐색 로직의 시리얼 매칭 한계였다. 우회책: adb devices -l로 실제 전체 시리얼을 확인한 뒤 adb -s '<전체시리얼>' install/uninstall처럼 raw adb로 직접 설치하면 flutter 툴링을 거치지 않고 sideload할 수 있다.
+
+### [PREVENT] MenuFlow ic_stat_notification 리소스 중복 빌드실패 (2026-07-05)
+android/app/src/main/res/drawable/ 아래 ic_stat_notification.png(구, Jun 7)와 ic_stat_notification.xml(신, Jul 2 벡터)이 같은 리소스명으로 동시 존재해 mergeReleaseResources에서 Duplicate resources 실패. xml이 상태바 알림 아이콘 규격(흰색 벡터)에 맞는 최신 의도된 리소스이므로 png를 삭제해 해소.
+
+### [PREVENT] model_routing_guard: 서브에이전트 모델 미구분 시 차단 강화 (2026-07-05)
+CEO 지시(2026-07-05): 서브에이전트(Agent 도구)를 한 번이라도 쓰면 무조건 통과시키던 것을, 여러 개 위임했는데 전부 같은 모델(또는 model 파라미터 미지정)이면 난이도별 모델 라우팅이 아니므로 여전히 차단하도록 강화. scan_current_turn이 각 Agent tool_use의 input.model을 수집해 2개 이상 호출 시 distinct model이 2종 이상이어야 통과(routing_ok)하도록 model_routing_guard.py의 handle_stop을 수정. Agent 호출 1개뿐이면 난이도 구분 판단 대상이 없어 예외적으로 통과시켜 과도한 엄격화를 방지함.
+
+### [PREVENT] ValueFlow dart-define 누락/키 엇갈림으로 Supabase 미초기화 (2026-07-05)
+VS Code launch.json 부재, .idea runConfiguration이 참조하는 scripts/valueflow-dart-defines.json 이 .env 와 별도 수작업 관리돼 PDMV_ANON_KEY 가 구형 JWT 와 신형 sb_publishable 으로 엇갈림. 그리고 IDE/터미널 직접 flutter run 시 dart-define 자체가 주입되지 않아 main.dart 가 조용히 Supabase.initialize 를 생략 -> login_screen 에서만 늦게 '실행용 Supabase 설정이 안 들어왔다' 메시지 노출.
+
+### [PREVENT] adb-device-resolver Strict 크래시 + wireless 슬롯 ID 매칭 stale (2026-07-05)
+resolver가 모든 roster 슬롯에 device_key 속성이 있다고 가정해 legacy_tcpip 슬롯에서 PropertyNotFoundStrict 크래시. 또한 wireless 슬롯의 device_key가 mDNS 풀네임/포트인데 포트가 회전하거나 legacy tcpip가 DHCP로 바뀌면 stale 돼 S23 대신 S8을 잡음. 추가로 adb-device-resolver.ps1 자체가 AI_WIKI git tracked에서 누락(untracked)돼 형제 스크립트와 달리 버전 관리 안 됨.
+
+### [PREVENT] PowerShell ConvertTo-Json 단일요소 raw 직렬화 + powershell.exe -File 자식호출 JSON 인자 깨짐 (2026-07-05)
+두 가지가 겹친 메타패턴. (1) PowerShell 5.1 ConvertTo-Json 은 -InputObject 가 단일 요소 배열일 때 JSON 배열이 아니라 raw 문자열로 직렬화해 수신측 ConvertFrom-Json 이 실패. (2) & powershell -File child.ps1 -Param \ 으로 자식 프로세스 호출하면 Windows 프로세스 인자 파싱에서 JSON 의 따옴표/대괄호가 깨져 첫 토큰만 전달. 실증: valueflow-local deploy 의 dart-define JSON 이 깨져 'Invalid JSON primitive: --dart-define', flutter-deploy-or-copy 의 BuildArgsJson 이 깨져 'Invalid JSON primitive: apk'. 방지: JSON 배열은 수동 빌드(escape 직접 처리), 자식 프로세스 -File 호출 대신 같은 런타임 & 직접 호출. AI_WIKI scripts 중 adb-device-resolver.ps1, flutter-deploy-or-copy.ps1 이 tracked 에 누락돼 형제 스크립트와 달리 버전관리 안 되고 있었음(별개 근본이지만 같은 세션에서 발견).
+
+### [PREVENT] 그룹 위젯 프리뷰 XML이 참조하는 스타일 미정의로 release 빌드가 여러 커밋째 깨져 있었음 (2026-07-07)
+9ca6c2a에서 planflow_group_calendar_widget_preview.xml에 PlanFlowWidgetPreviewCell/Day/Count 스타일을 참조하는 레이아웃을 추가했는데, styles.xml에 해당 스타일 정의를 빠뜨렸다. 이후 커밋(7e46022)까지 이어졌지만 실제 release 빌드(flutter build apk --release)를 돌리지 않고 debug/분석만 통과시켜 AAPT 리소스 링크 실패를 아무도 발견하지 못했다. 위젯 레이아웃처럼 style 참조가 많은 XML을 추가/수정한 뒤에는 flutter analyze만으로는 부족하고, 최소 1회 release 빌드(android-build 공유락 경유)까지 돌려 AAPT 리소스 링크 오류가 없는지 확인해야 한다.
+
+### [PREVENT] dart-define 설정 누락 2차 재발 - flutter-build-guarded.ps1 파일명 불일치 (2026-07-07)
+공용 android-build 락 래퍼(E:/AI_WIKI/scripts/flutter-build-guarded.ps1)의 dart-define 자동주입 로직이 'env/local.json'이라는 고정 파일명만 인식했다. ValueFlow는 이 파일명을 쓰지 않고 scripts/valueflow-dart-defines.json(sync-dart-defines.ps1이 .env 기준으로 생성)을 쓰는데, 이 이름이 후보 목록에 없어 Test-Path가 항상 false를 반환했다. 그 결과 -BuildArgs에 dart-define을 명시하지 않고 이 래퍼로 release 빌드하면 매번 Supabase 설정 없이 조용히(에러 없이) 빌드가 완료돼, S23 실기기에서만 '실행용 Supabase 설정이 아직 들어오지 않았습니다' 에러 배너로 뒤늦게 발견됐다. f82dc1f(scripts/valueflow-local.ps1 수정)로 이미 한 번 고쳤던 문제였으나, 그 수정은 valueflow-local.ps1 경로만 다뤘고 실제로 반복 사용되는 release 빌드 경로(flutter-build-guarded.ps1)의 파일명 불일치는 그대로 남아있어 재발했다. 수정: flutter-build-guarded.ps1이 여러 후보 dart-define 파일 경로(env/local.json, scripts/valueflow-dart-defines.json)를 순회하도록 확장하고, scripts/sync-dart-defines.ps1이 있으면(ValueFlow) 빌드 직전 자동으로 최신화하며, release/profile 빌드인데 후보가 전혀 없으면 강한 경고 배너를 출력하도록 fail-open 방어를 추가했다.
+
+### [PREVENT] 홈 위젯 배치화면 프리뷰는 런타임 레이아웃 재사용 시 항상 빈칸(tools:text만 있음) (2026-07-08)
+Android AppWidgetProviderInfo의 previewLayout이 런타임 레이아웃(planflow_monthly_widget.xml)을 그대로 가리키면, 위젯 배치 화면(런처 피커)은 이 XML을 RemoteViews 데이터 바인딩 없이 그대로 렌더링한다. 런타임 레이아웃의 TextView들은 실제 값이 tools:text(디자인타임 전용, 빌드시 스트립됨)로만 채워져 있고 android:text는 비어있어, 피커에서는 완전히 빈 칸으로 보인다. 그룹 달력 위젯은 이미 전용 프리뷰 레이아웃(planflow_group_calendar_widget_preview.xml, 실제 android:text로 채운 샘플 데이터)을 만들어 이 문제를 해결해뒀는데, 개인 월간 위젯은 이 패턴이 적용되지 않은 채 남아있었다. 수정: planflow_monthly_widget_preview.xml을 새로 만들어 런타임과 동일한 셀 구조(layout_columnWeight/rowWeight 등 GridLayout 배치 속성까지 명시)에 실제 android:text 샘플 값(날짜/이벤트 제목/중요일정 빨간색/오버플로우)을 채우고, provider info의 previewLayout을 이걸로 바꿨다. 규칙: 새 홈위젯을 추가하거나 기존 위젯의 previewLayout이 런타임 레이아웃을 그대로 가리키고 있으면, 항상 별도의 프리뷰 전용 레이아웃(실제 android:text 샘플, 런타임과 동일한 배치 속성 명시)을 만들어야 한다.
+
+### [PREVENT] 홈위젯 마지막(overflow) 줄만 다른 gravity로 정렬돼 앞줄들과 다르게 보임 (2026-07-08)
+planflow_monthly_widget.xml의 event_1~4 title은 PlanFlowWidgetMonthCellEvent 스타일(gravity 미지정, 기본 좌측정렬)을 쓰는데, 그 아래 overflow_count TextView만 PlanFlowWidgetMonthCellOverflow 스타일을 써서 이 스타일에만 gravity=end + textAlignment=viewEnd(우측 정렬)가 걸려 있었다. 텍스트 길이가 셀 폭보다 짧으면 우측 정렬 때문에 시작 위치가 오른쪽으로 밀려, 사용자 눈에는 마지막 줄만 원인 모를 들여쓰기가 생긴 것처럼 보였다. 이미 존재하는 형제 스타일(PlanFlowWidgetOverflowText, 주간 위젯들이 씀)은 애초에 gravity=start였는데 월간 위젯의 overflow 스타일만 우측정렬로 남아있었다(아마 뱃지처럼 오른쪽에 붙이려던 의도였다가 실제로는 다른 줄과 정렬을 맞추는 게 맞았던 사례). 규칙: 한 셀/카드 안에서 여러 줄(제목들+요약/오버플로우 줄)을 같은 좌측 기준선에 맞추려면, 그 줄들에 쓰는 모든 스타일이 동일한 gravity/textAlignment를 명시적으로 공유하는지 확인한다 — 스타일 이름이 비슷해 보여도(Event vs Overflow) 개별 속성은 복사되지 않으므로 항상 실제 값을 직접 비교해야 한다.
+
+### [PREVENT] main-feature 브랜치 66/120 커밋 분기 병합 절차 실행 (2026-07-09)
+main과 feature/menuflow-integration이 장기간 각자 독립 진행되며(main=66개 자체 커밋으로 Sprint 6~13/알리익스프레스 어댑터 등, feature=120개 자체 커밋으로 이번 세션의 JWT수정+Sprint13-1/2/3+검색스모크테스트+알리토글) 23개 파일(content 17 + add/add 6)에서 실제 충돌. CLAUDE.md에 이미 문서화된 '깊게 갈라진 브랜치 병합' 절차(백업태그->공유파일 최신전체통일->add/add 개별검토->회귀0 확인)를 그대로 적용해 안전하게 병합. 재발 방지보다는 절차가 이미 있었고 정확히 준수했음을 기록하는 목적.
+
+### [PREVENT] CEO OS 커맨드센터 버튼 레이아웃 UI 일관성 (2026-07-09)
+기능이 폐기된 미리보기 버튼이 HTML에 남아있고, 여러 줄로 산재된 버튼 배치가 가로 공간을 낭비함. UI 개선 후 레이아웃 규칙이 문서화되지 않으면 향후 버튼 추가 시 다시 여러 줄로 배치될 위험
+
+### [PREVENT] FluxOS V11.1: Scope Lock Recovery and Autonomous Task Continuation (2026-07-09)
+152 active locks accumulated in work_locks.json, ~140 of which are orphan (expired but never moved to released). 123 non-terminal tasks in queue, many from June 1 (38 days ago). 10 tasks classified as RESUME-able (continueable=True) but blocked by 'other owner active session present'. MANUAL_REVIEW classification for preflight BLOCKED tasks is correct - they genuinely need lock release intervention. Resume attempt on TASK_20260709_105520_01 failed because of active session holding scope.
+
+### [PREVENT] FluxOS V12.0: Production Burn-in and Autonomous Company Certification (2026-07-09)
+CEO OS had never been tested as a full autonomous company operating system. No burn-in with real projects had been performed. Operational gaps (lock visibility, resume UX, queue bloat) needed to be verified through actual production use.
+
+### [PREVENT] 분석 전용 태스크의 PlanFlow 전체 잠금 방지 (2026-07-10)
+코드 수정 금지 분석 태스크가 Debug high-risk로 라우팅되고 플래너 폴백이 구현 패킷을 생성해 coding 상태와 전체 프로젝트 잠금을 유지했다. 활성 세션과 소스 변경이 없는 분석 전용 태스크는 구현 단계나 파일 잠금을 획득하면 안 된다.
+
+### [PREVENT] Gateway gh/supabase 강제는 python -c·개발도구 경유 우회를 정적스캔으로 막지 않기로 확정 (2026-07-11)
+GATEWAY_ENFORCED_COMMANDS(gh/supabase raw 차단)는 api_runner.py run_safe_command 분기에서 변형(대소문자/확장자/절대경로)까지 정규화해 완전 차단하지만, python/python3/dart는 ALLOWED_COMMANDS의 정당한 개발도구라 그대로 passthrough된다(test_gateway_enforcement.py GeneralShellUnaffectedTest가 이를 의도된 설계로 명시 검증). 이 passthrough를 악용하면 python -c "import subprocess; subprocess.run(['gh', ...])" 형태로 게이트를 우회한 gh/supabase 직접실행이 가능하다. 검토 결과 이 경로를 substring 정적스캔으로 막지 않기로 결정했다: python -c는 본질적으로 완전 RCE라 gh/subprocess 문자열 스캔은 난독화(동적 import, base64, os.system) 한 줄로 뚫리며, 방어력 없이 '막힌 척'하는 死게이트만 추가하는 것이라 반복 경고된 fail-open 거짓확신 안티패턴을 재생산한다. Gateway의 실질 목적은 협조적 모델의 audit trail+steering이지 작정한 adversary에 대한 하드 보안경계가 아니므로, 진짜 하드 격리가 필요해지면 python/dart를 whitelist에서 제거하거나 OS 샌드박스를 써야지 문자열 스캔으로는 안 된다. 별도로 Claude CLI 자율구현 경로(auto_follow._claude_cli_implementation)는 이미 핸드오프 프롬프트에 Tool Gateway 사용 지시가 주입돼 있고 test_tool_gateway_wiring.py가 소스레벨로 가드해 처리 완료 상태였다.
+
+### [PREVENT] adb monkey 실행이 시스템 자동회전을 전역 해제(thawRotation) (2026-07-12)
+adb shell monkey는 실행 시 WindowManager thawRotation을 호출해 accelerometer_rotation=1을 시스템 권한(package:android)으로 강제 기록, 사용자의 세로고정이 풀린다. S23/태블릿 실측 재현(am start=유지, monkey=즉시풀림), 앱 무관(삼성인터넷도 동일 재현). 설치 후 앱 실행은 반드시 am start(-W -n pkg/activity, 실패시 cmd package resolve-activity --brief로 동적 확인 후 재시도)를 사용하고 monkey는 금지. 2026-07-03 기존 방지책의 configChanges orientation 원인 지목은 오진이었음
+
+### [PREVENT] NexusFlow 세션: prevention hook이 타 세션 사전 dirty 파일을 내 변경으로 오인 (2026-07-12)
+prevention_stop_hook.py가 세션 diff가 아니라 현재 git status 전체를 스캔해, 세션 시작 전부터 이미 dirty였던 다른 세션의 미커밋 변경(lib/screens/* 등 18개 파일)까지 내가 만든 변경으로 잘못 판단함. 이번 세션은 nexusflow_pipeline.dart 1줄 import 제거만 시도했으나 ownership gate에 막혀 실제 반영은 0건(git diff 빈 결과로 확인).
+
+### [PREVENT] MarketingFlow Publishing Layer fail-closed 게이트 (2026-07-12)
+SNS 반복게시 계층 신설 시 미승인/PII/미검수자산/토큰없음 콘텐츠가 실게시로 새어나갈 위험. 다층 fail-closed(승인+approve+confirm-network 3중 잠금, PII/placeholder 스캔, 자산존재검증, 중복ledger)로 차단하고 회귀테스트 16건으로 고정.
+
+### [PREVENT] CEO OS 정체 복구와 폴링 계약 (2026-07-12)
+자동 재시작 제외 플래그와 행 세션 구형 락이 복구 판정을 막고, 중복 폴링과 정체 카드 액션이 실제 서버 상태 계약과 분리되어 있었다. 회귀 테스트로 복구·락 회수·UI 액션 계약을 고정했다.
+
+### [PREVENT] 무인 정리 자동화 안전 게이트 (2026-07-12)
+전 레포 tick과 FluxOS ownership 매핑을 fail-closed로 연결하고 회귀 테스트로 고정했다
+
+### [PREVENT] publish.mjs 상태판정이 이번실행분 아닌 전체 publish_results 누적이력으로 FAILED 오판 (2026-07-12)
+실제 YouTube 비공개 테스트 업로드가 성공(status=ok, video_id 발급, API 재조회로 private 확인)했음에도 packet_state가 FAILED로 표시됨. 원인은 상태마감 로직이 packet.publish_results.filter(mode==live) 전체(과거 blocked 시도 4,5번 포함)를 판정 대상으로 삼아 allOk가 false가 된 것 — 정상 성공(6번)이 과거 실패 이력에 가려짐. 첫 실행이 아니면(재시도·재승인 흐름에서) 항상 재발 가능한 구조적 결함. 수정: 루프 시작 전 publish_results.length를 저장해 이번 실행분만 slice해서 판정. 회귀: 같은 패킷 재실행(ledger skip) 시 PUBLISHED로 정상 판정되는지 실측 검증.
+
+### [PREVENT] Meta(Instagram/Threads) 토큰 갱신은 Google과 다른 모델 — refresh_token 없이 장기토큰 자체를 refresh (2026-07-12)
+Google OAuth는 access_token(단기)+refresh_token(장기, 별도 값)을 발급해 refresh_token으로 새 access_token을 계속 재발급받는 구조. Meta(Instagram Business Login/Threads)는 이 구조가 아니라 short-lived token을 GET 요청으로 long-lived token(~60일)으로 1회 교환한 뒤, 만료 전(발급 24h 경과 시점부터) 그 long-lived token 자체를 refresh 엔드포인트에 넘겨 새 long-lived token으로 갱신하는 방식이다(refresh_token이라는 별도 값이 없음). google-oauth.mjs 패턴을 그대로 복붙하면 존재하지 않는 refresh_token 필드를 찾다가 항상 NEEDS_REAUTH로 빠지는 버그가 생긴다. meta-oauth.mjs를 Google과 별도 모듈로 분리하고 REFRESH_WINDOW_MS(만료 7일전)로 자체 판정하도록 구현, 테스트 5건(만료前재사용/만료임박자동갱신/이미만료NEEDS_REAUTH/파일없음/refresh API실패)으로 고정.
+
+### [PREVENT] Meta Instagram Business Login http 127.0.0.1 루프백 거부 (2026-07-12)
+Google/YouTube OAuth 데스크톱 클라이언트는 http 127.0.0.1 루프백 허용하나 Meta Instagram Business Login 콘솔 실측 결과 http/localhost 둘다 거부, https 127.0.0.1만 허용. meta-oauth-connect.mjs가 google-oauth 패턴 따라 http 서버였음. 대응: local-https.mjs 신규, openssl로 self-signed 인증서 생성 캐싱, node:https 전환. 실제 HTTPS 리스닝응답 실측검증.
+
+### [PREVENT] FinFlow resolved activity launch fallback (2026-07-13)
+Hard-coded MainActivity launch can fail when the installed package exposes a different launcher activity; monkey fallback has unsafe device-wide side effects.
+
 
 # PlanFlow
 
@@ -392,20 +523,7 @@ Claude Code 앱에서 Agent 도구로 여러 서브에이전트를 한 메시지
 E:\FluxStudio\planflow
 
 ## 현재 상태
-- Stage: 1차 핵심 기능 구현 완료, V2 그룹 기능 병합 완료, Play Alpha 배포 중
-- 버전: 1.1.1+77 (2026-07-05)
-- 코드베이스 규모: 176개 Dart 파일 (services 57, screens 26, features/groups 46)
-- 1차 구현 완료: 음성 입력 -> AI 파싱 -> 확인 UI -> 저장 -> 알림, 아침/저녁 브리핑, 역산 알림(pre-action), 이동 시간 버퍼, Google/Naver 캘린더 양방향 동기화, 시스템 알람, 홈 위젯(마이크 버튼)
-- V2 그룹 기능 구현: 그룹 생성/초대/멤버 관리, 그룹 일정 공유-연동, 그룹 이벤트 코멘트, 초대 링크, 역할 위임(leader/member), 그룹 나가기, 그룹 캘린더 오버레이
-- DB: 24개 테이블 (V2 groups 인프라 포함), 18개 마이그레이션, 3개 Edge Function (naver-geocode, naver-userinfo-proxy, openai-proxy)
-- 최근 변경(2026-07-05): PlanFlow-v2(feature/team-v2-planning) 병합으로 그룹 기능 완전 통합, 앱 정체 단일화, 로그인 회귀 복원
-
-## 다음 작업
-- 그룹(V2) 기능 엣지 케이스 안정화 및 크래시 모니터링 강화
-- 1차 배포 Play Alpha -> Internal -> 프로덕션 진행
-- Naver/Google 캘린더 동기화 안정성 및 예외 처리 개선
-- 성능 최적화 (홈 화면 로딩, 이벤트 프리패치, 배터리 소모)
-- 2차 배포 기능(KakaoTalk/SMS/통화 일정 감지) 검토-설계
+- Stage: 아키텍처 확정, 구현 시작 단계
 
 ## 기술스택
 - Framework: Flutter (Android-first)
@@ -415,10 +533,8 @@ E:\FluxStudio\planflow
 - TTS: flutter_tts
 
 ## DB 스키마
-- 코어: users, events, pre_actions, reminders, voice_logs, location_history, user_settings, calendar_connections
-- V2 그룹: groups, group_members, group_invites, group_role_delegations, group_events, group_event_comments, group_backups
-- 음성 교정: voice_correction_rules, voice_common_correction_rules
-- 기타: early_bird_emails, user_backups, feedback_reports, admin_roles, contact_messages, product_early_birds, backup.daily_snapshots
+users, events, pre_actions, reminders, voice_logs,
+location_history, user_settings, early_bird_emails
 
 ## 핵심 기능 (1차 배포)
 - 음성 입력 -> AI 파싱 -> 확인 UI -> 저장 -> 알림
