@@ -488,7 +488,7 @@ class VoiceCommandPipeline {
     final targetText = beforeVerb
         .substring(0, valueMatch.start)
         .replaceAll(
-          RegExp(r'(?:시작\s*시간|시작시간|시각|시간)\s*$'),
+          RegExp(r'(?:일정\s*)?(?:시작\s*시간|시작시간|시각|시간)\s*(?:을|를)?\s*$'),
           ' ',
         )
         .replaceAll(RegExp(r'\s+'), ' ')
