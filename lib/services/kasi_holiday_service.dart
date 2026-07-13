@@ -63,8 +63,7 @@ class KasiHolidayService {
       '$_endpoint?serviceKey=$apiKey&solYear=$year&numOfRows=50&_type=json',
     );
     try {
-      final response =
-          await http.get(uri).timeout(const Duration(seconds: 10));
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) {
         return null;
       }
@@ -102,11 +101,9 @@ class KasiHolidayService {
         }
         final dateName = entry['dateName']?.toString().trim() ?? '';
         final isHoliday = entry['isHoliday']?.toString() == 'Y';
-        // 이 공공 API는 제헌절도 isHoliday=Y로 잘못 표시한다(2008년부터
-        // 실제로는 비휴무 국경일). KoreanHolidays._commemorativeOnly가
-        // 이름 표시는 이미 별도로 책임지므로, 여기서는 쉬는 날 집합에서
-        // 제헌절을 무조건 제외한다.
-        if (!isHoliday || dateName.isEmpty || dateName.contains('제헌절')) {
+        if (!isHoliday ||
+            dateName.isEmpty ||
+            (year < 2026 && dateName.contains('제헌절'))) {
           continue;
         }
         final locdate = entry['locdate']?.toString() ?? '';

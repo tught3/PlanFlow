@@ -8,14 +8,18 @@ void main() {
       '삼일절': DateTime(2026, 3, 1),
       '어린이날': DateTime(2026, 5, 5),
       '현충일': DateTime(2026, 6, 6),
+      '제헌절': DateTime(2026, 7, 17),
       '광복절': DateTime(2026, 8, 15),
       '개천절': DateTime(2026, 10, 3),
       '한글날': DateTime(2026, 10, 9),
       '성탄절': DateTime(2026, 12, 25),
     }.entries) {
       test('${entry.key} is a public holiday', () {
-        expect(KoreanHolidays.isHoliday(entry.value), isTrue,
-            reason: '${entry.key}(${entry.value}) should be a holiday');
+        expect(
+          KoreanHolidays.isHoliday(entry.value),
+          isTrue,
+          reason: '${entry.key}(${entry.value}) should be a holiday',
+        );
       });
     }
 
@@ -32,30 +36,40 @@ void main() {
       '삼일절': DateTime(2026, 3, 1),
       '어린이날': DateTime(2026, 5, 5),
       '현충일': DateTime(2026, 6, 6),
+      '제헌절': DateTime(2026, 7, 17),
       '광복절': DateTime(2026, 8, 15),
       '개천절': DateTime(2026, 10, 3),
       '한글날': DateTime(2026, 10, 9),
       '성탄절': DateTime(2026, 12, 25),
     }.entries) {
       test('${entry.key} is a day off', () {
-        expect(KoreanHolidays.isDayOff(entry.value), isTrue,
-            reason: '${entry.key}(${entry.value}) should be a day off');
+        expect(
+          KoreanHolidays.isDayOff(entry.value),
+          isTrue,
+          reason: '${entry.key}(${entry.value}) should be a day off',
+        );
       });
     }
   });
 
-  group('제헌절 special case', () {
-    test('제헌절은 쉬는 날이 아니다 (isDayOff==false)', () {
-      expect(KoreanHolidays.isDayOff(DateTime(2026, 7, 17)), isFalse);
+  group('제헌절 공휴일 부활', () {
+    test('2025년까지는 쉬는 날이 아니다', () {
+      expect(KoreanHolidays.isDayOff(DateTime(2025, 7, 17)), isFalse);
     });
 
-    test('제헌절 이름은 여전히 반환된다', () {
+    test('2026년부터 쉬는 날이며 이름을 반환한다', () {
+      expect(KoreanHolidays.isDayOff(DateTime(2026, 7, 17)), isTrue);
       expect(KoreanHolidays.holidayName(DateTime(2026, 7, 17)), '제헌절');
     });
 
-    test('제헌절은 평일이므로 isHolidayOrWeekend가 false다', () {
-      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 7, 17)),
-          isFalse);
+    test('2026년 제헌절은 평일이어도 isHolidayOrWeekend가 true다', () {
+      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 7, 17)), isTrue);
+    });
+
+    test('2027년 토요일 제헌절은 월요일 대체공휴일을 만든다', () {
+      expect(KoreanHolidays.isDayOff(DateTime(2027, 7, 17)), isTrue);
+      expect(KoreanHolidays.isDayOff(DateTime(2027, 7, 19)), isTrue);
+      expect(KoreanHolidays.holidayName(DateTime(2027, 7, 19)), '대체공휴일');
     });
   });
 
@@ -83,30 +97,22 @@ void main() {
   group('KoreanHolidays.applyLiveData (KASI 공공 API 반영)', () {
     // 실제 서비스와 겹치지 않도록 테스트 전용 연도(2099)를 쓴다.
     test('실 데이터가 있으면 계산값 대신 그 데이터를 우선 사용한다', () {
-      KoreanHolidays.applyLiveData(2099, {
-        (5, 1): '노동절',
-        (6, 3): '전국동시지방선거',
-      });
+      KoreanHolidays.applyLiveData(2099, {(5, 1): '노동절', (6, 3): '전국동시지방선거'});
 
       expect(KoreanHolidays.isDayOff(DateTime(2099, 5, 1)), isTrue);
       expect(KoreanHolidays.holidayName(DateTime(2099, 5, 1)), '노동절');
       expect(KoreanHolidays.isDayOff(DateTime(2099, 6, 3)), isTrue);
-      expect(
-        KoreanHolidays.holidayName(DateTime(2099, 6, 3)),
-        '전국동시지방선거',
-      );
+      expect(KoreanHolidays.holidayName(DateTime(2099, 6, 3)), '전국동시지방선거');
       // 실 데이터에 없는 계산 전용 공휴일(개천절 등)은 실 데이터가 있는
       // 연도에서는 더 이상 계산값을 쓰지 않으므로 감지되지 않는다(의도된
       // 동작 — 실 데이터가 그 해의 완전한 목록이라고 신뢰).
       expect(KoreanHolidays.isDayOff(DateTime(2099, 10, 3)), isFalse);
     });
 
-    test('제헌절은 실 데이터가 있어도 _commemorativeOnly로 계속 이름이 나온다', () {
+    test('제헌절은 실 데이터에 누락돼도 2026년부터 쉬는 날로 유지한다', () {
       KoreanHolidays.applyLiveData(2098, {(10, 3): '개천절'});
-      // KasiHolidayService가 제헌절을 실 데이터에서 걸러내므로, 실 데이터에
-      // 제헌절이 없더라도 holidayName은 _commemorativeOnly로 여전히 반환.
       expect(KoreanHolidays.holidayName(DateTime(2098, 7, 17)), '제헌절');
-      expect(KoreanHolidays.isDayOff(DateTime(2098, 7, 17)), isFalse);
+      expect(KoreanHolidays.isDayOff(DateTime(2098, 7, 17)), isTrue);
     });
   });
 
@@ -125,8 +131,11 @@ void main() {
       '부처님오신날(2027)': DateTime(2027, 5, 13),
     }.entries) {
       test('${entry.key} is a public holiday', () {
-        expect(KoreanHolidays.isHoliday(entry.value), isTrue,
-            reason: '${entry.key} should be a holiday');
+        expect(
+          KoreanHolidays.isHoliday(entry.value),
+          isTrue,
+          reason: '${entry.key} should be a holiday',
+        );
       });
     }
   });
@@ -139,8 +148,11 @@ void main() {
     test('2027 설날 substitute (Seollal on Sunday)', () {
       // 2/7(일)이 설날 당일, 2/8(월)은 연휴
       // 연휴가 일요일을 포함 → 대체공휴일은 2/9(화)
-      expect(KoreanHolidays.isHoliday(DateTime(2027, 2, 9)), isTrue,
-          reason: '2027 설날 대체공휴일 (2/9)');
+      expect(
+        KoreanHolidays.isHoliday(DateTime(2027, 2, 9)),
+        isTrue,
+        reason: '2027 설날 대체공휴일 (2/9)',
+      );
     });
 
     // 2026 어린이날(5/5, 화) → 평일, 대체 불필요
@@ -160,24 +172,21 @@ void main() {
     test('2026 Buddhas Birthday on Sunday has substitute', () {
       expect(KoreanHolidays.isHoliday(DateTime(2026, 5, 24)), isTrue);
       // 부처님오신날이 일요일(5/24) → 다음 평일 5/25(월)이 대체
-      expect(KoreanHolidays.isHoliday(DateTime(2026, 5, 25)), isTrue,
-          reason: '2026 부처님오신날 대체공휴일 (5/25)');
+      expect(
+        KoreanHolidays.isHoliday(DateTime(2026, 5, 25)),
+        isTrue,
+        reason: '2026 부처님오신날 대체공휴일 (5/25)',
+      );
     });
   });
 
   group('KoreanHolidays.holidayName', () {
     test('returns correct name for 제헌절', () {
-      expect(
-        KoreanHolidays.holidayName(DateTime(2026, 7, 17)),
-        '제헌절',
-      );
+      expect(KoreanHolidays.holidayName(DateTime(2026, 7, 17)), '제헌절');
     });
 
     test('returns correct name for lunar holiday', () {
-      expect(
-        KoreanHolidays.holidayName(DateTime(2026, 2, 17)),
-        '설날',
-      );
+      expect(KoreanHolidays.holidayName(DateTime(2026, 2, 17)), '설날');
     });
 
     test('returns 대체공휴일 for substitute day', () {
@@ -186,27 +195,29 @@ void main() {
     });
 
     test('returns null for ordinary day', () {
-      expect(
-        KoreanHolidays.holidayName(DateTime(2026, 7, 16)),
-        isNull,
-      );
+      expect(KoreanHolidays.holidayName(DateTime(2026, 7, 16)), isNull);
     });
   });
 
   group('KoreanHolidays.isHolidayOrWeekend', () {
     test('holiday is true', () {
-      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 1, 1)),
-          isTrue);
+      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 1, 1)), isTrue);
     });
 
     test('weekend is true', () {
-      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 7, 18)),
-          isTrue);
+      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 7, 18)), isTrue);
     });
 
     test('ordinary weekday is false', () {
-      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 7, 16)),
-          isFalse);
+      expect(KoreanHolidays.isHolidayOrWeekend(DateTime(2026, 7, 16)), isFalse);
     });
+  });
+
+  test('partial live data preserves the restored Constitution Day and substitute day', () {
+    KoreanHolidays.applyLiveData(2027, {(1, 1): '신정'});
+
+    expect(KoreanHolidays.isDayOff(DateTime(2027, 7, 17)), isTrue);
+    expect(KoreanHolidays.isDayOff(DateTime(2027, 7, 19)), isTrue);
+    expect(KoreanHolidays.holidayName(DateTime(2027, 7, 19)), '대체공휴일');
   });
 }

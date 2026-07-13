@@ -17,10 +17,8 @@ class KoreanHolidays {
 
   /// 국경일이지만 "쉬는 날"이 아닌 기념일: (month, day) → 이름.
   /// 이름은 표시하되 날짜 숫자를 빨간(휴무) 색으로 칠하지 않는다.
-  /// 제헌절은 2008년부터 공휴일(비휴무)에서 제외돼 실제로는 평일이다.
-  static const Map<(int, int), String> _commemorativeOnly = {
-    (7, 17): '제헌절',
-  };
+  /// 제헌절은 2025년까지 이 범주에 속하고, 2026년부터는 쉬는 날이다.
+  static const Map<(int, int), String> _commemorativeOnly = {(7, 17): '제헌절'};
 
   /// [KasiHolidayService]가 한국천문연구원 공공 API에서 받아온 "그 해의
   /// 실제 쉬는 날" 데이터. 연도별로 채워지며, 있으면 [_fixed]/[_lunarForYear]
@@ -28,8 +26,21 @@ class KoreanHolidays {
   /// 포함되므로 더 정확하다). 없는 연도는 계산값(klc)으로 그대로 동작한다.
   static final Map<int, Map<(int, int), String>> _liveOverride = {};
 
-  /// [KasiHolidayService]가 API 응답을 파싱한 뒤 호출한다. 제헌절은 이
-  /// 데이터에 포함돼 있지 않아야 한다(호출부에서 이미 걸러냄).
+  static Map<(int, int), String> _constitutionDayOffs(int year) {
+    if (year < 2026) {
+      return const {};
+    }
+
+    final days = <(int, int), String>{(7, 17): '제헌절'};
+    final constitutionDay = DateTime(year, 7, 17);
+    if (constitutionDay.weekday == DateTime.saturday ||
+        constitutionDay.weekday == DateTime.sunday) {
+      days[_nextWeekday(year, 7, 17)] = '대체공휴일';
+    }
+    return days;
+  }
+
+  /// [KasiHolidayService]가 API 응답을 파싱한 뒤 호출한다.
   static void applyLiveData(int year, Map<(int, int), String> dayOff) {
     _liveOverride[year] = Map.unmodifiable(dayOff);
   }
@@ -51,8 +62,11 @@ class KoreanHolidays {
     }
 
     (int, int) shiftDays((int, int) monthDay, int deltaDays) {
-      final shifted = DateTime(year, monthDay.$1, monthDay.$2)
-          .add(Duration(days: deltaDays));
+      final shifted = DateTime(
+        year,
+        monthDay.$1,
+        monthDay.$2,
+      ).add(Duration(days: deltaDays));
       return (shifted.month, shifted.day);
     }
 
@@ -91,27 +105,35 @@ class KoreanHolidays {
   static Set<(int, int)> _substituteDays(int year) {
     final allDays = <(int, int), String>{};
     allDays.addAll(_fixed);
+    if (year >= 2026) {
+      allDays[(7, 17)] = '제헌절';
+    }
     allDays.addAll(_lunarForYear(year));
 
     final subs = <(int, int)>{};
 
     /// 3일 연휴(설날·추석) 검사: 셋 중 하나가 일요일이면 대체 추가
     for (final prefix in ['설날', '추석']) {
-      final periodKeys = allDays.entries
-          .where((e) => e.value.startsWith(prefix))
-          .map((e) => e.key)
-          .toList()
-        ..sort((a, b) {
-          if (a.$1 != b.$1) return a.$1.compareTo(b.$1);
-          return a.$2.compareTo(b.$2);
-        });
+      final periodKeys =
+          allDays.entries
+              .where((e) => e.value.startsWith(prefix))
+              .map((e) => e.key)
+              .toList()
+            ..sort((a, b) {
+              if (a.$1 != b.$1) return a.$1.compareTo(b.$1);
+              return a.$2.compareTo(b.$2);
+            });
       if (periodKeys.length != 3) continue;
       final overlapsSunday = periodKeys.any((k) {
         final d = DateTime(year, k.$1, k.$2);
         return d.weekday == DateTime.sunday;
       });
       if (!overlapsSunday) continue;
-      var candidate = _nextWeekday(year, periodKeys.last.$1, periodKeys.last.$2);
+      var candidate = _nextWeekday(
+        year,
+        periodKeys.last.$1,
+        periodKeys.last.$2,
+      );
       while (allDays.containsKey(candidate) || subs.contains(candidate)) {
         candidate = _nextWeekday(year, candidate.$1, candidate.$2);
       }
@@ -127,10 +149,12 @@ class KoreanHolidays {
       (10, 3): '개천절',
       (10, 9): '한글날',
     };
-    final lunarKeys = _lunarForYear(year).entries
-        .where((e) => e.value == '부처님오신날')
-        .map((e) => e.key)
-        .toList();
+    if (year >= 2026) {
+      singleHolidays[(7, 17)] = '제헌절';
+    }
+    final lunarKeys = _lunarForYear(
+      year,
+    ).entries.where((e) => e.value == '부처님오신날').map((e) => e.key).toList();
     if (lunarKeys.isNotEmpty) {
       singleHolidays[lunarKeys.first] = '부처님오신날';
     }
@@ -139,9 +163,9 @@ class KoreanHolidays {
       final (m, d) = entry.key;
       final name = entry.value;
       final date = DateTime(year, m, d);
-      final isWeekend = name == '어린이날'
+      final isWeekend = name == '어린이날' || name == '제헌절'
           ? (date.weekday == DateTime.saturday ||
-              date.weekday == DateTime.sunday)
+                date.weekday == DateTime.sunday)
           : date.weekday == DateTime.sunday;
       if (!isWeekend) continue;
       var candidate = _nextWeekday(year, m, d);
@@ -167,8 +191,7 @@ class KoreanHolidays {
       }
     }
     var dt = DateTime(year, m, d);
-    while (dt.weekday == DateTime.saturday ||
-        dt.weekday == DateTime.sunday) {
+    while (dt.weekday == DateTime.saturday || dt.weekday == DateTime.sunday) {
       d += 1;
       if (d > DateTime(year, m + 1, 0).day) {
         d = 1;
@@ -183,7 +206,7 @@ class KoreanHolidays {
   }
 
   /// 모든 공휴일(고정일 + 음력 + 대체)을 한 Map으로 반환.
-  /// 제헌절(_commemorativeOnly)은 포함하지 않는다.
+  /// 제헌절은 2026년부터 포함한다.
   ///
   /// [_liveOverride]에 해당 연도 데이터가 있으면(KasiHolidayService가
   /// 공공 API에서 받아온 값) 그걸 우선 반환한다 — 임시공휴일·선거일처럼
@@ -191,10 +214,14 @@ class KoreanHolidays {
   static Map<(int, int), String> _allForYear(int year) {
     final live = _liveOverride[year];
     if (live != null) {
-      return live;
+      return Map<(int, int), String>.unmodifiable({
+        ...live,
+        ..._constitutionDayOffs(year),
+      });
     }
     final result = <(int, int), String>{};
     result.addAll(_fixed);
+    result.addAll(_constitutionDayOffs(year));
     result.addAll(_lunarForYear(year));
     for (final key in _substituteDays(year)) {
       result[key] = '대체공휴일';
@@ -203,7 +230,6 @@ class KoreanHolidays {
   }
 
   /// 주어진 날짜가 한국 쉬는 날(공휴일)이면 true.
-  /// 제헌절은 제외 (2008년부터 평일).
   static bool isDayOff(DateTime date) {
     return _allForYear(date.year).containsKey((date.month, date.day));
   }
@@ -215,7 +241,7 @@ class KoreanHolidays {
   }
 
   /// 주어진 날짜의 공휴일명, 아니면 null.
-  /// 쉬는 날(isDayOff) 또는 국경일(제헌절)인 경우 이름을 반환.
+  /// 쉬는 날(isDayOff) 또는 국경일(2025년까지의 제헌절)인 경우 이름을 반환.
   static String? holidayName(DateTime date) {
     final (month, day) = (date.month, date.day);
     final allDays = _allForYear(date.year);
@@ -228,8 +254,7 @@ class KoreanHolidays {
   /// 주어진 날짜가 공휴일이거나 주말(토/일)이면 true.
   static bool isHolidayOrWeekend(DateTime date) {
     if (isHoliday(date)) return true;
-    if (date.weekday == DateTime.saturday ||
-        date.weekday == DateTime.sunday) {
+    if (date.weekday == DateTime.saturday || date.weekday == DateTime.sunday) {
       return true;
     }
     return false;
