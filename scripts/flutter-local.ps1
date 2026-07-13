@@ -17,10 +17,12 @@ $env:GRADLE_USER_HOME = $ProjectGradleHome
 $session = $null
 $exitCode = 0
 try {
-  try {
-    $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd $ProjectRoot -PreferCurrentProjectSession
-  } catch {
-    Write-Warning ("FluxOS session registration skipped; continuing local Flutter command. {0}" -f $_.Exception.Message)
+  if (-not $SkipFluxOsSession) {
+    try {
+      $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd $ProjectRoot -PreferCurrentProjectSession
+    } catch {
+      Write-Warning ("FluxOS session registration skipped; continuing local Flutter command. {0}" -f $_.Exception.Message)
+    }
   }
 
   $defineFile = Join-Path $PSScriptRoot '..\env\local.json'
