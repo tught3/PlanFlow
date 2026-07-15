@@ -63,6 +63,26 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   }
 }
 
+/// 일정 조회 자체가 예외로 실패하는 상황을 재현하는 fake — onEventsResolved를
+/// 아예 호출하지 않고(네트워크 오류 등으로 목록을 못 얻은 상태) delivered:false
+/// 결과만 반환한다.
+class _FailingFakeBriefingSchedulerService extends BriefingSchedulerService {
+  @override
+  Future<BriefingExecutionResult> executeBriefing({
+    required bool isMorning,
+    String? userId,
+    bool isManualTrigger = false,
+    void Function(List<EventModel> events)? onEventsResolved,
+  }) async {
+    return const BriefingExecutionResult(
+      delivered: false,
+      usedFallback: false,
+      message: '브리핑 실행에 실패했습니다. 로그인 상태와 일정 조회를 확인해 주세요.',
+      failureReason: 'execute_failed',
+    );
+  }
+}
+
 /// executeBriefing이 TTS 재생 완료까지(resultCompleter가 완료될 때까지)
 /// 끝나지 않는 상황을 재현하는 fake — onEventsResolved는 즉시 호출한다.
 class _SlowFakeBriefingSchedulerService extends BriefingSchedulerService {
@@ -237,5 +257,58 @@ void main() {
     // 12h로 표기한 "12:00"이 아니어야 한다.
     expect(find.textContaining('9:00'), findsOneWidget);
     expect(find.textContaining('12:00'), findsNothing);
+  });
+
+  testWidgets('일정 조회가 실패하면 목록 섹션이 통째로 사라지지 않고 실패 안내를 보여준다',
+      (tester) async {
+    // 회귀: 조회 예외로 onEventsResolved가 한 번도 호출되지 않으면
+    // resolvedEvents==null && result.delivered==false가 되어, 예전엔 목록
+    // 섹션(빈 상태 안내 포함)이 통째로 렌더되지 않았다. 사용자는 이걸
+    // "일정이 없는데 안내가 안 떴다"고 체감했다 — 실제로는 조회 실패였다.
+    final auth = _FakeAuthProvider(
+      resolved: Completer<bool>()..complete(true),
+      syncResult: true,
+      currentUserId: 'user-1',
+    );
+    final scheduler = _FailingFakeBriefingSchedulerService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BriefingLaunchScreen(
+          isMorning: true,
+          authProviderOverride: auth,
+          briefingSchedulerService: scheduler,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('브리핑 실행에 실패했습니다. 로그인 상태와 일정 조회를 확인해 주세요.'),
+        findsOneWidget);
+    expect(find.text('오늘 일정을 불러오지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
+    // 실패인데 "없어요"라고 오해시키면 안 된다.
+    expect(find.text('오늘 일정이 없어요'), findsNothing);
+  });
+
+  testWidgets('일정이 진짜 0건이면 "일정이 없어요"를 보여준다', (tester) async {
+    final auth = _FakeAuthProvider(
+      resolved: Completer<bool>()..complete(true),
+      syncResult: true,
+      currentUserId: 'user-1',
+    );
+    final scheduler = _FakeBriefingSchedulerService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BriefingLaunchScreen(
+          isMorning: true,
+          authProviderOverride: auth,
+          briefingSchedulerService: scheduler,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('오늘 일정이 없어요'), findsOneWidget);
   });
 }

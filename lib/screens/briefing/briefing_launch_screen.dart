@@ -257,7 +257,15 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
               const SizedBox(height: 16),
               // 일정 리스트 섹션 — TTS가 끝나기 전(resolvedEvents만 채워진
               // 단계)에도 보여준다.
-              if (resolvedEvents != null || result?.delivered == true)
+              //
+              // 회귀: 예전엔 `result?.delivered == true`만 봤는데, 일정 조회
+              // 자체가 예외로 실패하면(네트워크 오류 등) onEventsResolved가
+              // 호출되지 않아 resolvedEvents도 null, delivered도 false가 돼
+              // 이 섹션 전체(빈 상태 안내 포함)가 렌더되지 않았다. 사용자는
+              // "일정이 없는데 안내가 안 떴다"고 느꼈지만 실제로는 조회
+              // 실패였다 — result가 있으면(성공이든 실패든) 섹션을 보여주고,
+              // 안에서 "없음"과 "조회 실패"를 구분해서 안내한다.
+              if (resolvedEvents != null || result != null)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -277,7 +285,11 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                         Expanded(
                           child: Center(
                             child: Text(
-                              '$scheduleTitle이 없어요',
+                              resolvedEvents == null &&
+                                      result?.delivered == false
+                                  ? '$scheduleTitle을 불러오지 못했어요. 다시 시도해 주세요.'
+                                  : '$scheduleTitle이 없어요',
+                              textAlign: TextAlign.center,
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: PlanFlowColors.textSecondary,
                               ),
