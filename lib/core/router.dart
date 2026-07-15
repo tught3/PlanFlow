@@ -31,6 +31,7 @@ import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
 import '../screens/shell_screen.dart';
+import '../screens/departure_alarm_screen.dart';
 import 'constants.dart';
 import 'env.dart';
 import '../providers/auth_provider.dart';
@@ -266,6 +267,17 @@ final GoRouter appRouter = GoRouter(
         return EventEditScreen(
           event: event,
           eventId: _resolveEventId(state, event),
+        );
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.departureAlarm,
+      builder: (context, state) {
+        final q = state.uri.queryParameters;
+        return DepartureAlarmScreen(
+          eventId: q['eventId'] ?? '',
+          initialTitle: q['title'],
+          travelMinutes: int.tryParse(q['eta'] ?? ''),
         );
       },
     ),

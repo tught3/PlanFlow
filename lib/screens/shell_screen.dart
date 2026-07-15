@@ -16,9 +16,11 @@ import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
 import '../services/calendar_sync_service.dart';
 import '../services/critical_alarm_channel_migration_service.dart';
+import '../services/departure_acknowledgement_store.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
 import '../services/manual_event_side_effect_service.dart';
+import '../services/pending_departure_store.dart';
 import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
 import 'home/home_screen.dart';
@@ -89,6 +91,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       const CriticalAlarmChannelMigrationService();
   final BriefingSchedulerService _briefingSchedulerService =
       BriefingSchedulerService();
+  final PendingDepartureStore _pendingDepartureStore =
+      const SharedPreferencesPendingDepartureStore();
+  final DepartureAcknowledgementStore _departureAckStore =
+      const SharedPreferencesDepartureAcknowledgementStore();
+  Timer? _pendingDepartureTimer;
+  // 45초 타이머·resume·startup 세 경로가 동시에 pending을 읽어 같은 알람 화면을
+  // 중복 push하는 레이스를 막는 재진입 가드.
+  bool _pendingDepartureCheckInFlight = false;
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
   bool _checkedGoogleCalendarAutoPrompt = false;
@@ -110,6 +120,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_runSignedInStartupTasks(reason: 'app_start'));
     });
+    _pendingDepartureTimer = Timer.periodic(
+      const Duration(seconds: 45),
+      (_) => unawaited(_maybeShowPendingDepartureAlarm()),
+    );
   }
 
   @override
@@ -117,6 +131,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     authProvider.removeListener(_handleAuthChanged);
     WidgetsBinding.instance.removeObserver(this);
     _homeScrollController.dispose();
+    _pendingDepartureTimer?.cancel();
     super.dispose();
   }
 
@@ -128,6 +143,37 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         reason: 'app_resumed',
       ));
       unawaited(_refreshDepartureAlarmsAndMonitor());
+      unawaited(_maybeShowPendingDepartureAlarm());
+    }
+  }
+
+  /// 출발 전용 알람이 백그라운드/포그라운드 전환 중에 알림 대신 곧바로
+  /// 화면으로 뜰 수 있도록, 보류 중인 출발 알람 정보를 확인해 이동한다.
+  Future<void> _maybeShowPendingDepartureAlarm() async {
+    if (!mounted || _pendingDepartureCheckInFlight) return;
+    _pendingDepartureCheckInFlight = true;
+    try {
+      final pending = await _pendingDepartureStore.read();
+      if (pending == null) {
+        return;
+      }
+      final age = DateTime.now().difference(pending.fireAt);
+      if (age.isNegative || age > const Duration(minutes: 5)) {
+        await _pendingDepartureStore.clear();
+        return;
+      }
+      if (await _departureAckStore.isAcknowledged(pending.eventId)) {
+        await _pendingDepartureStore.clear();
+        return;
+      }
+      await _pendingDepartureStore.clear();
+      if (!mounted) return;
+      final uri = '${AppRoutes.departureAlarm}'
+          '?eventId=${Uri.encodeComponent(pending.eventId)}'
+          '&title=${Uri.encodeComponent(pending.title)}';
+      context.go(uri);
+    } finally {
+      _pendingDepartureCheckInFlight = false;
     }
   }
 
@@ -168,6 +214,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     ));
     unawaited(_migrateFutureCriticalAlarms());
     unawaited(_refreshDepartureAlarmsAndMonitor());
+    unawaited(_maybeShowPendingDepartureAlarm());
     unawaited(_ensureBriefingsScheduled(reason: reason));
     if (reason == 'app_start') {
       unawaited(_maybeRecalculateAllAlarms());

@@ -1063,12 +1063,11 @@ class NotificationService {
       if (eventId.isEmpty) {
         return null;
       }
-      final eventRoute =
-          '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}';
       if (response.actionId == departureAcknowledgedActionId) {
         return null;
       }
-      return '$eventRoute?departureAction=prompt';
+      return '${AppRoutes.departureAlarm}'
+          '?eventId=${Uri.encodeComponent(eventId)}';
     }
 
     return null;

@@ -195,7 +195,7 @@ void main() {
 
       expect(
         NotificationService.routeForNotificationResponse(tappedDeparture),
-        '${AppRoutes.eventDetail}/event-1?departureAction=prompt',
+        '${AppRoutes.departureAlarm}?eventId=event-1',
       );
       expect(
         NotificationService.routeForNotificationResponse(acknowledgedDeparture),

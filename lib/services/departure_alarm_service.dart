@@ -16,6 +16,7 @@ import 'app_permission_service.dart';
 import 'departure_acknowledgement_store.dart';
 import 'map_service.dart';
 import 'notification_service.dart';
+import 'pending_departure_store.dart';
 import 'travel_time_buffer_service.dart';
 
 typedef DepartureAlarmPreflightScheduler = Future<bool> Function({
@@ -36,6 +37,7 @@ class DepartureAlarmService {
     DepartureAlarmPreflightScheduler? preflightScheduler,
     Future<bool> Function(int alarmId)? preflightCanceller,
     DepartureAcknowledgementStore? acknowledgementStore,
+    PendingDepartureStore? pendingDepartureStore,
     DateTime Function()? now,
   })  : _permissionService = permissionService,
         _currentLocationProvider = currentLocationProvider,
@@ -46,6 +48,7 @@ class DepartureAlarmService {
         _preflightScheduler = preflightScheduler,
         _preflightCanceller = preflightCanceller,
         _acknowledgementStore = acknowledgementStore,
+        _pendingDepartureStore = pendingDepartureStore,
         _now = now;
 
   static const String label = '출발 알림';
@@ -104,6 +107,7 @@ class DepartureAlarmService {
   final DepartureAlarmPreflightScheduler? _preflightScheduler;
   final Future<bool> Function(int alarmId)? _preflightCanceller;
   final DepartureAcknowledgementStore? _acknowledgementStore;
+  final PendingDepartureStore? _pendingDepartureStore;
   final DateTime Function()? _now;
 
   AppPermissionService get _permissions =>
@@ -134,6 +138,9 @@ class DepartureAlarmService {
   DepartureAcknowledgementStore get _acknowledgements =>
       _acknowledgementStore ??
       const SharedPreferencesDepartureAcknowledgementStore();
+
+  PendingDepartureStore get _pendingDepartures =>
+      _pendingDepartureStore ?? const SharedPreferencesPendingDepartureStore();
 
   DateTime get _currentTime => (_now ?? DateTime.now)();
 
@@ -206,6 +213,7 @@ class DepartureAlarmService {
           travelMinutes: null,
           safetyMargin: safetyMarginOverride ??
               const Duration(minutes: defaultSafetyMarginMin),
+          isDueNow: true,
         );
         await _recordDueDepartureFired(event.id);
         return _recordAndReturnScheduleResult(
@@ -265,6 +273,7 @@ class DepartureAlarmService {
         notifyAt: notifyAt,
         travelMinutes: estimate.minutes,
         safetyMargin: resolvedSafetyMargin,
+        isDueNow: shouldFireNow,
       );
       if (fireDueDeparture) {
         await _recordDueDepartureFired(event.id);
@@ -333,6 +342,7 @@ class DepartureAlarmService {
     }
     await _acknowledgements.markAcknowledged(normalizedEventId);
     await _cancelDepartureArtifacts(normalizedEventId);
+    await _pendingDepartures.clear();
   }
 
   Future<void> clearAcknowledgement(String eventId) async {
@@ -342,6 +352,7 @@ class DepartureAlarmService {
     }
     await _acknowledgements.clearAcknowledged(normalizedEventId);
     await _cancelDepartureArtifacts(normalizedEventId);
+    await _pendingDepartures.clear();
   }
 
   Future<DepartureAlarmMonitorResult> refreshUpcoming({
@@ -489,6 +500,7 @@ class DepartureAlarmService {
     required DateTime notifyAt,
     required int? travelMinutes,
     required Duration safetyMargin,
+    required bool isDueNow,
   }) async {
     final notificationId = _notifications.notificationIdFor(
       '${event.id}:departure',
@@ -506,21 +518,30 @@ class DepartureAlarmService {
       notifyAt: notifyAt,
       payload: 'departure:${event.id}',
     );
-    if (criticalResult.isScheduled) {
-      return;
+    if (!criticalResult.isScheduled) {
+      debugPrint(
+        'Departure alarm critical channel fallback: '
+        '${criticalResult.status.name} ${criticalResult.message ?? ''}',
+      );
+      await _notifications.scheduleDepartureFallbackWithResult(
+        id: notificationId,
+        title: '지금 출발해야 해요',
+        body: body,
+        notifyAt: notifyAt,
+        payload: 'departure:${event.id}',
+      );
     }
 
-    debugPrint(
-      'Departure alarm critical channel fallback: '
-      '${criticalResult.status.name} ${criticalResult.message ?? ''}',
-    );
-    await _notifications.scheduleDepartureFallbackWithResult(
-      id: notificationId,
-      title: '지금 출발해야 해요',
-      body: body,
-      notifyAt: notifyAt,
-      payload: 'departure:${event.id}',
-    );
+    // 알람이 지금(±즉시) 발동하는 경우에만, 앱이 알림 대신 백그라운드/포그라운드
+    // 상태에서 곧바로 출발 알람 화면을 띄울 수 있도록 보류 상태를 기록한다.
+    // 미래에 예약된 알림(preflight 미스케줄 fallback 등)은 기록하지 않는다.
+    if (isDueNow) {
+      await _pendingDepartures.write(PendingDeparture(
+        eventId: event.id,
+        title: event.title,
+        fireAt: _currentTime,
+      ));
+    }
   }
 
   Future<void> _cancelDepartureArtifacts(String eventId) async {

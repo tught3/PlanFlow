@@ -6,6 +6,7 @@ import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:planflow/services/pending_departure_store.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -148,6 +149,17 @@ void main() {
       now: () => DateTime(2026, 5, 8, 9),
     );
 
+    final pendingStore = _FakePendingDepartureStore();
+    final serviceWithPending = DepartureAlarmService(
+      notificationService: notifications,
+      preflightCanceller: (alarmId) async {
+        cancelledAlarmIds.add(alarmId);
+        return true;
+      },
+      pendingDepartureStore: pendingStore,
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
     await service.acknowledgeDeparture('event-ack');
 
     final prefs = await SharedPreferences.getInstance();
@@ -157,6 +169,11 @@ void main() {
       contains(notifications.notificationIdFor('event-ack:departure')),
     );
     expect(cancelledAlarmIds, isNotEmpty);
+
+    // [PREVENT] acknowledgeDeparture는 출발 전용 알람 화면이 다시 뜨지 않도록
+    // 보류 중인 출발 정보(pending departure)도 함께 지워야 한다.
+    await serviceWithPending.acknowledgeDeparture('event-ack-2');
+    expect(pendingStore.clearCallCount, 1);
 
     final skippedSchedule = await service.scheduleForEvent(
       EventModel(
@@ -718,6 +735,84 @@ void main() {
       reason: '위치 정보 없이 출발 알람을 등록하면 안 됩니다.',
     );
   });
+
+  // [PREVENT] 출발 알람이 "지금(±즉시)" 발동할 때만 pending departure를 기록해야
+  // shell_screen이 알림 대신 곧바로 출발 알람 화면으로 이동할 수 있다.
+  test(
+      'fireDueDeparture immediate-notify path (origin missing) writes pending departure',
+      () async {
+    final now = DateTime(2026, 5, 8, 9);
+    final notifications = _FakeNotificationService();
+    final pendingStore = _FakePendingDepartureStore();
+    final service = DepartureAlarmService(
+      currentLocationProvider: () async => null,
+      notificationService: notifications,
+      pendingDepartureStore: pendingStore,
+      now: () => now,
+    );
+
+    final result = await service.scheduleForEvent(
+      EventModel(
+        id: 'event-due-now',
+        userId: 'user-1',
+        title: '지금 출발',
+        startAt: DateTime(2026, 5, 8, 12),
+        location: '판교',
+        locationLat: 37.39,
+        locationLng: 127.11,
+      ),
+      rescheduleMonitor: false,
+      fireDueDeparture: true,
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(pendingStore.written, hasLength(1));
+    expect(pendingStore.written.single.eventId, 'event-due-now');
+    expect(pendingStore.written.single.title, '지금 출발');
+  });
+
+  test(
+      'future-scheduled departure notification (isDueNow=false) does not write pending departure',
+      () async {
+    final now = DateTime(2026, 5, 8, 9);
+    final notifications = _FakeNotificationService();
+    final pendingStore = _FakePendingDepartureStore();
+    final service = DepartureAlarmService(
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 90),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      // preflight scheduling 실패 → fallback으로 즉시(비-preflight) 알림 예약 경로를 타지만,
+      // fireDueDeparture=false(기본값)이므로 isDueNow=false 여야 한다.
+      preflightScheduler:
+          _FakeDeparturePreflightScheduler(shouldSchedule: false).call,
+      pendingDepartureStore: pendingStore,
+      now: () => now,
+    );
+
+    final result = await service.scheduleForEvent(
+      EventModel(
+        id: 'event-future',
+        userId: 'user-1',
+        title: '나중에 출발',
+        startAt: DateTime(2026, 5, 8, 12),
+        location: '대전 성심당',
+        locationLat: 36.327,
+        locationLng: 127.427,
+      ),
+      rescheduleMonitor: false,
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(notifications.criticalTitles, isNotEmpty);
+    expect(pendingStore.written, isEmpty);
+  });
 }
 
 class _FakeTravelTimeBufferService extends TravelTimeBufferService {
@@ -798,6 +893,26 @@ class _FakeDeparturePreflightScheduler {
     safetyMargins.add(safetyMargin);
     travelModes.add(travelMode);
     return shouldSchedule;
+  }
+}
+
+class _FakePendingDepartureStore extends PendingDepartureStore {
+  final written = <PendingDeparture>[];
+  int clearCallCount = 0;
+
+  @override
+  Future<void> write(PendingDeparture pending) async {
+    written.add(pending);
+  }
+
+  @override
+  Future<PendingDeparture?> read() async {
+    return written.isEmpty ? null : written.last;
+  }
+
+  @override
+  Future<void> clear() async {
+    clearCallCount += 1;
   }
 }
 
