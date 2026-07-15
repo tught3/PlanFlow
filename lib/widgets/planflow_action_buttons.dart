@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
@@ -5,8 +7,12 @@ import '../core/theme.dart';
 /// PlanFlow 전용 모달/다이얼로그/바텀시트 액션 버튼바
 ///
 /// **규칙:**
-/// - 항상 가로(Row) 정렬, 세로(Column) 스택 금지
-/// - 글자가 길어 한 줄에 못 들어오면 Wrap로 2줄 흐름
+/// - 항상 가로(Row) 정렬 우선, 세로(Column) 스택 금지
+/// - 버튼 너비는 라벨 글자 길이에 맞춰 계산한다 — 글자가 잘리거나 안 보이게
+///   찌그러뜨리지 않는다.
+/// - 한 줄에 모든 버튼의 자연 너비 합이 안 들어가면(글자가 길어 줄바꿈이
+///   필요하면) 그때만 2줄로 나눈다.
+/// - 남는 공간이 있으면 버튼들에 동일 비율로 분배해 가로를 꽉 채운다.
 /// - 모든 버튼에 테두리 필수 (취소/보조 버튼 포함)
 /// - 테마 토큰 강제 적용 (Material default 금지)
 ///
@@ -27,45 +33,99 @@ class PlanFlowActionButtons extends StatelessWidget {
   /// 버튼 간 가로 간격
   final double spacing;
 
-  /// 2줄로 wrap될 때 세로 간격
+  /// 2줄로 나뉠 때 세로 간격
   final double runSpacing;
 
-  /// 버튼들의 정렬 (기본 오른쪽 정렬)
+  /// 더 이상 레이아웃에 쓰이지 않음(하위 호환용으로만 유지).
   final WrapAlignment alignment;
+
+  static const double _minButtonWidth = 88.0;
+  // 버튼 내부 좌우 padding(OutlinedButton/FilledButton 기본치) 추정 여유값.
+  // 실측보다 넉넉히 잡아야 글자가 눌려서 안 보이는 사고가 재발하지 않는다.
+  static const double _buttonHorizontalPadding = 48.0;
+  // 다이얼로그/바텀시트가 흔히 먹는 좌우 여백(insetPadding+contentPadding
+  // 등)의 보수적 추정치. "한 줄에 다 들어가는지" 판단에만 쓰이며, 실제
+  // 버튼 폭은 Expanded가 레이아웃 시점의 진짜 폭으로 계산하므로 이 값이
+  // 다소 부정확해도 버튼이 잘리거나 넘치지 않는다.
+  static const double _estimatedChromeWidth = 120.0;
+
+  double _naturalWidth(BuildContext context, PlanFlowActionButton btn) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: btn.label,
+        style: TextStyle(fontSize: btn.fontSize, fontWeight: FontWeight.w600),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final borderAllowance = btn.borderWidth * 2;
+    return math.max(
+      painter.width + _buttonHorizontalPadding + borderAllowance,
+      _minButtonWidth,
+    );
+  }
+
+  // 각 버튼에 자연 너비에 비례한 flex를 줘서 Row(Expanded)로 배치한다.
+  // LayoutBuilder는 AlertDialog의 actions(OverflowBar)가 요구하는 intrinsic
+  // 폭 계산과 충돌해 "LayoutBuilder does not support returning intrinsic
+  // dimensions"로 크래시하므로 쓰지 않는다. Expanded/Row는 intrinsic 계산을
+  // 정상 지원하고, 실제 레이아웃 시점의 진짜 폭을 비율대로 나눠 쓰므로
+  // 남는 공간이 있으면 균등 확장되고, 폭이 모자라면 비율을 유지한 채
+  // 축소된다(특정 버튼만 짓눌려 텍스트가 사라지는 사고를 원천 차단).
+  Widget _buildRow(
+    BuildContext context,
+    List<PlanFlowActionButton> rowButtons,
+    List<double> naturalWidths,
+  ) {
+    final children = <Widget>[];
+    for (var i = 0; i < rowButtons.length; i += 1) {
+      if (i > 0) {
+        children.add(SizedBox(width: spacing));
+      }
+      final flexValue = math.max(naturalWidths[i].round(), 1);
+      children.add(
+        Expanded(flex: flexValue, child: rowButtons[i].build(context)),
+      );
+    }
+    return Row(children: children);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // flex 버튼이 하나라도 있으면 Row로 배치한다. Expanded는 Flex(Row/Column)
-    // 안에서만 유효하며 Wrap 안에 넣으면 ParentDataWidget 오류로 크래시한다.
-    final hasFlex = buttons.any((btn) => btn.flex != null && btn.flex! > 0);
-    if (hasFlex) {
-      final children = <Widget>[];
-      for (var i = 0; i < buttons.length; i += 1) {
-        if (i > 0) {
-          children.add(SizedBox(width: spacing));
-        }
-        children.add(buttons[i].build(context));
-      }
-      return Row(children: children);
+    if (buttons.isEmpty) {
+      return const SizedBox.shrink();
     }
 
-    // flex가 없으면 내용 크기대로 두고, 길어지면 2줄로 흐르게 Wrap을 쓴다.
-    return SizedBox(
-      width: double.infinity,
-      child: Wrap(
-        spacing: spacing,
-        runSpacing: runSpacing,
-        alignment: alignment,
-        children: buttons
-            .map((btn) => ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minWidth: 88,
-                    minHeight: 44,
-                  ),
-                  child: btn.build(context),
-                ))
-            .toList(growable: false),
-      ),
+    final naturalWidths =
+        buttons.map((btn) => _naturalWidth(context, btn)).toList(growable: false);
+    final singleRowTotal = naturalWidths.fold<double>(0, (a, b) => a + b) +
+        spacing * (buttons.length - 1);
+    final estimatedMaxWidth = math.max(
+      MediaQuery.sizeOf(context).width - _estimatedChromeWidth,
+      _minButtonWidth * 2,
+    );
+
+    if (buttons.length <= 1 || singleRowTotal <= estimatedMaxWidth) {
+      return _buildRow(context, buttons, naturalWidths);
+    }
+
+    // 한 줄에 다 못 들어가면(글자가 길어 줄바꿈이 필요하면) 2줄로 나눈다.
+    final splitIndex = (buttons.length / 2).ceil();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildRow(
+          context,
+          buttons.sublist(0, splitIndex),
+          naturalWidths.sublist(0, splitIndex),
+        ),
+        SizedBox(height: runSpacing),
+        _buildRow(
+          context,
+          buttons.sublist(splitIndex),
+          naturalWidths.sublist(splitIndex),
+        ),
+      ],
     );
   }
 }
@@ -92,8 +152,8 @@ class PlanFlowActionButton {
   /// 버튼 위젯에 부여할 key(테스트 식별·위젯 트리 안정화용).
   final Key? buttonKey;
 
-  /// flex > 0이면 Expanded로 감싸서 남은 공간을 채움
-  /// null이면 내용물 크기만큼만 차지
+  /// 더 이상 레이아웃에 쓰이지 않음(하위 호환용으로만 유지). 버튼 너비는
+  /// [PlanFlowActionButtons]가 라벨 길이를 실측해 자동 계산한다.
   final int? flex;
 
   /// 커스텀 색상 (null이면 type에 따른 기본값 사용)
@@ -108,23 +168,17 @@ class PlanFlowActionButton {
   final double fontSize;
 
   Widget build(BuildContext context) {
-    final Widget button;
+    // 너비는 항상 부모(PlanFlowActionButtons)가 SizedBox로 지정하므로 여기서
+    // Expanded로 감싸지 않는다 — Expanded는 Flex 직계 자식에서만 유효한데
+    // SizedBox 안에서 쓰면 크래시한다.
     switch (type) {
       case ActionButtonType.primary:
-        button = _buildPrimary(context);
-        break;
+        return _buildPrimary(context);
       case ActionButtonType.secondary:
-        button = _buildSecondary(context);
-        break;
+        return _buildSecondary(context);
       case ActionButtonType.destructive:
-        button = _buildDestructive(context);
-        break;
+        return _buildDestructive(context);
     }
-
-    if (flex != null && flex! > 0) {
-      return Expanded(flex: flex!, child: button);
-    }
-    return button;
   }
 
   Widget _buildPrimary(BuildContext context) {

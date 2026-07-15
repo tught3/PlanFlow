@@ -13,10 +13,7 @@ void main() {
     );
   }
 
-  testWidgets('flex 버튼(취소/확인 반반)이 ParentData 오류 없이 렌더된다',
-      (tester) async {
-    // 회귀: 이전엔 Wrap 안에 Expanded를 넣어 "Incorrect use of ParentDataWidget"로
-    // 크래시했음. flex 버튼은 Row로 배치돼 Expanded가 정상 동작해야 한다.
+  testWidgets('취소/확인 버튼이 오류 없이 Row로 렌더된다', (tester) async {
     await pump(
       tester,
       planflowCancelConfirmButtons(
@@ -29,10 +26,10 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('취소'), findsOneWidget);
     expect(find.text('확인'), findsOneWidget);
-    expect(find.byType(Expanded), findsNWidgets(2));
+    expect(find.byType(Row), findsOneWidget);
   });
 
-  testWidgets('flex 없는 버튼은 Wrap으로 배치되고 크래시하지 않는다', (tester) async {
+  testWidgets('버튼 1개도 크래시 없이 렌더된다', (tester) async {
     await pump(
       tester,
       const PlanFlowActionButtons(
@@ -47,8 +44,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(Wrap), findsOneWidget);
     expect(find.text('닫기'), findsOneWidget);
+  });
+
+  testWidgets('좁은 화면에서 라벨 길이가 다른 3버튼도 텍스트가 전부 보인다(축소가림 회귀)',
+      (tester) async {
+    // 실증 버그: 반복일정 수정 다이얼로그에서 flex 1:1:2로 좁게 눌려
+    // "이 일정만"/"이후 모든 일정" 글자가 안 보였다. 이제는 라벨 실측
+    // 너비로 배치하므로 좁은 화면에서도 세 라벨이 모두 텍스트로 보여야 한다.
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pump(
+      tester,
+      PlanFlowActionButtons(
+        buttons: [
+          PlanFlowActionButton(
+            label: '이 일정만',
+            onPressed: () {},
+          ),
+          PlanFlowActionButton(
+            label: '이후 모든 일정',
+            onPressed: () {},
+          ),
+          PlanFlowActionButton(
+            label: '전체 반복 일정',
+            onPressed: () {},
+            type: ActionButtonType.primary,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('이 일정만'), findsOneWidget);
+    expect(find.text('이후 모든 일정'), findsOneWidget);
+    expect(find.text('전체 반복 일정'), findsOneWidget);
   });
 
   testWidgets('좁은 화면에서도 flex 버튼이 오버플로우 없이 렌더된다', (tester) async {
