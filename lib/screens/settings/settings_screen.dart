@@ -2624,7 +2624,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (error) {
       preflightHeader = '[출발 preflight] 읽기 실패: $error\n\n';
     }
-    final log = preflightHeader + DiagLogger.dump();
+    // dumpPersisted: 백그라운드 알람 콜백(별도 isolate)이 남긴 로그까지
+    // 포함해야 "알람이 왜 안 울렸는지"를 실제로 진단할 수 있다.
+    final log = preflightHeader + await DiagLogger.dumpPersisted();
     if (!mounted) {
       return;
     }

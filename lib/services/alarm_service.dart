@@ -51,11 +51,19 @@ class AlarmService {
     String? briefingText,
   }) async {
     if (scheduledAt.isBefore(DateTime.now())) {
+      DiagLogger.log(
+        'AlarmService',
+        'scheduleBriefing skip: past time id=$id scheduledAt=$scheduledAt',
+      );
       return false;
     }
 
     final initialized = await _ensureInitialized();
     if (!initialized) {
+      DiagLogger.log(
+        'AlarmService',
+        'scheduleBriefing skip: AndroidAlarmManager init failed id=$id',
+      );
       return false;
     }
 
@@ -181,6 +189,14 @@ Future<void> _briefingAlarmCallback(
         userId: userId,
       );
     } catch (e) {
+      // 이 재예약이 조용히 실패하면(과거 재발 원인) 콜드스타트/설정 재저장
+      // 전까지 다음 브리핑이 영구히 예약 안 되므로 반드시 진단로그에 남긴다.
+      // shell_screen.dart의 resume 훅이 이 실패를 앱을 여는 것만으로도
+      // 복구하는 백스톱 역할을 한다.
+      DiagLogger.log(
+        'BriefingAlarm',
+        'reschedule failed type=$briefingType error=$e',
+      );
       debugPrint('AlarmService 무시된 예외: $e');
     }
   }

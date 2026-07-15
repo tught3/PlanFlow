@@ -484,6 +484,10 @@ class BriefingSchedulerService {
       return result;
     } catch (error, stackTrace) {
       // Background alarm callbacks must never crash the isolate.
+      DiagLogger.log(
+        'BriefingAlarm',
+        'execute failed type=$type error=$error',
+      );
       debugPrint('Briefing execute failed: type=$type error=$error');
       debugPrintStack(stackTrace: stackTrace);
       const result = BriefingExecutionResult(
@@ -501,6 +505,13 @@ class BriefingSchedulerService {
           userId: resolvedUserId,
         );
       } catch (error, stackTrace) {
+        // 여기가 조용히 실패하면 다음 브리핑이 영구히 안 걸린다(재발 5회
+        // 원인). shell_screen.dart의 resume 재예약 백스톱과 이 로그가
+        // 함께 재발을 막는다.
+        DiagLogger.log(
+          'BriefingAlarm',
+          'reschedule failed type=$type error=$error',
+        );
         debugPrint('Briefing reschedule failed: type=$type error=$error');
         debugPrintStack(stackTrace: stackTrace);
       }
@@ -865,6 +876,10 @@ class BriefingSchedulerService {
           notifyAt: DateTime.now().add(const Duration(seconds: 1)),
         );
       } catch (error, stackTrace) {
+        DiagLogger.log(
+          'BriefingAlarm',
+          'notification failed type=$type error=$error',
+        );
         debugPrint('Briefing notification failed: type=$type error=$error');
         debugPrintStack(stackTrace: stackTrace);
       }
@@ -873,6 +888,7 @@ class BriefingSchedulerService {
     try {
       await _ttsService.speak(text);
     } catch (error, stackTrace) {
+      DiagLogger.log('BriefingAlarm', 'TTS failed type=$type error=$error');
       debugPrint('Briefing TTS failed: type=$type error=$error');
       debugPrintStack(stackTrace: stackTrace);
     }

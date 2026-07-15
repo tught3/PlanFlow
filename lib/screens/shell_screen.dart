@@ -144,6 +144,13 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       ));
       unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_maybeShowPendingDepartureAlarm());
+      // 브리핑 알람은 "알람 콜백이 스스로 다음 날 것을 재예약"하는 체인
+      // 하나에만 의존했다 — 그 체인이 한 번이라도 조용히 끊기면(스케줄
+      // 실패·예외) 콜드스타트/설정 재저장 전까지 영구히 무음이 됐다(반복
+      // 신고 5회째). scheduleDaily는 멱등이라(이미 맞게 예약돼 있으면
+      // 그대로 두거나 동일하게 재예약) resume마다 불러도 안전하며, 이걸로
+      // 앱을 여는 것 자체가 재예약 백스톱이 된다.
+      unawaited(_ensureBriefingsScheduled(reason: 'app_resumed'));
     }
   }
 
