@@ -337,7 +337,7 @@ void main() {
 }
 
 class _TestHost extends StatefulWidget {
-  _TestHost({
+  const _TestHost({
     this.onStartChanged,
     this.locationText = '',
     this.locationLat,
@@ -346,8 +346,6 @@ class _TestHost extends StatefulWidget {
     this.initiallyExpandClassification = false,
     this.initiallyExpandDetails = false,
     this.initiallyExpandCriticalAlarm = false,
-    this.isCritical = false,
-    this.useStrongAlarm = false,
     required this.startAt,
     required this.endAt,
   });
@@ -360,8 +358,8 @@ class _TestHost extends StatefulWidget {
   final bool initiallyExpandClassification;
   final bool initiallyExpandDetails;
   final bool initiallyExpandCriticalAlarm;
-  final bool isCritical;
-  final bool useStrongAlarm;
+  final bool isCritical = false;
+  final bool useStrongAlarm = false;
   final DateTime startAt;
   final DateTime endAt;
 
