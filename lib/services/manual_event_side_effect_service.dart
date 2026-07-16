@@ -912,11 +912,16 @@ class ManualEventSideEffectService {
           continue;
         }
         final selected = searchResult.results.first;
+        // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+        // 사용자가 적은 location 원문을 POI 검색 결과의 공식명(bestPlaceLabel)으로
+        // 덮어쓰지 않는다. 좌표(lat/lng)만 채운다 — event_preparation_service와 동일
+        // 철학. 이 경로는 location 폴백이 있어야 진입하므로 사용자가 실제로 입력한
+        // 장소 텍스트가 존재하며, 이를 검색 API 정식명칭으로 바꿔치기하면 사용자가
+        // 알아보는 표현이 사라져 혼란을 준다.
         await _backfillEventLocationCoordinates(
           event: event,
           latitude: selected.latitude,
           longitude: selected.longitude,
-          location: selected.bestPlaceLabel,
         );
         return GeoPoint(
           latitude: selected.latitude,
@@ -938,7 +943,6 @@ class ManualEventSideEffectService {
     required EventModel event,
     required double latitude,
     required double longitude,
-    String? location,
   }) async {
     if (event.id.trim().isEmpty ||
         event.locationLat != null ||
@@ -951,7 +955,6 @@ class ManualEventSideEffectService {
           event,
           locationLat: latitude,
           locationLng: longitude,
-          location: location,
         ),
       );
     } catch (error, stackTrace) {
@@ -989,6 +992,12 @@ class ManualEventSideEffectService {
     return MapTravelMode.car;
   }
 
+  // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+  // event.title/event.memo는 더 이상 장소 검색어로 쓰지 않는다. 이 폴백의 정당한
+  // 목적은 "사용자가 이름으로 적은 장소"(event.location)에 좌표를 붙이는 것뿐이다.
+  // title/memo는 사용자가 장소로 의도하지 않은 자유 텍스트라 검색어로 쓰면 무관한
+  // POI가 부분일치로 뽑혀 사용자 장소를 엉뚱한 공식명/좌표로 덮어쓸 수 있다
+  // (event_preparation_service.dart와 동일 클래스 결함).
   List<String> _buildDestinationSearchQueries(EventModel event) {
     final queries = <String>[];
     void addQuery(String? value) {
@@ -1003,20 +1012,6 @@ class ManualEventSideEffectService {
     }
 
     addQuery(event.location);
-    addQuery(event.title);
-    addQuery(event.memo);
-    addQuery([
-      event.location,
-      event.title,
-    ].whereType<String>().join(' '));
-    addQuery([
-      event.title,
-      event.memo,
-    ].whereType<String>().join(' '));
-    addQuery([
-      event.location,
-      event.memo,
-    ].whereType<String>().join(' '));
     return queries;
   }
 
@@ -1191,18 +1186,17 @@ EventModel _copyEventWithLocationCoordinates(
   EventModel event, {
   required double locationLat,
   required double locationLng,
-  String? location,
 }) {
-  final normalizedLocation = location?.trim();
+  // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+  // 좌표만 채우고 사용자가 적은 event.location 원문은 항상 보존한다(POI 공식명으로
+  // 덮어쓰지 않음).
   return EventModel(
     id: event.id,
     userId: event.userId,
     title: event.title,
     startAt: event.startAt,
     endAt: event.endAt,
-    location: normalizedLocation == null || normalizedLocation.isEmpty
-        ? event.location
-        : normalizedLocation,
+    location: event.location,
     locationLat: locationLat,
     locationLng: locationLng,
     memo: event.memo,

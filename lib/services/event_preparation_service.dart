@@ -116,6 +116,19 @@ class EventPreparationService {
       return event;
     }
 
+    // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+    // 사용자가 장소를 적지 않았으면(location이 null/빈 문자열) 좌표 해석을
+    // 절대 시도하지 않는다. 과거에는 이 가드가 없어 _buildDestinationSearchQueries가
+    // event.title/event.memo를 장소 검색어로 대신 써버렸고, "회의"처럼 흔한
+    // 제목이 현재 GPS 근접 편향 때문에 "성남 청년회의소" 같은 무관한 POI와
+    // 부분일치해 개인 일정 location에 유령 장소가 기록됐다. 장소를 안 적은
+    // 사용자 의도를 존중해 여기서 즉시 반환한다(현재 위치 조회·검색·
+    // updateEvent 전부 스킵).
+    final rawLocation = event.location;
+    if (rawLocation == null || rawLocation.trim().isEmpty) {
+      return event;
+    }
+
     final origin = await AppPermissionService()
         .getCurrentLocationWithPermission(requestIfMissing: false);
     for (final query
@@ -126,9 +139,14 @@ class EventPreparationService {
       }
 
       final selected = candidates.first;
+      // selected.name으로 location을 덮어쓰지 않고 사용자가 적은 원문 location을
+      // 유지한다. 이 경로는 이미 event.location이 비어있지 않은 경우에만 실행되므로
+      // (위 가드), 사용자가 실제로 입력한 장소 텍스트가 존재한다 — POI 검색 결과의
+      // 공식명(selected.name)으로 바꿔치기하면 사용자가 알아보기 쉬운 표현(예: 상호
+      // 줄임말·별칭)이 검색 API의 정식 명칭으로 대체되어 되레 혼란을 줄 수 있다.
+      // 좌표(lat/lng)만 붙이는 것이 최소 변경이며 더 안전하다.
       final updated = _copyEvent(
         event,
-        location: selected.name.isNotEmpty ? selected.name : event.location,
         locationLat: selected.latitude,
         locationLng: selected.longitude,
       );
@@ -188,6 +206,14 @@ class EventPreparationService {
     return computed;
   }
 
+  // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+  // event.title/event.memo는 더 이상 장소 검색어로 쓰지 않는다. 이 서비스의
+  // 정당한 목적은 "사용자가 이름으로 적은 장소"(event.location)에 좌표를
+  // 붙이는 것뿐이다. title/memo는 사용자가 장소로 의도하지 않은 자유 텍스트라
+  // 검색어로 쓰면 무관한 POI가 부분일치로 뽑혀 location에 잘못 기록될 수 있다
+  // (실증: "회의" 제목이 "성남 청년회의소"와 부분일치해 유령 주입). 어차피
+  // event.location이 비어있으면 _ensureLocationCoordinates가 이 함수를 호출하기
+  // 전에 이미 반환하므로, 여기서는 항상 location이 존재하는 상태에서만 호출된다.
   List<String> _buildDestinationSearchQueries(EventModel event) {
     final queries = <String>[];
     void addQuery(String? value) {
@@ -202,20 +228,6 @@ class EventPreparationService {
     }
 
     addQuery(event.location);
-    addQuery(event.title);
-    addQuery(event.memo);
-    addQuery([
-      event.location,
-      event.title,
-    ].whereType<String>().join(' '));
-    addQuery([
-      event.title,
-      event.memo,
-    ].whereType<String>().join(' '));
-    addQuery([
-      event.location,
-      event.memo,
-    ].whereType<String>().join(' '));
     return queries;
   }
 

@@ -302,9 +302,41 @@ void main() {
     expect(find.text('반복'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, '설명'), findsOneWidget);
   });
+
+  testWidgets('critical checkbox expands strong alarm and keeps checkbox visible',
+      (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 9),
+        endAt: DateTime(2026, 5, 13, 10),
+        initiallyExpandCriticalAlarm: true,
+      ),
+    );
+
+    // 초기 상태: 중요한 일정 섹션이 펼쳐져 있고 체크박스 보임
+    expect(find.text('중요한 일정으로 표시'), findsOneWidget);
+
+    // 초기 상태: 강한 알람 스위치 없음 (isCritical이 false이므로)
+    expect(find.text('강한 알람'), findsNothing);
+
+    // 스크롤뷰에서 체크박스가 화면 밖이면 탭이 안 먹으므로 먼저 화면에
+    // 들여온 뒤 탭한다(실제 앱에서도 사용자가 스크롤해 보고 누르는 상황).
+    await tester.ensureVisible(find.text('중요한 일정으로 표시'));
+    await tester.pumpAndSettle();
+
+    // 중요한 일정 체크박스 탭
+    await tester.tap(find.text('중요한 일정으로 표시'));
+    await tester.pumpAndSettle();
+
+    // 크래시 없음 & 강한 알람 옵션이 나타났는지 확인
+    expect(find.text('강한 알람'), findsOneWidget);
+
+    // 방금 토글한 체크박스 항목이 여전히 위젯 트리에 보이는지 확인
+    expect(find.text('중요한 일정으로 표시'), findsOneWidget);
+  });
 }
 
-class _TestHost extends StatelessWidget {
+class _TestHost extends StatefulWidget {
   _TestHost({
     this.onStartChanged,
     this.locationText = '',
@@ -313,6 +345,9 @@ class _TestHost extends StatelessWidget {
     this.recurrence = const RecurrenceSelection(),
     this.initiallyExpandClassification = false,
     this.initiallyExpandDetails = false,
+    this.initiallyExpandCriticalAlarm = false,
+    this.isCritical = false,
+    this.useStrongAlarm = false,
     required this.startAt,
     required this.endAt,
   });
@@ -324,11 +359,40 @@ class _TestHost extends StatelessWidget {
   final RecurrenceSelection recurrence;
   final bool initiallyExpandClassification;
   final bool initiallyExpandDetails;
+  final bool initiallyExpandCriticalAlarm;
+  final bool isCritical;
+  final bool useStrongAlarm;
   final DateTime startAt;
   final DateTime endAt;
-  final titleController = TextEditingController(text: '팀장 동행방문');
-  late final locationController = TextEditingController(text: locationText);
+
+  @override
+  State<_TestHost> createState() => _TestHostState();
+}
+
+class _TestHostState extends State<_TestHost> {
+  late bool _isCritical;
+  late bool _useStrongAlarm;
+  late final TextEditingController titleController;
+  late final TextEditingController locationController;
   final memoController = TextEditingController(text: '메모');
+
+  @override
+  void initState() {
+    super.initState();
+    _isCritical = widget.isCritical;
+    _useStrongAlarm = widget.useStrongAlarm;
+    titleController = TextEditingController(text: '팀장 동행방문');
+    locationController =
+        TextEditingController(text: widget.locationText);
+  }
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    locationController.dispose();
+    memoController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -337,28 +401,32 @@ class _TestHost extends StatelessWidget {
         body: SingleChildScrollView(
           child: CalendarStyleEventEditor(
             key: ValueKey(
-                '${startAt.toIso8601String()}-${endAt.toIso8601String()}'),
+                '${widget.startAt.toIso8601String()}-${widget.endAt.toIso8601String()}'),
             titleController: titleController,
             locationController: locationController,
             memoController: memoController,
-            startAt: startAt,
-            endAt: endAt,
+            startAt: widget.startAt,
+            endAt: widget.endAt,
             category: '업무',
-            recurrence: recurrence,
+            recurrence: widget.recurrence,
             reminderOffset: const Duration(hours: 1),
-            isCritical: false,
-            useStrongAlarm: false,
-            locationLat: locationLat,
-            locationLng: locationLng,
-            initiallyExpandClassification: initiallyExpandClassification,
-            initiallyExpandDetails: initiallyExpandDetails,
-            onStartChanged: onStartChanged ?? (_) {},
+            isCritical: _isCritical,
+            useStrongAlarm: _useStrongAlarm,
+            locationLat: widget.locationLat,
+            locationLng: widget.locationLng,
+            initiallyExpandClassification:
+                widget.initiallyExpandClassification,
+            initiallyExpandDetails: widget.initiallyExpandDetails,
+            initiallyExpandCriticalAlarm:
+                widget.initiallyExpandCriticalAlarm,
+            onStartChanged: widget.onStartChanged ?? (_) {},
             onEndChanged: (_) {},
             onCategoryChanged: (_) {},
             onRecurrenceChanged: (_) {},
             onReminderChanged: (_) {},
-            onCriticalChanged: (_) {},
-            onStrongAlarmChanged: (_) {},
+            onCriticalChanged: (v) => setState(() => _isCritical = v),
+            onStrongAlarmChanged: (v) =>
+                setState(() => _useStrongAlarm = v),
             onLocationPick: () {},
             isSearchingLocation: false,
           ),

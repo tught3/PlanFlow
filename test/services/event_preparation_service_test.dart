@@ -11,7 +11,62 @@ import 'package:planflow/services/travel_time_buffer_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('prepareAfterSave geocodes title text when location is missing',
+  // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+  // 실증 버그: 사용자가 장소를 말하지 않고 "회의" 같은 일정을 저장하면, 저장 후
+  // 백그라운드로 실행되는 _ensureLocationCoordinates가 event.location이 비어
+  // 있으니 event.title/event.memo를 대신 장소 검색어로 써서(과거 로직) 현재 GPS
+  // 근접 편향으로 뽑힌 무관한 POI(예: "성남 청년회의소")를 개인 일정 location에
+  // 기록했다(팀일정은 이 경로를 안 타 정상). 이제는 event.location이 비어있으면
+  // 좌표 해석 자체를 하지 않아야 하며, title에 실제 장소명이 포함돼 있어도
+  // (mock LocationLookupService가 그 title과 부분일치하는 결과를 반환하더라도)
+  // location이 채워지거나 updateEvent가 호출되면 안 된다.
+  test(
+      'prepareAfterSave does NOT geocode from title/memo when location is '
+      'missing (ghost location injection prevention)', () async {
+    final repository = _FakeEventRepository();
+    final lookup = _FakeLocationLookupService(
+      result: const LocationLookupResult(
+        name: '성남 청년회의소',
+        address: 'Gyeonggi-do Seongnam-si',
+        latitude: 37.4201,
+        longitude: 127.1261,
+      ),
+    );
+    final service = EventPreparationService(
+      eventRepository: repository,
+      locationLookupService: lookup,
+      departureAlarmService: _FakeDepartureAlarmService(),
+      travelTimeBufferService: _FakeTravelTimeBufferService(),
+    );
+
+    final result = await service.prepareAfterSave(
+      EventModel(
+        id: 'title-only-event',
+        userId: 'user-1',
+        title: '회의',
+        startAt: DateTime(2026, 5, 8, 10),
+        // location: null — 사용자가 장소를 적지 않음
+      ),
+    );
+
+    expect(
+      lookup.searchQueries,
+      isEmpty,
+      reason: 'location이 비어있으면 title/memo를 장소 검색어로 쓰면 안 됩니다. '
+          '좌표 해석 자체를 시도하지 않아야 합니다.',
+    );
+    expect(result.locationResolved, false);
+    expect(
+      repository.updatedEvents,
+      isEmpty,
+      reason: 'location이 비어있는 이벤트에 유령 장소를 기록하면 안 됩니다.',
+    );
+    expect(result.event.location, isNull);
+    expect(result.event.locationLat, isNull);
+    expect(result.event.locationLng, isNull);
+  });
+
+  test('prepareAfterSave geocodes coordinates using event.location text only',
       () async {
     final repository = _FakeEventRepository();
     final lookup = _FakeLocationLookupService(
@@ -31,19 +86,29 @@ void main() {
 
     final result = await service.prepareAfterSave(
       EventModel(
-        id: 'title-only-event',
+        id: 'location-event',
         userId: 'user-1',
-        title: 'Wonju Severance Christian Hospital visit',
+        title: '회의',
+        location: 'Wonju Severance Christian Hospital',
+        memo: 'Totally unrelated memo text',
         startAt: DateTime(2026, 5, 8, 10),
       ),
     );
 
     expect(
-        lookup.searchQueries.first, 'Wonju Severance Christian Hospital visit');
+      lookup.searchQueries,
+      <String>['Wonju Severance Christian Hospital'],
+      reason: 'title/memo는 검색 쿼리로 전달되면 안 되고, location 텍스트만 써야 합니다.',
+    );
     expect(result.locationResolved, true);
     expect(repository.updatedEvents, hasLength(1));
     expect(repository.updatedEvents.single.locationLat, 37.3421);
     expect(repository.updatedEvents.single.locationLng, 127.9421);
+    // 사용자가 적은 location 원문은 유지되고(POI 공식명으로 덮어쓰지 않음).
+    expect(
+      repository.updatedEvents.single.location,
+      'Wonju Severance Christian Hospital',
+    );
   });
 
   test('prepareAfterSave forwards safety margin override to departure alarm',
@@ -133,16 +198,18 @@ void main() {
   });
 
   // [PREVENT] 이벤트 1건의 좌표 미해결 검색이 tmap POI 레이트리밋(60/60s)을
-  // 혼자 잡아먹는 폭주 회귀 테스트.
-  // 실증: location/title/memo가 전부 다른 텍스트인 일정을 저장하면
-  // _buildDestinationSearchQueries가 최대 6개 쿼리(단독 3 + 조합 3)를 만들고,
-  // 전부 미해결이면 쿼리마다 LocationLookupService 내부 fallback이 tmap POI를
-  // 최대 6콜씩 써 이벤트 1건 저장만으로 최대 36콜까지 치솟는다(2026-07-04
-  // 실측: window_count=60 폭주 신고). _maxDestinationQueries=3 캡으로
-  // 단독 쿼리(location/title/memo)까지만 시도하고 조합형 3개는 건너뛰어야 한다.
+  // 혼자 잡아먹는 폭주 회귀 테스트 (2026-07-04, 2026-07-16 갱신).
+  // 과거: location/title/memo가 전부 다른 텍스트인 일정을 저장하면
+  // _buildDestinationSearchQueries가 최대 6개 쿼리(단독 3 + 조합 3)를 만들어
+  // 이벤트 1건 저장만으로 tmap POI가 최대 36콜까지 치솟았다(2026-07-04 실측:
+  // window_count=60 폭주 신고). 2026-07-16 유령 장소 주입 수정으로 title/memo가
+  // 검색 쿼리에서 완전히 제거되어, 이제 이 함수는 location 단독 쿼리 1개만
+  // 만든다 — _maxDestinationQueries=3 캡은 여전히 방어선으로 남지만(레이스에
+  // 안전), title/memo발 조합 폭발 자체가 구조적으로 불가능해졌다.
   test(
-      'prepareAfterSave caps destination search queries when all variants '
-      'are unresolvable (rate-limit storm prevention)', () async {
+      'prepareAfterSave never queries title/memo text even when all are '
+      'distinct (rate-limit storm prevention + ghost location prevention)',
+      () async {
     final repository = _FakeEventRepository();
     final lookup = _FakeLocationLookupService(
       result: const LocationLookupResult(
@@ -168,22 +235,32 @@ void main() {
         location: 'Totally Unrelated Location Text',
         memo: 'Totally Unrelated Memo Text',
         startAt: DateTime(2026, 5, 8, 10),
-        // location/title/memo가 전부 달라 _buildDestinationSearchQueries가
-        // 6개(단독 3 + 조합 3)의 서로 다른 쿼리를 만들어낸다.
       ),
     );
 
     expect(
       lookup.searchQueries.length,
       lessThanOrEqualTo(3),
-      reason: '목적지 쿼리는 최대 3개(단독 location/title/memo)까지만 시도해야 한다. '
-          '조합형 쿼리 3개까지 전부 시도하면 이벤트 1건만으로 tmap POI가 '
-          '최대 36콜까지 치솟아 60/60s 레이트리밋을 혼자 소진한다.',
+      reason: '목적지 쿼리는 최대 3개(_maxDestinationQueries) 캡을 넘으면 안 된다.',
     );
     expect(
       lookup.searchQueries,
-      isNot(contains('Totally Unrelated Location Text Totally Unrelated Title Text')),
-      reason: '조합형(location+title) 쿼리는 캡을 넘으므로 시도되면 안 된다.',
+      <String>['Totally Unrelated Location Text'],
+      reason: 'location만 쿼리로 쓰여야 하며, title/memo 및 이들의 조합 쿼리는 '
+          '전혀 시도되면 안 된다.',
+    );
+    expect(
+      lookup.searchQueries,
+      isNot(contains('Totally Unrelated Title Text')),
+    );
+    expect(
+      lookup.searchQueries,
+      isNot(contains('Totally Unrelated Memo Text')),
+    );
+    expect(
+      lookup.searchQueries,
+      isNot(
+          contains('Totally Unrelated Location Text Totally Unrelated Title Text')),
     );
   });
 }

@@ -1170,7 +1170,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
               .getGroupEventsByPersonalEventId(_loadedEvent!.id)
           : const <GroupEventModel>[];
       Set<String>? groupEventIdsToUpdate;
-      if (existingLinkedGroupEvents.isNotEmpty && _shouldSavePersonalEvent) {
+      // 저장 범위를 "개인 일정만"으로 명시적으로 고른 경우엔 그룹을 전혀
+      // 건드리지 않으므로 "반영할 그룹" 시트를 띄우면 안 된다. 예전엔
+      // _shouldSavePersonalEvent(=개인 저장 여부)만 봐서, personalOnly를
+      // 골라도 이미 다른 그룹에 공유돼 있던 일정이면 이 시트가 떴다.
+      if (existingLinkedGroupEvents.isNotEmpty &&
+          _shouldSavePersonalEvent &&
+          _saveTarget != ScheduleSaveTarget.personalOnly) {
         groupEventIdsToUpdate =
             await _chooseLinkedGroupsToUpdate(existingLinkedGroupEvents);
         if (groupEventIdsToUpdate == null || !mounted) {

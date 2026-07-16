@@ -529,8 +529,15 @@ void main() {
       expect(titles, isNot(contains('지금 출발하세요 🚗 (이동 약 30분)')));
     });
 
-    test('syncAfterSave geocodes title text when location is missing',
-        () async {
+    // [PREVENT] 유령 장소 주입 회귀 방지 (2026-07-16).
+    // 과거: location이 비어도 event.title/event.memo를 장소 검색어로 폴백해
+    // 무관한 POI가 사용자 일정에 주입됐다. 이제는 event.location(사용자가 이름으로
+    // 적은 장소)만 검색어로 쓰고, title/memo는 절대 쓰지 않는다. 또한 좌표 backfill
+    // 시 사용자 location 원문을 POI 공식명(bestPlaceLabel)으로 덮어쓰지 않고
+    // 좌표만 채운다.
+    test(
+        'syncAfterSave geocodes using event.location only, never title/memo, '
+        'and preserves the user-entered location text', () async {
       final gateway = _FakeManualEventGateway();
       final notifications = _FakeNotificationService();
       final fakeTravelTime = _FakeTravelTimeBufferService(
@@ -538,16 +545,18 @@ void main() {
       );
       final lookup = _FakeLocationLookupService(
         result: const LocationLookupResult(
-          name: 'Wonju Severance Christian Hospital',
+          // 검색 결과의 공식명이 사용자 원문과 다르더라도 덮어쓰면 안 된다.
+          name: 'Wonju Severance Christian Hospital (official)',
           address: 'Gangwon-do Wonju-si',
           latitude: 37.3421,
           longitude: 127.9421,
         ),
       );
+      final repository = _FakeEventRepository();
       final service = ManualEventSideEffectService(
         gateway: gateway,
         notificationService: notifications,
-        eventRepository: _FakeEventRepository(),
+        eventRepository: repository,
         departureAlarmService: _FakeDepartureAlarmService(),
         travelTimeBufferService: fakeTravelTime,
         locationLookupService: lookup,
@@ -556,11 +565,12 @@ void main() {
         now: () => DateTime(2026, 5, 8, 6),
       );
       final event = EventModel(
-        id: 'title-only-event',
+        id: 'location-event',
         userId: 'user-1',
-        title: 'Wonju Severance Christian Hospital visit',
+        title: '회의',
+        memo: 'Totally unrelated memo text',
+        location: '원주세브란스',
         startAt: DateTime(2026, 5, 8, 10),
-        location: null,
       );
 
       await service.syncAfterSave(
@@ -568,12 +578,38 @@ void main() {
         userId: 'user-1',
       );
 
+      // title/memo는 검색어로 전달되면 안 되고, location 텍스트만 검색한다.
+      expect(lookup.searchQueries, contains('원주세브란스'));
+      expect(lookup.searchQueries, isNot(contains('회의')));
       expect(
-        lookup.searchQueries.first,
-        'Wonju Severance Christian Hospital visit',
+        lookup.searchQueries,
+        isNot(contains('Totally unrelated memo text')),
       );
       expect(fakeTravelTime.lastDestinationLat, 37.3421);
       expect(fakeTravelTime.lastDestinationLng, 127.9421);
+      // 이 이벤트에 대한 updateEvent는 좌표 backfill 외에 critical 플래그 동기화
+      // 등으로 여러 번 일어날 수 있다. 어떤 업데이트도 사용자 location 원문을 POI
+      // 공식명으로 덮어써서는 안 되며, 좌표를 채운 backfill은 사용자 원문을
+      // 그대로 유지해야 한다.
+      final updatesForEvent = repository.updatedEvents
+          .where((e) => e.id == 'location-event')
+          .toList();
+      expect(
+        updatesForEvent
+            .every((e) => e.location != 'Wonju Severance Christian Hospital (official)'),
+        true,
+        reason: 'POI 검색 공식명이 사용자 location 원문을 덮어쓰면 안 된다.',
+      );
+      final coordBackfills = updatesForEvent
+          .where((e) => e.locationLat == 37.3421 && e.locationLng == 127.9421)
+          .toList();
+      expect(coordBackfills, isNotEmpty,
+          reason: '좌표 backfill이 최소 1회 일어나야 한다.');
+      expect(
+        coordBackfills.every((e) => e.location == '원주세브란스'),
+        true,
+        reason: '좌표를 채운 backfill은 사용자가 적은 location 원문을 유지해야 한다.',
+      );
     });
 
     test(

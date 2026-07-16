@@ -73,6 +73,7 @@ class _GroupMultiSelectSheetState extends State<_GroupMultiSelectSheet> {
               widget.title,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
+                fontSize: (theme.textTheme.titleMedium?.fontSize ?? 16) + 2,
               ),
             ),
             const SizedBox(height: 8),

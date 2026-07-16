@@ -95,6 +95,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   final GlobalKey _detailsSectionKey = GlobalKey();
   final GlobalKey _alarmSectionKey = GlobalKey();
   final GlobalKey _criticalAlarmSectionKey = GlobalKey();
+  final GlobalKey _criticalCheckboxKey = GlobalKey();
   CalendarDateTarget? _activeTarget;
   late bool _classificationExpanded;
   late bool _detailsExpanded;
@@ -181,7 +182,11 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
     }
   }
 
-  Future<void> _ensureExpandedSectionVisible(GlobalKey key) async {
+  Future<void> _ensureExpandedSectionVisible(
+    GlobalKey key, {
+    ScrollPositionAlignmentPolicy alignmentPolicy =
+        ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+  }) async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     if (!mounted) {
       return;
@@ -194,7 +199,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
       sectionContext,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
-      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      alignmentPolicy: alignmentPolicy,
     );
   }
 
@@ -453,6 +458,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 CheckboxListTile(
+                  key: _criticalCheckboxKey,
                   tileColor: widget.isCritical
                       ? const Color(0xFFFFE3DD)
                       : PlanFlowColors.surfaceFaint,
@@ -483,7 +489,16 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                   title: const Text('중요한 일정으로 표시'),
                   subtitle: const Text('캘린더에서 빨간색으로 표시됩니다.'),
                   value: widget.isCritical,
-                  onChanged: (v) => widget.onCriticalChanged(v ?? false),
+                  onChanged: (v) {
+                    widget.onCriticalChanged(v ?? false);
+                    if (v == true) {
+                      unawaited(_ensureExpandedSectionVisible(
+                        _criticalCheckboxKey,
+                        alignmentPolicy:
+                            ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+                      ));
+                    }
+                  },
                 ),
                 if (widget.isCritical) ...[
                   const SizedBox(height: 8),
