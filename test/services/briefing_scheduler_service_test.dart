@@ -357,6 +357,28 @@ void main() {
     expect(notification.lastBody, contains('내일 일정을 시간순으로 알려드릴까요'));
   });
 
+  test('stale foreground flag does not suppress a background briefing alarm',
+      () async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      BriefingSchedulerService.appForegroundKey: true,
+      BriefingSchedulerService.appForegroundAtKey: now -
+          BriefingSchedulerService.foregroundHeartbeatFreshness.inMilliseconds -
+          1000,
+    });
+    final notification = _FakeNotificationService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      notificationService: notification,
+      eventRepository: _FakeEventRepository(),
+    );
+
+    await service.showBriefingStartNotification(isMorning: true);
+
+    expect(notification.calls, 1);
+    expect(notification.lastBody, contains('오늘 일정을 시간순으로 알려드릴까요'));
+  });
+
   test('pending foreground briefing modal emits and clears stored trigger',
       () async {
     SharedPreferences.setMockInitialValues({

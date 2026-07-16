@@ -905,7 +905,10 @@ class BriefingSchedulerService {
     }
 
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getBool(appForegroundKey) == true;
+    // AlarmService's background callback uses the same freshness check. Using
+    // only appForegroundKey here can suppress the notification immediately
+    // after that callback correctly classified a stale app as background.
+    return isAppForegroundFresh(preferences);
   }
 
   Future<bool> _rescheduleForTomorrow({
