@@ -1495,10 +1495,15 @@ class PlanFlowMonthlyWidgetProvider :
                             0,
                         )
                         if (showTitle) {
+                            val displayTitle = if (eventSlot == 1 && holidayNameFromPrefs != null) {
+                                "$holidayNameFromPrefs · ${event.title}"
+                            } else {
+                                event.title
+                            }
                             bindEventText(
                                 views,
                                 eventId,
-                                event.title,
+                                displayTitle,
                                 null,
                                 event.isCritical,
                                 isMuted = !inMonth,
@@ -1675,7 +1680,12 @@ class PlanFlowMonthlyWidgetProvider :
                             )
                             views.setViewVisibility(eventId, View.VISIBLE)
                         } else {
-                            bindEventText(views, eventId, rawTitle, null, isCritical = eventCritical, isMuted = !inMonth)
+                            val displayTitle = if (eventSlot == 1 && holidayNameFromPrefs != null && rawTitle != null) {
+                                "$holidayNameFromPrefs · $rawTitle"
+                            } else {
+                                rawTitle
+                            }
+                            bindEventText(views, eventId, displayTitle, null, isCritical = eventCritical, isMuted = !inMonth)
                             if (isMonthRangeSegment(segment) && inMonth) {
                                 views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
                             } else if (eventCritical && inMonth) {

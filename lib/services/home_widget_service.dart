@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import 'home_widget_platform.dart';
+import 'kasi_holiday_service.dart';
 import 'korean_holidays.dart';
 import 'travel_time_buffer_service.dart';
 
@@ -942,11 +943,20 @@ class HomeWidgetService {
     String? iOSName,
     String? qualifiedAndroidName,
   }) async {
+    final resolvedNow = now ?? DateTime.now();
+    // The monthly widget serializes holiday labels into native preferences.
+    // Prime the three visible months first so a startup API/cache race cannot
+    // leave an already-rendered widget without public-holiday information.
+    await KasiHolidayService.instance.primeYears(<int>{
+      DateTime(resolvedNow.year, resolvedNow.month - 1).year,
+      resolvedNow.year,
+      DateTime(resolvedNow.year, resolvedNow.month + 1).year,
+    });
     final hideWeekends = await areWeekendsHidden();
     return updateSchedulePayload(
       HomeWidgetSchedulePayloadBuilder.fromEvents(
         events: events,
-        now: now ?? DateTime.now(),
+        now: resolvedNow,
         emptyTitle: emptyTitle,
         nextTravelBufferMinutes: nextTravelBufferMinutes,
         includeWeekends: !hideWeekends,

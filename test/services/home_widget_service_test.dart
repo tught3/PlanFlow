@@ -458,7 +458,7 @@ void main() {
     final jeheonjeolCell =
         julyPayload.monthCells.firstWhere((cell) => cell.day == 17);
     expect(jeheonjeolCell.holidayName, '제헌절');
-    expect(jeheonjeolCell.isDayOff, isFalse);
+    expect(jeheonjeolCell.isDayOff, isTrue);
   });
 
   test('HomeWidgetSchedulePayloadBuilder uses local day for tomorrow fallback',
