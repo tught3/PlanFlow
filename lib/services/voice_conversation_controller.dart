@@ -65,10 +65,9 @@ class VoiceConversationSession {
           clearFocusedEvent ? null : focusedEvent ?? this.focusedEvent,
       pendingDelete:
           clearPendingAction ? null : pendingDelete ?? this.pendingDelete,
-      pendingConvert:
-          clearPendingConvert || clearPendingAction
-              ? null
-              : pendingConvert ?? this.pendingConvert,
+      pendingConvert: clearPendingConvert || clearPendingAction
+          ? null
+          : pendingConvert ?? this.pendingConvert,
       pendingTitleSearchText: clearPendingTitleSearch
           ? null
           : pendingTitleSearchText ?? this.pendingTitleSearchText,
@@ -142,8 +141,9 @@ class VoiceConversationResult {
           ? '삭제를 진행할게요.'
           : '"${targetEvent!.title}" 일정을 삭제할게요.',
       VoiceConversationAction.deleteCanceled => '삭제를 취소했어요.',
-      VoiceConversationAction.createEvent =>
-        draftEvent == null ? '일정 정보를 파악하지 못했어요.' : '일정을 만들어 드릴까요? 확인 후 저장해 주세요.',
+      VoiceConversationAction.createEvent => draftEvent == null
+          ? '일정 정보를 파악하지 못했어요.'
+          : '일정을 만들어 드릴까요? 확인 후 저장해 주세요.',
       VoiceConversationAction.confirmConvertToPersonal => targetEvent == null
           ? '옮길 일정을 찾지 못했어요.'
           : '"${targetEvent!.title}" 일정을 개인 일정으로 옮길까요? 팀원들 화면에서도 사라져요.',
@@ -384,7 +384,8 @@ class VoiceConversationController {
       );
     }
 
-    if (state.pendingConvert == null && _isConvertToPersonalIntent(text, route: route)) {
+    if (state.pendingConvert == null &&
+        _isConvertToPersonalIntent(text, route: route)) {
       final target = _resolveFollowUpTarget(text, state, route: route);
       if (target == null) {
         state.pendingTitleSearchText = null;
@@ -465,6 +466,38 @@ class VoiceConversationController {
         ..pendingDelete = null
         ..pendingConvert = null;
       state.pendingTitleSearchText = null;
+      final criticalChange =
+          criticalValue ? 'is_critical_true' : 'is_critical_false';
+      final hasAdditionalChanges = _hasMeaningfulRequestedChange(
+        route: route,
+        excluding: <String>{criticalChange},
+      );
+      if (hasAdditionalChanges) {
+        final locationText = _isLocationIntent(text, route: route)
+            ? _extractLocationText(text)
+            : null;
+        final draftEvent = _draftEventForRequestedChanges(
+          target,
+          text,
+          route: route,
+          locationText: locationText,
+        );
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.openEditScreen,
+            inputText: input,
+            targetEvent: target,
+            draftEvent: draftEvent,
+            locationText: locationText,
+            criticalValue: criticalValue,
+            selectedEvents: <EventModel>[target],
+            requiresEditScreenNavigation: true,
+            assistantMessage: '"${target.title}" 일정의 변경 내용을 편집 화면에 함께 넣어둘게요.',
+          ),
+        );
+      }
       return _finish(
         state,
         session,
@@ -509,6 +542,32 @@ class VoiceConversationController {
           ..focusedEvent = target
           ..selectedEvents = const <EventModel>[];
         state.pendingTitleSearchText = null;
+        final hasAdditionalChanges = _hasMeaningfulRequestedChange(
+          route: route,
+          excluding: const <String>{'location'},
+        );
+        if (hasAdditionalChanges) {
+          final draftEvent = _draftEventForRequestedChanges(
+            target,
+            text,
+            route: route,
+            locationText: locationText,
+          );
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.openEditScreen,
+              inputText: input,
+              targetEvent: target,
+              draftEvent: draftEvent,
+              locationText: locationText,
+              selectedEvents: <EventModel>[target],
+              requiresEditScreenNavigation: true,
+              assistantMessage: '"${target.title}" 일정의 변경 내용을 편집 화면에 함께 넣어둘게요.',
+            ),
+          );
+        }
         return _finish(
           state,
           session,
@@ -623,7 +682,7 @@ class VoiceConversationController {
       // 수정 의도(날짜/시간 이동 등 location·critical·delete 외)가 있으면
       // 편집 화면으로 넘겨 GPT 파이프라인이 처리하게 한다.
       if (_isModificationIntent(text, route: route)) {
-        final draftEvent = _draftEventForRequestedStart(
+        final draftEvent = _draftEventForRequestedChanges(
           followUp,
           text,
           route: route,
@@ -754,8 +813,18 @@ class VoiceConversationController {
   }
 
   static const _createEventKeywords = [
-    '만들어', '만들어줘', '추가해', '추가해줘', '등록해', '등록해줘',
-    '새 일정', '일정 만들어', '일정 추가', '일정 등록', '일정 만들', '일정 새로',
+    '만들어',
+    '만들어줘',
+    '추가해',
+    '추가해줘',
+    '등록해',
+    '등록해줘',
+    '새 일정',
+    '일정 만들어',
+    '일정 추가',
+    '일정 등록',
+    '일정 만들',
+    '일정 새로',
   ];
 
   bool _hasCreateEventKeywords(String text) {
@@ -853,7 +922,8 @@ class VoiceConversationController {
         text.contains('있어?');
   }
 
-  bool _isConvertToPersonalIntent(String text, {VoiceCommandRouteResult? route}) {
+  bool _isConvertToPersonalIntent(String text,
+      {VoiceCommandRouteResult? route}) {
     final resolvedRoute = route ?? _router.route(text);
     if (resolvedRoute.requestedChanges.contains('convert_to_personal')) {
       return true;
@@ -975,8 +1045,8 @@ class VoiceConversationController {
       final pool = state.visibleEvents.isNotEmpty
           ? state.visibleEvents
           : (List<EventModel>.from(state.events)
-              ..sort((a, b) => (a.startAt ?? DateTime.now())
-                  .compareTo(b.startAt ?? DateTime.now())));
+            ..sort((a, b) => (a.startAt ?? DateTime.now())
+                .compareTo(b.startAt ?? DateTime.now())));
       if (ordinalIndex >= 0 && ordinalIndex < pool.length) {
         return pool[ordinalIndex];
       }
@@ -1229,6 +1299,28 @@ class VoiceConversationController {
         text.contains('옮겨');
   }
 
+  /// [VoiceCommandPipeline]은 "바꿔줘" 같은 변경 동사를 시간 변경의
+  /// 후보로도 분류한다. 실제 시각/날짜 단서 없이 장소만 바꾸는 발화까지
+  /// 복합 편집으로 승격하지 않도록, start_at은 구체적인 시간 이동 단서가
+  /// 있을 때만 추가 변경으로 간주한다.
+  bool _hasMeaningfulRequestedChange({
+    required VoiceCommandRouteResult route,
+    required Set<String> excluding,
+  }) {
+    return route.requestedChanges.any((change) {
+      if (excluding.contains(change)) {
+        return false;
+      }
+      if (change == 'start_at') {
+        final changeText = route.changeText.trim();
+        return changeText.isNotEmpty &&
+            (_hasExplicitDateOrTimeCue(changeText) ||
+                _hasRelativeDateShiftCue(changeText));
+      }
+      return true;
+    });
+  }
+
   EventModel? _draftEventForRequestedStart(
     EventModel event,
     String text, {
@@ -1349,14 +1441,42 @@ class VoiceConversationController {
     );
   }
 
+  EventModel? _draftEventForRequestedChanges(
+    EventModel event,
+    String text, {
+    VoiceCommandRouteResult? route,
+    String? locationText,
+  }) {
+    final resolvedRoute = route ?? _router.route(text);
+    var draft = _draftEventForRequestedStart(event, text, route: resolvedRoute);
+    var hasChange = draft != null;
+    draft ??= event;
+
+    final requestedLocation = locationText?.trim();
+    if (resolvedRoute.requestedChanges.contains('location') &&
+        requestedLocation != null &&
+        requestedLocation.isNotEmpty) {
+      draft = draft.copyWith(
+        location: requestedLocation,
+        clearLocationLat: true,
+        clearLocationLng: true,
+      );
+      hasChange = true;
+    }
+
+    final criticalValue = _criticalValueFromText(text);
+    if (criticalValue != null) {
+      draft = draft.copyWith(isCritical: criticalValue);
+      hasChange = true;
+    }
+    return hasChange ? draft : null;
+  }
+
   DateTime? _inferRequestedStartLocal(
     EventModel event,
     String text, {
     VoiceCommandRouteResult? route,
   }) {
-    if (_isLocationIntent(text, route: route)) {
-      return null;
-    }
     final changeText = route?.changeText.trim();
     final sourceText =
         changeText == null || changeText.isEmpty ? text : changeText;
@@ -1388,8 +1508,7 @@ class VoiceConversationController {
     final normalized = _compact(text);
     return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
             .hasMatch(normalized) ||
-        RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?')
-            .hasMatch(normalized);
+        RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?').hasMatch(normalized);
   }
 
   DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {

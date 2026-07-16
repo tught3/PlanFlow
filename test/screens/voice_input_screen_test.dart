@@ -1206,6 +1206,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fakeStt.stopCalls, greaterThanOrEqualTo(1));
+    // 완료 버튼이 native stop을 비동기로 호출하더라도 다음 화면으로 push하기
+    // 전에 cancel로 세션을 무효화해야 늦은 결과가 재진입하지 않는다.
+    expect(fakeStt.cancelCalls, greaterThanOrEqualTo(1));
     expect(find.text('일정 확인'), findsOneWidget);
     expect(confirmExtra, isA<Map<String, dynamic>>());
     final payload = confirmExtra! as Map<String, dynamic>;

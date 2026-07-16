@@ -766,6 +766,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
 
   Future<void> _pushVoiceRoute(String location, {Object? extra}) async {
     await _finishVoiceFlow();
+    // 완료 버튼은 native stop을 기다리지 않고 다음 화면으로 이동한다. 이때
+    // `_isListening`은 이미 false여서 deactivate의 취소 경로를 타지 않을 수
+    // 있다. route push 전에 현재 세션을 무효화하고 native recognizer를
+    // cancel해, 이전 수정 명령의 늦은 결과가 다음 음성 입력으로 이어지는
+    // 것을 막는다.
+    _partialTranscriptToken++;
+    _listenSessionGeneration++;
+    _isFinishingVoiceFlow = true;
+    await widget.sttService.cancelActiveListen();
     if (!mounted) {
       return;
     }
@@ -1008,7 +1017,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                   alignment: WrapAlignment.start,
                   buttons: [
                     PlanFlowActionButton(
-                      buttonKey: const ValueKey('voice-append-existing-text-button'),
+                      buttonKey:
+                          const ValueKey('voice-append-existing-text-button'),
                       label: '이어서 말하기',
                       onPressed: () => Navigator.of(context).pop(
                         _ExistingVoiceTextChoice.append,
@@ -1016,7 +1026,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                       type: ActionButtonType.primary,
                     ),
                     PlanFlowActionButton(
-                      buttonKey: const ValueKey('voice-restart-with-empty-text-button'),
+                      buttonKey: const ValueKey(
+                          'voice-restart-with-empty-text-button'),
                       label: '지우고 다시 입력',
                       onPressed: () => Navigator.of(context).pop(
                         _ExistingVoiceTextChoice.restart,
@@ -1024,7 +1035,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                       type: ActionButtonType.secondary,
                     ),
                     PlanFlowActionButton(
-                      buttonKey: const ValueKey('voice-keep-existing-text-button'),
+                      buttonKey:
+                          const ValueKey('voice-keep-existing-text-button'),
                       label: '취소하고 현재 내용 유지',
                       onPressed: () => Navigator.of(context).pop(
                         _ExistingVoiceTextChoice.cancel,

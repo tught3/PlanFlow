@@ -188,6 +188,14 @@ class VoiceCommandPipeline {
     }
 
     if (intent == VoiceCommandPipelineIntent.edit) {
+      if (requestedChanges.contains('location') &&
+          requestedChanges.contains('start_at')) {
+        final split = _splitMultiFieldChange(normalizedText);
+        if (split != null) {
+          return split;
+        }
+        _logStage('split_multi_field', intent: intent.name, reason: 'no_split');
+      }
       if (requestedChanges.contains('location')) {
         final split = _splitLocationChange(normalizedText);
         if (split != null) {
@@ -466,6 +474,42 @@ class VoiceCommandPipeline {
         .where((part) => part.trim().isNotEmpty)
         .join(' ')
         .trim();
+    if (targetText.isEmpty || changeText.isEmpty) {
+      return null;
+    }
+    return VoiceCommandSplit(targetText: targetText, changeText: changeText);
+  }
+
+  /// 장소와 시간 변경이 한 발화에 함께 있으면 첫 변경 필드 앞부분만
+  /// 대상으로 남긴다. 이후 파서는 [changeText] 전체에서 각 필드 값을
+  /// 독립적으로 읽으므로 "장소를 ...로 바꾸고 시간을 ...로" 순서도 보존된다.
+  VoiceCommandSplit? _splitMultiFieldChange(String normalizedText) {
+    final fieldStarts = <RegExpMatch>[];
+    final location = RegExp(
+      r'(?:장소|위치|주소)\s*(?:를|을)?\s*.+?\s*(?:으로|로)\s*(?:변경|바꿔|수정)',
+    ).firstMatch(normalizedText);
+    if (location != null) {
+      fieldStarts.add(location);
+    }
+    final time = RegExp(
+      r'(?:시작\s*시간|시작시간|시간|시각)\s*(?:을|를)?\s*'
+      r'(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*'
+      r'(?:[0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:[0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*반)?'
+      r'\s*(?:으로|로)?\s*(?:변경|바꿔|수정)',
+    ).firstMatch(normalizedText);
+    if (time != null) {
+      fieldStarts.add(time);
+    }
+    if (fieldStarts.isEmpty) {
+      return null;
+    }
+    fieldStarts.sort((left, right) => left.start.compareTo(right.start));
+    final firstField = fieldStarts.first;
+    final targetText = normalizedText
+        .substring(0, firstField.start)
+        .replaceFirst(RegExp(r'(?:에|은|는|을|를)\s*$'), '')
+        .trim();
+    final changeText = normalizedText.substring(firstField.start).trim();
     if (targetText.isEmpty || changeText.isEmpty) {
       return null;
     }

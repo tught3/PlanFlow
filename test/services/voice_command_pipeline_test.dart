@@ -83,6 +83,21 @@ void main() {
       expect(plan.safeDirectApply, isTrue);
     });
 
+    test('장소와 시간 변경은 동일한 대상에서 두 필드를 함께 분리한다', () {
+      final plan = pipeline.analyze(
+        '1번 일정 장소를 서울오크우드 호텔로 변경하고 시간을 오후 5시로 변경해줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.targetText, '1번 일정');
+      expect(plan.changeText, contains('서울오크우드 호텔'));
+      expect(plan.changeText, contains('오후 5시'));
+      expect(
+          plan.requestedChanges, containsAll(<String>['location', 'start_at']));
+      expect(plan.requestedFieldValues['location'], '서울오크우드 호텔');
+    });
+
     test('중요한 일정 동의어는 is_critical_true로 분류한다', () {
       final plan = pipeline.analyze(
         '이 일정 중요한 일정으로 표시해줘',

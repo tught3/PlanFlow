@@ -441,11 +441,19 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
-        final validatedLocation = await GptService().validateLocation(result.locationText!);
-        if (validatedLocation != null) {
-          await _openEditWithLocation(result.targetEvent!, validatedLocation);
+        // 복합 변경은 장소 선택 지도를 먼저 열지 않는다. 시간 등 함께
+        // 인식한 필드를 하나의 초안으로 보여 주고 사용자가 저장에서 확정한다.
+        final draft = result.draftEvent;
+        if (draft != null) {
+          await _openGeneralEditScreen(draft);
         } else {
-          await _openGeneralEditScreen(result.targetEvent!);
+          final validatedLocation =
+              await GptService().validateLocation(result.locationText!);
+          if (validatedLocation != null) {
+            await _openEditWithLocation(result.targetEvent!, validatedLocation);
+          } else {
+            await _openGeneralEditScreen(result.targetEvent!);
+          }
         }
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
@@ -1016,8 +1024,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         final originalDuration = updated.endAt.difference(updated.startAt);
         final newEnd = draft.endAt ??
             newStart.add(
-              originalDuration.isNegative ||
-                      originalDuration == Duration.zero
+              originalDuration.isNegative || originalDuration == Duration.zero
                   ? const Duration(hours: 1)
                   : originalDuration,
             );
@@ -1183,7 +1190,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
 
     _groupEventById.remove(g.id);
-    _events = _events.where((event) => event.id != g.id).toList(growable: false);
+    _events =
+        _events.where((event) => event.id != g.id).toList(growable: false);
     _conversation.replaceEvents(_events);
     EventRefreshBus.instance.notifyChanged(
       reason: 'voice_conversation_group_to_personal',
@@ -1529,7 +1537,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       case VoiceConversationAction.convertToPersonalConfirmed:
         return '개인 일정으로 옮기는 중이에요.';
       case VoiceConversationAction.createEvent:
-        if (result.draftEvent == null) return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
+        if (result.draftEvent == null) {
+          return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
+        }
         return '일정 편집 화면을 열게요. 내용 확인 후 저장해 주세요.';
       case VoiceConversationAction.none:
         if (result.selectedEvents.length > 1) {
@@ -1640,7 +1650,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                   keepListening: _keepListening,
                   voicePausedByUser: _voicePausedByUser,
                   isRestartPending: _isRestartPending,
-                  onListen: () => _startConversationListen(resetRetryPolicy: true),
+                  onListen: () =>
+                      _startConversationListen(resetRetryPolicy: true),
                   onStopListening: _pauseVoiceInput,
                   onSubmit: () => _submitText(null),
                   onChanged: _handleInputChanged,
@@ -1751,7 +1762,9 @@ class _VoiceStatusBubble extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: isUnstable ? colorScheme.error : PlanFlowColors.primary,
+                      color: isUnstable
+                          ? colorScheme.error
+                          : PlanFlowColors.primary,
                       fontWeight: FontWeight.w800,
                     ),
               ),
