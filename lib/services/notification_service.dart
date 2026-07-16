@@ -56,11 +56,31 @@ class NotificationService {
       '중요 일정 알람. 일반 알림보다 강한 진동과 전용 알림음으로 구분합니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const String departureAcknowledgedActionId = 'departure_ack';
+  static const String criticalAcknowledgedActionId = 'critical_ack';
+  static const String criticalRemindTomorrowActionId =
+      'critical_remind_tomorrow';
   static const List<AndroidNotificationAction> _departureActions =
       <AndroidNotificationAction>[
     AndroidNotificationAction(
       departureAcknowledgedActionId,
       '출발',
+      cancelNotification: true,
+      showsUserInterface: false,
+      semanticAction: SemanticAction.none,
+    ),
+  ];
+  static const List<AndroidNotificationAction> _criticalActions =
+      <AndroidNotificationAction>[
+    AndroidNotificationAction(
+      criticalAcknowledgedActionId,
+      '확인',
+      cancelNotification: true,
+      showsUserInterface: true,
+      semanticAction: SemanticAction.none,
+    ),
+    AndroidNotificationAction(
+      criticalRemindTomorrowActionId,
+      '내일 오전 9시',
       cancelNotification: true,
       showsUserInterface: false,
       semanticAction: SemanticAction.none,
@@ -294,6 +314,37 @@ class NotificationService {
             '중요 알람 예약 중 오류가 발생했습니다. Android 알림, 정확한 알람, 전체 화면 알림 설정을 확인해 주세요.',
       );
     }
+  }
+
+  /// 중요 알람의 "내일 오전 9시" 액션이 누른 일정을 다시 확인하도록
+  /// 독립 알림을 예약한다. 원 일정의 시각을 바꾸지 않는다.
+  Future<NotificationScheduleResult> scheduleCriticalReminderTomorrow({
+    required String eventId,
+    DateTime? now,
+  }) async {
+    final normalizedEventId = eventId.trim();
+    final reference = now ?? DateTime.now();
+    final notifyAt = nextCriticalReminderAt(reference);
+    if (normalizedEventId.isEmpty) {
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.error,
+        notifyAt: notifyAt,
+        message: '다시 알릴 중요 일정을 찾지 못했습니다.',
+      );
+    }
+    return scheduleEventReminderWithResult(
+      id: notificationIdFor('$normalizedEventId:critical_remind_tomorrow'),
+      title: '중요 일정 다시 확인',
+      body: '어제 미룬 중요 일정이 있어요. 확인해 주세요.',
+      notifyAt: notifyAt,
+      payload: 'event:$normalizedEventId',
+    );
+  }
+
+  @visibleForTesting
+  static DateTime nextCriticalReminderAt(DateTime now) {
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    return DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9);
   }
 
   Future<void> scheduleDepartureAlarm({
@@ -614,8 +665,16 @@ class NotificationService {
     required NotificationPermissionStatus status,
     required bool? requestResult,
   }) {
-    return requestResult == true ||
-        status.fullScreenIntentStatus == PermissionCheckState.granted;
+    if (status.fullScreenIntentStatus == PermissionCheckState.granted) {
+      return true;
+    }
+    if (status.fullScreenIntentStatus == PermissionCheckState.denied ||
+        requestResult == false) {
+      return false;
+    }
+    // 일부 Android/OEM 조합은 전체 화면 권한의 현재 상태를 반환하지 않는다.
+    // 그 경우 intent 자체를 빼면 시스템이 허용할 수 있는 출발 화면까지 막힌다.
+    return true;
   }
 
   Future<bool> openAppNotificationSettings() async {
@@ -684,15 +743,8 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse:
           _backgroundNotificationResponseCallback,
       onDidReceiveNotificationResponse: (response) {
+        unawaited(handleNotificationResponseAction(response));
         final route = routeForNotificationResponse(response);
-        if (response.actionId == departureAcknowledgedActionId &&
-            (response.payload ?? '').startsWith('departure:')) {
-          final eventId =
-              (response.payload ?? '').substring('departure:'.length).trim();
-          if (eventId.isNotEmpty) {
-            unawaited(_acknowledgeDeparture(eventId));
-          }
-        }
         if (route != null) {
           appRouter.go(route);
         }
@@ -965,6 +1017,7 @@ class NotificationService {
         ),
         visibility: NotificationVisibility.public,
         ticker: '중요 일정 알람',
+        actions: _criticalActions,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
@@ -1051,6 +1104,9 @@ class NotificationService {
     }
 
     if (payload.startsWith('event:')) {
+      if (response.actionId == criticalRemindTomorrowActionId) {
+        return null;
+      }
       final eventId = payload.substring('event:'.length).trim();
       if (eventId.isEmpty) {
         return null;
@@ -1071,16 +1127,6 @@ class NotificationService {
     }
 
     return null;
-  }
-
-  Future<void> _acknowledgeDeparture(String eventId) async {
-    final normalizedEventId = eventId.trim();
-    if (normalizedEventId.isEmpty) {
-      return;
-    }
-    const store = SharedPreferencesDepartureAcknowledgementStore();
-    await store.markAcknowledged(normalizedEventId);
-    await cancelDepartureNotifications(normalizedEventId);
   }
 
   int _stableNotificationId(String id) {
@@ -1165,24 +1211,50 @@ class NotificationService {
   }
 }
 
-/// 앱이 백그라운드 상태에서 알림 액션 버튼 탭 시 호출되는 top-level 콜백.
-/// flutter_local_notifications 요구사항: @pragma('vm:entry-point') + top-level 함수.
-@pragma('vm:entry-point')
-Future<void> _backgroundNotificationResponseCallback(
-  NotificationResponse response,
-) async {
+/// foreground/background 알림 액션을 같은 방식으로 처리한다.
+///
+/// 출발은 즉시 확인 상태로 바꾸고, 중요 알람의 내일 액션은 일정 자체를
+/// 수정하지 않은 채 다음 날 오전 9시에 다시 확인하도록 예약한다.
+@visibleForTesting
+Future<void> handleNotificationResponseAction(
+  NotificationResponse response, {
+  NotificationService? notificationService,
+  DepartureAcknowledgementStore? departureAcknowledgementStore,
+}) async {
   final payload = response.payload ?? '';
   final actionId = response.actionId;
   if (actionId == NotificationService.departureAcknowledgedActionId &&
       payload.startsWith('departure:')) {
     final eventId = payload.substring('departure:'.length).trim();
     if (eventId.isNotEmpty) {
-      const store = SharedPreferencesDepartureAcknowledgementStore();
+      final store = departureAcknowledgementStore ??
+          const SharedPreferencesDepartureAcknowledgementStore();
       await store.markAcknowledged(eventId);
+      await (notificationService ?? NotificationService())
+          .cancelDepartureNotifications(eventId);
       // cancelNotification: true 로 알림은 자동 취소됨
       // 다음 모니터 실행(30분 이내)에서 isAcknowledged() → skip
     }
+    return;
   }
+
+  if (actionId == NotificationService.criticalRemindTomorrowActionId &&
+      payload.startsWith('event:')) {
+    final eventId = payload.substring('event:'.length).trim();
+    if (eventId.isNotEmpty) {
+      await (notificationService ?? NotificationService())
+          .scheduleCriticalReminderTomorrow(eventId: eventId);
+    }
+  }
+}
+
+/// 앱이 백그라운드 상태에서 알림 액션 버튼 탭 시 호출되는 top-level 콜백.
+/// flutter_local_notifications 요구사항: @pragma('vm:entry-point') + top-level 함수.
+@pragma('vm:entry-point')
+Future<void> _backgroundNotificationResponseCallback(
+  NotificationResponse response,
+) {
+  return handleNotificationResponseAction(response);
 }
 
 enum PermissionCheckState { granted, denied, unsupported, needsManualCheck }

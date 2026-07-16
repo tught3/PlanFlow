@@ -393,8 +393,11 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
             PlanFlowActionButtons(
               buttons: [
                 PlanFlowActionButton(
-                  label: '나중에',
-                  onPressed: () => Navigator.of(ctx).pop(),
+                  label: '내일 다시',
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    unawaited(_rescheduleBriefingForTomorrow(isMorning));
+                  },
                   type: ActionButtonType.secondary,
                   flex: 1,
                 ),
@@ -414,6 +417,25 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         ),
       ).whenComplete(() => _briefingDialogShowing = false);
     });
+  }
+
+  Future<void> _rescheduleBriefingForTomorrow(bool isMorning) async {
+    final scheduled = await BriefingSchedulerService().rescheduleNextBriefing(
+      isMorning: isMorning,
+    );
+    if (!mounted) {
+      return;
+    }
+    final label = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          scheduled
+              ? '$label을 내일 다시 알려드릴게요.'
+              : '$label 재알림을 예약하지 못했어요. 알림 권한을 확인해 주세요.',
+        ),
+      ),
+    );
   }
 
   void _onAuthProviderChange() {

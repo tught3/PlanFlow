@@ -102,6 +102,18 @@ void main() {
           status: const NotificationPermissionStatus(
             notificationsEnabled: true,
             exactAlarmsEnabled: true,
+            fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+          ),
+          requestResult: null,
+        ),
+        isTrue,
+      );
+
+      expect(
+        NotificationService.shouldUseCriticalFullScreenIntent(
+          status: const NotificationPermissionStatus(
+            notificationsEnabled: true,
+            exactAlarmsEnabled: true,
             fullScreenIntentStatus: PermissionCheckState.granted,
           ),
           requestResult: null,
@@ -203,6 +215,57 @@ void main() {
       );
     });
 
+    test('important alarm actions either open the event or schedule tomorrow',
+        () async {
+      final acknowledged = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload: 'event:event-1',
+      );
+      final tomorrow = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalRemindTomorrowActionId,
+        payload: 'event:event-1',
+      );
+      final notifications = _FakeNotificationService();
+
+      expect(
+        NotificationService.routeForNotificationResponse(acknowledged),
+        '${AppRoutes.eventDetail}/event-1',
+      );
+      expect(
+        NotificationService.routeForNotificationResponse(tomorrow),
+        isNull,
+      );
+
+      await handleNotificationResponseAction(
+        tomorrow,
+        notificationService: notifications,
+      );
+      expect(notifications.remindTomorrowEventId, 'event-1');
+    });
+
+    test('important alarm tomorrow reminder is scheduled for 9 AM next day',
+        () {
+      expect(
+        NotificationService.nextCriticalReminderAt(DateTime(2026, 7, 16, 22)),
+        DateTime(2026, 7, 17, 9),
+      );
+    });
+
+    test('important alarm defines confirm and tomorrow actions', () {
+      final source =
+          File('lib/services/notification_service.dart').readAsStringSync(
+        encoding: utf8,
+      );
+
+      expect(source, contains("'확인'"));
+      expect(source, contains("'내일 오전 9시'"));
+      expect(source, contains('criticalRemindTomorrowActionId'));
+    });
+
     test('departure notification has only the departure action', () {
       final source =
           File('lib/services/notification_service.dart').readAsStringSync(
@@ -230,4 +293,20 @@ void main() {
       expect(source, contains('놓치면 안 되는 중요 알림'));
     });
   });
+}
+
+class _FakeNotificationService extends NotificationService {
+  String? remindTomorrowEventId;
+
+  @override
+  Future<NotificationScheduleResult> scheduleCriticalReminderTomorrow({
+    required String eventId,
+    DateTime? now,
+  }) async {
+    remindTomorrowEventId = eventId;
+    return NotificationScheduleResult(
+      status: NotificationScheduleStatus.scheduled,
+      notifyAt: now ?? DateTime.now(),
+    );
+  }
 }
