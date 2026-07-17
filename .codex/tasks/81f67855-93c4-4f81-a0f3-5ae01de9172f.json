@@ -1,0 +1,42 @@
+{
+  "taskId": "81f67855-93c4-4f81-a0f3-5ae01de9172f",
+  "status": "IN_PROGRESS",
+  "originalRequest": "음성 일정 생성에서 일정 제목과 중요도 명령이 장소로 저장되는 오인식을 방지하고, 장소 후보를 증거 점수로 평가해 정확도를 높인다.",
+  "requirements": [
+    "명사 형태만으로 장소를 자동 확정하지 않는다.",
+    "일정 메타데이터와 명령어가 섞인 후보를 장소에서 제외한다.",
+    "문법, 지도 유사도, 방문 이력을 점수에 반영한다.",
+    "약한 후보는 장소를 비우고 제목을 보존한다.",
+    "기존 후보 선택 UX와 좌표 확정 흐름을 회귀 없이 유지한다."
+  ],
+  "allowedFiles": [
+    "lib/services/voice_schedule_structure_service.dart",
+    "lib/services/location_lookup_service.dart",
+    "lib/services/voice_command_analysis_service.dart",
+    "lib/screens/voice/confirm_screen.dart",
+    "test/services/voice_schedule_structure_service_test.dart",
+    "test/services/location_lookup_service_test.dart",
+    "test/services/voice_command_analysis_service_test.dart",
+    "test/screens/confirm_screen_test.dart"
+  ],
+  "forbiddenFiles": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "pubspec.yaml",
+    "scripts/build-internal-aab.ps1",
+    "scripts/deploy-play-internal.ps1"
+  ],
+  "routing": {
+    "explorer": "gpt-5.4-mini",
+    "planner": "gpt-5.6-terra",
+    "implementer": "gpt-5.6-luna",
+    "testExecutor": "gpt-5.4-mini",
+    "reviewer": "gpt-5.6-luna",
+    "integrator": "gpt-5.6-terra"
+  },
+  "stages": {},
+  "changedFiles": [],
+  "verification": [],
+  "review": null,
+  "nextStep": "Run Explorer and Planner roles."
+}
