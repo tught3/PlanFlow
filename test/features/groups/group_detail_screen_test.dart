@@ -13,8 +13,7 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  testWidgets(
-      'push 이력 없이 그룹 상세로 바로 들어와 팀을 나가도 GoError 없이 그룹 목록으로 이동한다',
+  testWidgets('push 이력 없이 그룹 상세로 바로 들어와 팀을 나가도 GoError 없이 그룹 목록으로 이동한다',
       (tester) async {
     final preferences = await SharedPreferences.getInstance();
     // 이 테스트는 팀 나가기 흐름만 검증하므로, 무관한 '기존 일정 공유' 자동
@@ -76,6 +75,69 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('그룹 목록'), findsOneWidget);
+  });
+
+  testWidgets('팀 나가기와 그룹 삭제는 모두 빨간 계열의 채움 버튼으로 구분된다', (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    final repository = _FakeGroupRepository(
+      groups: <GroupModel>[
+        GroupModel(
+          id: 'group-1',
+          createdBy: 'leader-1',
+          name: '우리 팀',
+          createdAt: DateTime.utc(2026, 6, 29),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          GroupMemberModel(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'leader-1',
+            role: 'leader',
+          ),
+        ],
+      },
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupDetailScreen(
+          groupId: 'group-1',
+          repository: repository,
+          preferences: preferences,
+          currentUserIdOverride: 'leader-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final leaveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '팀 나가기'),
+    );
+    final deleteButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '그룹 삭제'),
+    );
+
+    expect(
+      leaveButton.style?.backgroundColor?.resolve(<WidgetState>{}),
+      const Color(0xFFFFE4DD),
+    );
+    expect(
+      leaveButton.style?.foregroundColor?.resolve(<WidgetState>{}),
+      const Color(0xFFB42318),
+    );
+    expect(
+      deleteButton.style?.backgroundColor?.resolve(<WidgetState>{}),
+      const Color(0xFFB42318),
+    );
+    expect(
+      deleteButton.style?.foregroundColor?.resolve(<WidgetState>{}),
+      Colors.white,
+    );
   });
 
   testWidgets('처음 그룹 상세에 들어가면 기존 일정 공유 모달을 한 번만 보여준다', (tester) async {
@@ -142,7 +204,8 @@ void main() {
     expect(find.text('기존 일정을 공유할까요?'), findsNothing);
   });
 
-  testWidgets('기존 일정 공유 모달의 버튼 배치: 나중에/새로 만드는 일정부터는 테두리 버튼, '
+  testWidgets(
+      '기존 일정 공유 모달의 버튼 배치: 나중에/새로 만드는 일정부터는 테두리 버튼, '
       '오늘 이후 일정 공유는 강조 버튼', (tester) async {
     final preferences = await SharedPreferences.getInstance();
     final repository = _FakeGroupRepository(
@@ -208,8 +271,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets(
-      "'나중에'를 고른 뒤에도 그룹 상세의 '기존 일정 공유하기' 버튼으로 다시 실행할 수 있다",
+  testWidgets("'나중에'를 고른 뒤에도 그룹 상세의 '기존 일정 공유하기' 버튼으로 다시 실행할 수 있다",
       (tester) async {
     final preferences = await SharedPreferences.getInstance();
     // 이미 '나중에'를 골라 프롬프트가 다시 뜨지 않는 상태를 재현.

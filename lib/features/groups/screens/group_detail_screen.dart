@@ -565,29 +565,36 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     // 팀 나가기: 모든 멤버에게 노출. 마지막 리더는 DB(leave_group)에서
                     // 차단되며 그 사유가 스낵바로 안내된다.
                     // 한 스크롤 안에 그룹삭제까지 보이도록 버튼은 압축(dense) 스타일.
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFB42318),
-                        side: const BorderSide(color: Color(0xFFB42318)),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        visualDensity: VisualDensity.compact,
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFE4DD),
+                          foregroundColor: const Color(0xFFB42318),
+                          side: const BorderSide(color: Color(0xFFF04438)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: _leaveGroup,
+                        icon: const Icon(Icons.logout, size: 20),
+                        label: const Text('팀 나가기'),
                       ),
-                      onPressed: _leaveGroup,
-                      icon: const Icon(Icons.logout, size: 20),
-                      label: const Text('팀 나가기'),
                     ),
                     if (_isLeader) ...[
                       const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFFB42318),
-                          side: const BorderSide(color: Color(0xFFB42318)),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          visualDensity: VisualDensity.compact,
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFB42318),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: _deleteGroup,
+                          icon: const Icon(Icons.delete_forever, size: 20),
+                          label: const Text('그룹 삭제'),
                         ),
-                        onPressed: _deleteGroup,
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        label: const Text('그룹 삭제'),
                       ),
                     ],
                   ],
@@ -743,10 +750,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     children: [
                       Text(
                         '이 그룹에 새 일정 자동 공유',
-                        style:
-                            Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
                       Text(
                         '켜면 새로 만드는 개인 일정이 기본으로 이 그룹에도 공유돼요.',
