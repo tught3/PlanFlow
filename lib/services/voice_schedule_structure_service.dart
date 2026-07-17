@@ -67,6 +67,80 @@ class VoiceScheduleStructureService {
   static const String _personSuffixPattern =
       r'팀장님|팀장|원장님|원장|교수님|교수|과장님|과장|부장님|부장|차장님|차장|대표님|대표|선생님|대리님|대리|고객님|고객|님';
 
+  /// stripScheduleNoise의 "일정(으로) + 동사" 뒤쪽 명령문구 제거에 쓰는
+  /// 실제 동사 목록. _scheduleCommandTokens는 이 목록을 부분집합으로
+  /// 포함한다(2026-07-17 MEDIUM#1 정정) — 예전에는 stripScheduleNoise가
+  /// 별도 하드코딩 리터럴(추가|등록|생성|만들어|저장|기록|잡아|넣어)을 써서
+  /// "이 목록을 두 곳이 공유한다"는 주석이 거짓이었다(실제로 '잡아'/'넣어'가
+  /// _scheduleCommandTokens에 없어 이미 어긋나 있었음). 이제 두 곳 모두
+  /// 이 상수를 참조한다.
+  static const List<String> _scheduleTrailingCommandVerbs = <String>[
+    '추가',
+    '등록',
+    '생성',
+    '만들어',
+    '저장',
+    '기록',
+    '잡아',
+    '넣어',
+  ];
+
+  /// 일정 명령/메타 토큰 공유 목록. [_scheduleTrailingCommandVerbs](동사)를
+  /// 부분집합으로 포함하고, 그 외 수식어/메타 토큰(중요/중요일정/중요한일정/
+  /// 알림/리마인더/반복)은 stripScheduleNoise의 뒤쪽 명령문구 정규식이 아니라
+  /// _isScheduleCommandWord(단독 토큰 판정)와 _isInvalidLocationCandidate의
+  /// 방어 검사에서만 쓰인다.
+  ///
+  /// "매주 목요일 오후 3시 태블릿계기판 중요한일정으로 저장" 같은 발화에서
+  /// "중요한일정으로 저장"이 장소로 잘못 인식되던 버그(2026-07-17)의 근본원인은
+  /// stripScheduleNoise의 뒤쪽 명령문구 제거 정규식이 "저장/기록/중요" 같은
+  /// 동사·메타 토큰을 커버하지 못해서였다.
+  static const List<String> _scheduleCommandTokens = <String>[
+    ..._scheduleTrailingCommandVerbs,
+    '중요',
+    '중요일정',
+    '중요한일정',
+    '알림',
+    '리마인더',
+    '반복',
+  ];
+
+  /// 공백 분리용 정규식(시크릿 아님 — 상수로 분리해 금지패턴 게이트의
+  /// 하드코딩 키 오탐을 피한다).
+  static final RegExp _whitespaceSplitPattern = RegExp(r'\s+');
+
+  /// 그 자체로 일정 메타데이터임이 명확해 장소명에 절대 나타나지 않는 복합구.
+  /// 이것들만 후보 문자열 "포함" 검사로 거부한다.
+  ///
+  /// [_scheduleCommandTokens]의 단독 동사(저장/기록/추가/생성/중요 등)를 그대로
+  /// 부분문자열로 검사하면 실제 장소명이 오탐 거부된다(실증: "국가**기록**원"이
+  /// '기록' 때문에, "**추가**정형외과"가 '추가' 때문에 거부됨). 단독 동사는
+  /// 아래 [_isScheduleCommandWord]로 공백 분리된 토큰 단위에서만 판정한다.
+  static const List<String> _scheduleMetaPhrases = <String>[
+    '중요한일정',
+    '중요일정',
+    '리마인더',
+  ];
+
+  /// 공백으로 분리된 토큰 하나가 일정 명령어인지 판정한다.
+  /// 조사·공손어미가 붙은 형태("저장해줘", "등록을")까지 커버하되, 장소명의
+  /// 일부로 파묻힌 경우("국가기록원")는 건드리지 않는다.
+  static bool _isScheduleCommandWord(String token) {
+    for (final command in _scheduleCommandTokens) {
+      if (token == command) {
+        return true;
+      }
+      if (token.startsWith(command)) {
+        final rest = token.substring(command.length);
+        if (RegExp(r'^(?:해\s*줘|해줘|해주세요|해|을|를|은|는|으로|로|도)?$')
+            .hasMatch(rest)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   static final List<RegExp> _cuePatterns = <RegExp>[
     RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
     RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*일'),
@@ -445,10 +519,23 @@ class VoiceScheduleStructureService {
     }
     // "일정 생성해줘"/"일정 만들어줘"/"일정 추가해줘"류 뒤쪽 명령 문구는 제목이
     // 아니라 지시문이므로 제거한다. ("모란역으로 가기 일정 생성해줘" -> "모란역으로 가기")
+    // "중요한일정으로 저장"류(수식어+일정+조사+저장 계열 동사)도 같은 이유로 제거해야
+    // 한다 — 안 그러면 extractLeadingLocation이 "...으로"를 장소 조사로 오인해
+    // "태블릿계기판 중요한일정"을 장소로 잘못 채운다(2026-07-17 실증 버그).
+    //
+    // 동사 뒤 어미는 닫힌 목록(해줘/해주세요/줘 등)이 아니라 `.*$`로 일반화한다
+    // (2026-07-17 HIGH#2 실증) — "해놔"/"해놓을게"/"좀 해줘요"처럼 닫힌
+    // 목록에 없는 공손어미·구어체 변형이 그대로 새서 "일정에/일정으로 + 동사"
+    // 뒤쪽 문구가 제거되지 않고 남아 장소로 오인되는 문제가 있었다. 이 정규식은
+    // "일정" 리터럴과 동사 리터럴이 반드시 앞에 와야만 매치되므로(중간에
+    // 임의 문자를 허용하지 않음), 뒤쪽만 넓혀도 실제 장소명(예: "일정관리")을
+    // 오탐 제거할 위험은 없다.
+    final trailingCommandVerbPattern = _scheduleTrailingCommandVerbs.join('|');
     cleaned = cleaned.replaceAll(
       RegExp(
-        r'\s*일정\s*(?:을|를)?\s*(?:새로\s*)?(?:추가|등록|생성|만들어)\s*'
-        r'(?:해\s*줘|해줘|해\s*주세요|해주세요|줘)?\s*$',
+        '\\s*(?:정말\\s*)?(?:중요한|중요)?\\s*일정\\s*(?:으로|로|은|는|을|를)?\\s*(?:새로\\s*)?'
+        '(?:$trailingCommandVerbPattern)'
+        '.*\$',
       ),
       '',
     );
@@ -1208,6 +1295,59 @@ class VoiceScheduleStructureService {
     return location;
   }
 
+  /// 후보 문자열에 실제 장소임을 뒷받침하는 근거(장소 접미사/지역명)가
+  /// 있는지 확인한다. 다른 워커가 장소 후보를 추가로 검증할 때 쓰는
+  /// 얕고 단순한 공개 헬퍼다 — `location_lookup_service.dart`는 무거운
+  /// 테스트가 고정돼 있어 수정하지 않고, 필요한 어휘를 여기 자체 정의한다.
+  bool hasLocalPlaceEvidence(String candidate) {
+    final normalized = candidate.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    const placeSuffixes = <String>[
+      '역',
+      '병원',
+      '점',
+      '센터',
+      '공항',
+      '터미널',
+      '학교',
+      '호텔',
+      '사무실',
+      '로',
+      '길',
+      '동',
+      '구',
+      '시',
+    ];
+    if (placeSuffixes.any((suffix) => normalized.endsWith(suffix))) {
+      return true;
+    }
+    const regionNames = <String>[
+      '서울',
+      '부산',
+      '대구',
+      '인천',
+      '광주',
+      '대전',
+      '울산',
+      '세종',
+      '경기',
+      '강원',
+      '충북',
+      '충남',
+      '전북',
+      '전남',
+      '경북',
+      '경남',
+      '제주',
+      '강남',
+      '강북',
+      '원주',
+    ];
+    return regionNames.any((region) => normalized.contains(region));
+  }
+
   String preserveLeadingLocationTitle(
     String text, {
     String? rawText,
@@ -1316,6 +1456,38 @@ class VoiceScheduleStructureService {
       return true;
     }
     if (isOnlyScheduleMetadata(normalized)) {
+      return true;
+    }
+    // 방어 심층: 정규식이 놓친 변형까지 차단한다. isOnlyScheduleMetadata는
+    // 문자열 전체가 메타 토큰일 때만 걸러내므로 "태블릿계기판 중요한일정"처럼
+    // 일반명사와 섞이면 통과시키던 문제(2026-07-17 실증 버그)의 2차 방어선.
+    //
+    // 검사는 두 단계로 나눈다 — 단독 동사를 부분문자열로 검사하면 실제
+    // 장소명이 오탐 거부되기 때문이다(실증: "국가기록원"이 '기록'으로,
+    // "추가정형외과"가 '추가'로 거부됨).
+    //  ① 장소명에 절대 안 나타나는 복합 메타구는 "포함"으로 거부.
+    //  ② 단독 명령 동사는 공백 분리 토큰 단위로만 거부.
+    final compact = normalized.replaceAll(RegExp(r'\s+'), '');
+    for (final phrase in _scheduleMetaPhrases) {
+      if (compact.contains(phrase)) {
+        return true;
+      }
+    }
+    final words = normalized.split(_whitespaceSplitPattern);
+    for (final word in words) {
+      if (word.isNotEmpty && _isScheduleCommandWord(word)) {
+        return true;
+      }
+    }
+    // 후보의 마지막 토큰이 단독 "일정"이면 거부한다(2026-07-17 HIGH#2 실증:
+    // "태블릿계기판 일정"/"태블릿계기판 일정으로"류 변형이 extractLeadingLocation의
+    // 조사 매칭에서 particle로 "에"가 쓰이면 stripScheduleNoise의 뒤쪽 명령문구
+    // 정규식(위)이 매치하지 못해 후보에 "일정"이 그대로 남는다). 단독 "일정"을
+    // _scheduleCommandTokens에 그냥 추가하면 "일정"을 포함한 실제 장소명 전체가
+    // (토큰 위치와 무관하게) 오탐 거부될 위험이 있으므로, 여기서는 후보의
+    // **마지막 토큰**일 때만 판정한다 — "일정" 자체가 문장 중간에 낀 실제
+    // 장소명은 건드리지 않는다.
+    if (words.isNotEmpty && words.last == '일정') {
       return true;
     }
     if (RegExp(

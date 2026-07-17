@@ -555,5 +555,158 @@ void main() {
         expect(parsedTitle, contains('물 마시기'));
       },
     );
+
+    // ── 회귀 테스트: "중요한일정으로 저장" 류 명령문구가 장소로 오인되는 버그 ──
+    // (2026-07-17) "매주 목요일 오후 3시 태블릿계기판 중요한일정으로 저장"에서
+    // stripScheduleNoise가 "중요한일정으로 저장"을 못 지워 extractLeadingLocation이
+    // "태블릿계기판 중요한일정"을 장소로 잘못 채우던 버그.
+    test(
+      'normalizeScheduleLocation은 "중요한일정으로 저장" 발화에서 장소를 채우지 않는다',
+      () {
+        const rawText = '매주 목요일 오후 3시 태블릿계기판 중요한일정으로 저장';
+
+        final location = service.normalizeScheduleLocation(
+          location: null,
+          rawText: rawText,
+          title: '태블릿계기판',
+        );
+        expect(location, isNull);
+
+        // 제목은 "태블릿계기판"만 남아야 한다(명령문구 제거, 일반명사는 보존).
+        final title = service.normalizeParsedScheduleTitle(
+          rawText,
+          rawText: rawText,
+        );
+        expect(title, '태블릿계기판');
+      },
+    );
+
+    test(
+      '"중요" 단독/조사 변형도 stripScheduleNoise가 뒤쪽 명령문구로 제거한다',
+      () {
+        expect(
+          service.stripScheduleNoise('태블릿계기판 중요일정으로 저장'),
+          '태블릿계기판',
+        );
+        expect(
+          service.stripScheduleNoise('회의자료 일정으로 기록'),
+          '회의자료',
+        );
+        expect(
+          service.stripScheduleNoise('법인카드 정리 일정 저장해줘'),
+          '법인카드 정리',
+        );
+      },
+    );
+
+    // ── 회귀 금지선: 기존 장소 추출 동작은 그대로 유지돼야 한다 ──
+    test('회귀 금지선: 모란역/원주세브란스병원/스타벅스 장소 추출은 그대로 유지된다', () {
+      expect(service.extractLeadingLocation('모란역으로 가기'), '모란역');
+      expect(
+        service.extractLeadingLocation('원주세브란스병원에서 회의'),
+        '원주세브란스병원',
+      );
+      // 명령어 토큰이 없는 일반 장소는 그대로 유지돼야 한다.
+      expect(
+        service.extractLeadingLocation('스타벅스에서 만나기'),
+        '스타벅스',
+      );
+    });
+
+    test('_isInvalidLocationCandidate는 명령/메타 토큰이 섞인 후보만 거부한다', () {
+      // 명령/메타 토큰이 섞인 후보(간접 확인: normalizeScheduleLocation 경유)는
+      // extractLeadingLocation에서 걸러져 null이 돼야 한다.
+      expect(
+        service.extractLeadingLocation('태블릿계기판 중요한일정으로 저장'),
+        isNull,
+      );
+      // 순수 장소 후보는 그대로 통과해야 한다.
+      expect(service.extractLeadingLocation('모란역으로 가기'), '모란역');
+    });
+
+    test('명령 동사가 장소명 안에 파묻힌 실제 장소는 거부하지 않는다(오탐 방지)', () {
+      // 회귀: 명령 토큰을 부분문자열(contains)로 검사하면 실제 장소명이
+      // 통째로 거부된다 — "국가기록원"은 '기록', "추가정형외과"는 '추가'에
+      // 걸린다. 단독 명령 동사는 공백 분리 토큰 단위로만 판정해야 한다.
+      expect(service.extractLeadingLocation('국가기록원에서 회의'), '국가기록원');
+      expect(service.extractLeadingLocation('추가정형외과에서 진료'), '추가정형외과');
+      // 반면 명령어가 독립 토큰으로 오면 여전히 거부돼야 한다.
+      expect(service.extractLeadingLocation('태블릿계기판 저장으로 해줘'), isNull);
+    });
+
+    test('hasLocalPlaceEvidence는 장소 접미사/지역명 유무로 판정한다', () {
+      expect(service.hasLocalPlaceEvidence('모란역'), isTrue);
+      expect(service.hasLocalPlaceEvidence('원주세브란스병원'), isTrue);
+      expect(service.hasLocalPlaceEvidence('강남'), isTrue);
+      expect(service.hasLocalPlaceEvidence('태블릿계기판'), isFalse);
+      expect(service.hasLocalPlaceEvidence('중요한일정'), isFalse);
+      expect(service.hasLocalPlaceEvidence(''), isFalse);
+    });
+
+    // ── 회귀 테스트(HIGH#2, 2026-07-17): "일정" 단독 토큰으로 끝나는 후보 거부 ──
+    // 실측 재현: stripScheduleNoise의 뒤쪽 명령문구 정규식이 "일정에 저장해놔"류
+    // (particle "에"가 정규식의 허용 조사 목록에 없음)와 "일정으로 저장해놓을게"/
+    // "일정으로 저장 좀 해줘요"류(공손 어미가 닫힌 목록에 없음)를 못 지워, 후보
+    // "태블릿계기판 일정"이 장소로 잘못 채워지던 버그.
+    test('"일정" 단독 토큰으로 끝나는 장소 후보는 거부된다(HIGH#2)', () {
+      expect(
+        service.normalizeScheduleLocation(
+          location: null,
+          rawText: '매주 목요일 오후 3시 태블릿계기판 일정에 저장해놔',
+          title: '태블릿계기판',
+        ),
+        isNull,
+      );
+      expect(
+        service.normalizeScheduleLocation(
+          location: null,
+          rawText: '매주 목요일 오후 3시 태블릿계기판 일정으로 저장해놓을게',
+          title: '태블릿계기판',
+        ),
+        isNull,
+      );
+      expect(
+        service.normalizeScheduleLocation(
+          location: null,
+          rawText: '매주 목요일 오후 3시 태블릿계기판 일정으로 저장 좀 해줘요',
+          title: '태블릿계기판',
+        ),
+        isNull,
+      );
+    });
+
+    // ── HIGH#2 동반 검증: 일반화된 stripScheduleNoise 뒤쪽 명령문구 어미가
+    // 닫힌 목록에 없던 공손어미/구어체까지 제거하는지 직접 확인 ──
+    test('stripScheduleNoise는 닫힌 목록에 없는 공손어미도 뒤쪽 명령문구로 제거한다', () {
+      expect(
+        service.stripScheduleNoise('태블릿계기판 일정으로 저장해놓을게'),
+        '태블릿계기판',
+      );
+      expect(
+        service.stripScheduleNoise('태블릿계기판 일정으로 저장 좀 해줘요'),
+        '태블릿계기판',
+      );
+    });
+
+    // ── 회귀 금지선: HIGH#2 수정 후에도 기존 장소 추출 동작은 그대로 유지된다 ──
+    test('회귀 금지선(HIGH#2 이후): 모란역/원주세브란스병원/스타벅스/국가기록원/추가정형외과/'
+        '태블릿계기판 중요한일정 동작은 그대로 유지된다', () {
+      expect(service.extractLeadingLocation('모란역으로 가기'), '모란역');
+      expect(
+        service.extractLeadingLocation('원주세브란스병원에서 회의'),
+        '원주세브란스병원',
+      );
+      expect(service.extractLeadingLocation('스타벅스에서 만나기'), '스타벅스');
+      expect(service.extractLeadingLocation('국가기록원에서 회의'), '국가기록원');
+      expect(service.extractLeadingLocation('추가정형외과에서 진료'), '추가정형외과');
+      expect(
+        service.normalizeScheduleLocation(
+          location: null,
+          rawText: '매주 목요일 오후 3시 태블릿계기판 중요한일정으로 저장',
+          title: '태블릿계기판',
+        ),
+        isNull,
+      );
+    });
   });
 }

@@ -51,6 +51,7 @@ class GptService {
     Uri? endpoint,
     DateTime Function()? now,
     Duration? completionTimeout,
+    Duration? locationValidationTimeout,
     VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository,
     VoiceCorrectionLearningService? voiceCorrectionLearningService,
     ApiUsageGuard? usageGuard,
@@ -59,6 +60,8 @@ class GptService {
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
         _now = now ?? planflowNow,
         _completionTimeout = completionTimeout ?? const Duration(seconds: 20),
+        _locationValidationTimeout =
+            locationValidationTimeout ?? const Duration(milliseconds: 1500),
         _voiceCorrectionRuleRepository = voiceCorrectionRuleRepository,
         _voiceCorrectionLearningService = voiceCorrectionLearningService ??
             const VoiceCorrectionLearningService(),
@@ -68,6 +71,11 @@ class GptService {
   final Uri _endpoint;
   final DateTime Function() _now;
   final Duration _completionTimeout;
+  // location 재검증(validateLocation) 전용 타임아웃. gpt-4o-mini +
+  // maxTokens=20 단답 분류라 1.5초면 대부분 완료된다(700ms는 네트워크 GPT
+  // 호출엔 빠듯해 확률적으로 자주 타임아웃했었다). 테스트에서만 짧은 값으로
+  // 주입해 fail-closed 폴백 경로를 빠르게 검증한다.
+  final Duration _locationValidationTimeout;
   final VoiceCorrectionRuleRepository? _voiceCorrectionRuleRepository;
   final VoiceCorrectionLearningService _voiceCorrectionLearningService;
   final ApiUsageGuard? _usageGuard;
@@ -100,21 +108,46 @@ class GptService {
 
     final normalized = _normalizeSchedule(parsed, rawText);
 
-    // 동기 정규화 이후 location 값이 있으면 GPT로 재검증.
-    // 700ms 타임아웃 내에 "null" 반환 시 location을 비운다.
-    // 타임아웃/예외 발생 시 로컬 판정 결과를 그대로 유지.
+    // 동기 정규화 이후 location 값이 있으면 GPT로 재검증(보조 확인).
+    // 1500ms 타임아웃 내에 GPT가 명시적으로 "null"(비장소)이라고 답하면
+    // location을 비운다. gpt-4o-mini + maxTokens=20 단답 분류라 1.5초면
+    // 대부분 완료되며, 700ms는 네트워크 GPT 호출엔 빠듯해 확률적으로 자주
+    // 타임아웃했다.
+    //
+    // 타임아웃/예외 시에는 후보를 그대로 유지한다(2026-07-17 HIGH#1 정정 —
+    // 과거엔 이 시점에서 hasLocalPlaceEvidence로 "증거 없으면 삭제"하는
+    // fail-closed 폴백을 썼으나, hasLocalPlaceEvidence의 장소 접미사 어휘가
+    // 상호명·은행·학원·진료과("스타벅스"/"추가정형외과"/"국민은행"/"일산자동차학원")를
+    // 커버하지 못해, GPT가 1.5초 안에 못 끝나기만 해도 사용자가 실제로 말한
+    // 흔한 장소가 조용히 삭제되는 버그가 있었다).
+    //
+    // 이 시점의 rawLocation은 이미 위 _normalizeSchedule ->
+    // _normalizeScheduleLocation -> normalizeScheduleLocation 경로에서
+    // VoiceScheduleStructureService._isInvalidLocationCandidate(결정적 1차
+    // 방어)를 통과한 값이다 — GPT validateLocation은 그 위에 얹는 보조
+    // 확인일 뿐이므로, 보조 확인이 네트워크 문제로 못 돌았다고 이미 1차를
+    // 통과한 정상 후보를 삭제하는 건 과잉이다. 원 버그(예: "태블릿계기판
+    // 중요한일정" 같은 비장소 문자열)는 이미 1차 방어에서 걸러지므로, GPT가
+    // 타임아웃/예외를 겪어도 그런 비장소 문자열이 여기까지 도달하지 않는다.
+    //
+    // throwOnFailure: true로 넘겨 네트워크 오류/응답 파싱 실패 등도 (조용한
+    // null 반환이 아니라) 예외로 드러나게 해서, 그 경우도 동일하게 후보를
+    // 유지하는 catch 분기가 실제로 발동하게 한다.
     final rawLocation = normalized['location']?.toString();
     if (rawLocation != null && rawLocation.isNotEmpty) {
       try {
-        final validated = await validateLocation(rawLocation).timeout(
-          const Duration(milliseconds: 700),
-          onTimeout: () => rawLocation, // 타임아웃 시 원래 후보 유지
+        final validated = await validateLocation(
+          rawLocation,
+          throwOnFailure: true,
+        ).timeout(
+          _locationValidationTimeout,
+          onTimeout: () => rawLocation,
         );
         if (validated == null) {
           normalized['location'] = null;
         }
       } catch (_) {
-        // 예외 시 기존 location 그대로 유지
+        // 예외 시에도 후보를 유지한다(위 주석 참고) — 아무 것도 하지 않는다.
       }
     }
 
@@ -260,7 +293,17 @@ class GptService {
 
   /// 텍스트가 실제 장소명(건물명·지역명·주소)인지 GPT로 검증.
   /// 장소명이면 정제된 장소명 반환, 아니면 null.
-  Future<String?> validateLocation(String candidate) async {
+  ///
+  /// [throwOnFailure]는 기본 false로, 기존 호출부(voice_conversation_screen.dart
+  /// 등)의 "네트워크/파싱 실패 시 조용히 null" 동작을 그대로 유지한다.
+  /// parseSchedule의 내부 재검증 호출만 true로 넘겨, 네트워크 오류를 GPT의
+  /// "이건 장소가 아니다"라는 명시적 null 응답과 구분해 예외로 드러낸다
+  /// (2026-07-17 MEDIUM#2 — 이 구분이 없으면 일시적 GPT 오류가 GPT의
+  /// 명시적 거부와 똑같이 취급돼 정상 장소 후보가 삭제될 수 있다).
+  Future<String?> validateLocation(
+    String candidate, {
+    bool throwOnFailure = false,
+  }) async {
     if (candidate.trim().isEmpty) return null;
     const systemPrompt = 'You are a location name validator for Korean text. '
         'If the input is a real place name (building, landmark, address, region, or business name), '
@@ -273,6 +316,7 @@ class GptService {
       // 단답 분류이므로 경량 모델 고정, 토큰 최소화
       model: 'gpt-4o-mini',
       maxTokens: 20,
+      throwOnFailure: throwOnFailure,
     );
     final response = content?.trim();
     if (response == null || response.isEmpty || response == 'null') return null;

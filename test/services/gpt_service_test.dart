@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:planflow/core/env.dart';
 import 'package:planflow/services/api_usage_guard.dart';
@@ -14,7 +15,22 @@ const String _proxyEndpoint =
     'https://xqvvfnvmytjlblcngipn.supabase.co/functions/v1/openai-proxy';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    try {
+      Supabase.instance;
+    } catch (_) {
+      await Supabase.initialize(
+        url: 'https://example.com',
+        anonKey: 'public-anon-key',
+        authOptions: const FlutterAuthClientOptions(
+          detectSessionInUri: false,
+          autoRefreshToken: false,
+        ),
+      );
+    }
+  });
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -1349,5 +1365,162 @@ void main() {
       await service.parseSchedule('test 4');
       expect(httpCallCount, 3, reason: '+61초: 윈도우 경과 후 다시 허용됨 → HTTP 호출 3회');
     });
+
+    // ── 회귀 테스트(HIGH#1, 2026-07-17): location 재검증 fail-closed 폴백 정정 ──
+    // 과거엔 GPT validateLocation이 타임아웃/예외를 겪으면 hasLocalPlaceEvidence로
+    // "증거 없으면 삭제"했는데, 그 어휘가 상호명/은행/학원/진료과를 커버하지
+    // 못해 실제 장소가 삭제됐다. 이제는 타임아웃/예외 시 후보를 그대로
+    // 유지한다(1차 결정적 방어를 이미 통과한 값이므로).
+    test(
+      'validateLocation이 타임아웃돼도 스타벅스 같은 실제 장소는 삭제되지 않는다',
+      () async {
+        final client = MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final messages = body['messages'] as List<dynamic>;
+          final systemContent =
+              (messages.first as Map<String, dynamic>)['content'] as String;
+          if (systemContent.contains('location name validator')) {
+            // validateLocation 호출: 응답을 오래 지연시켜 타임아웃을 유도한다.
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'choices': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'message': <String, dynamic>{'content': '스타벅스'},
+                  },
+                ],
+              }),
+              200,
+              headers: <String, String>{'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'choices': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message': <String, dynamic>{
+                    'content': jsonEncode(<String, dynamic>{
+                      'title': '스타벅스 회의',
+                      'start_at': null,
+                      'location': '스타벅스',
+                      'participants': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'is_critical': false,
+                      'pre_actions': <Map<String, dynamic>>[],
+                    }),
+                  },
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+
+        final service = GptService(
+          client: client,
+          endpoint: Uri.parse(_proxyEndpoint),
+          locationValidationTimeout: const Duration(milliseconds: 5),
+        );
+
+        final result = await service.parseSchedule('스타벅스에서 회의');
+
+        expect(result['location'], '스타벅스');
+      },
+    );
+
+    test(
+      'validateLocation이 네트워크 예외를 던져도 추가정형외과 같은 실제 장소는 삭제되지 않는다',
+      () async {
+        final client = MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final messages = body['messages'] as List<dynamic>;
+          final systemContent =
+              (messages.first as Map<String, dynamic>)['content'] as String;
+          if (systemContent.contains('location name validator')) {
+            throw Exception('네트워크 오류 시뮬레이션');
+          }
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'choices': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message': <String, dynamic>{
+                    'content': jsonEncode(<String, dynamic>{
+                      'title': '추가정형외과 진료',
+                      'start_at': null,
+                      'location': '추가정형외과',
+                      'participants': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'is_critical': false,
+                      'pre_actions': <Map<String, dynamic>>[],
+                    }),
+                  },
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+
+        final service = GptService(
+          client: client,
+          endpoint: Uri.parse(_proxyEndpoint),
+        );
+
+        final result = await service.parseSchedule('추가정형외과에서 진료');
+
+        expect(result['location'], '추가정형외과');
+      },
+    );
+
+    test(
+      '메타/명령 문구 잔재는 GPT 재검증 성패와 무관하게 1차 방어에서 이미 걸러진다',
+      () async {
+        // "중요한일정" 같은 비장소 문자열은 normalizeScheduleLocation의
+        // _isInvalidLocationCandidate(결정적 1차 방어)에서 이미 null이 되므로,
+        // rawLocation 자체가 비어 validateLocation 호출이 아예 발생하지
+        // 않는다. GPT가 응답을 지연시켜도(타임아웃 유도) 결과는 동일하게 null.
+        final client = MockClient((request) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'choices': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message': <String, dynamic>{
+                    'content': jsonEncode(<String, dynamic>{
+                      'title': '태블릿계기판',
+                      'start_at': null,
+                      'location': '중요한일정',
+                      'participants': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'is_critical': false,
+                      'pre_actions': <Map<String, dynamic>>[],
+                    }),
+                  },
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+
+        final service = GptService(
+          client: client,
+          endpoint: Uri.parse(_proxyEndpoint),
+          locationValidationTimeout: const Duration(milliseconds: 5),
+        );
+
+        final result = await service.parseSchedule(
+          '매주 목요일 오후 3시 태블릿계기판 중요한일정으로 저장',
+        );
+
+        expect(result['location'], isNull);
+      },
+    );
   });
 }
