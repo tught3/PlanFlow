@@ -93,6 +93,18 @@ function New-LogExcerpt {
   return $lines[$startIndex..$endIndex]
 }
 
+function Get-EntryCount {
+  param([Parameter(Mandatory = $true)]$Value)
+
+  if ($null -eq $Value) {
+    return 0
+  }
+  if ($Value -is [array]) {
+    return $Value.Count
+  }
+  return 1
+}
+
 function Get-AnalyzeIssueLine {
   param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -274,7 +286,7 @@ try {
   if ($LASTEXITCODE -ne 0) {
     $analyzeIssueLine = Get-AnalyzeIssueLine -Path $analyzeLogPath
     $excerptLines = New-LogExcerpt -Path $analyzeLogPath
-    $excerptText = if ($excerptLines -and $excerptLines.Count -gt 0) { $excerptLines -join "`n" } else { 'No analyze excerpt available.' }
+    $excerptText = if ((Get-EntryCount -Value $excerptLines) -gt 0) { $excerptLines -join "`n" } else { 'No analyze excerpt available.' }
     Write-Host ''
     Write-Host "Analyze log: $analyzeLogPath"
     if ($analyzeIssueLine) {

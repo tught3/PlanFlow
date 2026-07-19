@@ -96,6 +96,18 @@ function Get-VersionFromResult {
   return $candidate
 }
 
+function Get-EntryCount {
+  param([Parameter(Mandatory = $true)]$Value)
+
+  if ($null -eq $Value) {
+    return 0
+  }
+  if ($Value -is [array]) {
+    return $Value.Count
+  }
+  return 1
+}
+
 function Get-FailureStage {
   param(
     [Parameter(Mandatory = $true)][string]$FallbackStage,
@@ -178,7 +190,7 @@ function Get-AnalyzeFailureDetails {
   return [pscustomobject]@{
     LogPath     = $logPath
     IssueText   = $issueText
-    ExcerptText = if ($excerptLines -and $excerptLines.Count -gt 0) { $excerptLines -join "`n" } else { $null }
+    ExcerptText = if ((Get-EntryCount -Value $excerptLines) -gt 0) { $excerptLines -join "`n" } else { $null }
   }
 }
 

@@ -39,16 +39,18 @@
 <!-- 프로젝트 공통 Codex 작업 규칙 -->
 
 ## FluxOS Pipeline Gate
-- FluxStudio 계열 프로젝트에서 사용자가 개발, 수정, 분석, 리뷰가 필요한 비단순 지시를 내리면 먼저 FluxOS 파이프라인을 사용한다.
+> **적용 범위: CEO OS 경로 전용.** Desktop 세션(Claude Desktop·Codex Desktop)은 이 섹션의 대상이 아니다 — CEO OS 큐 등록이 `utils/desktop_queue_gate.py`로 **코드 차단**돼 있어 물리적으로 등록되지 않으며, 시작부터 검토 완료까지 그 세션 안에서 직접 수행한다(2026-07-17 CEO 결정, 날짜 무관 영구).
+
+- FluxStudio 계열 프로젝트에서 사용자가 개발, 수정, 분석, 리뷰가 필요한 비단순 지시를 내리면 먼저 FluxOS 파이프라인을 사용한다(Desktop 세션 제외 — 위 적용 범위 참조).
 - CEO OS 자동 파이프라인의 구현자·검토자 모델 배정은 `utils/routing_engine.py`(5종 사다리: GLM-5.2·MiniMax M3·DeepSeek Pro·DeepSeek Flash·GPT-5.4 Mini)가 단일 소스다. **Claude Opus/Sonnet·Codex GPT-5.6 Luna/Terra/Sol은 자동 라우팅에서 전면 제거**됐다(2026-07-16, 상세 사다리는 `AI_RULES.md` §7 참조). 대화형 Claude Code 세션이 직접 계획·리뷰를 맡는 흐름 자체는 유지되나, 그 세션이 CEO OS 자동 라우팅 대상은 아니다.
-- 프로젝트 세션이 직접 코드를 수정해야 하는 경우에도 수정 전 `python E:\FluxStudio\.fluxos\run.py pipeline "<지시내용>" --project <Project> --source <session>` 또는 이미 생성된 task의 `pipeline-audit` 결과를 확인한다.
+- 프로젝트 세션이 직접 코드를 수정해야 하는 경우에도 수정 전 `python E:\FluxStudio\.fluxos\run.py pipeline "<지시내용>" --project <Project> --source <session>` 또는 이미 생성된 task의 `pipeline-audit` 결과를 확인한다. 단, Desktop 세션(Claude Desktop·Codex Desktop)은 이 등록 대상에서 제외된다 — 2026-07-17 CEO 결정에 따라 Desktop 세션은 CEO OS 큐에 절대 등록하지 않으며, 세션 안에서 직접 계획→구현→검토를 수행한다.
 - 진행 확인은 `python E:\FluxStudio\.fluxos\run.py pipeline-audit [TASK_ID]`를 사용하고, 최소한 `Claude Code 계획` 단계가 생성됐는지 확인한 뒤 구현에 들어간다.
 - Claude Code가 인증, 한도, 연결 문제로 실패하면 FluxOS의 Codex-only fallback을 사용하되, 최종 보고에 fallback 사유를 명시한다.
 - 긴급 단순 수정으로 파이프라인을 생략한 경우에는 생략 사유, 변경 범위, 검증 결과를 최종 보고에 반드시 남긴다.
 - 프로젝트 세션을 직접 열어야 하는 경우에도 먼저 `python E:\FluxStudio\.fluxos\run.py session start --project <Project> --source <session> --label "<세션명>" --cwd "<프로젝트경로>"` 또는 기존 세션에 `session attach`로 FluxOS 메타를 붙이고, 가능하면 `FLUXOS_SESSION_ID`, `FLUXOS_SESSION_PROJECT`, `FLUXOS_SESSION_TASK_ID`, `FLUXOS_SESSION_OWNER`, `FLUXOS_SESSION_SOURCE`, `FLUXOS_SESSION_LABEL`, `FLUXOS_SESSION_NOTE`, `FLUXOS_SESSION_CWD`를 함께 전달한다.
 
 ### 개발 지시 → 실행자 자동 선택 (Codex 위임 포함)
-- 개발·수정·리팩토링 작업은 기존 FluxOS 파이프라인과 모델 라우터를 사용한다(메인 세션이 직접 구현하지 말고 등록·계획 후 진행).
+- 개발·수정·리팩토링 작업은 기존 FluxOS 파이프라인과 모델 라우터를 사용한다(메인 세션이 직접 구현하지 말고 등록·계획 후 진행). **Desktop 세션은 제외** — 큐 등록이 코드로 차단돼 있고, 그 세션 안에서 계획→구현→검토를 직접 수행한다.
 - 계획 뒤 구현 실행자는 라우터가 자동 선택한다. 사용자가 명시적으로 Codex 위임을 요청한 경우에만 그 작업의 task metadata(`execution_policy=claude_plan_codex_implement`)로 해당 작업만 Codex 경로로 보낸다(전역 설정·기존 정책 변경 없음, 미지정 작업은 기존 중앙정책을 따른다).
 - **[정책, CEO 결정 2026-07-17, 날짜 무관 영구 정책] Desktop(Claude Desktop·Codex Desktop)과 CEO OS 큐는 완전히 분리된다.** Desktop 세션에서 시작한 작업은 CEO OS 큐에 절대 등록하지 않는다 — 특정 시점까지의 임시 조치가 아니라 영구 정책이다. Desktop 세션은 시작부터 검토 완료까지 그 세션 안에서 직접 수행한다(직접 Edit/Write 허용, 파이프라인 등록·Scope Lock 연결 불필요). 역방향도 동일하게 금지한다: CEO OS 큐에서 시작된 작업이 Codex Desktop 같은 Desktop 전용 도구로 실행되는 경로는 두지 않는다.
   - CEO OS 큐에서 시작한 작업은 기존 CEO 파이프라인(`routing_engine.py` 5종 사다리)을 그대로 타고, 결과 보고는 CEO OS 커맨드센터 AI 채팅으로 수신한다.
@@ -92,7 +94,7 @@
 > 사용자가 매번 지시하지 않아도, 개발·수정·리팩토링·분석·리뷰 등 **비단순 작업은 아래 순서를 기본값으로 반드시 따른다.** 모델 라우팅과 별도 리뷰어 단계를 생략하지 않는다.
 >
 > **필수 체크리스트 (7단계):**
-> 1. **FluxOS 파이프라인 등록** — 위 "FluxOS Pipeline Gate"대로 `run.py pipeline` 등록(또는 pipeline-audit 확인) 후 진입.
+> 1. **FluxOS 파이프라인 등록**(CEO OS 경로만) — 위 "FluxOS Pipeline Gate"대로 `run.py pipeline` 등록(또는 pipeline-audit 확인) 후 진입. **Desktop 세션은 이 단계를 건너뛴다**(큐 등록이 코드로 차단됨) — 2번(계획)부터 이 세션 안에서 직접 수행.
 > 2. **계획 = `Claude`(상위 모델).** 범위·영향파일·리스크·검증기준 먼저 제시.
 > 3. **구현 = 난이도별 병렬 서브에이전트 위임.** CEO OS 자동 파이프라인의 구현자는 `routing_engine.py` 5종 사다리(GLM-5.2·MiniMax M3·DeepSeek Pro·DeepSeek Flash·GPT-5.4 Mini)를 따른다. 현재 세션이 직접 서브에이전트(Claude Agent 도구)로 위임할 때는 난이도에 맞는 Claude 모델(Haiku/Sonnet/Opus)로 위임한다. 파일 비중첩이면 동시 실행.
 > 4. **별도 리뷰어가 전체 diff를 리뷰**(구현 워커와 다른 provider/세션) — 계약 정합·회귀·규약 위반 점검, **1단계로 완결**(2026-07-16부터 2차검토 없음).
@@ -575,6 +577,50 @@ task worktree(E:/FluxStudio-worktrees/fluxos/fluxos-task-20260717-002400)에서 
 
 ### [PREVENT] 1N/2N 알람만 걸고 주기 진행 이벤트를 안 걸어 22분간 이상신호(CPU 5%·7%) 방치 — 침묵을 정상으로 착각 (2026-07-17)
 예상시간 N 선언과 Monitor(timeout_ms=N) 알람 장착은 규칙대로 했는데도 CEO가 22분 시점에 먼저 물어봄(=실패). 뚫린 지점은 알람이 아니라 Monitor grep 필터: 최종 요약줄('=+ passed/failed =+')에만 걸어서 그 사이 이벤트가 0건이었고, 그 침묵을 정상 진행으로 착각했다. 실제로는 CPU 5%(22분간 71초)+진행률 7%(이 속도면 총 5시간)라는 이상신호가 로그에 이미 있었고 5분 시점에 계산 가능했다. 근본: 1N/2N 알람은 상한 감시일 뿐이며 그 사이 이상신호는 주기 진행 이벤트로만 보인다 — 알람 하나만 걸면 N분 내내 아무것도 안 보게 된다(Monitor 규약의 silence is not success를 필터 설계에 미적용). 방지: 백그라운드 발사는 3겹(본작업+주기 진행 이벤트+1N 알람), 진행 이벤트마다 잔여시간 재계산(현재 X%/경과 T → 총 T/X*100분이 선언 N의 2배 궤도면 알람 안 기다리고 즉시 조치), CPU 5% 근처는 계산 아니라 I/O·락 대기 = 설계/환경 결함 신호.
+
+### [PREVENT] perf-canary가 부하성 지연을 백신 예외 풀림으로 오귀속 + 감시 스크립트 자체가 untracked (2026-07-17)
+perf-canary.ps1이 git 중앙값 >1000ms면 원인 불문 "백신 예외 풀림 의심"으로 하드코딩 알림 -> 일시적 시스템 부하 스파이크를 백신 문제로 오귀속해 반복 오탐. CEO가 "이게 아닌데 계속 울리면 신경쓰인다"고 지적.
+
+오진의 구조: 증상(git 느림)에 원인이 하나뿐이라고 가정하고 그 원인을 메시지에 박아넣음. 실제로는 같은 증상에 최소 3원인(백신 콜백 / CPU 부하 / 디스크 I/O 경합)이 있는데 구분 장치가 없었음. 2026-07-16 원 사고 때 원인이 백신이었다는 이유로 그 원인이 유일 원인처럼 굳어짐.
+
+구분법(실측으로 확립): 1)백신 예외 풀림은 지속적으로 느림(2~30초 계속). 부하성 지연은 진동(68ms~3235ms 왕복) - 예외 설정은 10분마다 저절로 켜졌다 꺼지지 않는다. 2)느린 시점 CPU를 같이 측정하면 갈린다(부하성은 CPU 68~100%). 3)백신이 주범이면 git spawn 동안 백신 프로세스 CPU가 증가해야 함 - 8회 spawn에 AUEPMaster/AYAgent.aye CPU 증가 4초 미만이면 백신 아님.
+
+실제 범인: 고아 find.exe(부모 죽음)가 find / -iname settings.json -path *claude*로 전 드라이브 스캔, CPU 1518초 누적. 어떤 세션의 폭주 도구 호출로 추정(부모 죽어 추적 불가).
+
+수정: CPU 부하 게이트 3분기(normal / load / antivirus_suspect), 저부하 연속 2회부터만 백신 알림, CPU 측정 실패는 fail-closed로 백신 후보 유지, 지속 고부하 3회는 top 프로세스 실은 sustained_load 별도 경보. 실운영 검증: 11:04:49 git=2875ms cpu=76% cat=load로 알림 억제 확인.
+
+일반화 규칙: 감시/알림 스크립트에서 한 증상에 원인을 단정해 메시지에 하드코딩하지 말 것. 증상 임계만 넘으면 알리는 게 아니라, 최소 하나의 교차 지표(여기선 CPU)로 원인을 분기하고, 단발 스파이크는 연속성 조건으로 걸러라. 알림 문구엔 단정("알약 예외 재등록 필요") 대신 실측값(git Xms / CPU Y% / 연속 N회)을 실어 사람이 판단하게 하라.
+
+부수 발견: perf-canary.ps1/install-perf-canary.ps1이 만들어진 이래 한 번도 커밋된 적 없었음(untracked). anti-patterns.md의 2026-07-05 전례(adb-device-resolver.ps1 등)와 동일 패턴 재발. 상시 감시 스크립트를 새로 만들면 그 자리에서 추적 등록할 것 - 안 하면 방지책 자체가 워크트리 정리 시 유실된다.
+
+### [PREVENT] 훅·차단 게이트는 실제 하네스 스키마로 실발화 실측 + 양방향(뚫림·과차단) 검증 필수 (2026-07-17)
+사고: Explore 서브에이전트가 재귀 탐색 명령(디렉토리 루트 앵커 지정, 파일명 조건 검색)을 timeout 미지정으로 실행 → 하네스가 2분 7초 뒤 자동 백그라운드 전환 → 에이전트는 그 통지만 받고 종료 → 고아. CPU 1518초/3시간 40분. 11:28에 동일 명령 재발(2356초). 고아 11개 정리로 CPU 3008초 회수. 이 부하가 perf-canary git 측정을 느리게 해 "백신 예외 풀림" 오탐을 유발했다(별건 방지책).
+
+근본 3중:
+1. 자동 백그라운드 전환이 실패가 아니라 정상처럼 보인다 — "Command running in background with ID: ..." 통지를 성공으로 읽고 넘어간다. 서브에이전트는 종료하며 자기 백그라운드 프로세스를 회수하지 않는다.
+2. 전 드라이브 재귀 탐색 명령이 Windows 다중 드라이브(C:/E:/I:)에서 얼마나 무거운지 인식 못 함 — POSIX 습관 그대로.
+3. [핵심] 있는 줄 알았던 게이트가 죽어 있었다 — git_command_guard.py:198이 data.get("command")를 읽는데 Claude Code PreToolUse의 실제 스키마는 tool_input.command다. 실측: top-level 스키마 → deny, tool_input.command → allow. 만들어진 이래 한 번도 차단한 적 없음. 근거: background_task_watchdog.py:775-777이 tool_input에서 값을 꺼내며 정상 동작 중. 2026-07-17 방지책의 "Haiku 워커가 타 세션 hunk 흡수" 사고 때 이 가드가 막았어야 했는데 못 막은 이유가 이것이다.
+
+수정: scan_command_guard.py 신설(PreToolUse Bash deny, 커밋 127b8c0). 판정은 이름 denylist가 아니라 3단 구조 — (1)재귀 탐색기 진입 토큰(basename+casefold+.exe 정규화) (2)루트 앵커(따옴표 제거 후 비교) (3)깊이 제한 부재. quote-aware 문자 스캐너로 세그먼트 분리. rg 제외(gitignore 존중=권장 대안). deny 메시지에 대안 4종. 워크트리 커버. git_command_guard 스키마 수정 + 같은 세그먼트 분리. 회귀 73건. 훅 중앙값 70~84ms.
+
+검증에서 배운 것 — 이게 전파해야 할 행동 규칙이다:
+
+1. 훅·차단 게이트는 실제 하네스 스키마로 실발화를 실측하라. 유닛 테스트가 자기가 만든 payload로 통과하는 건 스키마가 맞다는 증거가 아니다. Claude Code PreToolUse의 실제 계약은 tool_input 하위 필드이지 최상위 필드가 아니다. 死게이트는 "없는 것"보다 나쁘다 — 있다고 믿게 만들어 그 뒤로 아무도 안 본다. 이 가드는 죽은 채로 몇 주를 살아남았고, 그 사이 그 가드가 막았어야 할 사고가 실제로 났다.
+
+2. 차단 게이트는 뚫림(under-block)과 과차단(over-block) 양방향을 같은 강도로 실측하라. 한쪽만 보면 반드시 다른 쪽이 터진다. 실증: 1차 구현은 개행 세그먼트를 분리 안 해 실전 완전 우회 — Claude Code Bash 도구는 멀티라인 스크립트를 상시 보내는데 단일 라인만 테스트해 통과로 오판했다(검토자가 자기 Bash 호출에서 실제 위험 명령을 통과시켜 2분 타임아웃을 내며 발견). 2차 수정(정규식 분리)은 인용부호를 몰라 과차단 — 커밋 메시지나 echo 문자열 안에 세미콜론과 위험 키워드가 인용부호로 감싸여 있을 뿐인데 차단됐다(검토자가 heredoc으로 테스트를 쓰다 15분에 3번 실제 차단당해 발견).
+
+3. 그 수정이 새로 도입한 로직 자체가 만드는 위험을 테스트하라. 실증: 신규 회귀 테스트가 "구분자 문자가 전혀 없는 단순 명령"만 allow 케이스로 검증했다. 정작 새로 넣은 세그먼트 분리가 만드는 위험(인용부호 안 구분자)은 한 건도 테스트되지 않아 과차단이 그대로 나갔다.
+
+4. 명령 파싱은 Claude Code Bash가 멀티라인을 상시 보낸다는 전제로 설계하라. 단일 라인 테스트만으로 통과 판정 금지.
+
+5. 서브에이전트에도 PreToolUse가 발화한다(2026-07-17 실측 확정). 훅이 사고 당사자 경로를 실제로 커버하는지는 서브에이전트로 직접 확인해야 안다 — 메인 세션 확인만으로는 모른다.
+
+6. 장시간 Bash에 timeout을 명시하고, 전 드라이브 재귀 탐색 명령을 쓰지 마라. 대신 Glob 도구, 경로 한정, 깊이 제한, gitignore를 존중하는 검색 도구를 쓴다. 이제 scan_command_guard.py가 기계적으로 차단하지만, 차단당하면 우회를 찾지 말고 대안을 써라.
+
+알려진 잔여 한계(의도적 미수정): bash ANSI-C 인용 문법 안의 이스케이프된 작은따옴표를 스캐너가 인식 못 해 특정 중첩 인용 조합은 fail-open 통과한다(검토자 실측 재현). 미수정 근거 — (a)사고 벡터는 평범한 무제한 재귀 탐색이지 난독화가 아니다, (b)2026-07-11 결정("Gateway는 협조적 모델의 audit trail·steering이지 작정한 adversary에 대한 하드 경계가 아니다 — 문자열 스캔으로 난독화를 막으려 하면 방어력 없이 막힌 척하는 死게이트만 는다")과 동일 성격, (c)분리기를 건드릴 때마다 과차단 회귀가 2번 났다. 진짜 하드 격리가 필요해지면 문자열 스캔이 아니라 OS 샌드박스로 가야 한다.
+
+### [PREVENT] 스킵 태그 정규식 미매칭을 '태그 없음'으로 오안내 (2026-07-17)
+4종 skip 태그 정규식(prevention-skip/watchdog-skip/worker-commit-skip/subagent-skip)이 re.DOTALL 없이 (.+?)라 태그 사유에 개행이 있으면 매칭 실패하는데, 차단 메시지가 '태그를 추가하세요'라고 태그 부재를 단정해 이미 태그를 쓴 사용자를 오도함. 증상(형식 불일치)과 안내(부재)가 불일치. 수정 방향은 정규식 확대(fail-open)가 아니라 느슨한 접두 탐지로 안내 문구만 정정.
 
 
 # PlanFlow

@@ -45,6 +45,19 @@ TASK_2[0-9]*_review.md
 # 배포/진단 산출물
 build_diag*.log
 deploy.log
+/analyze_result.txt
+/build_release_*.stderr.log
+/build_release_*.stdout.log
+/flutter_*.log
+/play_upload_*.stderr.log
+/play_upload_*.stdout.log
+/test_output.log
+/scripts/_verify/
+/scripts/_verify_*.log
+/docs/screenshots/store_final_v3/
+
+# 잘못된 작업 디렉터리에서 생성된 로컬 FluxOS 완료 마커
+/E*FluxStudio.fluxosqueueTASK_*_done.md
 
 # 빌드/analyze 임시 출력 로그 (AI 세션 산출물, 보존 불필요)
 /ab.txt
