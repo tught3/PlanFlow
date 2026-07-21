@@ -141,6 +141,93 @@ class VoiceScheduleStructureService {
     return false;
   }
 
+  /// "이벤트/행위" 명사 목록. [normalizeSpacingForSchedule]가 이 명사들
+  /// 앞에 공백을 강제 삽입할 때 쓴다("원주세브란스방문" -> "원주세브란스 방문").
+  static const List<String> _titleEventNouns = <String>[
+    '출발',
+    '도착',
+    '미팅',
+    '회의',
+    '방문',
+    '진료',
+    '검진',
+    '약속',
+    '모임',
+    '식사',
+    '수업',
+    '강의',
+    '운동',
+    '여행',
+    '병문안',
+    '상담',
+    '출근',
+    '퇴근',
+    '발표',
+    '면접',
+    '예약',
+    '찍기',
+  ];
+
+  /// 문장 중간의 장소를 장소 키워드(병원/센터/역 등) 기준으로 추출할 때
+  /// [extractMidLocation]이 쓰는 키워드 목록.
+  static const List<String> _placeKeywords = <String>[
+    '병원',
+    '의원',
+    '센터',
+    '약국',
+    '식당',
+    '카페',
+    '호텔',
+    '학교',
+    '학원',
+    '은행',
+    '마트',
+    '공원',
+    '주차장',
+    '지점',
+    '건물',
+    '오피스',
+    '스튜디오',
+    '헬스장',
+    '편의점',
+    '아웃렛',
+    '주유소',
+    '시장',
+    '횟집',
+    '맛집',
+    '가게',
+    '본점',
+    '역',
+    '공항',
+    '터미널',
+    '항',
+    '구청',
+    '시청',
+    '주민센터',
+    '보건소',
+    '회관',
+    '체육관',
+    '경기장',
+    '빌딩',
+    '타워',
+    '아파트',
+    '빌라',
+    '오피스텔',
+    '주택',
+    '펜션',
+    '모텔',
+    '단지',
+    '타운하우스',
+  ];
+
+  /// 사람 이름 뒤에 붙는 직급/호칭 접미사. [_dropLeadingPersonTokens]와
+  /// 후행 장소 재배치 둘 다 "이 토큰 뒤로는 사람 언급"을 판정할 때 공유한다.
+  static final RegExp _personTitleSuffixPattern = RegExp(
+    r'(그룹장님|그룹장|팀장님|팀장|원장님|원장|대표님|대표|이사님|이사|'
+    r'부장님|부장|과장님|과장|사장님|사장|차장님|차장|실장님|실장|'
+    r'본부장님|본부장|센터장님|센터장|선생님|교수님|님)$',
+  );
+
   static final List<RegExp> _cuePatterns = <RegExp>[
     RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
     RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*일'),
@@ -1154,7 +1241,7 @@ class VoiceScheduleStructureService {
 
     final spaced = compact.replaceAllMapped(
       RegExp(
-        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약|찍기)$',
+        '([가-힣A-Za-z0-9·.]{2,}?)(${_titleEventNouns.join('|')})\$',
       ),
       (match) {
         final head = match.group(1);
@@ -1203,14 +1290,9 @@ class VoiceScheduleStructureService {
   /// "장재균 그룹장님 원주 세브란스 기독병원" → "원주 세브란스 기독병원".
   String _dropLeadingPersonTokens(String candidate) {
     final tokens = candidate.trim().split(RegExp(r'\s+'));
-    final titleSuffix = RegExp(
-      r'(그룹장님|그룹장|팀장님|팀장|원장님|원장|대표님|대표|이사님|이사|'
-      r'부장님|부장|과장님|과장|사장님|사장|차장님|차장|실장님|실장|'
-      r'본부장님|본부장|센터장님|센터장|선생님|교수님|님)$',
-    );
     var startIdx = 0;
     for (var i = 0; i < tokens.length; i++) {
-      if (titleSuffix.hasMatch(tokens[i])) {
+      if (_personTitleSuffixPattern.hasMatch(tokens[i])) {
         startIdx = i + 1;
       }
     }
@@ -1225,56 +1307,7 @@ class VoiceScheduleStructureService {
     if (source.isEmpty) {
       return null;
     }
-    const placeKeywords = <String>[
-      '병원',
-      '의원',
-      '센터',
-      '약국',
-      '식당',
-      '카페',
-      '호텔',
-      '학교',
-      '학원',
-      '은행',
-      '마트',
-      '공원',
-      '주차장',
-      '지점',
-      '건물',
-      '오피스',
-      '스튜디오',
-      '헬스장',
-      '편의점',
-      '아웃렛',
-      '주유소',
-      '시장',
-      '횟집',
-      '맛집',
-      '가게',
-      '본점',
-      '역',
-      '공항',
-      '터미널',
-      '항',
-      '구청',
-      '시청',
-      '주민센터',
-      '보건소',
-      '회관',
-      '체육관',
-      '경기장',
-      '빌딩',
-      '타워',
-      '아파트',
-      '빌라',
-      '오피스텔',
-      '주택',
-      '펜션',
-      '모텔',
-      '단지',
-      '타운하우스',
-    ];
-    final keywordPattern = placeKeywords.join('|');
+    final keywordPattern = _placeKeywords.join('|');
     // 장소 키워드로 끝나는 구 + 조사(에/에서/로/으로)
     final match = RegExp(
       '([가-힣A-Za-z0-9·.]+(?:\\s+[가-힣A-Za-z0-9·.]+){0,5}'
@@ -1387,6 +1420,37 @@ class VoiceScheduleStructureService {
     return normalizeSpacingForSchedule(normalized);
   }
 
+  /// 구절에 일정 명령/메타 토큰이 섞여 있는지 판정한다.
+  /// [_isInvalidLocationCandidate]의 2단 거부(복합 메타구 contains + 단독
+  /// 명령 동사 토큰 단위) 중 **명령/메타 부분만** 떼어낸 것 — 시간부사·조사
+  /// 조각 같은 다른 거부 사유는 포함하지 않는다(그것들은 제목에서 잘라내는
+  /// 게 맞는 동작이라 자르기를 막으면 안 된다).
+  bool _containsScheduleCommandToken(String phrase) {
+    final normalized = phrase.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    final compact = normalized.replaceAll(_whitespaceSplitPattern, '');
+    for (final metaPhrase in _scheduleMetaPhrases) {
+      if (compact.contains(metaPhrase)) {
+        return true;
+      }
+    }
+    final words = normalized.split(_whitespaceSplitPattern);
+    for (final word in words) {
+      if (word.isNotEmpty && _isScheduleCommandWord(word)) {
+        return true;
+      }
+    }
+    // 구절이 단독 "일정"으로 끝나면 메타 구절로 본다("태블릿계기판 일정에
+    // 저장해놔"에서 앞부분을 잘라 "저장해놔"만 남는 것을 막는다). 위치 기반
+    // 판정이라 "일정"이 중간에 낀 실제 장소명은 건드리지 않는다.
+    if (words.isNotEmpty && words.last == '일정') {
+      return true;
+    }
+    return false;
+  }
+
   String _leadingLocationRoot(String location) {
     final normalized = normalizeText(location, '').trim();
     if (normalized.isEmpty) {
@@ -1430,20 +1494,56 @@ class VoiceScheduleStructureService {
 
   String stripLeadingLocationPhrase(String text) {
     final match = RegExp(
-      r'^[가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,4}\s*(?:에서|에|로|으로)\s+(.+)$',
+      r'^([가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,4})\s*(에서|에|로|으로)\s+(.+)$',
     ).firstMatch(text.trim());
     if (match == null) {
       return text.trim();
     }
-    final location = match.group(0)?.trim();
+    // 조사 앞의 "장소 구절 전체"에 명령/메타 토큰이 섞였으면 자르지 않는다.
+    // 과거엔 구절의 첫 토큰만 검사해서, "태블릿계기판 중요한일정으로 저장"처럼
+    // 첫 토큰("태블릿계기판")은 멀쩡하고 뒤에 명령 구절이 붙은 경우를 못 걸러
+    // 앞부분을 통째로 잘라 제목이 "저장"만 남는 버그가 있었다(2026-07-18 실증).
+    //
+    // 여기서 _isInvalidLocationCandidate 전체를 쓰면 안 된다 — 그 함수는
+    // 시간부사("오전")도 invalid로 판정하는데, 시간 접두어는 제목에서
+    // 제거되는 게 맞는 동작이라("오전에 경조사 신청" -> "경조사 신청")
+    // 자르기를 막으면 회귀한다. 명령/메타 토큰일 때만 좁게 막는다.
+    //
+    // BLOCKER 수정(2026-07-21 실증): group1은 위 정규식에서 greedy `+`로
+    // 매칭되므로 "...일정으로"가 "...일정으" + 조사 "로"로 쪼개질 수 있다
+    // (참고: 이 분할은 조사 대체 알파벳 순서와 무관하다 — group1의 문자
+    // 단위 백트래킹이 항상 "으"를 group1 쪽에 먼저 남기고 "로"만으로 매치를
+    // 완성하기 때문에, 알파벳 순서를 바꿔도 동일하게 재현된다. 실측:
+    // dart로 두 순서 모두 테스트해 동일한 분할 결과를 확인함). 그 결과
+    // locationPhrase가 "일정으"로 남아 _containsScheduleCommandToken의
+    // "words.last == '일정'" 가드가 매치하지 못하고, 명령문구가 그대로
+    // 통과해 제목 내용이 유실됐다("태블릿계기판 일정으로 잡아줘" ->
+    // "잡아줘"). [extractLeadingLocation]이 이미 쓰고 있는 것과 동일한
+    // 보정("로" 조사 앞에서 group1이 "으"로 끝나면 그 "으"를 group1에서
+    // 떼어낸다)을 여기서도 적용해 가드가 정상 작동하게 한다.
+    var locationPhrase = match.group(1)?.trim();
+    final particle = match.group(2);
+    if (locationPhrase != null &&
+        particle == '로' &&
+        locationPhrase.endsWith('으')) {
+      locationPhrase = locationPhrase.substring(0, locationPhrase.length - 1);
+    }
+    if (locationPhrase == null ||
+        locationPhrase.isEmpty ||
+        _containsScheduleCommandToken(locationPhrase)) {
+      return text.trim();
+    }
+    // locationHead는 조사가 붙은 원문 형태에서 뽑는다("오전에"). 조사를 뗀
+    // 형태("오전")로 뽑으면 시간부사 거부 정규식(^오전$)에 걸려, 제목에서
+    // 시간 접두어를 잘라내는 정상 동작까지 막힌다.
     final locationHead = RegExp(r'^([가-힣A-Za-z0-9·.]{2,})')
-        .firstMatch(location ?? '')
+        .firstMatch(match.group(0)?.trim() ?? '')
         ?.group(1)
         ?.trim();
     if (locationHead == null || _isInvalidLocationCandidate(locationHead)) {
       return text.trim();
     }
-    final remainder = match.group(1)?.trim();
+    final remainder = match.group(3)?.trim();
     if (remainder == null || remainder.isEmpty) {
       return text.trim();
     }

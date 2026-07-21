@@ -1662,6 +1662,7 @@ title, date, start_at, end_at, location, location_lat, location_lng, travel_orig
 start_at and end_at must be ISO-8601 date-time strings when possible.
 Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 Location names must be kept in the title even when extracted into the location field. Never remove a place name from the title — only remove date, time, recurrence, reminder, and filler words (e.g. "만들어줘", "해줘").
+Always put the location name at the very front of the title in natural Korean word order, even when the user mentions the location after the event/action word in speech. Example: if the user says the event first and the location afterward ("회의 있어 원주세브란스병원에서"), the title must reorder to place the location first ("원주세브란스병원 회의"), not leave the location trailing at the end.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
 "내일" means tomorrow (today + 1 day). "모레" and "내일모레" mean the day after tomorrow (today + 2 days); STT often mishears "모레" as "모래", so "내일모래" also means today + 2 days. "글피" means today + 3 days. Resolve "모레"/"내일모레"/"내일모래" to today + 2 days, never to tomorrow.
 For day-only expressions like "28일" or "28일로", resolve to the 28th of the current month. If that date has already passed, use the 28th of the next month instead. Always output the full date in ISO-8601 format.
@@ -1679,6 +1680,7 @@ participants and targets are compatibility fields only; leave them empty unless 
 Example: "내일 오전 9시에 대전출발" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo null.
 Example: "12시까지 모란역으로 가기" -> title "모란역으로 가기", location "모란역", start_at today 12:00 local, memo null.
 Example: "내일 오전 11시 팀장님 원주세브란스방문" -> title "팀장님 원주세브란스 방문", location "원주세브란스", participants ["팀장님"], targets [].
+Example: "오후 3시에 회의 있어 원주세브란스병원에서" -> title "원주세브란스병원 회의", location "원주세브란스병원", start_at today 15:00 local, memo null.
 Example: "내일 오전 9시에 대전출발 메모에 주차장 B2 확인" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo "주차장 B2 확인".
 For delivery/drop-off tasks at hospitals or clinics, keep recipient/customer names and items in title. Example: "내용은 원주기독 정형외과 김두섭 리바로 갖다주기" -> location "원주기독 정형외과", title "김두섭 리바로 갖다주기", supplies ["리바로"].
 supplies must be an array of strings.

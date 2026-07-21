@@ -708,5 +708,139 @@ void main() {
         isNull,
       );
     });
+
+    // ── 신규(2026-07-21 리뷰 반영): 장소-후행 제목 재배치 휴리스틱 제거 ──
+    // 과거 _relocateTrailingLocationToFront가 제목의 "마지막 토큰 1개"만
+    // 재배치해 다단어 장소를 찢거나(HIGH#1), 1글자 장소 키워드("역"/"항")가
+    // 일반 명사에 우연히 붙어 오탐하는 문제(HIGH#2)가 있어 함수를 통째로
+    // 제거했다. 실제 어순 교정은 GPT 프롬프트("장소는 제목 맨 앞")가
+    // 담당하고, 로컬 휴리스틱은 조사 없는 장소-후행 문구를 건드리지 않는다
+    // (아래 회귀 금지선 테스트에서 원문 유지를 확인한다).
+    test('이미 장소가 문두에 있는 제목은 중복 재배치하지 않는다', () {
+      // 조사 없이 문두와 말미에 동일 장소가 겹치는 경우: 문두 토큰이 후보와
+      // 같으면 다시 앞에 붙이지 않는다(중복 방지).
+      expect(
+        service.preserveLeadingLocationTitle(
+          '원주세브란스병원 회의 원주세브란스병원',
+        ),
+        '원주세브란스병원 회의 원주세브란스병원',
+      );
+      // 마지막 토큰이 이벤트 명사라 애초에 재배치 대상이 되지 않는 경우도
+      // 그대로 유지된다.
+      expect(
+        service.preserveLeadingLocationTitle('원주세브란스병원 회의'),
+        '원주세브란스병원 회의',
+      );
+    });
+
+    test('명령어 토큰이 장소로 오인되어 문두로 끌려오지 않는다', () {
+      // 마지막 토큰이 명령 동사(_scheduleCommandTokens)면 재배치 자체를
+      // 하지 않는다 — "저장"이 장소로 오인되어 앞으로 끌려오면 안 된다.
+      expect(
+        service.preserveLeadingLocationTitle('태블릿계기판 중요한일정으로 저장'),
+        '태블릿계기판 중요한일정으로 저장',
+      );
+    });
+
+    test('사람 직급 바로 뒤 장소는 사람보다 앞으로 밀리지 않는다', () {
+      // 후보 앞 토큰이 사람 직급/호칭이면 재배치를 하지 않아, 장소가 사람
+      // 언급을 추월하는 순서가 되는 것을 방지한다.
+      expect(
+        service.preserveLeadingLocationTitle('회의 팀장님 원주세브란스병원'),
+        '회의 팀장님 원주세브란스병원',
+      );
+    });
+
+    // ── 회귀 금지선: 사람/장소 prepend 충돌 방지 확인 ──
+    test('회귀 금지선: 사람 이름이 뒤에 있는 장소-후행 발화 형태에서도 기존 순서가 유지된다', () {
+      const rawText = '내일 오전 11시 팀장님 원주세브란스방문';
+      final title = service.normalizeParsedScheduleTitle(
+        '원주세브란스 방문',
+        rawText: rawText,
+      );
+      expect(title, '팀장님 원주세브란스 방문');
+    });
+
+    // ── BLOCKER 회귀 테스트(2026-07-21): stripLeadingLocationPhrase의
+    // 그리디 매칭이 "일정으로"를 "일정으"+"로"로 쪼개 _containsScheduleCommandToken의
+    // "words.last == '일정'" 가드가 매치 실패하던 문제. 제목 내용이 유실되지
+    // 않아야 한다(실측: 수정 전 '태블릿계기판 일정으로 잡아줘' -> '잡아줘').
+    test('BLOCKER: stripLeadingLocationPhrase는 "일정으로/알림으로" 명령문구에서 제목을 유실하지 않는다', () {
+      expect(
+        service.stripLeadingLocationPhrase('태블릿계기판 일정으로 잡아줘'),
+        '태블릿계기판 일정으로 잡아줘',
+      );
+      expect(
+        service.stripLeadingLocationPhrase('태블릿계기판 알림으로 등록해줘'),
+        '태블릿계기판 알림으로 등록해줘',
+      );
+      expect(
+        service.stripLeadingLocationPhrase('태블릿계기판 중요한일정으로 저장'),
+        '태블릿계기판 중요한일정으로 저장',
+      );
+      expect(
+        service.stripLeadingLocationPhrase('태블릿계기판 일정에 저장해놔'),
+        '태블릿계기판 일정에 저장해놔',
+      );
+    });
+
+    test('BLOCKER: normalizeLocalVoiceTitle은 "일정으로/알림으로" 명령문구에서 제목 내용을 유실하지 않는다', () {
+      expect(
+        service.normalizeLocalVoiceTitle(
+          '태블릿계기판 일정으로 잡아줘',
+          referenceText: '태블릿계기판 일정으로 잡아줘',
+        ),
+        contains('태블릿계기판'),
+      );
+      expect(
+        service.normalizeLocalVoiceTitle(
+          '태블릿계기판 알림으로 등록해줘',
+          referenceText: '태블릿계기판 알림으로 등록해줘',
+        ),
+        contains('태블릿계기판'),
+      );
+      expect(
+        service.normalizeLocalVoiceTitle(
+          '태블릿계기판 중요한일정으로 저장',
+          referenceText: '태블릿계기판 중요한일정으로 저장',
+        ),
+        contains('태블릿계기판'),
+      );
+      expect(
+        service.normalizeLocalVoiceTitle(
+          '태블릿계기판 일정에 저장해놔',
+          referenceText: '태블릿계기판 일정에 저장해놔',
+        ),
+        contains('태블릿계기판'),
+      );
+    });
+
+    // ── HIGH#1/HIGH#2 오탐 회귀 테스트(2026-07-21): 제거된
+    // _relocateTrailingLocationToFront가 다단어 장소를 찢거나(HIGH#1) 1글자
+    // 장소 키워드("역"/"항")가 일반 명사에 우연히 걸리던(HIGH#2) 문제.
+    // 함수 제거 후에는 아래 문구들이 변형 없이 원문 그대로 유지돼야 한다.
+    test('HIGH 오탐 회귀: 일반 명사/다단어 장소 문구가 재배치로 변형되지 않는다', () {
+      expect(
+        service.preserveLeadingLocationTitle('회의 전 확인사항'),
+        '회의 전 확인사항',
+      );
+      expect(
+        service.preserveLeadingLocationTitle('내년도 예산 편성 지역'),
+        '내년도 예산 편성 지역',
+      );
+      expect(
+        service.preserveLeadingLocationTitle('회의 원주 세브란스 병원'),
+        '회의 원주 세브란스 병원',
+      );
+      // GPT 제목 경로(normalizeParsedScheduleTitle)로도 동일하게 원문이
+      // 유지돼야 한다(오탐 재현 경로가 로컬/GPT 양쪽에 있었음).
+      expect(
+        service.normalizeParsedScheduleTitle(
+          '회의 전 확인사항',
+          rawText: '회의 전 확인사항',
+        ),
+        contains('확인사항'),
+      );
+    });
   });
 }
