@@ -85,6 +85,17 @@ class VoiceScheduleStructureService {
     '넣어',
   ];
 
+  /// 뒤쪽 명령문구에서 동사 앞에 오는 메타 명사("...일정으로 저장",
+  /// "...알림으로 등록해줘"). 과거엔 "일정" 하나만 리터럴로 박혀 있어
+  /// "알림으로 등록해줘"가 제거되지 않고 "알림으로" 찌꺼기가 제목에
+  /// 남았다(2026-07-18 실증).
+  static const List<String> _scheduleTrailingCommandNouns = <String>[
+    '일정',
+    '알림',
+    '리마인더',
+    '알람',
+  ];
+
   /// 일정 명령/메타 토큰 공유 목록. [_scheduleTrailingCommandVerbs](동사)를
   /// 부분집합으로 포함하고, 그 외 수식어/메타 토큰(중요/중요일정/중요한일정/
   /// 알림/리마인더/반복)은 stripScheduleNoise의 뒤쪽 명령문구 정규식이 아니라
@@ -617,10 +628,15 @@ class VoiceScheduleStructureService {
     // "일정" 리터럴과 동사 리터럴이 반드시 앞에 와야만 매치되므로(중간에
     // 임의 문자를 허용하지 않음), 뒤쪽만 넓혀도 실제 장소명(예: "일정관리")을
     // 오탐 제거할 위험은 없다.
+    // 명사 자리는 "일정"만이 아니라 알림/리마인더/알람도 받는다(2026-07-18).
+    // "태블릿계기판 알림으로 등록해줘"처럼 "알림"을 쓰면 이 정규식이 매치되지
+    // 않아 "알림으로"라는 조사 찌꺼기가 제목에 남던 문제를 막는다.
     final trailingCommandVerbPattern = _scheduleTrailingCommandVerbs.join('|');
+    final trailingCommandNounPattern = _scheduleTrailingCommandNouns.join('|');
     cleaned = cleaned.replaceAll(
       RegExp(
-        '\\s*(?:정말\\s*)?(?:중요한|중요)?\\s*일정\\s*(?:으로|로|은|는|을|를)?\\s*(?:새로\\s*)?'
+        '\\s*(?:정말\\s*)?(?:중요한|중요)?\\s*(?:$trailingCommandNounPattern)\\s*'
+        '(?:으로|로|은|는|을|를|에)?\\s*(?:새로\\s*)?'
         '(?:$trailingCommandVerbPattern)'
         '.*\$',
       ),

@@ -599,6 +599,38 @@ void main() {
       },
     );
 
+    test(
+      '뒤쪽 명령문구의 메타 명사는 "일정" 외에 알림/리마인더/알람도 제거한다',
+      () {
+        // 회귀(2026-07-18): 정규식이 "일정" 리터럴만 받아서 "알림으로
+        // 등록해줘"가 매치되지 않아 제목에 "알림으로" 조사 찌꺼기가 남았다.
+        expect(
+          service.stripScheduleNoise('태블릿계기판 알림으로 등록해줘'),
+          '태블릿계기판',
+        );
+        expect(
+          service.stripScheduleNoise('태블릿계기판 리마인더로 등록'),
+          '태블릿계기판',
+        );
+        expect(
+          service.stripScheduleNoise('태블릿계기판 알람으로 저장해놔'),
+          '태블릿계기판',
+        );
+      },
+    );
+
+    test(
+      '알림/알람/일정이 실제 제목 내용이면 제거하지 않는다(오탐 방지)',
+      () {
+        // 메타 명사 확장이 실제 내용을 잡아먹으면 안 된다 — 뒤에 명령 동사가
+        // 따라오는 형태일 때만 제거된다.
+        expect(service.stripScheduleNoise('알림 설정 확인'), '알림 설정 확인');
+        expect(service.stripScheduleNoise('알람 시계 구매'), '알람 시계 구매');
+        expect(service.stripScheduleNoise('일정관리 앱 검토'), '일정관리 앱 검토');
+        expect(service.stripScheduleNoise('회의 알림 확인'), '회의 알림 확인');
+      },
+    );
+
     // ── 회귀 금지선: 기존 장소 추출 동작은 그대로 유지돼야 한다 ──
     test('회귀 금지선: 모란역/원주세브란스병원/스타벅스 장소 추출은 그대로 유지된다', () {
       expect(service.extractLeadingLocation('모란역으로 가기'), '모란역');
