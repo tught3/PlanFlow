@@ -159,13 +159,131 @@ void main() {
     test('uses the distinct critical alarm channel and sound', () {
       expect(
         NotificationService.criticalAlarmChannelId,
-        'critical_alarms_v5_distinct',
+        'critical_alarms_v6_alarmstream',
       );
       expect(
         NotificationService.criticalAlarmSoundResource,
         'planflow_critical_alarm',
       );
     });
+
+    test('current channel ids are not present in their own legacy list', () {
+      // 채널 id를 bump할 때 legacy 목록에 새 id를 넣어버리면 다음 초기화 때
+      // 방금 만든 채널을 스스로 삭제하는 회귀가 생긴다.
+      expect(
+        NotificationService.legacyEventReminderChannelIds,
+        isNot(contains(NotificationService.eventReminderChannelId)),
+      );
+      expect(
+        NotificationService.legacyCriticalAlarmChannelIds,
+        isNot(contains(NotificationService.criticalAlarmChannelId)),
+      );
+    });
+
+    test('legacy channel id history matches known past channel ids', () {
+      expect(
+        NotificationService.legacyEventReminderChannelIds,
+        containsAll(<String>['event_reminders', 'event_reminders_v2']),
+      );
+      expect(
+        NotificationService.legacyCriticalAlarmChannelIds,
+        containsAll(<String>[
+          'critical_alarms',
+          'critical_alarms_v2',
+          'critical_alarms_v3_loud',
+          'critical_alarms_v4_safe',
+          'critical_alarms_v5_distinct',
+        ]),
+      );
+    });
+
+    test(
+      'android channel setup uses alarm audio stream for critical alarms '
+      'and deletes legacy channels',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        // resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        // 는 FlutterLocalNotificationsPlatform.instance가 실제로
+        // AndroidFlutterLocalNotificationsPlugin이어야 채널 생성 호출이
+        // 목 메서드채널까지 도달한다. instance는 late final이라 아직 한 번도
+        // 설정된 적이 없으면 읽기 자체가 LateInitializationError를 던지므로
+        // 이전 값을 읽어 복원하려 하지 않고 그냥 설정만 한다(이 테스트
+        // 파일은 각자 독립 isolate로 실행되어 다른 파일에 영향 없음).
+        FlutterLocalNotificationsPlatform.instance =
+            AndroidFlutterLocalNotificationsPlugin();
+        const dexterousChannel = MethodChannel(
+          'dexterous.com/flutter/local_notifications',
+        );
+        final calls = <MethodCall>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(dexterousChannel, (call) async {
+          calls.add(call);
+          switch (call.method) {
+            case 'initialize':
+            case 'requestNotificationsPermission':
+            case 'requestExactAlarmsPermission':
+            case 'requestFullScreenIntentPermission':
+              return true;
+            default:
+              return null;
+          }
+        });
+        addTearDown(() {
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(dexterousChannel, null);
+        });
+
+        await NotificationService().initialize();
+
+        final createCalls = calls
+            .where((call) => call.method == 'createNotificationChannel')
+            .toList();
+
+        final criticalCreate = createCalls.firstWhere(
+          (call) =>
+              (call.arguments as Map)['id'] ==
+              NotificationService.criticalAlarmChannelId,
+        );
+        expect(
+          (criticalCreate.arguments as Map)['audioAttributesUsage'],
+          AudioAttributesUsage.alarm.value,
+        );
+
+        final eventCreate = createCalls.firstWhere(
+          (call) =>
+              (call.arguments as Map)['id'] ==
+              NotificationService.eventReminderChannelId,
+        );
+        // 일반 일정 알림은 alarm 스트림으로 올리지 않고 기본값을 유지한다.
+        expect(
+          (eventCreate.arguments as Map)['audioAttributesUsage'],
+          AudioAttributesUsage.notification.value,
+        );
+        expect((eventCreate.arguments as Map)['playSound'], isTrue);
+        expect((eventCreate.arguments as Map)['enableVibration'], isTrue);
+
+        final deletedChannelIds = calls
+            .where((call) => call.method == 'deleteNotificationChannel')
+            .map((call) => call.arguments as String)
+            .toList();
+
+        expect(
+          deletedChannelIds,
+          containsAll(<String>[
+            ...NotificationService.legacyEventReminderChannelIds,
+            ...NotificationService.legacyCriticalAlarmChannelIds,
+          ]),
+        );
+        expect(
+          deletedChannelIds,
+          isNot(contains(NotificationService.eventReminderChannelId)),
+        );
+        expect(
+          deletedChannelIds,
+          isNot(contains(NotificationService.criticalAlarmChannelId)),
+        );
+      },
+    );
 
     test('opens the exact critical alarm notification channel settings',
         () async {

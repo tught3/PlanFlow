@@ -40,13 +40,38 @@ class NotificationService {
 
   Future<void>? _initializationFuture;
 
-  static const String eventReminderChannelId = 'event_reminders_v2';
+  // v2 -> v3: enableVibration/playSound를 details까지 명시적으로 강제하기 위한 bump.
+  // Android는 채널 생성 후 사운드/진동 설정을 코드로 재정의할 수 없어, 값이 바뀌면
+  // 반드시 새 채널 id로 다시 만들어야 기존 기기에도 반영된다.
+  static const String eventReminderChannelId = 'event_reminders_v3';
   static const String _eventReminderChannelId = eventReminderChannelId;
   static const String _eventReminderChannelName = '일정 알림';
   static const String _eventReminderChannelDescription = '다가오는 일정 알림';
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
-  static const String criticalAlarmChannelId = 'critical_alarms_v5_distinct';
+  // v5_distinct -> v6_alarmstream: audioAttributesUsage=alarm 복원 bump.
+  // fa66fc0("Stabilize critical alarm channel")에서 alarm usage를 빼고 시스템
+  // 기본음으로 되돌렸었고, 5834431에서 raw 사운드만 재도입한 뒤 alarm usage는
+  // 복원되지 않아 무음 회귀가 발생했다. 채널 id를 반드시 함께 올려야
+  // 기존 기기에서도 새 오디오 스트림 설정이 적용된다(Android 채널 불변 정책).
+  static const String criticalAlarmChannelId = 'critical_alarms_v6_alarmstream';
+
+  /// 과거 사용됐던 채널 id 이력. 앱 초기화 시 정리 대상이며, 반드시 현재
+  /// [eventReminderChannelId]/[criticalAlarmChannelId]와 겹치지 않아야 한다.
+  @visibleForTesting
+  static const List<String> legacyEventReminderChannelIds = <String>[
+    'event_reminders',
+    'event_reminders_v2',
+  ];
+
+  @visibleForTesting
+  static const List<String> legacyCriticalAlarmChannelIds = <String>[
+    'critical_alarms',
+    'critical_alarms_v2',
+    'critical_alarms_v3_loud',
+    'critical_alarms_v4_safe',
+    'critical_alarms_v5_distinct',
+  ];
 
   @visibleForTesting
   static const String criticalAlarmSoundResource = 'planflow_critical_alarm';
@@ -776,6 +801,8 @@ class NotificationService {
         importance: Importance.high,
         playSound: true,
         enableVibration: true,
+        // 일반 일정 알림은 알람 스트림까지 올릴 필요는 없어 기본값
+        // (AudioAttributesUsage.notification)을 그대로 둔다.
       ),
     );
     await android.createNotificationChannel(
@@ -792,8 +819,43 @@ class NotificationService {
         vibrationPattern: Int64List.fromList(
           <int>[0, 1200, 250, 1200, 250, 1600],
         ),
+        // 중요 알람/출발 알람은 방해금지·알림음 소거에도 덜 묻히도록
+        // 알람 오디오 스트림을 쓴다. raw 사운드 리소스와 alarm usage를
+        // 함께 쓰는 조합은 과거(fa66fc0) "불안정" 사유로 한 번 제거된
+        // 적이 있으나, 커밋 메시지에 구체적 실패 증상은 남아있지 않다.
+        // 이번 재도입은 채널 id를 함께 bump해 기존 채널의 불변 설정과
+        // 충돌하지 않도록 했다 — 재발 시 이 조합(raw sound + alarm
+        // usage)을 1순위 의심 대상으로 본다.
+        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
+
+    await _deleteLegacyChannels(android);
+  }
+
+  /// 채널 id를 bump할 때마다 남는 구 채널을 정리한다. 현재 사용 중인
+  /// [eventReminderChannelId]/[criticalAlarmChannelId]는 절대 지우지 않는다.
+  Future<void> _deleteLegacyChannels(
+    AndroidFlutterLocalNotificationsPlugin android,
+  ) async {
+    final legacyIds = <String>{
+      ...legacyEventReminderChannelIds,
+      ...legacyCriticalAlarmChannelIds,
+    }..removeWhere(
+        (id) => id == eventReminderChannelId || id == criticalAlarmChannelId,
+      );
+
+    for (final legacyId in legacyIds) {
+      try {
+        await android.deleteNotificationChannel(channelId: legacyId);
+      } catch (error, stackTrace) {
+        // 존재하지 않는 채널을 지우려 하면 플랫폼에 따라 예외가 날 수
+        // 있다. best-effort 정리이므로 무시하고 계속 진행한다.
+        debugPrint('Delete legacy notification channel failed ($legacyId): '
+            '$error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
   }
 
   Future<void> _runPermissionRequestBestEffort(
@@ -913,6 +975,8 @@ class NotificationService {
         importance: Importance.high,
         priority: Priority.high,
         category: AndroidNotificationCategory.event,
+        playSound: true,
+        enableVibration: true,
         actions: actions,
       ),
       iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
@@ -962,6 +1026,7 @@ class NotificationService {
         visibility: NotificationVisibility.public,
         ticker: '중요 일정 알림',
         actions: _departureActions,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
@@ -1018,6 +1083,7 @@ class NotificationService {
         visibility: NotificationVisibility.public,
         ticker: '중요 일정 알람',
         actions: _criticalActions,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
@@ -1186,7 +1252,7 @@ class NotificationService {
     return '${warnings.join(' ')} 휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요.';
   }
 
-  /// 진단용: event_reminders_v2 채널로 즉시 테스트 알림을 1건 발송한다.
+  /// 진단용: [eventReminderChannelId] 채널로 즉시 테스트 알림을 1건 발송한다.
   /// 이 알림이 뜨고 소리가 나면 알림 표시 자체는 정상 → 스케줄/타이밍 문제로 범위 좁힘.
   /// 알림이 전혀 안 뜨면 채널 또는 시스템 차단으로 확정.
   Future<void> showDiagnosticTestNotification() async {
