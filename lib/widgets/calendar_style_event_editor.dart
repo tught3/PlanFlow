@@ -178,28 +178,26 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   }) {
     setState(apply);
     if (expanded) {
-      unawaited(_ensureExpandedSectionVisible(key));
+      unawaited(_scrollToRevealTrailingContent());
     }
   }
 
-  Future<void> _ensureExpandedSectionVisible(
-    GlobalKey key, {
-    ScrollPositionAlignmentPolicy alignmentPolicy =
-        ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-  }) async {
+  /// 섹션이 펼쳐지거나 하위 옵션(강한 알람 등)이 추가로 나타나 콘텐츠가
+  /// 길어질 때, 화면을 맨 아래(일정 저장 버튼)까지 스크롤해 가려지지 않게 한다.
+  Future<void> _scrollToRevealTrailingContent() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     if (!mounted) {
       return;
     }
-    final sectionContext = key.currentContext;
-    if (sectionContext == null || !sectionContext.mounted) {
+    final scrollable = Scrollable.maybeOf(context);
+    if (scrollable == null) {
       return;
     }
-    await Scrollable.ensureVisible(
-      sectionContext,
+    final position = scrollable.position;
+    await position.animateTo(
+      position.maxScrollExtent,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
-      alignmentPolicy: alignmentPolicy,
     );
   }
 
@@ -492,11 +490,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                   onChanged: (v) {
                     widget.onCriticalChanged(v ?? false);
                     if (v == true) {
-                      unawaited(_ensureExpandedSectionVisible(
-                        _criticalCheckboxKey,
-                        alignmentPolicy:
-                            ScrollPositionAlignmentPolicy.keepVisibleAtStart,
-                      ));
+                      unawaited(_scrollToRevealTrailingContent());
                     }
                   },
                 ),

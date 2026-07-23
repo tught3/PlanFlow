@@ -26,7 +26,10 @@ import java.util.Locale
 private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
 private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFFD94444.toInt()
-private const val HOLIDAY_TEXT_COLOR = 0xFFB42318.toInt()
+// 공휴일 색상. 과거엔 중요 일정(CRITICAL_TEXT_COLOR)과 같은 붉은 계열이라
+// 위젯에서 공휴일과 중요 일정이 구분되지 않았다(사용자 지적, 2026-07-22).
+// 인앱 캘린더의 calendarHolidayColor와 맞춘 파랑 계열로 분리.
+private const val HOLIDAY_TEXT_COLOR = 0xFF2563EB.toInt()
 private const val MULTI_DAY_TEXT_COLOR = 0xFF174F4A.toInt()
 private const val PLANFLOW_SCHEME = "planflow"
 private const val PLANFLOW_CALENDAR_HOST = "calendar"

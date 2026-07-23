@@ -41,6 +41,10 @@ const calendarGroupEventColor = Color(0xFF7C3AED);
 // (calendarMultiDayEventTextColor)을 쓰고 있어, 반복 일정은 겹치지 않게
 // 별도 색으로 구분한다.
 const calendarRecurringEventColor = Color(0xFFB8720A);
+// 공휴일 표시 색상. 과거엔 calendarCriticalEventMarkerColor(중요 일정과 동일한
+// 빨강)를 그대로 재사용해 공휴일과 중요 일정이 캘린더에서 구분되지 않았다
+// (사용자 지적, 2026-07-22). 중요 일정의 빨강과 겹치지 않는 파랑 계열로 분리.
+const calendarHolidayColor = Color(0xFF2563EB);
 
 Color _categoryColor(String category) {
   return PlanFlowEventCategories.colorOf(category);

@@ -247,7 +247,13 @@ class HomeWidgetSchedulePayloadBuilder {
       weekDays: _weekDays(sortedEvents, now),
       previousWeekDays: _weekDays(sortedEvents, previousWeekNow),
       nextWeekDays: _weekDays(sortedEvents, nextWeekNow),
-      rawEvents: _rawEvents(events),
+      // 네이티브(PlanFlowMonthlyWidgetProvider.render)는 rawEvents가 하나라도
+      // 있으면 이 목록을 최우선으로 쓰고 monthCells(반복 확장 완료본)를 통째로
+      // 무시한다. 여기서 원본 events(미확장)를 넘기면 반복 일정이 시작일
+      // 하루만 위젯에 표시되고 이후 반복 회차는 전부 사라진다(사용자 지적,
+      // 2026-07-23). sortedEvents(= _expandRecurringEventsForWidget 결과)를
+      // 넘겨야 네이티브 우선 경로에서도 반복이 정상 표시된다.
+      rawEvents: _rawEvents(sortedEvents),
     );
   }
 

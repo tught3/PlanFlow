@@ -1,5 +1,92 @@
 part of 'home_screen.dart';
 
+/// 홈 화면 상단에서 사용자가 속한 그룹을 가로 스크롤 칩으로 보여준다.
+/// 일정 탭의 [_CalendarGroupContextChip]과 같은 시각 언어(둥근 알약형,
+/// primaryFaint 테두리)를 재사용한다.
+class _HomeGroupsRow extends StatelessWidget {
+  const _HomeGroupsRow({
+    required this.groups,
+    required this.selectedGroupId,
+    required this.onTap,
+  });
+
+  final List<GroupModel> groups;
+  final String? selectedGroupId;
+  final ValueChanged<GroupModel> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: groups.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final group = groups[index];
+          final isSelected = group.id == selectedGroupId;
+          return _HomeGroupChip(
+            label: group.name,
+            isSelected: isSelected,
+            onTap: () => onTap(group),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HomeGroupChip extends StatelessWidget {
+  const _HomeGroupChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? PlanFlowColors.primaryFaint : PlanFlowColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isSelected
+                ? PlanFlowColors.primary
+                : PlanFlowColors.primaryFaint,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.groups_outlined,
+              size: 14,
+              color: PlanFlowColors.primaryMid,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: PlanFlowColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeSectionHeader extends StatelessWidget {
   const _HomeSectionHeader({
     required this.title,

@@ -970,7 +970,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
-  Future<void> _ensureLocationCoordinatesBeforeSave() async {
+  /// 저장 후 백그라운드에서 장소 좌표를 채운다(저장 자체는 막지 않음).
+  /// [savedEvent]가 있으면(개인 일정 저장) 해상도 성공 시 그 이벤트를
+  /// updateEvent로 좌표를 채운다. 화면이 이미 닫혔어도(mounted==false) DB
+  /// 업데이트는 계속 진행한다 — UI 상태(_locationLat 등)만 mounted를 확인한다.
+  Future<void> _resolveLocationCoordinatesAfterSave({
+    required EventModel? savedEvent,
+    required EventRepository repository,
+  }) async {
     final query = _locationController.text.trim();
     if (query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
@@ -1011,8 +1018,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         '검색결과: 쿼리="$query" 결과수=${results.length}'
             '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
       );
-      if (!mounted ||
-          query != _locationController.text.trim() ||
+      // 화면이 이미 닫혔어도(저장 후 일정탭으로 이동) DB 업데이트는 계속
+      // 진행한다 — mounted는 UI 반영 여부만 가른다(아래).
+      if ((mounted && query != _locationController.text.trim()) ||
           results.isEmpty) {
         if (results.isEmpty) {
           DiagLogger.log('GeoResolve', '실패: 쿼리="$query" 결과없음 → 좌표 미설정');
@@ -1022,25 +1030,41 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final selected = results.first;
       final resolvedLabel = selected.bestPlaceLabel.trim();
-      _isApplyingHydration = true;
-      setState(() {
-        if (resolvedLabel.isNotEmpty) {
-          _locationController.text = resolvedLabel;
-        }
-        _locationLat = selected.latitude;
-        _locationLng = selected.longitude;
-        _resolvedLocationLabel =
-            resolvedLabel.isNotEmpty ? resolvedLabel : query;
-      });
-      _isApplyingHydration = false;
+      final finalLabel = resolvedLabel.isNotEmpty ? resolvedLabel : query;
+      if (mounted) {
+        _isApplyingHydration = true;
+        setState(() {
+          if (resolvedLabel.isNotEmpty) {
+            _locationController.text = resolvedLabel;
+          }
+          _locationLat = selected.latitude;
+          _locationLng = selected.longitude;
+          _resolvedLocationLabel = finalLabel;
+        });
+        _isApplyingHydration = false;
+        _removeResolvedLocationFromTitle(
+          previousLocationText: query,
+          resolvedLocationText: finalLabel,
+        );
+      }
       DiagLogger.log(
         'GeoResolve',
         '성공: 쿼리="$query" 선택="${selected.name}" lat=${selected.latitude} lng=${selected.longitude}',
       );
-      _removeResolvedLocationFromTitle(
-        previousLocationText: query,
-        resolvedLocationText: _resolvedLocationLabel,
-      );
+      if (savedEvent != null) {
+        await repository.updateEvent(
+          savedEvent.copyWith(
+            location: finalLabel,
+            locationLat: selected.latitude,
+            locationLng: selected.longitude,
+          ),
+        );
+        EventRefreshBus.instance.notifyChanged(
+          reason: 'confirm_location_resolved',
+          eventId: savedEvent.id,
+          startAt: savedEvent.startAt,
+        );
+      }
     } catch (error) {
       debugPrint('ConfirmScreen save-time location resolution failed: $error');
       DiagLogger.log('GeoResolve', '오류: 쿼리="$query" error=$error');
@@ -1341,10 +1365,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    await _ensureLocationCoordinatesBeforeSave();
-    if (!mounted) {
-      return;
-    }
+    // 좌표 보정(외부 지오코딩 API 호출)은 더 이상 저장을 막지 않는다. 이전엔
+    // 여기서 await로 결과를 기다려 저장 버튼을 눌러도 API 응답이 올 때까지
+    // 몇 초씩 지연됐다(사용자 지적, 2026-07-23). 장소 이름(문자열)은 아래
+    // draftEvent에 그대로 즉시 들어가고, 좌표만 저장 후 백그라운드에서 채운다.
+    // 이 pass가 실패하거나 화면이 이미 닫혀도 home_screen의
+    // _resolveEventsMissingCoords가 다음 홈 로드 때 이어서 보정하므로 안전망이
+    // 이미 있다(중복 안전망, 데이터 유실 없음).
+    final pendingLocationQuery = _locationController.text.trim();
+    final needsBackgroundLocationResolve = pendingLocationQuery.isNotEmpty &&
+        !_shouldSkipAutomaticLocationResolution(pendingLocationQuery) &&
+        (_locationLat == null || _locationLng == null);
 
     final normalizedStartAt = planflowLocalDateTimeToUtc(_startAt);
     final normalizedEndAt =
@@ -1442,6 +1473,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             targetGroups.map((group) => group.id).toSet(),
           ),
         );
+      }
+
+      if (needsBackgroundLocationResolve) {
+        unawaited(_resolveLocationCoordinatesAfterSave(
+          savedEvent: savedEvent,
+          repository: repository,
+        ));
       }
 
       _PostSaveFollowUpResult? postSaveResult;
@@ -2691,7 +2729,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         initiallyExpandClassification:
                             !_recurrenceSelection.isNone,
                         initiallyExpandDetails: false,
-                        initiallyExpandAlarm: _isCritical,
+                        initiallyExpandAlarm: true,
                         initiallyExpandCriticalAlarm: _isCritical,
                         onLocationTextChanged: _handleLocationTextChanged,
                         onStartChanged: (value) {

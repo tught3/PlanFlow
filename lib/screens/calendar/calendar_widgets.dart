@@ -39,17 +39,18 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
           ),
         );
 
-        // 공휴일 이름 칩(쉬는 날이면 빨강, 아니면 secondary 톤)
+        // 공휴일 이름 칩(쉬는 날이면 파랑, 아니면 secondary 톤. 중요 일정의
+        // 빨강과 겹치지 않게 별도 색상 사용)
         final holidayChip = holidayName != null
             ? Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: isHoliday
-                      ? calendarCriticalEventMarkerColor.withValues(alpha: 0.15)
+                      ? calendarHolidayColor.withValues(alpha: 0.15)
                       : PlanFlowColors.textSecondary.withValues(alpha: 0.12),
                   border: Border.all(
                     color: isHoliday
-                        ? calendarCriticalEventMarkerColor
+                        ? calendarHolidayColor
                         : PlanFlowColors.textSecondary,
                   ),
                   borderRadius: BorderRadius.circular(4),
@@ -58,7 +59,7 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
                   holidayName!,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: isHoliday
-                        ? calendarCriticalEventMarkerColor
+                        ? calendarHolidayColor
                         : PlanFlowColors.textSecondary,
                     fontWeight: FontWeight.w600,
                   ),
@@ -656,7 +657,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                           color: isSelected || isToday
                                               ? Colors.white
                                               : cell.isHoliday
-                                              ? calendarCriticalEventMarkerColor
+                                              ? calendarHolidayColor
                                               : PlanFlowColors.textPrimary,
                                         ),
                                       ),
@@ -770,7 +771,7 @@ class _CalendarMiniEventList extends StatelessWidget {
             isSelected: isSelected,
             day: day,
           ),
-        // 공휴일 라벨(쉬는 날이면 빨강, 아니면 차분한 톤)은 이벤트 뒤에
+        // 공휴일 라벨(쉬는 날이면 파랑, 아니면 차분한 톤)은 이벤트 뒤에
         // 배치해 연속 일정 밴드가 인접한 날짜 셀과 같은 행을 유지한다.
         if (holidayName != null)
           LayoutBuilder(
@@ -791,7 +792,7 @@ class _CalendarMiniEventList extends StatelessWidget {
                       color: isSelected
                           ? Colors.white
                           : isHoliday
-                          ? calendarCriticalEventMarkerColor
+                          ? calendarHolidayColor
                           : PlanFlowColors.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),

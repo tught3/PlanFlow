@@ -14,6 +14,8 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
+import '../../features/groups/models/group_model.dart';
+import '../../features/groups/providers/group_context_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/api_usage_guard.dart';
 import '../../services/briefing_scheduler_service.dart';
@@ -90,6 +92,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final HomeHeaderSummaryService _headerSummaryService =
       HomeHeaderSummaryService();
+  final GroupContextProvider _groupContextProvider = GroupContextProvider();
   late final BriefingSchedulerService _briefingSchedulerService;
   late final HomeWidgetService _homeWidgetService;
   List<EventModel> _pastTodayEvents = const <EventModel>[];
@@ -138,7 +141,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _homeWidgetService = widget.homeWidgetService ?? HomeWidgetService();
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
+    _groupContextProvider.addListener(_handleGroupContextChanged);
     _loadTodayEvents();
+    unawaited(_loadGroupContext());
     if (widget.loadHeaderSummary) {
       unawaited(_loadHomeHeaderSummary());
     }
@@ -149,8 +154,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _retryTimer?.cancel();
     _homeWidgetRefreshGeneration += 1;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    _groupContextProvider.removeListener(_handleGroupContextChanged);
+    _groupContextProvider.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _handleGroupContextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadGroupContext() async {
+    final userId = _resolveUserId();
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    await _groupContextProvider.load(userId);
   }
 
   void _scheduleRetry() {
@@ -679,6 +700,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_groupContextProvider.hasGroups) ...[
+                      _HomeGroupsRow(
+                        groups: _groupContextProvider.groups,
+                        selectedGroupId: _groupContextProvider.selectedGroup?.id,
+                        onTap: (group) =>
+                            context.push(AppRoutes.groupDetailForId(group.id)),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),

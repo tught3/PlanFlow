@@ -15,6 +15,7 @@ import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'api_usage_guard.dart';
 import 'external_event_import_classifier.dart';
+import 'korean_holidays.dart';
 import 'naver_caldav_remote_store.dart';
 
 enum NaverCalDavConnectionStatus {
@@ -1378,6 +1379,19 @@ class NaverCalDavService {
             calendarPath: calendar.path,
             syncedAt: syncedAt,
           );
+
+          // 공휴일(신정·광복절 등)은 앱이 KoreanHolidays/KASI API로 이미
+          // 직접 표시하므로 네이버에서 같은 이름의 이벤트로 또 가져오지
+          // 않는다. 안 걸러지면 캘린더 화면에 공휴일이 2개(자체 표시 +
+          // 동기화된 이벤트)로 겹쳐 보인다(사용자 지적, 2026-07-23).
+          if (KoreanHolidays.knownHolidayNames.contains(
+            eventModel.title.trim(),
+          )) {
+            skippedCount += 1;
+            diagnostics.addSkipReason('공휴일(앱 자체 표시와 중복)');
+            continue;
+          }
+
           final planFlowOriginId = _planFlowEventIdFromNaverUid(event.uid);
           final planFlowOrigin = planFlowOriginId == null
               ? null

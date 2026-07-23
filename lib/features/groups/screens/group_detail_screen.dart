@@ -155,7 +155,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
           // 1행: 보조 선택지 2개를 테두리 버튼으로 절반씩 나란히 배치.
-          // 2행: 주 선택지(오늘 이후 일정 공유)를 강조 버튼으로 전체 너비에 배치.
+          // 2행: 주 선택지(이미 저장된 일정 공유)를 강조 버튼으로 전체 너비에 배치.
           SizedBox(
             width: double.maxFinite,
             child: Column(
@@ -186,7 +186,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   child: FilledButton(
                     onPressed: () => Navigator.of(ctx)
                         .pop(_ExistingEventShareChoice.shareUpcoming),
-                    child: const Text('오늘 이후 일정 공유'),
+                    child: const Text('이미 저장된 일정 공유'),
                   ),
                 ),
               ],
