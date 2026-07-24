@@ -92,7 +92,7 @@ class GptService {
   Future<Map<String, dynamic>> parseSchedule(String rawText) async {
     final content = await _requestCompletion(
       systemPrompt: _scheduleSystemPromptForRegion(),
-      userPrompt: rawText,
+      userPrompt: _normalizeKoreanText(rawText),
       responseFormat: _responseFormat,
     );
 
@@ -347,7 +347,8 @@ class GptService {
           .post(
             _endpoint,
             headers: <String, String>{
-              'Authorization': 'Bearer ${accessToken ?? AppEnv.supabaseAnonKey}',
+              'Authorization':
+                  'Bearer ${accessToken ?? AppEnv.supabaseAnonKey}',
               'apikey': AppEnv.supabaseAnonKey,
               'Content-Type': 'application/json',
             },
@@ -981,6 +982,8 @@ class GptService {
     final weekEnd = weekStart.add(const Duration(days: 6));
     final nextWeekStart = weekStart.add(const Duration(days: 7));
     final nextWeekEnd = nextWeekStart.add(const Duration(days: 6));
+    final followingWeekStart = weekStart.add(const Duration(days: 14));
+    final followingWeekEnd = followingWeekStart.add(const Duration(days: 6));
     String ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
         '${d.month.toString().padLeft(2, '0')}-'
         '${d.day.toString().padLeft(2, '0')}';
@@ -996,10 +999,14 @@ Current local date-time: ${now.toIso8601String()}.
 Today is ${ymd(todayDate)} ($todayName요일).
 This week (이번주): ${ymd(weekStart)} (월) ~ ${ymd(weekEnd)} (일).
 Next week (다음주): ${ymd(nextWeekStart)} (월) ~ ${ymd(nextWeekEnd)} (일).
+Following week (다다음주): ${ymd(followingWeekStart)} (월) ~ ${ymd(followingWeekEnd)} (일).
 
 Weekday resolution rules (IMPORTANT, follow exactly):
 - "이번주 <요일>" = that weekday inside the This week range above.
 - "다음주 <요일>" = that weekday inside the Next week range above.
+- "다다음주" = the Monday-Sunday range two weeks after the current week.
+- "다다음주 <요일>" = that weekday inside the Following week range above.
+- STT may space this as "다 다음주"; treat it exactly as "다다음주".
 - A month boundary does NOT reset the week. On ${ymd(todayDate)}, "다음주 금요일" is ${ymd(nextWeekFriday)}, even when it falls in the next month.
 - A bare "<요일>" with no 이번주/다음주 means the nearest upcoming occurrence (today or later).
 
@@ -1044,7 +1051,7 @@ $_scheduleSystemPrompt
   bool _hasRelativeWeekdayDateHint(String rawText) {
     final text = _normalizeKoreanText(rawText);
     // 이번주/다음주 + 요일, 또는 이번주/다음주 단독 표현
-    return RegExp(r'(이번|다음)\s*주').hasMatch(text);
+    return RegExp(r'(이번|다음|다다음)\s*주').hasMatch(text);
   }
 
   bool _hasAmbiguousMeridiemTime(String rawText) {
@@ -1339,6 +1346,11 @@ $_scheduleSystemPrompt
   DateTime? _extractDateFromText(String text, DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
 
+    final relativeWeek = _extractRelativeWeekDate(text, now);
+    if (relativeWeek != null) {
+      return relativeWeek;
+    }
+
     // '내일모레'/'내일모래'(STT 오인식)/'모레'는 2일 뒤. '내일' 단독보다 먼저 검사한다
     // ('내일모레'가 '내일'에 먼저 걸려 1일 뒤로 오인되는 것 방지).
     if (text.contains('내일모레') || text.contains('내일모래') || text.contains('모레')) {
@@ -1385,8 +1397,7 @@ $_scheduleSystemPrompt
     }
 
     // "일주일 뒤"/"한 주 뒤"(=7일), "N주(일) 뒤"(숫자 주 단위).
-    if (RegExp(r'일\s*주일\s*(?:뒤|후)|한\s*주(?:일)?\s*(?:뒤|후)')
-        .hasMatch(text)) {
+    if (RegExp(r'일\s*주일\s*(?:뒤|후)|한\s*주(?:일)?\s*(?:뒤|후)').hasMatch(text)) {
       return today.add(const Duration(days: 7));
     }
     final weekOffset = RegExp(
@@ -1482,12 +1493,26 @@ $_scheduleSystemPrompt
     };
 
     final now = _now();
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - DateTime.monday));
+    final weekOffset = text.contains('다다음주')
+        ? 2
+        : text.contains('다음주')
+            ? 1
+            : text.contains('이번주')
+                ? 0
+                : null;
     for (final entry in weekdays.entries) {
       if (!text.contains(entry.key)) {
         continue;
       }
       final currentWeekday = now.weekday;
       final targetWeekday = entry.value;
+      if (weekOffset != null) {
+        return weekStart.add(Duration(
+          days: weekOffset * 7 + targetWeekday - DateTime.monday,
+        ));
+      }
       var delta = targetWeekday - currentWeekday;
       if (delta <= 0) {
         delta += 7;
@@ -1496,6 +1521,30 @@ $_scheduleSystemPrompt
     }
 
     return null;
+  }
+
+  DateTime? _extractRelativeWeekDate(String text, DateTime now) {
+    if (!text.contains('다다음주')) {
+      return null;
+    }
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - DateTime.monday));
+    const weekdays = <String, int>{
+      '월요일': DateTime.monday,
+      '화요일': DateTime.tuesday,
+      '수요일': DateTime.wednesday,
+      '목요일': DateTime.thursday,
+      '금요일': DateTime.friday,
+      '토요일': DateTime.saturday,
+      '일요일': DateTime.sunday,
+    };
+    for (final entry in weekdays.entries) {
+      if (text.contains(entry.key)) {
+        return weekStart
+            .add(Duration(days: 14 + entry.value - DateTime.monday));
+      }
+    }
+    return weekStart.add(const Duration(days: 14));
   }
 
   _ClockTime? _extractTimeFromText(String text) {
@@ -1640,7 +1689,10 @@ $_scheduleSystemPrompt
   }
 
   String _normalizeKoreanText(String text) {
-    return VoiceTextCleanupService.normalizeBasic(text);
+    return VoiceTextCleanupService.normalizeBasic(text)
+        .replaceAll(RegExp(r'다\s*다음\s*주'), '다다음주')
+        .replaceAll(RegExp(r'이번\s*주'), '이번주')
+        .replaceAll(RegExp(r'다음\s*주'), '다음주');
   }
 }
 

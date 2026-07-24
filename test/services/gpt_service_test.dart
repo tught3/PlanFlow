@@ -216,6 +216,59 @@ void main() {
       expect(result['recurrence_rule'], 'FREQ=MONTHLY;BYDAY=1MO');
     });
 
+    test('fallback parsing resolves 다다음주 and its weekday from week start',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{'content': 'not valid json'},
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 20, 12), // 수요일
+      );
+
+      final bare = await service.parseSchedule('다다음주 회의');
+      final friday = await service.parseSchedule('다다음주 금요일 회의');
+
+      expect(bare['start_at'], '2026-06-01T09:00:00.000');
+      expect(friday['start_at'], '2026-06-05T09:00:00.000');
+    });
+
+    test('fallback parsing resolves STT-spaced 다 다음주', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{'content': 'not valid json'},
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 20, 12),
+      );
+
+      final result = await service.parseSchedule('다 다음주 금요일 회의');
+
+      expect(result['start_at'], '2026-06-05T09:00:00.000');
+    });
+
     test(
         'fallback parsing strips date time noise and preserves explicit memo cues',
         () async {
@@ -496,7 +549,8 @@ void main() {
       expect(result['title'], '팀장님 내일 오시는지 확인전화하기');
     });
 
-    test('fallback parsing keeps monthly recurrence and keeps location in title',
+    test(
+        'fallback parsing keeps monthly recurrence and keeps location in title',
         () async {
       final client = MockClient((request) async {
         return http.Response(

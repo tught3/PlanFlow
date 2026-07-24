@@ -444,7 +444,8 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             key: _criticalAlarmSectionKey,
             icon: Icons.priority_high_rounded,
             title: '중요한 일정',
-            subtitle: _criticalAlarmSummary(widget.isCritical, widget.useStrongAlarm),
+            subtitle:
+                _criticalAlarmSummary(widget.isCritical, widget.useStrongAlarm),
             collapsible: true,
             expanded: _criticalAlarmExpanded,
             onExpansionChanged: (value) => _setExpandableSection(
@@ -889,11 +890,27 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
   }
 
   void _emit() {
-    final maxDay = DateUtils.getDaysInMonth(_year, _month);
-    if (_day > maxDay) {
-      _day = maxDay;
-    }
-    widget.onChanged(DateTime(_year, _month, _day, _hour24, _minute));
+    widget.onChanged(_currentDateTime);
+  }
+
+  DateTime get _currentDateTime =>
+      DateTime(_year, _month, _day, _hour24, _minute);
+
+  void _setDateTime(DateTime value) {
+    _year = value.year;
+    _month = value.month;
+    _day = value.day;
+    _hour24 = value.hour;
+    _minute = value.minute;
+  }
+
+  DateTime _dateTimeWithClampedDay({
+    required int year,
+    required int month,
+  }) {
+    final maxDay = DateUtils.getDaysInMonth(year, month);
+    final day = _day > maxDay ? maxDay : _day;
+    return DateTime(year, month, day, _hour24, _minute);
   }
 
   void _set(void Function() update) {
@@ -911,11 +928,38 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
     return rawDelta > 0 ? rawDelta - length : rawDelta + length;
   }
 
-  void _onYearChanged(int value) => _set(() => _year = value);
+  void _onYearChanged(int value) {
+    final yearDelta = value - _year;
+    _set(() {
+      _setDateTime(
+        _dateTimeWithClampedDay(year: _year + yearDelta, month: _month),
+      );
+    });
+  }
 
-  void _onMonthChanged(int value) => _set(() => _month = value);
+  void _onMonthChanged(int value) {
+    if (value == _month) {
+      return;
+    }
+    final delta = _circularDelta(_month - 1, value - 1, 12);
+    _set(() {
+      final target = DateTime(_year, _month + delta, 1);
+      _setDateTime(
+        _dateTimeWithClampedDay(year: target.year, month: target.month),
+      );
+    });
+  }
 
-  void _onDayChanged(int value) => _set(() => _day = value);
+  void _onDayChanged(int value) {
+    if (value == _day) {
+      return;
+    }
+    final maxDay = DateUtils.getDaysInMonth(_year, _month);
+    final delta = _circularDelta(_day - 1, value - 1, maxDay);
+    _set(() {
+      _setDateTime(_currentDateTime.add(Duration(days: delta)));
+    });
+  }
 
   void _onPeriodChanged(int value) {
     if (value == _period) {
@@ -935,10 +979,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
     final newIndex = value - 1;
     final delta = _circularDelta(oldIndex, newIndex, _hours12.length);
     _set(() {
-      _hour24 = (_hour24 + delta) % 24;
-      if (_hour24 < 0) {
-        _hour24 += 24;
-      }
+      _setDateTime(_currentDateTime.add(Duration(hours: delta)));
     });
   }
 
@@ -950,16 +991,8 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
     final newIndex = _minutes.indexOf(value);
     final delta = _circularDelta(oldIndex, newIndex, _minutes.length);
     final deltaMinute = delta * 5;
-    final rawMinute = _minute + deltaMinute;
-    final adjustedMinute = rawMinute % 60;
-    final hourDelta = (rawMinute - adjustedMinute) ~/ 60;
-
     _set(() {
-      _minute = adjustedMinute;
-      _hour24 = (_hour24 + hourDelta) % 24;
-      if (_hour24 < 0) {
-        _hour24 += 24;
-      }
+      _setDateTime(_currentDateTime.add(Duration(minutes: deltaMinute)));
     });
   }
 
@@ -1027,6 +1060,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
                         selected: _month,
                         labelBuilder: (value) => '$value월',
                         itemExtent: _itemExtent,
+                        looping: true,
                         onChanged: _onMonthChanged,
                       ),
                     ),
@@ -1038,6 +1072,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
                         labelBuilder: (value) =>
                             '$value일 ${_weekday(DateTime(_year, _month, value))}',
                         itemExtent: _itemExtent,
+                        looping: true,
                         onChanged: _onDayChanged,
                       ),
                     ),
@@ -1135,7 +1170,9 @@ class _WheelState<T> extends State<_Wheel<T>> {
   void initState() {
     super.initState();
     _controller = FixedExtentScrollController(
-      initialItem: widget.values.indexOf(widget.selected).clamp(0, widget.values.length - 1),
+      initialItem: widget.values
+          .indexOf(widget.selected)
+          .clamp(0, widget.values.length - 1),
     );
   }
 
@@ -1143,7 +1180,9 @@ class _WheelState<T> extends State<_Wheel<T>> {
   void didUpdateWidget(covariant _Wheel<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selected != widget.selected) {
-      final newIndex = widget.values.indexOf(widget.selected).clamp(0, widget.values.length - 1);
+      final newIndex = widget.values
+          .indexOf(widget.selected)
+          .clamp(0, widget.values.length - 1);
       if (_controller.hasClients && _controller.selectedItem != newIndex) {
         _controller.animateToItem(
           newIndex,

@@ -94,6 +94,109 @@ void main() {
     expect(changedStart!.minute, 55);
   });
 
+  testWidgets('time wheel carries across midnight in both directions',
+      (tester) async {
+    DateTime? changedStart;
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 23, 55),
+        endAt: DateTime(2026, 5, 14),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+
+    final minuteWheel =
+        tester.widget(find.byKey(const Key('start-minute-wheel'))) as dynamic;
+    minuteWheel.onChanged(0);
+    await tester.pump();
+    expect(changedStart, DateTime(2026, 5, 14));
+
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 14),
+        endAt: DateTime(2026, 5, 14, 1),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+    final reverseMinuteWheel =
+        tester.widget(find.byKey(const Key('start-minute-wheel'))) as dynamic;
+    reverseMinuteWheel.onChanged(55);
+    await tester.pump();
+    expect(changedStart, DateTime(2026, 5, 13, 23, 55));
+  });
+
+  testWidgets('day wheel carries across month and year boundaries',
+      (tester) async {
+    DateTime? changedStart;
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 7, 31, 9),
+        endAt: DateTime(2026, 8, 1, 10),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+    final dayWheel =
+        tester.widget(find.byKey(const Key('start-day-wheel'))) as dynamic;
+    dayWheel.onChanged(1);
+    await tester.pump();
+    expect(changedStart, DateTime(2026, 8, 1, 9));
+
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 12, 31, 9),
+        endAt: DateTime(2027, 1, 1, 10),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+    final newYearDayWheel =
+        tester.widget(find.byKey(const Key('start-day-wheel'))) as dynamic;
+    newYearDayWheel.onChanged(1);
+    await tester.pump();
+    expect(changedStart, DateTime(2027, 1, 1, 9));
+  });
+
+  testWidgets('day wheel handles reverse, 30-day, and leap-year boundaries',
+      (tester) async {
+    DateTime? changedStart;
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2024, 3, 1, 9),
+        endAt: DateTime(2024, 3, 2, 10),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+    final reverseWheel =
+        tester.widget(find.byKey(const Key('start-day-wheel'))) as dynamic;
+    reverseWheel.onChanged(31);
+    await tester.pump();
+    expect(changedStart, DateTime(2024, 2, 29, 9));
+
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 4, 30, 9),
+        endAt: DateTime(2026, 5, 1, 10),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+    final thirtyDayWheel =
+        tester.widget(find.byKey(const Key('start-day-wheel'))) as dynamic;
+    thirtyDayWheel.onChanged(1);
+    await tester.pump();
+    expect(changedStart, DateTime(2026, 5, 1, 9));
+  });
+
   testWidgets('time wheels move hour smoothly across noon and wrap',
       (tester) async {
     DateTime? changedStart;
@@ -303,7 +406,8 @@ void main() {
     expect(find.widgetWithText(TextFormField, '설명'), findsOneWidget);
   });
 
-  testWidgets('critical checkbox expands strong alarm and keeps checkbox visible',
+  testWidgets(
+      'critical checkbox expands strong alarm and keeps checkbox visible',
       (tester) async {
     await tester.pumpWidget(
       _TestHost(
@@ -380,8 +484,7 @@ class _TestHostState extends State<_TestHost> {
     _isCritical = widget.isCritical;
     _useStrongAlarm = widget.useStrongAlarm;
     titleController = TextEditingController(text: '팀장 동행방문');
-    locationController =
-        TextEditingController(text: widget.locationText);
+    locationController = TextEditingController(text: widget.locationText);
   }
 
   @override
@@ -412,19 +515,16 @@ class _TestHostState extends State<_TestHost> {
             useStrongAlarm: _useStrongAlarm,
             locationLat: widget.locationLat,
             locationLng: widget.locationLng,
-            initiallyExpandClassification:
-                widget.initiallyExpandClassification,
+            initiallyExpandClassification: widget.initiallyExpandClassification,
             initiallyExpandDetails: widget.initiallyExpandDetails,
-            initiallyExpandCriticalAlarm:
-                widget.initiallyExpandCriticalAlarm,
+            initiallyExpandCriticalAlarm: widget.initiallyExpandCriticalAlarm,
             onStartChanged: widget.onStartChanged ?? (_) {},
             onEndChanged: (_) {},
             onCategoryChanged: (_) {},
             onRecurrenceChanged: (_) {},
             onReminderChanged: (_) {},
             onCriticalChanged: (v) => setState(() => _isCritical = v),
-            onStrongAlarmChanged: (v) =>
-                setState(() => _useStrongAlarm = v),
+            onStrongAlarmChanged: (v) => setState(() => _useStrongAlarm = v),
             onLocationPick: () {},
             isSearchingLocation: false,
           ),
