@@ -13,7 +13,6 @@ import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import 'alarm_service.dart';
-import 'gpt_service.dart';
 import 'notification_service.dart';
 import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
@@ -96,7 +95,6 @@ class BriefingRuntimeStatus {
 class BriefingSchedulerService {
   BriefingSchedulerService({
     AlarmService? alarmService,
-    GptService? gptService,
     TtsService? ttsService,
     NotificationService? notificationService,
     SettingsRepository? settingsRepository,
@@ -104,7 +102,6 @@ class BriefingSchedulerService {
     DateTime Function()? now,
     FutureOr<bool> Function()? isAppInForeground,
   })  : _alarmService = alarmService ?? const AlarmService(),
-        _gptService = gptService ?? GptService(),
         _ttsService = ttsService ?? const TtsService(),
         _notificationService = notificationService ?? NotificationService(),
         _settingsRepository = settingsRepository,
@@ -113,7 +110,6 @@ class BriefingSchedulerService {
         _isAppInForeground = isAppInForeground;
 
   final AlarmService _alarmService;
-  final GptService _gptService;
   final TtsService _ttsService;
   final NotificationService _notificationService;
   final SettingsRepository? _settingsRepository;
@@ -442,30 +438,16 @@ class BriefingSchedulerService {
       }
 
       onEventsResolved?.call(events);
-      final eventSummary = _buildEventSummary(events);
-      var usedFallback = false;
-      String? failureReason;
-      late final String briefingText;
-      try {
-        briefingText = await _gptService.generateBriefing(
-          rawText: eventSummary,
-          isMorning: isMorning,
-        );
-      } catch (error, stackTrace) {
-        failureReason = error is GptCompletionException
-            ? error.reason
-            : 'unknown_gpt_error';
-        debugPrint('Briefing GPT failed: type=$type error=$error');
-        debugPrintStack(stackTrace: stackTrace);
-        briefingText = await _buildLocalBriefing(
-          events,
-          isMorning: isMorning,
-        );
-        usedFallback = true;
-        debugPrint(
-          'Briefing fallback used: type=$type events=${events.length} reason=$failureReason',
-        );
-      }
+      // 브리핑 문장은 GPT가 아니라 저장된 일정 목록을 그대로 문장화하는
+      // 로컬 조립(_buildLocalBriefing)만 쓴다. GPT는 "목록에 없는 일정은
+      // 지어내지 마라"고 프롬프트로 지시해도 구조적으로 보장되지 않아,
+      // 저장하지 않은 일정을 만들어 읽어주는 사고가 있었다(사용자 지적,
+      // 2026-07-23). 로컬 조립은 events 목록을 그대로 문장화만 하므로
+      // 지어낼 방법 자체가 없다.
+      final briefingText = await _buildLocalBriefing(
+        events,
+        isMorning: isMorning,
+      );
       await _deliverBriefing(
         briefingText,
         isMorning: isMorning,
@@ -473,11 +455,8 @@ class BriefingSchedulerService {
       );
       final result = BriefingExecutionResult(
         delivered: true,
-        usedFallback: usedFallback,
-        message: usedFallback
-            ? 'OpenAI 응답 실패로 로컬 브리핑을 재생했습니다.'
-            : (isMorning ? '모닝 브리핑을 재생했습니다.' : '이브닝 브리핑을 재생했습니다.'),
-        failureReason: failureReason,
+        usedFallback: false,
+        message: isMorning ? '모닝 브리핑을 재생했습니다.' : '이브닝 브리핑을 재생했습니다.',
         events: events,
       );
       await _recordExecutionStatus(isMorning: isMorning, result: result);
@@ -584,24 +563,9 @@ class BriefingSchedulerService {
           : '오늘 하루도 고생하셨어요. 내일은 예정된 일정이 없어요. 편안한 저녁 보내세요.';
       return (text: text, usedFallback: false, events: <EventModel>[]);
     }
-    final eventSummary = _buildEventSummary(events);
-    var usedFallback = false;
-    late final String text;
-    try {
-      text = await _gptService.generateBriefing(
-        rawText: eventSummary,
-        isMorning: isMorning,
-      );
-    } catch (error, stackTrace) {
-      debugPrint(
-        'Briefing preload GPT failed: type=${isMorning ? 'morning' : 'evening'} '
-        'error=$error',
-      );
-      debugPrintStack(stackTrace: stackTrace);
-      text = await _buildLocalBriefing(events, isMorning: isMorning);
-      usedFallback = true;
-    }
-    return (text: text, usedFallback: usedFallback, events: events);
+    // 위 실행 경로와 동일한 이유로 GPT를 쓰지 않고 로컬 조립만 사용한다.
+    final text = await _buildLocalBriefing(events, isMorning: isMorning);
+    return (text: text, usedFallback: false, events: events);
   }
 
   /// 알람 알림 예약 직후 또는 포그라운드 다이얼로그 표시와 동시에 호출.
@@ -727,19 +691,6 @@ class BriefingSchedulerService {
       return planflowIsSameLocalDay(startAt, targetDate);
     }).toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-  }
-
-  String _buildEventSummary(List<EventModel> events) {
-    return events.map((event) {
-      final time = event.startAt == null
-          ? '시간 미정'
-          : '${planflowLocal(event.startAt!).hour.toString().padLeft(2, '0')}:${planflowLocal(event.startAt!).minute.toString().padLeft(2, '0')}';
-      final location = event.location == null ? '' : ' 장소: ${event.location}';
-      final critical = event.isCritical ? ' 중요 일정' : '';
-      final supplies =
-          event.supplies.isEmpty ? '' : ' 준비물: ${event.supplies.join(', ')}';
-      return '- $time ${event.title}$location$critical$supplies';
-    }).join('\n');
   }
 
   Future<String> _buildLocalBriefing(

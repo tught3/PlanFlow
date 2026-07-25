@@ -6,7 +6,6 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/services/alarm_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
-import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -204,13 +203,12 @@ void main() {
   });
 
   test(
-      'executeBriefing uses secretary-style local fallback for critical events',
+      'executeBriefing uses secretary-style local briefing for critical events',
       () async {
     AppEnv.markSupabaseInitialized();
     final tts = _FakeTtsService();
     final service = BriefingSchedulerService(
       alarmService: _FakeAlarmService(),
-      gptService: _FailingGptService(),
       ttsService: tts,
       notificationService: _FakeNotificationService(),
       eventRepository: _FakeEventRepository(
@@ -243,7 +241,7 @@ void main() {
       userId: 'user-1',
     );
 
-    expect(result.usedFallback, isTrue);
+    expect(result.usedFallback, isFalse);
     expect(tts.lastText, contains('좋은 아침입니다. 오늘 일정은 2개입니다.'));
     expect(
       tts.lastText,
@@ -436,7 +434,6 @@ void main() {
     final tts = _FakeTtsService();
     final service = BriefingSchedulerService(
       alarmService: _FakeAlarmService(),
-      gptService: _FailingGptService(),
       ttsService: tts,
       notificationService: _FakeNotificationService(),
       eventRepository: _FakeEventRepository(
@@ -466,7 +463,7 @@ void main() {
       userId: 'user-1',
     );
 
-    expect(result.usedFallback, isTrue);
+    expect(result.usedFallback, isFalse);
     expect(
       tts.lastText,
       contains('일정 간격이 짧으니 앞 일정 마무리 시간을 확인해 주세요.'),
@@ -554,19 +551,6 @@ class _FakeSettingsRepository extends SettingsRepository {
   @override
   Future<UserSettingsModel> upsertSettings(UserSettingsModel settings) async {
     return settings;
-  }
-}
-
-class _FailingGptService extends GptService {
-  @override
-  Future<String> generateBriefing({
-    required String rawText,
-    required bool isMorning,
-  }) {
-    throw const GptCompletionException(
-      'test_failure',
-      'forced failure',
-    );
   }
 }
 
