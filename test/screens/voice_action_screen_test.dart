@@ -1990,6 +1990,10 @@ void main() {
     expect(created.parentEventId, 'event-1');
     expect(created.recurrenceRule, isNull);
     expect(created.isCritical, isTrue);
+    // 원본 회차 날짜를 overriddenOccurrenceDate로 기록해야 캘린더/위젯이
+    // 원본 회차를 정확히 찾아 숨긴다(2026-07-27). 이 픽스처는 날짜를 바꾸지
+    // 않는 수정이라 startAt과 같아야 정상이다.
+    expect(created.overriddenOccurrenceDate, created.startAt);
   });
 
   testWidgets('반복 개인 일정 수정에서 "전체 반복 일정"을 고르면 원본 계열을 그대로 덮어쓴다', (tester) async {

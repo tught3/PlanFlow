@@ -1196,6 +1196,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
               updatedEvent,
               parentEventId: _loadedEvent!.id,
               keepRecurrence: false,
+              // 원본 회차가 어느 날짜였는지 기록해야, 날짜를 바꿔서 저장해도
+              // 캘린더/위젯이 원본 회차를 정확히 찾아 숨긴다(사용자 지적,
+              // 2026-07-27 — 날짜를 바꾸면 원래 자리(예: 21일)에 회차가
+              // 그대로 남아 있었음).
+              overriddenOccurrenceDate: _loadedEvent!.startAt,
             ),
           );
         } else if (recurrenceScope == 'future' && _loadedEvent != null) {
@@ -1217,6 +1222,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 updatedEvent,
                 parentEventId: original.id,
                 keepRecurrence: true,
+                overriddenOccurrenceDate: originalStart,
               ),
             );
           }
@@ -1402,6 +1408,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     EventModel event, {
     required String parentEventId,
     required bool keepRecurrence,
+    DateTime? overriddenOccurrenceDate,
   }) {
     return EventModel(
       id: '',
@@ -1422,6 +1429,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
       parentEventId: parentEventId,
+      overriddenOccurrenceDate: overriddenOccurrenceDate,
       groupEventId: null,
       category: event.category,
       source: 'manual',

@@ -57,10 +57,12 @@ EventModel detachedRecurringVoiceEvent(
   EventModel event, {
   required String parentEventId,
   required bool keepRecurrence,
+  DateTime? overriddenOccurrenceDate,
 }) {
   return event.copyWith(
     id: '',
     parentEventId: parentEventId,
+    overriddenOccurrenceDate: overriddenOccurrenceDate,
     clearGroupEventId: true,
     clearRecurrenceRule: !keepRecurrence,
     source: 'manual',

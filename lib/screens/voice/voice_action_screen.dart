@@ -1402,6 +1402,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           editedEvent,
           parentEventId: event.id,
           keepRecurrence: false,
+          // 원본 회차 날짜를 기록해야 날짜를 바꿔 저장해도 캘린더/위젯이
+          // 원본 회차를 정확히 찾아 숨긴다(2026-07-27, event_edit_screen과
+          // 동일한 수정).
+          overriddenOccurrenceDate: event.startAt,
         ),
       );
     }
@@ -1429,6 +1433,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           editedEvent,
           parentEventId: event.id,
           keepRecurrence: true,
+          overriddenOccurrenceDate: originalStart,
         ),
       );
     }

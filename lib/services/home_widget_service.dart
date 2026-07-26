@@ -872,12 +872,16 @@ class HomeWidgetSchedulePayloadBuilder {
               event.parentEventId != null &&
               event.parentEventId!.trim().isNotEmpty &&
               event.parentEventId != event.id &&
-              event.startAt != null,
+              event.overriddenOccurrenceDate != null,
         )
         .toList(growable: false);
     if (overrides.isEmpty) {
       return events;
     }
+    // calendar_screen._hideOverriddenRecurringOccurrences와 동일한 이유로
+    // override의 overriddenOccurrenceDate(원본 회차 날짜)로 매칭한다 —
+    // startAt(새로 옮긴 날짜)으로 매칭하면 날짜를 바꾼 예외가 원본 회차를
+    // 못 숨긴다(2026-07-27).
     return events
         .where((event) {
           final startAt = event.startAt;
@@ -888,9 +892,9 @@ class HomeWidgetSchedulePayloadBuilder {
             if (override.parentEventId != event.id) {
               return false;
             }
-            final overrideStart = override.startAt;
-            return overrideStart != null &&
-                planflowIsSameLocalDay(overrideStart, startAt);
+            final overriddenDate = override.overriddenOccurrenceDate;
+            return overriddenDate != null &&
+                planflowIsSameLocalDay(overriddenDate, startAt);
           });
           return !isOverridden;
         })

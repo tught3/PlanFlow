@@ -21,6 +21,7 @@ class EventModel {
     this.isAllDay = false,
     this.isMultiDay = false,
     this.parentEventId,
+    this.overriddenOccurrenceDate,
     this.groupEventId,
     this.category = '기타',
     this.source = 'manual',
@@ -54,6 +55,8 @@ class EventModel {
       isAllDay: _boolValue(json['is_all_day']),
       isMultiDay: _boolValue(json['is_multi_day']),
       parentEventId: _optionalStringValue(json['parent_event_id']),
+      overriddenOccurrenceDate:
+          _dateTimeValue(json['overridden_occurrence_date']),
       groupEventId: _optionalStringValue(json['group_event_id']),
       category: _categoryValue(json['category']),
       source: _sourceValue(json['source']),
@@ -86,6 +89,13 @@ class EventModel {
   final bool isAllDay;
   final bool isMultiDay;
   final String? parentEventId;
+
+  /// 반복 일정의 특정 회차만 분리해 수정한(단일 예외) 이벤트에서, 원래
+  /// 대체하는 회차의 날짜. 캘린더/위젯이 이 값으로 원본 회차를 화면에서
+  /// 숨긴다(회차의 날짜를 바꿔도 정확히 원래 자리를 찾아 숨길 수 있도록
+  /// startAt이 아닌 별도 필드로 기록 — 2026-07-27 버그: startAt으로
+  /// 매칭하면 날짜를 바꾼 예외는 원본 회차를 못 숨겼다).
+  final DateTime? overriddenOccurrenceDate;
   final String? groupEventId;
   final String category;
   final String source;
@@ -125,6 +135,7 @@ class EventModel {
       'is_all_day': isAllDay,
       'is_multi_day': isMultiDay,
       'parent_event_id': _optionalStringValue(parentEventId),
+      'overridden_occurrence_date': _utcIsoValue(overriddenOccurrenceDate),
       'group_event_id': _optionalStringValue(groupEventId),
       'category': _categoryValue(category),
       'source': _sourceValue(source),
@@ -157,6 +168,7 @@ class EventModel {
       'is_all_day': isAllDay,
       'is_multi_day': isMultiDay,
       'parent_event_id': _optionalStringValue(parentEventId),
+      'overridden_occurrence_date': _utcIsoValue(overriddenOccurrenceDate),
       'group_event_id': _optionalStringValue(groupEventId),
       'category': _categoryValue(category),
       'source': _sourceValue(source),
@@ -196,6 +208,8 @@ class EventModel {
     bool? isMultiDay,
     String? parentEventId,
     bool clearParentEventId = false,
+    DateTime? overriddenOccurrenceDate,
+    bool clearOverriddenOccurrenceDate = false,
     String? groupEventId,
     bool clearGroupEventId = false,
     String? category,
@@ -237,6 +251,9 @@ class EventModel {
       isMultiDay: isMultiDay ?? this.isMultiDay,
       parentEventId:
           clearParentEventId ? null : parentEventId ?? this.parentEventId,
+      overriddenOccurrenceDate: clearOverriddenOccurrenceDate
+          ? null
+          : overriddenOccurrenceDate ?? this.overriddenOccurrenceDate,
       groupEventId:
           clearGroupEventId ? null : groupEventId ?? this.groupEventId,
       category: category ?? this.category,

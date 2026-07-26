@@ -440,6 +440,51 @@ void main() {
   });
 
   test(
+      'HomeWidgetSchedulePayloadBuilder hides a recurring occurrence that was '
+      'moved to a different date (single-occurrence override)', () {
+    // 원래 버그: 반복 회차를 "이 일정만" 수정해 날짜를 옮기면, 위젯이 옮긴
+    // 날짜(override.startAt)로 원본 회차를 찾으려 해서 원래 날짜(19일)에
+    // 그대로 남아 보였다(2026-07-27). overriddenOccurrenceDate로 원래
+    // 날짜를 명시해야 정확히 숨겨진다.
+    final year = DateTime.now().year + 1;
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime(year, 5, 20, 4),
+      events: <EventModel>[
+        EventModel(
+          id: 'series',
+          userId: 'user-1',
+          title: 'Weekly sync',
+          startAt: DateTime(year, 5, 5, 9),
+          recurrenceRule: 'FREQ=WEEKLY',
+        ),
+        EventModel(
+          id: 'override-1',
+          userId: 'user-1',
+          title: 'Weekly sync',
+          startAt: DateTime(year, 5, 21, 9),
+          parentEventId: 'series',
+          overriddenOccurrenceDate: DateTime(year, 5, 19, 9),
+        ),
+      ],
+    );
+
+    final originalDayCell =
+        payload.monthCells.firstWhere((cell) => cell.day == 19);
+    expect(
+      originalDayCell.events.any((event) => event.title == 'Weekly sync'),
+      isFalse,
+      reason: '원본 회차(19일)는 다른 날로 옮겨졌으니 더 이상 보이면 안 된다',
+    );
+    final movedDayCell =
+        payload.monthCells.firstWhere((cell) => cell.day == 21);
+    expect(
+      movedDayCell.events.any((event) => event.title == 'Weekly sync'),
+      isTrue,
+      reason: '옮긴 날(21일)에는 그대로 보여야 한다',
+    );
+  });
+
+  test(
       'HomeWidgetSchedulePayloadBuilder fills holidayName/isDayOff for month cells',
       () {
     final octoberPayload = HomeWidgetSchedulePayloadBuilder.fromEvents(

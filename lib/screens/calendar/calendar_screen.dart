@@ -835,7 +835,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         .where((event) =>
             event.parentEventId != null &&
             event.parentEventId!.trim().isNotEmpty &&
-            event.startAt != null)
+            event.overriddenOccurrenceDate != null)
         .toList(growable: false);
     if (overrides.isEmpty) {
       return events;
@@ -845,13 +845,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (startAt == null) {
         return true;
       }
+      // 예외 이벤트가 대체하는 원본 회차 날짜(overriddenOccurrenceDate)로
+      // 매칭한다. 예전엔 예외 이벤트의 현재 startAt(= 새로 옮긴 날짜)으로
+      // 매칭해서, 회차 날짜 자체를 바꾼 예외는 원본 회차를 못 숨겼다
+      // (사용자 지적, 2026-07-27 — 21일 회차를 다른 날로 옮겨도 21일 자리에
+      // 그대로 남아 보임).
       final isOverridden = overrides.any((override) {
         if (override.parentEventId != event.id) {
           return false;
         }
-        final overrideStart = override.startAt;
-        return overrideStart != null &&
-            planflowIsSameLocalDay(overrideStart, startAt);
+        final overriddenDate = override.overriddenOccurrenceDate;
+        return overriddenDate != null &&
+            planflowIsSameLocalDay(overriddenDate, startAt);
       });
       return !isOverridden;
     }).toList(growable: false);
