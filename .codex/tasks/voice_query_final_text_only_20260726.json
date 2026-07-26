@@ -1,0 +1,10 @@
+{
+  "task_id": "voice_query_final_text_only_20260726",
+  "status": "IN_PROGRESS",
+  "request": "음성 일정 조회 문구를 사용자가 직접 수정한 뒤에는 이전 STT 해석 결과를 섞지 않고 수정된 최종 문장만 조회한다.",
+  "roles": {},
+  "plan": [],
+  "changed_files": [],
+  "verification": [],
+  "review": null
+}
