@@ -215,6 +215,53 @@ class _StopPendingSttService extends _FakeSttService {
   }
 }
 
+class _CancelPendingSttService extends _FakeSttService {
+  bool _cancelPending = false;
+  final Completer<void> cancelReleased = Completer<void>();
+
+  @override
+  Future<void> cancelActiveListen() {
+    cancelCalls += 1;
+    _cancelPending = true;
+    if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
+      _listenCompleter!.complete(
+        SttListenResult.failure(
+          failure: SttListenFailure.unavailable,
+          message: 'cancel pending',
+          text: _latestText,
+        ),
+      );
+    }
+    return cancelReleased.future.whenComplete(() {
+      _cancelPending = false;
+    });
+  }
+
+  @override
+  Future<SttListenResult> listen({
+    ValueChanged<String>? onPartialResult,
+    ValueChanged<int>? onRestart,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
+    SttListenMode mode = SttListenMode.dictation,
+  }) {
+    if (_cancelPending) {
+      listenCalls += 1;
+      return Future<SttListenResult>.value(
+        SttListenResult.failure(
+          failure: SttListenFailure.unavailable,
+          message: 'stale cancel is still pending',
+        ),
+      );
+    }
+    return super.listen(
+      onPartialResult: onPartialResult,
+      onRestart: onRestart,
+      onStatus: onStatus,
+      mode: mode,
+    );
+  }
+}
+
 GoRoute _voiceConversationTestRoute() {
   return GoRoute(
     path: AppRoutes.voiceConversation,
@@ -442,6 +489,52 @@ void main() {
     expect(find.textContaining('manual:true'), findsOneWidget);
     expect(find.textContaining('정장집 방문'), findsOneWidget);
     expect(find.textContaining('내일 오전 10시 정장집 방문'), findsNothing);
+  });
+
+  testWidgets('완료 처리 중 직접 수정하면 늦은 자동 제출의 화면 이동을 막는다', (tester) async {
+    final fakeStt = _CancelPendingSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.text('완료'));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byType(TextField),
+      '내일 오전 11시 정장집 방문',
+    );
+    await tester.pump();
+
+    fakeStt.cancelReleased.complete();
+    await tester.pumpAndSettle();
+
+    expect(fakeStt.cancelCalls, 1);
+    expect(find.text('일정 확인 화면'), findsNothing);
+    expect(find.textContaining('내일 오전 11시 정장집 방문'), findsOneWidget);
   });
 
   testWidgets('현재 내용으로 입력 버튼은 수정한 텍스트를 그대로 확인 화면으로 보낸다', (tester) async {

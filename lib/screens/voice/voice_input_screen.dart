@@ -69,6 +69,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   bool _isExitingVoiceInput = false;
   bool _didDeactivateCancel = false;
   bool _isFinishingVoiceFlow = false;
+  int _submitGeneration = 0;
   int _partialTranscriptToken = 0;
   int _listenSessionGeneration = 0;
   int _draftPreparationToken = 0;
@@ -136,9 +137,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   void _handleRawTextChanged() {
     if (!_isApplyingTranscriptProgrammatically &&
         _rawTextController.text.trim().isNotEmpty) {
+      // A keyboard correction is authoritative.  An older STT submission may
+      // still be awaiting cleanup, so invalidate only that earlier request.
+      _submitGeneration++;
       _manualEditOriginalTranscript ??= _lastProgrammaticTranscript;
       _didEditTranscriptManually = true;
       _hasSubmittedVoiceCommand = false;
+      _isSubmittingVoiceCommand = false;
+      _lastSubmittedSignature = null;
       _clearPreparedDraft();
     }
     if (mounted) {
@@ -623,6 +629,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _continueWithRawText({String? rawTextOverride}) async {
+    final submitGeneration = _submitGeneration;
     final sourceText = (rawTextOverride ?? _rawTextController.text).trim();
     final normalizedText = SttService.normalizeVoiceTranscript(sourceText);
     if (!mounted) {
@@ -631,12 +638,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     var rawText =
         VoiceTextCleanupService.cleanLocally(normalizedText).cleanedText;
     rawText = await _applyTranscriptCorrectionRules(rawText);
-    if (!mounted) {
+    if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }
     if (rawText.isEmpty) {
       await _pushVoiceRoute(AppRoutes.confirm,
-          extra: const <String, dynamic>{});
+          extra: const <String, dynamic>{}, submitGeneration: submitGeneration);
       return;
     }
     if (!_beginVoiceCommandSubmit(rawText)) {
@@ -650,13 +657,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     );
     final commandAction =
         preparedAction ?? await _detectCommandActionForSubmit(rawText);
-    if (!mounted) {
+    if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }
     if (commandAction == _VoiceCommandAction.choose &&
         _voiceCommandRouter.isAmbiguousFieldAddition(rawText)) {
       final choice = await _showAmbiguousFieldAdditionSheet(rawText);
-      if (!mounted) {
+      if (!mounted || submitGeneration != _submitGeneration) {
         return;
       }
       switch (choice) {
@@ -665,10 +672,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             normalizedText,
             rawText,
             _VoiceCommandAction.edit,
+            submitGeneration: submitGeneration,
           );
           return;
         case _AmbiguousFieldAdditionChoice.createNew:
-          await _openAddConfirmFromText(normalizedText, preparedDraft);
+          await _openAddConfirmFromText(
+            normalizedText,
+            preparedDraft,
+            submitGeneration: submitGeneration,
+          );
           return;
         case _AmbiguousFieldAdditionChoice.editText:
         case null:
@@ -680,10 +692,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       }
     }
     if (commandAction == _VoiceCommandAction.add) {
-      await _openAddConfirmFromText(normalizedText, preparedDraft);
+      await _openAddConfirmFromText(
+        normalizedText,
+        preparedDraft,
+        submitGeneration: submitGeneration,
+      );
       return;
     }
-    await _openVoiceActionFromText(normalizedText, rawText, commandAction);
+    await _openVoiceActionFromText(
+      normalizedText,
+      rawText,
+      commandAction,
+      submitGeneration: submitGeneration,
+    );
   }
 
   Future<String> _applyTranscriptCorrectionRules(String rawText) async {
@@ -764,8 +785,18 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     });
   }
 
-  Future<void> _pushVoiceRoute(String location, {Object? extra}) async {
+  Future<void> _pushVoiceRoute(
+    String location, {
+    Object? extra,
+    required int submitGeneration,
+  }) async {
     await _finishVoiceFlow();
+    if (!mounted || submitGeneration != _submitGeneration) {
+      if (mounted) {
+        setState(() => _isFinishingVoiceFlow = false);
+      }
+      return;
+    }
     // 완료 버튼은 native stop을 기다리지 않고 다음 화면으로 이동한다. 이때
     // `_isListening`은 이미 false여서 deactivate의 취소 경로를 타지 않을 수
     // 있다. route push 전에 현재 세션을 무효화하고 native recognizer를
@@ -775,7 +806,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     _listenSessionGeneration++;
     _isFinishingVoiceFlow = true;
     await widget.sttService.cancelActiveListen();
-    if (!mounted) {
+    if (!mounted || submitGeneration != _submitGeneration) {
+      if (mounted) {
+        setState(() => _isFinishingVoiceFlow = false);
+      }
       return;
     }
     unawaited(
@@ -838,9 +872,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _openAddConfirmFromText(
-    String normalizedText,
-    Map<String, dynamic>? preparedDraft,
-  ) async {
+      String normalizedText, Map<String, dynamic>? preparedDraft,
+      {required int submitGeneration}) async {
     if (preparedDraft != null) {
       await _pushVoiceRoute(
         AppRoutes.confirm,
@@ -850,18 +883,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             'stt_original_text': _manualEditOriginalTranscript!.trim(),
           if (_didEditTranscriptManually) 'manual_text_confirmed': true,
         },
+        submitGeneration: submitGeneration,
       );
       return;
     }
 
     final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
-    if (!mounted) {
+    if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }
     final cleanedText = cleanup.cleanedText;
     if (cleanedText.isEmpty) {
       await _pushVoiceRoute(AppRoutes.confirm,
-          extra: const <String, dynamic>{});
+          extra: const <String, dynamic>{}, submitGeneration: submitGeneration);
       return;
     }
 
@@ -880,16 +914,18 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         'parse_pending': true,
         if (_didEditTranscriptManually) 'manual_text_confirmed': true,
       },
+      submitGeneration: submitGeneration,
     );
   }
 
   Future<void> _openVoiceActionFromText(
     String normalizedText,
     String rawText,
-    _VoiceCommandAction commandAction,
-  ) async {
+    _VoiceCommandAction commandAction, {
+    required int submitGeneration,
+  }) async {
     final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
-    if (!mounted) {
+    if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }
     if (commandAction == _VoiceCommandAction.query) {
@@ -899,6 +935,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
           'initial_text':
               cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,
         },
+        submitGeneration: submitGeneration,
       );
       return;
     }
@@ -913,6 +950,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
         'action': commandAction.name,
       },
+      submitGeneration: submitGeneration,
     );
   }
 
