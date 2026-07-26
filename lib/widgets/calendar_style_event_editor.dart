@@ -102,6 +102,15 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   late bool _alarmExpanded;
   late bool _criticalAlarmExpanded;
 
+  // 제목↔장소 양방향 동기화용. 필드에 포커스가 들어올 때 값을 스냅샷해뒀다가
+  // 포커스가 빠질 때(편집 완료) 바뀐 부분만 비교해 반대쪽 필드에도 반영한다.
+  // 예: 장소를 "전주세브란스"→"원주세브란스"로 고치면 제목의 "전주세브란스"도
+  // 자동으로 "원주세브란스"가 된다(반대 방향도 동일, 사용자 지적 2026-07-24).
+  final FocusNode _titleFocusNode = FocusNode();
+  final FocusNode _locationFocusNode = FocusNode();
+  String? _titleTextOnFocus;
+  String? _locationTextOnFocus;
+
   @override
   void initState() {
     super.initState();
@@ -109,6 +118,96 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
     _detailsExpanded = widget.initiallyExpandDetails;
     _alarmExpanded = widget.initiallyExpandAlarm;
     _criticalAlarmExpanded = widget.initiallyExpandCriticalAlarm;
+    _titleFocusNode.addListener(_handleTitleFocusChange);
+    _locationFocusNode.addListener(_handleLocationFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _titleFocusNode.removeListener(_handleTitleFocusChange);
+    _locationFocusNode.removeListener(_handleLocationFocusChange);
+    _titleFocusNode.dispose();
+    _locationFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleTitleFocusChange() {
+    if (_titleFocusNode.hasFocus) {
+      _titleTextOnFocus = widget.titleController.text;
+      return;
+    }
+    final oldText = _titleTextOnFocus;
+    final newText = widget.titleController.text;
+    _titleTextOnFocus = null;
+    if (oldText == null || oldText == newText) {
+      return;
+    }
+    final diff = _diffMiddle(oldText, newText);
+    if (diff == null) {
+      return;
+    }
+    final location = widget.locationController.text;
+    if (!location.contains(diff.$1)) {
+      return;
+    }
+    final updatedLocation = location.replaceFirst(diff.$1, diff.$2);
+    if (updatedLocation == location) {
+      return;
+    }
+    widget.locationController.text = updatedLocation;
+    widget.onLocationTextChanged?.call(updatedLocation);
+  }
+
+  void _handleLocationFocusChange() {
+    if (_locationFocusNode.hasFocus) {
+      _locationTextOnFocus = widget.locationController.text;
+      return;
+    }
+    final oldText = _locationTextOnFocus;
+    final newText = widget.locationController.text;
+    _locationTextOnFocus = null;
+    if (oldText == null || oldText == newText) {
+      return;
+    }
+    final diff = _diffMiddle(oldText, newText);
+    if (diff == null) {
+      return;
+    }
+    final title = widget.titleController.text;
+    if (!title.contains(diff.$1)) {
+      return;
+    }
+    final updatedTitle = title.replaceFirst(diff.$1, diff.$2);
+    if (updatedTitle == title) {
+      return;
+    }
+    widget.titleController.text = updatedTitle;
+  }
+
+  /// oldText → newText로 바뀔 때, 실제로 달라진 가운데 부분만 골라낸다.
+  /// 앞뒤로 겹치는 부분을 잘라내고 남는 (바뀌기 전 조각, 바뀐 후 조각)을
+  /// 반환한다. 통째로 새로 입력했거나(공통 부분 없음) 순수 삽입/삭제만
+  /// 있었으면(바뀌기 전 조각이 비어 있으면) null — 그런 경우 반대쪽 필드에
+  /// 뭘 찾아 바꿔야 할지 알 수 없다.
+  (String, String)? _diffMiddle(String oldText, String newText) {
+    final minLen = oldText.length < newText.length ? oldText.length : newText.length;
+    var prefixLen = 0;
+    while (prefixLen < minLen && oldText[prefixLen] == newText[prefixLen]) {
+      prefixLen += 1;
+    }
+    var suffixLen = 0;
+    final maxSuffix = minLen - prefixLen;
+    while (suffixLen < maxSuffix &&
+        oldText[oldText.length - 1 - suffixLen] ==
+            newText[newText.length - 1 - suffixLen]) {
+      suffixLen += 1;
+    }
+    final oldMiddle = oldText.substring(prefixLen, oldText.length - suffixLen);
+    final newMiddle = newText.substring(prefixLen, newText.length - suffixLen);
+    if (oldMiddle.isEmpty) {
+      return null;
+    }
+    return (oldMiddle, newMiddle);
   }
 
   @override
@@ -226,7 +325,9 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                 _CalendarHeader(color: categoryColor),
                 const SizedBox(height: 10),
                 TextFormField(
+                  key: const Key('event-editor-title-field'),
                   controller: widget.titleController,
+                  focusNode: _titleFocusNode,
                   validator: widget.titleValidator,
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
@@ -283,7 +384,9 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 TextFormField(
+                  key: const Key('event-editor-location-field'),
                   controller: widget.locationController,
+                  focusNode: _locationFocusNode,
                   textInputAction: TextInputAction.done,
                   onChanged: widget.onLocationTextChanged,
                   onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
@@ -1179,18 +1282,47 @@ class _WheelState<T> extends State<_Wheel<T>> {
   @override
   void didUpdateWidget(covariant _Wheel<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selected != widget.selected) {
-      final newIndex = widget.values
-          .indexOf(widget.selected)
-          .clamp(0, widget.values.length - 1);
-      if (_controller.hasClients && _controller.selectedItem != newIndex) {
+    if (oldWidget.selected == widget.selected || !_controller.hasClients) {
+      return;
+    }
+    final length = widget.values.length;
+    final flatIndex =
+        widget.values.indexOf(widget.selected).clamp(0, length - 1);
+    if (!widget.looping) {
+      // 순환하지 않는 휠(연도 등)은 절대 인덱스가 곧 실제 위치이므로 그대로.
+      if (_controller.selectedItem != flatIndex) {
         _controller.animateToItem(
-          newIndex,
+          flatIndex,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
         );
       }
+      return;
     }
+    // 순환 휠(looping: true)은 CupertinoPicker가 실제 스크롤 위치를
+    // 0~length-1로 접지 않고 무한히 증가/감소하는 절대 인덱스로 유지한다.
+    // 그런데 이전 코드는 목표 위치를 항상 접힌 flatIndex(0~length-1)로만
+    // animateToItem 했다 — 실제 절대 위치가 예를 들어 47이었다면(47%12=11),
+    // flatIndex=0으로 애니메이션할 때 거리 47칸을 전부 훑고 지나가
+    // "한 바퀴 드르륵 도는" 것처럼 보였다(사용자 지적, 2026-07-24).
+    // 실제 절대 위치를 기준으로 최단 순환 거리만큼만 이동시킨다.
+    final currentAbsolute = _controller.selectedItem;
+    final currentFlatIndex = currentAbsolute % length;
+    var delta = flatIndex - currentFlatIndex;
+    final half = length ~/ 2;
+    if (delta > half) {
+      delta -= length;
+    } else if (delta < -half) {
+      delta += length;
+    }
+    if (delta == 0) {
+      return;
+    }
+    _controller.animateToItem(
+      currentAbsolute + delta,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override

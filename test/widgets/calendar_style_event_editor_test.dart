@@ -438,11 +438,72 @@ void main() {
     // 방금 토글한 체크박스 항목이 여전히 위젯 트리에 보이는지 확인
     expect(find.text('중요한 일정으로 표시'), findsOneWidget);
   });
+
+  testWidgets(
+      'editing location propagates the changed place name into the title',
+      (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(DateTime.now().year + 1, 5, 13, 9),
+        endAt: DateTime(DateTime.now().year + 1, 5, 13, 10),
+        titleText: '전주세브란스에서 A하기',
+        locationText: '전주세브란스',
+      ),
+    );
+
+    final titleController = (tester.widget(
+      find.byKey(const Key('event-editor-title-field')),
+    ) as TextFormField)
+        .controller!;
+
+    await tester.tap(find.byKey(const Key('event-editor-location-field')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('event-editor-location-field')),
+      '원주세브란스',
+    );
+    // 다른 곳(제목)을 눌러 장소 필드 포커스를 잃게 한다 — 편집 완료 시점에
+    // 동기화가 일어난다.
+    await tester.tap(find.byKey(const Key('event-editor-title-field')));
+    await tester.pumpAndSettle();
+
+    expect(titleController.text, '원주세브란스에서 A하기');
+  });
+
+  testWidgets(
+      'editing the place name in the title propagates into the location',
+      (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(DateTime.now().year + 1, 5, 13, 9),
+        endAt: DateTime(DateTime.now().year + 1, 5, 13, 10),
+        titleText: '전주세브란스에서 A하기',
+        locationText: '전주세브란스',
+      ),
+    );
+
+    final locationController = (tester.widget(
+      find.byKey(const Key('event-editor-location-field')),
+    ) as TextFormField)
+        .controller!;
+
+    await tester.tap(find.byKey(const Key('event-editor-title-field')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('event-editor-title-field')),
+      '원주세브란스에서 A하기',
+    );
+    await tester.tap(find.byKey(const Key('event-editor-location-field')));
+    await tester.pumpAndSettle();
+
+    expect(locationController.text, '원주세브란스');
+  });
 }
 
 class _TestHost extends StatefulWidget {
   const _TestHost({
     this.onStartChanged,
+    this.titleText = '팀장 동행방문',
     this.locationText = '',
     this.locationLat,
     this.locationLng,
@@ -455,6 +516,7 @@ class _TestHost extends StatefulWidget {
   });
 
   final ValueChanged<DateTime>? onStartChanged;
+  final String titleText;
   final String locationText;
   final double? locationLat;
   final double? locationLng;
@@ -483,7 +545,7 @@ class _TestHostState extends State<_TestHost> {
     super.initState();
     _isCritical = widget.isCritical;
     _useStrongAlarm = widget.useStrongAlarm;
-    titleController = TextEditingController(text: '팀장 동행방문');
+    titleController = TextEditingController(text: widget.titleText);
     locationController = TextEditingController(text: widget.locationText);
   }
 
