@@ -21,6 +21,99 @@
 
 ## 사용자 확정 선호
 <!-- 04_Memory/Preference status:confirmed 항목 자동 반영. 원본 수정은 04_Memory/Preference/*.md에서, 승인/반려는 run.py memory confirm/reject로. -->
+- ****각 작업 단위가 다 끝나면 (세션 종료뿐 아니라 매 작업 완료 시점마다) 자동으로 마무리 시퀀스를 실행한다.** 항상, 어디서든, 컴퓨터가 껐다 켜져도.
+
+마무리 시퀀스 항목 (CEO가 2026-07-27 명시한 그대로):
+
+1. **좀비/고아 프로세스 점검·처리** — 이 세션/작업이 띄운 서브에이전트·백그라운드 프로세스 중 활동 없이 남아있는 것 정리. (worker-watchdog-policy와 연계. 단, 타 세션 라이브 프로세스·FluxOS 데몬은 건드리지 않음)
+2. **사용한 서브에이전트 종료** — opencode run worker, Start-Job, Start-Process, Agent 도구 서브에이전트 등 작업 완료 시즌에 살아있으면 종료
+3. **dirty 파일 정리** — 본인 세션/작업이 만든 dirty는 pathspec 커밋 또는 revert. 타 세션 dirty는 건드리지 않음 (pathspec 커밋 원칙 준수)
+4. **미커밋 파일 커밋** — 신규 추적 파일·수정 파일 전부 pathspec으로 커밋 (`git add -A`/`commit -a` 금지는 유지)
+5. **메인 브랜치 머지** — 현재 작업 브랜치가 main이 아니고 기능 회귀 없으면 main에 merge (clean merge만, 충돌 시 CEO 확인)
+6. **워크트리 정리** — 작업이 생성한 task worktree, 임시 worktree 정리 (`.claude/worktrees`, FluxOS task worktree는 하네스 소유라 제외)
+7. **남은 것들 정리** — 임시 파일(빌드 산출물, 로그 등) 정리, `.fluxos` runtime 산출물 중 미사용 정리, 예약 큐 정리**
+  - ### Why (2026-07-27 CEO 결정)
+CEO: "병렬로 이미 하고 있는 것 같긴 한데 작업이 다 끝나면 마무리를 해줘. 좀비, 고아 이런 프로세스가 없는지 살펴보고 있으면 다 처리하고 dirty 파일 정리, 메인 머지, 워크트리 정리, 미커밋 파일 커밋, 사용한 서브에이전트 종료 등 이런 작업 후에 남은 것들을 정리하는 걸 항상 자동으로 진행되게 해줘. 앞으로 계속. 어디서든지, 컴퓨터가 꺼졌다 켜져도."
+
+이유: 세션 종료 시에만 마무리하면 긴 세션에서 좀비·dirty가 누적되어 다음 세션에 짐이 됨. 매 작업 완료 시점에 마무리하면 항상 clean 상태 유지. 기존 "세션 종료 시 자동 finish"를 강화해 매 작업 단위로 확장.
+
+### How to apply
+
+**트리거 시점**:
+- 각 worker 작업 완료 후 (M3/Flash/Pro/Codex 5.4 Mini worker 등)
+- 하나의 큰 작업(예: `/r/{id}` 구현 전체)이 끝난 후
+- CEO가 "마무리해"라고 지시하지 않아도 자동 발화
+- 세션 종료 시에는 무조건 (기존 finish-sink-preference와 중복 적용)
+
+**비활성화 금지**:
+- CEO가 명시적으로 "이번엔 마무리 하지 마"라고 하지 않는 한 항상 실행
+- 빌드 모드/플랜 모드 무관
+- 에러 상황에서도 최소한의 마무리(좀비 정리·dirty 보존 커밋)는 실행
+
+**항목별 상세 절차**:
+
+1. **좀비/고아 프로세스 점검**:
+   - `Get-Process`로 opencode.exe, powershell.exe, node.exe 중 이 세션이 띄운 것 파악 (부모 PID 기준)
+   - 5분 이상 무활동(worker-watchdog-policy 기준)이면 종료
+   - 단, FluxOS 데몬(supervisor/pipeline/scheduler), Codex 본체, 다른 세션 라이브 프로세스는 보호 대상에서 제외
+
+2. **서브에이전트 종료**:
+   - `opencode run` worker: Start-Process -PassThru PID로 Stop-Process -Force, 자식 opencode.exe/node.exe도 같이 정리
+   - Start-Job: `Get-Job | Stop-Job -Force | Remove-Job -Force`
+   - Agent 도구 서브에이전트: 보통 자동 종료되지만 잔여 확인
+
+3. **dirty 파일 정리**:
+   - `git status --short`로 확인
+   - 본인 작업 dirty: `git diff -- <file>`로 본인 hunk만 확인 후 pathspec 커밋
+   - 타 세션 dirty: 건드리지 않음, 보고만
+   - 빈 파일/의미 없는 변경: revert (단, 타 세션 것은 revert도 금지)
+
+4. **미커밋 파일 커밋**:
+   - 신규 untracked: 본인 작업 산출물은 `git add <path>` + `git commit -m ...`
+   - 단, `output/`, `.tmp/`, runtime 산출물은 `.gitignore` 대상인지 확인 후 제외
+   - `git add -A`/`git commit -a` 절대 금지 (pathspec만)
+
+5. **메인 브랜치 머지**:
+   - 현재 브랜치가 main이면 스킵
+   - feature/* 또는 codex/* 브랜치면: 테스트 통과 + 기능 회귀 없음 확인 후 `git checkout main && git merge --no-ff <branch>` (clean merge만)
+   - 같은 줄 충돌, 기능 회귀 신호, 빌드 실패 → 머지 스킵, CEO에게 보고
+   - main에 merge 후에도 브랜치는 유지 (revert 여지 대비)
+   - push는 CEO 승인 시 (기본 push 금지, 단 CEO가 "push까지" 지시하면 같이)
+
+6. **워크트리 정리**:
+   - `git worktree list`로 현재 worktree 확인
+   - 작업 전용 worktree(예: `fluxos-task-*`)는 작업 완료 시 `git worktree remove`
+   - 단, `.claude/worktrees`, FluxOS 하네스 소유 worktree는 제외
+   - worktree 삭제 전 미커밋 변경 salvage (커밋 후 삭제)
+
+7. **남은 것들 정리**:
+   - `output/`, `.tmp/`, `tmp/` 디렉터리의 노른자(큰 산출물, stale 빌드 결과) 정리
+   - `.fluxos/runtime/` 또는 유사 런타임 산출물 정리 (`worktree_autoclean` 패턴 활용)
+   - 로그 파일: 일정 기간 지난 것 정리
+   - 임시 프롬프트 파일(`C:\Users\tught\AppData\Local\Temp\opencode\*` 포함) 작업 완료 후 삭제
+
+**주의**:
+- 모든 삭제/종료/머지는 fail-safe 방향 (애매하면 보고, 미커밋 유실 방지, 타 세션 작업 보호)
+- 강제 reset --hard / clean / push -f 금지 (CLAUDE.md 기존 규칙 유지)
+- 모든 커밋은 pathspec (git add -A 금지 유지)
+
+**보고 형식** (마무리 완료 후 CEO에게):
+```
+[AUTO-FINISH] 작업 <이름> 마무리 완료
+  - 프로세스 정리: N개 (PID 목록)
+  - 서브에이전트 종료: N개
+  - dirty 처리: 커밋/revert/보존 항목
+  - 신규 커밋: <해시 목록>
+  - 메인 머지: 완료/스킵(사유)
+  - 워크트리 정리: N개
+  - 남은 것: (잔여 위험·후속 작업)
+```
+
+## 한계 (정직 고백)
+- "각 작업 단위 완료"의 경계가 모호할 수 있음. 명확한 단일 작업(예: `/r/{id}` 구현) 단위로 잡되, 긴 세션에서 작업 경계가 흐려지면 CEO가 "마무리해"라고 선언하기 전에는 보수적으로 대기
+- 메인 머지는 clean merge만 허용 → 같은 줄 충돌 시 CEO 대기. 이때 머지가 안 됐다고 마무리가 실패한 건 아님 (나머지 항목은 진행)
+- "타 세션 dirty"와 "본인 dirty" 구분이 어려울 때 있음 (특히 같은 체크아웃 공유 시). 모호하면 pathspec 커밋 중단, 보존
+- worktree salvage 시 이미 커밋된 변경만 salvage 가능 (미커밋은 커밋 후 삭제 절차)
 - **FluxOS 파이프라인 자동화(Task-A/B/C) 완료 후 **Phase 2 자동화 백로그 7개**를 반드시 진행한다. CEO가 2026-07-19 세션에서 말한 요구사항 전체. 이 preference는 파이프라인 구축 직후 자동으로 다음 작업 목록으로 다시 꺼내기 위한 영구 저장소다.**
   - Why(2026-07-19 CEO 결정): 파이프라인 1차 자동화(GLM→Flash+M3→M3 thinking→GLM 회신)가 끝나도 CEO가 겪은 실제 문제(dirty/워크트리 100개+/좀비 세션/블로킹 무한 대기 등)는 해결 안 됨. 이걸 잊지 않고 Phase 2로 이어서 진행해야 한다. 세션 기록은 휘발성이라 preference로 저장해서 다음 세션에서도 자동 로드되게 한다.
 
@@ -152,6 +245,75 @@ GLMS 진행률 보고 형식 (전체 + 모델별 퍼센트 매 단계마다):
 ```
 
 이 형식은 run_glms wrapper의 progress_callback이나 write_progress 호출 시 자동 포함되도록 구현한다 (Task-E-M3의 chain_state.reviewer_model 필드와 연계).
+- ****CEO가 비단순 작업(개발·수정·리팩토링·분석·리뷰)을 지시하면, GLM은 자동으로 worker pipeline 루프를 실행한다.** CEO가 "M3랑 Flash로 나눠서 해"라고 매번 말하지 않아도, GLM이 판단해서 분할·위임·리뷰·완료 보고까지 진행.
+
+루프 단계:
+
+1. **GLM: 작업 분석 + 계획 문서 작성**
+   - 입력을 복잡도로 분석
+   - M3 담당(복잡: 다중 파일·로직·API·스키마)과 Flash 담당(단순: 단일 파일·문자열·문서·테스트)으로 분할
+   - 파일 비중첩 보장
+   - 계획 문서를 `scripts/WORKER_PIPELINE_GUIDE.md` 템플릿 기반으로 작성
+
+2. **GLM: worker 프롬프트 파일 작성**
+   - M3용 프롬프트: "이 파일 읽고 이 작업 해라" 형태, 안전 규칙 포함
+   - Flash용 프롬프트: 동일 구조
+   - 각 프롬프트에 완료 조건(pathspec 커밋, push, REQUIRED_CHECKS, git status clean) 명시
+
+3. **GLM: invoke-worker.ps1로 worker 띄움**
+   - `scripts/invoke-worker.ps1`로 각 worker를 분리 백그라운드 실행
+   - 파일 비중첩이면 병렬, 의존성 있으면 순차
+   - worker는 opencode run -m <model> --auto --format json 사용
+
+4. **Worker: 각자 작업 수행**
+   - 파일 수정, 테스트 작성, 커밋, push
+   - 완료 시 "구현 내역 문서"를 로그에 포함 (worker가 자체 출력)
+
+5. **GLM: worker 결과 회수·리뷰**
+   - worker 로그에서 구현 내역 추출
+   - 리뷰 체크리스트(WORKER_PIPELINE_GUIDE.md 참조)로 검증:
+     * 테스트 실행 (node --test 등)
+     * git diff 확인 (의도한 파일만)
+     * 보안 통제 점검
+     * REQUIRED_CHECKS exit code
+     * git status clean
+     * 인터페이스 정합 (worker 간 필드명 일치)
+   - worker-watchdog-policy에 따라 비정상 worker 종료
+
+6a. **제대로 안 됐으면**: 재작업 지시 문서 작성 → worker 재호출 (3번으로)
+
+6b. **통과**: auto-finish-after-each-task 실행 후 CEO에게 완료 보고**
+  - ### Why (2026-07-27 CEO 결정)
+CEO: "내가 지시를 내리면 네가 알아서 M3와 Flash로 나누고 결과 나오면 네가 리뷰하라고 했는데, 그거는 다 만들어졌어? 이미 그렇게 했어? [...] 그걸 자동화시킬 수 없어? GLM이 계획 세워서 문서로 만들고 플래시랑 M3에게 각각 어떤 파일 읽어서 어떤 작업하라고 명령 주고 각각 작업 다 끝나면 구현 내용에 대해서 다시 남겨서 GLM을 호출. GLM은 M3와 플래시가 남긴 구현 내용 문서를 읽고 리뷰를 진행. 제대로 안 됐을 때 다시 문서에 재작업 남겨놓고 다시 M3와 플래시 호출해서 진행시킴. 이렇게 해서 완료됐을 때만 여기로 보고하면 되는 거 아니야?"
+
+CEO가 설계한 루프를 GLM이 수동으로 매번 실행하던 것을 자동화. 세션 무관, 재부팅 후에도 유지.
+
+### How to apply
+
+**트리거**: CEO가 비단순 작업을 지시할 때 자동 발화. 단순 질문·조사·읽기 전용 작업에는 적용 안 함.
+
+**도구**:
+- `scripts/invoke-worker.ps1` — worker 호출·모니터링·회수 자동화
+- `scripts/WORKER_PIPELINE_GUIDE.md` — 사용 가이드 + 템플릿
+- opencode config worker 정의 (`~/.config/opencode/opencode.jsonc`)
+
+**모델 선택 기준**:
+- M3 (`minimax-coding-plan/MiniMax-M3`): 다중 파일·로직·외부 API·신규 모듈·스키마. thinking=none.
+- Flash (`deepseek/deepseek-v4-flash`): 단일/소수 파일·문자열·문서·테스트 스캐폴드.
+- Pro (`deepseek/deepseek-v4-pro`): 중간 복잡도·조사·디버깅.
+- Codex (`gpt-5.4-mini` via codex exec): 도구 호출·CLI 작업 (단, 인증 별도 필요).
+
+**예외 (GLM 직접 수행)**:
+- 계획 수립, 구조 파악, 아키텍처 진단 (판단 작업)
+- M3/Flash 실패 시 fallback
+- 인증·배포 작업 (supabase CLI 인증 등 worker가 못 하는 것)
+- 단순 질문·조사·상태 확인
+
+**한계 (정직 고백)**:
+- M3 모델은 한국어 프롬프트 이해에 한계 (이전 세션 실측). 프롬프트는 영어+한국어 혼용 권장, 또는 구조화된 지시 형식 사용.
+- worker 간 통신은 "문서" 기반 (로그 파일). 실시간 통신이 아님.
+- Codex 5.4 mini는 supabase CLI 등 별도 인증 필요 → 인증 작업은 GLM 직접.
+- worker 실패 시 GLM이 직접 대체해야 하는 경우가 잦음 (이전 세션: M3 쿠팡 실패, Codex 배포 실패).
 - ****E:\FluxStudio 내 모든 작업·모든 세션에서 AI(OpenCode/Claude/Codex/GLM)는 일일이 사용자에게 묻지 않고 스스로 진행한다.** 권한은 전부 허용되며, 컴퓨터가 꺼졌다 켜도·세션을 새로 열어도·다른 프로젝트 세션이어도 이 설정은 전역으로 따른다.
 
 판단이 필요한 시점에는 **"시니어 전문 개발자라면 어떤 판단을 할 것인가"**를 자문한 뒤, 그 판단에 따라 그래도 진행한다. **정말 기능상 큰 변경이나 문제가 있어 사용자 개입이 꼭 필요한 경우에만** 질문한다.**
@@ -250,9 +412,70 @@ How to apply: 계획서를 쓸 때 구현 항목을 "단순(Flash용)"과 "복�
 - **<turn_aborted>
 The user interrupted the previous turn on purpose. Any running unified exec processes may still be running in the background. If any tools/commands were aborted, they may have partially executed.
 </turn_aborted>**
+- ****백그라운드 worker가 예상 시간을 초과하면 무조건 확인한다. 단순 대기 금지.**
+
+판단 흐름:
+
+1. **정상 vs 비정상 판단**
+   - 정상 = 작업이 진행 중이고 결과가 나오는 중 (로그/산출물/진행률 변화 있음, CPU 활동 있음)
+   - 비정상 = activity 멈춤, 같은 작업 반복, 무응답, 로그 무변화, CPU 0에 수렴
+2. **정상이면** 좀 더 기다린다 (1N/2N 임계는 유지하되 진행 중이면 2N까지)
+3. **비정상이면 원인 조사**:
+   - 원인이 해결 가능한 문제(네트워크 일시 지연, 인증 만료 등) → 해결 후 끝까지 진행
+   - 좀비/고아 (의미 없는 정체, 데드락, 모델 응답 없음) → **종료**
+4. **종료 후 잔여 작업** (dirty 파일, 부분 산출물)은 GLM이 직접 검토·처리해서 끝까지 마무리. "중간에 그만두면 안 된다."**
+  - ### Why (2026-07-27 CEO 결정)
+CEO가 M3 worker 정체 상황에서 "난 이럴 때 항상(앞으로도 계속, 다른 세션에서도, 재부팅 후에도) 이렇게 해"라고 명시. 기존 "프로세스 종료 금지(Stop-Process/taskkill/kill/pkill)" 규칙은 타 세션 라이브 프로세스 오종료 방지가 목적이지, 좀비/고아 worker를 끝까지 기다리라는 뜻이 아님. 의미 없는 정체를 방치하면 CEO 답답함, 시간 낭비, 리소스 낭비. 반대로 작업이 진행 중이면 성급하게 종료하면 안 됨. 그래서 "판단 후 대응" 방침.
+
+### How to apply
+
+**적용 범위**: 이 세션뿐 아니라 모든 세션(OpenCode/Claude/Codex/GLM), 모든 프로젝트(FluxOS/FinFlow/PlanFlow/MenuFlow/ValueFlow/NexusFlow/MarketingFlow 등), 컴퓨터 재부팅 후에도 유지.
+
+**적용 대상**: opencode run으로 띄운 worker, Start-Process 백그라운드 작업, Start-Job, 백그라운드 bash, GLMS 사이클 workers, 외부 세션 위임 작업.
+
+**예상 시간 초과의 기준**: 미리 선언한 N (1N=1차 점검, 2N=상한). N 미선언 시 기본 N=5분.
+
+**비정상 판정 기준** (하나라도 해당):
+- activity timestamp가 5분 이상 갱신 안 됨
+- CPU 사용량 0에 수렴하면서 로그 무변화
+- 같은 도구 호출만 반복 (loop 패턴)
+- 모델 응답 없음 (opencode run이 응답 대기 중인데 모델이 안 옴)
+- 부모 프로세스는 살아있는데 자식 프로세스가 죽어 있음 (또는 그 역)
+
+**정상 판정 기준** (하나라도 해당):
+- 로그에 새로운 event가 계속 추가됨 (1-2분 간격)
+- 진행률 보고가 갱신됨
+- 산출물 파일 mtime이 갱신됨
+- CPU 활동이 있음 (모델 추론 중이라도 CPU/RAM 변화 있음)
+
+**종료 방법** (내가 띄운 worker에 한함):
+- opencode run으로 띄운 worker: Start-Process -PassThro로 받은 부모 PowerShell PID를 Stop-Process -Force, 자식 opencode.exe/node.exe도 같이 정리 (taskkill /T 옵션 또는 자식 PID 개별 종료)
+- Start-Job: Remove-Job -Force
+- Start-Process: Stop-Process -Force (부모-자식 트리 모두)
+- 백그라운드 bash: 작업 취소 신호 전달 또는 프로세스 종료
+- 외부 세션: 그 세션의 종료 신호 전달 또는 프로세스 kill
+
+**종료 후 잔여 작업 처리**:
+- dirty 파일: GLM이 직접 검토. 정상 변경이면 pathspec 커밋, 비정상이면 revert.
+- 부분 산출물: GLM이 회수하여 마무리.
+- worker가 하던 작업을 GLM이 이어받아 끝까지 진행. 단순 반복 작업은 다른 worker에 위임 가능.
+
+**"프로세스 종료 금지" 규칙과의 관계**:
+- 타 세션 라이브 프로세스 (다른 Claude/Codex/GLM 세션이 현재 작업 중인 것) — 여전히 종료 금지. 소유권 확인 전 건드리지 않음.
+- 내가 띄운 worker (opencode run, Start-Job, Start-Process 등) — 이 규칙에 따라 판단 후 종료 가능. 내 작업 단위이므로.
+- FluxOS 데몬 (supervisor/pipeline/scheduler) — 별도 보호. 이 규칙과 무관.
+-CEO OS 큐 task — supervisor_daemon이 관리. 이 규칙과 무관.
+
+## 한계 (정직 고백)
+
+- "정상 진행"과 "비정상 정체"의 경계가 모호할 수 있음 (모델이 긴 추론 중인지, 멈춘 건지). 5분 무활동을 비정상의 최소 기준으로 잡되, 모호하면 CEO에게 상황을 보고 후 결정 권한을 넘김.
+- "원인 해결"이 외부 의존성(모델 한도, 네트워크 장애, API down)이면 즉시 해결 안 될 수 있음. 그 경우 CEO에게 보고하고 대안(다른 모델 전환, 재시도, 로컬 진행)을 제안.
+- worker가 종료 시점에 뭔가 쓰고 있었다면 dirty 파일이 반쪽짜리일 수 있음. GLM이 직접 검증 없이 커밋하지 말 것. 정상/비정상 판정 후 처리.
+- "좀비/고아"와 "정상이지만 느린 작업"을 구분하는 건 모델/작업 유형마다 다름. 경험적 기준을 이 규칙에 계속 축적할 것.
 - **그럼 니가 해야할건 다한거야?**
 - **그럼다한거야?**
 - **다시시도해봐**
+- **마무리해줘(미커밋, 메인머지, 워크트리정리,  dirty파일정리)**
 - **marketing-skills 플러그인처럼 상시 활성화 비용이 큰(~7,733 토큰/세션) 플러그인은 자동으로 켜지 않고, 관련 주제(ASO·구독전환·referral·paywall·이메일마케팅·가격정책·카피라이팅 등)가 나오면 먼저 사용자에게 활성화 여부를 물어본 뒤 사용한다.**
   - Why: always-on 비용이 개발 작업 세션에서 낭비되므로, 사용자가 필요할 때만 쓰길 원함. How to apply: 마케팅 관련 주제가 대화에 등장하면 작업 전에 '마케팅 스킬 플러그인 활성화할까요?'라고 먼저 물어보고 허락받은 후 해당 스킬(/paywalls, /referrals 등)을 사용한다.
 - **연결햇어.**
