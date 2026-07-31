@@ -554,19 +554,47 @@ class GptService {
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
     normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
     final inferredStartAt = _inferStartAtFromRawText(rawText);
+    final parsedStartAt = _parseDateTime(normalized['start_at']);
     if (_hasAmbiguousMeridiemTime(rawText)) {
       normalized['time_period_ambiguous'] = true;
     }
     if (inferredStartAt != null &&
         _shouldPreferInferredStartAt(
           rawText: rawText,
-          parsedStartAt: _parseDateTime(normalized['start_at']),
+          parsedStartAt: parsedStartAt,
           inferredStartAt: inferredStartAt,
         )) {
       normalized['start_at'] = inferredStartAt.toIso8601String();
     }
+    _applyDefaultStartTimeForImplicitTime(
+      normalized,
+      rawText: rawText,
+      inferredStartAt: inferredStartAt,
+      parsedStartAt: parsedStartAt,
+    );
     _applyLocalDateRange(rawText, normalized);
     return normalized;
+  }
+
+  void _applyDefaultStartTimeForImplicitTime(
+    Map<String, dynamic> schedule, {
+    required String rawText,
+    required DateTime? inferredStartAt,
+    required DateTime? parsedStartAt,
+  }) {
+    if (schedule['is_all_day'] == true ||
+        _hasExplicitKoreanTimeExpression(rawText)) {
+      return;
+    }
+
+    // Date-only commands must not inherit a hallucinated/current-time value
+    // from the AI response. Prefer the deterministic local date when known.
+    final date = inferredStartAt ?? parsedStartAt;
+    if (date == null) {
+      return;
+    }
+    schedule['start_at'] = DateTime(date.year, date.month, date.day, 9)
+        .toIso8601String();
   }
 
   Map<String, dynamic> _fallbackSchedule({

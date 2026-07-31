@@ -38,6 +38,53 @@ void main() {
   });
 
   group('GptService', () {
+    test('defaults an AI-supplied time to 09:00 when the request has no time',
+        () async {
+      final reference = DateTime(DateTime.now().year + 1, 8, 1, 14, 20);
+      final aiStart = DateTime(
+        reference.year,
+        reference.month,
+        reference.day,
+        16,
+        45,
+      );
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '프로젝트 회의',
+                    'start_at': aiStart.toIso8601String(),
+                    'end_at': null,
+                    'is_all_day': false,
+                    'supplies': <String>[],
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => reference,
+      );
+
+      final result = await service.parseSchedule('프로젝트 회의 일정으로 저장');
+
+      expect(
+        result['start_at'],
+        DateTime(reference.year, reference.month, reference.day, 9)
+            .toIso8601String(),
+      );
+    });
+
     test('cleans suspicious STT text with AI JSON when confidence is high',
         () async {
       final client = MockClient((request) async {
