@@ -61,6 +61,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       ActivityTrackingService();
   late final AppLifecycleListener _lifecycleListener;
   String? _pendingHomeWidgetRoute;
+  String? _lastHandledHomeWidgetRoute;
+  DateTime? _lastHandledHomeWidgetRouteAt;
   int _homeWidgetRouteGeneration = 0;
   bool? _homeWidgetShouldSeedHomeBase;
 
@@ -636,6 +638,20 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _handleHomeWidgetUri(Uri? uri) {
     final route = resolveHomeWidgetRoute(uri);
     if (route != null) {
+      // Android cold start can deliver the same widget URI through both the
+      // HomeWidget probe and AppLinks.  A second push deactivates the first
+      // VoiceInputScreen and cancels its newly-started STT session.
+      final now = DateTime.now();
+      if (shouldIgnoreDuplicateHomeWidgetRoute(
+        route: route,
+        previousRoute: _lastHandledHomeWidgetRoute,
+        previousHandledAt: _lastHandledHomeWidgetRouteAt,
+        now: now,
+      )) {
+        return;
+      }
+      _lastHandledHomeWidgetRoute = route;
+      _lastHandledHomeWidgetRouteAt = now;
       // native intent를 소비해 onResume fallback에서 동일 URI 중복 처리 방지
       unawaited(_consumeHomeWidgetLaunch());
       startupRouteGate.beginWidgetLaunch();
@@ -851,6 +867,18 @@ class _UpdateProgressOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+@visibleForTesting
+bool shouldIgnoreDuplicateHomeWidgetRoute({
+  required String route,
+  required String? previousRoute,
+  required DateTime? previousHandledAt,
+  required DateTime now,
+}) {
+  return route == previousRoute &&
+      previousHandledAt != null &&
+      now.difference(previousHandledAt) < const Duration(seconds: 2);
 }
 
 @visibleForTesting

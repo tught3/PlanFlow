@@ -8,20 +8,62 @@ void main() {
     expect(appRouter.overridePlatformDefaultLocation, isTrue);
   });
 
-  test('resolveHomeWidgetRoute maps voice launcher and auto-start routes', () {
-    expect(
-      resolveHomeWidgetRoute(Uri.parse('planflow://voice-launcher')),
-      '${AppRoutes.voice}?autoStart=1',
+  group('voice home-widget dedupe contract', () {
+    test(
+      'resolveHomeWidgetRoute canonicalizes repeated voice widget and deep-link inputs to the same auto-start route',
+      () {
+        const expectedVoiceRoute = '${AppRoutes.voice}?autoStart=1';
+
+        expect(
+          resolveHomeWidgetRoute(Uri.parse('planflow://voice-launcher')),
+          expectedVoiceRoute,
+        );
+        expect(
+          resolveHomeWidgetRoute(
+            Uri.parse('planflow://voice-launcher?source=mic'),
+          ),
+          expectedVoiceRoute,
+        );
+        expect(
+          resolveHomeWidgetRoute(Uri.parse('planflow://voice?autoStart=1')),
+          expectedVoiceRoute,
+        );
+        expect(
+          resolveHomeWidgetRoute(Uri.parse('planflow:///voice?autoStart=1')),
+          expectedVoiceRoute,
+        );
+      },
     );
-    expect(
-      resolveHomeWidgetRoute(
-          Uri.parse('planflow://voice-launcher?source=mic')),
-      '${AppRoutes.voice}?autoStart=1',
+
+    test(
+      'dedupes duplicate cold-start voice widget delivery before STT starts so a second identical route cannot restart voice and cancel auto-start',
+      () {
+        final startedAt = DateTime(2026, 7, 31, 9);
+        const route = '${AppRoutes.voice}?autoStart=1';
+
+        expect(
+          shouldIgnoreDuplicateHomeWidgetRoute(
+            route: route,
+            previousRoute: route,
+            previousHandledAt: startedAt,
+            now: startedAt.add(const Duration(milliseconds: 800)),
+          ),
+          isTrue,
+        );
+        expect(
+          shouldIgnoreDuplicateHomeWidgetRoute(
+            route: route,
+            previousRoute: route,
+            previousHandledAt: startedAt,
+            now: startedAt.add(const Duration(seconds: 3)),
+          ),
+          isFalse,
+        );
+      },
     );
-    expect(
-      resolveHomeWidgetRoute(Uri.parse('planflow://voice?autoStart=1')),
-      '${AppRoutes.voice}?autoStart=1',
-    );
+  });
+
+  test('resolveHomeWidgetRoute maps voice conversation routes', () {
     expect(
       resolveHomeWidgetRoute(
         Uri.parse('planflow://voice-conversation?autoStart=1'),
