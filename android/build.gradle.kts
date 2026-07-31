@@ -24,6 +24,18 @@ subprojects {
                 targetCompatibility = JavaVersion.VERSION_17
             }
         }
+        extensions.configure<com.android.build.api.variant.LibraryAndroidComponentsExtension>(
+            "androidComponents",
+        ) {
+            finalizeDsl { extension ->
+                if (project.name == "home_widget") {
+                    extension.compileOptions {
+                        sourceCompatibility = JavaVersion.VERSION_11
+                        targetCompatibility = JavaVersion.VERSION_11
+                    }
+                }
+            }
+        }
     }
     afterEvaluate {
         tasks.withType<JavaCompile>().configureEach {
@@ -35,10 +47,10 @@ subprojects {
                 val java8KotlinProjects = setOf(
                     "flutter_naver_map",
                     "flutter_tts",
-                    "home_widget",
                     "in_app_update",
                 )
                 val java11KotlinProjects = setOf(
+                    "home_widget",
                     "in_app_review",
                     "speech_to_text",
                 )
