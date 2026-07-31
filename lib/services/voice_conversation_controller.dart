@@ -776,7 +776,7 @@ class VoiceConversationController {
           : route.cleanedText.trim();
       final range = _parseDateRange(text);
       final now = planflowLocal((_now ?? planflowNow)());
-      final startAt = range?.start ?? now;
+      final startAt = _defaultDraftStartAt(range?.start, now);
       final endAt = range?.end ?? startAt.add(const Duration(hours: 1));
       final draft = EventModel(
         id: '',
@@ -883,6 +883,19 @@ class VoiceConversationController {
       return null;
     }
     return VoiceConversationDateRange(start: parsed.start, end: parsed.end);
+  }
+
+  DateTime _defaultDraftStartAt(DateTime? candidate, DateTime now) {
+    final date = candidate ?? now;
+    if (candidate == null ||
+        (candidate.hour == 0 &&
+            candidate.minute == 0 &&
+            candidate.second == 0 &&
+            candidate.millisecond == 0 &&
+            candidate.microsecond == 0)) {
+      return DateTime(date.year, date.month, date.day, 9);
+    }
+    return candidate;
   }
 
   bool _eventIntersectsRange(

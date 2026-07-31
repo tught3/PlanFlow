@@ -778,6 +778,27 @@ void main() {
       expect(result.targetEvent, isNull);
       expect(result.draftEvent, isNotNull);
     });
+
+    test('시간 없는 새 일정은 날짜와 관계없이 오전 9시로 만든다', () {
+      final now = DateTime(DateTime.now().year + 1, 7, 3, 16, 40);
+      final controller = VoiceConversationController(
+        now: () => now,
+      );
+
+      final dated = controller.handle('내일 프로젝트 회의 일정으로 저장');
+      final undated = controller.handle('프로젝트 회의 일정으로 저장');
+
+      expect(dated.action, VoiceConversationAction.createEvent);
+      expect(
+        dated.draftEvent?.startAt,
+        DateTime(now.year, now.month, now.day + 1, 9),
+      );
+      expect(undated.action, VoiceConversationAction.createEvent);
+      expect(
+        undated.draftEvent?.startAt,
+        DateTime(now.year, now.month, now.day, 9),
+      );
+    });
   });
 }
 

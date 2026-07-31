@@ -2858,10 +2858,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final now = planflowNow();
     final parsed = _dateTimeValue(value);
     if (parsed == null) {
-      return now;
+      return DateTime(now.year, now.month, now.day, 9);
     }
     if (parsed.isBefore(now.subtract(const Duration(days: 1)))) {
-      return now;
+      return DateTime(now.year, now.month, now.day, 9);
     }
     return parsed;
   }

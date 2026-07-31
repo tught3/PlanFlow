@@ -583,7 +583,7 @@ class GptService {
     required DateTime? parsedStartAt,
   }) {
     if (schedule['is_all_day'] == true ||
-        _hasExplicitKoreanTimeExpression(rawText)) {
+        _hasExplicitTimeOfDayExpression(rawText)) {
       return;
     }
 
@@ -1342,6 +1342,19 @@ $_scheduleSystemPrompt
         RegExp(r'(오늘|내일|모레|글피)').hasMatch(text) ||
         RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}월\s*\d{1,2}일').hasMatch(text) ||
         RegExp(r'(?:(오전|오후)\s*)?\d{1,2}\s*시').hasMatch(text) ||
+        _extractTimeFromText(text) != null;
+  }
+
+  bool _hasExplicitTimeOfDayExpression(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    return RegExp(
+      r'\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b|'
+      r'\b(?:am|pm)\s*\d{1,2}\b|'
+      r'\d{1,2}\s*분\s*(?:뒤|후|있다가|이따)|'
+      r'\d{1,2}\s*시간(?:\s*\d{1,2}\s*분)?\s*(?:뒤|후|있다가|이따)|'
+      r'(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
+      caseSensitive: false,
+    ).hasMatch(text) ||
         _extractTimeFromText(text) != null;
   }
 
