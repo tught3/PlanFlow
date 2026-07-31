@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -64,6 +66,21 @@ void main() {
         'extra-id',
       );
     });
+  });
+
+  test('event edit source keeps the persisted-event rehydration guard', () {
+    final source = File(
+      'lib/screens/event/event_edit_screen.dart',
+    ).readAsStringSync();
+
+    expect(
+      source,
+      contains('if (eventId == null || !AppEnv.isSupabaseReady)'),
+    );
+    expect(
+      source,
+      isNot(contains('_loadedEvent != null || eventId == null')),
+    );
   });
 
   group('shouldClearLocationCoordinatesOnTextChange', () {

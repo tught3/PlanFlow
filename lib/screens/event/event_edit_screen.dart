@@ -1487,13 +1487,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   Future<void> _loadEventIfNeeded() async {
     final eventId = _resolvedEventId;
-    if (_loadedEvent != null || eventId == null || !AppEnv.isSupabaseReady) {
+    // 상세/알람 흐름은 route extra로 일정의 부분 스냅샷을 전달할 수 있다.
+    // 기존에는 extra가 존재하면 여기서 재조회하지 않아, 그 스냅샷에 좌표가
+    // 빠진 경우 지도 위치가 미지정으로 보였다. 저장된 일정은 항상 최신 행으로
+    // 재수화해 확정 좌표를 유지한다.
+    if (eventId == null || !AppEnv.isSupabaseReady) {
       return;
     }
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
-      _showMessage('로그인 후 일정 정보를 불러올 수 있습니다.');
+      if (_loadedEvent == null) {
+        _showMessage('로그인 후 일정 정보를 불러올 수 있습니다.');
+      }
       return;
     }
 

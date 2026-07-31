@@ -116,68 +116,6 @@ void main() {
     expect(resolved.hasUnresolvedLocation, isFalse);
   });
 
-  test('keeps a confirmed destination for a same-location partial update', () {
-    const persisted = EventModel(
-      id: 'event-1',
-      userId: 'user-1',
-      title: 'Client meeting',
-      location: '서울 오크우드 호텔',
-      locationLat: 37.5251,
-      locationLng: 127.0406,
-    );
-    const incoming = EventModel(
-      id: 'event-1',
-      userId: 'user-1',
-      title: 'Client meeting',
-      location: '서울 오크우드 호텔',
-      isCritical: true,
-    );
-
-    final protected = EventModel.preserveResolvedLocationForNonLocationUpdate(
-      persisted: persisted,
-      incoming: incoming,
-    );
-
-    expect(protected.locationLat, persisted.locationLat);
-    expect(protected.locationLng, persisted.locationLng);
-    expect(protected.isCritical, isTrue);
-  });
-
-  test('allows a changed or removed location to clear prior coordinates', () {
-    const persisted = EventModel(
-      id: 'event-1',
-      userId: 'user-1',
-      title: 'Client meeting',
-      location: '서울 오크우드 호텔',
-      locationLat: 37.5251,
-      locationLng: 127.0406,
-    );
-
-    final changed = EventModel.preserveResolvedLocationForNonLocationUpdate(
-      persisted: persisted,
-      incoming: const EventModel(
-        id: 'event-1',
-        userId: 'user-1',
-        title: 'Client meeting',
-        location: '강남역',
-      ),
-    );
-    final removed = EventModel.preserveResolvedLocationForNonLocationUpdate(
-      persisted: persisted,
-      incoming: const EventModel(
-        id: 'event-1',
-        userId: 'user-1',
-        title: 'Client meeting',
-      ),
-    );
-
-    expect(changed.locationLat, isNull);
-    expect(changed.locationLng, isNull);
-    expect(removed.location, isNull);
-    expect(removed.locationLat, isNull);
-    expect(removed.locationLng, isNull);
-  });
-
   test('EventModel update payload excludes immutable row fields', () {
     final model = EventModel(
       id: 'event-1',

@@ -677,27 +677,7 @@ class SupabaseEventRepository extends EventRepository {
       throw ArgumentError.value(event.id, 'event.id', 'Event id is required.');
     }
 
-    // Alarm and sync paths can hold a partial event snapshot. Do not let a
-    // non-location update overwrite a confirmed destination with nulls.
-    // Skip the additional read for events that already have a complete
-    // destination or no location text at all.
-    var eventToSave = event;
-    if (event.hasLocationText && !event.hasResolvedLocation) {
-      try {
-        final persistedRow = await _selectEventById(event.id, resolvedUserId);
-        if (persistedRow != null) {
-          eventToSave = EventModel.preserveResolvedLocationForNonLocationUpdate(
-            persisted: EventModel.fromJson(_rowAsJson(persistedRow)),
-            incoming: event,
-          );
-        }
-      } catch (_) {
-        // The protection read is best-effort; an otherwise valid update must
-        // retain its previous availability when a refresh is temporarily down.
-      }
-    }
-
-    final response = await _updateEventRow(eventToSave, resolvedUserId);
+    final response = await _updateEventRow(event, resolvedUserId);
 
     if (response == null) {
       throw StateError('Event not found for the current user.');
