@@ -116,6 +116,23 @@ class EventEditScreen extends StatefulWidget {
     return hasCoordinates;
   }
 
+  @visibleForTesting
+  static bool shouldHydratePersistedCoordinates({
+    required EventModel? routeEvent,
+    required EventModel persistedEvent,
+  }) {
+    if (routeEvent == null) {
+      return true;
+    }
+    final routeLocation = routeEvent.location?.trim();
+    final persistedLocation = persistedEvent.location?.trim();
+    return routeLocation != null &&
+        routeLocation.isNotEmpty &&
+        routeLocation == persistedLocation &&
+        !routeEvent.hasResolvedLocation &&
+        persistedEvent.hasResolvedLocation;
+  }
+
   /// DB 저장 `notify_at`에서 역산한 분 단위 오프셋을 검증하고,
   /// 유효 범위(0~1440분)를 벗어나면 기본값으로 폴백한다.
   /// 예: 일정이 7일 뒤로 이동했으나 notify_at이 예전 값이면
@@ -269,7 +286,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _handleLocationTextChanged(String value) {
-    final shouldClear = EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+    final shouldClear =
+        EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
       isApplyingLoadedEvent: _isApplyingLoadedEvent,
       changedText: value,
       resolvedLocationLabel: _resolvedLocationLabel,
@@ -361,7 +379,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       DiagLogger.log(
         'GeoResolve',
         '[EditScreen] 스킵: 쿼리="${query.isEmpty ? '(빈값)' : query}" '
-        '이미보유=${_locationLat != null && _locationLng != null}',
+            '이미보유=${_locationLat != null && _locationLng != null}',
       );
       return;
     }
@@ -390,7 +408,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       DiagLogger.log(
         'GeoResolve',
         '[EditScreen] 검색결과: 쿼리="$query" 결과수=${results.length}'
-        '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
+            '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
       );
       if (!mounted ||
           query != _locationController.text.trim() ||
@@ -887,8 +905,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 PlanFlowActionButtons(
                   buttons: [
                     PlanFlowActionButton(
-                      buttonKey:
-                          const ValueKey('leader-share-decline-button'),
+                      buttonKey: const ValueKey('leader-share-decline-button'),
                       label: '아니요',
                       type: ActionButtonType.secondary,
                       flex: 1,
@@ -1516,6 +1533,30 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _showMessage('수정할 일정을 찾지 못했습니다.');
         return;
       }
+      final routeEvent = widget.event;
+      if (routeEvent != null) {
+        if (EventEditScreen.shouldHydratePersistedCoordinates(
+          routeEvent: routeEvent,
+          persistedEvent: event,
+        )) {
+          _isApplyingLoadedEvent = true;
+          setState(() {
+            _loadedEvent = routeEvent.copyWith(
+              locationLat: event.locationLat,
+              locationLng: event.locationLng,
+            );
+            _locationLat = event.locationLat;
+            _locationLng = event.locationLng;
+            _resolvedLocationLabel = _locationController.text.trim();
+          });
+          _isApplyingLoadedEvent = false;
+        }
+        unawaited(_loadReminderOffsetIfNeeded(event));
+        if (event.groupEventId != null) {
+          unawaited(_loadGroupInstructions(event));
+        }
+        return;
+      }
       _isApplyingLoadedEvent = true;
       setState(() {
         _loadedEvent = event;
@@ -2115,10 +2156,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _saveTargetTouchedByUser = true;
         });
       },
-      onPickGroups:
-          _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
-      selectedGroupCount:
-          selectedGroups.isEmpty ? 1 : selectedGroups.length,
+      onPickGroups: _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
+      selectedGroupCount: selectedGroups.isEmpty ? 1 : selectedGroups.length,
       totalGroupCount: _allActiveGroups.length,
     );
   }

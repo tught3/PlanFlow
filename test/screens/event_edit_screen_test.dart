@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -68,19 +66,45 @@ void main() {
     });
   });
 
-  test('event edit source keeps the persisted-event rehydration guard', () {
-    final source = File(
-      'lib/screens/event/event_edit_screen.dart',
-    ).readAsStringSync();
+  group('shouldHydratePersistedCoordinates', () {
+    const persisted = EventModel(
+      id: 'event-1',
+      userId: 'user-1',
+      title: '회의',
+      location: '강남역',
+      locationLat: 37.4979,
+      locationLng: 127.0276,
+    );
 
-    expect(
-      source,
-      contains('if (eventId == null || !AppEnv.isSupabaseReady)'),
-    );
-    expect(
-      source,
-      isNot(contains('_loadedEvent != null || eventId == null')),
-    );
+    test('hydrates a same-location partial route event', () {
+      expect(
+        EventEditScreen.shouldHydratePersistedCoordinates(
+          routeEvent: const EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '회의',
+            location: '강남역',
+          ),
+          persistedEvent: persisted,
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps a changed location draft untouched', () {
+      expect(
+        EventEditScreen.shouldHydratePersistedCoordinates(
+          routeEvent: const EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '회의',
+            location: '서울 오크우드 호텔',
+          ),
+          persistedEvent: persisted,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('shouldClearLocationCoordinatesOnTextChange', () {
@@ -484,7 +508,8 @@ void main() {
       expect(scopeCard.selected, ScheduleSaveTarget.personalAndGroup);
     });
 
-    testWidgets('auto-share preference OFF keeps new event save target personalOnly',
+    testWidgets(
+        'auto-share preference OFF keeps new event save target personalOnly',
         (tester) async {
       // pref 미설정(기본 OFF)
       await tester.pumpWidget(
@@ -532,8 +557,7 @@ void main() {
       expect(scopeCard.selected, ScheduleSaveTarget.personalOnly);
     });
 
-    testWidgets(
-        'defaults the group picker to the most recently shared groups',
+    testWidgets('defaults the group picker to the most recently shared groups',
         (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         'planflow:group_last_shared_ids:v1:user-1': <String>['group-2'],
