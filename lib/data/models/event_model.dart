@@ -114,6 +114,33 @@ class EventModel {
 
   bool get hasUnresolvedLocation => hasLocationText && !hasResolvedLocation;
 
+  /// Keeps a persisted destination when a non-location update carries a
+  /// partial event snapshot without coordinates.
+  ///
+  /// A changed or cleared location is an explicit user intent and is never
+  /// overridden by this safeguard.
+  static EventModel preserveResolvedLocationForNonLocationUpdate({
+    required EventModel persisted,
+    required EventModel incoming,
+  }) {
+    final persistedLocation = persisted.location?.trim();
+    final incomingLocation = incoming.location?.trim();
+    final isSameNonEmptyLocation = persistedLocation != null &&
+        persistedLocation.isNotEmpty &&
+        persistedLocation == incomingLocation;
+
+    if (!isSameNonEmptyLocation ||
+        !persisted.hasResolvedLocation ||
+        incoming.hasResolvedLocation) {
+      return incoming;
+    }
+
+    return incoming.copyWith(
+      locationLat: persisted.locationLat,
+      locationLng: persisted.locationLng,
+    );
+  }
+
   Map<String, dynamic> toJson({bool includeId = true}) {
     return <String, dynamic>{
       if (includeId) 'id': id,
