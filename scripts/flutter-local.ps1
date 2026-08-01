@@ -16,43 +16,6 @@ $env:GRADLE_USER_HOME = $ProjectGradleHome
 
 $session = $null
 $exitCode = 0
-
-function Invoke-PlanFlowFlutterWithRecovery {
-  param([string[]]$FlutterArgs)
-
-  # A cancelled desktop task can leave Flutter's Gradle child alive.  This
-  # wrapper owns the exact Start-Process PID, so it never searches for or
-  # terminates another session's Java/Gradle process.
-  $attempt = 0
-  while ($attempt -lt 2) {
-    $attempt += 1
-    $logRoot = Join-Path $ProjectRoot '.deploy-logs'
-    New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $stdout = Join-Path $logRoot "flutter-$stamp-$attempt.out.log"
-    $stderr = Join-Path $logRoot "flutter-$stamp-$attempt.err.log"
-    $child = Start-Process -FilePath 'flutter.bat' -ArgumentList $FlutterArgs -WorkingDirectory $ProjectRoot -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
-    $lastProgress = Get-Date
-    while (-not $child.HasExited) {
-      Start-Sleep -Seconds 5
-      $latest = @($stdout, $stderr | Where-Object { Test-Path $_ } | ForEach-Object { (Get-Item $_).LastWriteTime } | Sort-Object -Descending | Select-Object -First 1)
-      if ($latest.Count -gt 0 -and $latest[0] -gt $lastProgress) { $lastProgress = $latest[0] }
-      if (((Get-Date) - $lastProgress).TotalSeconds -gt 60) {
-        Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue
-        if ($FlutterArgs.Count -ge 2 -and $FlutterArgs[0] -eq 'build' -and $FlutterArgs[1] -eq 'appbundle') {
-          & (Join-Path $ProjectRoot 'android\gradlew.bat') --stop | Out-Null
-        }
-        break
-      }
-    }
-    Get-Content $stdout,$stderr -ErrorAction SilentlyContinue
-    if ($child.HasExited -and $child.ExitCode -eq 0) { return 0 }
-    if ($attempt -eq 2) { return 1 }
-    Write-Warning 'PlanFlow Flutter build stalled or failed; cleaned owned child and retrying once.'
-  }
-  return 1
-}
-
 try {
   if (-not $SkipFluxOsSession) {
     try {
@@ -123,7 +86,8 @@ try {
     }
   }
 
-  $exitCode = Invoke-PlanFlowFlutterWithRecovery -FlutterArgs $flutterArgs
+  & flutter @flutterArgs
+  $exitCode = $LASTEXITCODE
 } finally {
   if ($session) {
     try {
