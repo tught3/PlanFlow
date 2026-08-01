@@ -3573,6 +3573,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                 const SizedBox(height: 16),
               ],
               _SectionCard(
+                title: 'PlanFlow 사용 안내',
+                subtitle: '음성 일정, AI 대화, 출발 알림의 기본 사용법을 다시 볼 수 있습니다.',
+                child: ListTile(
+                  key: const ValueKey('settings-feature-tour-button'),
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.tips_and_updates_outlined,
+                    color: PlanFlowColors.primary,
+                  ),
+                  title: const Text('사용 방법 다시 보기'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(AppRoutes.featureTour),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
                 title: '앱 정보',
                 subtitle: '설치된 PlanFlow의 현재 버전입니다.',
                 child: Row(

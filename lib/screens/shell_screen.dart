@@ -19,6 +19,7 @@ import '../services/critical_alarm_channel_migration_service.dart';
 import '../services/departure_acknowledgement_store.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
+import '../services/feature_tour_service.dart';
 import '../services/manual_event_side_effect_service.dart';
 import '../services/pending_departure_store.dart';
 import '../l10n/app_l10n.dart';
@@ -102,6 +103,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
   bool _checkedGoogleCalendarAutoPrompt = false;
+  bool _checkedFeatureTour = false;
   String? _observedUserId;
   // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
@@ -194,6 +196,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _checkedPermissionOnboarding = false;
     _checkedExternalCalendarGuide = false;
     _checkedGoogleCalendarAutoPrompt = false;
+    _checkedFeatureTour = false;
 
     if (!mounted) {
       return;
@@ -215,6 +218,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     if (!mounted) {
       return;
     }
+    await _maybeOpenFeatureTour();
+    if (!mounted) {
+      return;
+    }
     unawaited(_calendarAutoSyncService.syncConnectedCalendars(
       reason: reason,
       force: reason == 'auth_changed',
@@ -228,6 +235,16 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     debugPrint('[GCAL] _maybeAutoConnect 호출 시도 ($reason)');
     unawaited(_maybeAutoConnectGoogleCalendar());
+  }
+
+  Future<void> _maybeOpenFeatureTour() async {
+    if (_checkedFeatureTour || !mounted) return;
+    _checkedFeatureTour = true;
+    final shouldShow =
+        await const SharedPreferencesFeatureTourStore().shouldShow();
+    if (shouldShow && mounted) {
+      await context.push(AppRoutes.featureTour);
+    }
   }
 
   Future<void> _maybeRecalculateAllAlarms() async {

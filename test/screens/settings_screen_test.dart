@@ -167,6 +167,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('버전 1.1.1 (빌드 48)'), findsOneWidget);
+      final featureTourButton = find.byKey(
+        const ValueKey('settings-feature-tour-button'),
+      );
+      await _scrollUntilHitTestable(tester, featureTourButton);
+      expect(featureTourButton, findsOneWidget);
       expect(settingsRepository.fetchUserIds.single, 'user-1');
     },
   );

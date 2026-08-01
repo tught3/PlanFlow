@@ -10,6 +10,7 @@ import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
+import '../../services/feature_tour_service.dart';
 
 class LocationPickerScreen extends StatefulWidget {
   LocationPickerScreen({
@@ -154,7 +155,23 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _search());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _watchMapReadiness());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_showFirstLocationTip());
+    });
     unawaited(_watchInitialMapCenter());
+  }
+
+  Future<void> _showFirstLocationTip() async {
+    const store = SharedPreferencesFeatureTourStore();
+    if (!await store.shouldShowTip('location') || !mounted) return;
+    await store.markTipShown('location');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('장소를 선택하면 출발 알림에 정확한 위치를 사용할 수 있어요.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   @override

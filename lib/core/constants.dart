@@ -10,6 +10,7 @@ class AppRoutes {
   static const String splash = root;
   static const String login = '/login';
   static const String permissionOnboarding = '/permission-onboarding';
+  static const String featureTour = '/feature-tour';
   static const String resetPassword = '/reset-password';
   static const String home = '/home';
   static const String calendar = '/calendar';

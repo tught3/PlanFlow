@@ -10,6 +10,7 @@ import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/voice_correction_rule.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../services/feature_tour_service.dart';
 import '../../data/repositories/voice_correction_rule_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../services/gpt_service.dart';
@@ -85,6 +86,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_showFirstVoiceInputTip());
+    });
     WidgetsBinding.instance.addObserver(this);
     _voiceAnalysisService =
         widget.voiceAnalysisService ?? VoiceCommandAnalysisService();
@@ -103,6 +107,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (state == AppLifecycleState.paused && _isListening) {
       unawaited(widget.sttService.cancelActiveListen());
     }
+  }
+
+  Future<void> _showFirstVoiceInputTip() async {
+    const store = SharedPreferencesFeatureTourStore();
+    if (!await store.shouldShowTip('voice') || !mounted) return;
+    await store.markTipShown('voice');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('말한 뒤에는 내용을 확인하고 저장할 수 있어요.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   @override

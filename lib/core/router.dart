@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
 import '../screens/onboarding/permission_onboarding_screen.dart';
+import '../screens/onboarding/feature_tour_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
 import '../features/groups/models/group_event_model.dart';
@@ -120,6 +121,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.permissionOnboarding,
       builder: (context, state) => const PermissionOnboardingScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.featureTour,
+      builder: (context, state) => const FeatureTourScreen(),
     ),
     GoRoute(
       path: AppRoutes.resetPassword,

@@ -1,0 +1,79 @@
+{
+  "task_id": "planflow-first-launch-tutorial-20260801",
+  "objective": "Add a skippable first-launch PlanFlow feature tour with replay and contextual tips.",
+  "status": "verification_complete_build_gap",
+  "classification": "complex",
+  "routing": {
+    "planning": "Terra",
+    "implementation": "Luna",
+    "testing": "5.4 Mini",
+    "review": "Luna",
+    "integration": "Terra"
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "assignment": "Map startup, settings, local preference, and test patterns.",
+      "changed_files": [],
+      "result": "Completed read-only report."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "assignment": "Define product-tour scope, persistence, and verification gates.",
+      "changed_files": [],
+      "result": "Completed read-only plan."
+    },
+    {
+      "role": "Implementer",
+      "agent": "gpt-5.4",
+      "mapped_model": "gpt-5.4",
+      "assignment": "Implement tutorial, replay entry, contextual tips, and tests.",
+      "changed_files": [
+        "lib/services/feature_tour_service.dart",
+        "lib/screens/onboarding/feature_tour_screen.dart",
+        "lib/core/constants.dart",
+        "lib/core/router.dart",
+        "lib/screens/shell_screen.dart",
+        "lib/screens/settings/settings_screen.dart",
+        "lib/screens/voice/voice_input_screen.dart",
+        "lib/screens/location/location_picker_screen.dart",
+        "test/services/feature_tour_service_test.dart",
+        "test/screens/feature_tour_screen_test.dart",
+        "test/screens/settings_screen_test.dart"
+      ],
+      "result": "Completed. Added fail-safe preference writes and Android-back completion after review."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "assignment": "Run focused analyzer and tutorial/settings/voice/location tests.",
+      "changed_files": [],
+      "test_evidence": [
+        "flutter analyze: exit 0 (No issues found)",
+        "flutter test test/services/feature_tour_service_test.dart test/screens/feature_tour_screen_test.dart test/screens/settings_screen_test.dart test/screens/voice_input_screen_test.dart test/screens/location_picker_screen_test.dart: exit 0"
+      ],
+      "result": "Completed. Non-fatal analytics and mocked Supabase logs only."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "assignment": "Review startup, persistence failure, back navigation, settings, and scope.",
+      "changed_files": [],
+      "result": "Initial HIGH/MEDIUM findings fixed: fail-safe write handling and back completion. Delivery evidence is now complete for final re-review."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "assignment": "Assess final delivery readiness.",
+      "changed_files": [],
+      "result": "Focused test and analyzer evidence accepted; debug APK Gradle configuration made no progress and was stopped. Re-review agent calls did not return a final report after repeated attempts."
+    }
+  ]
+}
