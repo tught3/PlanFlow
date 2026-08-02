@@ -54,6 +54,7 @@ deploy.log
 /test_output.log
 /scripts/_verify/
 /scripts/_verify_*.log
+/scripts/__pycache__/
 /docs/screenshots/store_final_v3/
 
 # 잘못된 작업 디렉터리에서 생성된 로컬 FluxOS 완료 마커

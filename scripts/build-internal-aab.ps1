@@ -10,7 +10,12 @@
   [string]$StatusPath,
   [switch]$SkipVersionBump,
   [switch]$SkipTests,
-  [switch]$SkipFluxOsSession
+  [switch]$SkipFluxOsSession,
+  [ValidateRange(60, 900)]
+  [int]$AnalyzeTimeoutSeconds = 420,
+  [ValidateRange(60, 900)]
+  [int]$AnalyzeFallbackTimeoutSeconds = 300,
+  [string]$AnalyzeAuditPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,6 +57,22 @@ function New-DeployLogPath {
   Ensure-DeployLogDir
   $stamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
   return Join-Path $DeployLogDir ("{0}-{1}-{2}.log" -f $Stage, $stamp, ([guid]::NewGuid().ToString('N')))
+}
+
+function Write-AnalyzeAudit {
+  param(
+    [Parameter(Mandatory = $true)][string]$Event,
+    [hashtable]$Details = @{}
+  )
+
+  $entry = [ordered]@{
+    timestamp = [DateTime]::Now.ToString('o')
+    event = $Event
+  }
+  foreach ($key in $Details.Keys) {
+    $entry[$key] = $Details[$key]
+  }
+  Add-Content -LiteralPath $AnalyzeAuditPath -Value ($entry | ConvertTo-Json -Compress) -Encoding utf8
 }
 
 function New-LogExcerpt {
@@ -241,6 +262,94 @@ function Invoke-Checked([scriptblock]$Action, [string]$Label) {
   }
 }
 
+function Invoke-OwnedProcess {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+    [Parameter(Mandatory = $true)][string]$OutputPath,
+    [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+    [Parameter(Mandatory = $true)][string]$Stage
+  )
+
+  $errorPath = "$OutputPath.stderr"
+  Remove-Item -LiteralPath $OutputPath, $errorPath -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType File -Path $OutputPath -Force | Out-Null
+
+  $startInfo = @{
+    FilePath = $FilePath
+    ArgumentList = $ArgumentList
+    WorkingDirectory = $WorkspaceRoot
+    PassThru = $true
+    RedirectStandardOutput = $OutputPath
+    RedirectStandardError = $errorPath
+    WindowStyle = 'Hidden'
+  }
+  $process = Start-Process @startInfo
+  Write-AnalyzeAudit -Event 'started' -Details @{ stage = $Stage; pid = $process.Id; timeout_seconds = $TimeoutSeconds }
+
+  $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+  if (-not $completed) {
+    # This tree was launched by this script, so it cannot include another session's analyzer.
+    & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+    Add-Content -LiteralPath $OutputPath -Value "`n[timeout] Owned process exceeded $TimeoutSeconds seconds and was stopped." -Encoding utf8
+    Write-AnalyzeAudit -Event 'timed_out' -Details @{ stage = $Stage; pid = $process.Id; timeout_seconds = $TimeoutSeconds }
+    $exitCode = $null
+  } else {
+    $exitCode = $process.ExitCode
+    Write-AnalyzeAudit -Event 'exited' -Details @{ stage = $Stage; pid = $process.Id; exit_code = $exitCode }
+  }
+
+  if (Test-Path -LiteralPath $errorPath) {
+    Add-Content -LiteralPath $OutputPath -Value (Get-Content -LiteralPath $errorPath -Raw) -Encoding utf8
+    Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
+  }
+
+  return [pscustomobject]@{
+    ExitCode = $exitCode
+    TimedOut = -not $completed
+  }
+}
+
+function Invoke-BoundedAnalyze {
+  param([Parameter(Mandatory = $true)][string]$PrimaryLogPath)
+
+  # The bounded child must not create a FluxOS session that a timeout could strand.
+  $previousSkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION
+  try {
+    $env:PLANFLOW_SKIP_FLUXOS_SESSION = '1'
+    $flutterResult = Invoke-OwnedProcess -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FlutterLocal, 'analyze', '--no-pub') -OutputPath $PrimaryLogPath -TimeoutSeconds $AnalyzeTimeoutSeconds -Stage 'flutter'
+  } finally {
+    if ($null -eq $previousSkipFluxOsSession) {
+      Remove-Item Env:PLANFLOW_SKIP_FLUXOS_SESSION -ErrorAction SilentlyContinue
+    } else {
+      $env:PLANFLOW_SKIP_FLUXOS_SESSION = $previousSkipFluxOsSession
+    }
+  }
+
+  if (-not $flutterResult.TimedOut) {
+    Write-AnalyzeAudit -Event 'primary_complete' -Details @{ exit_code = $flutterResult.ExitCode }
+    return $flutterResult
+  }
+
+  $fallbackLogPath = New-DeployLogPath -Stage 'analyze-dart-fallback'
+  Add-Content -LiteralPath $PrimaryLogPath -Value "`n[recovery] Flutter analyze timed out. Retrying once with direct Dart analyzer." -Encoding utf8
+  $flutter = (Get-Command flutter -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+  $dart = Join-Path (Split-Path -Parent $flutter) 'cache\dart-sdk\bin\dart.exe'
+  if (-not (Test-Path -LiteralPath $dart)) {
+    Write-AnalyzeAudit -Event 'fallback_unavailable' -Details @{ dart_path = $dart }
+    throw "Flutter SDK Dart analyzer not found: $dart"
+  }
+  $dartResult = Invoke-OwnedProcess -FilePath $dart -ArgumentList @('analyze') -OutputPath $fallbackLogPath -TimeoutSeconds $AnalyzeFallbackTimeoutSeconds -Stage 'dart-fallback'
+
+  if (Test-Path -LiteralPath $fallbackLogPath) {
+    Add-Content -LiteralPath $PrimaryLogPath -Value ("`n[direct-dart-analyze]`n" + (Get-Content -LiteralPath $fallbackLogPath -Raw)) -Encoding utf8
+  }
+
+  $dartResult | Add-Member -NotePropertyName UsedDirectDartFallback -NotePropertyValue $true
+  Write-AnalyzeAudit -Event 'recovery_complete' -Details @{ fallback_exit_code = $dartResult.ExitCode; fallback_timed_out = $dartResult.TimedOut }
+  return $dartResult
+}
+
 function Read-PubspecVersion {
   param([Parameter(Mandatory = $true)][string]$Path)
   $encoding = [System.Text.UTF8Encoding]::new($false)
@@ -253,6 +362,9 @@ function Read-PubspecVersion {
 }
 
 try {
+  if ([string]::IsNullOrWhiteSpace($AnalyzeAuditPath)) {
+    $AnalyzeAuditPath = New-DeployLogPath -Stage 'analyze-audit'
+  }
   if (-not (Test-Path -LiteralPath $FlutterLocal)) {
     throw "flutter-local.ps1 not found: $FlutterLocal"
   }
@@ -282,8 +394,8 @@ try {
   Write-DeployStatus 'analyze'
   Write-Stage "Running analyze"
   $analyzeLogPath = New-DeployLogPath -Stage 'analyze'
-  $analyzeOutput = & $FlutterLocal analyze --no-pub 2>&1 | Tee-Object -FilePath $analyzeLogPath
-  if ($LASTEXITCODE -ne 0) {
+  $analyzeResult = Invoke-BoundedAnalyze -PrimaryLogPath $analyzeLogPath
+  if ($analyzeResult.TimedOut -or $analyzeResult.ExitCode -ne 0) {
     $analyzeIssueLine = Get-AnalyzeIssueLine -Path $analyzeLogPath
     $excerptLines = New-LogExcerpt -Path $analyzeLogPath
     $excerptText = if ((Get-EntryCount -Value $excerptLines) -gt 0) { $excerptLines -join "`n" } else { 'No analyze excerpt available.' }

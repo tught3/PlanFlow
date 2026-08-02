@@ -1,0 +1,73 @@
+{
+  "task_id": "planflow-flutter-analyze-recovery-20260802",
+  "objective": "Prevent internal deployment analysis from indefinitely blocking or leaving owned Flutter analyzer processes behind.",
+  "status": "implemented_review_response_pending",
+  "classification": "complex",
+  "routing": {
+    "exploration": "5.4 Mini",
+    "failure_analysis": "Luna",
+    "planning": "Terra",
+    "implementation": "Luna and 5.4 Mini",
+    "review": "Luna",
+    "integration": "Terra"
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "result": "Confirmed build-internal-aab.ps1 is the narrow internal-deployment analyze seam."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "result": "Confirmed unbounded Flutter analyze and separate orphan risk in _run_verify.py; no app-code diagnostic evidence."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "result": "Specified launch-scoped timeout, one direct-Dart fallback, audit logs, and fail-closed behavior."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "Codex primary",
+      "changed_files": [
+        "scripts/build-internal-aab.ps1",
+        "scripts/_run_verify.py",
+        ".gitignore"
+      ],
+      "result": "Added bounded owned-process execution, structured audit events, Flutter SDK Dart fallback, and generated Python cache ignore coverage."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "changed_files": [
+        "scripts/_run_verify.py"
+      ],
+      "result": "Added launch-scoped process-group cleanup for verifier timeouts."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "Codex primary",
+      "test_evidence": [
+        "PowerShell parser: exit 0",
+        "owned-process timeout isolation smoke: exit 0",
+        "forced Flutter timeout to direct Dart fallback smoke: exit 0",
+        "direct Dart analyzer: exit 0 (No issues found)",
+        "Python verifier owned-process timeout smoke: exit 0",
+        "python -m py_compile scripts/_run_verify.py: exit 0",
+        "git diff --check: exit 0"
+      ],
+      "result": "Completed focused recovery-path verification."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "result": "Two independent reviewer calls were started but did not return within the bounded review window; no approval is claimed."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "result": "Current diff and focused verification completed; reviewer response remains pending."
+    }
+  ]
+}
