@@ -756,6 +756,53 @@ void main() {
       expect(parsed['is_multi_day'], isTrue);
     });
 
+    test('does not preserve an AI-only overnight end for a single-day command',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '내일 오후 3시 프로젝트 회의',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '프로젝트 회의',
+                      'start_at': '2026-05-08T15:00:00.000',
+                      'end_at': '2026-05-09T09:00:00.000',
+                      'is_multi_day': true,
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
+      );
+
+      final result = await service.analyze(
+        '내일 오후 3시 프로젝트 회의',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 1),
+      );
+
+      expect(result.scheduleFields['end_at'], isNull);
+      expect(result.scheduleFields['is_multi_day'], isFalse);
+    });
+
     test('local relative duration creates an all-day multi-day schedule',
         () async {
       final service = VoiceCommandAnalysisService(

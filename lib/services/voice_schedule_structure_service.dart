@@ -143,8 +143,7 @@ class VoiceScheduleStructureService {
       }
       if (token.startsWith(command)) {
         final rest = token.substring(command.length);
-        if (RegExp(r'^(?:해\s*줘|해줘|해주세요|해|을|를|은|는|으로|로|도)?$')
-            .hasMatch(rest)) {
+        if (RegExp(r'^(?:해\s*줘|해줘|해주세요|해|을|를|은|는|으로|로|도)?$').hasMatch(rest)) {
           return true;
         }
       }
@@ -400,6 +399,34 @@ class VoiceScheduleStructureService {
     return null;
   }
 
+  /// Returns true only when the spoken text explicitly asks to cross a
+  /// calendar day. This prevents an AI-provided end time from silently
+  /// turning an ordinary appointment into an overnight event.
+  bool hasExplicitCrossDayIntent(
+    String rawText, {
+    DateTime? now,
+  }) {
+    final range = extractDateRange(rawText, now: now);
+    if (range?.isMultiDay == true) {
+      return true;
+    }
+
+    final source = normalizeText(rawText, '');
+    if (source.isEmpty) {
+      return false;
+    }
+
+    if (RegExp(r'\d+\s*박\s*\d+\s*일|숙박|밤샘|철야').hasMatch(source)) {
+      return true;
+    }
+
+    // A time range may legitimately pass midnight even without two absolute
+    // dates, for example "오늘 밤 11시부터 내일 새벽 1시까지".
+    return RegExp(
+      r'(?:밤|저녁).{0,32}(?:내일|모레|글피|다음\s*날|다음날|익일|새벽)',
+    ).hasMatch(source);
+  }
+
   VoiceScheduleDateRange? _extractSingleAbsoluteDate(
     String source,
     DateTime reference,
@@ -415,8 +442,7 @@ class VoiceScheduleStructureService {
     if (month == null || day == null) {
       return null;
     }
-    final year =
-        int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
+    final year = int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
     final start = DateTime(year, month, day);
     if (start.year != year || start.month != month || start.day != day) {
       return null;
@@ -442,9 +468,8 @@ class VoiceScheduleStructureService {
   ) {
     // "3일 뒤/후"는 날짜의 일(day-of-month)이 아니라 상대 날짜(오늘로부터
     // N일 뒤)이므로 여기서 걸러내고 별도 상대 날짜 처리 경로로 넘긴다.
-    final match =
-        RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?(?!\s*(?:뒤|후))')
-            .firstMatch(source);
+    final match = RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?(?!\s*(?:뒤|후))')
+        .firstMatch(source);
     if (match == null) {
       return null;
     }
@@ -465,7 +490,8 @@ class VoiceScheduleStructureService {
     final today = DateTime(reference.year, reference.month, reference.day);
     DateTime? start;
     for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
-      final candidate = DateTime(reference.year, reference.month + monthOffset, day);
+      final candidate =
+          DateTime(reference.year, reference.month + monthOffset, day);
       if (candidate.day != day) {
         continue;
       }
@@ -765,7 +791,8 @@ class VoiceScheduleStructureService {
         // "2시간 뒤에" -> GPT가 "2시간"만 떼고 "뒤에"만 남긴 경우 등 처리.
         // 단어 경계(공백/문자열 시작·끝)로만 매칭해 "뒤풀이" 등 일반 단어 오제거 방지.
         .replaceAll(
-          RegExp(r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])'),
+          RegExp(
+              r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])'),
           ' ',
         )
         .replaceAll(
@@ -1753,9 +1780,7 @@ class VoiceScheduleStructureService {
     }
     // STT가 '내일모레'를 '내일모래'(붙은 형태)로 인식한 경우 먼저 교정한 뒤,
     // 단독 '모래'(=모레)도 교정한다.
-    return text
-        .replaceAll('내일모래', '내일모레')
-        .replaceAllMapped(
+    return text.replaceAll('내일모래', '내일모레').replaceAllMapped(
           RegExp(r'(^|\s)모래(?=\s|$)'),
           (match) => '${match.group(1) ?? ''}모레',
         );

@@ -90,7 +90,8 @@ void main() {
       expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
     });
 
-    test('keeps day-only date cues as this month or next month when needed', () {
+    test('keeps day-only date cues as this month or next month when needed',
+        () {
       final currentMonth = service.extractDateRange(
         '28일 계룡으로 엄마 만나러 가기',
         now: DateTime(2026, 6, 10, 12),
@@ -339,14 +340,14 @@ void main() {
       expect(
         service.stripDateRangeExpression(
           '5월 26일부터 6월 1일까지 원주집 임대',
-          now: DateTime(2026, 5, 23, 12),
+          now: DateTime(2026, 5, 23, 12), // banned-ok: deterministic parser reference.
         ),
         '원주집 임대',
       );
       expect(
         service.stripDateRangeExpression(
           '부터 까지 원주집 임대',
-          now: DateTime(2026, 5, 23, 12),
+          now: DateTime(2026, 5, 23, 12), // banned-ok: deterministic parser reference.
         ),
         '원주집 임대',
       );
@@ -392,6 +393,30 @@ void main() {
       );
 
       expect(range, isNull);
+    });
+
+    test('recognizes only explicit cross-day intent', () {
+      expect(
+        service.hasExplicitCrossDayIntent(
+          '강남에서 2시간 동안 프로젝트 회의',
+          now: DateTime(2026, 5, 23, 12), // banned-ok: deterministic parser reference.
+        ),
+        isFalse,
+      );
+      expect(
+        service.hasExplicitCrossDayIntent(
+          '오늘 밤 11시부터 내일 새벽 1시까지 서버 점검',
+          now: DateTime(2026, 5, 23, 12), // banned-ok: deterministic parser reference.
+        ),
+        isTrue,
+      );
+      expect(
+        service.hasExplicitCrossDayIntent(
+          '5월 26일부터 6월 1일까지 원주집 임대',
+          now: DateTime(2026, 5, 23, 12), // banned-ok: deterministic parser reference.
+        ),
+        isTrue,
+      );
     });
 
     test('keeps 경조사 and rejects time words as locations', () {
@@ -499,7 +524,8 @@ void main() {
       'ensurePeopleInTitle이 사람으로 오인된 시간조사("뒤에")를 제목에 복원하지 않는다',
       () {
         const text = '뒤에 확인 메세지 출력';
-        final parsed = service.normalizeParsedScheduleTitle(text, rawText: text);
+        final parsed =
+            service.normalizeParsedScheduleTitle(text, rawText: text);
         expect(parsed, isNot(contains('뒤에')));
         expect(parsed, contains('확인'));
         // 진짜 사람 이름은 보존돼야 한다.
@@ -721,7 +747,8 @@ void main() {
     });
 
     // ── 회귀 금지선: HIGH#2 수정 후에도 기존 장소 추출 동작은 그대로 유지된다 ──
-    test('회귀 금지선(HIGH#2 이후): 모란역/원주세브란스병원/스타벅스/국가기록원/추가정형외과/'
+    test(
+        '회귀 금지선(HIGH#2 이후): 모란역/원주세브란스병원/스타벅스/국가기록원/추가정형외과/'
         '태블릿계기판 중요한일정 동작은 그대로 유지된다', () {
       expect(service.extractLeadingLocation('모란역으로 가기'), '모란역');
       expect(
@@ -797,7 +824,8 @@ void main() {
     // 그리디 매칭이 "일정으로"를 "일정으"+"로"로 쪼개 _containsScheduleCommandToken의
     // "words.last == '일정'" 가드가 매치 실패하던 문제. 제목 내용이 유실되지
     // 않아야 한다(실측: 수정 전 '태블릿계기판 일정으로 잡아줘' -> '잡아줘').
-    test('BLOCKER: stripLeadingLocationPhrase는 "일정으로/알림으로" 명령문구에서 제목을 유실하지 않는다', () {
+    test('BLOCKER: stripLeadingLocationPhrase는 "일정으로/알림으로" 명령문구에서 제목을 유실하지 않는다',
+        () {
       expect(
         service.stripLeadingLocationPhrase('태블릿계기판 일정으로 잡아줘'),
         '태블릿계기판 일정으로 잡아줘',
@@ -816,7 +844,9 @@ void main() {
       );
     });
 
-    test('BLOCKER: normalizeLocalVoiceTitle은 "일정으로/알림으로" 명령문구에서 제목 내용을 유실하지 않는다', () {
+    test(
+        'BLOCKER: normalizeLocalVoiceTitle은 "일정으로/알림으로" 명령문구에서 제목 내용을 유실하지 않는다',
+        () {
       expect(
         service.normalizeLocalVoiceTitle(
           '태블릿계기판 일정으로 잡아줘',

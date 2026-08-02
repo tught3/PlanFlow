@@ -122,8 +122,7 @@ void main() {
         now: () => reference,
       );
 
-      final result =
-          await service.parseSchedule('프로젝트 회의 15:30 일정으로 저장');
+      final result = await service.parseSchedule('프로젝트 회의 15:30 일정으로 저장');
 
       expect(result['start_at'], aiStart.toIso8601String());
     });
@@ -1152,6 +1151,77 @@ void main() {
         DateTime(2026, 6, 1, 23, 59, 59).toIso8601String(),
       );
       expect(result['is_all_day'], isTrue);
+      expect(result['is_multi_day'], isTrue);
+    });
+
+    test('drops an AI-only overnight end time for a normal voice schedule',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '김민수와 프로젝트 회의',
+                    'start_at': '2026-05-08T15:00:00.000',
+                    'end_at': '2026-05-09T09:00:00.000',
+                    'is_multi_day': true,
+                    'supplies': <String>[],
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
+      );
+
+      final result = await service.parseSchedule('내일 오후 3시 김민수와 프로젝트 회의');
+
+      expect(result['end_at'], isNull);
+      expect(result['is_multi_day'], isFalse);
+    });
+
+    test('keeps an explicit overnight voice schedule', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '서버 점검',
+                    'start_at': '2026-05-07T23:00:00.000',
+                    'end_at': '2026-05-08T01:00:00.000',
+                    'is_multi_day': true,
+                    'supplies': <String>[],
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
+      );
+
+      final result = await service.parseSchedule('오늘 밤 11시부터 내일 새벽 1시까지 서버 점검');
+
+      expect(result['end_at'], '2026-05-08T01:00:00.000');
       expect(result['is_multi_day'], isTrue);
     });
 

@@ -1,0 +1,76 @@
+{
+  "task_id": "planflow-voice-unintended-multiday-20260802",
+  "status": "complete",
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Trace ConfirmScreen multi-day persistence and group-save behavior.",
+      "changed_files": [],
+      "result": "Found stale parsed is_multi_day could synthesize a one-day group end; service paths could also retain AI next-day end.",
+      "evidence": "Read-only report received."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define a scoped fix that preserves explicit multi-day and overnight schedules.",
+      "changed_files": [],
+      "result": "Use deterministic cross-day evidence and remove unsupported AI-provided next-day ends in both voice parsing paths.",
+      "evidence": "Read-only plan received."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement the approved normalization and persistence safety gates.",
+      "changed_files": [
+        "lib/services/voice_schedule_structure_service.dart",
+        "lib/services/gpt_service.dart",
+        "lib/services/voice_command_analysis_service.dart",
+        "lib/screens/voice/confirm_screen.dart",
+        "test/services/voice_schedule_structure_service_test.dart",
+        "test/services/gpt_service_test.dart",
+        "test/services/voice_command_analysis_service_test.dart",
+        "test/screens/confirm_screen_test.dart"
+      ],
+      "result": "Added explicit cross-day detection, sanitized unsupported next-day end_at values, and recalculated stale multi-day state before personal or group saves.",
+      "evidence": "Implementation completed in the main Codex delivery flow."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run focused service tests and static analysis.",
+      "changed_files": [],
+      "result": "All requested checks passed.",
+      "evidence": "voice structure test=0; gpt service test=0; voice command analysis test=0; flutter analyze=0."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent review of the final current diff for date-span, overnight, group-save, and time-zone regressions.",
+      "changed_files": [],
+      "result": "APPROVE: none.",
+      "evidence": "Independent reviewer report received after inspecting the current diff."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile the final diff, focused tests, and independent review.",
+      "changed_files": [],
+      "result": "Approved for commit: normal one-day speech cannot persist an AI-only cross-day end; explicit date ranges and explicit overnight speech remain valid.",
+      "evidence": "Focused service tests and targeted ConfirmScreen personal/group persistence tests passed; static analysis exited 0."
+    }
+  ],
+  "pending": []
+}

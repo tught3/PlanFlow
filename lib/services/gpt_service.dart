@@ -573,6 +573,7 @@ class GptService {
       parsedStartAt: parsedStartAt,
     );
     _applyLocalDateRange(rawText, normalized);
+    _removeUnsupportedCrossDayEnd(rawText, normalized);
     return normalized;
   }
 
@@ -593,8 +594,8 @@ class GptService {
     if (date == null) {
       return;
     }
-    schedule['start_at'] = DateTime(date.year, date.month, date.day, 9)
-        .toIso8601String();
+    schedule['start_at'] =
+        DateTime(date.year, date.month, date.day, 9).toIso8601String();
   }
 
   Map<String, dynamic> _fallbackSchedule({
@@ -1145,9 +1146,10 @@ $_scheduleSystemPrompt
       return;
     }
 
-    if (RegExp(r'(부터|에서).{0,24}(까지|동안)').hasMatch(text) ||
-        RegExp(r'\d{1,2}월\s*\d{1,2}일\s*[-~]\s*\d{1,2}월?\s*\d{1,2}일')
-            .hasMatch(text)) {
+    if (_voiceScheduleStructureService.hasExplicitCrossDayIntent(
+      text,
+      now: _now(),
+    )) {
       normalized['is_multi_day'] = true;
       normalized['is_all_day'] = false;
       return;
@@ -1184,6 +1186,27 @@ $_scheduleSystemPrompt
     schedule['end_at'] = range.endAt.toIso8601String();
     schedule['is_all_day'] = range.isAllDay;
     schedule['is_multi_day'] = range.isMultiDay;
+  }
+
+  void _removeUnsupportedCrossDayEnd(
+    String rawText,
+    Map<String, dynamic> schedule,
+  ) {
+    if (_voiceScheduleStructureService.hasExplicitCrossDayIntent(
+      rawText,
+      now: _now(),
+    )) {
+      return;
+    }
+
+    final startAt = _parseDateTime(schedule['start_at']);
+    final endAt = _parseDateTime(schedule['end_at']);
+    if (startAt != null &&
+        endAt != null &&
+        !planflowIsSameLocalDay(startAt, endAt)) {
+      schedule['end_at'] = null;
+    }
+    schedule['is_multi_day'] = false;
   }
 
   String _normalizeCategoryFromRawText(String rawText, Object? parsedCategory) {
@@ -1348,13 +1371,13 @@ $_scheduleSystemPrompt
   bool _hasExplicitTimeOfDayExpression(String rawText) {
     final text = _normalizeKoreanText(rawText);
     return RegExp(
-      r'\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b|'
-      r'\b(?:am|pm)\s*\d{1,2}\b|'
-      r'\d{1,2}\s*분\s*(?:뒤|후|있다가|이따)|'
-      r'\d{1,2}\s*시간(?:\s*\d{1,2}\s*분)?\s*(?:뒤|후|있다가|이따)|'
-      r'(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
-      caseSensitive: false,
-    ).hasMatch(text) ||
+          r'\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b|'
+          r'\b(?:am|pm)\s*\d{1,2}\b|'
+          r'\d{1,2}\s*분\s*(?:뒤|후|있다가|이따)|'
+          r'\d{1,2}\s*시간(?:\s*\d{1,2}\s*분)?\s*(?:뒤|후|있다가|이따)|'
+          r'(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
+          caseSensitive: false,
+        ).hasMatch(text) ||
         _extractTimeFromText(text) != null;
   }
 
@@ -1762,6 +1785,7 @@ For day-only expressions like "28일" or "28일로", resolve to the 28th of the 
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.
 For all-day schedules, set is_all_day true. For multi-day schedules such as "5월 1일부터 3일까지", set is_multi_day true and return both start_at and end_at.
+Unless the user clearly states an end time, date range, overnight stay, or day transition, leave end_at null and set is_multi_day false. A same-day phrase such as "강남에서 2시간 동안 회의" is not a multi-day schedule.
 category must be one of "업무", "개인", "건강", "교육", "기타"; infer conservatively and default to "기타".
 Category examples: "병원 진료" and "헬스장" -> "건강"; "세미나 참석" and "강의" -> "교육"; "JW제약 미팅" -> "업무"; "친구 약속" -> "개인".
 Keep date, time, recurrence, and reminder phrases out of title and memo once they are represented as structured fields.

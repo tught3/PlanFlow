@@ -569,7 +569,11 @@ void main() {
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
-          parsedSchedule: _parsedSchedule(startAt: start, endAt: end),
+          parsedSchedule: _parsedSchedule(
+            startAt: start,
+            endAt: end,
+            rawText: '$year년 6월 13일부터 6월 14일까지 일정',
+          ),
           backend: _FakeConfirmBackend(),
           eventRepository: repository,
           notificationService: _FakeNotificationService(),
@@ -591,6 +595,44 @@ void main() {
     expect(planflowLocal(saved.startAt!), start);
     expect(planflowLocal(saved.endAt!), end);
     expect(saved.isMultiDay, isTrue);
+  });
+
+  testWidgets('ConfirmScreen drops an unsupported next-day end before saving',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 10);
+    final unsupportedEnd = DateTime(year, 6, 14, 9);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '프로젝트 회의',
+            startAt: start,
+            endAt: unsupportedEnd,
+            rawText: '$year년 6월 13일 오전 10시 프로젝트 회의',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(saved.endAt, isNull);
+    expect(saved.isMultiDay, isFalse);
   });
 
   testWidgets('ConfirmScreen lets users choose PM for ambiguous evening time',
@@ -697,7 +739,7 @@ void main() {
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
+          parsedSchedule: _parsedSchedule()..['is_multi_day'] = true,
           backend: _FakeConfirmBackend(),
           eventRepository: repository,
           groupContextProvider: contextProvider,
@@ -731,6 +773,12 @@ void main() {
     expect(
       groupEventRepository.createdEvents.single.personalEventId,
       repository.createdEvents.single.id,
+    );
+    expect(
+      groupEventRepository.createdEvents.single.endAt.difference(
+        groupEventRepository.createdEvents.single.startAt,
+      ),
+      const Duration(minutes: 30),
     );
   });
 

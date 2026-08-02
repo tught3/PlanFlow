@@ -651,9 +651,42 @@ class VoiceCommandAnalysisService {
       'pre_actions': _normalizePreActions(source['pre_actions']),
       'voice_intent': intent.name,
     };
+    _removeUnsupportedCrossDayEnd(
+      scheduleFields,
+      rawText: rawText,
+      normalizedText: normalizedText,
+    );
     _preserveDeliveryContent(scheduleFields, titleSource);
     _preservePeopleFields(scheduleFields, titleSource);
     return scheduleFields;
+  }
+
+  void _removeUnsupportedCrossDayEnd(
+    Map<String, dynamic> scheduleFields, {
+    required String rawText,
+    required String normalizedText,
+  }) {
+    final hasExplicitCrossDayIntent =
+        _voiceScheduleStructureService.hasExplicitCrossDayIntent(
+              normalizedText,
+              now: _now(),
+            ) ||
+            _voiceScheduleStructureService.hasExplicitCrossDayIntent(
+              rawText,
+              now: _now(),
+            );
+    if (hasExplicitCrossDayIntent) {
+      return;
+    }
+
+    final startAt = _parseDateTime(scheduleFields['start_at']);
+    final endAt = _parseDateTime(scheduleFields['end_at']);
+    if (startAt != null &&
+        endAt != null &&
+        !planflowIsSameLocalDay(startAt, endAt)) {
+      scheduleFields['end_at'] = null;
+    }
+    scheduleFields['is_multi_day'] = false;
   }
 
   void _preservePeopleFields(
@@ -1210,7 +1243,9 @@ class VoiceCommandAnalysisService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (e) { debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e'); }
+    } catch (e) {
+      debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e');
+    }
 
     final start = trimmed.indexOf('{');
     final end = trimmed.lastIndexOf('}');
@@ -1223,7 +1258,9 @@ class VoiceCommandAnalysisService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (e) { debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e'); }
+    } catch (e) {
+      debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e');
+    }
 
     return null;
   }

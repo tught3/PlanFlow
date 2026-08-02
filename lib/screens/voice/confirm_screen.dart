@@ -319,7 +319,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     ).map(_SupplyDraft.new).toList(growable: true);
     _preActions = _initialPreActions();
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
-    _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
+    _endAt = _safeEndAt(
+      widget.parsedSchedule['end_at'],
+      _startAt,
+      rawText: rawTextForLocalParse,
+    );
     _setAmbiguousTimeFromParsed(widget.parsedSchedule);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
     _locationLng = _doubleValue(widget.parsedSchedule['location_lng']);
@@ -329,7 +333,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _recurrenceSelection = RecurrenceSelection.fromRRule(
       _stringValue(widget.parsedSchedule['recurrence_rule']),
     );
-    _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
+    _isMultiDay = _endAt != null && !DateUtils.isSameDay(_startAt, _endAt);
     _category = '기타';
     _isCritical = widget.parsedSchedule['is_critical'] == true;
     _titleController.addListener(_markTitleEdited);
@@ -674,8 +678,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                 PlanFlowActionButtons(
                   buttons: [
                     PlanFlowActionButton(
-                      buttonKey:
-                          const ValueKey('leader-share-decline-button'),
+                      buttonKey: const ValueKey('leader-share-decline-button'),
                       label: '아니요',
                       type: ActionButtonType.secondary,
                       flex: 1,
@@ -1213,7 +1216,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
         _setAmbiguousTimeFromParsed(parsed);
         if (!_endEditedByUser) {
-          _endAt = _safeEndAt(parsed['end_at'], _startAt);
+          _endAt = _safeEndAt(
+            parsed['end_at'],
+            _startAt,
+            rawText: rawText,
+          );
         }
         if (parsed['is_critical'] == true) {
           _isCritical = true;
@@ -2569,10 +2576,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _saveTargetTouchedByUser = true;
         });
       },
-      onPickGroups:
-          _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
-      selectedGroupCount:
-          selectedGroups.isEmpty ? 1 : selectedGroups.length,
+      onPickGroups: _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
+      selectedGroupCount: selectedGroups.isEmpty ? 1 : selectedGroups.length,
       totalGroupCount: _allActiveGroups.length,
     );
   }
@@ -2866,9 +2871,22 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return parsed;
   }
 
-  DateTime? _safeEndAt(Object? value, DateTime startAt) {
+  DateTime? _safeEndAt(
+    Object? value,
+    DateTime startAt, {
+    String? rawText,
+  }) {
     final parsed = _dateTimeValue(value);
     if (parsed == null || parsed.isBefore(startAt)) {
+      return null;
+    }
+    final source = rawText?.trim() ?? '';
+    if (source.isNotEmpty &&
+        !DateUtils.isSameDay(startAt, parsed) &&
+        !const VoiceScheduleStructureService().hasExplicitCrossDayIntent(
+          source,
+          now: planflowNow(),
+        )) {
       return null;
     }
     return parsed;
