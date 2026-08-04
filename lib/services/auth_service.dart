@@ -335,6 +335,95 @@ class AuthService implements AuthSessionClient {
     );
   }
 
+  /// Edge Function `delete-account`를 호출해 회원 탈퇴를 처리한다.
+  ///
+  /// 흐름:
+  /// 1) 이메일/비밀번호 가입자라면 [password]로 재인증해 최신 JWT를 받는다
+  ///    (Supabase Edge Function은 현재 세션의 access token을 자동으로 첨부한다).
+  /// 2) Edge Function을 호출한다. 그룹 리더면 409 + `blockedReason: leader_groups`
+  ///    와 소속 그룹 목록이 돌아온다. 그 외 실패는 status 본문으로 전달한다.
+  /// 3) 성공 시 로컬 Supabase 세션을 정리한다(signOut 실패는 무시 — 서버에서
+  ///    이미 유저가 삭제된 경우 정상).
+  Future<DeleteAccountResult> deleteAccount({String? password}) async {
+    try {
+      final currentUser = _client.auth.currentUser;
+      if (currentUser == null) {
+        return const DeleteAccountResult(
+          success: false,
+          errorMessage: '로그인이 필요합니다.',
+        );
+      }
+
+      if (password != null && password.trim().isNotEmpty) {
+        final email = currentUser.email;
+        if (email != null) {
+          await _client.auth.signInWithPassword(
+            email: email,
+            password: password,
+          );
+        }
+      }
+
+      final response = await _client.functions.invoke(
+        'delete-account',
+        body: const <String, dynamic>{},
+      );
+
+      final data = response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : <String, dynamic>{};
+
+      if (response.status != 200) {
+        return DeleteAccountResult(
+          success: false,
+          blockedReason: data['blockedReason']?.toString(),
+          errorMessage: data['message']?.toString() ??
+              '탈퇴 처리 실패 (status: ${response.status})',
+          leaderGroups: data['leaderGroups'] is List
+              ? (data['leaderGroups'] as List)
+                  .whereType<Map>()
+                  .map(
+                    (g) => LeaderGroupInfo(
+                      id: g['id']?.toString() ?? '',
+                      name: g['name']?.toString() ?? '',
+                    ),
+                  )
+                  .toList()
+              : const <LeaderGroupInfo>[],
+        );
+      }
+
+      final result = DeleteAccountResult.fromJson(data);
+
+      if (result.success) {
+        try {
+          await _client.auth.signOut();
+        } catch (_) {
+          // 서버에서 이미 삭제된 경우 signOut이 실패할 수 있다 — 무시한다.
+        }
+      }
+
+      return result;
+    } on FunctionException catch (e) {
+      final data = e.details is Map<String, dynamic>
+          ? e.details as Map<String, dynamic>
+          : <String, dynamic>{};
+      if (data['blockedReason'] == 'leader_groups') {
+        return DeleteAccountResult.fromJson(data);
+      }
+      return DeleteAccountResult(
+        success: false,
+        errorMessage:
+            data['message']?.toString() ?? e.details?.toString() ?? '탈퇴 요청 실패',
+      );
+    } catch (error) {
+      return DeleteAccountResult(
+        success: false,
+        errorMessage: '네트워크 오류: ${error.toString()}',
+      );
+    }
+  }
+
   @override
   Future<void> ensureProfile([User? user]) async {
     final resolvedUser = user ?? currentUser;
@@ -419,5 +508,54 @@ class AuthService implements AuthSessionClient {
       return const <String, String>{'auth_type': 'reprompt'};
     }
     return null;
+  }
+}
+
+/// Edge Function `delete-account`가 그룹 차단 사유로 반환한 그룹 정보.
+class LeaderGroupInfo {
+  const LeaderGroupInfo({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+/// `AuthService.deleteAccount` 결과 모델.
+///
+/// - 성공: [success] = true, 나머지 필드 null
+/// - 그룹 리더 차단: [success] = false, [blockedReason] = `'leader_groups'`,
+///   [leaderGroups]에 차단 사유가 된 그룹 목록
+/// - 기타 실패: [success] = false, [errorMessage]에 사용자 안내 문구
+class DeleteAccountResult {
+  const DeleteAccountResult({
+    required this.success,
+    this.blockedReason,
+    this.leaderGroups = const <LeaderGroupInfo>[],
+    this.errorMessage,
+  });
+
+  final bool success;
+  final String? blockedReason;
+  final List<LeaderGroupInfo> leaderGroups;
+  final String? errorMessage;
+
+  factory DeleteAccountResult.fromJson(Map<String, dynamic> json) {
+    final leaderGroupsRaw = json['leaderGroups'];
+    return DeleteAccountResult(
+      success: json['success'] == true,
+      blockedReason: json['blockedReason']?.toString(),
+      leaderGroups: leaderGroupsRaw is List
+          ? leaderGroupsRaw
+              .whereType<Map>()
+              .map(
+                (g) => LeaderGroupInfo(
+                  id: g['id']?.toString() ?? '',
+                  name: g['name']?.toString() ?? '',
+                ),
+              )
+              .toList()
+          : const <LeaderGroupInfo>[],
+      errorMessage:
+          json['message']?.toString() ?? json['error']?.toString(),
+    );
   }
 }
