@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
@@ -124,12 +125,38 @@ abstract class BasePlanFlowWidgetProvider(
         if (route == null) {
             return
         }
-        val intent = HomeWidgetLaunchIntent.getActivity(
-            context,
-            MainActivity::class.java,
-            route,
-        )
-        views.setOnClickPendingIntent(id, intent)
+        val intent = buildHomeWidgetDeepLinkIntent(context, route)
+        // 2026-08-04 실기기 로그로 확정: MainActivity가 singleTask이고 프로세스가
+        // 죽었지만 태스크가 Recents에 남은 상태(흔한 "안 쓰다가 켜는" 상황)에서는
+        // HomeWidgetLaunchIntent.getActivity()가 만드는 인텐트(NEW_TASK/SINGLE_TOP
+        // 플래그 없음)가 ActivityTaskManager에 의해 START_TASK_TO_FRONT(result
+        // code=2)로 처리되어 새 인텐트(딥링크 uri)가 onCreate/onNewIntent 어디에도
+        // 전달되지 않고 폐기된다. FLAG_ACTIVITY_CLEAR_TOP을 추가하면 태스크가 이미
+        // 있어도 대상 액티비티가 강제로 재생성되어 새 인텐트가 onCreate로 정상
+        // 전달된다(그룹 달력 위젯에서 이미 검증된 동일 패턴).
+        val requestCode = ("home_widget_deep_link_" + route.toString()).hashCode() and 0x7FFFFFFF
+        val flags = if (Build.VERSION.SDK_INT >= 23) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getActivity(context, requestCode, intent, flags)
+        views.setOnClickPendingIntent(id, pendingIntent)
+    }
+
+    /**
+     * home_widget 플러그인의 [HomeWidgetLaunchIntent.getActivity]와 동등하되
+     * (같은 action 상수, 같은 data uri) [Intent.FLAG_ACTIVITY_CLEAR_TOP]을 추가한
+     * 인텐트를 직접 만든다. action 값(`HOME_WIDGET_LAUNCH_ACTION`)을 바꾸면 Dart
+     * 쪽 `HomeWidget.initiallyLaunchedFromHomeWidget()`이 인텐트를 인식하지 못하니
+     * 절대 바꾸지 않는다.
+     */
+    private fun buildHomeWidgetDeepLinkIntent(context: Context, route: Uri): Intent {
+        return Intent(context, MainActivity::class.java).apply {
+            action = HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION
+            data = route
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
     }
 
     protected fun bindEventLinkIfAvailable(
