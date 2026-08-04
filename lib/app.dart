@@ -550,6 +550,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   Future<void> _routeInitialHomeWidgetLaunch() async {
     final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+    DiagLogger.log(
+      'WidgetRoute',
+      'initiallyLaunchedFromHomeWidget attempt=0 uri=${uri ?? "null"}',
+    );
     _handleHomeWidgetUri(uri);
     if (uri == null) {
       _retryInitialHomeWidgetLaunchProbe(attempt: 0);
@@ -568,6 +572,11 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
           return;
         }
         final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+        DiagLogger.log(
+          'WidgetRoute',
+          'initiallyLaunchedFromHomeWidget attempt=${attempt + 1} '
+              'uri=${uri ?? "null"}',
+        );
         if (uri != null) {
           _handleHomeWidgetUri(uri);
           return;
@@ -581,7 +590,11 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       MethodChannel('planflow/android_settings');
 
   /// 처리 완료 후 native intent action을 MAIN으로 재설정해 onResume 오탐 방지
-  Future<void> _consumeHomeWidgetLaunch() async {
+  Future<void> _consumeHomeWidgetLaunch({String reason = 'unknown'}) async {
+    DiagLogger.log(
+      'WidgetRoute',
+      'consumeHomeWidgetLaunch invoked reason=$reason',
+    );
     try {
       await _settingsMethodChannel
           .invokeMethod<void>('consumeHomeWidgetLaunch');
@@ -604,6 +617,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _listenForPlanFlowDeepLinks() {
     _planFlowLinkSubscription = _appLinks.uriLinkStream.listen(
       (uri) {
+        DiagLogger.log(
+          'WidgetRoute',
+          'appLinks.uriLinkStream event uri=$uri',
+        );
         _handlePlanFlowDeepLink(uri);
       },
       onError: (Object error, stackTrace) {
@@ -611,7 +628,15 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         debugPrintStack(stackTrace: stackTrace as StackTrace?);
       },
     );
-    unawaited(_appLinks.getInitialLink().then(_handlePlanFlowDeepLink));
+    unawaited(
+      _appLinks.getInitialLink().then((uri) {
+        DiagLogger.log(
+          'WidgetRoute',
+          'appLinks.getInitialLink uri=${uri ?? "null"}',
+        );
+        _handlePlanFlowDeepLink(uri);
+      }),
+    );
   }
 
   void _handlePlanFlowDeepLink(Uri? uri) {
@@ -637,6 +662,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   void _handleHomeWidgetUri(Uri? uri) {
     final route = resolveHomeWidgetRoute(uri);
+    DiagLogger.log(
+      'WidgetRoute',
+      'resolveHomeWidgetRoute uri=${uri ?? "null"} route=${route ?? "null"}',
+    );
     if (route != null) {
       // Android cold start can deliver the same widget URI through both the
       // HomeWidget probe and AppLinks.  A second push deactivates the first
@@ -648,12 +677,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         previousHandledAt: _lastHandledHomeWidgetRouteAt,
         now: now,
       )) {
+        DiagLogger.log(
+          'WidgetRoute',
+          'duplicate route ignored route=$route',
+        );
         return;
       }
       _lastHandledHomeWidgetRoute = route;
       _lastHandledHomeWidgetRouteAt = now;
       // native intent를 소비해 onResume fallback에서 동일 URI 중복 처리 방지
-      unawaited(_consumeHomeWidgetLaunch());
+      unawaited(
+        _consumeHomeWidgetLaunch(reason: '_handleHomeWidgetUri route=$route'),
+      );
       startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
@@ -681,12 +716,23 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     if (!authProvider.hasResolvedInitialSession && attempt < 10) {
+      DiagLogger.log(
+        'WidgetRoute',
+        'auth session wait attempt=$attempt route=$route resolved=false',
+      );
       unawaited(
         Future<void>.delayed(const Duration(milliseconds: 120), () {
           _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
         }),
       );
       return;
+    }
+    if (_homeWidgetShouldSeedHomeBase == null) {
+      DiagLogger.log(
+        'WidgetRoute',
+        'auth session wait attempt=$attempt route=$route '
+            'resolved=${authProvider.hasResolvedInitialSession}',
+      );
     }
     // 실제 네비게이션(go/push)은 이 generation에서 딱 한 번만 실행한다.
     // auth 세션 대기 재시도(위 hasResolvedInitialSession 루프)가 여러 번
@@ -724,6 +770,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         final current = appRouter.routeInformationProvider.value.uri;
         final expected = Uri.parse(route);
         if (current.path == expected.path) {
+          DiagLogger.log(
+            'WidgetRoute',
+            'arrival confirmed route=$route attempt=$attempt',
+          );
           _pendingHomeWidgetRoute = null;
           unawaited(
             Future<void>.delayed(const Duration(milliseconds: 700), () {
@@ -734,8 +784,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
             }),
           );
         } else if (attempt < 10) {
+          DiagLogger.log(
+            'WidgetRoute',
+            'arrival not confirmed route=$route attempt=$attempt '
+                'current=${current.path} retrying=true',
+          );
           _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
         } else {
+          DiagLogger.log(
+            'WidgetRoute',
+            'arrival not confirmed route=$route attempt=$attempt '
+                'current=${current.path} retrying=false giving_up=true',
+          );
           startupRouteGate.completeWidgetLaunch();
         }
       }),
