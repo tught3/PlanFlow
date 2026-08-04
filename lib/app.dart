@@ -41,6 +41,7 @@ class PlanFlowApp extends StatefulWidget {
 class _PlanFlowAppState extends State<PlanFlowApp> {
   static const String _pendingUpdateRestoreRouteKey =
       'startup:update_restore_route';
+  static const int _homeWidgetArrivalMaxAttempts = 10;
 
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   StreamSubscription<Uri>? _planFlowLinkSubscription;
@@ -685,10 +686,13 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       }
       _lastHandledHomeWidgetRoute = route;
       _lastHandledHomeWidgetRouteAt = now;
-      // native intent를 소비해 onResume fallback에서 동일 URI 중복 처리 방지
-      unawaited(
-        _consumeHomeWidgetLaunch(reason: '_handleHomeWidgetUri route=$route'),
-      );
+      // native intent 소비(_consumeHomeWidgetLaunch)는 여기서 즉시 호출하지
+      // 않는다. 도착 확인(_applyPendingHomeWidgetRoute의 arrival confirmed
+      // 분기) 이전에 intent를 지우면, 다운스트림 라우팅이 실패했을 때(auth
+      // 세션 대기 타임아웃 등) intent가 이미 사라진 뒤라
+      // _resumeHomeWidgetCheck()의 onResume 재시도 경로가 영구히 null만
+      // 반환하게 되어 복구 자체가 불가능해진다(P5). 소비는 도착이 실제로
+      // 확인된 시점으로 옮긴다.
       startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
@@ -769,34 +773,55 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         }
         final current = appRouter.routeInformationProvider.value.uri;
         final expected = Uri.parse(route);
-        if (current.path == expected.path) {
-          DiagLogger.log(
-            'WidgetRoute',
-            'arrival confirmed route=$route attempt=$attempt',
-          );
-          _pendingHomeWidgetRoute = null;
-          unawaited(
-            Future<void>.delayed(const Duration(milliseconds: 700), () {
-              if (!mounted || generation != _homeWidgetRouteGeneration) {
-                return;
-              }
-              startupRouteGate.completeWidgetLaunch();
-            }),
-          );
-        } else if (attempt < 10) {
-          DiagLogger.log(
-            'WidgetRoute',
-            'arrival not confirmed route=$route attempt=$attempt '
-                'current=${current.path} retrying=true',
-          );
-          _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
-        } else {
-          DiagLogger.log(
-            'WidgetRoute',
-            'arrival not confirmed route=$route attempt=$attempt '
-                'current=${current.path} retrying=false giving_up=true',
-          );
-          startupRouteGate.completeWidgetLaunch();
+        final arrivalResult = resolveHomeWidgetArrivalCheckResult(
+          arrived: current.path == expected.path,
+          attempt: attempt,
+          maxAttempts: _homeWidgetArrivalMaxAttempts,
+        );
+        switch (arrivalResult) {
+          case HomeWidgetArrivalCheckResult.confirmed:
+            DiagLogger.log(
+              'WidgetRoute',
+              'arrival confirmed route=$route attempt=$attempt',
+            );
+            _pendingHomeWidgetRoute = null;
+            // P5: native intent 소비는 도착이 실제로 확인된 이 지점에서만
+            // 정확히 1회 실행한다. 실패 분기(retrying/givingUp)에서는 절대
+            // 호출하지 않아 intent가 살아있는 채로 남고, 이후
+            // _resumeHomeWidgetCheck()(onResume fallback)가 재시도할 수
+            // 있다.
+            if (shouldConsumeHomeWidgetLaunch(arrivalResult)) {
+              unawaited(
+                _consumeHomeWidgetLaunch(
+                  reason: 'arrival_confirmed route=$route',
+                ),
+              );
+            }
+            unawaited(
+              Future<void>.delayed(const Duration(milliseconds: 700), () {
+                if (!mounted || generation != _homeWidgetRouteGeneration) {
+                  return;
+                }
+                startupRouteGate.completeWidgetLaunch();
+              }),
+            );
+            break;
+          case HomeWidgetArrivalCheckResult.retrying:
+            DiagLogger.log(
+              'WidgetRoute',
+              'arrival not confirmed route=$route attempt=$attempt '
+                  'current=${current.path} retrying=true',
+            );
+            _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
+            break;
+          case HomeWidgetArrivalCheckResult.givingUp:
+            DiagLogger.log(
+              'WidgetRoute',
+              'arrival not confirmed route=$route attempt=$attempt '
+                  'current=${current.path} retrying=false giving_up=true',
+            );
+            startupRouteGate.completeWidgetLaunch();
+            break;
         }
       }),
     );
@@ -939,6 +964,45 @@ bool shouldIgnoreDuplicateHomeWidgetRoute({
   return route == previousRoute &&
       previousHandledAt != null &&
       now.difference(previousHandledAt) < const Duration(seconds: 2);
+}
+
+/// [_PlanFlowAppState._applyPendingHomeWidgetRoute]의 도착 확인 재시도
+/// 루프가 한 번의 확인 시도에서 어떤 결과에 도달했는지를 나타낸다.
+///
+/// P5: native intent 소비(`_consumeHomeWidgetLaunch`)는 반드시
+/// [confirmed]에서만 일어나야 한다. [retrying]/[givingUp]에서 소비하면
+/// intent가 사라져 이후 라우팅이 실패했을 때 복구 경로
+/// (`_resumeHomeWidgetCheck`, onResume fallback)가 영구히 무력화된다.
+@visibleForTesting
+enum HomeWidgetArrivalCheckResult { confirmed, retrying, givingUp }
+
+/// 도착 확인 결과([arrived])와 현재 재시도 횟수([attempt])로부터, 이번
+/// 시도가 [HomeWidgetArrivalCheckResult]의 어떤 상태에 해당하는지 계산하는
+/// 순수 함수. `_applyPendingHomeWidgetRoute`의 arrival-check 콜백이 이
+/// 함수 하나로 분기하므로, 여기서 반환한 값이 곧 native intent 소비 여부를
+/// 결정한다(아래 [shouldConsumeHomeWidgetLaunch] 참고).
+@visibleForTesting
+HomeWidgetArrivalCheckResult resolveHomeWidgetArrivalCheckResult({
+  required bool arrived,
+  required int attempt,
+  required int maxAttempts,
+}) {
+  if (arrived) {
+    return HomeWidgetArrivalCheckResult.confirmed;
+  }
+  return attempt < maxAttempts
+      ? HomeWidgetArrivalCheckResult.retrying
+      : HomeWidgetArrivalCheckResult.givingUp;
+}
+
+/// P5 수정의 핵심 게이트: [result]가 [HomeWidgetArrivalCheckResult.confirmed]
+/// 일 때만 native intent를 소비해도 안전하다(=true). 실패
+/// (retrying/givingUp)에서는 항상 false를 반환해, 라우팅이 아직
+/// 실패로 확정되지 않았거나 실패로 확정된 경우 모두 intent를 보존하고
+/// `_resumeHomeWidgetCheck()`가 재시도할 수 있게 한다.
+@visibleForTesting
+bool shouldConsumeHomeWidgetLaunch(HomeWidgetArrivalCheckResult result) {
+  return result == HomeWidgetArrivalCheckResult.confirmed;
 }
 
 @visibleForTesting
