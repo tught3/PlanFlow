@@ -36,7 +36,45 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         // 화면 회전을 세로 고정 (시스템 설정과 무관하게 강제)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        logWidgetIntentDiagnostics(
+            source = "onCreate",
+            targetIntent = intent,
+            savedInstanceStateIsNull = savedInstanceState == null,
+        )
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        logWidgetIntentDiagnostics(
+            source = "onNewIntent",
+            targetIntent = intent,
+            savedInstanceStateIsNull = null,
+        )
+    }
+
+    /**
+     * 홈위젯 콜드스타트 딥링크 유실 진단용 로깅 전용 함수.
+     * 기존 로직/동작에는 영향을 주지 않는다 (읽기 전용, 부작용 없음).
+     */
+    private fun logWidgetIntentDiagnostics(
+        source: String,
+        targetIntent: Intent?,
+        savedInstanceStateIsNull: Boolean?,
+    ) {
+        try {
+            val action = targetIntent?.action
+            val data = targetIntent?.data
+            val flagsHex = Integer.toHexString(targetIntent?.flags ?: 0)
+            Log.d(
+                "PlanFlowWidgetIntent",
+                "source=$source action=$action data=$data flags=0x$flagsHex " +
+                    "savedInstanceStateIsNull=$savedInstanceStateIsNull isTaskRoot=$isTaskRoot",
+            )
+        } catch (_: Exception) {
+            // 진단 로깅 실패는 앱 동작에 영향을 주면 안 됨 (best-effort).
+        }
+    }
+
     companion object {
         private const val REQUEST_MICROPHONE_PERMISSION = 4310
         private const val REQUEST_LOCATION_PERMISSION = 4311
