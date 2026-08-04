@@ -25,7 +25,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
     _provider = DeletedGroupsProvider();
     _provider.addListener(_onProviderChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _provider.load(backupType: 'delete');
+      _provider.load();
     });
   }
 
@@ -45,11 +45,21 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
   String _relativeDescription(GroupBackupModel backup) {
     final created = backup.createdAt;
     if (created == null) {
-      return '삭제 시점 정보 없음';
+      return '시점 정보 없음';
     }
     final age = DateTime.now().toUtc().difference(created.toUtc());
     final days = age.inDays;
     final hours = age.inHours;
+    if (backup.isArchive) {
+      // 보관(archive)은 만료 없이 복원 가능.
+      if (days <= 0) {
+        if (hours <= 0) {
+          return '방금 보관됨';
+        }
+        return '$hours시간 전 보관 · 복원 가능';
+      }
+      return '$days일 전 보관 · 복원 가능';
+    }
     if (days <= 0) {
       if (hours <= 0) {
         return '방금 삭제됨';
@@ -177,6 +187,10 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
   }
 
   bool _isExpired(GroupBackupModel backup) {
+    // 보관(archive)은 만료 없이 항상 복원 가능.
+    if (backup.isArchive) {
+      return false;
+    }
     final created = backup.createdAt;
     if (created == null) {
       return false;
@@ -190,7 +204,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('삭제된 그룹'),
+        title: const Text('보관 · 삭제된 그룹'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -214,13 +228,13 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '삭제된 그룹을 불러오지 못했어요.\n${_provider.lastError ?? ''}',
+              '보관 · 삭제된 그룹을 불러오지 못했어요.\n${_provider.lastError ?? ''}',
               style: theme.textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: () => _provider.load(backupType: 'delete'),
+              onPressed: () => _provider.load(),
               child: const Text('다시 시도'),
             ),
           ],
@@ -232,7 +246,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
         child: Center(
           child: Text(
-            '삭제된 그룹이 없습니다.\n그룹을 삭제하면 30일 동안 이 화면에서 복원할 수 있습니다.',
+            '보관되거나 삭제된 그룹이 없습니다.\n그룹을 삭제하면 30일 동안, 보관한 그룹은 만료 없이 이 화면에서 복원할 수 있습니다.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: PlanFlowColors.textSecondary,
             ),
@@ -242,7 +256,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
       );
     }
     return RefreshIndicator(
-      onRefresh: () => _provider.load(backupType: 'delete'),
+      onRefresh: () => _provider.load(),
       child: ListView.separated(
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
         itemCount: _provider.backups.length,
@@ -289,6 +303,31 @@ class _DeletedGroupCard extends StatelessWidget {
   final VoidCallback? onRestore;
   final VoidCallback onDelete;
 
+  Widget _backupTypeChip(ThemeData theme) {
+    final isArchive = backup.isArchive;
+    final label = isArchive ? '보관됨' : '삭제됨';
+    final bg = isArchive
+        ? theme.colorScheme.secondaryContainer
+        : theme.colorScheme.errorContainer;
+    final fg = isArchive
+        ? theme.colorScheme.onSecondaryContainer
+        : theme.colorScheme.onErrorContainer;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: fg,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -325,6 +364,8 @@ class _DeletedGroupCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 8),
+                _backupTypeChip(theme),
               ],
             ),
             const SizedBox(height: 6),

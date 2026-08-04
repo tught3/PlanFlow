@@ -22,8 +22,12 @@ abstract class GroupBackupRepository {
   );
 
   /// 본인이 만든 미복원 백업을 최신 순으로 가져온다.
-  /// [backupType]이 null이면 모든 타입, 그 외엔 'archive' 또는 'delete'로 필터.
-  Future<List<GroupBackupModel>> listMyBackups({String? backupType});
+  /// [backupTypes]가 제공되면 해당 타입들만, [backupType]이 제공되면 단일 타입,
+  /// 둘 다 null이면 모든 타입을 반환한다. 둘 다 주어지면 [backupTypes] 우선.
+  Future<List<GroupBackupModel>> listMyBackups({
+    String? backupType,
+    List<String>? backupTypes,
+  });
 
   Future<GroupBackupModel> restoreGroupFromBackup(String backupId);
 
@@ -139,21 +143,31 @@ class SupabaseGroupBackupRepository extends GroupBackupRepository {
   }
 
   @override
-  Future<List<GroupBackupModel>> listMyBackups({String? backupType}) async {
+  Future<List<GroupBackupModel>> listMyBackups({
+    String? backupType,
+    List<String>? backupTypes,
+  }) async {
     _requireCurrentUserId();
+    List<String>? effectiveTypes;
+    if (backupTypes != null && backupTypes.isNotEmpty) {
+      effectiveTypes = backupTypes;
+    } else if (backupType != null) {
+      effectiveTypes = <String>[backupType];
+    }
     final List<Map<String, dynamic>> response;
-    if (backupType != null) {
-      // .eq()는 select() 직후(filter stage)에만 사용 가능. order()는 다음 단계.
-      response = await _client
-          .from('group_backups')
-          .select()
-          .eq('backup_type', backupType)
+    final baseQuery = _client.from('group_backups').select();
+    if (effectiveTypes != null && effectiveTypes.length == 1) {
+      // 단일 타입은 .eq()로 필터 (가독성·성능).
+      // .eq()/.inFilter()는 select() 직후(filter stage)에만 사용 가능. order()는 다음 단계.
+      response = await baseQuery
+          .eq('backup_type', effectiveTypes.first)
+          .order('created_at', ascending: false);
+    } else if (effectiveTypes != null && effectiveTypes.length > 1) {
+      response = await baseQuery
+          .inFilter('backup_type', effectiveTypes)
           .order('created_at', ascending: false);
     } else {
-      response = await _client
-          .from('group_backups')
-          .select()
-          .order('created_at', ascending: false);
+      response = await baseQuery.order('created_at', ascending: false);
     }
     return response
         .map<GroupBackupModel>(

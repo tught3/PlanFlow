@@ -5,17 +5,19 @@ import '../repositories/group_backup_repository.dart';
 
 enum DeletedGroupsLoadState { idle, loading, loaded, error }
 
-/// 삭제된 그룹 백업(또는 보관된 그룹) 목록을 관리하는 간단한 ChangeNotifier.
+/// 삭제/보관된 그룹 백업 목록을 관리하는 간단한 ChangeNotifier.
 ///
 /// 사용 시점:
-/// - SettingsScreen 진입점 → DeletedGroupsScreen → 이 provider listMyBackups('delete')
-/// - 같은 화면에서 listMyBackups('archive')도 별도로 보여줄 수 있다 (옵션).
+/// - SettingsScreen 진입점 → DeletedGroupsScreen → 이 provider load()
+/// - 기본은 ['delete', 'archive'] 둘 다 로드하므로 보관된 그룹도 같은 화면에서 복원 가능.
 class DeletedGroupsProvider extends ChangeNotifier {
   DeletedGroupsProvider({
     GroupBackupRepository? repository,
   }) : _repository = repository ?? GroupBackupRepository.supabase();
 
   final GroupBackupRepository _repository;
+
+  static const List<String> _defaultBackupTypes = <String>['delete', 'archive'];
 
   DeletedGroupsLoadState _state = DeletedGroupsLoadState.idle;
   List<GroupBackupModel> _backups = const <GroupBackupModel>[];
@@ -32,12 +34,14 @@ class DeletedGroupsProvider extends ChangeNotifier {
   bool isRestoring(String backupId) => _restoringBackupId == backupId;
   bool isDeleting(String backupId) => _deletingBackupId == backupId;
 
-  Future<void> load({String backupType = 'delete'}) async {
+  Future<void> load({List<String>? backupTypes}) async {
     _state = DeletedGroupsLoadState.loading;
     _lastError = null;
     notifyListeners();
     try {
-      final list = await _repository.listMyBackups(backupType: backupType);
+      final list = await _repository.listMyBackups(
+        backupTypes: backupTypes ?? _defaultBackupTypes,
+      );
       _backups = list;
       _state = DeletedGroupsLoadState.loaded;
     } catch (error) {
