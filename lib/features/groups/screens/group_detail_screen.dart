@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../../../data/repositories/event_repository.dart';
+import '../models/group_backup_model.dart';
 import '../models/group_model.dart';
 import '../providers/group_context_provider.dart';
 import '../repositories/group_event_repository.dart';
@@ -54,6 +55,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   bool _autoShareEnabled = false;
   bool _isSharingExistingEvents = false;
   bool _isDeleting = false;
+  bool _isArchiving = false;
+  bool _isArchived = false;
 
   @override
   void initState() {
@@ -91,6 +94,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       setState(() {
         _group = group;
         _isLeader = _provider.state.isLeaderOfSelectedGroup;
+        _isArchived = group?.isArchived ?? false;
         _isLoading = false;
       });
       _scheduleSharePrompt(userId: userId, group: group);
@@ -422,6 +426,111 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     }
   }
 
+  Future<void> _archiveGroup() async {
+    final group = _group;
+    if (group == null || _isArchiving) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('그룹 보관'),
+        content: const Text(
+          '그룹을 보관하면 멤버 목록에서 사라지며, 멤버들의 알림·위젯이 정리됩니다.\n\n언제든지 복원할 수 있습니다.',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actions: [
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('보관하기'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _isArchiving = true;
+    });
+    try {
+      await _backupRepository.archiveGroupWithBackup(group.id);
+      // TODO(cleanup): Task 4의 GroupCleanupService가 완료되면
+      // GroupCleanupService.instance.onGroupArchived(group.id)로
+      // 멤버 알림·위젯 정리를 호출한다. 현재는 미구현 상태라 archive만 처리.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('그룹을 보관했어요. 설정 → 삭제된 그룹에서 복원할 수 있어요.'),
+        ),
+      );
+      _handleBackNavigation();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('보관 실패: ${_friendlyErrorMessage(e)}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isArchiving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restoreGroup() async {
+    final group = _group;
+    if (group == null || _isArchiving) return;
+    setState(() {
+      _isArchiving = true;
+    });
+    try {
+      // restoreGroupFromBackup은 백업 ID를 받는다. 이 그룹의 가장 최근
+      // 미복원 archive 백업을 찾아 복원한다 (getBackupsForGroup은 최신순).
+      final backups = await _backupRepository.getBackupsForGroup(group.id);
+      GroupBackupModel? archiveBackup;
+      for (final backup in backups) {
+        if (backup.isArchive && !backup.isRestored) {
+          archiveBackup = backup;
+          break;
+        }
+      }
+      if (archiveBackup == null) {
+        throw StateError('복원할 보관 백업이 없습니다.');
+      }
+      await _backupRepository.restoreGroupFromBackup(archiveBackup.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('그룹을 복원했어요.')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('복원 실패: ${_friendlyErrorMessage(e)}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isArchiving = false;
+        });
+      }
+    }
+  }
+
   /// 딥링크 등으로 push 이력 없이 이 화면에 바로 들어온 경우 pop할 대상이
   /// 없어 GoError("There is nothing to pop.")가 발생한다. canPop을 먼저
   /// 확인하고, 없으면 그룹 목록으로 이동한다.
@@ -585,7 +694,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null && group == null
               ? _buildErrorCard(context)
-              : ListView(
+              : _isArchived
+                  ? _buildArchivedCard(context)
+                  : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                   children: [
                     if (group != null) _buildHeaderCard(context, group),
@@ -615,6 +726,29 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                       ),
                     ),
                     if (_isLeader) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFF4E0),
+                            foregroundColor: const Color(0xFFB54708),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: _isArchiving ? null : _archiveGroup,
+                          icon: _isArchiving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.archive_outlined, size: 20),
+                          label: const Text('그룹 보관하기'),
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,
@@ -876,6 +1010,46 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           FilledButton(onPressed: _load, child: const Text('다시 시도')),
         ],
       ),
+    );
+  }
+
+  Widget _buildArchivedCard(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                const Icon(Icons.archive, size: 48, color: Colors.grey),
+                const SizedBox(height: 12),
+                const Text(
+                  '보관된 그룹입니다',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '복원하려면 아래 버튼을 눌러주세요.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _isArchiving ? null : _restoreGroup,
+                  icon: _isArchiving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.restore),
+                  label: const Text('그룹 복원하기'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
