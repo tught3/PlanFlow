@@ -22,6 +22,7 @@ import 'services/calendar_auto_sync_service.dart';
 import 'services/event_prefetch_service.dart';
 import 'services/kasi_holiday_service.dart';
 import 'services/ad_service.dart';
+import 'features/groups/services/group_cleanup_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,7 @@ Future<void> main() async {
 
   runApp(const ProviderScope(child: PlanFlowApp()));
   unawaited(_initializePlatformServices());
+  unawaited(_reconcileStaleGroupAlarms());
 }
 
 Future<void> _initializePlatformServices() async {
@@ -48,6 +50,48 @@ Future<void> _initializePlatformServices() async {
     _primingAdService(),
     _primeHolidayCache(),
   ]);
+}
+
+/// 부팅 시 active 그룹 집합을 조회하고, 그 집합에 들지 않는 그룹 이벤트의
+/// 알림/알람을 정리한다. 부팅 블로킹을 막기 위해 main()에서 unawaited로 호출.
+///
+/// - currentUser가 아직 준비되지 않았거나 미로그인 상태면 즉시 스킵한다.
+/// - 그룹 조회는 RLS로 본인 그룹만 반환된다.
+/// - 10초 타임아웃 / 예외는 앱 시작을 막지 않고 로그만 남긴다(fail-open).
+Future<void> _reconcileStaleGroupAlarms() async {
+  try {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null || userId.trim().isEmpty) {
+      debugPrint(
+        '[BootReconcile] No user session, skipping stale alarm reconcile',
+      );
+      return;
+    }
+
+    final activeGroups = await client
+        .from('groups')
+        .select('id')
+        .eq('status', 'active')
+        .timeout(const Duration(seconds: 10));
+
+    final activeGroupIds = (activeGroups as List)
+        .map((row) => row['id'] as String)
+        .toSet();
+
+    debugPrint(
+      '[BootReconcile] Found ${activeGroupIds.length} active groups',
+    );
+
+    await GroupCleanupService.instance.reconcileStaleAlarms(
+      activeGroupIds,
+      userId: userId,
+    );
+  } on TimeoutException {
+    debugPrint('[BootReconcile] Query timeout, skipping');
+  } catch (error, stack) {
+    debugPrint('[BootReconcile] Failed: $error\n$stack');
+  }
 }
 
 /// 1차 BM: GPT 일정 파싱 리워드 광고 초기화. Remote Config가 OFF면 즉시 종료.
