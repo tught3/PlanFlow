@@ -68,6 +68,51 @@
       font-weight: 700;
     }
 
+    .steps {
+      padding-left: 20px;
+    }
+
+    .steps li {
+      margin-bottom: 10px;
+    }
+
+    .path {
+      display: inline-block;
+      margin: 4px 0 8px;
+      padding: 6px 12px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--ink);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .screenshot {
+      display: block;
+      margin: 10px 0 16px;
+      padding: 18px;
+      border: 1px dashed var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .notice {
+      margin-top: 16px;
+      padding: 14px 16px;
+      background: #fff7e8;
+      border: 1px solid #f3d9a4;
+      border-radius: 6px;
+      color: var(--ink);
+    }
+
+    .notice strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
     @media (max-width: 640px) {
       main {
         width: calc(100% - 24px);
@@ -77,6 +122,10 @@
 
       h1 {
         font-size: 1.55rem;
+      }
+
+      h2 {
+        font-size: 1.1rem;
       }
     }
   </style>
@@ -89,15 +138,36 @@
       사용자 데이터 삭제 요청 방법을 안내합니다.
     </p>
 
-    <h2>1. 계정 삭제 요청 방법</h2>
+    <h2>가장 빠른 방법: 앱에서 회원 탈퇴</h2>
     <p>
-      PlanFlow 계정 삭제를 원하시면 아래 정보를 포함해
+      계정 삭제는 앱 안에서 바로 처리되며 별도의 요청이나 대기 시간이 필요하지 않습니다.
+    </p>
+    <p class="path">설정 → 계정 → 회원 탈퇴</p>
+    <ol class="steps">
+      <li>PlanFlow 앱을 실행하고 하단 메뉴에서 <strong>설정</strong>을 엽니다.</li>
+      <li><strong>계정</strong> 메뉴를 선택합니다.</li>
+      <li><strong>회원 탈퇴</strong>를 누릅니다.</li>
+      <li>탈퇴 안내 문구를 확인한 뒤 본인 확인을 거쳐 탈퇴를 완료합니다.</li>
+      <li>탈퇴가 완료되면 로그인 화면으로 돌아가며 계정과 개인 데이터가 삭제됩니다.</li>
+    </ol>
+    <span class="screenshot">[스크린샷: 설정 → 계정 → 회원 탈퇴]</span>
+
+    <div class="notice">
+      <strong>⚠️ 탈퇴 전에 확인하세요</strong>
+      회원 탈퇴 후에는 계정을 다시 복구할 수 없습니다. 탈퇴 전에 필요한 일정이나
+      데이터를 미리 백업해 두시기 바랍니다.
+    </div>
+
+    <h2>앱에 접근할 수 없는 경우</h2>
+    <p>
+      앱에 접근할 수 없어 앱 내에서 회원 탈퇴를 진행할 수 없다면, 아래 정보를 포함해
       <a href="mailto:contact@fluxstudio.co.kr">contact@fluxstudio.co.kr</a>으로
-      요청해 주세요.
+      이메일로 요청해 주세요.
     </p>
     <ul>
       <li>메일 제목: PlanFlow 계정 삭제 요청</li>
-      <li>PlanFlow에 로그인한 이메일 주소</li>
+      <li>PlanFlow에 로그인한 계정 이메일 주소</li>
+      <li>사용자 이름</li>
       <li>삭제 요청 범위: 계정 전체 삭제</li>
     </ul>
     <p>
@@ -105,25 +175,63 @@
       확인이 완료되면 계정과 앱 서비스 제공에 필요한 사용자 데이터를 삭제합니다.
     </p>
 
-    <h2>2. 삭제되는 데이터</h2>
+    <h2>삭제되는 데이터</h2>
     <p>계정 전체 삭제 시 다음 PlanFlow 데이터가 삭제됩니다.</p>
     <ul>
       <li>로그인 계정 정보와 앱 프로필 정보</li>
-      <li>사용자가 생성한 일정, 알림, 준비 항목, 위치 기록</li>
-      <li>음성 입력에서 변환된 텍스트 로그와 일정 분석 기록</li>
+      <li>개인 일정, 준비 항목, 알림/알람 예약</li>
+      <li>음성 입력에서 변환된 텍스트 음성 로그와 일정 분석 기록</li>
+      <li>위치 기록</li>
       <li>캘린더 연동 상태, 네이버 CalDAV 연결 정보, 앱 설정</li>
       <li>앱 백업 및 복원 데이터</li>
       <li>앱 내부 문제 신고와 피드백 내역 중 계정과 연결된 데이터</li>
     </ul>
 
-    <h2>3. 보관될 수 있는 데이터와 보관 기간</h2>
+    <h2>유지되는 데이터</h2>
+    <p>
+      그룹 기능으로 다른 멤버와 공유한 일정 중 그룹이 유지되는 경우, 해당 데이터는
+      삭제되지 않고 그룹에 남아 다른 멤버가 계속 이용할 수 있습니다. 이는 공유 일정을
+      만든 다른 멤버들의 이용 권리를 보호하기 위한 조치입니다.
+    </p>
+    <ul>
+      <li>그룹 공유 일정 (다른 멤버의 권리 보존)</li>
+    </ul>
+
+    <h2>그룹 리더 주의사항</h2>
+    <div class="notice">
+      <strong>⚠️ 그룹 리더인 경우</strong>
+      그룹 리더인 경우, 회원 탈퇴 전에 그룹을 삭제하거나 리더를 다른 멤버에게 위임해야
+      합니다.
+    </div>
+    <p>
+      탈퇴 시점에 리더인 그룹이 남아 있으면 그룹 운영이 중단될 수 있으므로, 탈퇴 전에
+      반드시 아래 방법으로 정리해 주세요.
+    </p>
+    <p class="path">앱 내 그룹 관리 → 멤버 → 리더 위임</p>
+    <ol class="steps">
+      <li>그룹 화면에서 <strong>그룹 관리</strong>를 엽니다.</li>
+      <li><strong>멤버</strong> 목록에서 리더를 위임할 멤버를 선택합니다.</li>
+      <li><strong>리더 위임</strong>을 실행합니다.</li>
+    </ol>
+    <p>
+      그룹을 더 이상 유지하지 않는다면, 리더 위임 대신 해당 그룹을 삭제한 뒤 회원 탈퇴를
+      진행하면 됩니다.
+    </p>
+
+    <h2>처리 기간</h2>
+    <ul>
+      <li><strong>앱 내 회원 탈퇴:</strong> 즉시 처리됩니다.</li>
+      <li><strong>이메일 요청:</strong> 영업일 기준 3~5일이 소요될 수 있습니다.</li>
+    </ul>
+
+    <h2>보관될 수 있는 데이터와 보관 기간</h2>
     <p>
       법적 의무, 보안 감사, 부정 이용 방지, 고객 지원 이력 확인을 위해 일부 기록은
       필요한 범위에서 최대 90일간 보관될 수 있습니다. 보관 기간이 끝나면 삭제하거나
       개인을 식별할 수 없도록 처리합니다.
     </p>
 
-    <h2 id="partial-data-deletion">4. 계정 삭제 없이 일부 데이터 삭제 요청</h2>
+    <h2 id="partial-data-deletion">계정 삭제 없이 일부 데이터 삭제 요청</h2>
     <p>
       계정은 유지하고 일부 데이터만 삭제하고 싶다면 앱 안에서 일정을 직접 삭제하거나,
       아래 정보를 포함해 같은 이메일 주소로 요청해 주세요.
@@ -138,7 +246,7 @@
       일부 데이터 삭제는 앱 기능 유지에 필요한 최소 계정 정보는 남긴 상태로 처리됩니다.
     </p>
 
-    <h2>5. 문의</h2>
+    <h2>문의</h2>
     <p>
       계정 및 데이터 삭제 관련 문의는
       <a href="mailto:contact@fluxstudio.co.kr">contact@fluxstudio.co.kr</a>으로
