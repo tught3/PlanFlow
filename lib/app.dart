@@ -687,12 +687,28 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       _lastHandledHomeWidgetRoute = route;
       _lastHandledHomeWidgetRouteAt = now;
       // native intent 소비(_consumeHomeWidgetLaunch)는 여기서 즉시 호출하지
-      // 않는다. 도착 확인(_applyPendingHomeWidgetRoute의 arrival confirmed
-      // 분기) 이전에 intent를 지우면, 다운스트림 라우팅이 실패했을 때(auth
-      // 세션 대기 타임아웃 등) intent가 이미 사라진 뒤라
-      // _resumeHomeWidgetCheck()의 onResume 재시도 경로가 영구히 null만
-      // 반환하게 되어 복구 자체가 불가능해진다(P5). 소비는 도착이 실제로
-      // 확인된 시점으로 옮긴다.
+      // 않는다. 도착 확인(_applyPendingHomeWidgetRoute) 이전에 intent를
+      // 지우면, 같은 generation 안에서 아직 진행 중인 재시도 루프(retrying)
+      // 도중에 intent가 사라져 그 루프 자체가 무의미해진다(P5). 소비는
+      // 이 재시도 루프가 '터미널' 상태(confirmed 또는 givingUp)에 도달한
+      // 시점으로 옮긴다.
+      //
+      // (P5R, 리뷰 수정) givingUp에서도 반드시 소비해야 한다. 앱이 죽지
+      // 않고 살아있는 동안은 _resumeHomeWidgetCheck()(onResume fallback)로
+      // 재시도할 수도 있어 보이지만, 이 시점에는 이미 push가 한 번
+      // 실행된 뒤라(대개 auth 리다이렉트 등 구조적 실패) 재시도는 같은
+      // 실패를 반복하거나 최악의 경우 이미 표시 중인 화면(예: STT 진행
+      // 중인 VoiceInputScreen) 위에 같은 라우트를 또 push해 세션을
+      // 취소시키는 새 버그를 만들 수 있다. 반면 intent를 살려둔 채 앱
+      // 프로세스가 죽었다가 재시작되면, HomeWidgetPlugin.kt가 살아있는
+      // Activity intent를 그대로 재생(replay)해 이미 실패로 끝난 옛
+      // 목적지로 강제 이동시키는 확실한 오작동이 생긴다. 불확실한
+      // 세션 내 재시도 이득보다 확실한 stale-intent 재생 위험 제거를
+      // 우선해 givingUp에서도 소비하고 _pendingHomeWidgetRoute도
+      // 리셋한다(그래야 이 위젯 launch와 무관한
+      // _routeInitialNotificationLaunch/_retryInitialHomeWidgetLaunchProbe
+      // 같은 다른 초기 라우팅 복구 경로가 남은 세션 동안 영구히 막히지
+      // 않는다).
       startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
@@ -785,11 +801,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               'arrival confirmed route=$route attempt=$attempt',
             );
             _pendingHomeWidgetRoute = null;
-            // P5: native intent 소비는 도착이 실제로 확인된 이 지점에서만
-            // 정확히 1회 실행한다. 실패 분기(retrying/givingUp)에서는 절대
-            // 호출하지 않아 intent가 살아있는 채로 남고, 이후
-            // _resumeHomeWidgetCheck()(onResume fallback)가 재시도할 수
-            // 있다.
+            // (P5R) native intent 소비는 도착이 확인된 여기, 그리고 아래
+            // givingUp 분기에서만 실행된다(둘 다 터미널 상태). 재시도
+            // 도중(retrying)에는 호출하지 않아 같은 generation 안의
+            // 재시도 루프가 intent 없이 헛돌지 않게 한다.
             if (shouldConsumeHomeWidgetLaunch(arrivalResult)) {
               unawaited(
                 _consumeHomeWidgetLaunch(
@@ -820,6 +835,24 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               'arrival not confirmed route=$route attempt=$attempt '
                   'current=${current.path} retrying=false giving_up=true',
             );
+            // (P5R, 리뷰 수정) 여기서도 pendingRoute를 리셋한다. 리셋하지
+            // 않으면 이 위젯 launch와 무관한
+            // _routeInitialNotificationLaunch/_retryInitialHomeWidgetLaunchProbe
+            // 가 남은 세션 동안 영구히 막힌다(둘 다 진입 가드로
+            // _pendingHomeWidgetRoute != null을 본다). native intent는
+            // shouldConsumeHomeWidgetLaunch(아래 문서 참고)가 true를
+            // 반환하므로 여기서 함께 소비되어, 리셋 이후 다른 경로가
+            // HomeWidget.initiallyLaunchedFromHomeWidget()을 다시 불러도
+            // 이미 실패한 이 URI를 또 재생하지 않는다(=session 내 재
+            // navigation은 의도적으로 일어나지 않는다).
+            _pendingHomeWidgetRoute = null;
+            if (shouldConsumeHomeWidgetLaunch(arrivalResult)) {
+              unawaited(
+                _consumeHomeWidgetLaunch(
+                  reason: 'giving_up route=$route',
+                ),
+              );
+            }
             startupRouteGate.completeWidgetLaunch();
             break;
         }
@@ -969,10 +1002,15 @@ bool shouldIgnoreDuplicateHomeWidgetRoute({
 /// [_PlanFlowAppState._applyPendingHomeWidgetRoute]의 도착 확인 재시도
 /// 루프가 한 번의 확인 시도에서 어떤 결과에 도달했는지를 나타낸다.
 ///
-/// P5: native intent 소비(`_consumeHomeWidgetLaunch`)는 반드시
-/// [confirmed]에서만 일어나야 한다. [retrying]/[givingUp]에서 소비하면
-/// intent가 사라져 이후 라우팅이 실패했을 때 복구 경로
-/// (`_resumeHomeWidgetCheck`, onResume fallback)가 영구히 무력화된다.
+/// (P5R, 리뷰 수정) native intent 소비(`_consumeHomeWidgetLaunch`)는 이
+/// 재시도 루프가 '터미널' 상태에 도달했을 때만 일어난다: [confirmed]
+/// (성공)와 [givingUp](최종 실패) 둘 다 터미널이므로 소비하고, [retrying]
+/// (아직 같은 generation 안에서 재시도 중)에서는 소비하지 않는다.
+/// givingUp에서도 소비하는 이유는 [shouldConsumeHomeWidgetLaunch]의
+/// 문서를 참고 — 세션 내 재시도(`_resumeHomeWidgetCheck`)를 살려두는
+/// 것보다 프로세스가 죽었다 재시작될 때 native intent가 재생(replay)되어
+/// 이미 실패로 끝난 옛 목적지로 강제 이동하는 위험을 없애는 쪽이 더
+/// 안전하다고 판단했다.
 @visibleForTesting
 enum HomeWidgetArrivalCheckResult { confirmed, retrying, givingUp }
 
@@ -995,14 +1033,32 @@ HomeWidgetArrivalCheckResult resolveHomeWidgetArrivalCheckResult({
       : HomeWidgetArrivalCheckResult.givingUp;
 }
 
-/// P5 수정의 핵심 게이트: [result]가 [HomeWidgetArrivalCheckResult.confirmed]
-/// 일 때만 native intent를 소비해도 안전하다(=true). 실패
-/// (retrying/givingUp)에서는 항상 false를 반환해, 라우팅이 아직
-/// 실패로 확정되지 않았거나 실패로 확정된 경우 모두 intent를 보존하고
-/// `_resumeHomeWidgetCheck()`가 재시도할 수 있게 한다.
+/// 소비 게이트: [result]가 터미널 상태([HomeWidgetArrivalCheckResult.confirmed]
+/// 또는 [HomeWidgetArrivalCheckResult.givingUp])일 때만 native intent를
+/// 소비한다(=true). [HomeWidgetArrivalCheckResult.retrying]에서는 항상
+/// false를 반환해, 같은 generation 안에서 아직 진행 중인 재시도 루프
+/// 도중에 intent가 사라지지 않게 한다.
+///
+/// (P5R, 리뷰 수정 — 원래 P5는 confirmed에서만 소비했다) givingUp에서도
+/// 소비하도록 바꾼 이유:
+/// - givingUp에 도달했다는 것은 이미 이번 generation에서 push가 한 번
+///   실행됐지만(도착 확인 자체가 push 이후 시점에서만 이뤄짐) 최대
+///   재시도 횟수 안에 목표 경로 도착이 끝내 확인되지 않았다는 뜻이다.
+///   대부분 auth 리다이렉트 등 구조적 실패이므로, intent를 살려 세션
+///   내 `_resumeHomeWidgetCheck()`(onResume fallback)가 나중에 같은
+///   URI로 재시도해도 같은 실패가 반복되거나, 최악의 경우 이미 표시
+///   중인 화면(예: 음성 인식이 진행 중인 VoiceInputScreen) 위에 같은
+///   라우트를 또 push해 그 화면의 상태(진행 중인 STT 세션 등)를
+///   취소시키는 새 버그를 만들 수 있다.
+/// - 반대로 intent를 살려둔 채 앱 프로세스가 죽었다가 재시작되면,
+///   `HomeWidgetPlugin.kt`가 Activity에 남아있는 intent를 그대로
+///   읽어 재생(replay)하므로, 이미 실패로 끝난 옛 목적지로 강제
+///   이동하는 확실한 오작동이 생긴다(콜드스타트 stale intent 재생).
+/// 불확실한 세션 내 재시도 이득보다 확실한 stale-intent 재생 위험
+/// 제거를 우선했다.
 @visibleForTesting
 bool shouldConsumeHomeWidgetLaunch(HomeWidgetArrivalCheckResult result) {
-  return result == HomeWidgetArrivalCheckResult.confirmed;
+  return result != HomeWidgetArrivalCheckResult.retrying;
 }
 
 @visibleForTesting
