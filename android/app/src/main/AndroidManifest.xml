@@ -138,6 +138,11 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${googleMapsApiKey}" />
+        <!-- AdMob App ID. 출시 초기 OFF이므로 운영 ID는 Remote Config로 관리.
+             여기 들어가는 값은 Google 공식 테스트 ID (안전한 기본값). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713" />
         <service
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:exported="false"

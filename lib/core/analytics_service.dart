@@ -121,4 +121,75 @@ class AnalyticsService {
         'feedback_submitted',
         parameters: <String, Object>{'type': type},
       );
+
+  // ── 리워드 광고 (GPT 일정 파싱) ───────────────────────────────
+  // 개인정보/일정 본문은 절대 포함하지 않음. 오류 사유도 카테고리화된 값만.
+  static Future<void> logAdPromptShown() => _logEvent('ad_prompt_shown');
+
+  static Future<void> logAdOptedIn() => _logEvent('ad_opted_in');
+
+  static Future<void> logAdCancelled() => _logEvent('ad_cancelled');
+
+  static Future<void> logAdLoadSuccess({required String requestId}) => _logEvent(
+        'ad_load_success',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logAdLoadFailed({
+    required String reason,
+    required String requestId,
+  }) =>
+      _logEvent(
+        'ad_load_failed',
+        parameters: <String, Object>{
+          'reason': reason,
+          'request_id': requestId,
+        },
+      );
+
+  static Future<void> logAdStarted({required String requestId}) => _logEvent(
+        'ad_started',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logAdCompleted({required String requestId}) => _logEvent(
+        'ad_completed',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logAdRewardGranted({required String requestId}) =>
+      _logEvent(
+        'ad_reward_granted',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logAdFeatureSuccess({required String requestId}) =>
+      _logEvent(
+        'ad_feature_success',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logAdFeatureFailed({
+    required String reason,
+    required String requestId,
+  }) =>
+      _logEvent(
+        'ad_feature_failed',
+        parameters: <String, Object>{
+          'reason': reason,
+          'request_id': requestId,
+        },
+      );
+
+  static Future<void> logAdConversionRate({
+    required int promptsShown,
+    required int optedIn,
+  }) =>
+      _logEvent(
+        'ad_conversion_rate',
+        parameters: <String, Object>{
+          'prompts': promptsShown,
+          'opt_ins': optedIn,
+        },
+      );
 }

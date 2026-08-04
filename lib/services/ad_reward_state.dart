@@ -29,8 +29,6 @@ class AdRewardState {
 
   final Future<SharedPreferences> _prefsFuture;
 
-  static AdRewardState? _instance;
-
   /// 사용하기 쉬운 단일 진입점. 첫 호출 시 lazy init.
   static AdRewardState get instance {
     return _instance ??= AdRewardState._();

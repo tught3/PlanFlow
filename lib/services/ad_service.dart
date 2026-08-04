@@ -24,7 +24,7 @@ class AdService {
     AdRewardState? rewardState,
     AdConsentService? consentService,
     Future<Object?> Function()? dynamicAdsInitializer,
-  })  : _rewardState = rewardState ?? AdRewardState._(),
+  })  : _rewardState = rewardState ?? AdRewardState.instance,
         _consentService = consentService ?? AdConsentService.instance,
         _dynamicAdsInitializer = dynamicAdsInitializer;
 
@@ -188,7 +188,9 @@ class AdService {
     if (!_initialized) {
       return false;
     }
+    final adUnitId = _resolveAdUnitId();
     try {
+      debugPrint('AdService._loadRewardedAd($adUnitId)');
       return true;
     } catch (_) {
       return false;

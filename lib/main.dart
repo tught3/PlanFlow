@@ -21,6 +21,7 @@ import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/event_prefetch_service.dart';
 import 'services/kasi_holiday_service.dart';
+import 'services/ad_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,8 +45,22 @@ Future<void> _initializePlatformServices() async {
     _initializeFirebaseServices(),
     _initializeNaverMap(),
     _initializeSupabase(),
+    _primingAdService(),
     _primeHolidayCache(),
   ]);
+}
+
+/// 1차 BM: GPT 일정 파싱 리워드 광고 초기화. Remote Config가 OFF면 즉시 종료.
+///
+/// 의존성 google_mobile_ads가 pubspec에 추가돼 있어야 한다. 빌드 환경에서
+/// 패키지가 누락되면 Dynamic loading 없이도 import 자체가 깨질 수 있어
+/// try/catch로 격리한다.
+Future<void> _primingAdService() async {
+  try {
+    await AdService.instance.initialize();
+  } catch (error) {
+    debugPrint('AdService initialize skipped: $error');
+  }
 }
 
 /// 한국천문연구원 공공 API로 올해·작년·내년 공휴일 데이터를 백그라운드로

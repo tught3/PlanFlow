@@ -47,7 +47,11 @@ import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
+import '../../widgets/rewarded_ad_dialog.dart';
 import '../../widgets/schedule_save_scope_card.dart';
+import '../../services/ad_service.dart';
+import '../../services/ad_reward_state.dart';
+import '../../services/remote_config_service.dart';
 part 'confirm_widgets.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -266,6 +270,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   String? _supplyErrorText;
   String? _hydrateMessage;
   bool _isApplyingHydration = false;
+  bool _adGateHandled = false;
   bool _titleEditedByUser = false;
   bool _locationEditedByUser = false;
   bool _memoEditedByUser = false;
@@ -363,7 +368,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     unawaited(_loadGroupContextIfNeeded());
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeHydrateParsedSchedule();
+      unawaited(_maybeRunAdGateThenHydrate());
       unawaited(_resolveLocationCoordinatesIfNeeded());
       _maybePromptTimePeriodClarification();
     });
@@ -1136,6 +1141,102 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
     _hydrateParsedSchedule(rawText);
+  }
+
+  /// GPT 자동 파싱이 필요한 진입인지 판단하고, Remote Config가 광고 활성이라면
+  /// 사용자에게 "광고 보고 분석하기" 다이얼로그를 먼저 띄운다.
+  /// 보상 부여 시 GPT 파싱을, 거절/실패 시 수동 입력 모드로 강제한다.
+  Future<void> _maybeRunAdGateThenHydrate() async {
+    if (_adGateHandled) {
+      return;
+    }
+    _adGateHandled = true;
+
+    // 광고 게이트가 필요한 상황: parse_pending=true && rawText 존재.
+    // (이미 rawText가 채워져 hydrate 대상일 때만 광고 게이트)
+    if (widget.parsedSchedule['parse_pending'] != true) {
+      _maybeHydrateParsedSchedule();
+      return;
+    }
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+    if (rawText == null || rawText.isEmpty) {
+      _maybeHydrateParsedSchedule();
+      return;
+    }
+
+    final adEnabled = RemoteConfigService.rewardedAdEnabled;
+    if (!adEnabled) {
+      _maybeHydrateParsedSchedule();
+      return;
+    }
+
+    // 보상 잔여 상태가 있으면 (앱 재시작 후 또는 이전 시도 잔여) 그냥 hydrate.
+    final reentry = await AdRewardState.instance.consumeActiveRequestId();
+    if (reentry != null) {
+      await AdService.instance.clearReward();
+      _maybeHydrateParsedSchedule();
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final dialogResult = await RewardedAdDialog.show(context);
+    if (dialogResult != true) {
+      // 사용자가 '직접 입력' 선택 또는 dialog가 닫힘 → GPT 파싱 skip.
+      if (!mounted) {
+        return;
+      }
+      await AnalyticsService.logAdCancelled();
+      setState(() {
+        widget.parsedSchedule['parse_failed'] = true;
+        _hydrateMessage = '광고 없이 진행해요. 직접 입력해 주세요.';
+        _titleController.text = rawText;
+      });
+      return;
+    }
+
+    await AnalyticsService.logAdOptedIn();
+    final requestId = 'adparse_${DateTime.now().microsecondsSinceEpoch}';
+    if (!mounted) {
+      return;
+    }
+    RewardedAdLoadingOverlay.show(context, stage: 'loading');
+
+    final granted = await AdService.instance.showForParseSchedule(
+      requestId: requestId,
+      onProgress: (stage) {
+        if (!mounted) {
+          return;
+        }
+        RewardedAdLoadingOverlay.hide();
+        if (stage == 'shown' || stage == 'loading') {
+          RewardedAdLoadingOverlay.show(context, stage: stage);
+        }
+      },
+    );
+
+    RewardedAdLoadingOverlay.hide();
+    if (!mounted) {
+      return;
+    }
+
+    if (!granted) {
+      // 광고 로드 실패 / 사용자가 광고를 닫음 / 백그라운드 이동 / 네트워크 단절.
+      setState(() {
+        widget.parsedSchedule['parse_failed'] = true;
+        _hydrateMessage = '광고를 완료하지 못했어요. 내용을 직접 수정해 주세요.';
+        if (_titleController.text.trim().isEmpty) {
+          _titleController.text = rawText;
+        }
+      });
+      return;
+    }
+
+    // 보상 부여됨. GPT 파싱 실행.
+    await AnalyticsService.logAdFeatureSuccess(requestId: requestId);
+    _maybeHydrateParsedSchedule();
   }
 
   Future<void> _hydrateParsedSchedule(String rawText) async {

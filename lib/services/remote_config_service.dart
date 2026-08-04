@@ -23,6 +23,11 @@ class RemoteConfigService {
   static const String _kEarlyBirdMessage = 'early_bird_message';
   static const String _kMaxVoiceDurationSeconds = 'max_voice_duration_seconds';
   static const String _kMinRequiredVersion = 'min_required_version';
+  static const String _kRewardedAdEnabled = 'rewarded_ad_enabled';
+  static const String _kRewardedAdUnitIdAndroid =
+      'rewarded_ad_unit_id_android';
+  static const String _kGroupBackupRetentionDays =
+      'group_backup_retention_days';
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -50,6 +55,9 @@ class RemoteConfigService {
         _kEarlyBirdMessage: '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.',
         _kMaxVoiceDurationSeconds: 60,
         _kMinRequiredVersion: 0,
+        _kRewardedAdEnabled: false,
+        _kRewardedAdUnitIdAndroid: '',
+        _kGroupBackupRetentionDays: 30,
       },
     );
 
@@ -87,4 +95,16 @@ class RemoteConfigService {
       _remoteConfig?.getInt(_kMaxVoiceDurationSeconds) ?? 60;
 
   static int get minRequiredVersion => getInt(_kMinRequiredVersion);
+
+  /// 리워드 광고 마스터 스위치. 기본값 false (출시 초기 OFF).
+  static bool get rewardedAdEnabled =>
+      _remoteConfig?.getBool(_kRewardedAdEnabled) ?? false;
+
+  /// 운영 광고 단위 ID. 비어 있으면 AdService가 테스트 ID로 폴백한다.
+  static String get rewardedAdUnitIdAndroid =>
+      _remoteConfig?.getString(_kRewardedAdUnitIdAndroid) ?? '';
+
+  /// 그룹 백업 보관 기간(일). 기본 30일.
+  static int get groupBackupRetentionDays =>
+      getInt(_kGroupBackupRetentionDays, defaultValue: 30);
 }
