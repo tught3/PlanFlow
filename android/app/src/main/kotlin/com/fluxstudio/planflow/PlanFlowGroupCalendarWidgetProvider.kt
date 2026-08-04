@@ -412,7 +412,17 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         val uri = uriBuilder.build()
         val intent = Intent(Intent.ACTION_VIEW, uri).apply {
             setClass(context, MainActivity::class.java)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // FLAG_ACTIVITY_CLEAR_TOP 필수: MainActivity는 singleTask라, 프로세스가
+            // 죽고 태스크만 Recents에 남은 상태(실사용의 "안 쓰다가 켜는" 전형적
+            // 상황)에서는 NEW_TASK/SINGLE_TOP만으로는 ActivityTaskManager가
+            // START_TASK_TO_FRONT(result code=2)로 처리해 기존 태스크를 그냥
+            // 앞으로 가져오기만 하고 새로 보낸 인텐트(선택한 날짜)를 폐기한다
+            // (2026-08-04 실기기 adb logcat 실측 확정, kill_group-calendar_*.log
+            // 참조). CLEAR_TOP을 추가하면 태스크가 존재해도 대상 액티비티를
+            // 강제로 다시 생성시켜 onCreate로 새 인텐트가 정상 전달된다.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         // gid(+날짜) 기반 요청 코드로 셀마다 서로 다른 PendingIntent가 되게 한다.
         // 같지 않으면 FLAG_UPDATE_CURRENT가 이전 셀의 date extra로 덮어써 모든 셀이
