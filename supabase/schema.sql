@@ -395,8 +395,8 @@ create policy "groups_select_member"
   on public.groups
   for select
   using (
-    status = 'active'
-    and public.is_group_member(id, auth.uid())
+    (status = 'active' and public.is_group_member(id, auth.uid()))
+    or (status = 'archived' and created_by = auth.uid())
   );
 create policy "groups_insert_leader"
   on public.groups
@@ -1595,9 +1595,15 @@ create policy "group_event_comments_update_leader_edit"
   );
 
 -- 6. group_backups
+-- group_id는 nullable이며 ON DELETE SET NULL로 설정.
+-- 사유: delete_group_with_backup RPC가 백업 INSERT 후 같은 트랜잭션에서
+-- 그룹을 hard delete하는데, CASCADE면 백업 행까지 함께 삭제돼 복원 불가 상태가 됨.
+-- SET NULL로 두면 백업은 살아있고 snapshot 안에 그룹 정보가 통째로 보존되어
+-- restore_group_from_backup이 새 group_id로 재생성할 수 있다.
+-- (archive_group_with_backup은 soft delete라 group_id가 그대로 남음.)
 create table if not exists public.group_backups (
   id uuid primary key default gen_random_uuid(),
-  group_id uuid not null references public.groups (id) on delete cascade,
+  group_id uuid references public.groups (id) on delete set null,
   backup_type text not null check (backup_type in ('archive', 'delete')),
   snapshot jsonb not null default '{}'::jsonb,
   created_by uuid not null references public.users (id) on delete cascade,
@@ -2253,6 +2259,107 @@ end;
 $$;
 
 grant execute on function public.restore_group_from_backup(uuid) to authenticated;
+
+-- ====================================================================
+-- 계정 삭제 (회원 탈퇴) — service_role 전용 RPC.
+-- Edge Function(delete-account/index.ts)이 service_role 키로 호출한다.
+-- 일반 사용자(anon/authenticated 키)는 직접 호출할 수 없도록,
+-- 호출 시점의 요청 JWT가 service_role인지 확인하는 게이트를 둔다.
+--
+-- 책임:
+--   1) 그룹 리더로 있는 active 그룹이 있으면 차단 (사용자에게 먼저 정리하도록 안내)
+--   2) 사용자 개인 데이터 일괄 삭제 (단일 트랜잭션, 중간 실패 시 전체 ROLLBACK)
+--   3) auth.admin.deleteUser는 이 함수 밖(Edge Function)에서 호출한다.
+--      (이유: auth.users 테이블 직접 조작은 Supabase 권장 패턴이 아님)
+-- ====================================================================
+create or replace function public.delete_user_account(target_user_id uuid)
+returns table(success boolean, blocked_reason text, leader_groups jsonb)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  leader_group_rows jsonb;
+  user_email text;
+begin
+  -- service_role 게이트: 이 함수는 service_role JWT로만 호출 가능.
+  -- 일반 authenticated 사용자의 JWT로 호출하면 current_setting('role')가
+  -- 'authenticated'이므로 여기서 차단된다.
+  if current_setting('role', true) <> 'service_role' then
+    raise exception '이 작업은 서비스 권한이 필요합니다.';
+  end if;
+
+  if target_user_id is null then
+    raise exception '대상 사용자 ID가 필요합니다.';
+  end if;
+
+  -- 1) 그룹 리더 차단: active 그룹의 리더이면 사용자에게 먼저 위임/삭제 유도.
+  select coalesce(
+    (
+      select jsonb_agg(jsonb_build_object('id', id, 'name', name))
+      from public.groups
+      where created_by = target_user_id
+        and status = 'active'
+    ),
+    '[]'::jsonb
+  ) into leader_group_rows;
+
+  if jsonb_array_length(leader_group_rows) > 0 then
+    return query select false, 'leader_groups'::text, leader_group_rows;
+    return;
+  end if;
+
+  -- 2) 사용자 email 조회 (early_bird_emails는 email 기반이라 필요)
+  select email into user_email
+    from public.users
+   where id = target_user_id;
+
+  -- 3) 개인 데이터 일괄 삭제. CASCADE FK가 잡혀있지만 명시적으로 순서대로 삭제해
+  --    audit log를 명확히 한다. events 삭제 시 pre_actions/reminders는 CASCADE로 같이 삭제됨.
+  -- 3-1) 그룹 멤버십 제거 (사용자가 속한 그룹에서 모두 leave 처리).
+  --      리더 차단으로 인해 본인이 리더인 active 그룹은 없으므로 안전.
+  delete from public.group_members where user_id = target_user_id;
+
+  -- 3-2) 사용자가 만든 백업(archive/delete) 제거.
+  delete from public.group_backups where created_by = target_user_id;
+
+  -- 3-3) 그룹 댓글·위임·초대 중 사용자가 만든 것 정리 (FK CASCADE가 안 걸려있을 수 있어 명시).
+  --      group_event_comments.author_user_id, group_role_delegations.from_user_id 등.
+  delete from public.group_event_comments where author_user_id = target_user_id;
+  delete from public.group_role_delegations
+    where delegated_by = target_user_id or delegated_to = target_user_id;
+  delete from public.group_invites where invited_by = target_user_id;
+
+  -- 3-4) 사용자 개인 일정 관련 데이터 (events CASCADE → pre_actions/reminders 자동 삭제).
+  delete from public.location_history where user_id = target_user_id;
+  delete from public.voice_logs where user_id = target_user_id;
+  delete from public.user_backups where user_id = target_user_id;
+  delete from public.feedback_reports where user_id = target_user_id;
+  delete from public.user_settings where user_id = target_user_id;
+  delete from public.events where user_id = target_user_id;
+
+  -- 3-5) early_bird_emails (schema: planflow, email 기반).
+  if user_email is not null then
+    delete from planflow.early_bird_emails where email = user_email;
+  end if;
+
+  -- 3-6) 마지막으로 users 테이블에서 사용자 행 삭제.
+  --      (auth.users는 Edge Function에서 auth.admin.deleteUser로 삭제.)
+  delete from public.users where id = target_user_id;
+
+  return query select true, null::text, '[]'::jsonb;
+exception
+  when others then
+    -- plpgsql 함수는 자동 트랜잭션이라 예외 시 전체 ROLLBACK.
+    raise exception 'delete_user_account failed: %', sqlerrm;
+end;
+$$;
+
+-- service_role만 호출 가능. 일반 authenticated 키로는 접근 차단.
+-- (Supabase에서 service_role은 authenticated의 상위 집합이지만,
+--  함수 본문 current_setting('role') 게이트가 이중 방어 역할.)
+revoke execute on function public.delete_user_account(uuid) from public, authenticated;
+grant execute on function public.delete_user_account(uuid) to service_role;
 
 -- 감사 보존을 위해 복원된 백업은 영구 삭제 불가. 본인이 만든 미복원 백업만 삭제 허용.
 create or replace function public.permanently_delete_backup(backup_id_input uuid)
