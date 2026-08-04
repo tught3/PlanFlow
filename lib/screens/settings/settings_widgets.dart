@@ -174,6 +174,23 @@ class _AccountSection extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
+                    key: const ValueKey('settings-delete-account-button'),
+                    onPressed: () => _showDeleteAccountDialog(context),
+                    icon: const Icon(Icons.delete_forever, size: 20),
+                    label: const Text('회원 탈퇴'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFB42318),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ),
+              ],
+              if (signedIn) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
                     onPressed: () => context.push(AppRoutes.groups),
                     icon: const Icon(Icons.groups_outlined),
                     label: const Text('그룹 관리'),
@@ -200,6 +217,198 @@ class _AccountSection extends StatelessWidget {
       ),
     );
   }
+
+  /// 회원 탈퇴 2단계 다이얼로그 흐름.
+  ///
+  /// 1단계: 삭제/유지 데이터 안내 + 비밀번호 입력.
+  /// 2단계: 최종 경고 후 [AuthService.deleteAccount] 호출.
+  /// 결과에 따라 로그인 화면 이동 / 그룹 리더 차단 목록 / 에러 스낵바 처리.
+  Future<void> _showDeleteAccountDialog(BuildContext context) async {
+    final service = authService;
+    if (service == null) {
+      return;
+    }
+    final controller = TextEditingController();
+
+    Future<void> performDelete() async {
+      final result = await service.deleteAccount(password: controller.text);
+      if (!context.mounted) {
+        return;
+      }
+      final messenger = ScaffoldMessenger.of(context);
+      if (result.success) {
+        context.go(AppRoutes.login);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('회원 탈퇴가 완료되었습니다.')),
+        );
+      } else if (result.blockedReason == 'leader_groups') {
+        await _showLeaderGroupsBlockedDialog(context, result.leaderGroups);
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(result.errorMessage ?? '탈퇴 처리 실패'),
+          ),
+        );
+      }
+    }
+
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('회원 탈퇴'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('정말 탈퇴하시겠어요? 다음 데이터가 삭제됩니다:'),
+                    const SizedBox(height: 8),
+                    const _DeleteAccountBullet('개인 일정'),
+                    const _DeleteAccountBullet('설정'),
+                    const _DeleteAccountBullet('음성 로그'),
+                    const _DeleteAccountBullet('위치 기록'),
+                    const _DeleteAccountBullet('백업'),
+                    const Divider(height: 24),
+                    const Text('유지되는 데이터:'),
+                    const SizedBox(height: 8),
+                    const _DeleteAccountBullet('그룹 공유 일정 (다른 멤버 권리)'),
+                    const Divider(height: 24),
+                    Text(
+                      '그룹 리더인 active 그룹이 있으면 탈퇴가 차단됩니다. 먼저 그룹을 삭제하거나 리더를 위임하세요.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFFB42318),
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: controller,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: '비밀번호 (이메일 가입자)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                OutlinedButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (controller.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('비밀번호를 입력해주세요')),
+                      );
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB42318),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('탈퇴'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (!context.mounted || shouldProceed != true) {
+      controller.dispose();
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('정말 확실합니까?'),
+          content: const Text(
+            '이 작업은 되돌릴 수 없습니다. 모든 개인 데이터가 영구 삭제됩니다.',
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('아니오'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB42318),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('탈퇴 확정'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!context.mounted || confirmed != true) {
+      controller.dispose();
+      return;
+    }
+
+    await performDelete();
+    controller.dispose();
+  }
+}
+
+/// 그룹 리더로 인해 회원 탈퇴가 차단됐을 때 차단 사유 그룹 목록을 표시한다.
+Future<void> _showLeaderGroupsBlockedDialog(
+  BuildContext context,
+  List<LeaderGroupInfo> leaderGroups,
+) async {
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('회원 탈퇴 차단'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('다음 그룹의 리더입니다. 먼저 처리해주세요:'),
+            const SizedBox(height: 12),
+            if (leaderGroups.isEmpty)
+              const Text('그룹 정보를 불러올 수 없습니다.')
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final group in leaderGroups)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        leading: const Icon(Icons.groups_outlined),
+                        title: Text(group.name),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('확인'),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 @visibleForTesting
@@ -930,6 +1139,25 @@ class _InlineNotice extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DeleteAccountBullet extends StatelessWidget {
+  const _DeleteAccountBullet(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, bottom: 2),
+      child: Text(
+        '• $text',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
       ),
     );
   }
