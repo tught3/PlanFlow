@@ -12,6 +12,7 @@ import '../models/group_model.dart';
 import '../providers/group_context_provider.dart';
 import '../repositories/group_event_repository.dart';
 import '../repositories/group_repository.dart';
+import '../repositories/group_backup_repository.dart';
 import '../services/group_event_share_service.dart';
 
 class GroupDetailScreen extends StatefulWidget {
@@ -41,6 +42,7 @@ class GroupDetailScreen extends StatefulWidget {
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   late final GroupContextProvider _provider;
   late final GroupRepository _repository;
+  late final GroupBackupRepository _backupRepository;
   bool _ownsProvider = false;
 
   GroupModel? _group;
@@ -51,11 +53,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   String? _error;
   bool _autoShareEnabled = false;
   bool _isSharingExistingEvents = false;
+  bool _isDeleting = false;
 
   @override
   void initState() {
     super.initState();
     _repository = widget.repository ?? GroupRepository.supabase();
+    _backupRepository = GroupBackupRepository.supabase();
     _provider =
         widget.contextProvider ?? GroupContextProvider(repository: _repository);
     _ownsProvider = widget.contextProvider == null;
@@ -336,13 +340,29 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
 
   Future<void> _deleteGroup() async {
     final group = _group;
-    if (group == null) return;
+    if (group == null || _isDeleting) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('그룹 삭제'),
-        content: Text(
-          '"${group.name}" 그룹을 삭제하면 모든 멤버, 초대, 일정이 함께 삭제됩니다. 계속할까요?',
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '"${group.name}" 그룹을 삭제하면 모든 멤버, 초대, 일정이 함께 삭제됩니다. '
+                '삭제 전 자동으로 백업이 저장되며, 기본 30일 동안 [설정 → 삭제된 그룹]에서 복원할 수 있습니다.',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '복원 가능 기간이 지난 뒤에도 백업을 영구 삭제하기 전에는 그대로 보관됩니다.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+              ),
+            ],
+          ),
         ),
         actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
@@ -373,11 +393,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() {
+      _isDeleting = true;
+    });
     try {
-      await _repository.deleteGroup(group.id);
+      await _backupRepository.deleteGroupWithBackup(group.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${group.name}" 그룹을 삭제했어요.')),
+        SnackBar(
+          content: Text(
+            '"${group.name}" 그룹을 삭제했어요. 30일 동안 [설정 → 삭제된 그룹]에서 복원할 수 있어요.',
+          ),
+          duration: const Duration(seconds: 5),
+        ),
       );
       _handleBackNavigation();
     } catch (e) {
@@ -385,6 +413,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('삭제 실패: ${_friendlyErrorMessage(e)}')),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
+      }
     }
   }
 

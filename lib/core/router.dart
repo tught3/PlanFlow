@@ -17,6 +17,7 @@ import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../features/groups/screens/group_dashboard_screen.dart';
 import '../features/groups/screens/group_detail_screen.dart';
+import '../features/groups/screens/deleted_groups_screen.dart';
 import '../features/groups/screens/group_create_screen.dart';
 import '../features/groups/screens/group_event_create_screen.dart';
 import '../features/groups/screens/group_event_detail_screen.dart';
@@ -356,6 +357,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.groupEventCreate,
       builder: (context, state) => const GroupEventCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.deletedGroups,
+      builder: (context, state) => const DeletedGroupsScreen(),
     ),
     GoRoute(
       path: AppRoutes.groupEventDetail,

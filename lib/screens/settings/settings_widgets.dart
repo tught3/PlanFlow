@@ -179,6 +179,20 @@ class _AccountSection extends StatelessWidget {
                     label: const Text('그룹 관리'),
                   ),
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push(AppRoutes.deletedGroups),
+                    icon: const Icon(Icons.history_outlined),
+                    label: const Text('삭제된 그룹'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: PlanFlowColors.primaryMid,
+                      side: const BorderSide(color: PlanFlowColors.primaryFaint),
+                      minimumSize: const Size.fromHeight(44),
+                    ),
+                  ),
+                ),
               ],
             ],
           );
