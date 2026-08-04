@@ -1686,13 +1686,88 @@ begin
           jsonb_build_object(
             'user_id', group_members.user_id,
             'role', group_members.role,
+            'display_name', group_members.display_name,
             'joined_at', group_members.joined_at,
-            'created_at', group_members.created_at
+            'created_at', group_members.created_at,
+            'updated_at', group_members.updated_at
           )
         )
         from public.group_members
         where group_members.group_id = group_row.id
           and group_members.status = 'active'
+      ),
+      '[]'::jsonb
+    ),
+    'all_members',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'user_id', group_members.user_id,
+            'role', group_members.role,
+            'display_name', group_members.display_name,
+            'status', group_members.status,
+            'joined_at', group_members.joined_at,
+            'left_at', group_members.left_at,
+            'created_at', group_members.created_at,
+            'updated_at', group_members.updated_at
+          )
+        )
+        from public.group_members
+        where group_members.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'events',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_events))
+        from public.group_events
+        where group_events.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'event_comments',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_event_comments))
+        from public.group_event_comments
+        where group_event_comments.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'role_delegations',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_role_delegations))
+        from public.group_role_delegations
+        where group_role_delegations.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'invites',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_invites))
+        from public.group_invites
+        where group_invites.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'personal_event_links',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'event_id', events.id,
+            'group_event_id', events.group_event_id,
+            'user_id', events.user_id
+          )
+        )
+        from public.events
+        where events.group_event_id in (
+          select id from public.group_events where group_id = group_row.id
+        )
       ),
       '[]'::jsonb
     )
@@ -1725,19 +1800,513 @@ $$;
 
 grant execute on function public.archive_group_with_backup(uuid) to authenticated;
 
+-- 그룹을 'delete' 타입으로 즉시 백업한 뒤 원본을 삭제한다.
+-- 백업 실패 시 그룹은 그대로 남는다 (원자성 보장).
+create or replace function public.delete_group_with_backup(group_id_input uuid)
+returns public.group_backups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  group_row public.groups%rowtype;
+  backup_row public.group_backups%rowtype;
+  snapshot_payload jsonb;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into group_row
+    from public.groups
+   where id = group_id_input
+   for update;
+
+  if not found then
+    raise exception 'group not found';
+  end if;
+
+  if not public.is_group_leader(group_row.id, current_user_id) then
+    raise exception '팀 리더만 그룹을 삭제할 수 있습니다.';
+  end if;
+
+  snapshot_payload := jsonb_build_object(
+    'group', to_jsonb(group_row),
+    'active_members',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'user_id', group_members.user_id,
+            'role', group_members.role,
+            'display_name', group_members.display_name,
+            'joined_at', group_members.joined_at,
+            'created_at', group_members.created_at,
+            'updated_at', group_members.updated_at
+          )
+        )
+        from public.group_members
+        where group_members.group_id = group_row.id
+          and group_members.status = 'active'
+      ),
+      '[]'::jsonb
+    ),
+    'all_members',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'user_id', group_members.user_id,
+            'role', group_members.role,
+            'display_name', group_members.display_name,
+            'status', group_members.status,
+            'joined_at', group_members.joined_at,
+            'left_at', group_members.left_at,
+            'created_at', group_members.created_at,
+            'updated_at', group_members.updated_at
+          )
+        )
+        from public.group_members
+        where group_members.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'events',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_events))
+        from public.group_events
+        where group_events.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'event_comments',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_event_comments))
+        from public.group_event_comments
+        where group_event_comments.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'role_delegations',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_role_delegations))
+        from public.group_role_delegations
+        where group_role_delegations.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'invites',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_invites))
+        from public.group_invites
+        where group_invites.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'personal_event_links',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'event_id', events.id,
+            'group_event_id', events.group_event_id,
+            'user_id', events.user_id
+          )
+        )
+        from public.events
+        where events.group_event_id in (
+          select id from public.group_events where group_id = group_row.id
+        )
+      ),
+      '[]'::jsonb
+    )
+  );
+
+  insert into public.group_backups (
+    group_id,
+    backup_type,
+    snapshot,
+    created_by,
+    created_at
+  )
+  values (
+    group_row.id,
+    'delete',
+    snapshot_payload,
+    current_user_id,
+    now()
+  )
+  returning * into backup_row;
+
+  delete from public.groups where id = group_row.id;
+
+  return backup_row;
+end;
+$$;
+
+grant execute on function public.delete_group_with_backup(uuid) to authenticated;
+
+-- 백업으로부터 그룹을 복원한다. 트랜잭션 단위로 새 group_id를 생성해
+-- 외래키/유니크 충돌을 피한다. 중간 실패 시 전체 ROLLBACK.
+create or replace function public.restore_group_from_backup(backup_id_input uuid)
+returns public.group_backups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  backup_row public.group_backups%rowtype;
+  snapshot_payload jsonb;
+  group_record jsonb;
+  new_group_id uuid;
+  member_record jsonb;
+  event_record jsonb;
+  event_old_to_new jsonb := '{}'::jsonb;
+  comment_record jsonb;
+  delegation_record jsonb;
+  invite_record jsonb;
+  link_record jsonb;
+  old_event_id text;
+  new_event_id uuid;
+  insert_status text;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into backup_row
+    from public.group_backups
+   where id = backup_id_input
+   for update;
+
+  if not found then
+    raise exception '백업을 찾을 수 없습니다.';
+  end if;
+
+  if backup_row.restored_at is not null then
+    raise exception '이미 복원된 백업입니다.';
+  end if;
+
+  if backup_row.created_by <> current_user_id then
+    raise exception '본인 백업만 복원할 수 있습니다.';
+  end if;
+
+  snapshot_payload := backup_row.snapshot;
+
+  group_record := snapshot_payload->'group';
+  if group_record is null then
+    raise exception '스냅샷에 그룹 정보가 없습니다.';
+  end if;
+
+  insert into public.groups (
+    id,
+    name,
+    description,
+    created_by,
+    status,
+    archived_at,
+    created_at,
+    updated_at
+  )
+  values (
+    gen_random_uuid(),
+    group_record->>'name',
+    group_record->>'description',
+    (group_record->>'created_by')::uuid,
+    'active',
+    null,
+    coalesce((group_record->>'created_at')::timestamptz, now()),
+    now()
+  )
+  returning id into new_group_id;
+
+  for member_record in
+    select * from jsonb_array_elements(snapshot_payload->'active_members')
+  loop
+    insert into public.group_members (
+      group_id,
+      user_id,
+      role,
+      display_name,
+      status,
+      joined_at,
+      created_at,
+      updated_at
+    )
+    values (
+      new_group_id,
+      (member_record->>'user_id')::uuid,
+      member_record->>'role',
+      member_record->>'display_name',
+      'active',
+      coalesce((member_record->>'joined_at')::timestamptz, now()),
+      coalesce((member_record->>'created_at')::timestamptz, now()),
+      coalesce((member_record->>'updated_at')::timestamptz, now())
+    )
+    on conflict do nothing;
+  end loop;
+
+  for event_record in
+    select * from jsonb_array_elements(snapshot_payload->'events')
+  loop
+    old_event_id := event_record->>'id';
+    insert into public.group_events (
+      id,
+      group_id,
+      title,
+      description,
+      location,
+      start_at,
+      end_at,
+      all_day,
+      recurrence_type,
+      recurrence_until,
+      created_by,
+      updated_by,
+      cancelled_at,
+      cancelled_by,
+      personal_event_id,
+      status,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      new_group_id,
+      event_record->>'title',
+      event_record->>'description',
+      event_record->>'location',
+      (event_record->>'start_at')::timestamptz,
+      (event_record->>'end_at')::timestamptz,
+      coalesce((event_record->>'all_day')::boolean, false),
+      coalesce(event_record->>'recurrence_type', 'none'),
+      (event_record->>'recurrence_until')::timestamptz,
+      (event_record->>'created_by')::uuid,
+      (event_record->>'updated_by')::uuid,
+      (event_record->>'cancelled_at')::timestamptz,
+      (event_record->>'cancelled_by')::uuid,
+      null,
+      coalesce(event_record->>'status', 'active'),
+      coalesce((event_record->>'created_at')::timestamptz, now()),
+      coalesce((event_record->>'updated_at')::timestamptz, now())
+    )
+    returning id into new_event_id;
+
+    event_old_to_new := jsonb_set(
+      event_old_to_new,
+      array[old_event_id],
+      to_jsonb(new_event_id)
+    );
+  end loop;
+
+  for link_record in
+    select * from jsonb_array_elements(snapshot_payload->'personal_event_links')
+  loop
+    if (event_old_to_new ? (link_record->>'group_event_id')) then
+      update public.events
+         set group_event_id = (event_old_to_new->>(link_record->>'group_event_id'))::uuid
+       where id = (link_record->>'event_id')::uuid;
+    end if;
+  end loop;
+
+  for old_event_id_text in
+    select * from jsonb_object_keys(event_old_to_new)
+  loop
+    new_event_id := (event_old_to_new->>old_event_id_text)::uuid;
+    update public.group_events ge
+       set personal_event_id = (
+         select id from public.events
+         where group_event_id = new_event_id
+         limit 1
+       )
+     where ge.id = new_event_id;
+  end loop;
+
+  for comment_record in
+    select * from jsonb_array_elements(snapshot_payload->'event_comments')
+  loop
+    if (event_old_to_new ? (comment_record->>'group_event_id')) then
+      insert into public.group_event_comments (
+        id,
+        group_event_id,
+        group_id,
+        author_user_id,
+        target_user_id,
+        content,
+        confirmed_at,
+        created_at,
+        updated_at
+      )
+      values (
+        gen_random_uuid(),
+        (event_old_to_new->>(comment_record->>'group_event_id'))::uuid,
+        new_group_id,
+        (comment_record->>'author_user_id')::uuid,
+        (comment_record->>'target_user_id')::uuid,
+        comment_record->>'content',
+        (comment_record->>'confirmed_at')::timestamptz,
+        coalesce((comment_record->>'created_at')::timestamptz, now()),
+        coalesce((comment_record->>'updated_at')::timestamptz, now())
+      )
+      on conflict do nothing;
+    end if;
+  end loop;
+
+  for delegation_record in
+    select * from jsonb_array_elements(snapshot_payload->'role_delegations')
+  loop
+    insert into public.group_role_delegations (
+      id,
+      group_id,
+      delegator_user_id,
+      delegate_user_id,
+      permissions,
+      starts_at,
+      ends_at,
+      status,
+      cancelled_at,
+      cancelled_by,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      new_group_id,
+      (delegation_record->>'delegator_user_id')::uuid,
+      (delegation_record->>'delegate_user_id')::uuid,
+      coalesce(delegation_record->'permissions', '[]'::jsonb),
+      (delegation_record->>'starts_at')::timestamptz,
+      (delegation_record->>'ends_at')::timestamptz,
+      coalesce(delegation_record->>'status', 'active'),
+      (delegation_record->>'cancelled_at')::timestamptz,
+      (delegation_record->>'cancelled_by')::uuid,
+      coalesce((delegation_record->>'created_at')::timestamptz, now()),
+      coalesce((delegation_record->>'updated_at')::timestamptz, now())
+    )
+    on conflict do nothing;
+  end loop;
+
+  for invite_record in
+    select * from jsonb_array_elements(snapshot_payload->'invites')
+  loop
+    insert_status := invite_record->>'status';
+    if insert_status is null or insert_status not in ('pending', 'accepted') then
+      continue;
+    end if;
+
+    insert into public.group_invites (
+      id,
+      group_id,
+      invited_user_id,
+      invited_email,
+      invited_invite_code,
+      invited_by,
+      status,
+      expires_at,
+      accepted_at,
+      rejected_at,
+      cancelled_at,
+      expired_at,
+      acted_by,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      new_group_id,
+      (invite_record->>'invited_user_id')::uuid,
+      invite_record->>'invited_email',
+      invite_record->>'invited_invite_code',
+      (invite_record->>'invited_by')::uuid,
+      insert_status,
+      coalesce((invite_record->>'expires_at')::timestamptz, now() + interval '7 days'),
+      (invite_record->>'accepted_at')::timestamptz,
+      (invite_record->>'rejected_at')::timestamptz,
+      (invite_record->>'cancelled_at')::timestamptz,
+      (invite_record->>'expired_at')::timestamptz,
+      (invite_record->>'acted_by')::uuid,
+      coalesce((invite_record->>'created_at')::timestamptz, now()),
+      coalesce((invite_record->>'updated_at')::timestamptz, now())
+    )
+    on conflict do nothing;
+  end loop;
+
+  update public.group_backups
+     set restored_at = now(),
+         restored_by = current_user_id
+   where id = backup_row.id
+   returning * into backup_row;
+
+  return backup_row;
+exception
+  when others then
+    raise exception 'restore_group_from_backup failed: %', sqlerrm;
+end;
+$$;
+
+grant execute on function public.restore_group_from_backup(uuid) to authenticated;
+
+-- 감사 보존을 위해 복원된 백업은 영구 삭제 불가. 본인이 만든 미복원 백업만 삭제 허용.
+create or replace function public.permanently_delete_backup(backup_id_input uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  backup_row public.group_backups%rowtype;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into backup_row
+    from public.group_backups
+   where id = backup_id_input
+   for update;
+
+  if not found then
+    raise exception '백업을 찾을 수 없습니다.';
+  end if;
+
+  if backup_row.restored_at is not null then
+    raise exception '이미 복원된 백업은 감사 보존을 위해 삭제할 수 없습니다.';
+  end if;
+
+  if backup_row.created_by <> current_user_id then
+    raise exception '본인 백업만 삭제할 수 있습니다.';
+  end if;
+
+  delete from public.group_backups where id = backup_row.id;
+end;
+$$;
+
+grant execute on function public.permanently_delete_backup(uuid) to authenticated;
+
 alter table public.group_backups enable row level security;
 
-grant select, insert, update on table public.group_backups to authenticated;
+grant select, insert, update, delete on table public.group_backups to authenticated;
 
+-- SELECT: 본인이 만든 백업만 (그룹이 삭제돼도 백업 열람 가능)
 drop policy if exists "group_backups_select_leader" on public.group_backups;
-drop policy if exists "group_backups_insert_leader" on public.group_backups;
-drop policy if exists "group_backups_update_restore_leader" on public.group_backups;
-create policy "group_backups_select_leader"
+drop policy if exists "group_backups_select_owner" on public.group_backups;
+create policy "group_backups_select_owner"
   on public.group_backups
   for select
-  using (
-    public.is_group_leader(group_id, auth.uid())
-  );
+  using (created_by = auth.uid());
+
+-- INSERT: 리더 ACL + created_by 본인
+drop policy if exists "group_backups_insert_leader" on public.group_backups;
 create policy "group_backups_insert_leader"
   on public.group_backups
   for insert
@@ -1745,16 +2314,21 @@ create policy "group_backups_insert_leader"
     created_by = auth.uid()
     and public.is_group_leader(group_id, auth.uid())
   );
-create policy "group_backups_update_restore_leader"
+
+-- UPDATE: 본인만 (restored_at/restored_by 업데이트 용)
+drop policy if exists "group_backups_update_restore_leader" on public.group_backups;
+create policy "group_backups_update_owner"
   on public.group_backups
   for update
-  using (
-    public.is_group_leader(group_id, auth.uid())
-  )
-  with check (
-    restored_by = auth.uid()
-    and restored_at is not null
-  );
+  using (created_by = auth.uid())
+  with check (created_by = auth.uid());
+
+-- DELETE: 본인 + 미복원 백업만 (permanently_delete_backup RPC도 동일 룰)
+drop policy if exists "group_backups_delete_owner" on public.group_backups;
+create policy "group_backups_delete_owner"
+  on public.group_backups
+  for delete
+  using (created_by = auth.uid() and restored_at is null);
 
 -- 7. pre_actions
 create table if not exists public.pre_actions (
