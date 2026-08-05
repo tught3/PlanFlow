@@ -49,11 +49,8 @@ class GroupCleanupService {
   final NotificationService _notificationService;
   final SmartPreparationAlarmService? _smartAlarmService;
   final DepartureAlarmService? _departureAlarmService;
-  // HomeWidgetService는 group archive/restore 시 홈 위젯 캐시를 새로 갱신할
-  // 용도로 주입받는다. 현재는 refreshScheduleFromEvents(List<EventModel>)가
-  // 이벤트 리스트를 요구해 호출 지점(#_refreshWidgetsAfterArchive 참조)이
-  // TODO로 남아 있어 이 필드는 미래 사용을 위해 보존한다.
-  // ignore: unused_field
+  // archive/restore cleanup 시 HomeWidgetService.refreshAfterGroupArchive를
+  // 호출해 위젯 캐시를 갱신한다.
   final HomeWidgetService? _homeWidgetService;
   final GroupCalendarWidgetService? _groupWidgetService;
   final GroupContextProvider? _contextProvider;
@@ -196,9 +193,10 @@ class GroupCleanupService {
     }
   }
 
-  /// TODO(cleanup): DepartureAlarmService에 cancelByGroupId 또는
-  /// cancelForGroupEvent 같은 public API가 없어 현재는 no-op.
-  /// API가 추가되면 해당 메서드를 호출하도록 교체.
+  /// 그룹에 속한 모든 일정의 출발 알람(preflight + pending + 표시 알림)을
+  /// DepartureAlarmService.cancelAlarmsForGroup에 위임해 일괄 취소한다.
+  /// fire-and-forget: archive 흐름을 막지 않으며 개별 이벤트 실패는
+  /// DepartureAlarmService 내부에서 안전하게 처리된다.
   Future<void> _cancelDepartureAlarms(String groupId) async {
     final service = _departureAlarmService;
     if (service == null) {
@@ -207,22 +205,7 @@ class GroupCleanupService {
       return;
     }
     try {
-      final response = await _client
-          .from('group_events')
-          .select('id')
-          .eq('group_id', groupId);
-      final rows = (response as List<dynamic>);
-      for (final row in rows) {
-        if (row is! Map) continue;
-        final eventId = (row['id'] as String?)?.trim();
-        if (eventId == null || eventId.isEmpty) continue;
-        try {
-          await _notificationService.cancelPreActionAlarms(eventId);
-        } catch (e) {
-          debugPrint(
-              'GroupCleanupService: cancelPreActionAlarms($eventId) failed: $e');
-        }
-      }
+      await service.cancelAlarmsForGroup(groupId);
     } catch (e, st) {
       debugPrint('GroupCleanupService._cancelDepartureAlarms failed: $e');
       debugPrintStack(stackTrace: st, maxFrames: 8);
@@ -241,10 +224,20 @@ class GroupCleanupService {
     } catch (e) {
       debugPrint('GroupCleanupService: groupWidget refresh failed: $e');
     }
-    // TODO(cleanup): HomeWidgetService.refreshScheduleFromEvents(List<EventModel>)
-    // 는 events 인자가 필수. archive 시점에 이벤트 리스트를 다시 가져와 인자로
-    // 넘기거나, HomeWidgetService에 groupId만으로 refresh 하는 public API 추가가
-    // 필요. 이번 Task 범위 밖.
+    // HomeWidgetService: archive된 그룹 일정을 위젯 캐시에서 제외하고
+    // 남은 일정만으로 schedule을 다시 쓴다. 실패해도 archive 흐름은
+    // 진행되어야 하므로 fire-and-forget이다.
+    final homeWidget = _homeWidgetService;
+    if (homeWidget != null) {
+      try {
+        await homeWidget.refreshAfterGroupArchive(groupId);
+      } catch (e, st) {
+        debugPrint(
+          'GroupCleanupService: HomeWidget refreshAfterGroupArchive (archive) failed: $e',
+        );
+        debugPrintStack(stackTrace: st, maxFrames: 8);
+      }
+    }
   }
 
   Future<void> _refreshWidgetsAfterRestore(
@@ -259,7 +252,22 @@ class GroupCleanupService {
     } catch (e) {
       debugPrint('GroupCleanupService: groupWidget refresh (restore) failed: $e');
     }
-    // TODO(cleanup): _refreshWidgetsAfterArchive 주석 참조.
+    // HomeWidgetService: 복원된 그룹 일정을 위젯 캐시에 다시 포함해
+    // 전체 일정으로 schedule을 다시 쓴다.
+    final homeWidget = _homeWidgetService;
+    if (homeWidget != null) {
+      try {
+        await homeWidget.refreshAfterGroupArchive(
+          groupId,
+          archived: false,
+        );
+      } catch (e, st) {
+        debugPrint(
+          'GroupCleanupService: HomeWidget refreshAfterGroupArchive (restore) failed: $e',
+        );
+        debugPrintStack(stackTrace: st, maxFrames: 8);
+      }
+    }
   }
 
   Future<void> _refreshGroupContextProvider(
@@ -285,24 +293,29 @@ class GroupCleanupService {
     }
   }
 
-  /// TODO(cleanup): CalendarAutoSyncService에 setGroupExcluded(groupId, bool) 같은
-  /// public API가 없어 현재는 no-op. archive 직후 동기화 대상에서 제외해야 하면
-  /// 해당 API를 추가하고 여기서 true로 호출.
+  /// archive 시 자동 캘린더 동기화 대상에서 그룹 제외.
+  /// CalendarAutoSyncService.excludeGroupFromAutoSync에 위임.
   Future<void> _pauseCalendarAutoSync(String groupId) async {
     final service = _calendarAutoSyncService;
     if (service == null) return;
-    // No-op placeholder: API 추가 전까지 호출 가능한 public surface가 없음.
-    // CalendarAutoSyncService가 주입됐다는 사실만 기록하고 즉시 종료한다.
-    // ignore: unused_local_variable
-    final _ = service;
+    try {
+      await service.excludeGroupFromAutoSync(groupId);
+    } catch (e, st) {
+      debugPrint('GroupCleanupService._pauseCalendarAutoSync failed: $e');
+      debugPrintStack(stackTrace: st, maxFrames: 8);
+    }
   }
 
+  /// restore 시 그룹을 자동 동기화 대상에 다시 포함.
   Future<void> _resumeCalendarAutoSync(String groupId) async {
     final service = _calendarAutoSyncService;
     if (service == null) return;
-    // No-op placeholder: API 추가 전까지 호출 가능한 public surface가 없음.
-    // ignore: unused_local_variable
-    final _ = service;
+    try {
+      await service.excludeGroupFromAutoSync(groupId, excluded: false);
+    } catch (e, st) {
+      debugPrint('GroupCleanupService._resumeCalendarAutoSync failed: $e');
+      debugPrintStack(stackTrace: st, maxFrames: 8);
+    }
   }
 
   /// restore 시 새 group_id 또는 그룹 이벤트가 다시 등장하면 알람을 재등록.

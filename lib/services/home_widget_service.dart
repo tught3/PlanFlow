@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
+import '../data/repositories/event_repository.dart';
 import 'home_widget_platform.dart';
 import 'kasi_holiday_service.dart';
 import 'korean_holidays.dart';
@@ -1694,5 +1697,85 @@ class HomeWidgetService {
     }
 
     return _saveValue(key, value);
+  }
+
+  /// 그룹 archive/restore 직후 홈 위젯 캐시를 갱신한다.
+  /// - archived=true (기본): 해당 그룹 일정을 위젯 표시에서 제외.
+  /// - archived=false: 그룹 일정을 다시 포함해 위젯을 전체 새로고침.
+  /// fire-and-forget: cleanup 흐름을 막지 않으며 isSupported=false면 즉시 종료.
+  Future<void> refreshAfterGroupArchive(
+    String groupId, {
+    bool archived = true,
+  }) async {
+    if (!isSupported) {
+      return;
+    }
+    final normalizedGroupId = groupId.trim();
+    if (normalizedGroupId.isEmpty) {
+      return;
+    }
+    try {
+      final userId = _currentSupabaseUserId();
+      if (userId == null || userId.isEmpty) {
+        debugPrint(
+          'HomeWidgetService.refreshAfterGroupArchive: signed out, skipping',
+        );
+        return;
+      }
+      final events = await EventRepository.supabase()
+          .listEvents(userId: userId);
+      if (!archived) {
+        // restore: 그룹 포함 상태로 전체 새로고침
+        await refreshScheduleFromEvents(events);
+        return;
+      }
+      // archive: 그룹에 속한 이벤트는 제외한 목록으로 갱신
+      final excludedIds =
+          await _fetchGroupEventIds(normalizedGroupId);
+      final filtered = events
+          .where((event) => !excludedIds.contains(event.id))
+          .toList(growable: false);
+      await refreshScheduleFromEvents(filtered);
+    } catch (e, st) {
+      debugPrint(
+        'HomeWidgetService.refreshAfterGroupArchive failed: $e',
+      );
+      debugPrintStack(stackTrace: st, maxFrames: 8);
+    }
+  }
+
+  Future<Set<String>> _fetchGroupEventIds(String groupId) async {
+    final normalized = groupId.trim();
+    if (normalized.isEmpty) {
+      return const <String>{};
+    }
+    try {
+      final client = Supabase.instance.client;
+      final response = await client
+          .from('group_events')
+          .select('id')
+          .eq('group_id', normalized);
+      final rows = response as List<dynamic>;
+      final ids = <String>{};
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final id = (row['id'] as String?)?.trim();
+        if (id != null && id.isNotEmpty) {
+          ids.add(id);
+        }
+      }
+      return ids;
+    } catch (e) {
+      debugPrint('HomeWidgetService._fetchGroupEventIds failed: $e');
+      return const <String>{};
+    }
+  }
+
+  String? _currentSupabaseUserId() {
+    try {
+      return Supabase.instance.client.auth.currentUser?.id.trim();
+    } catch (_) {
+      return null;
+    }
   }
 }

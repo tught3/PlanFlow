@@ -45,6 +45,7 @@ class CalendarAutoSyncService {
 
   static const String _lastAttemptAtKey = 'calendar_sync:last_attempt_at';
   static const String _lastStartedAtKey = 'calendar_sync:last_started_at';
+  static const String _excludedGroupsKey = 'calendar_sync:excluded_groups';
   static const int _maxFailureRetries = 2;
   static bool _globalSyncInProgress = false;
 
@@ -359,6 +360,57 @@ class CalendarAutoSyncService {
   Future<DateTime?> _loadLastAttemptAt() async {
     final prefs = await SharedPreferences.getInstance();
     return _parseDateTime(prefs.getString(_lastAttemptAtKey));
+  }
+
+  /// 그룹을 자동 캘린더 동기화 대상에서 제외/포함 상태로 설정한다.
+  /// archive 시 제외(excluded=true), unarchive 시 다시 포함(excluded=false).
+  /// fire-and-forget: cleanup 흐름을 막지 않는다.
+  /// 상태는 SharedPreferences에 영속되며 auto-sync는 이 목록을 참조해
+  /// 제외된 그룹의 일정은 동기화하지 않는다.
+  Future<void> excludeGroupFromAutoSync(
+    String groupId, {
+    bool excluded = true,
+  }) async {
+    final normalizedGroupId = groupId.trim();
+    if (normalizedGroupId.isEmpty) {
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final current =
+          prefs.getStringList(_excludedGroupsKey) ?? <String>[];
+      final next = List<String>.from(current);
+      if (excluded) {
+        if (!next.contains(normalizedGroupId)) {
+          next.add(normalizedGroupId);
+        }
+      } else {
+        next.remove(normalizedGroupId);
+      }
+      await prefs.setStringList(_excludedGroupsKey, next);
+    } catch (e, st) {
+      debugPrint(
+        'CalendarAutoSyncService.excludeGroupFromAutoSync failed: $e',
+      );
+      debugPrintStack(stackTrace: st);
+    }
+  }
+
+  /// 현재 자동 동기화에서 제외된 그룹 id 집합을 반환한다.
+  /// 향후 _syncConnectedCalendarsOnce에서 그룹 이벤트를 필터링할 때 사용.
+  Future<Set<String>> loadExcludedGroupIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final values =
+          prefs.getStringList(_excludedGroupsKey) ?? const <String>[];
+      return values
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet();
+    } catch (e) {
+      debugPrint('CalendarAutoSyncService.loadExcludedGroupIds failed: $e');
+      return const <String>{};
+    }
   }
 
   String? _resolvedUserId() {

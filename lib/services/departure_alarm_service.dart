@@ -355,6 +355,51 @@ class DepartureAlarmService {
     await _pendingDepartures.clear();
   }
 
+  /// 그룹에 속한 모든 일정에 예약된 출발 알람(preflight + pending + 표시 알림)
+  /// 을 일괄 취소한다. 그룹 archive/restore cleanup에서 사용한다.
+  /// fire-and-forget: 호출자는 unawaited로 호출해도 안전하다.
+  /// 그룹 이벤트의 id(group_events.id)를 출발알람 키로 그대로 사용해
+  /// _cancelDepartureArtifacts가 notification + preflight alarm을 정리한다.
+  Future<void> cancelAlarmsForGroup(String groupId) async {
+    final normalizedGroupId = groupId.trim();
+    if (normalizedGroupId.isEmpty) {
+      return;
+    }
+    try {
+      final auth = _currentSupabaseUserId();
+      if (auth == null || auth.isEmpty) {
+        debugPrint(
+          'DepartureAlarmService.cancelAlarmsForGroup: signed out, skipping',
+        );
+        return;
+      }
+      final client = Supabase.instance.client;
+      final response = await client
+          .from('group_events')
+          .select('id')
+          .eq('group_id', normalizedGroupId);
+      final rows = response as List<dynamic>;
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final id = (row['id'] as String?)?.trim();
+        if (id == null || id.isEmpty) continue;
+        try {
+          await _cancelDepartureArtifacts(id);
+        } catch (e, st) {
+          debugPrint(
+            'DepartureAlarmService.cancelAlarmsForGroup: cancelArtifacts($id) failed: $e',
+          );
+          debugPrintStack(stackTrace: st);
+        }
+      }
+    } catch (e, st) {
+      debugPrint(
+        'DepartureAlarmService.cancelAlarmsForGroup failed: $e',
+      );
+      debugPrintStack(stackTrace: st, maxFrames: 8);
+    }
+  }
+
   Future<DepartureAlarmMonitorResult> refreshUpcoming({
     String? userId,
   }) async {
