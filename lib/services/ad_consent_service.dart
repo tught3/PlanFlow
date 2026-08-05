@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'remote_config_service.dart';
 
@@ -22,6 +25,9 @@ class AdConsentService {
 
   /// 광고 활성화 여부 (마스터 스위치 OFF면 비활성).
   /// - EEA에서 동의 거부 시에도 false 반환 (광고 미표시).
+  /// - 동기 컨텍스트(UI 게이트)에서도 사용 가능하도록 캐시된 _available을 즉시 반환.
+  /// - 라이브 UMP 상태(ConsentInformation.instance.canRequestAds)가 필요하면
+  ///   [canRequestAdsLive]를 사용할 것.
   bool get canRequestAds {
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
@@ -30,6 +36,23 @@ class AdConsentService {
       return false;
     }
     return _available;
+  }
+
+  /// 라이브 UMP 상태 조회 (Future).
+  /// - 동기 게이트가 어렵거나 초기화 후 변동이 있었을 때 사용.
+  /// - 실패 시 [_available] 폴백.
+  Future<bool> get canRequestAdsLive async {
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      return false;
+    }
+    if (!_initialized) {
+      return false;
+    }
+    try {
+      return await ConsentInformation.instance.canRequestAds();
+    } catch (_) {
+      return _available;
+    }
   }
 
   /// main.dart 초기화 흐름에서 한 번 호출.
@@ -45,10 +68,18 @@ class AdConsentService {
       return;
     }
     try {
-      // google_mobile_ads 5.x UMPConsentInformation API는 동적으로 호출한다.
-      // 컴파일 타임에 미존재할 수 있어 런타임 import error를 피하기 위해 dynamic.
-      // 실제 사용 시 AdService.initialize()에서 다시 한 번 UMP를 직렬화 호출.
-      _available = true;
+      ConsentInformation.instance.requestConsentInfoUpdate(
+        ConsentRequestParameters(),
+        () {
+          _available = true;
+        },
+        (FormError error) {
+          debugPrint(
+            'AdConsentService UMP failure: ${error.errorCode} ${error.message}',
+          );
+          _available = false;
+        },
+      );
     } catch (error, stackTrace) {
       debugPrint('AdConsentService initialize failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -57,6 +88,36 @@ class AdConsentService {
   }
 
   /// GDPR/EEA 사용자에게 동의 폼을 띄워야 하는지.
-  /// (실제 API는 AdService.initialize에서 호출; 여기선 마스터 스위치만 체크)
   bool get requiresConsentForm => RemoteConfigService.rewardedAdEnabled;
+
+  /// 사용자 요청 시 개인정보 옵션 폼 표시.
+  /// - EEA/규제 지역 + 동의 상태 변경을 원하는 경우 사용.
+  /// - 광고 흐름과 분리된 1회성 호출.
+  Future<bool> showPrivacyOptionsForm() async {
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      return false;
+    }
+    final completer = Completer<void>();
+    try {
+      await ConsentForm.showPrivacyOptionsForm(
+        (FormError? error) {
+          if (error != null) {
+            completer.completeError(
+              StateError(
+                'privacy_options_failed: ${error.errorCode} ${error.message}',
+              ),
+            );
+          } else {
+            completer.complete();
+          }
+        },
+      );
+      await completer.future;
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('AdConsentService.showPrivacyOptionsForm failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
 }

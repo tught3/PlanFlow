@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../core/analytics_service.dart';
 import 'ad_consent_service.dart';
@@ -11,14 +12,11 @@ import 'remote_config_service.dart';
 ///
 /// 정책:
 /// - 배너·네이티브·인터스티셜·자동재생 강제 광고는 사용하지 않는다.
-/// - 사용자가 [showForParseSchedule]를 명시적으로 호출했을 때만 광고를 띄운다.
+/// - 사용자가 [showForParseSchedule]/[showForVoiceConversation]를 명시적으로 호출했을 때만
+///   광고를 띄운다.
 /// - 광고 미완료(로드 실패, 재고 없음, 백그라운드 이동)는 보상 미부여.
 /// - 보상 부여(grant)는 [AdRewardState]에 영속 저장 → 앱 종료 후 복구 가능.
 /// - 마스터 스위치 OFF면 어떤 호출에서도 광고를 띄우지 않고 즉시 false 반환.
-///
-/// flutter pub run 시 의존성(google_mobile_ads: ^5.2.0)이 없으면 컴파일 실패하기
-/// 때문에 실제 API 호출은 동적(dynamic) 호출로 격리하고, 광고 패키지가 빌드에
-/// 포함되지 않는 환경(테스트, mock)에서도 코드가 컴파일만은 되도록 작성한다.
 class AdService {
   AdService({
     AdRewardState? rewardState,
@@ -32,12 +30,20 @@ class AdService {
   static const String _kTestRewardedAdUnitIdAndroid =
       'ca-app-pub-3940256099942544/5224354917';
 
+  // RewardedAd 로드 throttle. 너무 잦은 load 호출 방지 (AdMob quota 보호).
+  static const Duration _kReloadThrottle = Duration(seconds: 30);
+
   static final AdService instance = AdService();
 
   bool _initialized = false;
   bool _showingAd = false;
   int _promptShown = 0;
   int _optIn = 0;
+
+  // RewardedAd SDK 호출에 필요한 상태.
+  RewardedAd? _rewardedAd;
+  bool _loadingAd = false;
+  DateTime? _lastLoadAt;
 
   final AdRewardState _rewardState;
   final AdConsentService _consentService;
@@ -81,6 +87,13 @@ class AdService {
     }
   }
 
+  /// 보유 중인 RewardedAd 자원 해제 (앱 종료 / 위젯 정리 시).
+  void dispose() {
+    _rewardedAd?.dispose();
+    _rewardedAd = null;
+    _loadingAd = false;
+  }
+
   /// 운영 단위 ID (Remote Config). 비어 있으면 테스트 ID로 폴백.
   String _resolveAdUnitId() {
     final configured = RemoteConfigService.rewardedAdUnitIdAndroid.trim();
@@ -100,8 +113,6 @@ class AdService {
   ///   - 'completed'  : 광고 표시 완료 (보상 부여 직전)
   ///   - 'failed'     : 실패 (로드 실패, 재고 없음, 백그라운드 이동, 네트워크 등)
   ///   - 'cancelled'  : 사용자가 광고 닫음 (보상 미부여)
-  ///
-  /// [onProgress] 호출은 비동기 안전(thread-safe). 발화 후 즉시 다음 단계로 진행.
   Future<bool> showForParseSchedule({
     required String requestId,
     void Function(String stage)? onProgress,
@@ -170,6 +181,77 @@ class AdService {
     }
   }
 
+  /// 음성 대화 모드 진입 흐름: [VoiceConversationAdGate]가 광고가 필요하다고
+  /// 판정한 후 호출. 광고 완료 → true, 실패/취소 → false.
+  ///
+  /// 기존 [showForParseSchedule]과 동일한 단계 전이(loading/shown/completed/failed/cancelled)와
+  /// 보상 grant 로직을 따르되, 음성 대화 모드 전용 analytics 이벤트를 발행한다.
+  Future<bool> showForVoiceConversation({
+    required String requestId,
+    void Function(String stage)? onProgress,
+  }) async {
+    if (!RemoteConfigService.rewardedAdEnabled ||
+        !RemoteConfigService.rewardAdVoiceConversationEnabled) {
+      return false;
+    }
+    if (_showingAd) {
+      await AnalyticsService.logVoiceConvAdFailed(
+        reason: 'already_showing',
+        requestId: requestId,
+      );
+      return false;
+    }
+    _showingAd = true;
+    _promptShown += 1;
+    await AnalyticsService.logVoiceConvButtonTap();
+    try {
+      onProgress?.call('loading');
+      final loaded = await _loadRewardedAd();
+      if (!loaded) {
+        await AnalyticsService.logVoiceConvAdFailed(
+          reason: 'load_failed',
+          requestId: requestId,
+        );
+        onProgress?.call('failed');
+        return false;
+      }
+      await AnalyticsService.logVoiceConvAdShown(requestId: requestId);
+
+      onProgress?.call('shown');
+      final completed = await _showRewardedAd();
+      if (!completed) {
+        await AnalyticsService.logVoiceConvAdFailed(
+          reason: 'cancelled_or_backgrounded',
+          requestId: requestId,
+        );
+        onProgress?.call('cancelled');
+        return false;
+      }
+
+      // 보상 부여 (다음 대화 모드 진입에 사용하지는 않지만, 일관된 grant 패턴 유지).
+      await _rewardState.grant(requestId: requestId);
+      await AnalyticsService.logVoiceConvAdRewardEarned(requestId: requestId);
+      _optIn += 1;
+      await AnalyticsService.logAdConversionRate(
+        promptsShown: _promptShown,
+        optedIn: _optIn,
+      );
+      onProgress?.call('completed');
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('AdService.showForVoiceConversation failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      await AnalyticsService.logVoiceConvAdFailed(
+        reason: 'exception',
+        requestId: requestId,
+      );
+      onProgress?.call('failed');
+      return false;
+    } finally {
+      _showingAd = false;
+    }
+  }
+
   /// 보상이 유효한지(만료 안 됐는지) 확인. 사용 직전 호출.
   Future<bool> hasActiveReward({required String requestId}) async {
     final active = await _rewardState.consumeActiveRequestId();
@@ -183,26 +265,131 @@ class AdService {
 
   // ── Private ──────────────────────────────────────────────────
 
+  /// RewardedAd 인스턴스를 비동기로 로드.
+  /// - throttle: 직전 호출로부터 30초 이내면 캐시된 _rewardedAd를 재사용.
+  /// - dedup: 동시에 진행 중인 _loadRewardedAd가 있으면 합류.
   Future<bool> _loadRewardedAd() async {
-    // 실제 호출은 동적. 광고 SDK가 init되지 않은 환경에선 false.
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      return false;
+    }
     if (!_initialized) {
       return false;
     }
+    // 이미 캐시된 광고가 있으면 그대로 사용.
+    if (_rewardedAd != null) {
+      return true;
+    }
+    // throttle: 30초 이내 재요청은 스킵 (없으면 false).
+    final last = _lastLoadAt;
+    if (last != null &&
+        DateTime.now().difference(last) < _kReloadThrottle &&
+        _rewardedAd == null) {
+      return false;
+    }
+    if (_loadingAd) {
+      // dedup: 이미 로드 중이면 캐시될 때까지 대기.
+      return await _awaitLoad();
+    }
+    return await _doLoad();
+  }
+
+  Future<bool> _awaitLoad() async {
+    // 단순 폴링으로 캐시 생성 대기 (로드 대기 시간은 보통 수 초).
+    const pollInterval = Duration(milliseconds: 200);
+    const timeout = Duration(seconds: 8);
+    final start = DateTime.now();
+    while (_loadingAd && DateTime.now().difference(start) < timeout) {
+      await Future<void>.delayed(pollInterval);
+    }
+    return _rewardedAd != null;
+  }
+
+  Future<bool> _doLoad() async {
+    _loadingAd = true;
+    _lastLoadAt = DateTime.now();
     final adUnitId = _resolveAdUnitId();
     try {
-      debugPrint('AdService._loadRewardedAd($adUnitId)');
-      return true;
-    } catch (_) {
+      final completer = Completer<bool>();
+      RewardedAd.load(
+        adUnitId: adUnitId,
+        request: const AdRequest(),
+        rewardedAdLoadCallback: RewardedAdLoadCallback(
+          onAdLoaded: (RewardedAd ad) {
+            _rewardedAd = ad;
+            _loadingAd = false;
+            if (!completer.isCompleted) {
+              completer.complete(true);
+            }
+          },
+          onAdFailedToLoad: (LoadAdError error) {
+            _rewardedAd = null;
+            _loadingAd = false;
+            debugPrint(
+              'AdService._loadRewardedAd failed: code=${error.code} '
+              'domain=${error.domain} message=${error.message}',
+            );
+            if (!completer.isCompleted) {
+              completer.complete(false);
+            }
+          },
+        ),
+      );
+      return await completer.future;
+    } catch (error, stackTrace) {
+      debugPrint('AdService._loadRewardedAd exception: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _loadingAd = false;
+      _rewardedAd = null;
       return false;
     }
   }
 
+  /// 캐시된 _rewardedAd를 표시. 광고가 닫히면 dispose.
   Future<bool> _showRewardedAd() async {
-    // 실제 호출은 동적. (RewardAd.show) → onUserEarnedReward / onAdFailedToShowFullScreenContent
-    // Toggle here when google_mobile_ads is wired in.
-    try {
+    final ad = _rewardedAd;
+    if (ad == null) {
       return false;
-    } catch (_) {
+    }
+    final completer = Completer<bool>();
+    try {
+      ad.fullScreenContentCallback = FullScreenContentCallback<RewardedAd>(
+        onAdDismissedFullScreenContent: (RewardedAd closedAd) {
+          closedAd.dispose();
+          _rewardedAd = null;
+          // 보상은 onUserEarnedReward에서 부여한다.
+          if (!completer.isCompleted) {
+            completer.complete(true);
+          }
+        },
+        onAdFailedToShowFullScreenContent: (RewardedAd failedAd, AdError error) {
+          debugPrint(
+            'AdService._showRewardedAd failed: code=${error.code} '
+            'message=${error.message}',
+          );
+          failedAd.dispose();
+          _rewardedAd = null;
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        },
+      );
+      await ad.show(
+        onUserEarnedReward: (AdWithoutView rewardedAd, RewardItem reward) {
+          // 보상 grant는 호출자가 showForParseSchedule/showForVoiceConversation에서
+          // 명시적으로 처리한다. 여기서는 호출만 받는다.
+        },
+      );
+      // show()는 풀스크린 닫힘까지 await하지 않는다. completer는
+      // onAdDismissedFullScreenContent에서 완료된다.
+      return await completer.future;
+    } catch (error, stackTrace) {
+      debugPrint('AdService._showRewardedAd exception: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      ad.dispose();
+      _rewardedAd = null;
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
       return false;
     }
   }

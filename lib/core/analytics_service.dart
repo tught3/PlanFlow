@@ -192,4 +192,52 @@ class AnalyticsService {
           'opt_ins': optedIn,
         },
       );
+
+  // ── 음성 대화 모드 (Reward Ad) ─────────────────────────────────
+  // 개인정보/일정 본문/음성 텍스트는 절대 포함하지 않는다.
+  // 파라미터는 count/int/request_id/reason(카테고리화된 문자열)만 허용.
+  static Future<void> logVoiceConvButtonTap() =>
+      _logEvent('voice_conv_button_tap');
+
+  static Future<void> logVoiceConvFreeTrialUsed({required int remainingAfter}) =>
+      _logEvent(
+        'voice_conv_free_trial_used',
+        parameters: <String, Object>{'remaining_after': remainingAfter},
+      );
+
+  static Future<void> logVoiceConvAdShown({required String requestId}) =>
+      _logEvent(
+        'voice_conv_ad_shown',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logVoiceConvAdRewardEarned({required String requestId}) =>
+      _logEvent(
+        'voice_conv_ad_reward_earned',
+        parameters: <String, Object>{'request_id': requestId},
+      );
+
+  static Future<void> logVoiceConvAdFailed({
+    required String reason,
+    required String requestId,
+  }) =>
+      _logEvent(
+        'voice_conv_ad_failed',
+        parameters: <String, Object>{
+          'reason': reason,
+          'request_id': requestId,
+        },
+      );
+
+  static Future<void> logVoiceConvGateBlocked({required String reason}) =>
+      _logEvent(
+        'voice_conv_gate_blocked',
+        parameters: <String, Object>{'reason': reason},
+      );
+
+  static Future<void> logVoiceConvEntered({required String source}) =>
+      _logEvent(
+        'voice_conv_entered',
+        parameters: <String, Object>{'source': source},
+      );
 }
