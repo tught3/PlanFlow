@@ -295,6 +295,12 @@ function Invoke-OwnedProcess {
     Write-AnalyzeAudit -Event 'timed_out' -Details @{ stage = $Stage; pid = $process.Id; timeout_seconds = $TimeoutSeconds }
     $exitCode = $null
   } else {
+    # WaitForExit(timeout) can return true before .NET's Process object has
+    # flushed the OS exit code into ExitCode (observed as ExitCode=$null even
+    # though the process genuinely exited). The parameterless WaitForExit()
+    # overload blocks until that flush completes; call it once more here per
+    # the standard .NET guidance for redirected-output processes.
+    $process.WaitForExit()
     $exitCode = $process.ExitCode
     Write-AnalyzeAudit -Event 'exited' -Details @{ stage = $Stage; pid = $process.Id; exit_code = $exitCode }
   }
