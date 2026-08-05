@@ -1863,8 +1863,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           : int.tryParse(numericMatch.group(3) ?? '') ?? 0;
       return _ambiguousClockFromParts(hour: hour, minute: minute);
     }
+    // 분 표현은 반드시 "N분"처럼 리터럴 "분"이 뒤따라야만 group3으로
+    // 캡처된다("분?"이 아니라 "분" 필수). "반"만 있고 "분"이 없는 경우
+    // (예: "여덟시반에") group3 alt는 실패해야 "반" alt(group4)로 정상
+    // 폴백하며, 뒤에 붙는 조사("에" 등)를 group3이 그리디하게 삼켜버리는
+    // 것을 방지한다(gpt_service.dart와 동일 근본원인, 커밋 9cdcd9f 참고).
     final koreanMatch = RegExp(
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽))?([가-힣]{1,8})시(?:([가-힣]{1,8}|\d{1,2})분?|(반))?',
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽))?([가-힣]{1,8})시(?:([가-힣]{1,8}|\d{1,2})분|(반))?',
     ).firstMatch(text);
     if (koreanMatch == null || koreanMatch.group(1) != null) {
       return null;

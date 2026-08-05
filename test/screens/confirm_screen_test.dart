@@ -676,6 +676,95 @@ void main() {
     expect(planflowLocal(saved.startAt!), DateTime(2030, 6, 13, 19, 40));
   });
 
+  testWidgets(
+      'ConfirmScreen keeps 30-minute "반" time after PM selection (regression)',
+      (tester) async {
+    // "여덟시 반에" 처럼 "반" 뒤에 조사가 붙는 발화를 오전/오후 확인
+    // 다이얼로그에서 선택한 뒤에도 분이 0으로 리셋되지 않고 30분이
+    // 그대로 유지되는지 검증한다(_ambiguousClockFromRawText 회귀).
+    final repository = _FakeEventRepository();
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 8, 0);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '팀 미팅',
+            startAt: start,
+            rawText: '여덟시 반에 미팅있어',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
+
+    await tester.tap(find.text('오후 8:30'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(planflowLocal(saved.startAt!), DateTime(year, 6, 13, 20, 30));
+  });
+
+  testWidgets(
+      'ConfirmScreen keeps 30-minute "삼십분" time after PM selection (regression)',
+      (tester) async {
+    // "여덟시 삼십분에" 발화도 동일한 그리디 매칭 버그 대상이었다 -
+    // 오전/오후 선택 후 분이 30으로 유지되는지 검증한다.
+    final repository = _FakeEventRepository();
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 8, 0);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '팀 회의',
+            startAt: start,
+            rawText: '여덟시 삼십분에 회의',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
+
+    await tester.tap(find.text('오전 8:30'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(planflowLocal(saved.startAt!), DateTime(year, 6, 13, 8, 30));
+  });
+
   testWidgets('ConfirmScreen shows supplies as compact editable rows',
       (tester) async {
     await tester.pumpWidget(
