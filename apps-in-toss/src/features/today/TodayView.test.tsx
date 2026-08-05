@@ -136,6 +136,56 @@ describe('loadTodayEvents', () => {
     expect(result.error).toBe('boom');
     expect(result.events).toEqual([]);
   });
+
+  it('매주 반복 일정은 오늘 날짜의 회차로 전개되어 표시된다(원본 회차가 아니라 오늘의 회차)', async () => {
+    // 2026-08-05(수)이 "오늘". 원본 반복 일정은 2주 전 수요일(2026-07-22)에 시작해
+    // 매주 수요일 반복한다 - listEvents는 이 원본(미전개) row를 그대로 돌려준다.
+    const now = new Date('2026-08-05T10:00:00.000Z'); // 19:00 KST, 수요일
+    const recurringEvent = makeEvent({
+      id: 'weekly-1',
+      title: '주간 스탠드업',
+      startAt: new Date('2026-07-22T01:00:00.000Z'), // 10:00 KST, 수요일
+      endAt: new Date('2026-07-22T01:30:00.000Z'),
+      recurrenceRule: 'FREQ=WEEKLY;BYDAY=WE',
+    });
+    const repository = makeMockRepository({
+      listEvents: vi.fn().mockResolvedValue({ data: [recurringEvent], error: null }),
+    });
+
+    const result = await loadTodayEvents(repository, now);
+
+    expect(result.error).toBeNull();
+    expect(result.events).toHaveLength(1);
+    const occurrence = result.events[0];
+    expect(occurrence.id).toBe('weekly-1');
+    // 원본 시작일(7/22)이 아니라 오늘(8/5)의 회차로 전개돼야 한다.
+    expect(occurrence.startAt.toISOString()).toBe('2026-08-05T01:00:00.000Z');
+    expect(occurrence.startAt.getTime()).not.toBe(recurringEvent.startAt.getTime());
+  });
+
+  it('반복 일정 회차와 일반 일정을 함께 조회하면 시작 시각순으로 정렬해 반환한다', async () => {
+    const now = new Date('2026-08-05T10:00:00.000Z');
+    const recurringEvent = makeEvent({
+      id: 'weekly-1',
+      title: '주간 스탠드업',
+      startAt: new Date('2026-07-22T00:30:00.000Z'), // 09:30 KST
+      endAt: new Date('2026-07-22T01:00:00.000Z'),
+      recurrenceRule: 'FREQ=WEEKLY;BYDAY=WE',
+    });
+    const oneOffEvent = makeEvent({
+      id: 'evt-2',
+      title: '점심 약속',
+      startAt: new Date('2026-08-05T03:00:00.000Z'), // 12:00 KST
+      endAt: new Date('2026-08-05T04:00:00.000Z'),
+    });
+    const repository = makeMockRepository({
+      listEvents: vi.fn().mockResolvedValue({ data: [oneOffEvent, recurringEvent], error: null }),
+    });
+
+    const result = await loadTodayEvents(repository, now);
+
+    expect(result.events.map((event) => event.id)).toEqual(['weekly-1', 'evt-2']);
+  });
 });
 
 describe('TodayEventList (렌더링)', () => {

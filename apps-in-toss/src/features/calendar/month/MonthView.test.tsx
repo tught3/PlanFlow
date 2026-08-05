@@ -69,48 +69,50 @@ describe('buildMonthGrid', () => {
     }
   });
 
-  it('첫째 주 경계: 월 시작 요일이 월요일이 아니면 이전 달 날짜가 그리드 앞부분에 포함된다', () => {
-    // March 1, 2026은 일요일(ISO weekday 7)이라 반드시 이전 달(2월) 날짜가 앞에 붙는다.
-    const march = kstWallToInstant(2026, 2, 15);
-    const { start: monthStart } = kstMonthRange(march);
-    expect(kstIsoWeekday(monthStart)).not.toBe(1);
+  it('첫째 주 경계: 월 시작 요일이 일요일이 아니면 이전 달 날짜가 그리드 앞부분에 포함된다', () => {
+    // April 1, 2026은 수요일(ISO weekday 3)이라 반드시 이전 달(3월) 날짜가 앞에 붙는다.
+    const april = kstWallToInstant(2026, 3, 15);
+    const { start: monthStart } = kstMonthRange(april);
+    expect(kstIsoWeekday(monthStart)).not.toBe(7);
 
-    const grid = buildMonthGrid(march);
+    const grid = buildMonthGrid(april);
     expect(grid[0].isCurrentMonth).toBe(false);
     expect(grid[0].date.getTime()).toBeLessThan(monthStart.getTime());
-    // 그리드는 항상 월요일부터 시작해야 한다(weekStartsOn 기본값 1).
-    expect(kstIsoWeekday(grid[0].date)).toBe(1);
+    // 그리드는 항상 일요일부터 시작해야 한다(weekStartsOn 기본값 7=일요일,
+    // 원본 Flutter calendar_widgets.dart의 일요일 시작 관례와 동일).
+    expect(kstIsoWeekday(grid[0].date)).toBe(7);
 
-    // 실제 경계값: 2026-02-23(월)부터 시작해야 한다.
-    const expectedGridStart = kstWallToInstant(2026, 1, 23);
+    // 실제 경계값: 2026-03-29(일)부터 시작해야 한다.
+    const expectedGridStart = kstWallToInstant(2026, 2, 29);
     expect(grid[0].date.getTime()).toBe(expectedGridStart.getTime());
   });
 
-  it('마지막 주 경계: 월 마지막 날 요일이 일요일이 아니면 다음 달 날짜가 그리드 뒷부분에 포함된다', () => {
+  it('마지막 주 경계: 월 마지막 날 요일이 토요일이 아니면 다음 달 날짜가 그리드 뒷부분에 포함된다', () => {
     // March 31, 2026은 화요일(ISO weekday 2)이라 반드시 다음 달(4월) 날짜가 뒤에 붙는다.
     const march = kstWallToInstant(2026, 2, 15);
     const grid = buildMonthGrid(march);
     const lastDay = grid[grid.length - 1];
 
     expect(lastDay.isCurrentMonth).toBe(false);
-    expect(kstIsoWeekday(lastDay.date)).toBe(7);
+    // 그리드는 항상 토요일에 끝나야 한다(일요일 시작 기준 주의 마지막 요일).
+    expect(kstIsoWeekday(lastDay.date)).toBe(6);
 
-    // 실제 경계값: 2026-04-05(일)로 끝나야 한다.
-    const expectedLastDay = kstWallToInstant(2026, 3, 5);
+    // 실제 경계값: 2026-04-04(토)로 끝나야 한다.
+    const expectedLastDay = kstWallToInstant(2026, 3, 4);
     expect(lastDay.date.getTime()).toBe(expectedLastDay.getTime());
   });
 
-  it('월 시작/마지막 요일이 각각 월요일/일요일이면 앞뒤로 걸치는 날짜가 없다', () => {
-    // 위에서 계산된 2026-02 그리드 시작일(2026-01-26, 월)이 속한 1월을 기준으로,
-    // "이번 달 1일이 월요일"인 케이스를 직접 만들어 확인한다.
-    // 2026-06-01은 월요일이다.
-    const june = kstWallToInstant(2026, 5, 10);
-    const { start: juneStart } = kstMonthRange(june);
-    expect(kstIsoWeekday(juneStart)).toBe(1);
+  it('월 시작/마지막 요일이 각각 일요일/토요일이면 앞뒤로 걸치는 날짜가 없다', () => {
+    // 2026-02-01은 일요일, 2026-02-28은 토요일이라 앞뒤로 걸치는 날짜가 없어야 한다.
+    const february = kstWallToInstant(2026, 1, 10);
+    const { start: febStart } = kstMonthRange(february);
+    expect(kstIsoWeekday(febStart)).toBe(7);
 
-    const grid = buildMonthGrid(june);
-    expect(grid[0].date.getTime()).toBe(juneStart.getTime());
+    const grid = buildMonthGrid(february);
+    expect(grid[0].date.getTime()).toBe(febStart.getTime());
     expect(grid[0].isCurrentMonth).toBe(true);
+    expect(kstIsoWeekday(grid[grid.length - 1].date)).toBe(6);
+    expect(grid[grid.length - 1].isCurrentMonth).toBe(true);
   });
 });
 

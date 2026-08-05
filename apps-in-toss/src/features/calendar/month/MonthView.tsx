@@ -27,7 +27,12 @@ import type { Event } from '../../../domain/index.ts';
 import { eventRepository } from '../../../data/eventRepository.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
+/**
+ * 주 시작 요일은 원본(Flutter) lib/screens/calendar/calendar_widgets.dart의
+ * `weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']`(일요일 시작)와
+ * WeekView.tsx(ISO weekday 7 = 일요일 시작)에 맞춘다.
+ */
+const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
 export interface MonthGridDay {
   /** 이 날짜의 KST 자정(00:00 KST)을 나타내는 실제 UTC Date. */
@@ -50,7 +55,7 @@ export interface MonthDayEventEntry {
  * 단위(7의 배수)로 반환하며, 이번 달 앞/뒤로 걸치는 이전/다음 달 날짜도
  * 포함한다(isCurrentMonth=false로 표시).
  */
-export function buildMonthGrid(monthAnchor: Date, weekStartsOn = 1): MonthGridDay[] {
+export function buildMonthGrid(monthAnchor: Date, weekStartsOn = 7): MonthGridDay[] {
   const { start: monthStart, end: monthEnd } = kstMonthRange(monthAnchor);
   const { start: gridStart } = kstWeekRange(monthStart, { weekStartsOn });
   const lastDayOfMonth = new Date(monthEnd.getTime() - DAY_MS);

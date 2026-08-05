@@ -8,11 +8,22 @@
  * 날짜 계산은 src/domain/datetime.ts의 KST 유틸만 사용하고, 일정 조회는
  * src/data/eventRepository.ts의 listEvents()만 사용한다(이 파일 안에서
  * 직접 timestamptz 변환을 하지 않는다).
+ *
+ * 반복 일정 전개는 src/domain/recurrence.ts의 expandOccurrences()를 그대로
+ * 쓴다(MonthView.tsx와 동일한 방식) - 원본 회차(recurrence_rule이 있는 row)를
+ * 그대로 표시하지 않고, 그 주 범위와 겹치는 실제 회차로 전개한 뒤 각 회차의
+ * startAt이 속한 요일 칸에 배치한다.
  */
 import { useEffect, useMemo, useState } from 'react';
 
 import type { Event } from '../../../domain/event.ts';
-import { addKstDays, isSameKstDay, kstWeekRange, toKstWall } from '../../../domain/datetime.ts';
+import {
+  addKstDays,
+  expandOccurrences,
+  isSameKstDay,
+  kstWeekRange,
+  toKstWall,
+} from '../../../domain/index.ts';
 import { eventRepository } from '../../../data/eventRepository.ts';
 
 /** ISO weekday 기준 주 시작 요일. 7 = 일요일. */
@@ -39,6 +50,40 @@ export function shiftWeek(weekStart: Date, delta: number): Date {
 export function formatMonthDay(date: Date): string {
   const wall = toKstWall(date);
   return `${wall.getUTCMonth() + 1}/${wall.getUTCDate()}`;
+}
+
+/**
+ * weekDays(7일, 일~토) 각 날짜에 걸치는 일정 목록을 계산한다(반환 배열은
+ * weekDays와 같은 길이/순서). 반복 일정은 weekDays[0]~weekDays[6]+1일 범위로
+ * expandOccurrences 전개하고, 각 회차는 startAt이 속한 요일 칸에 하나씩
+ * 배치한다(같은 요일 안에서는 시작 시각순 정렬).
+ */
+export function buildWeekDayEvents(weekDays: Date[], events: Event[]): Event[][] {
+  if (weekDays.length === 0) {
+    return [];
+  }
+
+  const rangeStart = weekDays[0];
+  const rangeEnd = addKstDays(weekDays[weekDays.length - 1], 1);
+
+  const perDay: Event[][] = weekDays.map(() => []);
+
+  for (const event of events) {
+    const occurrences = expandOccurrences(event, rangeStart, rangeEnd);
+    for (const occurrence of occurrences) {
+      const dayIndex = weekDays.findIndex((day) => isSameKstDay(occurrence.startAt, day));
+      if (dayIndex === -1) {
+        continue;
+      }
+      perDay[dayIndex].push(occurrence);
+    }
+  }
+
+  for (const dayEvents of perDay) {
+    dayEvents.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  }
+
+  return perDay;
 }
 
 export interface WeekViewProps {
@@ -89,10 +134,7 @@ export default function WeekView({ initialDate }: WeekViewProps = {}) {
     };
   }, [weekStart, weekEnd]);
 
-  const eventsByDay = useMemo(
-    () => weekDays.map((day) => events.filter((event) => isSameKstDay(event.startAt, day))),
-    [weekDays, events],
-  );
+  const eventsByDay = useMemo(() => buildWeekDayEvents(weekDays, events), [weekDays, events]);
 
   const handlePrevWeek = () => setWeekStart((current) => shiftWeek(current, -1));
   const handleNextWeek = () => setWeekStart((current) => shiftWeek(current, 1));
