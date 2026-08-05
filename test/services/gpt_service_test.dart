@@ -762,6 +762,220 @@ void main() {
       expect(result['time_period_ambiguous'], isTrue);
     });
 
+    // ── 회귀 테스트(P3~P6, "8시 반"이 "8시 30분"이 아니라 "8시"로 잘못
+    // 파싱되는 회귀 방지): 오전/오후 미표시 + 7~12시 + 원문에 분 표현이
+    // 있으면, 시는 GPT 응답 그대로, 분은 원문 파싱값으로 보정해야 한다.
+    // 분 표현이 없으면 GPT 값을 그대로 신뢰한다. time_period_ambiguous는
+    // 기존대로 유지한다.
+    test(
+        '오전/오후 미표시 7~12시 발화에 반이 있으면 시는 GPT값 유지, '
+        '분은 로컬파싱값을 쓴다(P3)', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '회의',
+                    'start_at': '2026-05-18T08:00:00.000',
+                    'end_at': null,
+                    'location': null,
+                    'memo': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9), // banned-ok: 이 테스트는 GptService의
+        // now 파라미터를 mock 시각으로만 쓰며, ConfirmScreen류 과거차단/클램프
+        // 로직을 거치지 않는다(기존 725행 근처 테스트와 동일한 패턴).
+      );
+
+      final result = await service.parseSchedule('8시 반에 회의');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+
+      expect(parsedStartAt.hour, 8);
+      expect(parsedStartAt.minute, 30);
+      expect(result['time_period_ambiguous'], isTrue);
+    });
+
+    test(
+        '오전/오후 미표시 발화 + GPT가 오후(20시)로 판단한 응답이면 시는 '
+        'GPT값(20시)을 그대로 유지하고 분만 로컬파싱값(30분)으로 보정한다'
+        '(P4, R2 보호)', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '회의',
+                    'start_at': '2026-05-18T20:00:00.000',
+                    'end_at': null,
+                    'location': null,
+                    'memo': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9), // banned-ok: mock 시각 전용,
+        // 클램프/만료 로직 미개입(기존 725행 근처 테스트와 동일 패턴).
+      );
+
+      final result = await service.parseSchedule('8시 반에 회의');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+
+      expect(parsedStartAt.hour, 20);
+      expect(parsedStartAt.minute, 30);
+      expect(result['time_period_ambiguous'], isTrue);
+    });
+
+    test('한글 수사 반 표현("여덟시 반")도 분 30으로 로컬 보정된다(P5)',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '회의',
+                    'start_at': '2026-05-18T08:00:00.000',
+                    'end_at': null,
+                    'location': null,
+                    'memo': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9), // banned-ok: mock 시각 전용,
+        // 클램프/만료 로직 미개입(기존 725행 근처 테스트와 동일 패턴).
+      );
+
+      final result = await service.parseSchedule('여덟시 반에 회의');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+
+      expect(parsedStartAt.minute, 30);
+    });
+
+    test(
+        '분 표현이 없는 발화는 GPT의 분값을 임의로 0으로 덮어쓰지 않는다'
+        '(P6, R3 보호)', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '회의',
+                    'start_at': '2026-05-18T20:00:00.000',
+                    'end_at': null,
+                    'location': null,
+                    'memo': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9), // banned-ok: mock 시각 전용,
+        // 클램프/만료 로직 미개입(기존 725행 근처 테스트와 동일 패턴).
+      );
+
+      final result = await service.parseSchedule('8시에 회의');
+
+      expect(result['start_at'], '2026-05-18T20:00:00.000');
+    });
+
+    test(
+        '오전/오후가 명시된 발화는 애매함 보정 대상이 아니며 기존 동작이 '
+        '유지된다(P6, R2 보호)', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '회의',
+                    'start_at': '2026-05-18T20:30:00.000',
+                    'end_at': null,
+                    'location': null,
+                    'memo': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9), // banned-ok: mock 시각 전용,
+        // 클램프/만료 로직 미개입(기존 725행 근처 테스트와 동일 패턴).
+      );
+
+      final result = await service.parseSchedule('오후 8시 반에 회의');
+
+      expect(result['start_at'], '2026-05-18T20:30:00.000');
+      expect(result['time_period_ambiguous'], isNot(true));
+    });
+
     test('infers a Korean relative start time when JSON omits start_at',
         () async {
       final client = MockClient((request) async {
