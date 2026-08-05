@@ -326,7 +326,23 @@ function Invoke-OwnedProcess {
   }
 
   if (Test-Path -LiteralPath $errorPath) {
-    Add-Content -LiteralPath $OutputPath -Value (Get-Content -LiteralPath $errorPath -Raw) -Encoding utf8
+    # Start-Process's own redirect handle for $OutputPath can still be
+    # mid-release by the OS/.NET for a brief moment right after the process
+    # is reported exited (observed as "cannot access the file ... because it
+    # is being used by another process" on this exact Add-Content call).
+    # Retry briefly instead of failing the whole deploy on a transient lock.
+    $stderrContent = Get-Content -LiteralPath $errorPath -Raw
+    $appended = $false
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+      try {
+        Add-Content -LiteralPath $OutputPath -Value $stderrContent -Encoding utf8
+        $appended = $true
+        break
+      } catch {
+        if ($attempt -eq 5) { throw }
+        Start-Sleep -Milliseconds (200 * $attempt)
+      }
+    }
     Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
   }
   Remove-Item -LiteralPath $exitCodePath -Force -ErrorAction SilentlyContinue
