@@ -272,12 +272,26 @@ function Invoke-OwnedProcess {
   )
 
   $errorPath = "$OutputPath.stderr"
-  Remove-Item -LiteralPath $OutputPath, $errorPath -Force -ErrorAction SilentlyContinue
+  $exitCodePath = "$OutputPath.exitcode"
+  Remove-Item -LiteralPath $OutputPath, $errorPath, $exitCodePath -Force -ErrorAction SilentlyContinue
   New-Item -ItemType File -Path $OutputPath -Force | Out-Null
 
+  # Process.ExitCode read via Start-Process -PassThru has been observed to
+  # return $null even after WaitForExit() (twice, with the parameterless
+  # overload) confirms the process exited -- audit logs showed
+  # exit_code:null on runs whose stdout clearly printed "No issues found!".
+  # Rather than trust that unreliable .NET property, wrap the real command
+  # so the child process reports its own $LASTEXITCODE (set reliably by the
+  # PowerShell call operator `&` for any external command) into a file, and
+  # read that back instead.
+  $quotedArgs = ($ArgumentList | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ' '
+  $quotedFilePath = "'" + ($FilePath -replace "'", "''") + "'"
+  $quotedExitCodePath = "'" + ($exitCodePath -replace "'", "''") + "'"
+  $wrapperCommand = "& $quotedFilePath $quotedArgs; Set-Content -LiteralPath $quotedExitCodePath -Value `$LASTEXITCODE -NoNewline -Encoding ascii"
+
   $startInfo = @{
-    FilePath = $FilePath
-    ArgumentList = $ArgumentList
+    FilePath = 'powershell.exe'
+    ArgumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $wrapperCommand)
     WorkingDirectory = $WorkspaceRoot
     PassThru = $true
     RedirectStandardOutput = $OutputPath
@@ -295,20 +309,27 @@ function Invoke-OwnedProcess {
     Write-AnalyzeAudit -Event 'timed_out' -Details @{ stage = $Stage; pid = $process.Id; timeout_seconds = $TimeoutSeconds }
     $exitCode = $null
   } else {
-    # WaitForExit(timeout) can return true before .NET's Process object has
-    # flushed the OS exit code into ExitCode (observed as ExitCode=$null even
-    # though the process genuinely exited). The parameterless WaitForExit()
-    # overload blocks until that flush completes; call it once more here per
-    # the standard .NET guidance for redirected-output processes.
     $process.WaitForExit()
-    $exitCode = $process.ExitCode
-    Write-AnalyzeAudit -Event 'exited' -Details @{ stage = $Stage; pid = $process.Id; exit_code = $exitCode }
+    $exitCodeSource = 'process'
+    if (Test-Path -LiteralPath $exitCodePath) {
+      $exitCodeText = (Get-Content -LiteralPath $exitCodePath -Raw).Trim()
+      if ($exitCodeText -match '^-?\d+$') {
+        $exitCode = [int]$exitCodeText
+        $exitCodeSource = 'file'
+      } else {
+        $exitCode = $process.ExitCode
+      }
+    } else {
+      $exitCode = $process.ExitCode
+    }
+    Write-AnalyzeAudit -Event 'exited' -Details @{ stage = $Stage; pid = $process.Id; exit_code = $exitCode; exit_code_source = $exitCodeSource }
   }
 
   if (Test-Path -LiteralPath $errorPath) {
     Add-Content -LiteralPath $OutputPath -Value (Get-Content -LiteralPath $errorPath -Raw) -Encoding utf8
     Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
   }
+  Remove-Item -LiteralPath $exitCodePath -Force -ErrorAction SilentlyContinue
 
   return [pscustomobject]@{
     ExitCode = $exitCode
