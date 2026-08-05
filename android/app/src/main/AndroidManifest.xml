@@ -1,6 +1,7 @@
 ﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
@@ -25,7 +26,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission
         android:name="android.permission.ACCESS_ADSERVICES_AD_ID"
-        tools:node="remove" />
+        />
     <uses-permission
         android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION"
         tools:node="remove" />
@@ -135,11 +136,13 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${googleMapsApiKey}" />
-        <!-- AdMob App ID. 출시 초기 OFF이므로 운영 ID는 Remote Config로 관리.
-             여기 들어가는 값은 Google 공식 테스트 ID (안전한 기본값). -->
+        <!-- AdMob 운영 App ID. AdMob SDK는 앱 프로세스 시작 시 Remote Config fetch보다
+             먼저 이 값을 네이티브에서 읽으므로 반드시 실제 운영 App ID를 여기에 고정해야
+             하며 Remote Config로 대체할 수 없다. 리워드 광고 단위 ID(rewarded_ad_unit_id_android)만
+             Remote Config로 관리한다 (lib/services/remote_config_service.dart 참고). -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-3753374909078516~3814311401" />
         <service
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:exported="false"

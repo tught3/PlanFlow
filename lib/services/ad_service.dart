@@ -8,6 +8,29 @@ import 'ad_consent_service.dart';
 import 'ad_reward_state.dart';
 import 'remote_config_service.dart';
 
+/// AdMob 공식 광고 단위 ID 형식(`ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY`)인지 검증.
+/// release 분기가 kDebugMode 때문에 단위 테스트에서 도달 불가하므로,
+/// 이 검증 로직을 순수 함수로 분리해 테스트 가능하게 한다.
+final RegExp _rewardedAdUnitIdPattern = RegExp(r'^ca-app-pub-\d{16}/\d{1,20}$');
+
+bool isValidRewardedAdUnitId(String value) =>
+    _rewardedAdUnitIdPattern.hasMatch(value);
+
+/// [useTestUnit]을 파라미터로 주입받아 kDebugMode에 직접 의존하지 않는
+/// 순수 버전의 광고 단위 ID 해석 함수. 단위 테스트가 release 분기를
+/// 검증할 수 있도록 [AdService._resolveAdUnitId]에서 위임 호출한다.
+String resolveRewardedAdUnitIdFor({
+  required bool useTestUnit,
+  required String configured,
+}) {
+  if (useTestUnit) {
+    return 'ca-app-pub-3940256099942544/5224354917'; // Google test rewarded ad unit
+  }
+  final trimmed = configured.trim();
+  if (!isValidRewardedAdUnitId(trimmed)) return '';
+  return trimmed;
+}
+
 /// 리워드 광고(AdMob) 서비스.
 ///
 /// 정책:
@@ -27,8 +50,6 @@ class AdService {
         _dynamicAdsInitializer = dynamicAdsInitializer;
 
   // 기본 ID는 테스트 ID(공식 제공). 운영 ID는 Remote Config.
-  static const String _kTestRewardedAdUnitIdAndroid =
-      'ca-app-pub-3940256099942544/5224354917';
 
   // RewardedAd 로드 throttle. 너무 잦은 load 호출 방지 (AdMob quota 보호).
   static const Duration _kReloadThrottle = Duration(seconds: 30);
@@ -94,13 +115,12 @@ class AdService {
     _loadingAd = false;
   }
 
-  /// 운영 단위 ID (Remote Config). 비어 있으면 테스트 ID로 폴백.
+  /// Debug/Profile 모드에서는 테스트 ID, Release에서는 Remote Config ID 사용.
   String _resolveAdUnitId() {
-    final configured = RemoteConfigService.rewardedAdUnitIdAndroid.trim();
-    if (configured.isEmpty) {
-      return _kTestRewardedAdUnitIdAndroid;
-    }
-    return configured;
+    return resolveRewardedAdUnitIdFor(
+      useTestUnit: kDebugMode || kProfileMode,
+      configured: RemoteConfigService.rewardedAdUnitIdAndroid,
+    );
   }
 
   /// 단일 사용 흐름: 사용자가 '광고 보고 분석하기'를 눌렀을 때 호출.
@@ -275,6 +295,8 @@ class AdService {
     if (!_initialized) {
       return false;
     }
+    final adUnitId = _resolveAdUnitId();
+    if (adUnitId.isEmpty) return false;
     // 이미 캐시된 광고가 있으면 그대로 사용.
     if (_rewardedAd != null) {
       return true;
@@ -344,30 +366,27 @@ class AdService {
     }
   }
 
-  /// 캐시된 _rewardedAd를 표시. 광고가 닫히면 dispose.
+  /// 캐시된 _rewardedAd를 표시하고, 보상 획득 여부를 반환.
   Future<bool> _showRewardedAd() async {
     final ad = _rewardedAd;
     if (ad == null) {
       return false;
     }
+    bool rewardEarned = false;
     final completer = Completer<bool>();
     try {
       ad.fullScreenContentCallback = FullScreenContentCallback<RewardedAd>(
         onAdDismissedFullScreenContent: (RewardedAd closedAd) {
-          closedAd.dispose();
-          _rewardedAd = null;
-          // 보상은 onUserEarnedReward에서 부여한다.
           if (!completer.isCompleted) {
-            completer.complete(true);
+            completer.complete(rewardEarned);
           }
         },
-        onAdFailedToShowFullScreenContent: (RewardedAd failedAd, AdError error) {
+        onAdFailedToShowFullScreenContent:
+            (RewardedAd failedAd, AdError error) {
           debugPrint(
             'AdService._showRewardedAd failed: code=${error.code} '
             'message=${error.message}',
           );
-          failedAd.dispose();
-          _rewardedAd = null;
           if (!completer.isCompleted) {
             completer.complete(false);
           }
@@ -375,23 +394,28 @@ class AdService {
       );
       await ad.show(
         onUserEarnedReward: (AdWithoutView rewardedAd, RewardItem reward) {
-          // 보상 grant는 호출자가 showForParseSchedule/showForVoiceConversation에서
-          // 명시적으로 처리한다. 여기서는 호출만 받는다.
+          rewardEarned = true;
         },
       );
-      // show()는 풀스크린 닫힘까지 await하지 않는다. completer는
-      // onAdDismissedFullScreenContent에서 완료된다.
-      return await completer.future;
+      final result = await completer.future;
+      _rewardedAd?.dispose();
+      _rewardedAd = null;
+      _preloadNextAd();
+      return result;
     } catch (error, stackTrace) {
       debugPrint('AdService._showRewardedAd exception: $error');
       debugPrintStack(stackTrace: stackTrace);
-      ad.dispose();
+      _rewardedAd?.dispose();
       _rewardedAd = null;
       if (!completer.isCompleted) {
         completer.complete(false);
       }
       return false;
     }
+  }
+
+  void _preloadNextAd() {
+    _doLoad();
   }
 }
 

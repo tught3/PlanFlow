@@ -24,8 +24,7 @@ class RemoteConfigService {
   static const String _kMaxVoiceDurationSeconds = 'max_voice_duration_seconds';
   static const String _kMinRequiredVersion = 'min_required_version';
   static const String _kRewardedAdEnabled = 'rewarded_ad_enabled';
-  static const String _kRewardedAdUnitIdAndroid =
-      'rewarded_ad_unit_id_android';
+  static const String _kRewardedAdUnitIdAndroid = 'rewarded_ad_unit_id_android';
   static const String _kGroupBackupRetentionDays =
       'group_backup_retention_days';
   static const String _kRewardAdVoiceConversationEnabled =
@@ -111,7 +110,9 @@ class RemoteConfigService {
   static bool get rewardedAdEnabled =>
       _remoteConfig?.getBool(_kRewardedAdEnabled) ?? false;
 
-  /// 운영 광고 단위 ID. 비어 있으면 AdService가 테스트 ID로 폴백한다.
+  /// 운영 광고 단위 ID. Remote Config 콘솔에서 설정. 비어 있거나 형식이
+  /// 잘못되면 AdService가 폴백 없이 리워드 광고를 비활성화한다(release 한정,
+  /// debug/profile은 항상 Google 테스트 ID 사용).
   static String get rewardedAdUnitIdAndroid =>
       _remoteConfig?.getString(_kRewardedAdUnitIdAndroid) ?? '';
 
