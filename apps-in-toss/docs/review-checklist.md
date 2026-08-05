@@ -14,17 +14,17 @@
 
 | 항목 | 대응방식 | 근거 파일경로 |
 |------|----------|----------------|
-| 로그인 수단은 토스 로그인만 허용, 자체 로그인 금지 | 구현 완료. `LoginScreen`은 토스 로그인 버튼 1개만 노출하고, 이메일/비밀번호 입력 필드를 두지 않는다. 실제 인증은 `TossAuth.login()` → `toss-login` Edge Function → `supabase.auth.verifyOtp`로 발급받은 세션이며, 사용자에게 노출되는 로그인 경로는 토스 로그인 하나뿐이다(자체 로그인 UI 금지 규정과의 관계는 `docs/toss-login-setup.md` 4절 참고). | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
-| 로그인 거부 시 앱 종료 | 구현 완료. 로그인 취소(`user_cancelled`) 및 그 외 모든 실패 코드에서 `buildLoginScreenState()`가 "다시 시도"/"앱 종료" 선택지를 함께 제공하고, "앱 종료"는 `@apps-in-toss/web-framework`의 `closeView()`를 호출한다. | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
+| 로그인 수단은 토스 로그인만 허용, 자체 로그인 금지 | 구현 완료.[^mtls-501] `LoginScreen`은 토스 로그인 버튼 1개만 노출하고, 이메일/비밀번호 입력 필드를 두지 않는다. 실제 인증은 `TossAuth.login()` → `toss-login` Edge Function → `supabase.auth.verifyOtp`로 발급받은 세션이며, 사용자에게 노출되는 로그인 경로는 토스 로그인 하나뿐이다(자체 로그인 UI 금지 규정과의 관계는 `docs/toss-login-setup.md` 4절 참고). | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
+| 로그인 거부 시 앱 종료 | 구현 완료.[^mtls-501] 로그인 취소(`user_cancelled`) 및 그 외 모든 실패 코드에서 `buildLoginScreenState()`가 "다시 시도"/"앱 종료" 선택지를 함께 제공하고, "앱 종료"는 `@apps-in-toss/web-framework`의 `closeView()`를 호출한다. | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
 | 로그아웃 시 사용자 데이터 삭제 | **미구현(TODO)**. 로그아웃 진입점(버튼/메뉴) 자체가 아직 UI에 없다. 세션 상태 구독(`useSession`)만 구현되어 있고, 로그아웃 액션과 그에 따른 로컬 캐시 정리 정책은 이번 라운드 범위에서 제외했다. | 해당 코드 미존재 |
-| 인트로 페이지에 서비스 설명 및 약관 URL 표시 | 구현 완료. `LoginScreen`에 서비스 설명 문구("토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요")와 개인정보처리방침 링크(`openURL`로 외부 브라우저에서 열림)를 표시한다. 단, 이 URL 자체가 다른 문서(`docs/play-console-*.md`)와 불일치하는 문제는 "미확정/재확인 필요" 절 참고. | `src/features/auth/LoginScreen.tsx` |
+| 인트로 페이지에 서비스 설명 및 약관 URL 표시 | 구현 완료.[^mtls-501] `LoginScreen`에 서비스 설명 문구("토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요")와 개인정보처리방침 링크(`openURL`로 외부 브라우저에서 열림)를 표시한다. 단, 이 URL 자체가 다른 문서(`docs/play-console-*.md`)와 불일치하는 문제는 "미확정/재확인 필요" 절 참고. | `src/features/auth/LoginScreen.tsx` |
 
 ## 2. 사용자 식별 (User Identification)
 
 | 항목 | 대응방식 | 근거 파일경로 |
 |------|----------|----------------|
-| 사용자 식별자 값 확인 후 저장 | 구현 완료. `toss-login` Edge Function이 토스 인증 결과를 검증해 `toss_identities` 테이블에 토스 사용자 식별자와 Supabase `auth.users.id`를 매핑해 저장하고, 클라이언트는 `supabase.auth.verifyOtp`로 발급받은 Supabase 세션의 user id를 사용한다. | `supabase/migrations/20260806000000_*.sql`, `supabase/functions/toss-login/logic.ts`, `src/features/auth/tossLogin.ts` |
-| 앱 재실행/재시작 시 데이터 유지 | 구현 완료(세션 부분). `useSession`이 마운트 시 `supabase.auth.getSession()`으로 기존 세션을 복원하고 `onAuthStateChange`를 구독해, 앱을 재실행해도 이미 로그인된 사용자는 다시 로그인 화면을 거치지 않는다. 이벤트/설정 데이터 자체는 로컬 캐시 없이 Supabase를 단일 소스로 삼아 매 실행 시 조회한다. | `src/features/auth/useSession.ts`, `src/router.tsx`(`AuthGate`), `src/domain/`(다른 병렬 작업에서 구현 중, 본 작업 범위 아님) |
+| 사용자 식별자 값 확인 후 저장 | 코드 작성 완료, 단위테스트 미작성(mTLS 게이트로 현재 미실행 상태).[^mtls-501][^link-issue-no-test] `toss-login` Edge Function의 `linkAndIssueSession()`이 토스 인증 결과를 검증해 `toss_identities` 테이블에 토스 사용자 식별자와 Supabase `auth.users.id`를 매핑해 저장하고, 클라이언트는 `supabase.auth.verifyOtp`로 발급받은 Supabase 세션의 user id를 사용한다. | `supabase/migrations/20260806000000_*.sql`, `supabase/functions/toss-login/index.ts`(`linkAndIssueSession`), `supabase/functions/toss-login/logic.ts`, `src/features/auth/tossLogin.ts` |
+| 앱 재실행/재시작 시 데이터 유지 | 구현 완료(세션 부분).[^mtls-501] `useSession`이 마운트 시 `supabase.auth.getSession()`으로 기존 세션을 복원하고 `onAuthStateChange`를 구독해, 앱을 재실행해도 이미 로그인된 사용자는 다시 로그인 화면을 거치지 않는다. 이벤트/설정 데이터 자체는 로컬 캐시 없이 Supabase를 단일 소스로 삼아 매 실행 시 조회한다. | `src/features/auth/useSession.ts`, `src/router.tsx`(`AuthGate`), `src/domain/`(다른 병렬 작업에서 구현 중, 본 작업 범위 아님) |
 
 ## 3. 보안 및 안정성 (Security & Stability)
 
@@ -106,3 +106,18 @@
     아직 없다.
   - **rate limit**: `toss-login` Edge Function 호출 빈도 제한을 아직
     설계하지 않았다.
+
+[^mtls-501]: `toss-login` Edge Function(`supabase/functions/toss-login/index.ts`)은
+    mTLS 클라이언트 인증서 실호출부가 구현되지 않아, 요청이 여기까지
+    도달하면 항상 `501 mtls_unsupported`를 반환하고 종료한다(위 "미확정/재확인
+    필요" 절의 mTLS 실호출 항목 참고). 즉 이 행이 설명하는 동작은 코드
+    구현은 완료됐지만, `linkAndIssueSession()`을 포함한 로그인 흐름 전체가
+    실제 토스 계정으로 끝까지 실행된 적은 아직 없다.
+[^link-issue-no-test]: `linkAndIssueSession()`은 `toss_identities` 조회/삽입,
+    `auth.admin.getUserById`/`createUser`/`generateLink` 등 여러 분기와
+    실패 경로를 가진 비자명한 로직이지만, 이 함수를 직접 검증하는
+    단위테스트가 없다(`supabase/functions/toss-login/logic.test.ts`는
+    `logic.ts`의 순수 함수만 다루고 `index.ts`의 `linkAndIssueSession`은
+    다루지 않는다). mTLS 게이트가 항상 501을 반환해 이 함수가 실제
+    요청 경로로 호출되는 경우가 아직 없으므로 통합 테스트로도 간접
+    검증되지 않는 상태다.

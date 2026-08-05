@@ -27,18 +27,22 @@ Supabase 대시보드에서 직접 확인해야 한다.
 # 예시 - 키 이름 형식만, 실제 값은 발급받은 뒤 로컬에서 직접 입력
 supabase secrets set TOSS_API_BASE_URL_DEFAULT=...
 supabase secrets set TOSS_API_BASE_URL_SANDBOX=...
+supabase secrets set TOSS_MTLS_CLIENT_CERT=...
+supabase secrets set TOSS_MTLS_CLIENT_KEY=...
 supabase secrets set TOSS_CLIENT_ID=...
 supabase secrets set TOSS_CLIENT_SECRET=...
-supabase secrets set TOSS_MTLS_CERT=...
-supabase secrets set TOSS_MTLS_KEY=...
 supabase secrets set TOSS_PII_DECRYPT_KEY=...
 ```
 
-위 키 이름은 아직 Edge Function 구현과 1:1로 확정된 계약이 아니라 이
-저장소의 `tossLogin.ts` 에러 코드(`toss_api_base_not_configured`,
-`mtls_unsupported`, `server_misconfigured` 등)에서 필요할 것으로 추정되는
-값을 나열한 것이다. 실제 Edge Function(`toss-login`) 구현 시 필요한 키
-이름을 그 구현체 기준으로 다시 확정해야 한다.
+`TOSS_API_BASE_URL_DEFAULT` / `TOSS_API_BASE_URL_SANDBOX` /
+`TOSS_MTLS_CLIENT_CERT` / `TOSS_MTLS_CLIENT_KEY`는 실제
+`supabase/functions/toss-login/index.ts`가 `Deno.env.get(...)`으로
+읽는 키 이름과 일치한다(이 4개가 모두 설정돼야 501 `mtls_unsupported`
+가드를 통과해 아래 TODO 실호출부까지 도달할 수 있다). 반면
+`TOSS_CLIENT_ID` / `TOSS_CLIENT_SECRET` / `TOSS_PII_DECRYPT_KEY`는
+현재 `index.ts`가 읽지 않는다 — mTLS 실호출부(TODO)를 구현할 때
+필요할 것으로 추정되는 값을 미리 나열해 둔 것뿐이며, 실제 필요 여부와
+키 이름은 그 구현 시점에 다시 확정해야 한다.
 
 ## 3. 이번 라운드에 구현하지 않은 것
 
