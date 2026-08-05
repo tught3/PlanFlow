@@ -210,6 +210,43 @@ class _AccountSection extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                FutureBuilder<bool>(
+                  future: AdConsentService.instance.privacyOptionsRequired,
+                  builder: (context, snapshot) {
+                    if (snapshot.data != true) {
+                      return const SizedBox.shrink();
+                    }
+                    return SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final ok =
+                              await AdConsentService.instance
+                                  .showPrivacyOptionsForm();
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ok
+                                    ? '개인정보 설정을 업데이트했어요.'
+                                    : '개인정보 설정을 열 수 없습니다. 잠시 후 다시 시도해 주세요.',
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.privacy_tip_outlined),
+                        label: const Text('광고 개인정보 설정'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: PlanFlowColors.primaryMid,
+                          side: const BorderSide(
+                              color: PlanFlowColors.primaryFaint),
+                          minimumSize: const Size.fromHeight(44),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ],
           );
