@@ -77,3 +77,8 @@ ios/Flutter/ephemeral/
 
 # Claude Code 개인 로컬 설정(권한 등) — 팀 공유 금지
 .claude/settings.local.json
+
+# Apps in Toss 미니앱 (apps-in-toss/) — 자체 산출물/로컬 설정
+apps-in-toss/node_modules/
+apps-in-toss/dist/
+apps-in-toss/.env.local
