@@ -765,6 +765,94 @@ void main() {
     expect(planflowLocal(saved.startAt!), DateTime(year, 6, 13, 8, 30));
   });
 
+  testWidgets(
+      'ConfirmScreen parses compound sino-Korean minute "십오분" (regression)',
+      (tester) async {
+    // "여덟시 십오분에" 처럼 십의 자리 없이 사이노-한글 조합(십오=15)만
+    // 있는 분 표현이 0분으로 떨어지지 않고 정확히 파싱되는지 검증한다.
+    final repository = _FakeEventRepository();
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 8, 0);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '팀 회의',
+            startAt: start,
+            rawText: '여덟시 십오분에 회의',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
+
+    await tester.tap(find.text('오전 8:15'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(planflowLocal(saved.startAt!), DateTime(year, 6, 13, 8, 15));
+  });
+
+  testWidgets(
+      'ConfirmScreen parses compound sino-Korean minute "이십오분" (regression)',
+      (tester) async {
+    // "여덟시 이십오분에" 처럼 십의 자리+일의 자리가 결합된 사이노-한글
+    // 조합(이십오=25)도 정확히 파싱되는지 검증한다.
+    final repository = _FakeEventRepository();
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 8, 0);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '팀 회의',
+            startAt: start,
+            rawText: '여덟시 이십오분에 회의',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
+
+    await tester.tap(find.text('오전 8:25'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(planflowLocal(saved.startAt!), DateTime(year, 6, 13, 8, 25));
+  });
+
   testWidgets('ConfirmScreen shows supplies as compact editable rows',
       (tester) async {
     await tester.pumpWidget(

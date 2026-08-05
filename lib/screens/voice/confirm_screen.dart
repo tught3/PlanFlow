@@ -1935,7 +1935,44 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       '사십': 40,
       '오십': 50,
     };
-    return values[rawText.replaceAll(' ', '')];
+    final text = rawText.replaceAll(' ', '');
+    final direct = values[text];
+    if (direct != null) {
+      return direct;
+    }
+    return _sinoKoreanTensFallback(text);
+  }
+
+  // 사이노-한글 조합 수사(십오=15, 이십=20, 이십오=25, 삼십오=35 등) 폴백.
+  // gpt_service.dart의 _parseKoreanNumber와 동일한 로직(회귀 검증됨,
+  // 수정 시 두 구현을 함께 갱신할 것).
+  int? _sinoKoreanTensFallback(String text) {
+    const sinoDigits = <String, int>{
+      '일': 1,
+      '이': 2,
+      '삼': 3,
+      '사': 4,
+      '오': 5,
+      '육': 6,
+      '륙': 6,
+      '칠': 7,
+      '팔': 8,
+      '구': 9,
+    };
+    if (text == '십') {
+      return 10;
+    }
+    final tenMatch =
+        RegExp(r'^(?:(일|이|삼|사|오|육|륙|칠|팔|구)?십)?(일|이|삼|사|오|육|륙|칠|팔|구)?$')
+            .firstMatch(text);
+    if (tenMatch != null && tenMatch.group(0)!.isNotEmpty) {
+      final tens = tenMatch.group(1);
+      final ones = tenMatch.group(2);
+      var value = text.contains('십') ? (sinoDigits[tens] ?? 1) * 10 : 0;
+      value += sinoDigits[ones] ?? 0;
+      return value == 0 ? null : value;
+    }
+    return null;
   }
 
   Future<void> _recordVoiceCorrectionLearning({
