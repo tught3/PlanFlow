@@ -367,9 +367,10 @@ class _HomeInfoChip extends StatelessWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.onVoice});
+  const _HomeHeader({required this.onVoice, this.onVoiceConv});
 
   final VoidCallback onVoice;
+  final VoidCallback? onVoiceConv;
 
   @override
   Widget build(BuildContext context) {
@@ -403,6 +404,16 @@ class _HomeHeader extends StatelessWidget {
             color: PlanFlowColors.primary,
           ),
         ),
+        if (onVoiceConv != null)
+          IconButton(
+            tooltip: '대화 모드',
+            onPressed: onVoiceConv,
+            icon: const Icon(
+              Icons.chat_bubble_outline,
+              size: 28,
+              color: PlanFlowColors.primary,
+            ),
+          ),
       ],
     );
   }

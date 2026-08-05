@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics_service.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
@@ -27,8 +28,10 @@ import '../../services/home_header_summary_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../services/voice_conversation_ad_gate.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
+import '../voice/voice_conversation_screen.dart';
 part 'home_widgets.dart';
 
 enum _HomeLoadState {
@@ -651,6 +654,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  bool _shouldShowVoiceConvButton() {
+    try {
+      return RemoteConfigService.voiceConversationButtonEnabled;
+    } catch (_) {
+      return true; // RemoteConfig 미초기화 시 기본값 동작
+    }
+  }
+
+  Future<void> _openVoiceConversation(BuildContext context) async {
+    AnalyticsService.logVoiceConvButtonTap();
+    final userId = _resolveUserId();
+    if (userId == null || userId.isEmpty) {
+      _showSnack('로그인 세션이 없습니다. 다시 로그인해 주세요.');
+      return;
+    }
+    await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+      context: context,
+      userId: userId,
+      onEnterAllowed: () {
+        if (!context.mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const VoiceConversationScreen(autoStart: false),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -664,7 +696,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         titleSpacing: AppConstants.defaultPadding,
         backgroundColor: PlanFlowColors.background,
         surfaceTintColor: Colors.transparent,
-        title: _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
+        title: _HomeHeader(
+          onVoice: () => context.push(AppRoutes.voice),
+          onVoiceConv: _shouldShowVoiceConvButton()
+              ? () => _openVoiceConversation(context)
+              : null,
+        ),
         actions: [
           IconButton(
             tooltip: '새로고침',
