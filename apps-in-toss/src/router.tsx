@@ -3,7 +3,8 @@ import { Link, Navigate, Outlet, createBrowserRouter, useNavigate, useParams } f
 
 import type { Event } from './domain/event.ts';
 import { eventRepository } from './data/eventRepository.ts';
-import { supabase } from './lib/supabase.ts';
+import { useSession } from './features/auth/useSession.ts';
+import { LoginScreen } from './features/auth/LoginScreen.tsx';
 import { TodayView } from './features/today/TodayView.tsx';
 import { MonthView } from './features/calendar/month/MonthView.tsx';
 import WeekView from './features/calendar/week/WeekView.tsx';
@@ -11,31 +12,28 @@ import { EventForm } from './features/event/EventForm.tsx';
 import { EventDetail } from './features/event/EventDetail.tsx';
 
 /**
- * 로그인 세션에서 현재 사용자 id를 읽어온다.
- * 인증 흐름(로그인/로그아웃)은 아직 붙지 않았으므로(src/lib/supabase.ts 주석 참고),
- * 여기서는 현재 세션의 user id만 읽어 EventForm에 전달한다.
+ * 로그인 여부를 확인하는 게이트. AppLayout(하단 탭 포함) 상위에서 감싸서,
+ * 로그인 전에는 하단 탭이 전혀 보이지 않고 /login으로 리다이렉트되게 한다.
+ * 세션 상태는 useSession()이 getSession 초기조회 + onAuthStateChange 구독으로
+ * 관리하므로, LoginScreen에서 로그인에 성공하면 이 게이트가 곧바로 리렌더된다.
  */
-function useCurrentUserId(): { userId: string | null; loading: boolean } {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+function AuthGate() {
+  const { userId, loading } = useSession();
 
-  useEffect(() => {
-    let cancelled = false;
+  if (loading) {
+    return <p>불러오는 중...</p>;
+  }
+  if (userId === null) {
+    return <Navigate to="/login" replace />;
+  }
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (cancelled) {
-        return;
-      }
-      setUserId(data.user?.id ?? null);
-      setLoading(false);
-    });
+  return <Outlet />;
+}
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { userId, loading };
+/** /login 라우트. 로그인 성공 시 오늘 화면으로 이동시킨다. */
+function LoginRoute() {
+  const navigate = useNavigate();
+  return <LoginScreen onLoginSuccess={() => navigate('/today', { replace: true })} />;
 }
 
 /** 하단 탭 내비게이션을 포함하는 공용 레이아웃. */
@@ -58,13 +56,14 @@ function AppLayout() {
 /** 새 일정 생성 라우트. */
 function EventNewRoute() {
   const navigate = useNavigate();
-  const { userId, loading } = useCurrentUserId();
+  const { userId, loading } = useSession();
 
   if (loading) {
     return <p>불러오는 중...</p>;
   }
   if (userId === null) {
-    return <p role="alert">로그인이 필요합니다.</p>;
+    // AuthGate가 상위에서 비로그인 상태를 걸러내므로 정상 흐름에서는 도달하지 않는다.
+    return null;
   }
 
   return (
@@ -142,14 +141,15 @@ function EventDetailRoute() {
 /** 일정 수정 라우트. */
 function EventEditRoute() {
   const navigate = useNavigate();
-  const { userId, loading: userLoading } = useCurrentUserId();
+  const { userId, loading: userLoading } = useSession();
   const { event, error, loading: eventLoading } = useLoadedEvent();
 
   if (userLoading || eventLoading) {
     return <p>불러오는 중...</p>;
   }
   if (userId === null) {
-    return <p role="alert">로그인이 필요합니다.</p>;
+    // AuthGate가 상위에서 비로그인 상태를 걸러내므로 정상 흐름에서는 도달하지 않는다.
+    return null;
   }
   if (event === null) {
     return <p role="alert">{error ?? '일정을 찾을 수 없습니다.'}</p>;
@@ -167,17 +167,24 @@ function EventEditRoute() {
 }
 
 export const router = createBrowserRouter([
+  // /login은 AuthGate/AppLayout 바깥에 둔다 - 로그인 전에는 하단 탭이 보이면 안 된다.
+  { path: '/login', element: <LoginRoute /> },
   {
     path: '/',
-    element: <AppLayout />,
+    element: <AuthGate />,
     children: [
-      { index: true, element: <Navigate to="/today" replace /> },
-      { path: 'today', element: <TodayView /> },
-      { path: 'calendar/month', element: <MonthView /> },
-      { path: 'calendar/week', element: <WeekView /> },
-      { path: 'event/new', element: <EventNewRoute /> },
-      { path: 'event/:id', element: <EventDetailRoute /> },
-      { path: 'event/:id/edit', element: <EventEditRoute /> },
+      {
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <Navigate to="/today" replace /> },
+          { path: 'today', element: <TodayView /> },
+          { path: 'calendar/month', element: <MonthView /> },
+          { path: 'calendar/week', element: <WeekView /> },
+          { path: 'event/new', element: <EventNewRoute /> },
+          { path: 'event/:id', element: <EventDetailRoute /> },
+          { path: 'event/:id/edit', element: <EventEditRoute /> },
+        ],
+      },
     ],
   },
 ]);
