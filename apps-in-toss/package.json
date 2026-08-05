@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build && ait build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy": "ait deploy"
+    "deploy": "ait deploy",
+    "secret-scan": "node scripts/scan-bundle.mjs"
   },
   "dependencies": {
     "@apps-in-toss/web-framework": "latest",
