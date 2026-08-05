@@ -28,6 +28,13 @@ class RemoteConfigService {
       'rewarded_ad_unit_id_android';
   static const String _kGroupBackupRetentionDays =
       'group_backup_retention_days';
+  static const String _kRewardAdVoiceConversationEnabled =
+      'reward_ad_voice_conversation_enabled';
+  static const String _kVoiceConversationFreeTrialCount =
+      'voice_conversation_free_trial_count';
+  static const String _kRewardAdFailurePolicy = 'reward_ad_failure_policy';
+  static const String _kVoiceConversationButtonEnabled =
+      'voice_conversation_button_enabled';
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -58,6 +65,10 @@ class RemoteConfigService {
         _kRewardedAdEnabled: false,
         _kRewardedAdUnitIdAndroid: '',
         _kGroupBackupRetentionDays: 30,
+        _kRewardAdVoiceConversationEnabled: true,
+        _kVoiceConversationFreeTrialCount: 3,
+        _kRewardAdFailurePolicy: 'free_pass',
+        _kVoiceConversationButtonEnabled: true,
       },
     );
 
@@ -107,4 +118,20 @@ class RemoteConfigService {
   /// 그룹 백업 보관 기간(일). 기본 30일.
   static int get groupBackupRetentionDays =>
       getInt(_kGroupBackupRetentionDays, defaultValue: 30);
+
+  /// 음성 대화 모드 광고 자체 활성화. 기본 true.
+  static bool get rewardAdVoiceConversationEnabled =>
+      _remoteConfig?.getBool(_kRewardAdVoiceConversationEnabled) ?? true;
+
+  /// 광고 없이 무료 사용 가능 횟수. 기본 3회.
+  static int get voiceConversationFreeTrialCount =>
+      getInt(_kVoiceConversationFreeTrialCount, defaultValue: 3);
+
+  /// 광고 실패 시 정책 ('free_pass' | 'retry' | 'feature_unavailable'). 기본 'free_pass'.
+  static String get rewardAdFailurePolicy =>
+      _remoteConfig?.getString(_kRewardAdFailurePolicy) ?? 'free_pass';
+
+  /// 홈 화면 음성 대화 진입 버튼 표시 여부. 기본 true.
+  static bool get voiceConversationButtonEnabled =>
+      _remoteConfig?.getBool(_kVoiceConversationButtonEnabled) ?? true;
 }
