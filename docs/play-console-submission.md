@@ -10,7 +10,7 @@
 - 무료/유료: `무료`
 - 카테고리 권장값: `생산성`
 - 패키지명: `com.fluxstudio.planflow`
-- 개인정보처리방침 URL: `https://tught3.github.io/PlanFlow/privacy-policy.html`
+- 개인정보처리방침 URL: `https://fluxstudio.co.kr/privacy`
 - 계정 삭제 URL: `https://tught3.github.io/PlanFlow/account-deletion.html`
 - 일부 데이터 삭제 요청 URL: `https://tught3.github.io/PlanFlow/account-deletion.html#partial-data-deletion`
 - 현재 릴리즈 버전: `1.1.0`

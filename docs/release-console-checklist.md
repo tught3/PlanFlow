@@ -12,7 +12,7 @@
 - Kakao release key hash: `WpRrRSVEi4m5wBNp6SFZpLNwFqc=`
 - Supabase callback URL: `https://xqvvfnvmytjlblcngipn.supabase.co/auth/v1/callback`
 - App auth deep link: `planflow://auth-callback`
-- Play Console privacy policy URL: `https://tught3.github.io/PlanFlow/privacy-policy.html`
+- Play Console privacy policy URL: `https://fluxstudio.co.kr/privacy`
 
 ## OpenAI
 
@@ -55,7 +55,7 @@
 ## Google Play Console
 
 1. Play Console에서 PlanFlow 앱을 생성합니다.
-2. App content > Privacy policy에 `https://tught3.github.io/PlanFlow/privacy-policy.html`을 입력합니다.
+2. App content > Privacy policy에 `https://fluxstudio.co.kr/privacy`을 입력합니다.
 3. Internal testing 트랙에 `build/app/outputs/bundle/release/app-release.aab`를 업로드합니다.
 4. Data safety에는 이메일, 위치, 캘린더 이벤트 수집을 앱 기능 목적으로 표시합니다.
 5. 오디오 파일은 수집하지 않음으로 표시합니다.

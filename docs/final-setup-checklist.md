@@ -72,7 +72,7 @@
 - [x] 출발 알림 예약/모니터링 상태 기록 및 설정 화면 표시
 - [x] 지도 선택 화면 API 키/인증 실패 안내와 외부 지도 fallback 표시
 - [x] Google/Naver/휴대폰 내부 캘린더 자동 동기화 provider별 상태 표시
-- [x] 개인정보처리방침 GitHub Pages URL 공개 확인: `https://tught3.github.io/PlanFlow/privacy-policy.html`
+- [x] 개인정보처리방침 GitHub Pages URL 공개 확인: `https://fluxstudio.co.kr/privacy`
 
 ### 1차에서 아직 실제 검증이 필요한 것
 
