@@ -1,4 +1,4 @@
--- PlanFlow checklist 1
+﻿-- PlanFlow checklist 1
 -- Supabase schema for the core tables and per-user RLS policies.
 
 create extension if not exists pgcrypto;
@@ -1118,7 +1118,7 @@ $$;
 create table if not exists public.group_role_delegations (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups (id) on delete cascade,
-  delegator_user_id uuid not null references public.users (id) on delete cascade,
+  delegator_user_id uuid not null references public.users (id) on delete set null,
   delegate_user_id uuid not null references public.users (id) on delete cascade,
   permissions jsonb not null default '[]'::jsonb,
   starts_at timestamptz not null,
@@ -1297,7 +1297,7 @@ create table if not exists public.group_events (
   all_day boolean not null default false,
   recurrence_type text not null default 'none' check (recurrence_type in ('none', 'daily', 'weekly', 'monthly')),
   recurrence_until timestamptz,
-  created_by uuid not null references public.users (id) on delete cascade,
+  created_by uuid not null references public.users (id) on delete set null,
   updated_by uuid references public.users (id) on delete set null,
   cancelled_at timestamptz,
   cancelled_by uuid references public.users (id) on delete set null,
@@ -1463,7 +1463,7 @@ create table if not exists public.group_event_comments (
   id uuid primary key default gen_random_uuid(),
   group_event_id uuid not null references public.group_events (id) on delete cascade,
   group_id uuid not null references public.groups (id) on delete cascade,
-  author_user_id uuid not null references public.users (id) on delete cascade,
+  author_user_id uuid not null references public.users (id) on delete set null,
   target_user_id uuid not null references public.users (id) on delete cascade,
   content text not null,
   confirmed_at timestamptz,
@@ -1606,7 +1606,7 @@ create table if not exists public.group_backups (
   group_id uuid references public.groups (id) on delete set null,
   backup_type text not null check (backup_type in ('archive', 'delete')),
   snapshot jsonb not null default '{}'::jsonb,
-  created_by uuid not null references public.users (id) on delete cascade,
+  created_by uuid not null references public.users (id) on delete set null,
   created_at timestamptz not null default now(),
   restored_at timestamptz,
   restored_by uuid references public.users (id) on delete set null
