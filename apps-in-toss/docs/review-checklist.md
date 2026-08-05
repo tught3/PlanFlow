@@ -14,17 +14,17 @@
 
 | 항목 | 대응방식 | 근거 파일경로 |
 |------|----------|----------------|
-| 로그인 수단은 토스 로그인만 허용, 자체 로그인 금지 | 자체 아이디/비밀번호 로그인 UI를 구현하지 않는다. 인증은 토스 로그인(예정)만 사용한다. | `src/features/`(로그인 UI 미구현), `src/lib/`(연동 시 여기에 배치 예정) |
-| 로그인 거부 시 앱 종료 | 로그인 미연동 상태이므로 현재 해당 없음. 연동 시 거부 흐름을 구현해야 함(TODO). | `src/router.tsx` |
-| 로그아웃 시 사용자 데이터 삭제 | 원본(Flutter) 앱과 동일하게 Supabase 세션 종료 시 로컬 캐시를 정리하는 정책을 그대로 따를 예정(TODO, 연동 전). | `src/lib/`, `src/data/` |
-| 인트로 페이지에 서비스 설명 및 약관 URL 표시 | 로그인 미연동 상태로 해당 없음(TODO). | `src/App.tsx` |
+| 로그인 수단은 토스 로그인만 허용, 자체 로그인 금지 | 구현 완료. `LoginScreen`은 토스 로그인 버튼 1개만 노출하고, 이메일/비밀번호 입력 필드를 두지 않는다. 실제 인증은 `TossAuth.login()` → `toss-login` Edge Function → `supabase.auth.verifyOtp`로 발급받은 세션이며, 사용자에게 노출되는 로그인 경로는 토스 로그인 하나뿐이다(자체 로그인 UI 금지 규정과의 관계는 `docs/toss-login-setup.md` 4절 참고). | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
+| 로그인 거부 시 앱 종료 | 구현 완료. 로그인 취소(`user_cancelled`) 및 그 외 모든 실패 코드에서 `buildLoginScreenState()`가 "다시 시도"/"앱 종료" 선택지를 함께 제공하고, "앱 종료"는 `@apps-in-toss/web-framework`의 `closeView()`를 호출한다. | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
+| 로그아웃 시 사용자 데이터 삭제 | **미구현(TODO)**. 로그아웃 진입점(버튼/메뉴) 자체가 아직 UI에 없다. 세션 상태 구독(`useSession`)만 구현되어 있고, 로그아웃 액션과 그에 따른 로컬 캐시 정리 정책은 이번 라운드 범위에서 제외했다. | 해당 코드 미존재 |
+| 인트로 페이지에 서비스 설명 및 약관 URL 표시 | 구현 완료. `LoginScreen`에 서비스 설명 문구("토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요")와 개인정보처리방침 링크(`openURL`로 외부 브라우저에서 열림)를 표시한다. 단, 이 URL 자체가 다른 문서(`docs/play-console-*.md`)와 불일치하는 문제는 "미확정/재확인 필요" 절 참고. | `src/features/auth/LoginScreen.tsx` |
 
 ## 2. 사용자 식별 (User Identification)
 
 | 항목 | 대응방식 | 근거 파일경로 |
 |------|----------|----------------|
-| 사용자 식별자 값 확인 후 저장 | Supabase Auth의 user id를 세션 저장소에 유지하고, 앱 재실행 시 그대로 복원한다(원본 Flutter 앱 정책 이식 예정). | `src/lib/`, `src/data/index.ts` |
-| 앱 재실행/재시작 시 데이터 유지 | 이벤트/설정 데이터는 로컬 캐시 없이 Supabase를 단일 소스로 삼아 매 실행 시 조회한다. | `src/domain/`(다른 병렬 작업에서 구현 중, 본 작업 범위 아님) |
+| 사용자 식별자 값 확인 후 저장 | 구현 완료. `toss-login` Edge Function이 토스 인증 결과를 검증해 `toss_identities` 테이블에 토스 사용자 식별자와 Supabase `auth.users.id`를 매핑해 저장하고, 클라이언트는 `supabase.auth.verifyOtp`로 발급받은 Supabase 세션의 user id를 사용한다. | `supabase/migrations/20260806000000_*.sql`, `supabase/functions/toss-login/logic.ts`, `src/features/auth/tossLogin.ts` |
+| 앱 재실행/재시작 시 데이터 유지 | 구현 완료(세션 부분). `useSession`이 마운트 시 `supabase.auth.getSession()`으로 기존 세션을 복원하고 `onAuthStateChange`를 구독해, 앱을 재실행해도 이미 로그인된 사용자는 다시 로그인 화면을 거치지 않는다. 이벤트/설정 데이터 자체는 로컬 캐시 없이 Supabase를 단일 소스로 삼아 매 실행 시 조회한다. | `src/features/auth/useSession.ts`, `src/router.tsx`(`AuthGate`), `src/domain/`(다른 병렬 작업에서 구현 중, 본 작업 범위 아님) |
 
 ## 3. 보안 및 안정성 (Security & Stability)
 
@@ -34,7 +34,7 @@
 | 서버사이드 렌더링 금지, 클라이언트 렌더링만 | Vite + React SPA로 빌드되며 SSR 파이프라인을 두지 않는다. | `vite.config.ts`, `src/main.tsx` |
 | 브라우저 히스토리 조작으로 외부→자사 사이트 리다이렉트 금지 | `react-router-dom`의 표준 클라이언트 라우팅만 사용하고, `history.replaceState`/`pushState`를 임의 조작하는 코드를 두지 않는다. | `src/router.tsx` |
 | WebSocket은 `wss://`(암호화) 연결만 허용 | 현재 WebSocket을 사용하지 않음. 추후 실시간 기능 도입 시 `wss://`만 허용하도록 이 표를 갱신해야 함(TODO). | 해당 코드 미존재 |
-| Supabase `service_role` 키 등 민감 키 클라이언트 번들 미노출 | 빌드 산출물에서 `service_role` 문자열, 32자 이상 hex/base64 토큰을 자동 스캔해 발견 시 빌드를 실패시킨다. `service_role` 키는 클라이언트 코드/환경변수에 절대 넣지 않고, `anon`/공개 키만 사용한다. | `scripts/scan-bundle.mjs`, `.env.example`(anon 키만 노출) |
+| Supabase `service_role` 키 등 민감 키 클라이언트 번들 미노출 | 빌드 산출물에서 `service_role` 문자열, 32자 이상 hex/base64 토큰을 자동 스캔해 발견 시 빌드를 실패시킨다. `service_role` 키는 클라이언트 코드/환경변수에 절대 넣지 않고, `anon`/공개 키만 사용한다. 토스 로그인 연동에 필요한 서버 전용 시크릿(mTLS 인증서/개인키, clientId/clientSecret, PII 복호화 키 등)도 동일 원칙으로 클라이언트 `.env`에는 절대 넣지 않고 Supabase Edge Function secret으로만 등록한다. | `scripts/scan-bundle.mjs`, `.env.example`(anon 키만 노출, 시크릿 목록은 `docs/toss-login-setup.md` 참고) |
 
 ## 4. 서비스 이용 행태 (Service Usage Behavior)
 
@@ -79,10 +79,30 @@
 
 ## 미확정/재확인 필요 항목
 
-- 로그인, 인앱결제(Toss Pay), 인앱 광고, 리퍼럴 리워드 관련 세부 항목은
+- 인앱결제(Toss Pay), 인앱 광고, 리퍼럴 리워드 관련 세부 항목은
   이번 스캐폴딩 단계에서 아직 해당 기능이 구현되지 않아 "TODO"로 표시했다.
   각 기능을 실제로 구현하는 시점에 원문 체크리스트를 다시 확인하고 이
   표를 갱신해야 한다.
 - 원문 페이지(`app-nongame.html`)가 스캔 시점에 404를 반환해 `.md`
   버전으로 대체 확인했다. 배포 전 담당자가 최신 원문을 직접 열람해
   이 표와 대조하는 것을 권장한다.
+- **개인정보처리방침 URL 불일치(P7에서 발견)**: `docs/play-console-data-safety.md`
+  (프로젝트 루트, `E:\FluxStudio\PlanFlow-AppsInToss\docs\`)의 15행은
+  `https://fluxstudio.co.kr/privacy`를 정본으로 쓰는 반면, 같은 위치의
+  `docs/play-console-submission.md`는 `https://tught3.github.io/PlanFlow/privacy-policy.html`을
+  쓴다. `LoginScreen`의 `PRIVACY_POLICY_URL` 상수는 현재 데이터 보안 답변표
+  (`play-console-data-safety.md`) 쪽 값을 정본으로 간주해 사용 중이다
+  (`src/features/auth/LoginScreen.tsx`의 관련 TODO 주석 참고). 실제 제출/심사
+  전에 어느 URL이 최신·정본인지 확인하고, 세 문서(두 Play Console 문서 +
+  `LoginScreen.tsx`의 상수)를 동일한 값으로 맞춰야 한다.
+- 아래 항목은 이번 라운드에서 의도적으로 구현하지 않았다(TODO로 유지,
+  완료로 표시하지 않는다). 사유와 상세는 `docs/toss-login-setup.md` 3절 참고.
+  - **mTLS 실호출**: `toss-login` Edge Function은 `mtls_unsupported` 에러
+    코드만 정의되어 있고, 실제 mTLS 클라이언트 인증서를 붙인 토스 API
+    호출부는 구현하지 않았다(501/TODO로 남김).
+  - **PII 복호화**: 복호화 키 수령 경로 자체가 미확정이라 복호화 로직을
+    구현하지 않았다.
+  - **로그아웃 UI**: 위 1절 참고 — 로그아웃 진입점과 데이터 정리 정책이
+    아직 없다.
+  - **rate limit**: `toss-login` Edge Function 호출 빈도 제한을 아직
+    설계하지 않았다.
