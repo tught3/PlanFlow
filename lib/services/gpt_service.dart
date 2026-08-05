@@ -574,7 +574,90 @@ class GptService {
     );
     _applyLocalDateRange(rawText, normalized);
     _removeUnsupportedCrossDayEnd(rawText, normalized);
+    _applyAmbiguousMeridiemMinuteCorrection(normalized, rawText);
     return normalized;
+  }
+
+  /// "오전/오후 미표시 + hour 7~12"인 애매한 시각 표현은
+  /// `_shouldPreferInferredStartAt`이 의도적으로 GPT의 시(hour)/오전오후
+  /// 판단을 신뢰하도록 로컬 override를 건너뛴다(R2 보호). 하지만 그 결과
+  /// GPT가 반환하는 분(minute)까지 통째로 신뢰하게 되어, "8시 반"을
+  /// 08:00으로 잘못 반환하는 등 분 파싱 회귀를 교정할 수단이 없어졌다.
+  /// 이 보정은 그 간극만 메운다: 원문에 명시적인 분 표현이 있을 때만
+  /// start_at의 분(minute)을 로컬 파싱값으로 교체하고, year/month/day/hour는
+  /// 절대 건드리지 않는다(GPT의 오전/오후·날짜 판단은 그대로 유지).
+  void _applyAmbiguousMeridiemMinuteCorrection(
+    Map<String, dynamic> schedule,
+    String rawText,
+  ) {
+    if (schedule['is_all_day'] == true || schedule['is_multi_day'] == true) {
+      return;
+    }
+    if (!_hasAmbiguousMeridiemTime(rawText)) {
+      return;
+    }
+    if (!_hasExplicitMinuteExpressionInAmbiguousMeridiemTime(rawText)) {
+      return;
+    }
+    final localClock = _extractAmbiguousMeridiemClock(rawText);
+    if (localClock == null) {
+      return;
+    }
+    final startAt = _parseDateTime(schedule['start_at']);
+    if (startAt == null || startAt.minute == localClock.minute) {
+      return;
+    }
+
+    final correctedStartAt = DateTime(
+      startAt.year,
+      startAt.month,
+      startAt.day,
+      startAt.hour,
+      localClock.minute,
+      startAt.second,
+      startAt.millisecond,
+      startAt.microsecond,
+    );
+    schedule['start_at'] = correctedStartAt.toIso8601String();
+
+    final delta = correctedStartAt.difference(startAt);
+    if (delta == Duration.zero) {
+      return;
+    }
+    // end_at 역전 방지: 보정으로 start_at이 밀려 end_at 이하가 되면
+    // end_at도 같은 delta만큼 함께 이동시킨다.
+    final endAt = _parseDateTime(schedule['end_at']);
+    if (endAt != null && !endAt.isAfter(correctedStartAt)) {
+      schedule['end_at'] = endAt.add(delta).toIso8601String();
+    }
+  }
+
+  /// `_extractAmbiguousMeridiemClock`과 동일한 매칭 로직(정규식)을 그대로
+  /// 재사용하되, "분 표현이 아예 없음(0으로 기본 처리됨)"과 "0분이 실제로
+  /// 명시됨"을 구분하기 위한 전용 판정 함수다. 매칭된 시각 표현 범위 안의
+  /// 분 캡처 그룹만 검사하므로, 문장의 다른 부분에 있는 "분"(예: "30분
+  /// 뒤에 다시 전화")을 오탐하지 않는다. 기존 `_hasAmbiguousMeridiemTime`
+  /// / `_extractAmbiguousMeridiemClock`의 판정 로직·반환 의미는 건드리지
+  /// 않고 그 결과만 별도로 소비한다.
+  bool _hasExplicitMinuteExpressionInAmbiguousMeridiemTime(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    final numericMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?|\s*(반))?',
+    ).firstMatch(text);
+    if (numericMatch != null) {
+      if (numericMatch.group(1) != null) {
+        return false;
+      }
+      return numericMatch.group(3) != null || numericMatch.group(4) != null;
+    }
+
+    final koreanMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?([가-힣]{1,8})\s*시(?:\s*([가-힣]{1,8}|\d{1,2})\s*분?|\s*(반))?',
+    ).firstMatch(text);
+    if (koreanMatch == null || koreanMatch.group(1) != null) {
+      return false;
+    }
+    return koreanMatch.group(3) != null || koreanMatch.group(4) != null;
   }
 
   void _applyDefaultStartTimeForImplicitTime(
