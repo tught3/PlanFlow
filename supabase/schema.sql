@@ -2554,6 +2554,7 @@ create table if not exists public.user_settings (
   naver_calendar_token text,
   naver_caldav_id text,
   naver_caldav_app_password text,
+  voice_conversation_free_trial_used integer not null default 0,
   created_at timestamptz not null default now()
 );
 
