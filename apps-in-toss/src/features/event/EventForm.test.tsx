@@ -27,6 +27,8 @@ function makeValues(overrides: Partial<EventFormValues> = {}): EventFormValues {
     endAt: '2026-08-10T10:00',
     memo: '분기 계획 논의',
     isCritical: false,
+    isAllDay: false,
+    location: '',
     ...overrides,
   };
 }
@@ -113,6 +115,22 @@ describe('buildNewEventInput', () => {
     expect(input.endAt).toBeNull();
     expect(input.memo).toBeNull();
   });
+
+  it('isAllDay 값을 그대로 반영한다', () => {
+    const input = buildNewEventInput(makeValues({ isAllDay: true }), 'user-1');
+    expect(input.isAllDay).toBe(true);
+
+    const inputFalse = buildNewEventInput(makeValues({ isAllDay: false }), 'user-1');
+    expect(inputFalse.isAllDay).toBe(false);
+  });
+
+  it('location 값을 trim해서 반영하고, 빈 문자열이면 null로 변환한다', () => {
+    const input = buildNewEventInput(makeValues({ location: '  회의실 A  ' }), 'user-1');
+    expect(input.location).toBe('회의실 A');
+
+    const inputEmpty = buildNewEventInput(makeValues({ location: '   ' }), 'user-1');
+    expect(inputEmpty.location).toBeNull();
+  });
 });
 
 describe('buildEventPatch', () => {
@@ -122,6 +140,15 @@ describe('buildEventPatch', () => {
     expect(patch.startAt).toEqual(new Date('2026-08-10T09:00'));
     expect(patch.endAt).toEqual(new Date('2026-08-10T10:00'));
     expect(patch.isCritical).toBe(true);
+  });
+
+  it('isAllDay/location을 patch에 올바로 채운다', () => {
+    const patch = buildEventPatch(makeValues({ isAllDay: true, location: '  본사 대회의실  ' }));
+    expect(patch.isAllDay).toBe(true);
+    expect(patch.location).toBe('본사 대회의실');
+
+    const patchEmptyLocation = buildEventPatch(makeValues({ location: '' }));
+    expect(patchEmptyLocation.location).toBeNull();
   });
 });
 
