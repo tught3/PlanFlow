@@ -1,5 +1,53 @@
 /* 화면별 스타일. */
 
+/* ---- Auth (로그인) ---- */
+.auth-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--pf-space-16);
+}
+
+.auth-login__card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--pf-space-12);
+  width: min(100%, 360px);
+}
+
+.auth-login__title {
+  font-size: var(--pf-font-24);
+  font-weight: 700;
+  color: var(--pf-text);
+  margin: 0;
+}
+
+.auth-login__description {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+  margin: 0 0 var(--pf-space-8);
+}
+
+.auth-login__submit {
+  width: 100%;
+}
+
+.auth-login__privacy {
+  width: 100%;
+}
+
+.auth-login__message {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+  margin: 0;
+}
+
+.auth-login__message--error {
+  color: var(--pf-danger);
+}
+
 /* ---- Today (오늘 일정) ---- */
 .today-view {
   display: flex;

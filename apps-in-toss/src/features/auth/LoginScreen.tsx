@@ -83,31 +83,54 @@ export function LoginScreen({ deps, onLoginSuccess }: LoginScreenProps = {}) {
   }
 
   return (
-    <section>
-      <h1>PlanFlow</h1>
-      <p>토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요.</p>
+    <section className="auth-login">
+      <div className="pf-card auth-login__card">
+        <h1 className="auth-login__title">PlanFlow</h1>
+        <p className="auth-login__description">토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요.</p>
 
-      <button type="button" onClick={() => void handleLogin()} disabled={submitting}>
-        토스로 로그인
-      </button>
-
-      <button type="button" onClick={handleOpenPrivacyPolicy}>
-        개인정보처리방침
-      </button>
-
-      {state !== null ? <p role={state.canRetry ? 'alert' : 'status'}>{state.message}</p> : null}
-
-      {state !== null && state.canRetry ? (
-        <button type="button" onClick={() => void handleLogin()} disabled={submitting}>
-          다시 시도
+        <button
+          type="button"
+          className="pf-button pf-button--primary auth-login__submit"
+          onClick={() => void handleLogin()}
+          disabled={submitting}
+        >
+          토스로 로그인
         </button>
-      ) : null}
 
-      {state !== null && state.shouldOfferExit ? (
-        <button type="button" onClick={handleExit}>
-          앱 종료
+        <button
+          type="button"
+          className="pf-button pf-button--ghost auth-login__privacy"
+          onClick={handleOpenPrivacyPolicy}
+        >
+          개인정보처리방침
         </button>
-      ) : null}
+
+        {state !== null ? (
+          <p
+            className={state.canRetry ? 'auth-login__message auth-login__message--error' : 'auth-login__message'}
+            role={state.canRetry ? 'alert' : 'status'}
+          >
+            {state.message}
+          </p>
+        ) : null}
+
+        {state !== null && state.canRetry ? (
+          <button
+            type="button"
+            className="pf-button pf-button--primary"
+            onClick={() => void handleLogin()}
+            disabled={submitting}
+          >
+            다시 시도
+          </button>
+        ) : null}
+
+        {state !== null && state.shouldOfferExit ? (
+          <button type="button" className="pf-button pf-button--danger" onClick={handleExit}>
+            앱 종료
+          </button>
+        ) : null}
+      </div>
     </section>
   );
 }
