@@ -37,6 +37,98 @@ export interface EventFormValues {
   /** 종일 일정 여부. true면 startAt/endAt을 날짜 전용 입력으로 다룬다. */
   isAllDay: boolean;
   location: string;
+  /** 반복 프리셋. 'none'이면 반복 없음. */
+  recurrencePreset: RecurrencePreset;
+  /** <input type="date"> 형식 문자열('YYYY-MM-DD'). 비어 있으면 종료일 없음(무기한 반복). */
+  recurrenceUntilDate: string;
+  /**
+   * false면 initialEvent.recurrenceRule이 5개 프리셋으로 표현할 수 없는 규칙(BYDAY/
+   * INTERVAL/COUNT 포함)이라는 뜻이다 - 이 경우 select를 비활성화하고, 저장 시에도
+   * recurrenceRule/recurrenceEndDate를 patch에서 아예 제외해 기존 값을 덮어쓰지 않는다.
+   * create 모드(initialEvent 없음)에서는 항상 true.
+   */
+  recurrenceEditable: boolean;
+}
+
+/** 앱이 폼으로 편집할 수 있는 반복 프리셋. 'none'은 반복 없음을 뜻한다. */
+export type RecurrencePreset = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+const PRESET_TO_FREQ: Record<Exclude<RecurrencePreset, 'none'>, string> = {
+  daily: 'DAILY',
+  weekly: 'WEEKLY',
+  monthly: 'MONTHLY',
+  yearly: 'YEARLY',
+};
+
+const FREQ_TO_PRESET: Record<string, RecurrencePreset> = {
+  DAILY: 'daily',
+  WEEKLY: 'weekly',
+  MONTHLY: 'monthly',
+  YEARLY: 'yearly',
+};
+
+/**
+ * 반복 프리셋(+선택적 종료일) -> RRULE 문자열. 화이트리스트를 엄격히 지킨다:
+ * FREQ=DAILY|WEEKLY|MONTHLY|YEARLY(+;UNTIL=YYYYMMDDTHHMMSSZ)만 생성하고,
+ * COUNT=/BYDAY=/INTERVAL=는 절대 넣지 않는다(domain/recurrence.ts의
+ * expandOccurrences가 COUNT를 파싱하지 못하므로 COUNT 기반 종료는 표현하지 않는다).
+ */
+export function buildRecurrenceRule(preset: RecurrencePreset, untilDate: string): string | null {
+  if (preset === 'none') {
+    return null;
+  }
+
+  const freq = PRESET_TO_FREQ[preset];
+  const trimmedUntil = untilDate.trim();
+  if (trimmedUntil.length === 0) {
+    return `FREQ=${freq}`;
+  }
+
+  const digits = trimmedUntil.replace(/-/g, '');
+  return `FREQ=${freq};UNTIL=${digits}T235959Z`;
+}
+
+export interface ParsedRecurrence {
+  preset: RecurrencePreset;
+  untilDate: string;
+  /** false면 프리셋으로 표현할 수 없는 규칙(BYDAY/INTERVAL/COUNT 등)이라 편집을 막아야 한다. */
+  editable: boolean;
+}
+
+const NO_RECURRENCE: ParsedRecurrence = { preset: 'none', untilDate: '', editable: true };
+const UNEDITABLE_RECURRENCE: ParsedRecurrence = { preset: 'none', untilDate: '', editable: false };
+
+/**
+ * 기존 recurrenceRule(RRULE 문자열) -> 폼이 다루는 5개 프리셋 중 하나로 역파싱한다.
+ * BYDAY/INTERVAL/COUNT가 포함돼 있거나 FREQ를 알 수 없으면 편집 불가(editable=false)로
+ * 판정해, 컴포넌트가 select를 비활성화하고 규칙을 절대 덮어쓰지 않게 한다
+ * (데이터 파괴 방지 - 표현 못하는 규칙을 프리셋으로 대충 저장하면 원래 규칙이 사라진다).
+ */
+export function parseRecurrencePreset(rule: string | null | undefined): ParsedRecurrence {
+  if (rule === null || rule === undefined || rule.trim().length === 0) {
+    return NO_RECURRENCE;
+  }
+
+  const upper = rule.toUpperCase();
+
+  if (/BYDAY=/.test(upper) || /INTERVAL=/.test(upper) || /COUNT=/.test(upper)) {
+    return UNEDITABLE_RECURRENCE;
+  }
+
+  const freqMatch = /FREQ=([A-Z]+)/.exec(upper);
+  const freq = freqMatch?.[1];
+  const preset = freq !== undefined ? FREQ_TO_PRESET[freq] : undefined;
+  if (preset === undefined) {
+    return UNEDITABLE_RECURRENCE;
+  }
+
+  const untilMatch = /UNTIL=(\d{8})/.exec(upper);
+  const untilDate =
+    untilMatch !== null
+      ? `${untilMatch[1].slice(0, 4)}-${untilMatch[1].slice(4, 6)}-${untilMatch[1].slice(6, 8)}`
+      : '';
+
+  return { preset, untilDate, editable: true };
 }
 
 export interface EventFormFieldErrors {
@@ -49,7 +141,18 @@ const DEFAULT_SOURCE = 'manual';
 const OPTIMISTIC_ID_PREFIX = 'optimistic-';
 
 export function createEmptyEventFormValues(): EventFormValues {
-  return { title: '', startAt: '', endAt: '', memo: '', isCritical: false, isAllDay: false, location: '' };
+  return {
+    title: '',
+    startAt: '',
+    endAt: '',
+    memo: '',
+    isCritical: false,
+    isAllDay: false,
+    location: '',
+    recurrencePreset: 'none',
+    recurrenceUntilDate: '',
+    recurrenceEditable: true,
+  };
 }
 
 function pad2(value: number): string {
@@ -83,6 +186,7 @@ function formatDateForFormField(date: Date, isAllDay: boolean): string {
 export function toInitialEventFormValues(mode: EventFormMode, initialEvent?: Event): EventFormValues {
   if (mode === 'update' && initialEvent !== undefined) {
     const isAllDay = initialEvent.isAllDay;
+    const recurrence = parseRecurrencePreset(initialEvent.recurrenceRule);
     return {
       title: initialEvent.title,
       startAt: formatDateForFormField(initialEvent.startAt, isAllDay),
@@ -91,6 +195,9 @@ export function toInitialEventFormValues(mode: EventFormMode, initialEvent?: Eve
       isCritical: initialEvent.isCritical,
       isAllDay,
       location: initialEvent.location ?? '',
+      recurrencePreset: recurrence.preset,
+      recurrenceUntilDate: recurrence.untilDate,
+      recurrenceEditable: recurrence.editable,
     };
   }
   return createEmptyEventFormValues();
@@ -122,6 +229,11 @@ export function buildNewEventInput(values: EventFormValues, userId: string): New
   const endAt = values.endAt.trim().length > 0 ? new Date(values.endAt) : null;
   const memo = values.memo.trim().length > 0 ? values.memo.trim() : null;
   const location = values.location.trim().length > 0 ? values.location.trim() : null;
+  const recurrenceRule = buildRecurrenceRule(values.recurrencePreset, values.recurrenceUntilDate);
+  const recurrenceEndDate =
+    recurrenceRule !== null && values.recurrenceUntilDate.trim().length > 0
+      ? values.recurrenceUntilDate.trim()
+      : null;
 
   return {
     userId,
@@ -137,8 +249,8 @@ export function buildNewEventInput(values: EventFormValues, userId: string): New
     targets: [],
     isCritical: values.isCritical,
     useStrongAlarm: false,
-    recurrenceRule: null,
-    recurrenceEndDate: null,
+    recurrenceRule,
+    recurrenceEndDate,
     recurrenceCount: null,
     isAllDay: values.isAllDay,
     isMultiDay: false,
@@ -149,9 +261,16 @@ export function buildNewEventInput(values: EventFormValues, userId: string): New
   };
 }
 
-/** 폼 값 -> 기존 일정 부분 수정(updateEvent patch)용. 1차 MVP가 다루는 필드만 포함한다. */
+/**
+ * 폼 값 -> 기존 일정 부분 수정(updateEvent patch)용. 1차 MVP가 다루는 필드만 포함한다.
+ *
+ * recurrenceEditable이 false면(기존 규칙이 프리셋으로 표현 불가) patch 객체에
+ * recurrenceRule/recurrenceEndDate 키 자체를 넣지 않는다 - eventRepository는
+ * Object.keys(patch)에 있는 키만 UPDATE 문에 반영하므로, 키를 아예 빼면 기존 DB
+ * 값이 그대로 보존된다(값을 null이나 기존값으로 "다시 쓰는" 것과는 다르다).
+ */
 export function buildEventPatch(values: EventFormValues): Partial<Event> {
-  return {
+  const patch: Partial<Event> = {
     title: values.title.trim(),
     startAt: new Date(values.startAt),
     endAt: values.endAt.trim().length > 0 ? new Date(values.endAt) : null,
@@ -160,6 +279,17 @@ export function buildEventPatch(values: EventFormValues): Partial<Event> {
     isAllDay: values.isAllDay,
     location: values.location.trim().length > 0 ? values.location.trim() : null,
   };
+
+  if (values.recurrenceEditable) {
+    const recurrenceRule = buildRecurrenceRule(values.recurrencePreset, values.recurrenceUntilDate);
+    patch.recurrenceRule = recurrenceRule;
+    patch.recurrenceEndDate =
+      recurrenceRule !== null && values.recurrenceUntilDate.trim().length > 0
+        ? values.recurrenceUntilDate.trim()
+        : null;
+  }
+
+  return patch;
 }
 
 /**
@@ -282,6 +412,8 @@ export function EventForm({
   const locationId = useId();
   const isAllDayId = useId();
   const isCriticalId = useId();
+  const recurrencePresetId = useId();
+  const recurrenceUntilId = useId();
 
   if (mode === 'update' && initialEvent === undefined) {
     return <p role="alert">수정할 일정 정보가 없습니다.</p>;
@@ -455,6 +587,45 @@ export function EventForm({
           중요 일정
         </label>
       </div>
+
+      <div className="pf-field">
+        <label className="pf-field__label" htmlFor={recurrencePresetId}>
+          반복
+        </label>
+        <select
+          id={recurrencePresetId}
+          className="pf-field__input"
+          value={values.recurrencePreset}
+          disabled={!values.recurrenceEditable}
+          onChange={(event) => handleFieldChange('recurrencePreset', event.target.value as RecurrencePreset)}
+        >
+          <option value="none">반복 안 함</option>
+          <option value="daily">매일</option>
+          <option value="weekly">매주</option>
+          <option value="monthly">매월</option>
+          <option value="yearly">매년</option>
+        </select>
+        {!values.recurrenceEditable ? (
+          <p className="event-form__hint" role="status">
+            이 반복 규칙은 앱에서 편집할 수 없습니다.
+          </p>
+        ) : null}
+      </div>
+
+      {values.recurrenceEditable && values.recurrencePreset !== 'none' ? (
+        <div className="pf-field">
+          <label className="pf-field__label" htmlFor={recurrenceUntilId}>
+            반복 종료일 (선택)
+          </label>
+          <input
+            id={recurrenceUntilId}
+            className="pf-field__input"
+            type="date"
+            value={values.recurrenceUntilDate}
+            onChange={(event) => handleFieldChange('recurrenceUntilDate', event.target.value)}
+          />
+        </div>
+      ) : null}
 
       {submitError !== null ? <p role="alert">{submitError}</p> : null}
       {submitting ? <Spinner label="저장 중..." /> : null}

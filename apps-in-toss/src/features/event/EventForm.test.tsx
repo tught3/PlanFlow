@@ -13,10 +13,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildEventPatch,
   buildNewEventInput,
+  buildRecurrenceRule,
+  parseRecurrencePreset,
   submitEventForm,
   validateEventFormValues,
 } from './EventForm.tsx';
-import type { EventFormValues } from './EventForm.tsx';
+import type { EventFormValues, RecurrencePreset } from './EventForm.tsx';
+import { expandOccurrences } from '../../domain/recurrence.ts';
 import type { EventRepository } from '../../data/eventRepository.ts';
 import type { Event } from '../../domain/event.ts';
 
@@ -29,6 +32,9 @@ function makeValues(overrides: Partial<EventFormValues> = {}): EventFormValues {
     isCritical: false,
     isAllDay: false,
     location: '',
+    recurrencePreset: 'none',
+    recurrenceUntilDate: '',
+    recurrenceEditable: true,
     ...overrides,
   };
 }
@@ -149,6 +155,135 @@ describe('buildEventPatch', () => {
 
     const patchEmptyLocation = buildEventPatch(makeValues({ location: '' }));
     expect(patchEmptyLocation.location).toBeNull();
+  });
+
+  it('recurrenceEditable이 false면 recurrenceRule/recurrenceEndDate 키를 patch에 아예 넣지 않는다', () => {
+    const patch = buildEventPatch(
+      makeValues({ recurrenceEditable: false, recurrencePreset: 'daily', recurrenceUntilDate: '2026-09-01' }),
+    );
+    expect('recurrenceRule' in patch).toBe(false);
+    expect('recurrenceEndDate' in patch).toBe(false);
+  });
+
+  it('recurrenceEditable이 true면 recurrenceRule/recurrenceEndDate를 patch에 채운다', () => {
+    const patch = buildEventPatch(
+      makeValues({ recurrenceEditable: true, recurrencePreset: 'weekly', recurrenceUntilDate: '2026-09-01' }),
+    );
+    expect(patch.recurrenceRule).toBe('FREQ=WEEKLY;UNTIL=20260901T235959Z');
+    expect(patch.recurrenceEndDate).toBe('2026-09-01');
+  });
+});
+
+function makeRecurrenceTestEvent(startAt: Date, recurrenceRule: string | null): Event {
+  return {
+    id: 'evt-recur',
+    userId: 'user-1',
+    title: '반복 테스트',
+    startAt,
+    endAt: null,
+    location: null,
+    locationLat: null,
+    locationLng: null,
+    memo: null,
+    supplies: [],
+    participants: [],
+    targets: [],
+    isCritical: false,
+    useStrongAlarm: false,
+    recurrenceRule,
+    recurrenceEndDate: null,
+    recurrenceCount: null,
+    isAllDay: false,
+    isMultiDay: false,
+    parentEventId: null,
+    overriddenOccurrenceDate: null,
+    category: '기타',
+    source: 'manual',
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
+describe('반복 프리셋 (buildRecurrenceRule / parseRecurrencePreset) 왕복 검증', () => {
+  const PRESET_CASES: Array<{
+    preset: Exclude<RecurrencePreset, 'none'>;
+    /** startAt에서 untilDate까지 더할 기간(ms). */
+    untilOffsetMs: number;
+    /** untilDate까지 포함해 기대되는 회차 수. */
+    expectedCount: number;
+  }> = [
+    { preset: 'daily', untilOffsetMs: 3 * 24 * 60 * 60 * 1000, expectedCount: 4 }, // 시작일 + 3일 = 4회
+    { preset: 'weekly', untilOffsetMs: 14 * 24 * 60 * 60 * 1000, expectedCount: 3 }, // 0, 1, 2주차 = 3회
+    { preset: 'monthly', untilOffsetMs: 0, expectedCount: 3 }, // untilDate는 아래에서 개월 단위로 별도 계산
+    { preset: 'yearly', untilOffsetMs: 0, expectedCount: 3 }, // untilDate는 아래에서 연 단위로 별도 계산
+  ];
+
+  function toDateOnlyString(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  it.each(PRESET_CASES)(
+    '$preset 프리셋: 생성한 RRULE을 expandOccurrences에 넣으면 기대 회차수가 나온다',
+    ({ preset, untilOffsetMs, expectedCount }) => {
+      const startAt = new Date(Date.UTC(2026, 7, 10, 0, 0, 0)); // 2026-08-10 00:00 UTC
+
+      let untilDate: string;
+      if (preset === 'monthly') {
+        untilDate = toDateOnlyString(new Date(Date.UTC(2026, 9, 10, 0, 0, 0))); // +2개월
+      } else if (preset === 'yearly') {
+        untilDate = toDateOnlyString(new Date(Date.UTC(2028, 7, 10, 0, 0, 0))); // +2년
+      } else {
+        untilDate = toDateOnlyString(new Date(startAt.getTime() + untilOffsetMs));
+      }
+
+      const rule = buildRecurrenceRule(preset, untilDate);
+      expect(rule).not.toBeNull();
+      expect(rule).not.toMatch(/COUNT=/);
+      expect(rule).not.toMatch(/BYDAY=/);
+      expect(rule).not.toMatch(/INTERVAL=/);
+
+      const event = makeRecurrenceTestEvent(startAt, rule);
+      const rangeStart = startAt;
+      // yearly 케이스(+2년)까지 넉넉히 포함하도록 3년 범위로 잡는다.
+      const rangeEnd = new Date(startAt.getTime() + 3 * 365 * 24 * 60 * 60 * 1000);
+
+      const occurrences = expandOccurrences(event, rangeStart, rangeEnd);
+      expect(occurrences.length).toBe(expectedCount);
+
+      // 역파싱 왕복: 같은 preset/untilDate로 복원되어야 한다.
+      const parsed = parseRecurrencePreset(rule);
+      expect(parsed).toEqual({ preset, untilDate, editable: true });
+    },
+  );
+
+  it('반복 없음(none)은 null을 생성하고, null을 역파싱하면 { preset: "none", editable: true }다', () => {
+    expect(buildRecurrenceRule('none', '2026-09-01')).toBeNull();
+    expect(parseRecurrencePreset(null)).toEqual({ preset: 'none', untilDate: '', editable: true });
+    expect(parseRecurrencePreset(undefined)).toEqual({ preset: 'none', untilDate: '', editable: true });
+    expect(parseRecurrencePreset('')).toEqual({ preset: 'none', untilDate: '', editable: true });
+  });
+
+  it('BYDAY가 포함된 규칙은 편집 불가로 판정한다', () => {
+    const parsed = parseRecurrencePreset('FREQ=WEEKLY;BYDAY=MO,WE,FR');
+    expect(parsed.editable).toBe(false);
+  });
+
+  it('INTERVAL이 포함된 규칙은 편집 불가로 판정한다', () => {
+    const parsed = parseRecurrencePreset('FREQ=DAILY;INTERVAL=2');
+    expect(parsed.editable).toBe(false);
+  });
+
+  it('COUNT가 포함된 규칙은 편집 불가로 판정한다(프리셋으로 표현 불가한 종료조건)', () => {
+    const parsed = parseRecurrencePreset('FREQ=DAILY;COUNT=10');
+    expect(parsed.editable).toBe(false);
+  });
+
+  it('알 수 없는 FREQ는 편집 불가로 판정한다', () => {
+    const parsed = parseRecurrencePreset('FREQ=HOURLY');
+    expect(parsed.editable).toBe(false);
   });
 });
 
