@@ -405,13 +405,21 @@ class _HomeHeader extends StatelessWidget {
           ),
         ),
         if (onVoiceConv != null)
-          IconButton(
-            tooltip: '대화 모드',
-            onPressed: onVoiceConv,
-            icon: const Icon(
-              Icons.chat_bubble_outline,
-              size: 28,
-              color: PlanFlowColors.primary,
+          Container(
+            decoration: const BoxDecoration(
+              color: PlanFlowColors.active,
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              tooltip: '대화 모드',
+              onPressed: onVoiceConv,
+              icon: const Icon(
+                Icons.chat_bubble_outline,
+                size: 22,
+                color: Colors.white,
+              ),
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(),
             ),
           ),
       ],
