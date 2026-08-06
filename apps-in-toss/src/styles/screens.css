@@ -174,3 +174,114 @@
   color: var(--pf-text-secondary);
   padding: 0 var(--pf-space-4);
 }
+
+/* ---- Week (주간 캘린더) ---- */
+.week-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-8);
+}
+
+.week-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf-space-8);
+  padding: var(--pf-space-8) var(--pf-space-4);
+}
+
+.week-view__nav-btn {
+  min-height: var(--pf-touch-target);
+  padding: 0 var(--pf-space-12);
+  background: transparent;
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-8);
+  color: var(--pf-text);
+  font-size: var(--pf-font-14);
+  cursor: pointer;
+}
+
+.week-view__range {
+  font-size: var(--pf-font-16);
+  font-weight: 700;
+  color: var(--pf-text);
+}
+
+.week-view__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--pf-grid-line);
+  border: 1px solid var(--pf-grid-line);
+}
+
+.week-view__day {
+  min-height: 120px;
+  background: var(--pf-surface);
+  padding: var(--pf-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-view__day--today {
+  background: var(--pf-today-bg);
+}
+
+.week-view__label {
+  display: block;
+  text-align: center;
+  font-size: var(--pf-font-12);
+  color: var(--pf-text-secondary);
+}
+
+.week-view__date {
+  display: block;
+  text-align: center;
+  font-size: var(--pf-font-14);
+  font-weight: 600;
+  color: var(--pf-text);
+  margin-bottom: var(--pf-space-4);
+}
+
+.week-view__day--today .week-view__date {
+  color: var(--pf-primary-mid);
+}
+
+.week-view__events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.week-view__event {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  padding: 1px var(--pf-space-4);
+  border-radius: var(--pf-radius-4);
+  background: var(--pf-primary-faint);
+  border-left: 3px solid var(--pf-primary-mid);
+  color: var(--pf-primary-mid);
+  overflow: hidden;
+}
+
+.week-view__event--critical {
+  background: var(--pf-danger-bg);
+  border-left-color: var(--pf-danger);
+  color: var(--pf-danger);
+}
+
+.week-view__event-time {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.week-view__event-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

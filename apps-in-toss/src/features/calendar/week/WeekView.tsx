@@ -24,7 +24,9 @@ import {
   kstWeekRange,
   toKstWall,
 } from '../../../domain/index.ts';
-import { eventRepository } from '../../../data/eventRepository.ts';
+import { eventRepository as defaultEventRepository } from '../../../data/eventRepository.ts';
+import type { EventRepository } from '../../../data/eventRepository.ts';
+import { Spinner, ErrorMessage } from '../../../components/index.ts';
 
 /** ISO weekday 기준 주 시작 요일. 7 = 일요일. */
 const WEEK_STARTS_ON = 7;
@@ -50,6 +52,22 @@ export function shiftWeek(weekStart: Date, delta: number): Date {
 export function formatMonthDay(date: Date): string {
   const wall = toKstWall(date);
   return `${wall.getUTCMonth() + 1}/${wall.getUTCDate()}`;
+}
+
+/** KST 벽시계 기준 HH:mm 문자열. (TodayEventList.tsx의 formatKstTime과 동일 규칙) */
+function formatKstTime(date: Date): string {
+  const wall = toKstWall(date);
+  const hh = String(wall.getUTCHours()).padStart(2, '0');
+  const mm = String(wall.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+/** 일정 항목의 시간 라벨. 종일 일정은 '하루 종일', 아니면 시작 시각(HH:mm). */
+function formatEventTimeLabel(event: Event): string {
+  if (event.isAllDay) {
+    return '하루 종일';
+  }
+  return formatKstTime(event.startAt);
 }
 
 /**
@@ -89,10 +107,12 @@ export function buildWeekDayEvents(weekDays: Date[], events: Event[]): Event[][]
 export interface WeekViewProps {
   /** 초기 표시 기준 날짜. 미지정 시 현재 시각(테스트에서 고정 날짜 주입 가능). */
   initialDate?: Date;
+  /** 테스트/주입용. 기본값은 앱 전역 eventRepository 싱글턴. */
+  repository?: EventRepository;
 }
 
 /** 주간 캘린더: 일~토 7일 그리드 + 해당 주 일정 목록 + 전주/다음주 이동. */
-export default function WeekView({ initialDate }: WeekViewProps = {}) {
+export default function WeekView({ initialDate, repository = defaultEventRepository }: WeekViewProps = {}) {
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(initialDate ?? new Date()));
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -106,7 +126,7 @@ export default function WeekView({ initialDate }: WeekViewProps = {}) {
     setIsLoading(true);
     setErrorMessage(null);
 
-    eventRepository
+    repository
       .listEvents({ start: weekStart.toISOString(), end: weekEnd.toISOString() })
       .then(({ data, error }) => {
         if (cancelled) {
@@ -132,7 +152,7 @@ export default function WeekView({ initialDate }: WeekViewProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [weekStart, weekEnd]);
+  }, [weekStart, weekEnd, repository]);
 
   const eventsByDay = useMemo(() => buildWeekDayEvents(weekDays, events), [weekDays, events]);
 
@@ -142,32 +162,54 @@ export default function WeekView({ initialDate }: WeekViewProps = {}) {
   const rangeLabel = `${formatMonthDay(weekStart)} - ${formatMonthDay(weekDays[6])}`;
 
   return (
-    <section aria-label="주간 캘린더" data-testid="week-view">
-      <header>
-        <button type="button" aria-label="이전 주" onClick={handlePrevWeek}>
+    <section aria-label="주간 캘린더" data-testid="week-view" className="week-view">
+      <header className="week-view__header">
+        <button type="button" className="week-view__nav-btn" aria-label="이전 주" onClick={handlePrevWeek}>
           이전 주
         </button>
-        <span data-testid="week-range-label">{rangeLabel}</span>
-        <button type="button" aria-label="다음 주" onClick={handleNextWeek}>
+        <span data-testid="week-range-label" className="week-view__range">
+          {rangeLabel}
+        </span>
+        <button type="button" className="week-view__nav-btn" aria-label="다음 주" onClick={handleNextWeek}>
           다음 주
         </button>
       </header>
 
-      {isLoading ? <p role="status">불러오는 중...</p> : null}
-      {errorMessage !== null ? <p role="alert">{errorMessage}</p> : null}
+      {isLoading ? <Spinner /> : null}
+      {errorMessage !== null ? <ErrorMessage message={errorMessage} /> : null}
 
-      <div data-testid="week-grid">
-        {weekDays.map((day, index) => (
-          <div key={day.toISOString()} data-testid={`week-day-${index}`}>
-            <span data-testid="week-day-label">{WEEKDAY_LABELS[index]}</span>
-            <span data-testid="week-day-date">{formatMonthDay(day)}</span>
-            <ul>
-              {eventsByDay[index].map((event) => (
-                <li key={event.id}>{event.title}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
+      <div data-testid="week-grid" className="week-view__grid">
+        {weekDays.map((day, index) => {
+          const isToday = isSameKstDay(day, new Date());
+          const dayClassNames = ['week-view__day'];
+          if (isToday) {
+            dayClassNames.push('week-view__day--today');
+          }
+          return (
+            <div key={day.toISOString()} data-testid={`week-day-${index}`} className={dayClassNames.join(' ')}>
+              <span data-testid="week-day-label" className="week-view__label">
+                {WEEKDAY_LABELS[index]}
+              </span>
+              <span data-testid="week-day-date" className="week-view__date">
+                {formatMonthDay(day)}
+              </span>
+              <ul className="week-view__events">
+                {eventsByDay[index].map((event) => {
+                  const eventClassNames = ['week-view__event'];
+                  if (event.isCritical) {
+                    eventClassNames.push('week-view__event--critical');
+                  }
+                  return (
+                    <li key={event.id} className={eventClassNames.join(' ')}>
+                      <span className="week-view__event-time">{formatEventTimeLabel(event)}</span>
+                      <span className="week-view__event-title">{event.title}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
