@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   NavLink,
   Navigate,
@@ -14,15 +14,32 @@ import { eventRepository } from './data/eventRepository.ts';
 import { supabase } from './lib/supabase.ts';
 import { useSession } from './features/auth/useSession.ts';
 import { LoginScreen } from './features/auth/LoginScreen.tsx';
-import { TodayView } from './features/today/TodayView.tsx';
-import { MonthView } from './features/calendar/month/MonthView.tsx';
-import WeekView from './features/calendar/week/WeekView.tsx';
-import { EventForm } from './features/event/EventForm.tsx';
-import { EventDetail } from './features/event/EventDetail.tsx';
 import { ConfirmDialog, ErrorMessage, Spinner } from './components/index.ts';
 import type { LogoutUiState } from './appLayoutLogout.ts';
 import { nextLogoutState } from './appLayoutLogout.ts';
 import { isDevPreviewEnabled, previewRepository } from './features/devPreview/index.ts';
+
+/**
+ * F1: 라우트 단위 코드 분할.
+ *
+ * 아래 5개 화면(오늘/월간/주간/일정폼/일정상세)은 router.tsx에서만 정적 import되던
+ * 유일한 소비처였다(테스트 파일 제외, 실측 확인됨) - 그래서 React.lazy로 바꿔도
+ * 다른 곳에서 동시에 static import돼 번들이 중복 포함되는 문제가 없다.
+ *
+ * TodayView/EventForm/EventDetail은 named export만 있어 default 어댑터가 필요하고,
+ * MonthView/WeekView는 default export가 있어 바로 연결된다.
+ */
+const TodayView = lazy(() =>
+  import('./features/today/TodayView.tsx').then((m) => ({ default: m.TodayView })),
+);
+const MonthView = lazy(() => import('./features/calendar/month/MonthView.tsx'));
+const WeekView = lazy(() => import('./features/calendar/week/WeekView.tsx'));
+const EventForm = lazy(() =>
+  import('./features/event/EventForm.tsx').then((m) => ({ default: m.EventForm })),
+);
+const EventDetail = lazy(() =>
+  import('./features/event/EventDetail.tsx').then((m) => ({ default: m.EventDetail })),
+);
 
 /**
  * 이 세션(모듈 로드 시점)에서 실제로 쓸 이벤트 리포지토리.
@@ -180,13 +197,15 @@ function EventNewRoute() {
   }
 
   return (
-    <EventForm
-      mode="create"
-      userId={userId}
-      repository={activeEventRepository}
-      onSaved={(event) => navigate(`/event/${event.id}`)}
-      onCancel={() => navigate(-1)}
-    />
+    <Suspense fallback={<Spinner />}>
+      <EventForm
+        mode="create"
+        userId={userId}
+        repository={activeEventRepository}
+        onSaved={(event) => navigate(`/event/${event.id}`)}
+        onCancel={() => navigate(-1)}
+      />
+    </Suspense>
   );
 }
 
@@ -253,12 +272,14 @@ function EventDetailRoute() {
   }
 
   return (
-    <EventDetail
-      event={event}
-      repository={activeEventRepository}
-      onDeleted={() => navigate('/today')}
-      onEdit={(target) => navigate(`/event/${target.id}/edit`)}
-    />
+    <Suspense fallback={<Spinner />}>
+      <EventDetail
+        event={event}
+        repository={activeEventRepository}
+        onDeleted={() => navigate('/today')}
+        onEdit={(target) => navigate(`/event/${target.id}/edit`)}
+      />
+    </Suspense>
   );
 }
 
@@ -280,14 +301,16 @@ function EventEditRoute() {
   }
 
   return (
-    <EventForm
-      mode="update"
-      userId={userId}
-      initialEvent={event}
-      repository={activeEventRepository}
-      onSaved={(saved) => navigate(`/event/${saved.id}`)}
-      onCancel={() => navigate(-1)}
-    />
+    <Suspense fallback={<Spinner />}>
+      <EventForm
+        mode="update"
+        userId={userId}
+        initialEvent={event}
+        repository={activeEventRepository}
+        onSaved={(saved) => navigate(`/event/${saved.id}`)}
+        onCancel={() => navigate(-1)}
+      />
+    </Suspense>
   );
 }
 
@@ -302,9 +325,30 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <Navigate to="/today" replace /> },
-          { path: 'today', element: <TodayView repository={activeEventRepository} /> },
-          { path: 'calendar/month', element: <MonthView repository={activeEventRepository} /> },
-          { path: 'calendar/week', element: <WeekView repository={activeEventRepository} /> },
+          {
+            path: 'today',
+            element: (
+              <Suspense fallback={<Spinner />}>
+                <TodayView repository={activeEventRepository} />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'calendar/month',
+            element: (
+              <Suspense fallback={<Spinner />}>
+                <MonthView repository={activeEventRepository} />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'calendar/week',
+            element: (
+              <Suspense fallback={<Spinner />}>
+                <WeekView repository={activeEventRepository} />
+              </Suspense>
+            ),
+          },
           { path: 'event/new', element: <EventNewRoute /> },
           { path: 'event/:id', element: <EventDetailRoute /> },
           { path: 'event/:id/edit', element: <EventEditRoute /> },
