@@ -80,6 +80,16 @@ class _FakeSttService extends SttService {
   }
 }
 
+/// cancelActiveListen()이 끝없이 대기하는 STT — 종료 흐름의 타임아웃 동작을
+/// 검증하기 위한 전용 fake.
+class _HangingCancelSttService extends _FakeSttService {
+  @override
+  Future<void> cancelActiveListen() {
+    cancelCalls += 1;
+    return Completer<void>().future; // 절대 완료되지 않음
+  }
+}
+
 class _FakeEventRepository extends EventRepository {
   _FakeEventRepository(this.events);
 
@@ -748,6 +758,136 @@ void main() {
     expect(stt.cancelCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'AI 일정 대화는 홈 버튼(push) 진입 경로에서도 취소-재시도 후 정상적으로 홈으로 돌아간다',
+    (tester) async {
+      // 버그 재현 경로(①): 홈 화면이 Navigator.push 대신 GoRouter의
+      // context.push(AppRoutes.voiceConversation)로 대화 화면에 진입하는
+      // 상황을 재현한다. 수정 전에는 이 진입 방식과 무관하게
+      // _exitConversation()의 context.go(home)이 GoRouter 스택 밖의
+      // 화면을 pop하지 못해 뒤로가기가 무반응이었다.
+      final stt = _FakeSttService();
+      final router = GoRouter(
+        initialLocation: AppRoutes.home,
+        routes: [
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () =>
+                      context.push(AppRoutes.voiceConversation),
+                  child: const Text('홈 화면'),
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => VoiceConversationScreen(
+              sttService: stt,
+              repository: _FakeEventRepository(const <EventModel>[]),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('홈 화면'), findsOneWidget);
+
+      // 홈 버튼과 동일한 방식(context.push)으로 대화 화면에 진입한다.
+      await tester.tap(find.text('홈 화면'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화'), findsOneWidget);
+      expect(find.text('홈 화면'), findsNothing);
+
+      // 첫 번째 뒤로가기: '계속 대화하기'로 취소해도 대화 화면이 유지되고,
+      // 플래그가 고착되지 않아 다음 뒤로가기 시도도 확인 시트를 다시 띄운다.
+      await tester.tap(find.byTooltip('뒤로가기'));
+      await tester.pumpAndSettle();
+      expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
+
+      await tester.tap(find.text('계속 대화하기'));
+      await tester.pumpAndSettle();
+      expect(find.text('AI 일정 대화'), findsOneWidget);
+
+      // 두 번째 뒤로가기: 확인 시트가 다시 뜨고, '나가기'를 누르면
+      // push로 진입한 대화 화면이 사라지고 실제로 홈 화면으로 돌아간다.
+      await tester.tap(find.byTooltip('뒤로가기'));
+      await tester.pumpAndSettle();
+      expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
+
+      await tester.tap(find.text('나가기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화'), findsNothing);
+      expect(find.text('홈 화면'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'AI 일정 대화는 STT 취소가 지연돼도 타임아웃 후 대화 세션을 끝까지 종료한다',
+    (tester) async {
+      // _stopVoiceBeforeNavigation()의 cancelActiveListen() 호출이
+      // 끝없이 대기하는 상황(실패 시나리오)을 흉내낸다. 타임아웃이 없으면
+      // _exitConversation()이 영원히 끝나지 않아 _isExitingConversation이
+      // 고착돼 다음 뒤로가기도 무반응이 된다.
+      final stt = _HangingCancelSttService();
+      final router = GoRouter(
+        initialLocation: AppRoutes.voiceConversation,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => VoiceConversationScreen(
+              sttService: stt,
+              repository: _FakeEventRepository(const <EventModel>[]),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) => const Scaffold(
+              body: Text('홈 화면'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('뒤로가기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('나가기'));
+      await tester.pump();
+
+      // 타임아웃(4초) 전에는 STT 취소를 기다리느라 아직 대화 화면에 있다.
+      expect(find.text('홈 화면'), findsNothing);
+
+      // 타임아웃을 넘겨서 펌프하면 취소 완료를 기다리지 않고 종료가
+      // 이어져 홈 화면으로 이동한다.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('홈 화면'), findsOneWidget);
+      expect(stt.cancelCalls, greaterThanOrEqualTo(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('AI 일정 대화는 듣는 중 정지 후 마이크로 다시 시작할 수 있다', (tester) async {
     final stt = _FakeSttService();
