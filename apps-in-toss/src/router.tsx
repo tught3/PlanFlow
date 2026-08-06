@@ -9,6 +9,7 @@ import {
 } from 'react-router-dom';
 
 import type { Event } from './domain/event.ts';
+import type { EventRepository } from './data/eventRepository.ts';
 import { eventRepository } from './data/eventRepository.ts';
 import { supabase } from './lib/supabase.ts';
 import { useSession } from './features/auth/useSession.ts';
@@ -18,7 +19,7 @@ import { MonthView } from './features/calendar/month/MonthView.tsx';
 import WeekView from './features/calendar/week/WeekView.tsx';
 import { EventForm } from './features/event/EventForm.tsx';
 import { EventDetail } from './features/event/EventDetail.tsx';
-import { ConfirmDialog } from './components/index.ts';
+import { ConfirmDialog, ErrorMessage, Spinner } from './components/index.ts';
 import type { LogoutUiState } from './appLayoutLogout.ts';
 import { nextLogoutState } from './appLayoutLogout.ts';
 import { isDevPreviewEnabled, previewRepository } from './features/devPreview/index.ts';
@@ -44,7 +45,7 @@ function AuthGate() {
   const { userId, loading } = useSession();
 
   if (loading) {
-    return <p>불러오는 중...</p>;
+    return <Spinner />;
   }
   if (userId === null) {
     return <Navigate to="/login" replace />;
@@ -171,7 +172,7 @@ function EventNewRoute() {
   const { userId, loading } = useSession();
 
   if (loading) {
-    return <p>불러오는 중...</p>;
+    return <Spinner />;
   }
   if (userId === null) {
     // AuthGate가 상위에서 비로그인 상태를 걸러내므로 정상 흐름에서는 도달하지 않는다.
@@ -189,8 +190,17 @@ function EventNewRoute() {
   );
 }
 
-/** id 파라미터로 일정을 조회해 자식에게 전달하는 공용 로더. */
-function useLoadedEvent(): { event: Event | null; error: string | null; loading: boolean } {
+/**
+ * id 파라미터로 일정을 조회해 자식에게 전달하는 공용 로더.
+ *
+ * repository 인자는 D2가 만든 activeEventRepository(개발 미리보기 모드에서는
+ * previewRepository, 아니면 실제 eventRepository)를 그대로 통과시키는 주입
+ * 통로다 - 기본값은 실제 eventRepository 싱글턴이라 인자를 생략해도 기존
+ * 동작과 동일하다.
+ */
+function useLoadedEvent(
+  repository: EventRepository = eventRepository,
+): { event: Event | null; error: string | null; loading: boolean } {
   const { id } = useParams<{ id: string }>();
   const [event, setEvent] = useState<Event | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -205,7 +215,7 @@ function useLoadedEvent(): { event: Event | null; error: string | null; loading:
     }
 
     setLoading(true);
-    eventRepository.getEvent(id).then((result) => {
+    repository.getEvent(id).then((result) => {
       if (cancelled) {
         return;
       }
@@ -225,7 +235,7 @@ function useLoadedEvent(): { event: Event | null; error: string | null; loading:
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, repository]);
 
   return { event, error, loading };
 }
@@ -233,18 +243,19 @@ function useLoadedEvent(): { event: Event | null; error: string | null; loading:
 /** 일정 상세 라우트. */
 function EventDetailRoute() {
   const navigate = useNavigate();
-  const { event, error, loading } = useLoadedEvent();
+  const { event, error, loading } = useLoadedEvent(activeEventRepository);
 
   if (loading) {
-    return <p>불러오는 중...</p>;
+    return <Spinner />;
   }
   if (event === null) {
-    return <p role="alert">{error ?? '일정을 찾을 수 없습니다.'}</p>;
+    return <ErrorMessage message={error ?? '일정을 찾을 수 없습니다.'} />;
   }
 
   return (
     <EventDetail
       event={event}
+      repository={activeEventRepository}
       onDeleted={() => navigate('/today')}
       onEdit={(target) => navigate(`/event/${target.id}/edit`)}
     />
@@ -255,17 +266,17 @@ function EventDetailRoute() {
 function EventEditRoute() {
   const navigate = useNavigate();
   const { userId, loading: userLoading } = useSession();
-  const { event, error, loading: eventLoading } = useLoadedEvent();
+  const { event, error, loading: eventLoading } = useLoadedEvent(activeEventRepository);
 
   if (userLoading || eventLoading) {
-    return <p>불러오는 중...</p>;
+    return <Spinner />;
   }
   if (userId === null) {
     // AuthGate가 상위에서 비로그인 상태를 걸러내므로 정상 흐름에서는 도달하지 않는다.
     return null;
   }
   if (event === null) {
-    return <p role="alert">{error ?? '일정을 찾을 수 없습니다.'}</p>;
+    return <ErrorMessage message={error ?? '일정을 찾을 수 없습니다.'} />;
   }
 
   return (
@@ -273,6 +284,7 @@ function EventEditRoute() {
       mode="update"
       userId={userId}
       initialEvent={event}
+      repository={activeEventRepository}
       onSaved={(saved) => navigate(`/event/${saved.id}`)}
       onCancel={() => navigate(-1)}
     />
