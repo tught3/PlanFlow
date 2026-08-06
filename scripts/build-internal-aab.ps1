@@ -99,6 +99,26 @@ function Read-LogLinesWithRetry {
   }
 }
 
+function Get-ContentWithRetry {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  # Same transient-lock window as Read-LogLinesWithRetry above: this reads
+  # a Start-Process-owned RedirectStandardError file right after the
+  # process is reported exited, and Start-Process's own handle for that
+  # file can still be mid-release by the OS/.NET for a brief moment
+  # (observed as "cannot access the file ... because it is being used by
+  # another process"). Retry briefly instead of failing the whole deploy
+  # on a transient lock. If the retries are exhausted, rethrow.
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+      return Get-Content -LiteralPath $Path -Raw
+    } catch {
+      if ($attempt -eq 5) { throw }
+      Start-Sleep -Milliseconds (200 * $attempt)
+    }
+  }
+}
+
 function New-LogExcerpt {
   param(
     [Parameter(Mandatory = $true)][string]$Path,
@@ -369,7 +389,7 @@ function Invoke-OwnedProcess {
     # is reported exited (observed as "cannot access the file ... because it
     # is being used by another process" on this exact Add-Content call).
     # Retry briefly instead of failing the whole deploy on a transient lock.
-    $stderrContent = Get-Content -LiteralPath $errorPath -Raw
+    $stderrContent = Get-ContentWithRetry -Path $errorPath
     $appended = $false
     for ($attempt = 1; $attempt -le 5; $attempt++) {
       try {
