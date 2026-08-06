@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/core/time_format_controller.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
@@ -14,9 +18,34 @@ import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
+import 'package:planflow/services/voice_conversation_ad_gate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  // HomeScreen이 내부에서 만드는 GroupContextProvider가 기본값으로
+  // GroupRepository.supabase()(SupabaseGroupRepository)를 생성하는데, 그
+  // 생성자가 즉시 Supabase.instance를 참조한다. login_screen_test.dart 등
+  // 기존 테스트에서 쓰는 것과 동일한 패턴으로 실제 네트워크 호출 없이
+  // Supabase 인스턴스를 1회 초기화해둔다(이미 초기화됐으면 스킵, 다른 테스트
+  // 파일과 격리된 별도 isolate라 안전).
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    try {
+      Supabase.instance;
+    } catch (_) {
+      await Supabase.initialize(
+        url: 'https://example.com',
+        anonKey: 'public-anon-key',
+        authOptions: const FlutterAuthClientOptions(
+          detectSessionInUri: false,
+          autoRefreshToken: false,
+        ),
+      );
+    }
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     AppEnv.markSupabaseInitialized();
@@ -489,6 +518,133 @@ void main() {
       );
     },
   );
+
+  // 회귀: 음성대화 진입 시 사용자 설정(voiceAutoStart)을 무시하고 항상
+  // 쿼리 없이 push하던 문제. voiceAutoStart 설정값에 따라 목적지 라우트에
+  // autoStart=1 쿼리가 붙는지/안 붙는지를 검증한다.
+  testWidgets(
+    'HomeScreen은 voiceAutoStart 설정이 켜져 있으면 대화모드 진입 시 autoStart=1을 붙인다',
+    (tester) async {
+      VoiceConversationAdGate.instance.delegateForTest =
+          const _AllowAllVoiceConversationAdGateDelegate();
+      addTearDown(() {
+        VoiceConversationAdGate.instance.delegateForTest = null;
+      });
+
+      String? capturedLocation;
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: <RouteBase>[
+          GoRoute(
+            path: '/',
+            builder: (context, state) => HomeScreen(
+              userIdOverride: 'user-1',
+              eventRepository: repository,
+              smartPreparationAlarmService:
+                  const _FakeSmartPreparationAlarmService(),
+              homeWidgetService: _RecordingHomeWidgetService(),
+              loadHeaderSummary: false,
+              settingsRepository:
+                  const _FakeSettingsRepository(voiceAutoStart: true),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) {
+              capturedLocation = state.uri.toString();
+              return const Text(
+                '대화모드 화면',
+                textDirection: TextDirection.ltr,
+              );
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('대화 모드'));
+      await tester.pumpAndSettle();
+
+      expect(capturedLocation, isNotNull);
+      expect(capturedLocation, contains('autoStart=1'));
+      expect(find.text('대화모드 화면'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'HomeScreen은 voiceAutoStart 설정이 꺼져 있으면 대화모드 진입 시 쿼리 없이 push한다',
+    (tester) async {
+      VoiceConversationAdGate.instance.delegateForTest =
+          const _AllowAllVoiceConversationAdGateDelegate();
+      addTearDown(() {
+        VoiceConversationAdGate.instance.delegateForTest = null;
+      });
+
+      String? capturedLocation;
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: <RouteBase>[
+          GoRoute(
+            path: '/',
+            builder: (context, state) => HomeScreen(
+              userIdOverride: 'user-1',
+              eventRepository: repository,
+              smartPreparationAlarmService:
+                  const _FakeSmartPreparationAlarmService(),
+              homeWidgetService: _RecordingHomeWidgetService(),
+              loadHeaderSummary: false,
+              settingsRepository:
+                  const _FakeSettingsRepository(voiceAutoStart: false),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) {
+              capturedLocation = state.uri.toString();
+              return const Text(
+                '대화모드 화면',
+                textDirection: TextDirection.ltr,
+              );
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('대화 모드'));
+      await tester.pumpAndSettle();
+
+      expect(capturedLocation, isNotNull);
+      expect(capturedLocation, isNot(contains('autoStart=1')));
+      expect(find.text('대화모드 화면'), findsOneWidget);
+    },
+  );
 }
 
 class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
@@ -500,6 +656,51 @@ class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
     required Iterable<String> eventIds,
   }) async {
     return const <String>{};
+  }
+}
+
+/// voiceAutoStart 회귀 테스트용 fake. Supabase 호출 없이 고정 설정값을
+/// 반환한다.
+class _FakeSettingsRepository extends SettingsRepository {
+  const _FakeSettingsRepository({required this.voiceAutoStart});
+
+  final bool voiceAutoStart;
+
+  @override
+  Future<UserSettingsModel?> fetchSettings(String userId) async {
+    return UserSettingsModel(
+      id: 'settings-$userId',
+      userId: userId,
+      voiceAutoStart: voiceAutoStart,
+    );
+  }
+
+  @override
+  Future<UserSettingsModel> upsertSettings(UserSettingsModel settings) async {
+    return settings;
+  }
+}
+
+/// voiceAutoStart 회귀 테스트용 fake. 광고 게이트 정책(무료횟수/광고표시)을
+/// 완전히 우회하고 항상 즉시 진입을 허용한다.
+class _AllowAllVoiceConversationAdGateDelegate
+    implements VoiceConversationAdGateDelegate {
+  const _AllowAllVoiceConversationAdGateDelegate();
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required VoidCallback onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    onEnterAllowed();
   }
 }
 
