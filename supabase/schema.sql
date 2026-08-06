@@ -1606,7 +1606,7 @@ create table if not exists public.group_backups (
   group_id uuid references public.groups (id) on delete set null,
   backup_type text not null check (backup_type in ('archive', 'delete')),
   snapshot jsonb not null default '{}'::jsonb,
-  created_by uuid not null references public.users (id) on delete set null,
+  created_by uuid references public.users (id) on delete set null,
   created_at timestamptz not null default now(),
   restored_at timestamptz,
   restored_by uuid references public.users (id) on delete set null
@@ -1980,6 +1980,7 @@ declare
   invite_record jsonb;
   link_record jsonb;
   old_event_id text;
+  old_event_id_text text;
   new_event_id uuid;
   insert_status text;
 begin
@@ -2035,7 +2036,7 @@ begin
   returning id into new_group_id;
 
   for member_record in
-    select * from jsonb_array_elements(snapshot_payload->'active_members')
+    select jsonb_array_elements(snapshot_payload->'active_members')
   loop
     insert into public.group_members (
       group_id,
@@ -2061,7 +2062,7 @@ begin
   end loop;
 
   for event_record in
-    select * from jsonb_array_elements(snapshot_payload->'events')
+    select jsonb_array_elements(snapshot_payload->'events')
   loop
     old_event_id := event_record->>'id';
     insert into public.group_events (
@@ -2114,7 +2115,7 @@ begin
   end loop;
 
   for link_record in
-    select * from jsonb_array_elements(snapshot_payload->'personal_event_links')
+    select jsonb_array_elements(snapshot_payload->'personal_event_links')
   loop
     if (event_old_to_new ? (link_record->>'group_event_id')) then
       update public.events
@@ -2124,7 +2125,7 @@ begin
   end loop;
 
   for old_event_id_text in
-    select * from jsonb_object_keys(event_old_to_new)
+    select jsonb_object_keys(event_old_to_new)
   loop
     new_event_id := (event_old_to_new->>old_event_id_text)::uuid;
     update public.group_events ge
@@ -2137,7 +2138,7 @@ begin
   end loop;
 
   for comment_record in
-    select * from jsonb_array_elements(snapshot_payload->'event_comments')
+    select jsonb_array_elements(snapshot_payload->'event_comments')
   loop
     if (event_old_to_new ? (comment_record->>'group_event_id')) then
       insert into public.group_event_comments (
@@ -2167,7 +2168,7 @@ begin
   end loop;
 
   for delegation_record in
-    select * from jsonb_array_elements(snapshot_payload->'role_delegations')
+    select jsonb_array_elements(snapshot_payload->'role_delegations')
   loop
     insert into public.group_role_delegations (
       id,
@@ -2201,7 +2202,7 @@ begin
   end loop;
 
   for invite_record in
-    select * from jsonb_array_elements(snapshot_payload->'invites')
+    select jsonb_array_elements(snapshot_payload->'invites')
   loop
     insert_status := invite_record->>'status';
     if insert_status is null or insert_status not in ('pending', 'accepted') then

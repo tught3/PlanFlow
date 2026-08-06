@@ -11,7 +11,12 @@ set search_path = public;
 -- 1) archive_group_with_backup 확장
 --    스냅샷에 group_events, group_event_comments, group_role_delegations,
 --    group_invites 포함. group_members는 display_name까지 포함.
+--    기존 함수는 uuid만 반환했으나 이번에 group_backups 전체 row로
+--    반환 타입이 바뀌므로, CREATE OR REPLACE가 반환 타입 변경을 허용하지
+--    않아 먼저 DROP한다.
 -- ============================================================
+
+drop function if exists public.archive_group_with_backup(uuid);
 
 create or replace function public.archive_group_with_backup(
   group_id_input uuid
@@ -371,6 +376,7 @@ declare
   invite_record jsonb;
   link_record jsonb;
   old_event_id text;
+  old_event_id_text text;
   new_event_id uuid;
   insert_status text;
 begin
@@ -428,7 +434,7 @@ begin
 
   -- group_members (active_members 우선, all_members를 같이 두면 중복)
   for member_record in
-    select * from jsonb_array_elements(snapshot_payload->'active_members')
+    select jsonb_array_elements(snapshot_payload->'active_members')
   loop
     insert into public.group_members (
       group_id,
@@ -455,7 +461,7 @@ begin
 
   -- group_events (personal_event_id는 일단 NULL로 끊고, events 재연결 후 채움)
   for event_record in
-    select * from jsonb_array_elements(snapshot_payload->'events')
+    select jsonb_array_elements(snapshot_payload->'events')
   loop
     old_event_id := event_record->>'id';
     insert into public.group_events (
@@ -510,7 +516,7 @@ begin
   -- events.group_event_id → 새 group_event.id로 재연결
   -- (events 행은 그대로 두고 group_event_id만 새 값으로 업데이트)
   for link_record in
-    select * from jsonb_array_elements(snapshot_payload->'personal_event_links')
+    select jsonb_array_elements(snapshot_payload->'personal_event_links')
   loop
     if (event_old_to_new ? (link_record->>'group_event_id')) then
       update public.events
@@ -521,7 +527,7 @@ begin
 
   -- group_events.personal_event_id 재연결 (events.group_event_id로부터 역방향)
   for old_event_id_text in
-    select * from jsonb_object_keys(event_old_to_new)
+    select jsonb_object_keys(event_old_to_new)
   loop
     new_event_id := (event_old_to_new->>old_event_id_text)::uuid;
     update public.group_events ge
@@ -535,7 +541,7 @@ begin
 
   -- group_event_comments
   for comment_record in
-    select * from jsonb_array_elements(snapshot_payload->'event_comments')
+    select jsonb_array_elements(snapshot_payload->'event_comments')
   loop
     if (event_old_to_new ? (comment_record->>'group_event_id')) then
       insert into public.group_event_comments (
@@ -566,7 +572,7 @@ begin
 
   -- group_role_delegations
   for delegation_record in
-    select * from jsonb_array_elements(snapshot_payload->'role_delegations')
+    select jsonb_array_elements(snapshot_payload->'role_delegations')
   loop
     insert into public.group_role_delegations (
       id,
@@ -601,7 +607,7 @@ begin
 
   -- group_invites (pending/accepted만 복원)
   for invite_record in
-    select * from jsonb_array_elements(snapshot_payload->'invites')
+    select jsonb_array_elements(snapshot_payload->'invites')
   loop
     insert_status := invite_record->>'status';
     if insert_status is null or insert_status not in ('pending', 'accepted') then

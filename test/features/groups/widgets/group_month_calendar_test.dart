@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:planflow/core/local_time.dart';
@@ -11,7 +11,7 @@ void main() {
     required List<GroupEventModel> events,
     required DateTime focusedMonth,
     DateTime? initialSelectedDay,
-    String? Function(String createdBy)? ownerNameOf,
+    String? Function(String? createdBy)? ownerNameOf,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -113,7 +113,7 @@ void main() {
       'u4': '최수아',
       'u5': '한도윤',
     };
-    String? ownerNameOf(String userId) => names[userId];
+    String? ownerNameOf(String? userId) => userId != null ? names[userId] : null;
 
     testWidgets(
       '멤버 1명이면 "이름 N건" 한 줄만 뜬다(그냥 총건수만 뜨지 않음)',

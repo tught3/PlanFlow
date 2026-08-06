@@ -14,6 +14,7 @@ import '../providers/group_context_provider.dart';
 import '../repositories/group_event_repository.dart';
 import '../repositories/group_repository.dart';
 import '../repositories/group_backup_repository.dart';
+import '../services/group_cleanup_service.dart';
 import '../services/group_event_share_service.dart';
 
 class GroupDetailScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class GroupDetailScreen extends StatefulWidget {
     this.repository,
     this.eventRepository,
     this.groupEventRepository,
+    this.backupRepository,
     this.preferences,
     this.currentUserIdOverride,
   });
@@ -33,6 +35,9 @@ class GroupDetailScreen extends StatefulWidget {
   final GroupRepository? repository;
   final EventRepository? eventRepository;
   final GroupEventRepository? groupEventRepository;
+  /// 테스트 주입용 seam. 미지정 시 기존과 동일하게
+  /// `GroupBackupRepository.supabase()`를 사용한다(동작 변경 없음).
+  final GroupBackupRepository? backupRepository;
   final SharedPreferences? preferences;
   final String? currentUserIdOverride;
 
@@ -62,7 +67,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   void initState() {
     super.initState();
     _repository = widget.repository ?? GroupRepository.supabase();
-    _backupRepository = GroupBackupRepository.supabase();
+    _backupRepository =
+        widget.backupRepository ?? GroupBackupRepository.supabase();
     _provider =
         widget.contextProvider ?? GroupContextProvider(repository: _repository);
     _ownsProvider = widget.contextProvider == null;
@@ -467,9 +473,14 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     });
     try {
       await _backupRepository.archiveGroupWithBackup(group.id);
-      // TODO(cleanup): Task 4의 GroupCleanupService가 완료되면
-      // GroupCleanupService.instance.onGroupArchived(group.id)로
-      // 멤버 알림·위젯 정리를 호출한다. 현재는 미구현 상태라 archive만 처리.
+
+      // fire-and-forget cleanup — 실패해도 archive 성공에는 영향 없음(내부 try/catch).
+      unawaited(
+        GroupCleanupService.instance.onGroupArchived(
+          group.id,
+          userId: Supabase.instance.client.auth.currentUser?.id,
+        ),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -511,7 +522,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       if (archiveBackup == null) {
         throw StateError('복원할 보관 백업이 없습니다.');
       }
-      await _backupRepository.restoreGroupFromBackup(archiveBackup.id);
+      final restoreResult =
+          await _backupRepository.restoreGroupFromBackup(archiveBackup.id);
+
+      // restore RPC는 백업 행(GroupBackupModel)을 반환한다. 백업의 groupId는
+      // 원본(보관됐던) 그룹 id이고, 새 group_id는 응답에 포함되지 않는다.
+      // onGroupRestored의 현재 구현(위젯·프로바이더 갱신 + no-op 알람 프라이밍)은
+      // groupId를 실질적으로 사용하지 않으므로, 응답에서 추출 가능한 유일한 그룹 id를 전달한다.
+      unawaited(
+        GroupCleanupService.instance.onGroupRestored(
+          restoreResult.groupId,
+          userId: Supabase.instance.client.auth.currentUser?.id,
+        ),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('그룹을 복원했어요.')),

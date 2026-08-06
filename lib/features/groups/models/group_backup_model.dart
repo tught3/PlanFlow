@@ -6,7 +6,7 @@ class GroupBackupModel {
     required this.groupId,
     required this.backupType,
     required this.snapshot,
-    required this.createdBy,
+    this.createdBy,
     this.createdAt,
     this.restoredAt,
     this.restoredBy,
@@ -32,7 +32,7 @@ class GroupBackupModel {
           ? 'archive'
           : stringValue(json['backup_type']),
       snapshot: snapshot,
-      createdBy: requiredStringValue(json['created_by'], 'created_by'),
+      createdBy: optionalStringValue(json['created_by']),
       createdAt: dateTimeValue(json['created_at']),
       restoredAt: dateTimeValue(json['restored_at']),
       restoredBy: optionalStringValue(json['restored_by']),
@@ -43,7 +43,7 @@ class GroupBackupModel {
   final String groupId;
   final String backupType;
   final Map<String, dynamic> snapshot;
-  final String createdBy;
+  final String? createdBy;
   final DateTime? createdAt;
   final DateTime? restoredAt;
   final String? restoredBy;

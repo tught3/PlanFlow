@@ -150,8 +150,12 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     }
   }
 
-  /// 공유자 표시 이름: 멤버 맵 우선, 없으면 userId 앞 8자
-  String _resolveDisplayName(String userId) {
+  /// 공유자 표시 이름: 멤버 맵 우선, 없으면 userId 앞 8자.
+  /// userId가 null이면 작성자 계정이 삭제된 경우로 보고 '탈퇴한 사용자'를 반환한다.
+  String _resolveDisplayName(String? userId) {
+    if (userId == null) {
+      return '탈퇴한 사용자';
+    }
     final name = _memberNames[userId];
     if (name != null && name.isNotEmpty) return name;
     return userId.length > 8 ? userId.substring(0, 8) : userId;
@@ -197,7 +201,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
         groupEventId: event.id,
         groupId: event.groupId,
         authorUserId: _currentUserId,
-        targetUserId: event.createdBy,
+        targetUserId: event.createdBy ?? '',
         content: text,
         createdAt: DateTime.now(),
       );
@@ -474,7 +478,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
   // TASK 3: 리더 지시 섹션
   Widget _buildCommentSection(BuildContext context, GroupEventModel event) {
     final isLeader = _provider.isLeaderOfSelectedGroup;
-    final isSharer = _currentUserId == event.createdBy;
+    final isSharer = event.createdBy != null && _currentUserId == event.createdBy;
 
     return Card(
       child: Padding(

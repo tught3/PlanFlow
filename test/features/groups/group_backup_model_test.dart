@@ -32,4 +32,24 @@ void main() {
     expect(payload['snapshot'], isA<Map<String, dynamic>>());
     expect(payload['created_by'], 'user-1');
   });
+
+  test(
+      'GroupBackupModel.fromJson parses created_by:null without throwing '
+      'and keeps createdBy null', () {
+    final model = GroupBackupModel.fromJson(<String, dynamic>{
+      'id': 'backup-2',
+      'group_id': 'group-2',
+      'backup_type': 'delete',
+      'snapshot': <String, dynamic>{'name': 'Deleted Team'},
+      'created_by': null,
+      'created_at': '2026-06-11T00:00:00Z',
+    });
+
+    expect(model.id, 'backup-2');
+    expect(model.createdBy, isNull);
+    expect(model.isDelete, isTrue);
+
+    final payload = model.toJson();
+    expect(payload['created_by'], isNull);
+  });
 }

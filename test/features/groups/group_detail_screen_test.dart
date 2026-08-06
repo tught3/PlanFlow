@@ -2,13 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/features/groups/models/group_backup_model.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/repositories/group_backup_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_detail_screen.dart';
+import 'package:planflow/features/groups/services/group_cleanup_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  // GroupDetailScreen._archiveGroup/_restoreGroup이 GroupCleanupService에
+  // userId를 넘길 때 Supabase.instance.client.auth.currentUser?.id를 직접
+  // 참조한다. 이 흐름을 태우는 테스트를 위해 home_screen_test.dart와 동일한
+  // 패턴으로 실제 네트워크 호출 없이 Supabase 인스턴스를 1회 초기화해둔다.
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    try {
+      Supabase.instance;
+    } catch (_) {
+      await Supabase.initialize(
+        url: 'https://example.com',
+        anonKey: 'public-anon-key',
+        authOptions: const FlutterAuthClientOptions(
+          detectSessionInUri: false,
+          autoRefreshToken: false,
+        ),
+      );
+    }
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
@@ -336,6 +361,264 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('기존 일정을 공유할까요?'), findsNothing);
   });
+
+  group('GroupCleanupService 배선', () {
+    tearDown(() {
+      GroupCleanupService.resetInstance();
+    });
+
+    testWidgets('그룹 보관 성공 시 GroupCleanupService.onGroupArchived가 호출된다',
+        (tester) async {
+      final recorder = _RecordingGroupCleanupService();
+      GroupCleanupService.setInstance(recorder);
+
+      final preferences = await SharedPreferences.getInstance();
+      // 이 테스트는 보관 흐름만 검증하므로 무관한 '기존 일정 공유' 자동
+      // 프롬프트는 미리 꺼둔다.
+      await preferences.setBool(
+        'planflow:group_event_share_prompt:v1:leader-1:group-1',
+        true,
+      );
+      final repository = _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 29),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'leader-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      );
+      final backupRepository = _FakeGroupBackupRepository();
+
+      await tester.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      // _archiveGroup 성공 후 _handleBackNavigation()이 context.canPop()
+      // (go_router extension)을 호출하므로, plain MaterialApp이 아니라
+      // GoRouter가 필요하다(없으면 GoRouter.of(context) 예외).
+      final router = GoRouter(
+        initialLocation: '/groups/group-1',
+        routes: [
+          GoRoute(
+            path: '/groups/group-1',
+            builder: (_, __) => GroupDetailScreen(
+              groupId: 'group-1',
+              repository: repository,
+              backupRepository: backupRepository,
+              preferences: preferences,
+              currentUserIdOverride: 'leader-1',
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.groups,
+            builder: (_, __) => const Scaffold(body: Text('그룹 목록')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      expect(recorder.archivedCalls, isEmpty);
+
+      await tester.tap(find.text('그룹 보관하기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('보관하기'));
+      await tester.pumpAndSettle();
+
+      expect(backupRepository.archiveGroupWithBackupCalls, <String>['group-1']);
+      expect(recorder.archivedCalls, hasLength(1));
+      expect(recorder.archivedCalls.single, 'group-1');
+    });
+
+    testWidgets('그룹 복원 성공 시 GroupCleanupService.onGroupRestored가 호출된다',
+        (tester) async {
+      final recorder = _RecordingGroupCleanupService();
+      GroupCleanupService.setInstance(recorder);
+
+      final preferences = await SharedPreferences.getInstance();
+      final repository = _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            status: 'archived',
+            createdAt: DateTime.utc(2026, 6, 29),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'leader-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      );
+      final backupRepository = _FakeGroupBackupRepository(
+        backupsByGroupId: <String, List<GroupBackupModel>>{
+          'group-1': <GroupBackupModel>[
+            GroupBackupModel(
+              id: 'backup-1',
+              groupId: 'group-1',
+              backupType: 'archive',
+              snapshot: const <String, dynamic>{},
+            ),
+          ],
+        },
+        restoredGroupId: 'group-1',
+      );
+
+      // _restoreGroup은 성공 후 (go_router가 아닌) 순수
+      // Navigator.pop(context)을 직접 호출한다. GroupDetailScreen을
+      // MaterialApp의 home으로 바로 두면(스택에 route가 1개뿐) pop이 "바닥
+      // route를 제거하려 한다"는 예외를 낼 수 있으므로, 실제 사용처럼 다른
+      // 화면 위에 push해 pop이 안전하게 동작하도록 스택을 만든다.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => GroupDetailScreen(
+                        groupId: 'group-1',
+                        repository: repository,
+                        backupRepository: backupRepository,
+                        preferences: preferences,
+                        currentUserIdOverride: 'leader-1',
+                      ),
+                    ),
+                  ),
+                  child: const Text('그룹 상세로 이동'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('그룹 상세로 이동'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('보관된 그룹입니다'), findsOneWidget);
+      expect(recorder.restoredCalls, isEmpty);
+
+      await tester.tap(find.text('그룹 복원하기'));
+      await tester.pumpAndSettle();
+
+      expect(backupRepository.restoreGroupFromBackupCalls, <String>['backup-1']);
+      expect(recorder.restoredCalls, hasLength(1));
+      expect(recorder.restoredCalls.single, 'group-1');
+    });
+  });
+}
+
+/// GroupCleanupService.onGroupArchived/onGroupRestored 호출 여부·순서를
+/// 기록하는 테스트 전용 fake. 나머지 내부 로직(알림/알람/위젯 정리 등)은
+/// 실제 Supabase/플랫폼 채널 호출을 필요로 해 이 위젯 테스트 범위 밖이므로
+/// 오버라이드해 완전히 우회한다.
+class _RecordingGroupCleanupService extends GroupCleanupService {
+  final List<String> archivedCalls = <String>[];
+  final List<String> restoredCalls = <String>[];
+
+  @override
+  Future<void> onGroupArchived(String groupId, {String? userId}) async {
+    archivedCalls.add(groupId);
+  }
+
+  @override
+  Future<void> onGroupRestored(String groupId, {String? userId}) async {
+    restoredCalls.add(groupId);
+  }
+}
+
+class _FakeGroupBackupRepository extends GroupBackupRepository {
+  _FakeGroupBackupRepository({
+    Map<String, List<GroupBackupModel>>? backupsByGroupId,
+    this.restoredGroupId,
+  }) : backupsByGroupId = backupsByGroupId ?? <String, List<GroupBackupModel>>{};
+
+  final Map<String, List<GroupBackupModel>> backupsByGroupId;
+  final String? restoredGroupId;
+
+  final List<String> archiveGroupWithBackupCalls = <String>[];
+  final List<String> restoreGroupFromBackupCalls = <String>[];
+
+  @override
+  Future<GroupBackupModel> createArchiveBackup(
+    String groupId,
+    Map<String, dynamic> snapshot,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupBackupModel>> getBackupsForGroup(String groupId) async {
+    return backupsByGroupId[groupId] ?? const <GroupBackupModel>[];
+  }
+
+  @override
+  Future<GroupBackupModel> markBackupRestored(String backupId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupBackupModel> archiveGroupWithBackup(String groupId) async {
+    archiveGroupWithBackupCalls.add(groupId);
+    return GroupBackupModel(
+      id: 'backup-generated',
+      groupId: groupId,
+      backupType: 'archive',
+      snapshot: const <String, dynamic>{},
+    );
+  }
+
+  @override
+  Future<List<GroupBackupModel>> listMyBackups({
+    String? backupType,
+    List<String>? backupTypes,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupBackupModel> restoreGroupFromBackup(String backupId) async {
+    restoreGroupFromBackupCalls.add(backupId);
+    return GroupBackupModel(
+      id: backupId,
+      groupId: restoredGroupId ?? 'group-1',
+      backupType: 'archive',
+      snapshot: const <String, dynamic>{},
+      restoredAt: DateTime.utc(2026, 6, 30),
+      restoredBy: 'leader-1',
+    );
+  }
+
+  @override
+  Future<void> permanentlyDeleteBackup(String backupId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupBackupModel> deleteGroupWithBackup(String groupId) {
+    throw UnimplementedError();
+  }
 }
 
 class _FakeGroupRepository extends GroupRepository {

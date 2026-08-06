@@ -165,7 +165,8 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
     }
   }
 
-  String? _ownerNameOf(String createdBy) => _ownerNames[createdBy];
+  String? _ownerNameOf(String? createdBy) =>
+      createdBy == null ? null : _ownerNames[createdBy];
 
   Future<void> _openDetail(GroupEventModel event) async {
     final result = await context.push<String>(

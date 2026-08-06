@@ -7,7 +7,7 @@ class GroupEventModel {
     required this.title,
     required this.startAt,
     required this.endAt,
-    required this.createdBy,
+    this.createdBy,
     this.description,
     this.location,
     this.allDay = false,
@@ -43,7 +43,7 @@ class GroupEventModel {
           ? 'none'
           : stringValue(json['recurrence_type']),
       recurrenceUntil: dateTimeValue(json['recurrence_until']),
-      createdBy: requiredStringValue(json['created_by'], 'created_by'),
+      createdBy: optionalStringValue(json['created_by']),
       updatedBy: optionalStringValue(json['updated_by']),
       cancelledAt: dateTimeValue(json['cancelled_at']),
       cancelledBy: optionalStringValue(json['cancelled_by']),
@@ -66,7 +66,7 @@ class GroupEventModel {
   final bool allDay;
   final String recurrenceType;
   final DateTime? recurrenceUntil;
-  final String createdBy;
+  final String? createdBy;
   final String? updatedBy;
   final DateTime? cancelledAt;
   final String? cancelledBy;

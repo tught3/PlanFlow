@@ -4,7 +4,7 @@ class GroupRoleDelegationModel {
   const GroupRoleDelegationModel({
     required this.id,
     required this.groupId,
-    required this.delegatorUserId,
+    this.delegatorUserId,
     required this.delegateUserId,
     required this.permissions,
     required this.startsAt,
@@ -28,7 +28,7 @@ class GroupRoleDelegationModel {
       id: requiredStringValue(json['id'], 'id'),
       groupId: requiredStringValue(json['group_id'], 'group_id'),
       delegatorUserId:
-          requiredStringValue(json['delegator_user_id'], 'delegator_user_id'),
+          optionalStringValue(json['delegator_user_id']),
       delegateUserId:
           requiredStringValue(json['delegate_user_id'], 'delegate_user_id'),
       permissions: stringListValue(json['permissions']),
@@ -46,7 +46,7 @@ class GroupRoleDelegationModel {
 
   final String id;
   final String groupId;
-  final String delegatorUserId;
+  final String? delegatorUserId;
   final String delegateUserId;
   final List<String> permissions;
   final DateTime startsAt;

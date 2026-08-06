@@ -455,4 +455,86 @@ void main() {
     expect(events, hasLength(1));
     expect(events.first.id, 'in-range-mine');
   });
+
+  test(
+      'memberShareStats skips events with null createdBy (deleted account) '
+      'without throwing, other events still aggregate normally', () async {
+    final groupRepository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+          _member(
+            id: 'member-2',
+            groupId: 'group-1',
+            userId: 'user-2',
+            role: 'member',
+          ),
+        ],
+      },
+    );
+    final eventRepository = FakeGroupEventRepository(
+      initialEvents: <GroupEventModel>[
+        // 작성자 계정이 삭제되어 createdBy가 null인 일정. 집계에서 제외되어야
+        // 하고, null 키 때문에 런타임 에러가 나면 안 된다.
+        GroupEventModel(
+          id: 'orphan-event',
+          groupId: 'group-1',
+          title: '탈퇴한 사용자의 일정',
+          startAt: DateTime.utc(2026, 6, 11, 3),
+          endAt: DateTime.utc(2026, 6, 11, 4),
+          createdBy: null,
+          createdAt: DateTime.utc(2026, 6, 11, 3),
+        ),
+        _event(
+          id: 'normal-event',
+          groupId: 'group-1',
+          title: 'user-1 정상 일정',
+          startAt: DateTime.utc(2026, 6, 12, 1),
+          endAt: DateTime.utc(2026, 6, 12, 2),
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 12, 1),
+        ),
+      ],
+    );
+
+    final repository = SupabaseGroupDashboardRepository(
+      groupRepository: groupRepository,
+      eventRepository: eventRepository,
+    );
+
+    // 예외 없이 완료되어야 한다(널 키를 Map<String,int>에 그대로 쓰면 컴파일/런타임
+    // 에러가 난다).
+    final summary = await repository.loadDashboard(
+      groupId: 'group-1',
+      now: DateTime.utc(2026, 6, 11, 9),
+    );
+
+    // weekEventCount는 orphan-event를 포함한 전체 이벤트 수(2건)를 그대로
+    // 반영하지만, memberShareStats는 createdBy가 있는 이벤트만 집계한다.
+    expect(summary.weekEventCount, 2);
+    expect(summary.memberShareStats, hasLength(2));
+
+    final user1Stat =
+        summary.memberShareStats.firstWhere((s) => s.userId == 'user-1');
+    expect(user1Stat.sharedCount, 1);
+    expect(user1Stat.lastSharedAt, DateTime.utc(2026, 6, 12, 1));
+
+    final user2Stat =
+        summary.memberShareStats.firstWhere((s) => s.userId == 'user-2');
+    expect(user2Stat.sharedCount, 0);
+    expect(user2Stat.lastSharedAt, isNull);
+  });
 }

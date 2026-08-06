@@ -1,4 +1,4 @@
-﻿-- Fix: group_events.created_by ON DELETE CASCADE → SET NULL
+-- Fix: group_events.created_by ON DELETE CASCADE → SET NULL
 -- 회원 탈퇴 시 본인이 만든 그룹 공유 일정이 자동 삭제되는 문제 해결
 -- docs/account-deletion.html은 "그룹 공유 일정은 유지됩니다"라고 안내하나
 -- 실제 동작과 불일치하여 수정
