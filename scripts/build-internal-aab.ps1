@@ -327,7 +327,23 @@ function Invoke-OwnedProcess {
   if (-not $completed) {
     # This tree was launched by this script, so it cannot include another session's analyzer.
     & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
-    Add-Content -LiteralPath $OutputPath -Value "`n[timeout] Owned process exceeded $TimeoutSeconds seconds and was stopped." -Encoding utf8
+    # Same transient-lock window as the stderr-append retry below: right
+    # after taskkill reports the process dead, Start-Process's own
+    # RedirectStandardOutput handle for $OutputPath can still be mid-release
+    # by the OS/.NET for a brief moment (observed as "cannot access the
+    # file ... because it is being used by another process" on this exact
+    # Add-Content call, which previously had no retry and crashed the whole
+    # deploy with an unhandled exception before the 'timed_out' audit event
+    # was even written). Retry briefly instead of failing outright.
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+      try {
+        Add-Content -LiteralPath $OutputPath -Value "`n[timeout] Owned process exceeded $TimeoutSeconds seconds and was stopped." -Encoding utf8
+        break
+      } catch {
+        if ($attempt -eq 5) { throw }
+        Start-Sleep -Milliseconds (200 * $attempt)
+      }
+    }
     Write-AnalyzeAudit -Event 'timed_out' -Details @{ stage = $Stage; pid = $process.Id; timeout_seconds = $TimeoutSeconds }
     $exitCode = $null
   } else {
