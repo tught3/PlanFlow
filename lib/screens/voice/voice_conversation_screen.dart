@@ -1227,7 +1227,21 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       _voicePausedByUser = false;
       _isListening = false;
     }
-    await widget.sttService.cancelActiveListen();
+    try {
+      await widget.sttService.cancelActiveListen().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {
+          debugPrint(
+            'VoiceConversationScreen: cancelActiveListen timed out, '
+            'continuing navigation anyway.',
+          );
+        },
+      );
+    } catch (error) {
+      debugPrint(
+        'VoiceConversationScreen: cancelActiveListen failed: $error',
+      );
+    }
   }
 
   Future<bool> _deleteEvent(EventModel event) async {
@@ -1414,16 +1428,27 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       return;
     }
     _isExitingConversation = true;
-    _voicePhase = _VoiceConversationPhase.exiting;
-    await _stopVoiceBeforeNavigation();
-    _setConversationInputText('');
-    _inputTurnGeneration += 1;
-    _conversation.clearSession();
-    _isRestartPending = false;
-    _manualEditInterruptedListening = false;
-    _didRetryConversationEarlyFailure = false;
-    if (!mounted) return;
-    context.go(AppRoutes.home);
+    var navigated = false;
+    try {
+      _voicePhase = _VoiceConversationPhase.exiting;
+      await _stopVoiceBeforeNavigation();
+      _setConversationInputText('');
+      _inputTurnGeneration += 1;
+      _conversation.clearSession();
+      _isRestartPending = false;
+      _manualEditInterruptedListening = false;
+      _didRetryConversationEarlyFailure = false;
+      if (!mounted) return;
+      context.go(AppRoutes.home);
+      navigated = true;
+    } finally {
+      // 실제 이동(context.go)까지 도달하지 못했다면(예외/미완료) 다음
+      // 뒤로가기 시도가 다시 가능하도록 플래그를 복구한다. 이동이
+      // 성공한 경우 위젯이 곧 dispose되므로 이 복구는 무해하다.
+      if (!navigated && mounted) {
+        _isExitingConversation = false;
+      }
+    }
   }
 
   void _handleInputChanged(String value) {
@@ -2394,7 +2419,7 @@ EventModel _copyEventWithCritical(
 EventModel _eventModelFromGroupEvent(GroupEventModel groupEvent) {
   return EventModel(
     id: groupEvent.id,
-    userId: groupEvent.createdBy,
+    userId: groupEvent.createdBy ?? '',
     title: groupEvent.title,
     startAt: groupEvent.startAt,
     endAt: groupEvent.endAt,
