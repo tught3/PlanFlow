@@ -12,9 +12,9 @@
   [switch]$SkipTests,
   [switch]$SkipFluxOsSession,
   [ValidateRange(60, 900)]
-  [int]$AnalyzeTimeoutSeconds = 420,
+  [int]$AnalyzeTimeoutSeconds = 900,
   [ValidateRange(60, 900)]
-  [int]$AnalyzeFallbackTimeoutSeconds = 300,
+  [int]$AnalyzeFallbackTimeoutSeconds = 700,
   [string]$AnalyzeAuditPath
 )
 
