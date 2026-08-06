@@ -10,17 +10,34 @@
  * getWeekDays/shiftWeek)로 직접 검증한다.
  */
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
 import type { Event } from '../../../domain/event.ts';
 import { kstIsoWeekday } from '../../../domain/datetime.ts';
 import WeekView, {
+  WeekDayEventList,
   buildWeekDayEvents,
   formatMonthDay,
   getWeekDays,
   getWeekStart,
   shiftWeek,
 } from './WeekView.tsx';
+
+/**
+ * WeekDayEventList는 각 항목을 react-router-dom의 <Link>로 감싼다. 이
+ * 저장소에는 jsdom이 없어 renderToStaticMarkup으로만 렌더링을 검증하는데,
+ * <Link>는 라우터 컨텍스트 없이 렌더링하면 예외를 던지므로 항상
+ * MemoryRouter로 감싸서 렌더링한다(TodayEventList.tsx/TodayView.test.tsx와
+ * 동일한 패턴).
+ */
+function renderWeekDayEventList(events: Event[]): string {
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <WeekDayEventList events={events} />
+    </MemoryRouter>,
+  );
+}
 
 function makeEvent(overrides: Partial<Event> = {}): Event {
   return {
@@ -205,5 +222,58 @@ describe('WeekView 기본 렌더링', () => {
   it('initialDate 없이도 예외 없이 렌더링된다(기본값은 현재 시각)', () => {
     const html = renderToStaticMarkup(<WeekView />);
     expect(html).toContain('주간 캘린더');
+  });
+});
+
+describe('WeekDayEventList (렌더링)', () => {
+  it('각 일정 항목이 /event/:id로 이동하는 링크로 감싸진다(P3: 주간뷰 상세 진입 경로 부재 수정)', () => {
+    const events = [
+      makeEvent({ id: 'evt-abc', title: '아침 회의' }),
+      makeEvent({ id: 'evt-xyz', title: '저녁 약속' }),
+    ];
+
+    const html = renderWeekDayEventList(events);
+
+    expect(html).toContain('href="/event/evt-abc"');
+    expect(html).toContain('href="/event/evt-xyz"');
+    // 기존 시간/제목 span 클래스는 링크 안에서도 그대로 유지되어야 한다(시각 회귀 방지).
+    expect(html).toContain('week-view__event-time');
+    expect(html).toContain('week-view__event-title');
+    expect(html).toContain('week-view__event-link');
+  });
+
+  it('critical 일정도 week-view__event--critical 클래스를 유지한 채 링크를 갖는다', () => {
+    const events = [makeEvent({ id: 'evt-critical', title: '중요 미팅', isCritical: true })];
+
+    const html = renderWeekDayEventList(events);
+
+    expect(html).toContain('week-view__event--critical');
+    expect(html).toContain('href="/event/evt-critical"');
+  });
+
+  it('빈 일정 배열이면 링크 없이 빈 목록만 렌더링한다(회귀 없음)', () => {
+    const html = renderWeekDayEventList([]);
+
+    expect(html).not.toContain('<a');
+    expect(html).not.toContain('week-view__event-link');
+  });
+
+  it('같은 event.id를 가진 서로 다른 회차(반복 일정)도 key 충돌 없이 각자 링크를 갖는다', () => {
+    // 반복 일정 전개(copyEventWithTime)는 원본 event.id를 그대로 유지하므로
+    // (src/domain/recurrence.ts), 하루 안에 같은 id의 회차가 두 번 있어도
+    // startAt이 다르면 키가 겹치지 않아야 한다.
+    const events = [
+      makeEvent({ id: 'weekly-1', title: '아침 스탠드업', startAt: new Date('2026-03-11T00:00:00.000Z') }),
+      makeEvent({ id: 'weekly-1', title: '저녁 스탠드업', startAt: new Date('2026-03-11T10:00:00.000Z') }),
+    ];
+
+    const html = renderWeekDayEventList(events);
+
+    expect(html).toContain('아침 스탠드업');
+    expect(html).toContain('저녁 스탠드업');
+    // 두 회차 모두 같은 event.id로 /event/weekly-1을 가리켜야 한다(react-router는
+    // 이 href가 같더라도 key만 서로 다르면 렌더링 자체는 문제없이 된다).
+    const linkCount = html.split('href="/event/weekly-1"').length - 1;
+    expect(linkCount).toBe(2);
   });
 });
