@@ -4,11 +4,38 @@
  * 실제로 렌더링하지 않는다 - 그리드 계산과 날짜별 일정 배치 로직을 순수
  * 함수로 분리해 직접 호출하는 방식으로 테스트한다.
  */
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { buildMonthDayEvents, buildMonthGrid } from './MonthView.tsx';
+import { MonthCellChips, buildMonthDayEvents, buildMonthGrid } from './MonthView.tsx';
+import type { MonthDayEventEntry } from './MonthView.tsx';
 import type { Event } from '../../../domain/index.ts';
 import { kstIsoWeekday, kstMonthRange, kstWallToInstant } from '../../../domain/index.ts';
+
+/**
+ * MonthCellChips는 각 일정 칩을 react-router-dom의 <Link>로 감싼다. 이
+ * 저장소에는 jsdom이 없어 renderToStaticMarkup으로만 렌더링을 검증하는데,
+ * <Link>는 라우터 컨텍스트 없이 렌더링하면 예외를 던지므로 항상
+ * MemoryRouter로 감싸서 렌더링한다(TodayEventList.tsx/WeekDayEventList와
+ * 동일한 패턴).
+ */
+function renderMonthCellChips(entries: MonthDayEventEntry[], maxChips?: number): string {
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <MonthCellChips entries={entries} maxChips={maxChips} />
+    </MemoryRouter>,
+  );
+}
+
+function makeEntry(overrides: Partial<MonthDayEventEntry> = {}, eventOverrides: Partial<Event> = {}): MonthDayEventEntry {
+  return {
+    event: makeEvent(eventOverrides),
+    isSpanStart: true,
+    isSpanEnd: true,
+    ...overrides,
+  };
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -228,5 +255,91 @@ describe('buildMonthDayEvents', () => {
 
   it('gridDays가 비어 있으면 빈 배열을 반환한다', () => {
     expect(buildMonthDayEvents([], [makeEvent()])).toEqual([]);
+  });
+});
+
+describe('MonthCellChips (렌더링)', () => {
+  it('실제 일정 칩은 /event/:id로 이동하는 링크로 감싸진다(P3: 월간뷰 상세 진입 경로 부재 수정)', () => {
+    const entries = [
+      makeEntry({}, { id: 'evt-abc', title: '아침 회의' }),
+      makeEntry({}, { id: 'evt-xyz', title: '저녁 약속' }),
+    ];
+
+    const html = renderMonthCellChips(entries);
+
+    expect(html).toContain('href="/event/evt-abc"');
+    expect(html).toContain('href="/event/evt-xyz"');
+    // 기존 클래스는 링크 도입 후에도 그대로 유지되어야 한다(시각 회귀 방지).
+    expect(html).toContain('month-view__chip');
+    expect(html).toContain('month-view__chip-link');
+  });
+
+  it('overflow(+N) 표시는 특정 일정 하나를 가리키지 않으므로 링크로 감싸지 않는다', () => {
+    const entries = [
+      makeEntry({}, { id: 'evt-1', title: '일정1' }),
+      makeEntry({}, { id: 'evt-2', title: '일정2' }),
+      makeEntry({}, { id: 'evt-3', title: '일정3' }),
+      makeEntry({}, { id: 'evt-4', title: '일정4' }),
+    ];
+
+    const html = renderMonthCellChips(entries, 3);
+
+    expect(html).toContain('month-view__overflow');
+    expect(html).toContain('+1');
+    // overflow 문자열 "+1"이 <a href="/event/...">...</a> 안에 들어있지 않은지
+    // 확인한다 - overflow div 자체가 Link로 감싸지지 않아야 한다.
+    const overflowMatch = html.match(/<div class="month-view__overflow">([\s\S]*?)<\/div>/);
+    expect(overflowMatch).not.toBeNull();
+    expect(overflowMatch?.[1]).not.toContain('<a');
+
+    // 처음 3개(maxChips)만 실제 칩으로 렌더링되고 4번째는 overflow에 흡수된다.
+    expect(html).toContain('href="/event/evt-1"');
+    expect(html).toContain('href="/event/evt-2"');
+    expect(html).toContain('href="/event/evt-3"');
+    expect(html).not.toContain('href="/event/evt-4"');
+  });
+
+  it('critical 일정도 month-view__chip--critical 클래스를 유지한 채 링크를 갖는다', () => {
+    const entries = [makeEntry({}, { id: 'evt-critical', title: '마감일', isCritical: true })];
+
+    const html = renderMonthCellChips(entries);
+
+    expect(html).toContain('month-view__chip--critical');
+    expect(html).toContain('href="/event/evt-critical"');
+  });
+
+  it('다일(span) 일정의 span-start/span-mid/span-end 보조 클래스가 Link로 감싼 뒤에도 유지된다', () => {
+    const startEntry = makeEntry({ isSpanStart: true, isSpanEnd: false }, { id: 'multi-1', title: '워크샵' });
+    const midEntry = makeEntry({ isSpanStart: false, isSpanEnd: false }, { id: 'multi-1', title: '워크샵' });
+    const endEntry = makeEntry({ isSpanStart: false, isSpanEnd: true }, { id: 'multi-1', title: '워크샵' });
+
+    expect(renderMonthCellChips([startEntry])).toContain('month-view__chip--span-start');
+    expect(renderMonthCellChips([midEntry])).toContain('month-view__chip--span-mid');
+    expect(renderMonthCellChips([endEntry])).toContain('month-view__chip--span-end');
+  });
+
+  it('빈 entries면 칩도 overflow도 렌더링하지 않는다(빈 날짜 셀 회귀 없음)', () => {
+    const html = renderMonthCellChips([]);
+
+    expect(html).not.toContain('<a');
+    expect(html).not.toContain('month-view__chip');
+    expect(html).not.toContain('month-view__overflow');
+  });
+
+  it('같은 event.id를 가진 서로 다른 회차(반복 일정)도 key 충돌 없이 각자 렌더링된다', () => {
+    // 반복 일정 전개(copyEventWithTime)는 원본 event.id를 그대로 유지하므로
+    // (src/domain/recurrence.ts), 같은 셀 안에 같은 id의 회차가 두 번 있어도
+    // startAt이 다르면 키가 겹치지 않아야 한다.
+    const entries = [
+      makeEntry({}, { id: 'weekly-1', title: '아침 스탠드업', startAt: kstWallToInstant(2026, 2, 10, 9, 0, 0) }),
+      makeEntry({}, { id: 'weekly-1', title: '저녁 스탠드업', startAt: kstWallToInstant(2026, 2, 10, 19, 0, 0) }),
+    ];
+
+    const html = renderMonthCellChips(entries);
+
+    expect(html).toContain('아침 스탠드업');
+    expect(html).toContain('저녁 스탠드업');
+    const linkCount = html.split('href="/event/weekly-1"').length - 1;
+    expect(linkCount).toBe(2);
   });
 });
