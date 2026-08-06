@@ -81,18 +81,23 @@
 }
 
 .today-event-list__item {
-  display: flex;
-  align-items: center;
-  gap: var(--pf-space-12);
   background: var(--pf-surface);
   border: 1px solid var(--pf-grid-line);
   border-radius: var(--pf-radius-12);
-  padding: var(--pf-space-12) var(--pf-space-16);
 }
 
 .today-event-list__item--critical {
   border-left: 3px solid var(--pf-danger);
   background: var(--pf-danger-bg);
+}
+
+.today-event-list__link {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-12);
+  min-height: var(--pf-touch-target);
+  padding: var(--pf-space-12) var(--pf-space-16);
+  text-decoration: none;
 }
 
 .today-event-list__time {
