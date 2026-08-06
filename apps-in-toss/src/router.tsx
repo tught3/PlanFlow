@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, Outlet, createBrowserRouter, useNavigate, useParams } from 'react-router-dom';
+import {
+  NavLink,
+  Navigate,
+  Outlet,
+  createBrowserRouter,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 
 import type { Event } from './domain/event.ts';
 import { eventRepository } from './data/eventRepository.ts';
+import { supabase } from './lib/supabase.ts';
 import { useSession } from './features/auth/useSession.ts';
 import { LoginScreen } from './features/auth/LoginScreen.tsx';
 import { TodayView } from './features/today/TodayView.tsx';
@@ -10,6 +18,9 @@ import { MonthView } from './features/calendar/month/MonthView.tsx';
 import WeekView from './features/calendar/week/WeekView.tsx';
 import { EventForm } from './features/event/EventForm.tsx';
 import { EventDetail } from './features/event/EventDetail.tsx';
+import { ConfirmDialog } from './components/index.ts';
+import type { LogoutUiState } from './appLayoutLogout.ts';
+import { nextLogoutState } from './appLayoutLogout.ts';
 
 /**
  * 로그인 여부를 확인하는 게이트. AppLayout(하단 탭 포함) 상위에서 감싸서,
@@ -36,19 +47,89 @@ function LoginRoute() {
   return <LoginScreen onLoginSuccess={() => navigate('/today', { replace: true })} />;
 }
 
-/** 하단 탭 내비게이션을 포함하는 공용 레이아웃. */
+/** 하단 탭 목록. NavLink가 현재 경로와 일치 여부를 판단해 활성 클래스를 붙인다. */
+const NAV_ITEMS = [
+  { to: '/today', label: '오늘' },
+  { to: '/calendar/month', label: '월간' },
+  { to: '/calendar/week', label: '주간' },
+  { to: '/event/new', label: '일정 추가' },
+] as const;
+
+/**
+ * 하단 탭 내비게이션 + 상단 헤더(타이틀/로그아웃)를 포함하는 공용 레이아웃.
+ *
+ * 로그아웃 확인/실행 상태 머신(nextLogoutState)은 별도 파일
+ * src/appLayoutLogout.ts로 분리되어 있다 - 이유는 그 파일 상단 주석 참고
+ * (router.tsx를 그대로 테스트에서 import하면 createBrowserRouter가 모듈
+ * 로드 시점에 document를 참조해 jsdom 없는 이 프로젝트의 vitest에서 죽는다).
+ *
+ * 이 앱은 별도 로컬 캐시(localStorage/sessionStorage/IndexedDB)를 쓰지 않는다
+ * (src 전체에 해당 API 사용처가 없음, 데이터는 항상 eventRepository를 통해
+ * Supabase에서 직접 조회한다). supabase-js 클라이언트 자체가 세션 토큰을
+ * 내부적으로 영속화하지만, 그 저장소도 supabase.auth.signOut() 호출 시
+ * supabase-js가 알아서 정리한다. 따라서 "로그아웃 시 로컬 데이터 삭제"라는
+ * 요구는 이 앱에 signOut() 호출 이상의 별도 캐시 삭제 로직이 필요 없다 -
+ * 세션 종료 자체로 충족된다.
+ */
 function AppLayout() {
+  const navigate = useNavigate();
+  const [logoutState, setLogoutState] = useState<LogoutUiState>('idle');
+
+  useEffect(() => {
+    if (logoutState !== 'signing-out') {
+      return;
+    }
+    let cancelled = false;
+    supabase.auth.signOut().then(() => {
+      if (cancelled) {
+        return;
+      }
+      navigate('/login', { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [logoutState, navigate]);
+
   return (
     <div className="app-layout">
+      <header className="app-layout__header">
+        <h1 className="app-layout__title">PlanFlow</h1>
+        <button
+          type="button"
+          className="app-layout__logout"
+          onClick={() => setLogoutState((state) => nextLogoutState(state, 'open-dialog'))}
+        >
+          로그아웃
+        </button>
+      </header>
       <main className="app-layout__content">
         <Outlet />
       </main>
       <nav className="app-layout__nav">
-        <Link to="/today">오늘</Link>
-        <Link to="/calendar/month">월간</Link>
-        <Link to="/calendar/week">주간</Link>
-        <Link to="/event/new">일정 추가</Link>
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            // NavLink는 활성 상태일 때 aria-current="page"를 자동으로 붙인다
+            // (react-router-dom 기본 동작) - 별도로 지정할 필요 없다.
+            className={({ isActive }) =>
+              isActive ? 'app-layout__nav-item app-layout__nav-item--active' : 'app-layout__nav-item'
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
       </nav>
+      <ConfirmDialog
+        open={logoutState === 'confirming'}
+        title="로그아웃 하시겠습니까?"
+        message="로컬에 별도로 저장된 데이터가 없어, 로그아웃하면 세션 종료만으로 정리가 완료됩니다."
+        confirmLabel="로그아웃"
+        danger
+        onConfirm={() => setLogoutState((state) => nextLogoutState(state, 'confirm'))}
+        onCancel={() => setLogoutState((state) => nextLogoutState(state, 'cancel'))}
+      />
     </div>
   );
 }
