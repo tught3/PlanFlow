@@ -55,10 +55,20 @@
   gap: var(--pf-space-16);
 }
 
+.today-view--loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
 .today-view__title {
   font-size: var(--pf-font-24);
   font-weight: 700;
   color: var(--pf-text);
+}
+
+.today-event-list__empty {
+  margin-top: var(--pf-space-8);
 }
 
 .today-event-list {
