@@ -76,6 +76,7 @@
 |------|----------|----------------|
 | 원본 데이터 저장소 | 모든 이벤트/일정 데이터의 단일 소스는 기존 PlanFlow(Flutter 앱)와 동일한 Supabase(PostgreSQL) 프로젝트이며, 별도의 자체 DB를 새로 두지 않는다. | `src/data/index.ts`, `src/domain/`(다른 병렬 작업 범위) |
 | 클라이언트에는 공개(anon) 키만 노출 | 클라이언트 번들에는 Supabase `anon` 공개 키만 포함하고 `service_role` 키는 절대 포함하지 않는다. 빌드 시 자동 스캔으로 검증한다. | `scripts/scan-bundle.mjs`, `.env.example` |
+| 사용자별 데이터 격리(RLS) | 확인 완료(Supabase MCP로 프로젝트 `xqvvfnvmytjlblcngipn` 대상 실측, 2026-08-06). `events` 테이블은 `relrowsecurity=true`이고, `events_select_own`/`events_update_own`/`events_delete_own` 3개 정책이 모두 `qual: (auth.uid() = user_id)`, `events_insert_own` 정책이 `with_check: (auth.uid() = user_id)`로 걸려 있다. RLS 공백 없음(다른 사용자의 이벤트를 조회/수정/삭제/생성할 수 있는 경로가 DB 레벨에서 차단됨을 확인). | Supabase 프로젝트 `xqvvfnvmytjlblcngipn`의 `events` 테이블 RLS 정책(코드 저장소 범위 밖, `list_tables`/정책 조회로 실측) |
 
 ## 9. 개발 미리보기 모드 (devPreview) — 심사 대상 빌드에 미포함되는 이유
 
