@@ -106,6 +106,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   bool _didSubmitInitialText = false;
   bool _isExitingConversation = false;
   bool _didRetryConversationEarlyFailure = false;
+  // _stopVoiceBeforeNavigation() 호출 직전에 듣고 있었는지(또는 듣기 대기
+  // 상태였는지) 캡처해, 다녀온 화면에서 복귀했을 때 마이크를 자동으로 다시
+  // 켜야 하는지 판정하는 데 쓴다.
+  bool _wasListeningBeforeNavigation = false;
   int _listenGeneration = 0;
   int _inputTurnGeneration = 0;
   bool _isApplyingVoiceTranscript = false;
@@ -882,6 +886,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (!mounted) return;
     await context.push('${AppRoutes.eventEdit}/${draft.id}', extra: draft);
     await _loadEvents();
+    _resumeListeningAfterNavigation();
   }
 
   Future<void> _openEditWithLocation(
@@ -897,6 +902,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       appPermissionService: widget.permissionService,
     );
     if (!mounted || picked == null) {
+      _resumeListeningAfterNavigation();
       return;
     }
 
@@ -920,6 +926,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     );
     await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
     await _loadEvents();
+    _resumeListeningAfterNavigation();
   }
 
   /// 날짜·시간 이동 등 일반 수정: 편집 화면으로 바로 이동해 GPT 파이프라인이 처리한다.
@@ -928,6 +935,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (!mounted) return;
     await context.push('${AppRoutes.eventEdit}/${event.id}', extra: event);
     await _loadEvents();
+    _resumeListeningAfterNavigation();
   }
 
   Future<bool> _applyConversationEventUpdate(
@@ -1215,6 +1223,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _isRestartPending = false;
     _listenGeneration += 1;
     _didRetryConversationEarlyFailure = false;
+    _wasListeningBeforeNavigation = _keepListening || _isListening;
     if (mounted) {
       setState(() {
         _voicePhase = _VoiceConversationPhase.stopping;
@@ -1242,6 +1251,22 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         'VoiceConversationScreen: cancelActiveListen failed: $error',
       );
     }
+  }
+
+  /// [_stopVoiceBeforeNavigation] 이후 다른 화면(편집 등)을 다녀와 이
+  /// 대화 화면으로 복귀했을 때, 나가기 전에 듣고 있었다면 마이크를 자동으로
+  /// 다시 켠다. 사용자가 직접 정지했거나(_voicePausedByUser) 대화 세션을
+  /// 나가는 중이면(_isExitingConversation) 재개하지 않는다.
+  void _resumeListeningAfterNavigation() {
+    if (!mounted ||
+        _voicePausedByUser ||
+        _isExitingConversation ||
+        !_wasListeningBeforeNavigation ||
+        _isListening) {
+      return;
+    }
+    _keepListening = true;
+    _scheduleAutoRestartListen();
   }
 
   Future<bool> _deleteEvent(EventModel event) async {
@@ -1293,6 +1318,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     await _deleteEvent(event);
   }
 
+  // 이 함수의 유일한 호출자 _showEventActionSheet()는 진입 시 항상
+  // _pauseVoiceInput()을 먼저 불러 _voicePausedByUser=true를 세운다.
+  // _resumeListeningAfterNavigation()의 가드가 그 플래그를 보고 재개를
+  // 걸러내므로, 액션시트를 거쳐 온 편집 경로는 의도적으로 마이크를
+  // 자동 재개하지 않는다(사용자가 카드 액션시트를 눌러 명시적으로 음성을
+  // 멈춘 흐름이기 때문). 여기 별도 분기를 추가하지 말 것.
   Future<void> _openEditEvent(EventModel event) async {
     await _stopVoiceBeforeNavigation();
     if (!mounted) return;
@@ -1301,6 +1332,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       extra: event,
     );
     await _loadEvents();
+    _resumeListeningAfterNavigation();
   }
 
   Future<void> _showEventActionSheet(EventModel event) async {
