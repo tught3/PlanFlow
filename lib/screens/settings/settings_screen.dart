@@ -3198,7 +3198,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 16),
               _SectionCard(
                 title: '음성 입력 방식',
-                subtitle: '홈이나 위젯의 마이크 버튼을 눌렀을 때 바로 듣기 시작할지 정합니다.',
+                subtitle: '홈이나 위젯의 마이크 버튼, AI 일정 대화 진입 시 바로 듣기 시작할지 정합니다.',
                 child: SwitchListTile.adaptive(
                   key: const ValueKey('settings-voice-auto-start-selector'),
                   contentPadding: EdgeInsets.zero,
