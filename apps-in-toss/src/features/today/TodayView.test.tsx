@@ -12,6 +12,7 @@
  *    검증할 수 있다. "일정 있을 때 / 빈 상태일 때"를 이 경로로 커버한다.
  */
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Event } from '../../domain/event.ts';
@@ -19,6 +20,21 @@ import { kstTodayRange } from '../../domain/datetime.ts';
 import type { EventRepository } from '../../data/eventRepository.ts';
 import { loadTodayEvents } from './TodayView.tsx';
 import { TodayEventList } from './TodayEventList.tsx';
+
+/**
+ * TodayEventList는 이제 각 행을 react-router-dom의 <Link>로 감싼다. 이 프로젝트에는
+ * jsdom이 없어 renderToStaticMarkup으로만 렌더링을 검증하는데, <Link>는 라우터
+ * 컨텍스트(useContext) 없이 렌더링하면 "Cannot destructure property 'basename' of
+ * ...useContext(...) as it is null"로 즉시 던진다 - 그래서 항상 MemoryRouter로
+ * 감싸서 렌더링한다.
+ */
+function renderTodayEventList(events: Event[]): string {
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <TodayEventList events={events} />
+    </MemoryRouter>,
+  );
+}
 
 function makeEvent(overrides: Partial<Event> = {}): Event {
   return {
@@ -205,7 +221,7 @@ describe('TodayEventList (렌더링)', () => {
       }),
     ];
 
-    const html = renderToStaticMarkup(<TodayEventList events={events} />);
+    const html = renderTodayEventList(events);
 
     expect(html).toContain('아침 회의');
     expect(html).toContain('저녁 약속');
@@ -220,7 +236,7 @@ describe('TodayEventList (렌더링)', () => {
       makeEvent({ id: 'evt-1', title: '워크숍', isAllDay: true }),
     ];
 
-    const html = renderToStaticMarkup(<TodayEventList events={events} />);
+    const html = renderTodayEventList(events);
 
     expect(html).toContain('하루 종일');
   });
@@ -231,7 +247,7 @@ describe('TodayEventList (렌더링)', () => {
       makeEvent({ id: 'evt-2', title: '일반 미팅', isCritical: false }),
     ];
 
-    const html = renderToStaticMarkup(<TodayEventList events={events} />);
+    const html = renderTodayEventList(events);
 
     expect(html).toContain('today-event-list__item--critical');
     // 일반 일정 항목은 critical 클래스가 붙지 않아야 한다.
@@ -242,9 +258,42 @@ describe('TodayEventList (렌더링)', () => {
   });
 
   it('일정이 없으면 빈 상태 문구를 렌더링한다', () => {
-    const html = renderToStaticMarkup(<TodayEventList events={[]} />);
+    const html = renderTodayEventList([]);
 
     expect(html).toContain('오늘 일정이 없습니다');
     expect(html).not.toContain('today-event-list__item');
+  });
+
+  it('각 일정 항목이 /event/:id로 이동하는 링크로 감싸진다(P2: 상세 화면 진입 경로 부재 수정)', () => {
+    const events = [
+      makeEvent({ id: 'evt-abc', title: '아침 회의' }),
+      makeEvent({ id: 'evt-xyz', title: '저녁 약속' }),
+    ];
+
+    const html = renderTodayEventList(events);
+
+    expect(html).toContain('href="/event/evt-abc"');
+    expect(html).toContain('href="/event/evt-xyz"');
+    // 기존 시간/제목 span 클래스는 링크 안에서도 그대로 유지되어야 한다(시각 회귀 방지).
+    expect(html).toContain('today-event-list__time');
+    expect(html).toContain('today-event-list__title');
+    expect(html).toContain('today-event-list__link');
+  });
+
+  it('critical 일정도 today-event-list__item--critical 클래스를 유지한 채 링크를 갖는다', () => {
+    const events = [makeEvent({ id: 'evt-critical', title: '중요 미팅', isCritical: true })];
+
+    const html = renderTodayEventList(events);
+
+    expect(html).toContain('today-event-list__item--critical');
+    expect(html).toContain('href="/event/evt-critical"');
+  });
+
+  it('빈 일정 배열이면 링크 없이 EmptyState만 렌더링한다(회귀 없음)', () => {
+    const html = renderTodayEventList([]);
+
+    expect(html).toContain('오늘 일정이 없습니다');
+    expect(html).not.toContain('<a');
+    expect(html).not.toContain('today-event-list__link');
   });
 });
