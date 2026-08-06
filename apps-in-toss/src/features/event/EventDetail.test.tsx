@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { formatEventDisplayDate, handleDeleteEvent } from './EventDetail.tsx';
+import { confirmDeleteEvent, formatEventDisplayDate, handleDeleteEvent, nextDeletePhase } from './EventDetail.tsx';
 import type { EventRepository } from '../../data/eventRepository.ts';
 
 function makeMockRepository(overrides: Partial<EventRepository> = {}): EventRepository {
@@ -40,6 +40,67 @@ describe('handleDeleteEvent', () => {
     const result = await handleDeleteEvent(repository, 'evt-1');
 
     expect(result).toEqual({ success: false, error: '권한이 없습니다.' });
+  });
+});
+
+describe('삭제 확인 흐름 (nextDeletePhase / confirmDeleteEvent)', () => {
+  it('확인 전(아직 confirming 상태에 도달하지 않음)에는 repository.deleteEvent가 호출되지 않는다', async () => {
+    const deleteEventMock = vi.fn(async () => ({ data: null, error: null }));
+    const repository = makeMockRepository({ deleteEvent: deleteEventMock });
+
+    // 삭제 버튼을 눌러 확인 다이얼로그를 여는 단계까지만 진행하고, confirm은 아직 호출하지 않는다.
+    const phaseAfterClick = nextDeletePhase({ phase: 'idle', action: 'click-delete' });
+    expect(phaseAfterClick).toBe('confirming');
+    expect(deleteEventMock).not.toHaveBeenCalled();
+
+    // 방어적으로 idle 상태에서 confirmDeleteEvent가 호출돼도(확인을 거치지 않은 경우)
+    // 가드가 막아 repository를 호출하지 않는다.
+    const guarded = await confirmDeleteEvent({ repository, id: 'evt-1', phase: 'idle' });
+    expect(deleteEventMock).not.toHaveBeenCalled();
+    expect(guarded.result).toBeNull();
+    expect(guarded.phase).toBe('idle');
+  });
+
+  it('확인(confirming -> confirm) 후에는 repository.deleteEvent가 정확히 1회 호출된다', async () => {
+    const deleteEventMock = vi.fn(async () => ({ data: null, error: null }));
+    const repository = makeMockRepository({ deleteEvent: deleteEventMock });
+    const onDeletingStart = vi.fn();
+
+    const { phase, result } = await confirmDeleteEvent({
+      repository,
+      id: 'evt-1',
+      phase: 'confirming',
+      onDeletingStart,
+    });
+
+    expect(deleteEventMock).toHaveBeenCalledTimes(1);
+    expect(deleteEventMock).toHaveBeenCalledWith('evt-1');
+    expect(onDeletingStart).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ success: true, error: null });
+    expect(phase).toBe('idle');
+  });
+
+  it('취소 시 repository.deleteEvent 호출 횟수가 0으로 유지된다', () => {
+    const deleteEventMock = vi.fn(async () => ({ data: null, error: null }));
+    makeMockRepository({ deleteEvent: deleteEventMock });
+
+    const phaseAfterClick = nextDeletePhase({ phase: 'idle', action: 'click-delete' });
+    const phaseAfterCancel = nextDeletePhase({ phase: phaseAfterClick, action: 'cancel' });
+
+    expect(phaseAfterClick).toBe('confirming');
+    expect(phaseAfterCancel).toBe('idle');
+    expect(deleteEventMock).not.toHaveBeenCalled();
+  });
+
+  it('삭제 실패 시 phase는 idle로 돌아가고 result.success는 false다', async () => {
+    const repository = makeMockRepository({
+      deleteEvent: vi.fn(async () => ({ data: null, error: { message: '권한이 없습니다.' } })),
+    });
+
+    const { phase, result } = await confirmDeleteEvent({ repository, id: 'evt-1', phase: 'confirming' });
+
+    expect(result).toEqual({ success: false, error: '권한이 없습니다.' });
+    expect(phase).toBe('idle');
   });
 });
 
