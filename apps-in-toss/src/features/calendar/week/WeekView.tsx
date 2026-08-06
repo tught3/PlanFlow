@@ -15,6 +15,7 @@
  * startAt이 속한 요일 칸에 배치한다.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import type { Event } from '../../../domain/event.ts';
 import {
@@ -68,6 +69,41 @@ function formatEventTimeLabel(event: Event): string {
     return '하루 종일';
   }
   return formatKstTime(event.startAt);
+}
+
+export interface WeekDayEventListProps {
+  /** 이미 buildWeekDayEvents로 계산된, 특정 요일 하루치 일정 목록. */
+  events: Event[];
+}
+
+/**
+ * 하루(요일 칸) 안의 일정 목록을 렌더링하는 순수(presentational) 컴포넌트.
+ *
+ * WeekView.tsx 자체는 useEffect로 eventRepository를 호출해 데이터를 조회하므로
+ * (jsdom이 없는 이 저장소에서) renderToStaticMarkup으로는 effect가 실행되지
+ * 않아 조회된 events를 안정적으로 검증할 수 없다. 이미 계산된 events[]만
+ * 받는 이 컴포넌트를 별도로 두면 TodayEventList.tsx와 동일한 방식으로
+ * MemoryRouter + renderToStaticMarkup으로 격리 테스트할 수 있다.
+ */
+export function WeekDayEventList({ events }: WeekDayEventListProps) {
+  return (
+    <ul className="week-view__events">
+      {events.map((event) => {
+        const eventClassNames = ['week-view__event'];
+        if (event.isCritical) {
+          eventClassNames.push('week-view__event--critical');
+        }
+        return (
+          <li key={`${event.id}-${event.startAt.toISOString()}`} className={eventClassNames.join(' ')}>
+            <Link to={`/event/${event.id}`} className="week-view__event-link">
+              <span className="week-view__event-time">{formatEventTimeLabel(event)}</span>
+              <span className="week-view__event-title">{event.title}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /**
@@ -193,20 +229,7 @@ export default function WeekView({ initialDate, repository = defaultEventReposit
               <span data-testid="week-day-date" className="week-view__date">
                 {formatMonthDay(day)}
               </span>
-              <ul className="week-view__events">
-                {eventsByDay[index].map((event) => {
-                  const eventClassNames = ['week-view__event'];
-                  if (event.isCritical) {
-                    eventClassNames.push('week-view__event--critical');
-                  }
-                  return (
-                    <li key={event.id} className={eventClassNames.join(' ')}>
-                      <span className="week-view__event-time">{formatEventTimeLabel(event)}</span>
-                      <span className="week-view__event-title">{event.title}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <WeekDayEventList events={eventsByDay[index]} />
             </div>
           );
         })}
