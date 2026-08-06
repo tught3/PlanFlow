@@ -231,7 +231,7 @@ void main() {
 
   testWidgets(
       '기존 일정 공유 모달의 버튼 배치: 나중에/새로 만드는 일정부터는 테두리 버튼, '
-      '오늘 이후 일정 공유는 강조 버튼', (tester) async {
+      '이미 저장된 일정 공유는 강조 버튼', (tester) async {
     final preferences = await SharedPreferences.getInstance();
     final repository = _FakeGroupRepository(
       groups: <GroupModel>[
@@ -267,8 +267,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('기존 일정을 공유할까요?'), findsOneWidget);
-    // '나중에'/'새로 만드는 일정부터'는 테두리(OutlinedButton), '오늘 이후 일정
-    // 공유'는 강조(FilledButton)로 구분되어야 한다(회귀 방지: 3개가 모두
+    // '나중에'/'새로 만드는 일정부터'는 테두리(OutlinedButton), '이미 저장된
+    // 일정 공유'는 강조(FilledButton)로 구분되어야 한다(회귀 방지: 3개가 모두
     // TextButton으로 뒤섞이던 이전 레이아웃 재발 방지).
     expect(
       find.ancestor(
@@ -286,7 +286,7 @@ void main() {
     );
     expect(
       find.ancestor(
-        of: find.text('오늘 이후 일정 공유'),
+        of: find.text('이미 저장된 일정 공유'),
         matching: find.byType(FilledButton),
       ),
       findsOneWidget,
