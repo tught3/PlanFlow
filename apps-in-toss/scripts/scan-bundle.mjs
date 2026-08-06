@@ -8,11 +8,12 @@
  *     service-role key — full DB bypass; see scanJwts() below)
  *   - the literal string "service_role" (Supabase service-role key marker)
  *   - "eval(" (also disallowed by the Apps in Toss review checklist)
- *   - "PLANFLOW_DEV_PREVIEW_ENABLED" (src/features/devPreview/'s dev-only
- *     preview mode marker — presence in a production bundle means the
- *     import.meta.env.DEV-gated dev-preview code path/module wasn't fully
- *     tree-shaken out, so this scanner treats it as a build failure to
- *     make that leak impossible to miss)
+ *   - an unfolded "import.meta.env" reference (Vite statically replaces
+ *     every `import.meta.env.*` access — including
+ *     `import.meta.env.DEV`/`import.meta.env.VITE_DEV_PREVIEW`, the two
+ *     values that gate src/features/devPreview/'s dev-only preview mode —
+ *     with literal constants at build time; see the note below on why this
+ *     replaced the old PLANFLOW_DEV_PREVIEW_ENABLED marker check)
  *   - long hex/base64-looking tokens (32+ chars) that look like raw secrets
  *     and aren't part of a confirmed-safe JWT (e.g. a public Supabase
  *     "anon" key, which Vite's VITE_ prefix intentionally bundles
@@ -33,6 +34,56 @@ const distDir = join(projectRoot, "dist");
 const SCAN_EXTENSIONS = new Set([".js", ".html", ".mjs", ".cjs"]);
 
 /**
+ * Why the old "PLANFLOW_DEV_PREVIEW_ENABLED marker" rule was replaced
+ * (independent review finding, apps-in-toss round):
+ *
+ * `PLANFLOW_DEV_PREVIEW_MARKER` (value `"PLANFLOW_DEV_PREVIEW_ENABLED"`,
+ * exported from src/features/devPreview/devPreview.ts) is only ever
+ * imported by devPreview.test.ts and the devPreview/index.ts barrel — no
+ * production code path (router.tsx, useSession.ts, etc.) references it.
+ * Because nothing in the production import graph reaches it, ES module
+ * tree-shaking drops it from every `vite build` output unconditionally,
+ * regardless of whether the rest of devPreview's code actually leaked into
+ * the bundle or is safely gated. That made the old rule a vacuous
+ * check — it always passed, so it could never actually catch a real
+ * regression (confirmed by direct measurement: `dist/assets/*.js` was
+ * grepped after a real `vite build` and the marker was absent — 0
+ * occurrences — while the (harmless, expected-present, see below) banner
+ * text and mock user id literal from the same feature WERE present, 1
+ * occurrence each — the marker check gave zero signal either way).
+ *
+ * The two strings that *do* actually persist in every production
+ * bundle — the banner text ("개발 미리보기 모드 — 실제 데이터가 아닙니다",
+ * src/router.tsx) and the mock user id literal
+ * (`DEV_PREVIEW_USER_ID = 'dev-preview-user'`, devPreview.ts) — are NOT
+ * used as a new fail-closed marker here, because their presence is the
+ * *expected*, by-design outcome, not a leak: src/router.tsx statically
+ * imports `previewRepository` (so it can synchronously inject it as a
+ * prop when the runtime gate is on) regardless of the gate's value, so
+ * those literals are always bundled — see the comments on
+ * `previewRepository`/`DEV_PREVIEW_USER_ID` in devPreview.ts. Treating
+ * their presence as a build failure would make `secret-scan` fail on
+ * every single clean production build, which is not useful.
+ *
+ * What actually keeps devPreview's *behavior* (banner rendering, mock
+ * session) inert in production is the runtime gate
+ * (`isDevPreviewEnabled()`) evaluating `import.meta.env.DEV` — a value
+ * Vite always statically replaces with a literal boolean at build time
+ * ("production 비활성 보장 수단 1" in docs/review-checklist.md 9절). If that
+ * replacement ever failed to happen (e.g. a broken Vite config, or a
+ * `--mode` misconfiguration that leaves `import.meta.env.*` as a runtime
+ * property access instead of a compile-time constant), the literal string
+ * `"import.meta.env"` would survive into `dist/`, which is a real,
+ * non-vacuous signal that something about env-based gating (not just
+ * devPreview's gate — every `import.meta.env.*` access, including
+ * `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` in src/lib/supabase.ts)
+ * stopped being build-time-resolved. Confirmed absent (0 occurrences) in a
+ * real `vite build` output, so this rule doesn't false-fail clean builds.
+ */
+const IMPORT_META_ENV_LEAK_LABEL =
+  'unfolded "import.meta.env" reference found (Vite did not statically replace an import.meta.env.* access — this is the mechanism that keeps src/features/devPreview/\'s dev-only preview mode inert in production; see the comment above LINE_RULES)';
+
+/**
  * Line-scope rules: applied to the full line, anywhere in the file
  * (not just inside string literals) because these markers are meaningful
  * regardless of surrounding syntax.
@@ -48,11 +99,31 @@ const LINE_RULES = [
     pattern: /eval\(/g,
   },
   {
-    label:
-      "PLANFLOW_DEV_PREVIEW_ENABLED marker found (dev-only preview mode leaked into production bundle — see src/features/devPreview/devPreview.ts)",
-    pattern: /PLANFLOW_DEV_PREVIEW_ENABLED/g,
+    label: IMPORT_META_ENV_LEAK_LABEL,
+    pattern: /import\.meta\.env/g,
   },
 ];
+
+/**
+ * Informational-only devPreview literals (NOT fail-closed findings — see
+ * the comment above LINE_RULES for why). Read directly from
+ * devPreview.ts's source at scan time (rather than hard-coded here) so
+ * this stays in sync if the literal ever changes. Presence is expected and
+ * safe on every build; main() logs this for audit visibility only.
+ * @param {string} devPreviewSourcePath
+ * @returns {string | null} the DEV_PREVIEW_USER_ID literal value, or null
+ *   if it couldn't be found/parsed (fail-open — this is diagnostic only).
+ */
+export function extractDevPreviewUserIdLiteral(devPreviewSourcePath) {
+  let source;
+  try {
+    source = readFileSync(devPreviewSourcePath, "utf8");
+  } catch {
+    return null;
+  }
+  const match = /DEV_PREVIEW_USER_ID\s*=\s*'([^']+)'/.exec(source);
+  return match ? match[1] : null;
+}
 
 /**
  * JWT-shaped tokens (header.payload.signature, each segment base64url) get
@@ -417,6 +488,19 @@ function main() {
   /** @type {{ file: string, line: number, label: string, snippet: string }[]} */
   const findings = [];
 
+  // Informational-only devPreview literal presence check (NOT a fail-closed
+  // finding — see the comment above LINE_RULES). Read the real mock user id
+  // literal from devPreview.ts and log whether it's present in dist/, for
+  // audit visibility that the "always present, harmless" design assumption
+  // documented there still holds.
+  const devPreviewSourcePath = join(
+    projectRoot,
+    "src/features/devPreview/devPreview.ts",
+  );
+  const devPreviewUserIdLiteral = extractDevPreviewUserIdLiteral(
+    devPreviewSourcePath,
+  );
+
   for (const file of files) {
     let content;
     try {
@@ -427,6 +511,25 @@ function main() {
     }
 
     findings.push(...scanContent(content, relative(projectRoot, file)));
+  }
+
+  if (devPreviewUserIdLiteral !== null) {
+    let literalFound = false;
+    for (const file of files) {
+      try {
+        if (readFileSync(file, "utf8").includes(devPreviewUserIdLiteral)) {
+          literalFound = true;
+          break;
+        }
+      } catch {
+        // already reported above
+      }
+    }
+    console.log(
+      `[scan-bundle] info: devPreview mock user id literal ("${devPreviewUserIdLiteral}") ${
+        literalFound ? "is present" : "is absent"
+      } in dist/ (expected: present — see comment above LINE_RULES in scripts/scan-bundle.mjs).`,
+    );
   }
 
   if (findings.length > 0) {

@@ -17,12 +17,25 @@
  */
 
 /**
- * 프로덕션 번들에 이 모듈이 죽은 코드로 남지 않고 실제로 제거됐는지 검증하는
- * 고정 마커 문자열. resolveDevPreviewEnabled()의 값과 무관하게 이 모듈이
- * 참조되는 코드 경로가 남아있으면(트리쉐이킹 실패) 이 문자열도 번들에 남는다.
- * scripts/scan-bundle.mjs가 `npm run build` 산출물(dist/)에서 이 마커를
- * 찾으면 빌드를 실패시킨다 - 검증: `npm run build` 후
- * `grep -c "PLANFLOW_DEV_PREVIEW_ENABLED" dist/assets/*.js` 가 0이어야 한다.
+ * (독립검토 정정, 2026-08) 원래 이 상수는 "이 모듈이 프로덕션 번들에서
+ * 트리쉐이킹으로 제거됐는지"를 scripts/scan-bundle.mjs가 검증하는 마커로
+ * 쓰일 예정이었으나, 실측 결과 이 상수 자체가 devPreview.test.ts와
+ * index.ts 배럴에서만 import되고 어떤 production 코드 경로(router.tsx 등)
+ * 도 참조하지 않아, ES모듈 트리쉐이킹으로 이 마커 문자열은 devPreview
+ * 모듈의 나머지 부분(previewRepository, DEV_PREVIEW_USER_ID 등)이 실제로
+ * 번들에 남아있는지와 무관하게 **항상** 빠진다. 즉 scan-bundle.mjs가 이
+ * 마커를 찾아 실패시키는 방식은 공허한 가드였다(실측: `vite build` 후
+ * `grep -c "PLANFLOW_DEV_PREVIEW_ENABLED" dist/assets/*.js`가 항상 0이라,
+ * 진짜 leak이 있든 없든 통과한다).
+ *
+ * scripts/scan-bundle.mjs는 이제 이 마커를 스캔하지 않는다(devPreview.test.ts
+ * 검증용으로만 값 유지). 프로덕션에서 devPreview의 실제 동작(배너 렌더링,
+ * mock 세션)이 비활성 상태로 유지된다는 보장은 이 마커가 아니라
+ * `import.meta.env.DEV`가 빌드타임에 리터럴로 접히는 것(아래 참고, 그리고
+ * scripts/scan-bundle.mjs의 "unfolded import.meta.env" 규칙)에서 나온다.
+ * `previewRepository`/`DEV_PREVIEW_USER_ID`는 라우터가 정적으로 import해
+ * 참조하므로 트리쉐이킹 여부와 무관하게 production 번들에 항상 남을 수
+ * 있으며, 이는 시크릿이 아니라 안전하다(아래 DEV_PREVIEW_USER_ID 주석 참고).
  */
 export const PLANFLOW_DEV_PREVIEW_MARKER = 'PLANFLOW_DEV_PREVIEW_ENABLED';
 

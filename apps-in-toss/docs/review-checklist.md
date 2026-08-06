@@ -88,11 +88,12 @@
 | 게이트 조건 | `resolveDevPreviewEnabled({ isDev, viteDevPreviewFlag })`가 `isDev === true && viteDevPreviewFlag === '1'`일 때만 `true`. `isDev`는 Vite의 `import.meta.env.DEV`(빌드타임 상수)를, `viteDevPreviewFlag`는 `.env(.local)`의 `VITE_DEV_PREVIEW`를 그대로 넘긴다. |
 | 켜졌을 때 동작 | `useSession()`이 `supabase.auth`를 전혀 호출하지 않고 고정 mock 사용자(`dev-preview-user`)로 즉시 세션을 확정하고, 라우터가 실제 `eventRepository` 대신 인메모리 목 리포지토리(`previewRepository`, 시드 6건)를 `TodayView`/`MonthView`/`WeekView`/`EventForm`(생성)에 주입한다. 화면 상단에 눈에 띄는 배너를 표시한다. |
 | production 비활성 보장 수단 1 — 빌드타임 상수 접힘 | `import.meta.env.DEV`는 Vite가 `vite build`(production) 산출물에서 리터럴 `false`로 정적 치환하는 상수다. `&&`의 단락평가로 이 표현식이 `false`로 완전히 접히므로, `VITE_DEV_PREVIEW`에 어떤 값이 실수로 배포 환경에 남아 있어도(예: `.env.production` 오염) production 빌드에서는 게이트가 무조건 `false`다(코드 근거: `src/features/devPreview/devPreview.ts` 상단 주석). |
-| production 비활성 보장 수단 2 — 빌드 산출물 마커 스캔 | `devPreview.ts`는 고정 마커 문자열 `PLANFLOW_DEV_PREVIEW_ENABLED`(`PLANFLOW_DEV_PREVIEW_MARKER`)를 export한다. `scripts/scan-bundle.mjs`가 `npm run build` 산출물(`dist/assets/*.js`)에서 이 마커를 찾으면 빌드를 실패시킨다 — 즉 devPreview 관련 코드가 트리쉐이킹되지 않고 번들에 죽은 코드로라도 남으면 빌드 자체가 막힌다. 실측: `npm run build` 후 `npm run secret-scan` exit 0(마커 0건). |
+| production 비활성 보장 수단 2 — 빌드 산출물 스캔 (2026-08 정정) | ~~예전에는 고정 마커 문자열 `PLANFLOW_DEV_PREVIEW_ENABLED`(`PLANFLOW_DEV_PREVIEW_MARKER`)를 `scripts/scan-bundle.mjs`가 `dist/assets/*.js`에서 찾으면 빌드를 실패시킨다고 설명했다.~~ 독립검토에서 이 마커가 devPreview.test.ts와 index.ts 배럴에서만 import되고 어떤 production 코드 경로도 참조하지 않아, devPreview의 나머지 코드(배너 텍스트, mock 사용자 id)가 번들에 실제로 남아있는지와 무관하게 트리쉐이킹으로 **항상** 빠진다는 사실이 실측으로 드러났다(`vite build` 후 `grep -c "PLANFLOW_DEV_PREVIEW_ENABLED" dist/assets/*.js`는 언제나 0). 즉 이 마커 검사는 "찾으면 실패"가 아니라 "항상 통과"하는 공허한 가드였고, "빌드 자체가 막힌다"는 서술은 부정확했다(애초에 `scripts/scan-bundle.mjs`는 `npm run build`(`tsc -b && vite build && ait build`)에 포함되지 않은 별도 명령 `npm run secret-scan`이기도 하다 — 빌드가 "자동으로" 막히지도 않는다). `scripts/scan-bundle.mjs`는 이제 이 마커를 스캔하지 않는다. 대신 실측상 항상 성립하는 진짜 안전장치 — 위 "수단 1"의 `import.meta.env.DEV` 빌드타임 리터럴 접힘 — 이 깨졌는지(즉 `"import.meta.env"`라는 미접힘 리터럴이 그대로 남아 있는지)를 `scripts/scan-bundle.mjs`가 스캔해서, 그럴 때만(`node scripts/scan-bundle.mjs`가) exit 1로 실패한다(실측: 정상 `vite build` 산출물에서 0건). 배너 텍스트("개발 미리보기 모드 — 실제 데이터가 아닙니다")와 mock 사용자 id 리터럴(`dev-preview-user`)은 `src/router.tsx`가 `previewRepository`를 정적으로 import하는 설계상 트리쉐이킹 여부와 무관하게 production 번들에 항상(1건씩) 남는다 — 실측으로 확인됐고, 시크릿이 아니라 실패 조건으로 스캔하지 않는다(`scripts/scan-bundle.mjs`가 정보성으로만 로그에 남긴다). |
 | `.env.example` 안내 | `VITE_DEV_PREVIEW=`(빈 값, 기본 비활성)로만 노출되며, 값 자체가 시크릿이 아니라 커밋에 문제 없다. |
 
 근거 파일경로: `src/features/devPreview/devPreview.ts`, `src/features/devPreview/devPreview.test.ts`,
-`scripts/scan-bundle.mjs`, `.env.example`, `src/router.tsx`(리포지토리 주입 지점), `src/features/auth/useSession.ts`.
+`scripts/scan-bundle.mjs`, `scripts/scan-bundle.test.mjs`, `.env.example`, `src/router.tsx`(리포지토리 주입 지점),
+`src/features/auth/useSession.ts`.
 
 ## 미확정/재확인 필요 항목
 
