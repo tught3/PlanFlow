@@ -5,6 +5,8 @@
  * 이미 조회된 Event[]를 받아 렌더링만 한다 - hook/effect가 없어 렌더링 결과를
  * (jsdom 없이) react-dom/server의 renderToStaticMarkup만으로도 그대로 테스트할 수 있다.
  */
+import { Link } from 'react-router-dom';
+
 import type { Event } from '../../domain/event.ts';
 import { toKstWall } from '../../domain/datetime.ts';
 import { EmptyState } from '../../components/index.ts';
@@ -48,9 +50,15 @@ export function TodayEventList({ events }: TodayEventListProps) {
           ? 'today-event-list__item today-event-list__item--critical'
           : 'today-event-list__item';
         return (
-          <li key={event.id} className={className} data-critical={event.isCritical}>
-            <span className="today-event-list__time">{formatTimeLabel(event)}</span>
-            <span className="today-event-list__title">{event.title}</span>
+          <li
+            key={`${event.id}-${event.startAt.toISOString()}`}
+            className={className}
+            data-critical={event.isCritical}
+          >
+            <Link to={`/event/${event.id}`} className="today-event-list__link">
+              <span className="today-event-list__time">{formatTimeLabel(event)}</span>
+              <span className="today-event-list__title">{event.title}</span>
+            </Link>
           </li>
         );
       })}
