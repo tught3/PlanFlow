@@ -31,7 +31,6 @@ import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_conversation_ad_gate.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
-import '../voice/voice_conversation_screen.dart';
 part 'home_widgets.dart';
 
 enum _HomeLoadState {
@@ -674,11 +673,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       userId: userId,
       onEnterAllowed: () {
         if (!context.mounted) return;
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const VoiceConversationScreen(autoStart: false),
-          ),
-        );
+        unawaited(context.push(AppRoutes.voiceConversation));
       },
     );
   }
