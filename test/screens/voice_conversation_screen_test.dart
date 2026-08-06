@@ -1305,4 +1305,203 @@ void main() {
     expect(personalRepository.updatedEvents, isEmpty);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'AI 일정 대화는 편집 화면 이동 후 pop으로 복귀하면 멈췄던 마이크를 자동 재개한다',
+    (tester) async {
+      final event = EventModel(
+        id: 'event-resume',
+        userId: 'user-1',
+        title: '이동할 일정',
+        startAt: DateTime(2026, 5, 7, 9).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        endAt: DateTime(2026, 5, 7, 10).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+      );
+      final stt = _FakeSttService();
+      final router = GoRouter(
+        initialLocation: AppRoutes.voiceConversation,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => VoiceConversationScreen(
+              sttService: stt,
+              repository: _FakeEventRepository(<EventModel>[event]),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.eventEditWithId,
+            builder: (context, state) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('편집 화면(팝 가능)'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('음성으로 명령하기'));
+      await tester.pump();
+      final listenCallsBefore = stt.listenCalls;
+      expect(listenCallsBefore, 1);
+
+      stt.completeSuccess('1번 일정 그 다음날로 변경해줘');
+      await tester.pumpAndSettle();
+
+      expect(find.text('편집 화면(팝 가능)'), findsOneWidget);
+
+      await tester.tap(find.text('편집 화면(팝 가능)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화'), findsOneWidget);
+      expect(stt.listenCalls, greaterThan(listenCallsBefore));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'AI 일정 대화는 정지 버튼으로 멈춘 뒤 편집 화면을 다녀와도 마이크를 자동 재개하지 않는다',
+    (tester) async {
+      final event = EventModel(
+        id: 'event-no-resume',
+        userId: 'user-1',
+        title: '이동할 일정',
+        startAt: DateTime(2026, 5, 7, 9).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        endAt: DateTime(2026, 5, 7, 10).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+      );
+      final stt = _FakeSttService();
+      final router = GoRouter(
+        initialLocation: AppRoutes.voiceConversation,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => VoiceConversationScreen(
+              sttService: stt,
+              repository: _FakeEventRepository(<EventModel>[event]),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.eventEditWithId,
+            builder: (context, state) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('편집 화면(팝 가능)'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('음성으로 명령하기'));
+      await tester.pump();
+      expect(find.text('음성 입력 정지'), findsOneWidget);
+
+      await tester.tap(find.text('음성 입력 정지'));
+      await tester.pumpAndSettle();
+
+      final listenCallsBefore = stt.listenCalls;
+
+      await tester.enterText(
+        find.byType(TextField),
+        '1번 일정 그 다음날로 변경해줘',
+      );
+      await tester.tap(find.text('전송'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('편집 화면(팝 가능)'), findsOneWidget);
+
+      await tester.tap(find.text('편집 화면(팝 가능)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화'), findsOneWidget);
+      expect(stt.listenCalls, listenCallsBefore);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'AI 일정 대화는 카드 액션시트로 편집 화면을 다녀와도 마이크를 자동 재개하지 않는다',
+    (tester) async {
+      final event = EventModel(
+        id: 'event-edit-sheet',
+        userId: 'user-1',
+        title: '금요일 상담',
+        startAt: DateTime(2026, 5, 29, 18).toUtc(), // banned-ok: initialText('5월 29일 일정 다 보여 줘')와 매칭시키는 더미 일정(클램프 로직 미개입)
+      );
+      final stt = _FakeSttService();
+      final router = GoRouter(
+        initialLocation: AppRoutes.voiceConversation,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => VoiceConversationScreen(
+              sttService: stt,
+              repository: _FakeEventRepository(<EventModel>[event]),
+              initialText: '5월 29일 일정 다 보여 줘',
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.eventEditWithId,
+            builder: (context, state) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('편집 화면(팝 가능)'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('음성으로 명령하기'));
+      await tester.pump();
+      final listenCallsBefore = stt.listenCalls;
+      expect(listenCallsBefore, 1);
+
+      await tester.tap(find.text('금요일 상담'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('이 일정으로 무엇을 할까요?'), findsOneWidget);
+
+      await tester.tap(find.text('수정하기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('편집 화면(팝 가능)'), findsOneWidget);
+
+      await tester.tap(find.text('편집 화면(팝 가능)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화'), findsOneWidget);
+      expect(stt.listenCalls, listenCallsBefore);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
