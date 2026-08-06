@@ -11,6 +11,7 @@
  * 날짜 계산(월/주 범위, 일 더하기 등)은 src/domain/datetime.ts만 쓴다.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import {
   addKstDays,
@@ -158,6 +159,58 @@ function monthChipSpanClassName(entry: MonthDayEventEntry): string | null {
   return 'month-view__chip--span-mid';
 }
 
+export interface MonthCellChipsProps {
+  /** buildMonthDayEvents가 계산한 한 날짜 셀의 전체 항목(overflow 절단 전). */
+  entries: MonthDayEventEntry[];
+  /** 한 셀에 표시할 최대 칩 수. 기본값은 MAX_CHIPS_PER_CELL. */
+  maxChips?: number;
+}
+
+/**
+ * 하루(날짜 셀) 안의 일정 칩 목록을 렌더링하는 순수(presentational) 컴포넌트.
+ *
+ * MonthView.tsx 자체는 useEffect로 eventRepository를 호출해 데이터를
+ * 조회하므로(jsdom이 없는 이 저장소에서) renderToStaticMarkup으로는 effect가
+ * 실행되지 않아 조회된 events를 안정적으로 검증할 수 없다. 이미 계산된
+ * entries만 받는 이 컴포넌트를 별도로 두면 WeekDayEventList.tsx와 동일한
+ * 방식으로 MemoryRouter + renderToStaticMarkup으로 격리 테스트할 수 있다.
+ *
+ * "+N" overflow 표시(month-view__overflow)는 여러 일정 중 하나를 가리키지
+ * 않으므로 Link로 감싸지 않는다 - 실제 단일 일정 칩(month-view__chip)만
+ * /event/:id로 이동한다.
+ */
+export function MonthCellChips({ entries, maxChips = MAX_CHIPS_PER_CELL }: MonthCellChipsProps) {
+  const visibleEntries = entries.slice(0, maxChips);
+  const overflowCount = entries.length - visibleEntries.length;
+
+  return (
+    <>
+      {visibleEntries.map((entry) => {
+        const chipClassNames = ['month-view__chip'];
+        if (entry.event.isCritical) {
+          chipClassNames.push('month-view__chip--critical');
+        }
+        const spanClassName = monthChipSpanClassName(entry);
+        if (spanClassName !== null) {
+          chipClassNames.push(spanClassName);
+        }
+        return (
+          <div
+            key={`${entry.event.id}-${entry.event.startAt.toISOString()}`}
+            className={chipClassNames.join(' ')}
+            title={entry.event.title}
+          >
+            <Link to={`/event/${entry.event.id}`} className="month-view__chip-link">
+              {entry.event.title}
+            </Link>
+          </div>
+        );
+      })}
+      {overflowCount > 0 ? <div className="month-view__overflow">+{overflowCount}</div> : null}
+    </>
+  );
+}
+
 export interface MonthViewProps {
   /** 테스트/주입용. 기본값은 앱 전역 eventRepository 싱글턴. */
   repository?: EventRepository;
@@ -245,8 +298,6 @@ export function MonthView({ repository = defaultEventRepository }: MonthViewProp
         {gridDays.map((day, index) => {
           const isToday = isSameKstDay(day.date, today);
           const entries = dayEvents[index] ?? [];
-          const visibleEntries = entries.slice(0, MAX_CHIPS_PER_CELL);
-          const overflowCount = entries.length - visibleEntries.length;
 
           const cellClassNames = ['month-view__cell'];
           if (!day.isCurrentMonth) {
@@ -259,28 +310,7 @@ export function MonthView({ repository = defaultEventRepository }: MonthViewProp
           return (
             <div key={day.date.toISOString()} className={cellClassNames.join(' ')}>
               <div className="month-view__daynum">{kstDayNumber(day.date)}</div>
-              {visibleEntries.map((entry, entryIndex) => {
-                const chipClassNames = ['month-view__chip'];
-                if (entry.event.isCritical) {
-                  chipClassNames.push('month-view__chip--critical');
-                }
-                const spanClassName = monthChipSpanClassName(entry);
-                if (spanClassName !== null) {
-                  chipClassNames.push(spanClassName);
-                }
-                return (
-                  <div
-                    key={`${entry.event.id}-${index}-${entryIndex}`}
-                    className={chipClassNames.join(' ')}
-                    title={entry.event.title}
-                  >
-                    {entry.event.title}
-                  </div>
-                );
-              })}
-              {overflowCount > 0 ? (
-                <div className="month-view__overflow">+{overflowCount}</div>
-              ) : null}
+              <MonthCellChips entries={entries} />
             </div>
           );
         })}
