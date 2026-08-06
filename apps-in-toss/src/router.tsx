@@ -21,6 +21,18 @@ import { EventDetail } from './features/event/EventDetail.tsx';
 import { ConfirmDialog } from './components/index.ts';
 import type { LogoutUiState } from './appLayoutLogout.ts';
 import { nextLogoutState } from './appLayoutLogout.ts';
+import { isDevPreviewEnabled, previewRepository } from './features/devPreview/index.ts';
+
+/**
+ * 이 세션(모듈 로드 시점)에서 실제로 쓸 이벤트 리포지토리.
+ *
+ * isDevPreviewEnabled()는 import.meta.env(빌드/런타임 시점에 고정되는 값)만
+ * 참조하므로 페이지 로드 중간에 값이 바뀌지 않는다 - 모듈 최상단에서 한 번만
+ * 평가해 아래 라우트 트리 전체(TodayView/MonthView/WeekView, 그리고
+ * useLoadedEvent가 EventDetail/EventForm에 넘기는 repository)가 동일한
+ * 인스턴스를 공유하게 한다.
+ */
+const activeEventRepository = isDevPreviewEnabled() ? previewRepository : eventRepository;
 
 /**
  * 로그인 여부를 확인하는 게이트. AppLayout(하단 탭 포함) 상위에서 감싸서,
@@ -103,6 +115,25 @@ function AppLayout() {
           로그아웃
         </button>
       </header>
+      {isDevPreviewEnabled() ? (
+        // 그룹A(styles/*.css) 소유 파일을 건드리지 않기 위해 인라인 스타일만 쓴다.
+        // 이 배너는 개발 미리보기 모드가 꺼져 있으면(production 기본값) 렌더링되지
+        // 않는다 - isDevPreviewEnabled()가 false를 반환하는 즉시 이 분기 전체가
+        // 평가되지 않는다.
+        <div
+          role="status"
+          style={{
+            background: '#fef3c7',
+            color: '#92400e',
+            textAlign: 'center',
+            padding: '8px 16px',
+            fontSize: '13px',
+            fontWeight: 600,
+          }}
+        >
+          개발 미리보기 모드 — 실제 데이터가 아닙니다
+        </div>
+      ) : null}
       <main className="app-layout__content">
         <Outlet />
       </main>
@@ -151,6 +182,7 @@ function EventNewRoute() {
     <EventForm
       mode="create"
       userId={userId}
+      repository={activeEventRepository}
       onSaved={(event) => navigate(`/event/${event.id}`)}
       onCancel={() => navigate(-1)}
     />
@@ -258,9 +290,9 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <Navigate to="/today" replace /> },
-          { path: 'today', element: <TodayView /> },
-          { path: 'calendar/month', element: <MonthView /> },
-          { path: 'calendar/week', element: <WeekView /> },
+          { path: 'today', element: <TodayView repository={activeEventRepository} /> },
+          { path: 'calendar/month', element: <MonthView repository={activeEventRepository} /> },
+          { path: 'calendar/week', element: <WeekView repository={activeEventRepository} /> },
           { path: 'event/new', element: <EventNewRoute /> },
           { path: 'event/:id', element: <EventDetailRoute /> },
           { path: 'event/:id/edit', element: <EventEditRoute /> },

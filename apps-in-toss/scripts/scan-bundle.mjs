@@ -8,6 +8,11 @@
  *     service-role key — full DB bypass; see scanJwts() below)
  *   - the literal string "service_role" (Supabase service-role key marker)
  *   - "eval(" (also disallowed by the Apps in Toss review checklist)
+ *   - "PLANFLOW_DEV_PREVIEW_ENABLED" (src/features/devPreview/'s dev-only
+ *     preview mode marker — presence in a production bundle means the
+ *     import.meta.env.DEV-gated dev-preview code path/module wasn't fully
+ *     tree-shaken out, so this scanner treats it as a build failure to
+ *     make that leak impossible to miss)
  *   - long hex/base64-looking tokens (32+ chars) that look like raw secrets
  *     and aren't part of a confirmed-safe JWT (e.g. a public Supabase
  *     "anon" key, which Vite's VITE_ prefix intentionally bundles
@@ -41,6 +46,11 @@ const LINE_RULES = [
   {
     label: "eval( call found (disallowed dynamic code execution)",
     pattern: /eval\(/g,
+  },
+  {
+    label:
+      "PLANFLOW_DEV_PREVIEW_ENABLED marker found (dev-only preview mode leaked into production bundle — see src/features/devPreview/devPreview.ts)",
+    pattern: /PLANFLOW_DEV_PREVIEW_ENABLED/g,
   },
 ];
 
