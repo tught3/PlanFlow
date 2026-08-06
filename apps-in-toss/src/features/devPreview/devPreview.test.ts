@@ -37,9 +37,14 @@ describe('resolveDevPreviewEnabled', () => {
 });
 
 describe('isDevPreviewEnabled (실제 import.meta.env 경유)', () => {
-  it('boolean을 반환한다 - 이 저장소의 vitest 실행 환경에서 VITE_DEV_PREVIEW를 별도 설정하지 않았으므로 기본은 false다', () => {
+  it('resolveDevPreviewEnabled에 실제 import.meta.env 값을 넣은 것과 항상 동일한 결과를 낸다(배선 계약) - .env.local의 VITE_DEV_PREVIEW 값과 무관하게 항상 성립해야 한다', () => {
     expect(typeof isDevPreviewEnabled()).toBe('boolean');
-    expect(isDevPreviewEnabled()).toBe(false);
+    expect(isDevPreviewEnabled()).toBe(
+      resolveDevPreviewEnabled({
+        isDev: import.meta.env.DEV,
+        viteDevPreviewFlag: import.meta.env.VITE_DEV_PREVIEW,
+      })
+    );
   });
 });
 
