@@ -201,15 +201,10 @@
 }
 
 .month-view__chip {
-  font-size: 11px;
-  padding: 1px var(--pf-space-4);
   border-radius: var(--pf-radius-4);
   background: var(--pf-primary-faint);
   border-left: 3px solid var(--pf-primary-mid);
   color: var(--pf-primary-mid);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .month-view__chip--critical {
@@ -230,6 +225,25 @@
 .month-view__chip--span-mid {
   border-radius: 0;
   border-left-width: 0;
+}
+
+/*
+ * 월간 칩(month-view__chip)은 최대 3개까지 한 셀(min-height:72px)에 들어가야
+ * 해서 week-view__event-link/today-event-list__link가 쓰는 --pf-touch-target
+ * (44px)을 적용할 물리적 공간이 없다. 대신 WCAG 2.2 SC 2.5.8(Target Size
+ * Minimum, AA)이 허용하는 최소 기준인 24x24 CSS px를 적용한다 - 셀 공간
+ * 제약으로 44px 토큰을 그대로 쓸 수 없는 경우의 의도된 예외다.
+ */
+.month-view__chip-link {
+  display: block;
+  min-height: 24px;
+  font-size: 11px;
+  padding: 1px var(--pf-space-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+  text-decoration: none;
 }
 
 .month-view__overflow {
@@ -321,10 +335,7 @@
 }
 
 .week-view__event {
-  display: flex;
-  flex-direction: column;
   font-size: 11px;
-  padding: 1px var(--pf-space-4);
   border-radius: var(--pf-radius-4);
   background: var(--pf-primary-faint);
   border-left: 3px solid var(--pf-primary-mid);
@@ -336,6 +347,15 @@
   background: var(--pf-danger-bg);
   border-left-color: var(--pf-danger);
   color: var(--pf-danger);
+}
+
+.week-view__event-link {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--pf-touch-target);
+  padding: 1px var(--pf-space-4);
+  color: inherit;
+  text-decoration: none;
 }
 
 .week-view__event-time {
