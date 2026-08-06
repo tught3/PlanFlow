@@ -15,6 +15,7 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/models/group_model.dart';
 import '../../features/groups/providers/group_context_provider.dart';
 import '../../services/app_permission_service.dart';
@@ -71,6 +72,7 @@ class HomeScreen extends StatefulWidget {
     this.loadHeaderSummary = true,
     this.nowProvider,
     this.locationLookupService,
+    this.settingsRepository,
     BriefingSchedulerService? briefingSchedulerService,
   }) : _briefingSchedulerService = briefingSchedulerService;
 
@@ -85,6 +87,10 @@ class HomeScreen extends StatefulWidget {
   /// 좌표 보정에 쓰는 장소 검색 서비스. 테스트에서 호출 횟수를 세는 fake를
   /// 주입하기 위한 진입점(미주입 시 기본 LocationLookupService 사용).
   final LocationLookupService? locationLookupService;
+
+  /// 음성대화 진입 시 '자동 시작' 설정 조회에 쓰는 저장소. 테스트에서 fake를
+  /// 주입하기 위한 진입점(미주입 시 기본 SettingsRepository.supabase() 사용).
+  final SettingsRepository? settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
 
   @override
@@ -668,14 +674,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showSnack('로그인 세션이 없습니다. 다시 로그인해 주세요.');
       return;
     }
+    // onEnterAllowed 콜백은 동기 VoidCallback이라 그 안에서 await할 수
+    // 없다. 광고 게이트 호출 이전에 자동시작 설정을 미리 조회해둔다.
+    final shouldAutoStart = await _resolveVoiceAutoStartSetting(userId);
+    if (!context.mounted) return;
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
       onEnterAllowed: () {
         if (!context.mounted) return;
-        unawaited(context.push(AppRoutes.voiceConversation));
+        final route = shouldAutoStart
+            ? '${AppRoutes.voiceConversation}?autoStart=1'
+            : AppRoutes.voiceConversation;
+        unawaited(context.push(route));
       },
     );
+  }
+
+  /// 사용자 설정의 '음성대화 자동 시작' 값을 조회한다. Supabase 미준비,
+  /// userId 없음, 조회 실패 등 예외 상황에서는 안전하게 false(자동시작
+  /// 안 함, 기존 동작과 동일)로 폴백한다.
+  Future<bool> _resolveVoiceAutoStartSetting(String userId) async {
+    if (!AppEnv.isSupabaseReady) {
+      return false;
+    }
+    if (userId.trim().isEmpty) {
+      return false;
+    }
+    try {
+      final repository =
+          widget.settingsRepository ?? SettingsRepository.supabase();
+      final settings = await repository.fetchSettings(userId);
+      return settings?.voiceAutoStart ?? false;
+    } catch (error, stackTrace) {
+      debugPrint('Voice auto-start setting lookup failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
   }
 
   @override
