@@ -184,6 +184,7 @@ export function EventDetail({
         {event.endAt !== null ? <p>{formatEventDisplayDate(event.endAt)}</p> : null}
       </div>
       {event.memo !== null ? <p className="event-detail__memo">{event.memo}</p> : null}
+      {event.location !== null ? <p className="event-detail__memo">{event.location}</p> : null}
       {event.isCritical ? (
         <p className="event-detail__badge event-detail__badge--critical" role="status">
           중요 일정

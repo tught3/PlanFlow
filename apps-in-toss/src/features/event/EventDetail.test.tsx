@@ -1,14 +1,50 @@
 /**
- * EventDetail 삭제 로직 테스트.
+ * EventDetail 삭제 로직 + 렌더링 테스트.
  *
- * EventForm.test.tsx와 동일한 이유(jsdom/@testing-library/react 미설치)로
- * 컴포넌트를 렌더링하지 않고, EventDetail.tsx가 함께 export하는
+ * 삭제 로직은 EventForm.test.tsx와 동일한 이유(jsdom/@testing-library/react
+ * 미설치)로 컴포넌트를 렌더링하지 않고, EventDetail.tsx가 함께 export하는
  * handleDeleteEvent()를 eventRepository를 모킹해 직접 테스트한다.
+ *
+ * 렌더 결과 검증(예: location 표시 여부)은 ConfirmDialog.test.tsx와 동일하게
+ * react-dom/server의 renderToStaticMarkup으로 마크업 문자열을 확인한다.
  */
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { confirmDeleteEvent, formatEventDisplayDate, handleDeleteEvent, nextDeletePhase } from './EventDetail.tsx';
+import { confirmDeleteEvent, EventDetail, formatEventDisplayDate, handleDeleteEvent, nextDeletePhase } from './EventDetail.tsx';
 import type { EventRepository } from '../../data/eventRepository.ts';
+import type { Event } from '../../domain/event.ts';
+
+function makeEvent(overrides: Partial<Event> = {}): Event {
+  return {
+    id: 'evt-1',
+    userId: 'user-1',
+    title: '워크숍(1박 2일)',
+    startAt: new Date('2026-08-05T01:00:00.000Z'),
+    endAt: new Date('2026-08-05T02:00:00.000Z'),
+    location: null,
+    locationLat: null,
+    locationLng: null,
+    memo: null,
+    supplies: [],
+    participants: [],
+    targets: [],
+    isCritical: false,
+    useStrongAlarm: false,
+    recurrenceRule: null,
+    recurrenceEndDate: null,
+    recurrenceCount: null,
+    isAllDay: false,
+    isMultiDay: false,
+    parentEventId: null,
+    overriddenOccurrenceDate: null,
+    category: '기타',
+    source: 'manual',
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
 
 function makeMockRepository(overrides: Partial<EventRepository> = {}): EventRepository {
   return {
@@ -113,5 +149,26 @@ describe('formatEventDisplayDate', () => {
   it('한 자릿수 월/일/시/분을 0으로 패딩한다', () => {
     const date = new Date(2026, 0, 2, 3, 4); // 2026-01-02 03:04
     expect(formatEventDisplayDate(date)).toBe('2026-01-02 03:04');
+  });
+});
+
+describe('EventDetail 렌더링 - location', () => {
+  it('location이 있으면 상세 화면에 표시한다', () => {
+    const event = makeEvent({ location: '강원도 평창' });
+    const repository = makeMockRepository();
+
+    const html = renderToStaticMarkup(<EventDetail event={event} repository={repository} />);
+
+    expect(html).toContain('강원도 평창');
+    expect(html).toContain('event-detail__memo');
+  });
+
+  it('location이 null이면 location 문단을 렌더링하지 않는다', () => {
+    const event = makeEvent({ location: null });
+    const repository = makeMockRepository();
+
+    const html = renderToStaticMarkup(<EventDetail event={event} repository={repository} />);
+
+    expect(html).not.toContain('강원도 평창');
   });
 });
