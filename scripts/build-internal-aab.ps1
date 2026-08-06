@@ -75,6 +75,30 @@ function Write-AnalyzeAudit {
   Add-Content -LiteralPath $AnalyzeAuditPath -Value ($entry | ConvertTo-Json -Compress) -Encoding utf8
 }
 
+function Read-LogLinesWithRetry {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  # This log file may have just had its writer process (or Start-Process's
+  # own redirect handle) killed by a caller-side timeout a moment ago. The
+  # OS/.NET can still be mid-release of the file handle for a brief window
+  # right after the process is reported exited -- observed as "cannot
+  # access the file ... because it is being used by another process" on
+  # this exact read. Retry briefly (same pattern as Invoke-OwnedProcess's
+  # stderr-append retry) instead of failing the whole deploy on a
+  # transient lock. If the retries are exhausted, rethrow -- silently
+  # returning empty results here would hide the real analyze/build
+  # failure instead of surfacing it.
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+      return [System.IO.File]::ReadAllLines($Path, $encoding)
+    } catch {
+      if ($attempt -eq 5) { throw }
+      Start-Sleep -Milliseconds (200 * $attempt)
+    }
+  }
+}
+
 function New-LogExcerpt {
   param(
     [Parameter(Mandatory = $true)][string]$Path,
@@ -87,8 +111,7 @@ function New-LogExcerpt {
     return @()
   }
 
-  $encoding = [System.Text.UTF8Encoding]::new($false)
-  $lines = [System.IO.File]::ReadAllLines($Path, $encoding)
+  $lines = Read-LogLinesWithRetry -Path $Path
   if (-not $lines -or $lines.Count -eq 0) {
     return @()
   }
@@ -133,8 +156,7 @@ function Get-AnalyzeIssueLine {
     return $null
   }
 
-  $encoding = [System.Text.UTF8Encoding]::new($false)
-  $lines = [System.IO.File]::ReadAllLines($Path, $encoding)
+  $lines = Read-LogLinesWithRetry -Path $Path
   foreach ($line in $lines) {
     if ($line -match '^\s*(info|warning|error)\s+-\s+.+\s+-\s+.+:\d+:\d+\s+-\s+.+$') {
       return $line.Trim()
