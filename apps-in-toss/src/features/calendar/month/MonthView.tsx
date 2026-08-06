@@ -24,9 +24,13 @@ import {
   toKstWall,
 } from '../../../domain/index.ts';
 import type { Event } from '../../../domain/index.ts';
-import { eventRepository } from '../../../data/eventRepository.ts';
+import { eventRepository as defaultEventRepository } from '../../../data/eventRepository.ts';
+import type { EventRepository } from '../../../data/eventRepository.ts';
+import { Spinner, ErrorMessage } from '../../../components/index.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** 한 셀에 표시할 최대 일정 칩 수(초과분은 month-view__overflow로 +N 표시). */
+const MAX_CHIPS_PER_CELL = 3;
 /**
  * 주 시작 요일은 원본(Flutter) lib/screens/calendar/calendar_widgets.dart의
  * `weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']`(일요일 시작)와
@@ -136,20 +140,30 @@ function monthLabel(monthAnchor: Date): string {
   return `${wall.getUTCFullYear()}년 ${wall.getUTCMonth() + 1}월`;
 }
 
-function eventEntryBorderRadius(entry: MonthDayEventEntry): string {
+/**
+ * span 연속 표시용 보조 클래스. 하루짜리 일정(시작=종료)은 기본
+ * month-view__chip 모서리를 그대로 쓰고, 여러 날에 걸치는 일정만 시작/중간/
+ * 종료 구간별로 모서리를 다르게 처리한다.
+ */
+function monthChipSpanClassName(entry: MonthDayEventEntry): string | null {
   if (entry.isSpanStart && entry.isSpanEnd) {
-    return '4px';
+    return null;
   }
   if (entry.isSpanStart) {
-    return '4px 0 0 4px';
+    return 'month-view__chip--span-start';
   }
   if (entry.isSpanEnd) {
-    return '0 4px 4px 0';
+    return 'month-view__chip--span-end';
   }
-  return '0';
+  return 'month-view__chip--span-mid';
 }
 
-export function MonthView() {
+export interface MonthViewProps {
+  /** 테스트/주입용. 기본값은 앱 전역 eventRepository 싱글턴. */
+  repository?: EventRepository;
+}
+
+export function MonthView({ repository = defaultEventRepository }: MonthViewProps = {}) {
   const [monthAnchor, setMonthAnchor] = useState<Date>(() => new Date());
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
@@ -168,7 +182,7 @@ export function MonthView() {
     setLoading(true);
     setErrorMessage(null);
 
-    eventRepository
+    repository
       .listEvents({ start: gridStart.toISOString(), end: gridEnd.toISOString() })
       .then((result) => {
         if (cancelled) {
@@ -190,31 +204,26 @@ export function MonthView() {
     return () => {
       cancelled = true;
     };
-  }, [gridDays]);
+  }, [gridDays, repository]);
 
   const dayEvents = useMemo(() => buildMonthDayEvents(gridDays, events), [gridDays, events]);
   const today = useMemo(() => new Date(), []);
 
   return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 4px',
-        }}
-      >
+    <div className="month-view">
+      <div className="month-view__header">
         <button
           type="button"
+          className="month-view__nav-btn"
           aria-label="이전 달"
           onClick={() => setMonthAnchor((prev) => addKstMonths(prev, -1))}
         >
           {'<'}
         </button>
-        <strong>{monthLabel(monthAnchor)}</strong>
+        <strong className="month-view__label">{monthLabel(monthAnchor)}</strong>
         <button
           type="button"
+          className="month-view__nav-btn"
           aria-label="다음 달"
           onClick={() => setMonthAnchor((prev) => addKstMonths(prev, 1))}
         >
@@ -222,61 +231,62 @@ export function MonthView() {
         </button>
       </div>
 
-      {errorMessage !== null ? (
-        <p role="alert" style={{ color: '#c92a2a', fontSize: 13 }}>
-          일정을 불러오지 못했습니다: {errorMessage}
-        </p>
-      ) : null}
+      {errorMessage !== null ? <ErrorMessage message={`일정을 불러오지 못했습니다: ${errorMessage}`} /> : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+      <div className="month-view__weekdays">
         {WEEKDAY_LABELS.map((label) => (
-          <div key={label} style={{ textAlign: 'center', fontSize: 12, color: '#888', padding: 4 }}>
+          <div key={label} className="month-view__weekday">
             {label}
           </div>
         ))}
+      </div>
+
+      <div className="month-view__grid">
         {gridDays.map((day, index) => {
           const isToday = isSameKstDay(day.date, today);
           const entries = dayEvents[index] ?? [];
+          const visibleEntries = entries.slice(0, MAX_CHIPS_PER_CELL);
+          const overflowCount = entries.length - visibleEntries.length;
+
+          const cellClassNames = ['month-view__cell'];
+          if (!day.isCurrentMonth) {
+            cellClassNames.push('month-view__cell--outside');
+          }
+          if (isToday) {
+            cellClassNames.push('month-view__cell--today');
+          }
+
           return (
-            <div
-              key={day.date.toISOString()}
-              style={{
-                minHeight: 72,
-                border: '1px solid #eee',
-                padding: 4,
-                opacity: day.isCurrentMonth ? 1 : 0.4,
-                background: isToday ? '#eef6ff' : undefined,
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400 }}>
-                {kstDayNumber(day.date)}
-              </div>
-              {entries.map((entry, entryIndex) => (
-                <div
-                  key={`${entry.event.id}-${index}-${entryIndex}`}
-                  title={entry.event.title}
-                  style={{
-                    fontSize: 11,
-                    marginTop: 2,
-                    padding: '1px 4px',
-                    borderRadius: eventEntryBorderRadius(entry),
-                    background: entry.event.isCritical ? '#ffe1e1' : '#e6f0ff',
-                    borderLeft: entry.event.isCritical ? '3px solid #e03131' : '3px solid #4c6ef5',
-                    color: entry.event.isCritical ? '#c92a2a' : '#1c3faa',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {entry.event.title}
-                </div>
-              ))}
+            <div key={day.date.toISOString()} className={cellClassNames.join(' ')}>
+              <div className="month-view__daynum">{kstDayNumber(day.date)}</div>
+              {visibleEntries.map((entry, entryIndex) => {
+                const chipClassNames = ['month-view__chip'];
+                if (entry.event.isCritical) {
+                  chipClassNames.push('month-view__chip--critical');
+                }
+                const spanClassName = monthChipSpanClassName(entry);
+                if (spanClassName !== null) {
+                  chipClassNames.push(spanClassName);
+                }
+                return (
+                  <div
+                    key={`${entry.event.id}-${index}-${entryIndex}`}
+                    className={chipClassNames.join(' ')}
+                    title={entry.event.title}
+                  >
+                    {entry.event.title}
+                  </div>
+                );
+              })}
+              {overflowCount > 0 ? (
+                <div className="month-view__overflow">+{overflowCount}</div>
+              ) : null}
             </div>
           );
         })}
       </div>
 
-      {loading ? <p style={{ fontSize: 12, color: '#888' }}>불러오는 중...</p> : null}
+      {loading ? <Spinner /> : null}
     </div>
   );
 }
