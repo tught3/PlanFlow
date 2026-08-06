@@ -462,7 +462,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   EventModel _eventModelFromGroupEvent(GroupEventModel groupEvent) {
     return EventModel(
       id: groupEvent.id,
-      userId: groupEvent.createdBy,
+      userId: groupEvent.createdBy ?? '',
       title: groupEvent.title,
       startAt: groupEvent.startAt,
       endAt: groupEvent.endAt,

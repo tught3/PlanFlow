@@ -138,8 +138,8 @@ class AdConsentService {
       return false;
     }
     try {
-      return ConsentInformation.instance.privacyOptionsRequirementStatus ==
-          ConsentStatus.required;
+      return (await ConsentInformation.instance.getPrivacyOptionsRequirementStatus()) ==
+          PrivacyOptionsRequirementStatus.required;
     } catch (_) {
       return false;
     }

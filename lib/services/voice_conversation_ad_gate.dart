@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/analytics_service.dart';
 import '../core/env.dart';
 import '../widgets/voice_conversation_ad_dialog.dart';
+import 'ad_consent_service.dart';
 import 'ad_service.dart';
 import 'remote_config_service.dart';
 
@@ -120,6 +121,16 @@ class VoiceConversationAdGate {
     if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');
       onEnterAllowed();
+      return;
+    }
+
+    // 광고 요청 가능 상태 확인
+    final adsOk = await AdConsentService.instance.canRequestAdsLive;
+    if (!adsOk) {
+      final policy = RemoteConfigService.rewardAdFailurePolicy;
+      if (policy == 'free_pass') {
+        onEnterAllowed();
+      }
       return;
     }
 
