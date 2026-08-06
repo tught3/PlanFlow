@@ -13,6 +13,7 @@ export interface SpinnerProps {
 export function Spinner({ label = '불러오는 중...' }: SpinnerProps = {}) {
   return (
     <div className="pf-spinner" role="status">
+      <span className="pf-spinner__circle" aria-hidden="true" />
       <span className="pf-spinner__label">{label}</span>
     </div>
   );
