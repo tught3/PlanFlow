@@ -1,0 +1,66 @@
+/**
+ * 전역 base 리셋. 모바일 전용 - 데스크톱 랜딩페이지 규칙(고정폭 #root 등),
+ * 다크모드 자동전환은 사용하지 않는다(color-scheme: light 고정).
+ */
+:root {
+  color-scheme: light;
+  font: 16px/145% system-ui, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--pf-bg);
+  color: var(--pf-text);
+  width: 100%;
+}
+
+#root {
+  width: 100%;
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--pf-primary-mid);
+  outline-offset: 2px;
+}
