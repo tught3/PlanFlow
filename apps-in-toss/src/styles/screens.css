@@ -1,1 +1,60 @@
-/* 화면별 스타일 - 이번 작업 범위 밖. 이후 작업에서 채운다. */
+/* 화면별 스타일. */
+
+/* ---- Today (오늘 일정) ---- */
+.today-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-16);
+}
+
+.today-view__title {
+  font-size: var(--pf-font-24);
+  font-weight: 700;
+  color: var(--pf-text);
+}
+
+.today-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-8);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.today-event-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-12);
+  background: var(--pf-surface);
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-12);
+  padding: var(--pf-space-12) var(--pf-space-16);
+}
+
+.today-event-list__item--critical {
+  border-left: 3px solid var(--pf-danger);
+  background: var(--pf-danger-bg);
+}
+
+.today-event-list__time {
+  flex: 0 0 auto;
+  width: 88px;
+  font-size: var(--pf-font-14);
+  font-weight: 600;
+  color: var(--pf-text-secondary);
+}
+
+.today-event-list__item--critical .today-event-list__time {
+  color: var(--pf-danger);
+}
+
+.today-event-list__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--pf-font-16);
+  color: var(--pf-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -22,6 +22,7 @@ import {
 import { eventRepository as defaultEventRepository } from '../../data/eventRepository.ts';
 import type { EventRepository } from '../../data/eventRepository.ts';
 import { TodayEventList } from './TodayEventList.tsx';
+import { Spinner, ErrorMessage } from '../../components/index.ts';
 
 export interface TodayViewProps {
   /** 테스트/주입용. 기본값은 앱 전역 eventRepository 싱글턴. */
@@ -111,7 +112,7 @@ export function TodayView({ repository = defaultEventRepository, now }: TodayVie
   if (events === null) {
     return (
       <div className="today-view today-view--loading">
-        <p>불러오는 중...</p>
+        <Spinner />
       </div>
     );
   }
@@ -119,7 +120,7 @@ export function TodayView({ repository = defaultEventRepository, now }: TodayVie
   return (
     <div className="today-view">
       <h1 className="today-view__title">오늘 일정</h1>
-      {error !== null && <p className="today-view__error">{error}</p>}
+      {error !== null && <ErrorMessage message={error} />}
       <TodayEventList events={events} />
     </div>
   );

@@ -7,6 +7,7 @@
  */
 import type { Event } from '../../domain/event.ts';
 import { toKstWall } from '../../domain/datetime.ts';
+import { EmptyState } from '../../components/index.ts';
 
 export interface TodayEventListProps {
   events: Event[];
@@ -34,9 +35,9 @@ function formatTimeLabel(event: Event): string {
 export function TodayEventList({ events }: TodayEventListProps) {
   if (events.length === 0) {
     return (
-      <p className="today-event-list__empty" data-testid="today-empty">
-        오늘 일정이 없습니다.
-      </p>
+      <div className="today-event-list__empty" data-testid="today-empty">
+        <EmptyState message="오늘 일정이 없습니다." />
+      </div>
     );
   }
 
