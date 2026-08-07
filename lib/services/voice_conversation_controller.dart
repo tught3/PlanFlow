@@ -650,7 +650,8 @@ class VoiceConversationController {
     final range = _parseDateRange(text);
     if (range != null && _isQueryIntent(text, route: route)) {
       final matched = state.events
-          .where((event) => _eventVisibleInRange(event, range, state.events))
+          .map((event) => _visibleEventInRange(event, range, state.events))
+          .whereType<EventModel>()
           .toList(growable: false);
       _sortEvents(matched);
       state
@@ -899,45 +900,48 @@ class VoiceConversationController {
     return candidate;
   }
 
-  /// 조회 범위(P4)에 대해 이벤트가 "보여져야 하는지" 판정한다.
+  /// 조회 범위(P4)에 대해 이벤트가 "보여져야 하는" 실제 [EventModel]을
+  /// 반환한다(보이지 않으면 null).
   ///
   /// 반복일정(`recurrenceRule`이 있는 이벤트)은 anchor(`startAt`) 하나만
   /// 보고 판정하면 안 된다 — anchor가 범위보다 과거여도 반복 회차가 범위
   /// 안에 있을 수 있다(원 버그). [lib/core/recurrence_expansion.dart]의
-  /// `expandRecurringEvent`로 회차를 전개해 범위 안에 회차가 있는지만
-  /// 확인하고, **anchor 이벤트 객체 자체**(occurrence 복사본이 아님)를
-  /// 매칭 결과에 넣는다.
+  /// `expandRecurringEvent`로 회차를 전개해 범위 안에 매칭되는 **실제
+  /// occurrence**(anchor 복사본이 아니라 매칭된 회차의 startAt/endAt을
+  /// 가진 EventModel)를 반환한다.
   ///
-  /// 의도적 설계(P3): occurrence 복사본은 원본과 같은 `id`를 공유하므로
-  /// (`_copyEventWithTime` 참고), 그 복사본을 `visibleEvents`에 넣으면
-  /// 이후 "몇 번째 일정" 같은 순번 참조가 occurrence를 가리켜도 실제
-  /// 수정/삭제는 그 occurrence의 `id`(=반복 시리즈 전체의 id)로 이뤄져
-  /// series 전체가 잘못 변경될 위험이 있다(occurrence 단위 override
-  /// 메커니즘 없이). 이 컨트롤러의 편집/삭제 경로(`_draftEventForRequestedChanges`,
-  /// `pendingDelete` 등)는 targetEvent를 anchor 그대로 다시 사용하므로,
-  /// anchor 객체를 유지하는 것이 안전하다.
-  bool _eventVisibleInRange(
+  /// (정정, HIGH 리뷰 반영) 과거에는 여기서 anchor 객체를 그대로 반환했으나,
+  /// 그 결과 AI대화 카드가 사용자가 조회한 날짜가 아니라 anchor의 원래
+  /// 날짜를 표시하고, 후속 편집 시 `_inferRequestedStartLocal`이 anchor
+  /// 날짜를 기준으로 시간만 바꾸는 오류가 있었다. occurrence 복사본도
+  /// anchor와 동일한 `id`를 공유하므로(`_copyEventWithTime` 참고),
+  /// occurrence를 반환해도 이후 편집/삭제(`_draftEventForRequestedChanges`,
+  /// `pendingDelete` 등)는 여전히 같은 `id`(=반복 시리즈 전체)를 타겟팅한다
+  /// — 이 동작(순번 편집이 시리즈 전체를 가리킴)은 이 fix 이전부터 있던
+  /// 설계이며 occurrence 단위 override 메커니즘이 없는 한 바뀌지 않는다.
+  EventModel? _visibleEventInRange(
     EventModel event,
     VoiceConversationDateRange range,
     List<EventModel> allEvents,
   ) {
     final rule = event.recurrenceRule;
     if (rule != null && rule.trim().isNotEmpty) {
-      return _recurringEventVisibleInRange(event, range, allEvents);
+      return _matchingRecurringOccurrence(event, range, allEvents);
     }
-    return _eventIntersectsRange(event, range);
+    return _eventIntersectsRange(event, range) ? event : null;
   }
 
   /// [event](반복 규칙이 있는 anchor)가 [range] 안에 실제로 표시 가능한
-  /// 회차를 갖는지 판정한다. 회차 전개는 이 컨트롤러의 기존
-  /// `_eventIntersectsRange`(timestamp 기반) 판정을 그대로 주입해 쓴다
-  /// (유틸 기본 판정으로 대체하지 않는다 — P4 지시사항).
+  /// 회차가 있으면 그 회차(occurrence)를 반환한다(없으면 null). 회차 전개는
+  /// 이 컨트롤러의 기존 `_eventIntersectsRange`(timestamp 기반) 판정을
+  /// 그대로 주입해 쓴다(유틸 기본 판정으로 대체하지 않는다 — P4 지시사항).
   ///
   /// [allEvents]에 해당 anchor의 override(단일 회차 예외, `parentEventId`
   /// + `overriddenOccurrenceDate`)가 있으면 (P5) 유틸의
   /// `hideOverriddenRecurringOccurrences`로 그 회차를 결과에서 숨긴다 —
-  /// `calendar_screen.dart`와 동일한 동작.
-  bool _recurringEventVisibleInRange(
+  /// `calendar_screen.dart`와 동일한 동작. 여러 회차가 범위 안에 매칭되면
+  /// (override로 숨겨지지 않은) 첫 회차를 반환한다.
+  EventModel? _matchingRecurringOccurrence(
     EventModel event,
     VoiceConversationDateRange range,
     List<EventModel> allEvents,
@@ -950,7 +954,7 @@ class VoiceConversationController {
           _eventIntersectsRange(occurrence, range),
     );
     if (occurrences.isEmpty) {
-      return false;
+      return null;
     }
 
     final overridesForEvent = allEvents
@@ -961,13 +965,18 @@ class VoiceConversationController {
         )
         .toList(growable: false);
     if (overridesForEvent.isEmpty) {
-      return true;
+      return occurrences.first;
     }
 
     final visible = hideOverriddenRecurringOccurrences(
       <EventModel>[...occurrences, ...overridesForEvent],
     );
-    return visible.any(occurrences.contains);
+    for (final occurrence in occurrences) {
+      if (visible.contains(occurrence)) {
+        return occurrence;
+      }
+    }
+    return null;
   }
 
   bool _eventIntersectsRange(

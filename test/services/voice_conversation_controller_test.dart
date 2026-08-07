@@ -144,6 +144,95 @@ void main() {
           <String>{'single-1', 'single-2', 'recurring'},
         );
         expect(result.visibleEvents.length, 3);
+
+        // 리뷰어 HIGH 지적 회귀 방지: 조회 결과의 반복일정 항목은
+        // anchor(recurringAnchorWeek, 조회한 "내일"보다 1주 전)가 아니라
+        // 실제로 매치된 occurrence("내일") 날짜의 startAt을 가져야 한다.
+        final EventModel visibleRecurring = result.visibleEvents.singleWhere(
+          (event) => event.id == 'recurring',
+        );
+        final DateTime visibleRecurringStartLocal =
+            planflowLocal(visibleRecurring.startAt!);
+        expect(
+          DateTime(
+            visibleRecurringStartLocal.year,
+            visibleRecurringStartLocal.month,
+            visibleRecurringStartLocal.day,
+          ),
+          DateTime(tomorrow.year, tomorrow.month, tomorrow.day),
+        );
+        expect(
+          DateTime(
+            visibleRecurringStartLocal.year,
+            visibleRecurringStartLocal.month,
+            visibleRecurringStartLocal.day,
+          ),
+          isNot(
+            DateTime(
+              recurringAnchorWeek.year,
+              recurringAnchorWeek.month,
+              recurringAnchorWeek.day,
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      '반복일정 회차를 조회한 뒤 날짜 단서 없이 시간만 바꾸면 조회한 회차 날짜를 유지한다(anchor 날짜로 새지 않는다)',
+      () {
+        // "내일"이 항상 화요일이 되도록(recurrence_rule BYDAY=TU와 정합) 미래의
+        // 가장 가까운 화요일을 앵커로 삼는다 — 절대 날짜 리터럴 시한폭탄 방지.
+        final DateTime tomorrow = _nextWeekdayOnOrAfter(
+          DateTime.now().add(const Duration(days: 400)),
+          DateTime.tuesday,
+        );
+        final DateTime today = tomorrow.subtract(const Duration(days: 1));
+        // anchor를 조회 범위(내일)보다 훨씬 전(5주 전)으로 둬서, 만약
+        // draft가 anchor 날짜를 기준으로 만들어지면 눈에 띄게 다른 날짜가
+        // 나오도록 한다.
+        final DateTime recurringAnchorWeek = tomorrow.subtract(
+          const Duration(days: 35),
+        );
+        final controller = VoiceConversationController(
+          events: <EventModel>[
+            _event(
+              'recurring',
+              '주간 회의',
+              DateTime(
+                recurringAnchorWeek.year,
+                recurringAnchorWeek.month,
+                recurringAnchorWeek.day,
+                9,
+              ),
+            ).copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU'),
+          ],
+          now: () => DateTime(today.year, today.month, today.day, 9),
+        );
+
+        final result = controller.handle('내일 일정 보여줘');
+        expect(result.action, VoiceConversationAction.showEvents);
+        expect(result.visibleEvents.length, 1);
+        expect(result.visibleEvents.single.id, 'recurring');
+
+        final editResult = controller.handle('1번 일정 시간을 오후 5시로 변경해줘');
+
+        expect(editResult.action, VoiceConversationAction.openEditScreen);
+        expect(editResult.targetEvent?.id, 'recurring');
+        final DateTime draftStartLocal =
+            planflowLocal(editResult.draftEvent!.startAt!);
+        expect(
+          DateTime(
+            draftStartLocal.year,
+            draftStartLocal.month,
+            draftStartLocal.day,
+          ),
+          DateTime(tomorrow.year, tomorrow.month, tomorrow.day),
+          reason:
+              '날짜 단서 없는 시간 변경은 조회한 회차("내일") 날짜를 유지해야 한다 — '
+              'anchor의 원래 날짜로 새면 안 된다.',
+        );
+        expect(draftStartLocal.hour, 17);
       },
     );
 
