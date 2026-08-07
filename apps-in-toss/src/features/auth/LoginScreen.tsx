@@ -5,13 +5,13 @@
  * - 토스 로그인 버튼 1개만 노출한다. 이메일/비밀번호 등 자체 로그인 입력 필드는 두지 않는다.
  * - 서비스 설명 문구를 화면에 표시한다.
  * - 개인정보처리방침 링크는 @apps-in-toss/web-framework의 openURL로 외부 브라우저에서 연다.
- * - 로그인 거부(사용자 취소)/실패 시 "다시 시도"와 "앱 종료"(closeView) 선택지를 함께 제공한다.
+ * - 로그인 거부(사용자 취소)/실패 시 "다시 시도"와 "앱 종료"(Screen.close) 선택지를 함께 제공한다.
  *
  * 실제 로그인 로직은 tossLogin.ts의 runTossLogin만 호출하고, 이 파일에서 직접
  * fetch나 supabase를 호출하지 않는다.
  */
 import { useState } from 'react';
-import { closeView, openURL } from '@apps-in-toss/web-framework';
+import { Screen, openURL } from '@apps-in-toss/web-framework';
 
 import { createDefaultTossLoginDeps, runTossLogin } from './tossLogin.ts';
 import type { TossLoginDeps, TossLoginResult } from './tossLogin.ts';
@@ -79,14 +79,14 @@ export function LoginScreen({ deps, onLoginSuccess }: LoginScreenProps = {}) {
   }
 
   function handleExit() {
-    void closeView();
+    void Screen.close();
   }
 
   return (
     <section className="auth-login">
       <div className="pf-card auth-login__card">
         <h1 className="auth-login__title">PlanFlow</h1>
-        <p className="auth-login__description">토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요.</p>
+        <p className="auth-login__description">토스 안에서 AI 음성 일정 관리를 바로 시작하세요.</p>
 
         <button
           type="button"
