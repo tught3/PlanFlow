@@ -19,8 +19,9 @@ import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/korean_holidays.dart';
+import '../../services/voice_conversation_launcher.dart';
+import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
-import '../../widgets/planflow_voice_fab.dart';
 part 'calendar_widgets.dart';
 
 enum _CalendarLoadState {
@@ -1008,8 +1009,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ],
       ),
-      floatingActionButton: PlanFlowVoiceFab(
-        onPressed: () => context.push(AppRoutes.voice),
+      floatingActionButton: PlanFlowGlobalFabs(
+        onVoice: () => context.push(AppRoutes.voice),
+        onAiConversation: () => VoiceConversationLauncher.open(
+          context,
+          userIdOverride: widget.userId,
+        ),
       ),
       body: SafeArea(
         child: RefreshIndicator(
