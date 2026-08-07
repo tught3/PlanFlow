@@ -34,6 +34,16 @@ class RemoteConfigService {
   static const String _kRewardAdFailurePolicy = 'reward_ad_failure_policy';
   static const String _kVoiceConversationButtonEnabled =
       'voice_conversation_button_enabled';
+  static const String _kVoiceConversationInitialFreeCount =
+      'voice_conversation_initial_free_count';
+  static const String _kVoiceConversationDailyFreeCount =
+      'voice_conversation_daily_free_count';
+
+  /// [voiceConversationInitialFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
+  static const int kVoiceConversationInitialFreeCountDefault = 3;
+
+  /// [voiceConversationDailyFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
+  static const int kVoiceConversationDailyFreeCountDefault = 1;
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -68,6 +78,10 @@ class RemoteConfigService {
         _kVoiceConversationFreeTrialCount: 3,
         _kRewardAdFailurePolicy: 'free_pass',
         _kVoiceConversationButtonEnabled: true,
+        _kVoiceConversationInitialFreeCount:
+            kVoiceConversationInitialFreeCountDefault,
+        _kVoiceConversationDailyFreeCount:
+            kVoiceConversationDailyFreeCountDefault,
       },
     );
 
@@ -135,4 +149,87 @@ class RemoteConfigService {
   /// 홈 화면 음성 대화 진입 버튼 표시 여부. 기본 true.
   static bool get voiceConversationButtonEnabled =>
       _remoteConfig?.getBool(_kVoiceConversationButtonEnabled) ?? true;
+
+  /// 키가 콘솔에서 실제로 fetch된 값(ValueSource.valueRemote)일 때만 그
+  /// 값을 반환한다. Firebase Remote Config의 getInt()는 콘솔에 키가 아예
+  /// 없어도(미설정) 0을 반환하므로(null이 아님), source를 확인하지 않으면
+  /// "미설정"과 "명시적으로 0"을 구분할 수 없다.
+  static int? _getIntIfRemote(String key) {
+    final remoteConfig = _remoteConfig;
+    if (remoteConfig == null) {
+      return null;
+    }
+    try {
+      final value = remoteConfig.getValue(key);
+      if (value.source != ValueSource.valueRemote) {
+        return null;
+      }
+      return value.asInt();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 최초 누적 무료 대화 횟수 판단 우선순위를 결정하는 순수 함수.
+  ///
+  /// 1) 신규 키(`voice_conversation_initial_free_count`)가 콘솔에서 실제로
+  ///    fetch됐으면(source == valueRemote) 그 값을 그대로 채택한다(0 포함).
+  /// 2) 신규 키가 미설정이면 레거시 키
+  ///    (`voice_conversation_free_trial_count`)가 콘솔에서 실제로
+  ///    fetch됐을 때만 그 값을 하위호환 폴백으로 채택한다.
+  /// 3) 둘 다 없으면 코드 기본값([kVoiceConversationInitialFreeCountDefault])
+  ///    으로 폴백한다.
+  static int resolveInitialFreeCount({
+    required bool newKeySet,
+    required int newKeyValue,
+    required bool legacyKeySet,
+    required int legacyKeyValue,
+  }) {
+    if (newKeySet) {
+      return newKeyValue;
+    }
+    if (legacyKeySet) {
+      return legacyKeyValue;
+    }
+    return kVoiceConversationInitialFreeCountDefault;
+  }
+
+  /// 일일 무료 대화 횟수 판단 우선순위를 결정하는 순수 함수.
+  ///
+  /// 레거시 키가 없으므로 신규 키가 콘솔에서 실제로 fetch됐을 때만(0 포함)
+  /// 그 값을 채택하고, 미설정이면 코드 기본값
+  /// ([kVoiceConversationDailyFreeCountDefault])으로 폴백한다.
+  static int resolveDailyFreeCount({
+    required bool newKeySet,
+    required int newKeyValue,
+  }) {
+    if (newKeySet) {
+      return newKeyValue;
+    }
+    return kVoiceConversationDailyFreeCountDefault;
+  }
+
+  /// 최초 누적 무료 대화 횟수. 콘솔 미설정 시 레거시 키
+  /// ([voiceConversationFreeTrialCount])를 거쳐 기본값
+  /// [kVoiceConversationInitialFreeCountDefault]로 폴백한다.
+  static int get voiceConversationInitialFreeCount {
+    final newValue = _getIntIfRemote(_kVoiceConversationInitialFreeCount);
+    final legacyValue = _getIntIfRemote(_kVoiceConversationFreeTrialCount);
+    return resolveInitialFreeCount(
+      newKeySet: newValue != null,
+      newKeyValue: newValue ?? 0,
+      legacyKeySet: legacyValue != null,
+      legacyKeyValue: legacyValue ?? 0,
+    );
+  }
+
+  /// 일일 무료 대화 횟수. 콘솔 미설정 시 기본값
+  /// [kVoiceConversationDailyFreeCountDefault]로 폴백한다.
+  static int get voiceConversationDailyFreeCount {
+    final newValue = _getIntIfRemote(_kVoiceConversationDailyFreeCount);
+    return resolveDailyFreeCount(
+      newKeySet: newValue != null,
+      newKeyValue: newValue ?? 0,
+    );
+  }
 }
