@@ -3,6 +3,12 @@ import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/voice_conversation_controller.dart';
 
+/// [from] 이후(포함) 가장 가까운 [weekday](DateTime.monday..sunday)를 반환한다.
+DateTime _nextWeekdayOnOrAfter(DateTime from, int weekday) {
+  final int diff = (weekday - from.weekday) % 7;
+  return from.add(Duration(days: diff));
+}
+
 void main() {
   group('음성 수정 대상 매칭', () {
     test('STT로 이름 일부가 빠져도 단일 제목 토큰 일치 수정은 기존 일정을 연다', () {
@@ -90,6 +96,57 @@ void main() {
   });
 
   group('VoiceConversationController', () {
+    test(
+      '반복일정 회차가 조회 범위 안에 있으면 단발 일정과 함께 조회 결과에 포함된다',
+      () {
+        // "내일"이 항상 화요일이 되도록(recurrence_rule BYDAY=TU와 정합) 미래의
+        // 가장 가까운 화요일을 앵커로 삼는다 — 절대 날짜 리터럴 시한폭탄 방지.
+        final DateTime tomorrow = _nextWeekdayOnOrAfter(
+          DateTime.now().add(const Duration(days: 400)),
+          DateTime.tuesday,
+        );
+        final DateTime today = tomorrow.subtract(const Duration(days: 1));
+        final DateTime recurringAnchorWeek = tomorrow.subtract(
+          const Duration(days: 7),
+        );
+        final controller = VoiceConversationController(
+          events: <EventModel>[
+            _event(
+              'single-1',
+              '단발 회의 A',
+              DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10),
+            ),
+            _event(
+              'single-2',
+              '단발 회의 B',
+              DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 14),
+            ),
+            _event(
+              'recurring',
+              '주간 회의',
+              DateTime(
+                recurringAnchorWeek.year,
+                recurringAnchorWeek.month,
+                recurringAnchorWeek.day,
+                9,
+              ),
+            ).copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU'),
+          ],
+          now: () =>
+              DateTime(today.year, today.month, today.day, 9),
+        );
+
+        final result = controller.handle('내일 일정 보여줘');
+
+        expect(result.action, VoiceConversationAction.showEvents);
+        expect(
+          result.visibleEvents.map((event) => event.id).toSet(),
+          <String>{'single-1', 'single-2', 'recurring'},
+        );
+        expect(result.visibleEvents.length, 3);
+      },
+    );
+
     test('absolute date query filters visible events for that day', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

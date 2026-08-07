@@ -1,4 +1,5 @@
 import '../core/local_time.dart';
+import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
 import 'gpt_service.dart';
 import 'voice_command_router.dart';
@@ -649,7 +650,7 @@ class VoiceConversationController {
     final range = _parseDateRange(text);
     if (range != null && _isQueryIntent(text, route: route)) {
       final matched = state.events
-          .where((event) => _eventIntersectsRange(event, range))
+          .where((event) => _eventVisibleInRange(event, range, state.events))
           .toList(growable: false);
       _sortEvents(matched);
       state
@@ -896,6 +897,77 @@ class VoiceConversationController {
       return DateTime(date.year, date.month, date.day, 9);
     }
     return candidate;
+  }
+
+  /// 조회 범위(P4)에 대해 이벤트가 "보여져야 하는지" 판정한다.
+  ///
+  /// 반복일정(`recurrenceRule`이 있는 이벤트)은 anchor(`startAt`) 하나만
+  /// 보고 판정하면 안 된다 — anchor가 범위보다 과거여도 반복 회차가 범위
+  /// 안에 있을 수 있다(원 버그). [lib/core/recurrence_expansion.dart]의
+  /// `expandRecurringEvent`로 회차를 전개해 범위 안에 회차가 있는지만
+  /// 확인하고, **anchor 이벤트 객체 자체**(occurrence 복사본이 아님)를
+  /// 매칭 결과에 넣는다.
+  ///
+  /// 의도적 설계(P3): occurrence 복사본은 원본과 같은 `id`를 공유하므로
+  /// (`_copyEventWithTime` 참고), 그 복사본을 `visibleEvents`에 넣으면
+  /// 이후 "몇 번째 일정" 같은 순번 참조가 occurrence를 가리켜도 실제
+  /// 수정/삭제는 그 occurrence의 `id`(=반복 시리즈 전체의 id)로 이뤄져
+  /// series 전체가 잘못 변경될 위험이 있다(occurrence 단위 override
+  /// 메커니즘 없이). 이 컨트롤러의 편집/삭제 경로(`_draftEventForRequestedChanges`,
+  /// `pendingDelete` 등)는 targetEvent를 anchor 그대로 다시 사용하므로,
+  /// anchor 객체를 유지하는 것이 안전하다.
+  bool _eventVisibleInRange(
+    EventModel event,
+    VoiceConversationDateRange range,
+    List<EventModel> allEvents,
+  ) {
+    final rule = event.recurrenceRule;
+    if (rule != null && rule.trim().isNotEmpty) {
+      return _recurringEventVisibleInRange(event, range, allEvents);
+    }
+    return _eventIntersectsRange(event, range);
+  }
+
+  /// [event](반복 규칙이 있는 anchor)가 [range] 안에 실제로 표시 가능한
+  /// 회차를 갖는지 판정한다. 회차 전개는 이 컨트롤러의 기존
+  /// `_eventIntersectsRange`(timestamp 기반) 판정을 그대로 주입해 쓴다
+  /// (유틸 기본 판정으로 대체하지 않는다 — P4 지시사항).
+  ///
+  /// [allEvents]에 해당 anchor의 override(단일 회차 예외, `parentEventId`
+  /// + `overriddenOccurrenceDate`)가 있으면 (P5) 유틸의
+  /// `hideOverriddenRecurringOccurrences`로 그 회차를 결과에서 숨긴다 —
+  /// `calendar_screen.dart`와 동일한 동작.
+  bool _recurringEventVisibleInRange(
+    EventModel event,
+    VoiceConversationDateRange range,
+    List<EventModel> allEvents,
+  ) {
+    final occurrences = expandRecurringEvent(
+      event: event,
+      rangeStart: range.start,
+      rangeEnd: range.end,
+      includeOccurrence: (occurrence, rangeStart, rangeEnd) =>
+          _eventIntersectsRange(occurrence, range),
+    );
+    if (occurrences.isEmpty) {
+      return false;
+    }
+
+    final overridesForEvent = allEvents
+        .where(
+          (candidate) =>
+              candidate.parentEventId == event.id &&
+              candidate.overriddenOccurrenceDate != null,
+        )
+        .toList(growable: false);
+    if (overridesForEvent.isEmpty) {
+      return true;
+    }
+
+    final visible = hideOverriddenRecurringOccurrences(
+      <EventModel>[...occurrences, ...overridesForEvent],
+    );
+    return visible.any(occurrences.contains);
   }
 
   bool _eventIntersectsRange(
