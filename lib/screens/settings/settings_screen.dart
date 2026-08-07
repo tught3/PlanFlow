@@ -43,8 +43,9 @@ import '../../services/naver_calendar_permission_service.dart';
 import '../../services/naver_open_api_calendar_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/oauth_callback_handler.dart';
+import '../../services/voice_conversation_launcher.dart';
+import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
-import '../../widgets/planflow_voice_fab.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
 import 'beta_survey_sheet.dart';
@@ -3636,8 +3637,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ),
       ),
-      floatingActionButton: PlanFlowVoiceFab(
-        onPressed: () => context.push(AppRoutes.voice),
+      floatingActionButton: PlanFlowGlobalFabs(
+        onVoice: () => context.push(AppRoutes.voice),
+        onAiConversation: () => VoiceConversationLauncher.open(
+          context,
+          userIdOverride: _userId,
+          repository: _settingsRepository,
+        ),
       ),
     );
   }
