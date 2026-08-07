@@ -645,6 +645,141 @@ void main() {
       expect(find.text('대화모드 화면'), findsOneWidget);
     },
   );
+
+  // 회귀: 홈 화면에 신규 AI일정대화 FAB이 기존 음성 FAB 옆에 나란히
+  // 렌더링되는지 확인한다.
+  testWidgets(
+    'HomeScreen는 AI일정대화 FAB과 기존 음성 FAB을 함께 렌더링한다',
+    (tester) async {
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('음성으로 일정 관리'), findsOneWidget);
+      expect(find.text('AI일정대화'), findsOneWidget);
+    },
+  );
+
+  // 회귀: 신규 AI일정대화 FAB을 탭하면 기존 _openVoiceConversation 경로
+  // (광고 게이트 → voiceAutoStart 설정 조회 → 대화모드 라우트 push)를
+  // 그대로 재사용하는지 확인한다.
+  testWidgets(
+    'HomeScreen은 AI일정대화 FAB 탭 시 대화모드 라우트로 진입한다',
+    (tester) async {
+      VoiceConversationAdGate.instance.delegateForTest =
+          const _AllowAllVoiceConversationAdGateDelegate();
+      addTearDown(() {
+        VoiceConversationAdGate.instance.delegateForTest = null;
+      });
+
+      String? capturedLocation;
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: <RouteBase>[
+          GoRoute(
+            path: '/',
+            builder: (context, state) => HomeScreen(
+              userIdOverride: 'user-1',
+              eventRepository: repository,
+              smartPreparationAlarmService:
+                  const _FakeSmartPreparationAlarmService(),
+              homeWidgetService: _RecordingHomeWidgetService(),
+              loadHeaderSummary: false,
+              settingsRepository:
+                  const _FakeSettingsRepository(voiceAutoStart: true),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) {
+              capturedLocation = state.uri.toString();
+              return const Text(
+                '대화모드 화면',
+                textDirection: TextDirection.ltr,
+              );
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('AI일정대화'));
+      await tester.pumpAndSettle();
+
+      expect(capturedLocation, isNotNull);
+      expect(capturedLocation, contains('autoStart=1'));
+      expect(find.text('대화모드 화면'), findsOneWidget);
+    },
+  );
+
+  // 회귀: 좁은 화면(360dp)에서 신규 AI일정대화 FAB이 기존 음성 FAB과
+  // 나란히 배치돼도 RenderFlex overflow 예외가 발생하지 않는지 확인한다.
+  testWidgets(
+    'HomeScreen는 360dp 좁은 화면에서도 두 FAB이 오버플로우 없이 렌더링된다',
+    (tester) async {
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {

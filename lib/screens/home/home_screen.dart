@@ -1027,12 +1027,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
-      floatingActionButton: PlanFlowVoiceFab(
-        onPressed: () => context.push(AppRoutes.voice),
-        showPulse: _loadState == _HomeLoadState.ready &&
-            _todayEvents.isEmpty &&
-            _upcomingEvents.isEmpty &&
-            _pastTodayEvents.isEmpty,
+      // 좁은 화면(예: 360dp)에서 두 extended FAB이 나란히 배치되면 라벨
+      // 폭 때문에 RenderFlex overflow가 발생할 수 있어(실측: 9.6px),
+      // FittedBox로 필요한 만큼만 살짝 축소해 라벨 텍스트는 그대로 유지한다.
+      floatingActionButton: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PlanFlowAiConversationFab(
+              onPressed: () => _openVoiceConversation(context),
+            ),
+            const SizedBox(width: 12),
+            PlanFlowVoiceFab(
+              onPressed: () => context.push(AppRoutes.voice),
+              showPulse: _loadState == _HomeLoadState.ready &&
+                  _todayEvents.isEmpty &&
+                  _upcomingEvents.isEmpty &&
+                  _pastTodayEvents.isEmpty,
+            ),
+          ],
+        ),
       ),
     );
   }

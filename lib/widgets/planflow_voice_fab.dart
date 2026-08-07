@@ -39,3 +39,33 @@ class PlanFlowVoiceFab extends StatelessWidget {
     );
   }
 }
+
+class PlanFlowAiConversationFab extends StatelessWidget {
+  const PlanFlowAiConversationFab({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.extended(
+      heroTag: null,
+      onPressed: onPressed,
+      backgroundColor: PlanFlowColors.active,
+      foregroundColor: Colors.white,
+      icon: Container(
+        width: 22,
+        height: 22,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.chat_bubble_outline,
+          size: 15,
+          color: PlanFlowColors.active,
+        ),
+      ),
+      label: const Text('AI일정대화'),
+    );
+  }
+}
