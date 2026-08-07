@@ -8,6 +8,7 @@ import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/recurrence_expansion.dart' as recurrence_expansion;
 import '../../core/responsive.dart';
 import '../../core/time_format_controller.dart';
 import '../../core/theme.dart';
@@ -828,38 +829,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return visible;
   }
 
+  // lib/core/recurrence_expansion.dart의 공용 유틸로 위임한다(순수 리팩터,
+  // 동작 동일 — 예외 이벤트가 대체하는 원본 회차 날짜(overriddenOccurrenceDate)로
+  // 매칭하는 로직 그대로 유지).
   List<EventModel> _hideOverriddenRecurringOccurrences(
     List<EventModel> events,
   ) {
-    final overrides = events
-        .where((event) =>
-            event.parentEventId != null &&
-            event.parentEventId!.trim().isNotEmpty &&
-            event.overriddenOccurrenceDate != null)
-        .toList(growable: false);
-    if (overrides.isEmpty) {
-      return events;
-    }
-    return events.where((event) {
-      final startAt = event.startAt;
-      if (startAt == null) {
-        return true;
-      }
-      // 예외 이벤트가 대체하는 원본 회차 날짜(overriddenOccurrenceDate)로
-      // 매칭한다. 예전엔 예외 이벤트의 현재 startAt(= 새로 옮긴 날짜)으로
-      // 매칭해서, 회차 날짜 자체를 바꾼 예외는 원본 회차를 못 숨겼다
-      // (사용자 지적, 2026-07-27 — 21일 회차를 다른 날로 옮겨도 21일 자리에
-      // 그대로 남아 보임).
-      final isOverridden = overrides.any((override) {
-        if (override.parentEventId != event.id) {
-          return false;
-        }
-        final overriddenDate = override.overriddenOccurrenceDate;
-        return overriddenDate != null &&
-            planflowIsSameLocalDay(overriddenDate, startAt);
-      });
-      return !isOverridden;
-    }).toList(growable: false);
+    return recurrence_expansion.hideOverriddenRecurringOccurrences(events);
   }
 
   bool _eventIntersectsDay(EventModel event, DateTime day) {
@@ -874,115 +850,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  // lib/core/recurrence_expansion.dart의 공용 유틸로 위임한다(순수 리팩터,
+  // 동작 동일). 그 유틸은 "범위 안에 회차가 없으면 anchor 이벤트를 그대로
+  // 반환"하는 폴백을 의도적으로 제외했으므로(문서 참조) 여기 호출부에서
+  // 원래 동작대로 재적용한다.
   List<EventModel> _expandRecurringEvent(
     EventModel event, {
     required DateTime rangeStart,
     required DateTime rangeEnd,
   }) {
-    final rule = event.recurrenceRule?.toUpperCase();
-    final startAt = event.startAt;
-    if (rule == null || rule.isEmpty || startAt == null) {
-      return <EventModel>[event];
-    }
-
-    final freq = RegExp(r'FREQ=([A-Z]+)').firstMatch(rule)?.group(1);
-    if (freq == null) {
-      return <EventModel>[event];
-    }
-
-    final intervalText = RegExp(r'INTERVAL=(\d+)').firstMatch(rule)?.group(1);
-    final interval = int.tryParse(intervalText ?? '1')?.clamp(1, 365) ?? 1;
-    final until = _parseRRuleUntil(
-      RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
+    final occurrences = recurrence_expansion.expandRecurringEvent(
+      event: event,
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+      includeOccurrence: _eventIntersectsRange,
     );
-    final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
-    final localStartAt = planflowLocal(startAt);
-    final duration = event.endAt?.difference(startAt);
-    final occurrences = <EventModel>[];
-
-    if (freq == 'WEEKLY') {
-      final byDays = _parseRRuleByDays(rule);
-      if (byDays.isNotEmpty) {
-        var weekStart = DateTime(
-          localStartAt.year,
-          localStartAt.month,
-          localStartAt.day,
-          localStartAt.hour,
-          localStartAt.minute,
-          localStartAt.second,
-        ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
-        var safety = 0;
-        while (weekStart.isBefore(hardEnd) && safety < 120) {
-          safety += 1;
-          for (final weekday in byDays) {
-            final day =
-                weekStart.add(Duration(days: weekday - DateTime.monday));
-            final current = DateTime(
-              day.year,
-              day.month,
-              day.day,
-              localStartAt.hour,
-              localStartAt.minute,
-              localStartAt.second,
-            );
-            if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
-              continue;
-            }
-            final occurrenceEnd =
-                duration == null ? null : current.add(duration);
-            final candidate = _copyEventWithTime(
-              event,
-              startAt: current,
-              endAt: occurrenceEnd,
-            );
-            if (_eventIntersectsRange(candidate, rangeStart, rangeEnd)) {
-              occurrences.add(candidate);
-            }
-          }
-          weekStart = weekStart.add(Duration(days: 7 * interval));
-        }
-        return occurrences.isEmpty ? <EventModel>[event] : occurrences;
-      }
-    }
-
-    var current = localStartAt;
-    var safety = 0;
-    while (current.isBefore(hardEnd) && safety < 420) {
-      safety += 1;
-      final occurrenceEnd = duration == null ? null : current.add(duration);
-      final candidate = _copyEventWithTime(
-        event,
-        startAt: current,
-        endAt: occurrenceEnd,
-      );
-      if (_eventIntersectsRange(candidate, rangeStart, rangeEnd)) {
-        occurrences.add(candidate);
-      }
-      current = switch (freq) {
-        'DAILY' => current.add(Duration(days: interval)),
-        'WEEKLY' => current.add(Duration(days: 7 * interval)),
-        'MONTHLY' => DateTime(
-            current.year,
-            current.month + interval,
-            current.day,
-            current.hour,
-            current.minute,
-            current.second,
-          ),
-        'YEARLY' => DateTime(
-            current.year + interval,
-            current.month,
-            current.day,
-            current.hour,
-            current.minute,
-            current.second,
-          ),
-        _ => hardEnd,
-      };
-    }
     return occurrences.isEmpty ? <EventModel>[event] : occurrences;
   }
 
+  // 캘린더 화면 전용 술어: _calendarDisplayEndDay(화면 표시용 종료일 보정)
+  // 기반이라 공용 유틸의 기본 판정과 다르다 — 유틸의 includeOccurrence
+  // 콜백으로 그대로 주입해서 쓴다(공용 유틸 문서 참조).
   bool _eventIntersectsRange(
     EventModel event,
     DateTime rangeStart,
@@ -1001,81 +889,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
     return planflowLocal(startAt).isBefore(rangeEnd) &&
         eventDisplayEndExclusive.isAfter(rangeStart);
-  }
-
-  DateTime? _parseRRuleUntil(String? value) {
-    if (value == null || value.isEmpty) {
-      return null;
-    }
-    final normalized = value.replaceAll('Z', '');
-    if (normalized.length < 8) {
-      return null;
-    }
-    final year = int.tryParse(normalized.substring(0, 4));
-    final month = int.tryParse(normalized.substring(4, 6));
-    final day = int.tryParse(normalized.substring(6, 8));
-    if (year == null || month == null || day == null) {
-      return null;
-    }
-    return DateTime(year, month, day).add(const Duration(days: 1));
-  }
-
-  List<int> _parseRRuleByDays(String rule) {
-    final raw = RegExp(r'BYDAY=([A-Z0-9,\-]+)').firstMatch(rule)?.group(1);
-    if (raw == null || raw.isEmpty) {
-      return const <int>[];
-    }
-    return raw
-        .split(',')
-        .map((item) => item.replaceAll(RegExp(r'[-0-9]'), ''))
-        .map((item) => switch (item) {
-              'MO' => DateTime.monday,
-              'TU' => DateTime.tuesday,
-              'WE' => DateTime.wednesday,
-              'TH' => DateTime.thursday,
-              'FR' => DateTime.friday,
-              'SA' => DateTime.saturday,
-              'SU' => DateTime.sunday,
-              _ => null,
-            })
-        .whereType<int>()
-        .toList(growable: false);
-  }
-
-  EventModel _copyEventWithTime(
-    EventModel event, {
-    required DateTime startAt,
-    DateTime? endAt,
-  }) {
-    return EventModel(
-      id: event.id,
-      userId: event.userId,
-      title: event.title,
-      startAt: startAt,
-      endAt: endAt,
-      location: event.location,
-      locationLat: event.locationLat,
-      locationLng: event.locationLng,
-      memo: event.memo,
-      supplies: event.supplies,
-      suppliesChecked: event.suppliesChecked,
-      participants: event.participants,
-      targets: event.targets,
-      isCritical: event.isCritical,
-      recurrenceRule: event.recurrenceRule,
-      isAllDay: event.isAllDay,
-      isMultiDay: event.isMultiDay,
-      parentEventId: event.parentEventId,
-      category: event.category,
-      source: event.source,
-      externalId: event.externalId,
-      externalCalendarId: event.externalCalendarId,
-      externalEtag: event.externalEtag,
-      externalUpdatedAt: event.externalUpdatedAt,
-      lastSyncedAt: event.lastSyncedAt,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
-    );
   }
 
   void _showDayEventsSheet(DateTime day) {
