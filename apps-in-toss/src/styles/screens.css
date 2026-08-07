@@ -21,12 +21,14 @@
   font-size: var(--pf-font-24);
   font-weight: 700;
   color: var(--pf-text);
+  text-align: center;
   margin: 0;
 }
 
 .auth-login__description {
   font-size: var(--pf-font-14);
   color: var(--pf-text-secondary);
+  text-align: center;
   margin: 0 0 var(--pf-space-8);
 }
 
