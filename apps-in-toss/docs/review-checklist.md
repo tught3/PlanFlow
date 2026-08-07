@@ -15,9 +15,9 @@
 | 항목 | 대응방식 | 근거 파일경로 |
 |------|----------|----------------|
 | 로그인 수단은 토스 로그인만 허용, 자체 로그인 금지 | 구현 완료.[^mtls-501] `LoginScreen`은 토스 로그인 버튼 1개만 노출하고, 이메일/비밀번호 입력 필드를 두지 않는다. 실제 인증은 `TossAuth.login()` → `toss-login` Edge Function → `supabase.auth.verifyOtp`로 발급받은 세션이며, 사용자에게 노출되는 로그인 경로는 토스 로그인 하나뿐이다(자체 로그인 UI 금지 규정과의 관계는 `docs/toss-login-setup.md` 4절 참고). | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
-| 로그인 거부 시 앱 종료 | 구현 완료.[^mtls-501] 로그인 취소(`user_cancelled`) 및 그 외 모든 실패 코드에서 `buildLoginScreenState()`가 "다시 시도"/"앱 종료" 선택지를 함께 제공하고, "앱 종료"는 `@apps-in-toss/web-framework`의 `closeView()`를 호출한다. | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
+| 로그인 거부 시 앱 종료 | 구현 완료.[^mtls-501] 로그인 취소(`user_cancelled`) 및 그 외 모든 실패 코드에서 `buildLoginScreenState()`가 "다시 시도"/"앱 종료" 선택지를 함께 제공하고, "앱 종료"는 `@apps-in-toss/web-framework`의 `Screen.close()`를 호출한다. | `src/features/auth/LoginScreen.tsx`, `src/features/auth/tossLogin.ts` |
 | 로그아웃 시 사용자 데이터 삭제 | 구현 완료(D1). `AppLayout`(`src/router.tsx`) 헤더에 로그아웃 버튼을 추가했고, 클릭 시 `ConfirmDialog`로 확인을 받은 뒤에만 `supabase.auth.signOut()`을 호출해 `/login`으로 이동한다(확인 전 `signOut` 미호출 계약은 `appLayoutLogout.test.ts`로 고정). 이 앱은 이벤트/설정 데이터를 별도 로컬 캐시 없이 Supabase를 단일 소스로 매 요청 조회하므로(8절 참고), `signOut()`으로 세션이 끊기는 순간 그 세션에 결부된 로컬 접근 경로가 사라져 "로그아웃 시 사용자 데이터 삭제" 요구를 충족한다(로컬에 남아 지워야 할 캐시 자체가 없음 — 근거는 `src/router.tsx`의 `AppLayout` 주석). | `src/router.tsx`(`AppLayout`, `handleLogout`), `src/appLayoutLogout.ts`, `src/appLayoutLogout.test.ts` |
-| 인트로 페이지에 서비스 설명 및 약관 URL 표시 | 구현 완료.[^mtls-501] `LoginScreen`에 서비스 설명 문구("토스 계정으로 로그인하고 AI 음성 일정 관리를 시작하세요")와 개인정보처리방침 링크(`openURL`로 외부 브라우저에서 열림)를 표시한다. 단, 이 URL 자체가 다른 문서(`docs/play-console-*.md`)와 불일치하는 문제는 "미확정/재확인 필요" 절 참고. | `src/features/auth/LoginScreen.tsx` |
+| 인트로 페이지에 서비스 설명 및 약관 URL 표시 | 구현 완료.[^mtls-501] `LoginScreen`에 서비스 설명 문구("토스 안에서 AI 음성 일정 관리를 바로 시작하세요.")와 개인정보처리방침 링크(`openURL`로 외부 브라우저에서 열림)를 표시한다. 단, 이 URL 자체가 다른 문서(`docs/play-console-*.md`)와 불일치하는 문제는 "미확정/재확인 필요" 절 참고. | `src/features/auth/LoginScreen.tsx` |
 
 ## 2. 사용자 식별 (User Identification)
 
