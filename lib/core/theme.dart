@@ -13,8 +13,11 @@ class PlanFlowColors {
   static const tertiaryAccent = Color(0xFF2D5CA8);
   static const tertiaryAccentFaint = Color(0xFFE7EEF9);
 
-  static const active = Color(0xFF1A4FD6);
+  static const active = Color(0xFF3858A8);
   static const activeLight = Color(0xFFA8C8FF);
+
+  // 음성 FAB 전용 (primary보다 채도 높고 명도 살짝 높은 톤)
+  static const voiceFab = Color(0xFF214B83);
 
   static const briefing = Color(0xFF2E6DA4);
   static const briefingLabel = Color(0xFFA8D4F0);

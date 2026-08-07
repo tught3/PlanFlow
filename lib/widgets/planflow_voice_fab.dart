@@ -20,7 +20,7 @@ class PlanFlowVoiceFab extends StatelessWidget {
     return FloatingActionButton.extended(
       heroTag: null,
       onPressed: onPressed,
-      backgroundColor: PlanFlowColors.primary,
+      backgroundColor: PlanFlowColors.voiceFab,
       foregroundColor: Colors.white,
       icon: Container(
         width: 22,
@@ -32,7 +32,7 @@ class PlanFlowVoiceFab extends StatelessWidget {
         child: const Icon(
           Icons.mic,
           size: 15,
-          color: PlanFlowColors.primary,
+          color: PlanFlowColors.voiceFab,
         ),
       ),
       label: const Text('음성으로 일정 관리'),
