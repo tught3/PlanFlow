@@ -47,10 +47,24 @@ import {
   TOSS_DISCONNECT_ERROR_CODES,
 } from "./logic.ts";
 
+// 앱인토스 콘솔의 "테스트하기" 버튼은 브라우저(콘솔 웹페이지)에서 fetch로
+// 이 엔드포인트를 직접 호출하는 것으로 실측 확인됨(Edge Function 로그에
+// 우리가 보낸 적 없는 "OPTIONS | 405" 요청이 찍혀 있었음 — 이 콜백은
+// 원래 서버-to-서버 웹훅이라 CORS가 불필요하다고 가정했으나, 콘솔 테스트
+// 도구 자체가 브라우저 오리진에서 호출하므로 CORS preflight(OPTIONS)를
+// 반드시 처리해야 한다). 실제 Toss 프로덕션 서버 호출은 브라우저가 아니라
+// CORS 제약이 없으므로, 이 헤더는 콘솔 테스트 도구 지원을 위한 것이다.
+const CORS_HEADERS: Record<string, string> = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-max-age": "86400",
+};
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -115,6 +129,12 @@ function buildDisconnectPort(adminClient: SupabaseClient): DisconnectPort {
 }
 
 serve(async (req) => {
+  // CORS preflight — 콘솔 테스트 도구(브라우저)가 실제 POST/GET 전에 보낸다.
+  // 인증 없이 204만 반환한다(실제 인증은 본 요청에서 Basic Auth로 수행).
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   if (req.method !== "GET" && req.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
   }
