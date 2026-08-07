@@ -13,6 +13,7 @@ import type { EventRepository } from './data/eventRepository.ts';
 import { eventRepository } from './data/eventRepository.ts';
 import { supabase } from './lib/supabase.ts';
 import { useSession } from './features/auth/useSession.ts';
+import { resolveAuthGateDecision, resolveLoginRouteDecision } from './features/auth/authRouteDecision.ts';
 import { LoginScreen } from './features/auth/LoginScreen.tsx';
 import { ConfirmDialog, ErrorMessage, Spinner } from './components/index.ts';
 import type { LogoutUiState } from './appLayoutLogout.ts';
@@ -61,20 +62,36 @@ const activeEventRepository = isDevPreviewEnabled() ? previewRepository : eventR
 function AuthGate() {
   const { userId, loading } = useSession();
 
-  if (loading) {
-    return <Spinner />;
+  switch (resolveAuthGateDecision({ userId, loading })) {
+    case 'wait':
+      return <Spinner />;
+    case 'redirect':
+      return <Navigate to="/login" replace />;
+    case 'render':
+      return <Outlet />;
   }
-  if (userId === null) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <Outlet />;
 }
 
-/** /login 라우트. 로그인 성공 시 오늘 화면으로 이동시킨다. */
+/**
+ * /login 라우트. 로그인 성공 시 오늘 화면으로 이동시킨다.
+ *
+ * 이미 세션이 있는 상태(userId !== null)로 /login에 진입하면 로그인 화면을
+ * 다시 보여주지 않고 /today로 바로 보낸다(resolveLoginRouteDecision 참고).
+ * onLoginSuccess 콜백은 로그인 "성공 직후" 내비게이션이고, 이 세션 확인은
+ * 렌더 "이전" 판정이라 서로 다른 관심사이며 둘 다 유지된다.
+ */
 function LoginRoute() {
   const navigate = useNavigate();
-  return <LoginScreen onLoginSuccess={() => navigate('/today', { replace: true })} />;
+  const { userId, loading } = useSession();
+
+  switch (resolveLoginRouteDecision({ userId, loading })) {
+    case 'wait':
+      return <Spinner />;
+    case 'redirect':
+      return <Navigate to="/today" replace />;
+    case 'render':
+      return <LoginScreen onLoginSuccess={() => navigate('/today', { replace: true })} />;
+  }
 }
 
 /** 하단 탭 목록. NavLink가 현재 경로와 일치 여부를 판단해 활성 클래스를 붙인다. */
