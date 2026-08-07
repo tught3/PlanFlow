@@ -19,6 +19,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { ProductionAdGroupIds } from './adConfig';
 import type { AdSdk } from './adService';
 import { BannerSlot } from './BannerSlot';
 
@@ -71,5 +72,37 @@ describe('BannerSlot 렌더링 (정적 마크업 계약)', () => {
     const html = renderToStaticMarkup(<BannerSlot pathname="/some/new/route" sdk={makeSdk()} />);
 
     expect(html).toBe('');
+  });
+
+  it('배너 허용 경로(/today)라도 getAdGroupIds().banner가 null이면 아무것도 렌더링하지 않는다(빈 배너 박스 방지)', async () => {
+    // production 배너 광고 id가 콘솔에서 아직 발급되지 않은 현재 상태를
+    // 재현한다. vitest는 항상 import.meta.env.DEV===true라 실제
+    // getAdGroupIds()는 절대 null을 반환하지 않으므로(adConfig.ts의
+    // resolveAdGroupIds가 isDev===true면 TEST_AD_GROUP_IDS로 대체) 이
+    // 경로는 모듈을 직접 mock해야만 재현할 수 있다.
+    vi.resetModules();
+    vi.doMock('./adConfig', async () => {
+      const actual = await vi.importActual<typeof import('./adConfig')>('./adConfig');
+      return {
+        ...actual,
+        getAdGroupIds: (): ProductionAdGroupIds => ({
+          interstitial: null,
+          rewarded: null,
+          banner: null,
+          bannerNative: null,
+        }),
+      };
+    });
+
+    const { BannerSlot: MockedBannerSlot } = await import('./BannerSlot');
+    const html = renderToStaticMarkup(
+      <MockedBannerSlot pathname="/today" sdk={makeSdk()} />,
+    );
+
+    expect(html).toBe('');
+    expect(html).not.toContain('ad-banner-slot');
+
+    vi.doUnmock('./adConfig');
+    vi.resetModules();
   });
 });

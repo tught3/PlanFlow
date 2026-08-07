@@ -5,10 +5,14 @@
  * 라우팅 로직과 완전히 분리한다(테스트하기 쉽고, 어떤 라우터를 쓰든 재사용
  * 가능). 실제 경로 전달은 이 작업 범위 밖(P9, 라우터 배선)에서 담당한다.
  *
- * `shouldShowBannerForPath`(bannerRoutes.ts)가 false를 반환하는 경로에서는
+ * `shouldShowBannerForPath`(bannerRoutes.ts)가 false를 반환하는 경로,
+ * 또는 `getAdGroupIds().banner`가 아직 콘솔에서 발급되지 않아 `null`인
+ * 경우(예: 이번 세션 기준 production 배너 광고 id 미발급 상태)에는
  * `null`을 렌더링한다 - 빈 배너 박스를 그리지 않는다(adService.ts에 이미
  * 명시된 "빈 배너 박스로 광고가 있는 척하지 않는다" 정책을 이 컴포넌트도
- * 그대로 따른다).
+ * 그대로 따른다). adGroupId가 없는데 컨테이너 div만 그리면 실제로는 아무
+ * 광고도 붙지 않은 채 `.ad-banner-slot`의 min-height/margin(adBannerStyles.ts)
+ * 만큼의 빈 공간이 화면에 남는다 - 이 컴포넌트는 그 상태를 만들지 않는다.
  *
  * attach/detach의 실제 판단 로직(멱등성 포함)은 bannerAttachment.ts에 전부
  * 분리되어 있다 - 이 컴포넌트는 ref 두 개(container DOM 노드, attachment
@@ -37,7 +41,8 @@ export interface BannerSlotProps {
 export function BannerSlot({ pathname, sdk }: BannerSlotProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef(createBannerAttachmentHandle());
-  const visible = shouldShowBannerForPath(pathname);
+  const adGroupId = getAdGroupIds().banner;
+  const visible = shouldShowBannerForPath(pathname) && adGroupId !== null;
 
   useEffect(() => {
     if (!visible) {
@@ -49,7 +54,6 @@ export function BannerSlot({ pathname, sdk }: BannerSlotProps) {
       return undefined;
     }
 
-    const adGroupId = getAdGroupIds().banner;
     const handle = handleRef.current;
     attachBanner(handle, sdk, adGroupId, container);
 
@@ -58,7 +62,7 @@ export function BannerSlot({ pathname, sdk }: BannerSlotProps) {
     };
     // pathname을 deps에 포함해 배너가 계속 보이는 경로 사이를 이동해도(예:
     // /calendar/month -> /calendar/week) 매 경로마다 새로 attach한다.
-  }, [visible, pathname, sdk]);
+  }, [visible, pathname, sdk, adGroupId]);
 
   if (!visible) {
     return null;
