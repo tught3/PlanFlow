@@ -4,6 +4,7 @@ import {
   Navigate,
   Outlet,
   createBrowserRouter,
+  useLocation,
   useNavigate,
   useParams,
 } from 'react-router-dom';
@@ -19,6 +20,19 @@ import { ConfirmDialog, ErrorMessage, Spinner } from './components/index.ts';
 import type { LogoutUiState } from './appLayoutLogout.ts';
 import { nextLogoutState } from './appLayoutLogout.ts';
 import { isDevPreviewEnabled, previewRepository } from './features/devPreview/index.ts';
+import { BannerSlot } from './features/ads/BannerSlot.tsx';
+import { getAdGroupIds } from './features/ads/adConfig.ts';
+import { canShowInterstitial } from './features/ads/adPolicy.ts';
+import { loadInterstitial, showInterstitial } from './features/ads/adService.ts';
+import { loadAdFrequencyState, recordInterstitialShown } from './features/ads/adState.ts';
+import {
+  buildInterstitialEligibilityContext,
+  dispatchAdSessionAction,
+  getAdSessionState,
+  realAdSdk,
+  realAdStatePort,
+} from './features/ads/adRuntime.ts';
+import { isSettledRouteForInterstitial } from './features/ads/interstitialRoutes.ts';
 
 /**
  * F1: 라우트 단위 코드 분할.
@@ -110,16 +124,25 @@ const NAV_ITEMS = [
  * (router.tsx를 그대로 테스트에서 import하면 createBrowserRouter가 모듈
  * 로드 시점에 document를 참조해 jsdom 없는 이 프로젝트의 vitest에서 죽는다).
  *
- * 이 앱은 별도 로컬 캐시(localStorage/sessionStorage/IndexedDB)를 쓰지 않는다
- * (src 전체에 해당 API 사용처가 없음, 데이터는 항상 eventRepository를 통해
- * Supabase에서 직접 조회한다). supabase-js 클라이언트 자체가 세션 토큰을
- * 내부적으로 영속화하지만, 그 저장소도 supabase.auth.signOut() 호출 시
- * supabase-js가 알아서 정리한다. 따라서 "로그아웃 시 로컬 데이터 삭제"라는
- * 요구는 이 앱에 signOut() 호출 이상의 별도 캐시 삭제 로직이 필요 없다 -
- * 세션 종료 자체로 충족된다.
+ * 이 앱은 일정 데이터를 위한 별도 로컬 캐시(localStorage/sessionStorage/
+ * IndexedDB)를 쓰지 않는다(데이터는 항상 eventRepository를 통해 Supabase에서
+ * 직접 조회한다). 유일한 예외는 광고 노출 빈도 상태(src/features/ads/adState.ts)로,
+ * `@apps-in-toss/web-framework`의 `Storage`(토스 네이티브 영속 저장소)에
+ * 날짜/횟수 필드만 저장한다(PII 없음, 일정 데이터 아님) - 하루 전면 광고
+ * 노출 횟수 제한과 설치 첫날 판정을 위한 것이다(adState.ts 상단 주석 참고).
+ * supabase-js 클라이언트 자체가 세션 토큰을 내부적으로 영속화하지만, 그
+ * 저장소도 supabase.auth.signOut() 호출 시 supabase-js가 알아서 정리한다.
+ * 광고 빈도 상태는 사용자 식별 정보가 아니라 기기/설치 단위 값이므로
+ * 로그아웃 시에도 의도적으로 지우지 않는다(지우면 광고 노출 제한이
+ * 로그아웃마다 리셋되어 정책 위반 위험이 커진다). 따라서 "로그아웃 시 로컬
+ * 데이터 삭제"라는 요구는 이 앱에 signOut() 호출 이상의 별도 캐시 삭제
+ * 로직이 필요 없다 - 세션 종료 자체로 충족된다(일정 데이터 기준. 광고 빈도
+ * 상태는 이 요구의 범위 밖이다).
  */
 function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { userId } = useSession();
   const [logoutState, setLogoutState] = useState<LogoutUiState>('idle');
 
   useEffect(() => {
@@ -137,6 +160,82 @@ function AppLayout() {
       cancelled = true;
     };
   }, [logoutState, navigate]);
+
+  /**
+   * 로그아웃 확인 다이얼로그가 열려 있는 동안은 전면 광고가 절대 적격
+   * 판정을 받지 않도록 세션 스코프 상태에 반영한다(adPolicy.ts의
+   * no-modal-open 체크가 이 값을 읽는다). 다이얼로그 표시 여부(logoutState)
+   * 자체가 이미 상태 머신(nextLogoutState)으로 관리되므로, 여기서는 그
+   * 파생값을 세션 상태로 통지만 한다.
+   */
+  useEffect(() => {
+    dispatchAdSessionAction({
+      type: logoutState === 'confirming' ? 'modal-open' : 'modal-close',
+    });
+  }, [logoutState]);
+
+  /**
+   * 전면 광고 적격성 체크: "정착된"(settled) 라우트에 도달할 때마다 한 번
+   * 시도한다. 트리거 지점 선정 근거는 interstitialRoutes.ts 상단 주석 참고 -
+   * 요약하면 편집 중/저장 대기 중/삭제 확인 중 같은 중간 상태는 전부 같은
+   * 경로 안에서 내부 컴포넌트 상태로만 표현되어 라우트 자체가 바뀌지
+   * 않으므로, 이 effect가 실행된다는 사실 자체가 그 중간 상태가 아님을
+   * 보장한다(카운트 기반이 아니라 자연스러운 화면 전환 시점을 쓴다).
+   *
+   * 이 effect는 절대 throw/reject를 위로 전파하지 않는다 - adService.ts/
+   * adPolicy.ts/adState.ts 각각이 이미 fail-closed로 안전하지만, 라우팅/
+   * 렌더링을 절대 막지 않는다는 "광고는 핵심 기능을 절대 저하시키지
+   * 않는다" 원칙에 따라 이 호출부에서도 한 번 더 방어적으로 감싼다.
+   */
+  useEffect(() => {
+    if (!isSettledRouteForInterstitial(location.pathname)) {
+      return undefined;
+    }
+    if (userId === null) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const frequency = await loadAdFrequencyState(realAdStatePort);
+        if (cancelled) {
+          return;
+        }
+
+        const now = new Date();
+        const context = buildInterstitialEligibilityContext({
+          authenticated: true,
+          session: getAdSessionState(),
+          frequency,
+          now,
+        });
+
+        if (!canShowInterstitial(context, now)) {
+          return;
+        }
+
+        const adGroupId = getAdGroupIds().interstitial;
+        const { loaded } = await loadInterstitial(realAdSdk, adGroupId);
+        if (cancelled || !loaded) {
+          return;
+        }
+
+        const result = await showInterstitial(realAdSdk, adGroupId);
+        if (result.shown) {
+          await recordInterstitialShown(realAdStatePort);
+        }
+      } catch {
+        // 전면 광고 파이프라인의 어떤 단계가 예상치 못하게 실패해도 라우팅/
+        // 렌더링을 절대 막지 않는다(이 파일 전체의 안전 원칙).
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, userId]);
 
   return (
     <div className="app-layout">
@@ -172,6 +271,16 @@ function AppLayout() {
       <main className="app-layout__content">
         <Outlet />
       </main>
+      {/*
+        하단 탭 위, 콘텐츠 아래에 배너를 상시 배치한다. BannerSlot 자체가
+        shouldShowBannerForPath(bannerRoutes.ts)로 노출 여부를 판단해 허용
+        경로가 아니면 null을 렌더링하므로, 여기서는 항상 마운트해두고 현재
+        pathname/실제 SDK를 그대로 넘기기만 한다 - 라우트 이동마다 다시
+        마운트/언마운트되지 않고 AppLayout(=Outlet 상위)에 계속 붙어 있어야
+        BannerSlot의 effect가 pathname 변화에 따라 attach/detach를 스스로
+        처리할 수 있다(BannerSlot.tsx 상단 주석 참고).
+      */}
+      <BannerSlot pathname={location.pathname} sdk={realAdSdk} />
       <nav className="app-layout__nav">
         {NAV_ITEMS.map((item) => (
           <NavLink
@@ -219,7 +328,13 @@ function EventNewRoute() {
         mode="create"
         userId={userId}
         repository={activeEventRepository}
-        onSaved={(event) => navigate(`/event/${event.id}`)}
+        onSaved={(event) => {
+          // 사용자가 확인한 일정 생성 완료 = "의미 있는 행동"(adSession.ts).
+          // 세션 안에서 한 번이라도 발생하면 그 세션의 전면 광고 적격성
+          // 조건 하나를 충족시킨다(sticky, 되돌아가지 않음).
+          dispatchAdSessionAction({ type: 'meaningful-action' });
+          navigate(`/event/${event.id}`);
+        }}
         onCancel={() => navigate(-1)}
       />
     </Suspense>
@@ -293,7 +408,11 @@ function EventDetailRoute() {
       <EventDetail
         event={event}
         repository={activeEventRepository}
-        onDeleted={() => navigate('/today')}
+        onDeleted={() => {
+          // 사용자가 확인한 일정 삭제 완료 = "의미 있는 행동"(adSession.ts).
+          dispatchAdSessionAction({ type: 'meaningful-action' });
+          navigate('/today');
+        }}
         onEdit={(target) => navigate(`/event/${target.id}/edit`)}
       />
     </Suspense>
@@ -324,7 +443,11 @@ function EventEditRoute() {
         userId={userId}
         initialEvent={event}
         repository={activeEventRepository}
-        onSaved={(saved) => navigate(`/event/${saved.id}`)}
+        onSaved={(saved) => {
+          // 사용자가 확인한 일정 수정 완료 = "의미 있는 행동"(adSession.ts).
+          dispatchAdSessionAction({ type: 'meaningful-action' });
+          navigate(`/event/${saved.id}`);
+        }}
         onCancel={() => navigate(-1)}
       />
     </Suspense>
