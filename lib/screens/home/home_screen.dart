@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/analytics_service.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
@@ -29,9 +28,9 @@ import '../../services/home_header_summary_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
-import '../../services/voice_conversation_ad_gate.dart';
+import '../../services/voice_conversation_launcher.dart';
+import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
-import '../../widgets/planflow_voice_fab.dart';
 part 'home_widgets.dart';
 
 enum _HomeLoadState {
@@ -660,57 +659,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   bool _shouldShowVoiceConvButton() {
-    try {
-      return RemoteConfigService.voiceConversationButtonEnabled;
-    } catch (_) {
-      return true; // RemoteConfig 미초기화 시 기본값 동작
-    }
+    return VoiceConversationLauncher.shouldShowButton();
   }
 
   Future<void> _openVoiceConversation(BuildContext context) async {
-    AnalyticsService.logVoiceConvButtonTap();
-    final userId = _resolveUserId();
-    if (userId == null || userId.isEmpty) {
-      _showSnack('로그인 세션이 없습니다. 다시 로그인해 주세요.');
-      return;
-    }
-    // onEnterAllowed 콜백은 동기 VoidCallback이라 그 안에서 await할 수
-    // 없다. 광고 게이트 호출 이전에 자동시작 설정을 미리 조회해둔다.
-    final shouldAutoStart = await _resolveVoiceAutoStartSetting(userId);
-    if (!context.mounted) return;
-    await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
-      context: context,
-      userId: userId,
-      onEnterAllowed: () {
-        if (!context.mounted) return;
-        final route = shouldAutoStart
-            ? '${AppRoutes.voiceConversation}?autoStart=1'
-            : AppRoutes.voiceConversation;
-        unawaited(context.push(route));
-      },
+    await VoiceConversationLauncher.open(
+      context,
+      userIdOverride: widget.userIdOverride,
+      repository: widget.settingsRepository,
     );
-  }
-
-  /// 사용자 설정의 '음성대화 자동 시작' 값을 조회한다. Supabase 미준비,
-  /// userId 없음, 조회 실패 등 예외 상황에서는 안전하게 false(자동시작
-  /// 안 함, 기존 동작과 동일)로 폴백한다.
-  Future<bool> _resolveVoiceAutoStartSetting(String userId) async {
-    if (!AppEnv.isSupabaseReady) {
-      return false;
-    }
-    if (userId.trim().isEmpty) {
-      return false;
-    }
-    try {
-      final repository =
-          widget.settingsRepository ?? SettingsRepository.supabase();
-      final settings = await repository.fetchSettings(userId);
-      return settings?.voiceAutoStart ?? false;
-    } catch (error, stackTrace) {
-      debugPrint('Voice auto-start setting lookup failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
   }
 
   @override
@@ -760,7 +717,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 AppConstants.defaultPadding,
                 12,
                 AppConstants.defaultPadding,
-                96,
+                160,
               ),
               child: ResponsiveContent(
                 maxWidth: context.planflowWindowInfo.contentMaxWidth,
@@ -1027,28 +984,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
-      // 좁은 화면(예: 360dp)에서 두 extended FAB이 나란히 배치되면 라벨
-      // 폭 때문에 RenderFlex overflow가 발생할 수 있어(실측: 9.6px),
-      // FittedBox로 필요한 만큼만 살짝 축소해 라벨 텍스트는 그대로 유지한다.
-      floatingActionButton: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerRight,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PlanFlowAiConversationFab(
-              onPressed: () => _openVoiceConversation(context),
-            ),
-            const SizedBox(width: 12),
-            PlanFlowVoiceFab(
-              onPressed: () => context.push(AppRoutes.voice),
-              showPulse: _loadState == _HomeLoadState.ready &&
-                  _todayEvents.isEmpty &&
-                  _upcomingEvents.isEmpty &&
-                  _pastTodayEvents.isEmpty,
-            ),
-          ],
-        ),
+      floatingActionButton: PlanFlowGlobalFabs(
+        onAiConversation: () => _openVoiceConversation(context),
+        onVoice: () => context.push(AppRoutes.voice),
+        showVoicePulse: _loadState == _HomeLoadState.ready &&
+            _todayEvents.isEmpty &&
+            _upcomingEvents.isEmpty &&
+            _pastTodayEvents.isEmpty,
       ),
     );
   }

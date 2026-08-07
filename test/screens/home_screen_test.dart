@@ -743,6 +743,44 @@ void main() {
     },
   );
 
+  // 회귀: 홈 화면의 FAB 묶음이 가로가 아니라 세로(AI일정대화 위 / 음성으로
+  // 일정 관리 아래)로 배치되는지 확인한다(PlanFlowGlobalFabs 이관 검증).
+  testWidgets(
+    'HomeScreen는 AI일정대화 FAB을 음성 FAB 위에 세로로 배치한다',
+    (tester) async {
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      final aiFabCenter = tester.getCenter(find.text('AI일정대화'));
+      final voiceFabCenter = tester.getCenter(find.text('음성으로 일정 관리'));
+
+      expect(
+        aiFabCenter.dy,
+        lessThan(voiceFabCenter.dy),
+        reason: 'AI일정대화 FAB이 음성 FAB보다 위(세로 배치)에 있어야 한다',
+      );
+    },
+  );
+
   // 회귀: 좁은 화면(360dp)에서 신규 AI일정대화 FAB이 기존 음성 FAB과
   // 나란히 배치돼도 RenderFlex overflow 예외가 발생하지 않는지 확인한다.
   testWidgets(
