@@ -54,7 +54,7 @@
 |------|----------|----------------|
 | 개인정보 최소 수집 | 위치/카메라/연락처 등 민감 권한을 요청하지 않는다(아래 6번 참조). | `apps-in-toss.config.ts` |
 | 로그·콘솔 출력에 PII 평문 노출 금지 | `title`/`memo`/`participants`/`location`/`phone`/`email` 등 PII 필드는 로깅 전 반드시 `sanitizeForLog`로 마스킹한다. 이벤트 객체를 통째로 `console.log`하는 경로를 두지 않는다. | `src/observability/logger.ts`, `src/observability/logger.test.ts` |
-| 분석(analytics) 이벤트에 PII 미포함 | `track()`은 현재 `console.debug`만 수행하는 스텁이며, 네트워크 전송이 없다. 실제 분석 백엔드 연동 시에도 PII 필드를 props로 넘기지 않아야 한다. | `src/observability/analytics.ts` |
+| 분석(analytics) 이벤트에 PII 미포함 | `track()`은 현재 `console.debug`만 수행하는 스텁이며, 네트워크 전송이 없다. 실제 분석 백엔드 연동 시에도 PII 필드를 props로 넘기지 않아야 한다. 인앱 광고(§10) 관련 순수 로직 모듈(`src/features/ads/*`)이 이번 라운드에 추가됐지만, 이 저장소의 `track()` 호출은 광고 이벤트(배너 노출/전면 광고 노출/스킵 사유 등)에 아직 연결돼 있지 않다(실측: `src/features/ads/`와 `src/router.tsx`에 `track(` 호출 0건). 즉 광고 전용 분석 이벤트는 이번 버전에서 미배선 상태이며, 배선 시에도 이 행의 PII 미포함 원칙을 그대로 따라야 한다. | `src/observability/analytics.ts`, `src/features/ads/` |
 
 ## 6. 권한 (Permissions)
 
@@ -74,7 +74,7 @@
 
 | 항목 | 대응방식 | 근거 파일경로 |
 |------|----------|----------------|
-| 원본 데이터 저장소 | 모든 이벤트/일정 데이터의 단일 소스는 기존 PlanFlow(Flutter 앱)와 동일한 Supabase(PostgreSQL) 프로젝트이며, 별도의 자체 DB를 새로 두지 않는다. | `src/data/index.ts`, `src/domain/`(다른 병렬 작업 범위) |
+| 원본 데이터 저장소 | 모든 이벤트/일정 데이터의 단일 소스는 기존 PlanFlow(Flutter 앱)와 동일한 Supabase(PostgreSQL) 프로젝트이며, 별도의 자체 DB를 새로 두지 않는다. 단, 이 "로컬 캐시 없음" 원칙에는 문서화된 예외가 하나 있다 — 광고 노출 빈도 상태(§10 참고)는 `@apps-in-toss/web-framework`의 `Storage`(토스 네이티브 영속 저장소)에 날짜/횟수 필드만(PII 없음) 저장하며, 이는 일정/사용자 데이터가 아니라 기기/설치 단위 값이라 로그아웃 시에도 의도적으로 지우지 않는다(근거: `src/router.tsx`의 `AppLayout` 주석, `src/features/ads/adState.ts` 상단 주석). | `src/data/index.ts`, `src/domain/`(다른 병렬 작업 범위), `src/features/ads/adState.ts` |
 | 클라이언트에는 공개(anon) 키만 노출 | 클라이언트 번들에는 Supabase `anon` 공개 키만 포함하고 `service_role` 키는 절대 포함하지 않는다. 빌드 시 자동 스캔으로 검증한다. | `scripts/scan-bundle.mjs`, `.env.example` |
 | 사용자별 데이터 격리(RLS) | 확인 완료(Supabase MCP로 프로젝트 `xqvvfnvmytjlblcngipn` 대상 실측, 2026-08-06). `events` 테이블은 `relrowsecurity=true`이고, `events_select_own`/`events_update_own`/`events_delete_own` 3개 정책이 모두 `qual: (auth.uid() = user_id)`, `events_insert_own` 정책이 `with_check: (auth.uid() = user_id)`로 걸려 있다. RLS 공백 없음(다른 사용자의 이벤트를 조회/수정/삭제/생성할 수 있는 경로가 DB 레벨에서 차단됨을 확인). | Supabase 프로젝트 `xqvvfnvmytjlblcngipn`의 `events` 테이블 RLS 정책(코드 저장소 범위 밖, `list_tables`/정책 조회로 실측) |
 
@@ -96,12 +96,63 @@
 `scripts/scan-bundle.mjs`, `scripts/scan-bundle.test.mjs`, `.env.example`, `src/router.tsx`(리포지토리 주입 지점),
 `src/features/auth/useSession.ts`.
 
+## 10. 인앱 광고 (In-app Ads)
+
+이번 라운드(P1~P10)에서 배너/전면 광고 구현이 추가됐다. 모듈 목록:
+`src/features/ads/adConfig.ts`, `adSession.ts`, `bannerRoutes.ts`,
+`adPolicy.ts`, `adState.ts`, `adService.ts`, `BannerSlot.tsx`,
+`bannerAttachment.ts`, `adRuntime.ts`, `interstitialRoutes.ts`.
+
+| 항목 | 대응방식 | 근거 파일경로 |
+|------|----------|----------------|
+| 배너 광고 | 구현 완료. `BannerSlot.tsx`(`bannerAttachment.ts`가 실제 SDK 배너 부착을 담당)가 `/today`, `/calendar/month`, `/calendar/week` 세 라우트에서만 노출된다. `bannerRoutes.ts`의 `shouldShowBannerForPath`가 default-deny(허용목록) 방식으로 판정하므로, 새 라우트가 추가돼도 이 파일을 명시적으로 수정하지 않는 한 배너가 자동으로 노출되지 않는다. | `src/features/ads/bannerRoutes.ts`, `src/features/ads/BannerSlot.tsx`, `src/features/ads/bannerAttachment.ts` |
+| 전면(interstitial) 광고 | 구현 완료. `adPolicy.ts`의 `canShowInterstitial`이 세션 지속 60초 이상, 의미 있는 행동 1회 이상 완료, 설치 첫날이 아님, 직전 노출로부터 24시간 이상 경과(쿨다운), 하루 최대 1회 이하의 5개 조건을 모두 만족할 때만 true를 반환한다(하나라도 실패하면 fail-closed로 false). 실제 노출 시점은 "정착된"(settled) 라우트 전환 시에만 체크한다(`interstitialRoutes.ts`). | `src/features/ads/adPolicy.ts`, `src/features/ads/interstitialRoutes.ts`, `src/features/ads/adSession.ts`, `src/features/ads/adState.ts` |
+| 리워드 광고 | 아키텍처만 존재, 이번 버전 미사용. `adService.ts`의 `showRewardedAd`는 구현·테스트는 돼 있으나 어떤 UI도 이 함수를 호출하지 않는다(실제 호출 진입점 없음). | `src/features/ads/adService.ts` |
+
+**중요: 아래 정책 값은 토스/Apps-in-Toss 플랫폼의 공식 요구사항이 아니라 PlanFlow가
+자체적으로 정한 정책이다.** 향후 유지보수 담당자가 이 값들을 외부 규정으로
+착각하지 않도록 명시한다. 값 자체는 모두 `src/features/ads/adConfig.ts`에
+상수로 모여 있다: `INTERSTITIAL_MIN_SESSION_SECONDS=60`(세션 최소 60초 경과),
+`INTERSTITIAL_COOLDOWN_HOURS=24`(재노출 쿨다운 24시간),
+`INTERSTITIAL_MAX_PER_DAY=1`(하루 최대 1회), `FIRST_DAY_INTERSTITIAL_DISABLED=true`
+(설치 첫날 전면 광고 비활성). 토스 심사 체크리스트 원문이 이런 구체적인
+초/시간/횟수 값을 강제하지 않으며, 이 값들은 사용자 경험 보호를 위해
+PlanFlow 팀이 임의로 선택한 보수적인 기본값이다.
+
+### 알려진 한계 (정직 고백)
+
+- **뷰포트/시각적 배너 오버플로(하단 내비게이션 가림, 세이프에어리어 침범)
+  검증 범위**: 이번 세션의 자동화 테스트로는 실제 렌더링 픽셀을 검증할
+  수 없다(이 저장소에 jsdom, 시각적 회귀(visual regression) 도구가 없음).
+  대신 CSS 계약 테스트(`adBannerStyles.test.ts`)로 `.ad-banner-slot` 클래스가
+  `position: fixed`를 쓰지 않고 고정 px 너비를 갖지 않는지만 정적으로
+  검증했고, 그 외에는 코드 리뷰로만 확인했다 — 실제 토스 앱 런타임에서
+  렌더링된 화면을 눈으로 본 것은 아니다. 배포 전 실제 Apps-in-Toss 런타임에서
+  수동 시각 QA(하단 내비게이션 가림 여부, 노치/세이프에어리어 침범 여부)를
+  권장한다.
+- **production `adGroupId` 미발급**: 배너/전면/리워드 광고 각각의 실제
+  production `adGroupId` 값은 Apps-in-Toss 콘솔에서 발급받아야 하며, 이번
+  세션에서는 발급받을 수 없었다(콘솔 등록 후 반영까지 통상 약 2시간의
+  전파 지연이 있다고 알려져 있다). `VITE_AD_GROUP_ID_*` 환경변수로 값을
+  설정하기 전까지는 `resolveAdGroupIds`(`adConfig.ts`)가 production 빌드에서
+  모든 광고 그룹 id를 `null`로 fail-closed 반환하도록 이번 세션에 실측
+  검증했다 — 즉 이 환경변수들이 설정되기 전까지는 광고가 실제로 노출되지
+  않는다. 이는 버그가 아니라 의도된 안전장치이지만, 배포 후에도 그 환경변수를
+  설정하지 않으면 광고가 나타나지 않는다는 점을 담당자가 알고 있어야 한다.
+
+근거 파일경로: `src/features/ads/adConfig.ts`, `src/features/ads/adPolicy.ts`,
+`src/features/ads/bannerRoutes.ts`, `src/features/ads/interstitialRoutes.ts`,
+`src/features/ads/adBannerStyles.test.ts`.
+
 ## 미확정/재확인 필요 항목
 
-- 인앱결제(Toss Pay), 인앱 광고, 리퍼럴 리워드 관련 세부 항목은
-  이번 스캐폴딩 단계에서 아직 해당 기능이 구현되지 않아 "TODO"로 표시했다.
-  각 기능을 실제로 구현하는 시점에 원문 체크리스트를 다시 확인하고 이
-  표를 갱신해야 한다.
+- 인앱결제(Toss Pay), 리퍼럴 리워드 관련 세부 항목은 이번 스캐폴딩
+  단계에서 아직 해당 기능이 구현되지 않아 "TODO"로 표시했다. 각 기능을
+  실제로 구현하는 시점에 원문 체크리스트를 다시 확인하고 이 표를
+  갱신해야 한다.
+- **인앱 광고**: 이번 라운드(P1~P10)에서 배너/전면 광고를 구현했다
+  (위 "10. 인앱 광고" 절 참고). 리워드 광고는 아키텍처만 마련됐고
+  실제 UI 진입점은 아직 없다(TODO로 유지).
 - 원문 페이지(`app-nongame.html`)가 스캔 시점에 404를 반환해 `.md`
   버전으로 대체 확인했다. 배포 전 담당자가 최신 원문을 직접 열람해
   이 표와 대조하는 것을 권장한다.
