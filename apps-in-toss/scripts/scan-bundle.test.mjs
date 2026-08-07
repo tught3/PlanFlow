@@ -208,3 +208,80 @@ describe("scanContent — JWT role-aware detection", () => {
     expect(findings.some((f) => f.label.includes("hex/base64"))).toBe(true);
   });
 });
+
+/**
+ * P11: test-mode ad group id (`ait-ad-test-*`, from `TEST_AD_GROUP_IDS` in
+ * src/features/ads/adConfig.ts) detection.
+ *
+ * resolveAdGroupIds() is only supposed to select these when
+ * `import.meta.env.DEV` is true, which Vite folds to a literal `false` in a
+ * production build — the same build-time constant-folding mechanism the
+ * devPreview gate (import.meta.env leak check above) relies on. If one of
+ * the 4 known test ad ids shows up in dist/, that folding didn't happen for
+ * this call site and production traffic could request test ad inventory
+ * instead of real ads.
+ */
+describe("scanContent — test-mode ad group id detection (P11)", () => {
+  const KNOWN_TEST_AD_IDS = [
+    "ait-ad-test-interstitial-id",
+    "ait-ad-test-rewarded-id",
+    "ait-ad-test-banner-id",
+    "ait-ad-test-native-image-id",
+  ];
+
+  it.each(KNOWN_TEST_AD_IDS)(
+    "flags %s if it appears in dist/ output",
+    (testAdId) => {
+      const line = `var groupId="${testAdId}";callAd(groupId);`;
+
+      const findings = scanContent(line, "dist/assets/index-testad.js");
+
+      const adFindings = findings.filter((f) =>
+        f.label.includes("test-mode ad group id"),
+      );
+      expect(adFindings.length).toBeGreaterThan(0);
+      expect(adFindings.some((f) => f.snippet.includes(testAdId))).toBe(true);
+    },
+  );
+
+  it("flags a test ad id even embedded in a large single-line minified bundle", () => {
+    const minifiedLine =
+      `function a(e){return e}const b=\`prefix-\${e.x?"y":'z'}-suffix\`;` +
+      `var GROUP="ait-ad-test-rewarded-id";function c(t){return t.map(x=>x*2)}`;
+
+    const findings = scanContent(minifiedLine, "dist/assets/index-abc123.js");
+
+    expect(
+      findings.some((f) => f.label.includes("test-mode ad group id")),
+    ).toBe(true);
+  });
+
+  it("does not flag a clean bundle line containing none of the known test-mode ad ids", () => {
+    const line =
+      "function App(){const[e,t]=useState(null);requestAd('production-banner');" +
+      "return React.createElement(Provider,null)}";
+
+    const findings = scanContent(line, "dist/assets/index-clean-ads.js");
+    expect(
+      findings.some((f) => f.label.includes("test-mode ad group id")),
+    ).toBe(false);
+  });
+
+  it("does not false-positive on a similar-but-different ad id (different suffix, not just prefix match)", () => {
+    const line = `var groupId="ait-ad-real-banner-id";callAd(groupId);`;
+
+    const findings = scanContent(line, "dist/assets/index-real-banner.js");
+    expect(
+      findings.some((f) => f.label.includes("test-mode ad group id")),
+    ).toBe(false);
+  });
+
+  it("does not false-positive on a truncated/partial test-id prefix that isn't one of the 4 exact known strings", () => {
+    const line = `var groupId="ait-ad-test-unknown-suffix";callAd(groupId);`;
+
+    const findings = scanContent(line, "dist/assets/index-partial.js");
+    expect(
+      findings.some((f) => f.label.includes("test-mode ad group id")),
+    ).toBe(false);
+  });
+});

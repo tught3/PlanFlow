@@ -18,7 +18,15 @@
  *     and aren't part of a confirmed-safe JWT (e.g. a public Supabase
  *     "anon" key, which Vite's VITE_ prefix intentionally bundles
  *     client-side — RLS protects it, not secrecy)
+ *   - a test-mode ad group id (`ait-ad-test-*`, from `TEST_AD_GROUP_IDS` in
+ *     src/features/ads/adConfig.ts) found anywhere in dist/ — resolveAdGroupIds()
+ *     is only supposed to select these when `import.meta.env.DEV` is true, which
+ *     Vite folds to a literal `false` in a production build (same build-time
+ *     constant-folding mechanism as the devPreview gate above); their presence
+ *     in a real prod bundle means that folding didn't happen and production
+ *     traffic could end up requesting test ad inventory instead of real ads
  *
+
  * Usage: node scripts/scan-bundle.mjs
  * Exit code 0 = clean, 1 = findings, 2 = dist/ missing.
  */
@@ -84,6 +92,31 @@ const IMPORT_META_ENV_LEAK_LABEL =
   'unfolded "import.meta.env" reference found (Vite did not statically replace an import.meta.env.* access — this is the mechanism that keeps src/features/devPreview/\'s dev-only preview mode inert in production; see the comment above LINE_RULES)';
 
 /**
+ * Test-mode ad group ids (`TEST_AD_GROUP_IDS` in
+ * src/features/ads/adConfig.ts). `resolveAdGroupIds()` only returns these
+ * when `isDev` is true, and `getAdGroupIds()` feeds it
+ * `import.meta.env.DEV` — which Vite statically folds to a literal `false`
+ * in a production build (the exact same build-time constant-folding
+ * mechanism the devPreview gate above relies on). If one of these 4 exact
+ * strings shows up in dist/, that folding didn't happen for this call site
+ * and production traffic could request test ad inventory instead of real
+ * ads (or, depending on Toss's ad SDK behavior, fail to serve ads at all).
+ *
+ * Matched as exact, complete strings only (not a bare "ait-ad-test-"
+ * prefix) — a similar-but-different id like "ait-ad-real-banner-id", or a
+ * truncated/partial "ait-ad-test-" fragment, must NOT trigger this rule.
+ */
+const TEST_AD_GROUP_ID_LABEL =
+  "test-mode ad group id found (ait-ad-test-* — from TEST_AD_GROUP_IDS in src/features/ads/adConfig.ts; resolveAdGroupIds() should only select these when import.meta.env.DEV is true, which Vite folds to a literal false in production — see the comment above LINE_RULES)";
+
+const TEST_AD_GROUP_ID_STRINGS = [
+  "ait-ad-test-interstitial-id",
+  "ait-ad-test-rewarded-id",
+  "ait-ad-test-banner-id",
+  "ait-ad-test-native-image-id",
+];
+
+/**
  * Line-scope rules: applied to the full line, anywhere in the file
  * (not just inside string literals) because these markers are meaningful
  * regardless of surrounding syntax.
@@ -101,6 +134,13 @@ const LINE_RULES = [
   {
     label: IMPORT_META_ENV_LEAK_LABEL,
     pattern: /import\.meta\.env/g,
+  },
+  {
+    label: TEST_AD_GROUP_ID_LABEL,
+    pattern: new RegExp(
+      TEST_AD_GROUP_ID_STRINGS.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+      "g",
+    ),
   },
 ];
 
