@@ -56,6 +56,43 @@ export const realAdStatePort: AdStatePort = {
 };
 
 /**
+ * 전면 광고 in-flight 락. router.tsx의 전면 광고 effect는 `cancelled`
+ * 플래그로 "이전 effect 인스턴스"가 자기 자신의 결과를 반영하지 못하게
+ * 막지만, 그 플래그는 effect 인스턴스마다 독립된 클로저 변수라 "서로 다른
+ * 두 effect 인스턴스가 동시에 살아있는 좁은 창"(예: 두 정착 라우트 사이를
+ * 빠르게 왕복 이동)을 막지 못한다 - 둘 다 아직 취소되지 않은 채로
+ * `loadAdFrequencyState`를 각자 await하고, 아직 영속화되지 않은 같은
+ * frequency 스냅샷을 근거로 각자 적격성을 판단해 전면 광고를 두 번 시도할
+ * 수 있다(하루 1회/24시간 쿨다운 보장이 이 좁은 창에서 깨질 위험).
+ *
+ * 이 모듈 레벨 싱글턴 락이 그 창을 막는다 - 두 번째 시도는 "적격하지
+ * 않음"과 동일하게 취급되어 즉시 포기한다(throw하지 않음).
+ */
+let interstitialInFlight = false;
+
+/**
+ * 전면 광고 시도 슬롯을 선점한다. 이미 다른 in-flight 시도가 있으면
+ * `false`를 반환한다(호출부는 이를 "지금은 적격하지 않음"과 동일하게
+ * 취급해 조용히 포기해야 한다 - throw하지 않는다).
+ */
+export function tryAcquireInterstitialSlot(): boolean {
+  if (interstitialInFlight) {
+    return false;
+  }
+  interstitialInFlight = true;
+  return true;
+}
+
+/**
+ * 전면 광고 시도 슬롯을 반환한다. `tryAcquireInterstitialSlot()`으로 슬롯을
+ * 선점한 시도는 성공/실패/조기 종료 등 모든 경로에서 반드시(`finally`로)
+ * 이 함수를 호출해야 한다 - 그렇지 않으면 다음 시도가 영구히 막힌다.
+ */
+export function releaseInterstitialSlot(): void {
+  interstitialInFlight = false;
+}
+
+/**
  * 세션 스코프 광고 상태 싱글턴. 모듈 로드 시점(=페이지 로드/앱 부트스트랩
  * 시점)에 정확히 한 번만 `createAdSessionState()`로 초기화된다.
  */

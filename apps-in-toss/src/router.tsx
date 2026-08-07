@@ -31,6 +31,8 @@ import {
   getAdSessionState,
   realAdSdk,
   realAdStatePort,
+  releaseInterstitialSlot,
+  tryAcquireInterstitialSlot,
 } from './features/ads/adRuntime.ts';
 import { isSettledRouteForInterstitial } from './features/ads/interstitialRoutes.ts';
 
@@ -198,6 +200,11 @@ function AppLayout() {
     let cancelled = false;
 
     void (async () => {
+      // adRuntime.ts의 모듈 레벨 in-flight 락. 이 effect 인스턴스가 슬롯을
+      // 실제로 선점했을 때만(acquired===true) finally에서 반환한다 - 선점
+      // 못 한(=다른 인스턴스가 이미 진행 중인) 시도가 남의 슬롯을 실수로
+      // 반환하는 것을 막는다.
+      let acquired = false;
       try {
         const frequency = await loadAdFrequencyState(realAdStatePort);
         if (cancelled) {
@@ -216,6 +223,20 @@ function AppLayout() {
           return;
         }
 
+        // 두 정착 라우트 사이를 빠르게 왕복 이동하면 서로 다른 effect
+        // 인스턴스가 각자의 `cancelled` 클로저로는 서로를 볼 수 없는 채로
+        // 여기까지 동시에 도달할 수 있다(adRuntime.ts 상단 주석 참고).
+        // 슬롯을 선점하지 못하면 "지금은 적격하지 않음"과 동일하게 조용히
+        // 포기한다.
+        if (!tryAcquireInterstitialSlot()) {
+          return;
+        }
+        acquired = true;
+
+        if (cancelled) {
+          return;
+        }
+
         const adGroupId = getAdGroupIds().interstitial;
         const { loaded } = await loadInterstitial(realAdSdk, adGroupId);
         if (cancelled || !loaded) {
@@ -223,12 +244,19 @@ function AppLayout() {
         }
 
         const result = await showInterstitial(realAdSdk, adGroupId);
+        if (cancelled) {
+          return;
+        }
         if (result.shown) {
           await recordInterstitialShown(realAdStatePort);
         }
       } catch {
         // 전면 광고 파이프라인의 어떤 단계가 예상치 못하게 실패해도 라우팅/
         // 렌더링을 절대 막지 않는다(이 파일 전체의 안전 원칙).
+      } finally {
+        if (acquired) {
+          releaseInterstitialSlot();
+        }
       }
     })();
 

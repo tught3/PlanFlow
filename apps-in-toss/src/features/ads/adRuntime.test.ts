@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildInterstitialEligibilityContext, realAdSdk, realAdStatePort } from './adRuntime.ts';
+import {
+  buildInterstitialEligibilityContext,
+  realAdSdk,
+  realAdStatePort,
+  releaseInterstitialSlot,
+  tryAcquireInterstitialSlot,
+} from './adRuntime.ts';
 import { createAdSessionState } from './adSession.ts';
 import type { AdFrequencyState } from './adState.ts';
 
@@ -145,6 +151,25 @@ describe('buildInterstitialEligibilityContext', () => {
     });
 
     expect(context.authenticated).toBe(false);
+  });
+});
+
+describe('tryAcquireInterstitialSlot / releaseInterstitialSlot (in-flight 락)', () => {
+  // 모듈 레벨 싱글턴 락이므로 각 테스트가 끝나면 항상 초기 상태(미점유)로
+  // 되돌려 테스트 간 상태가 새지 않게 한다.
+  afterEach(() => {
+    releaseInterstitialSlot();
+  });
+
+  it('release 없이 두 번 연속 acquire하면 두 번째 acquire는 실패한다(동시 in-flight 방지)', () => {
+    expect(tryAcquireInterstitialSlot()).toBe(true);
+    expect(tryAcquireInterstitialSlot()).toBe(false);
+  });
+
+  it('release 후 다시 acquire하면 성공한다(슬롯 반환 후 재사용 가능)', () => {
+    expect(tryAcquireInterstitialSlot()).toBe(true);
+    releaseInterstitialSlot();
+    expect(tryAcquireInterstitialSlot()).toBe(true);
   });
 });
 
