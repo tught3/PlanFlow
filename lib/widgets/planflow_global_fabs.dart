@@ -30,7 +30,7 @@ class PlanFlowGlobalFabs extends StatelessWidget {
       children: [
         if (showAiConversation) ...[
           PlanFlowAiConversationFab(onPressed: onAiConversation),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
         ],
         PlanFlowVoiceFab(onPressed: onVoice, showPulse: showVoicePulse),
       ],
