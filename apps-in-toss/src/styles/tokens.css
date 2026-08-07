@@ -41,5 +41,6 @@
 
   /* z-index */
   --pf-z-nav: 10;
+  --pf-z-banner: 20; /* P10: 배너 광고 슬롯. nav(10)와 modal(100) 사이, 향후 토큰 추가 여유를 둠 */
   --pf-z-modal: 100;
 }
