@@ -7,6 +7,7 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/services/voice_conversation_ad_gate.dart';
+import 'package:planflow/services/voice_conversation_entitlement.dart';
 import 'package:planflow/services/voice_conversation_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -253,9 +254,16 @@ class _AllowAllVoiceConversationAdGateDelegate
   Future<void> tryEnter({
     required BuildContext context,
     required String userId,
-    required VoidCallback onEnterAllowed,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
     required VoiceConversationAdGate gate,
   }) async {
-    onEnterAllowed();
+    onEnterAllowed(
+      const VoiceConversationEntryGrant(
+        sessionId: 'test-session',
+        source: EntitlementSource.remoteDisabled,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 0,
+      ),
+    );
   }
 }

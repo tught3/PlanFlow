@@ -10,6 +10,7 @@ import '../core/env.dart';
 import '../data/repositories/settings_repository.dart';
 import 'remote_config_service.dart';
 import 'voice_conversation_ad_gate.dart';
+import 'voice_conversation_entitlement.dart';
 
 /// 'AI일정대화(음성 대화 모드)' 진입 로직을 여러 진입점(홈 화면, 공용 FAB 등)에서
 /// 재사용할 수 있도록 모아둔 정적 헬퍼.
@@ -91,12 +92,14 @@ class VoiceConversationLauncher {
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
-      onEnterAllowed: () {
+      onEnterAllowed: (VoiceConversationEntryGrant grant) {
         if (!context.mounted) return;
         final route = shouldAutoStart
             ? '${AppRoutes.voiceConversation}?autoStart=1'
             : AppRoutes.voiceConversation;
-        unawaited(context.push(route));
+        unawaited(
+          context.push(route, extra: <String, dynamic>{'entry_grant': grant}),
+        );
       },
     );
   }

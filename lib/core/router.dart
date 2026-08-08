@@ -32,6 +32,7 @@ import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
+import '../services/voice_conversation_entitlement.dart';
 import '../screens/shell_screen.dart';
 import '../screens/departure_alarm_screen.dart';
 import 'constants.dart';
@@ -191,9 +192,14 @@ final GoRouter appRouter = GoRouter(
         final extra = state.extra is Map<String, dynamic>
             ? state.extra! as Map<String, dynamic>
             : const <String, dynamic>{};
+        final entryGrantRaw = extra['entry_grant'];
+        final entryGrant = entryGrantRaw is VoiceConversationEntryGrant
+            ? entryGrantRaw
+            : null;
         return VoiceConversationScreen(
           autoStart: _isAutoStart(state),
           initialText: extra['initial_text']?.toString(),
+          entryGrant: entryGrant,
         );
       },
     ),
