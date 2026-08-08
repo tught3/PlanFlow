@@ -132,9 +132,24 @@ class VoiceDateRangeParser {
     if (day == null) {
       return null;
     }
-    final start = DateTime(today.year, today.month, day);
-    if (start.year != today.year || start.month != today.month || start.day != day) {
+    var year = today.year;
+    var month = today.month;
+    var start = DateTime(year, month, day);
+    if (start.year != year || start.month != month || start.day != day) {
       return null;
+    }
+    // 수식어 없이 "17일"처럼 날짜만 말한 경우: 이번 달 그 날짜가 이미
+    // 지났으면 다음 달의 그 날짜로 해석한다(가장 빨리 돌아오는 날짜).
+    if (start.isBefore(today)) {
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+      start = DateTime(year, month, day);
+      if (start.year != year || start.month != month || start.day != day) {
+        return null;
+      }
     }
     return start;
   }
@@ -150,19 +165,26 @@ class VoiceDateRangeParser {
       return null;
     }
     final modifier = match.group(1);
-    if (modifier == null) {
-      return null;
-    }
     final weekday = _weekdayValue(match.group(2)!);
     if (weekday == null) {
       return null;
     }
     final currentWeekStart = today.subtract(Duration(days: today.weekday - 1));
-    final weekStart = modifier == '다음'
-        ? currentWeekStart.add(const Duration(days: 7))
-        : currentWeekStart;
-    final start = weekStart.add(Duration(days: weekday - 1));
-    return _singleDay(start, '$modifier 주 ${_weekdayLabel(weekday)}');
+    if (modifier != null) {
+      final weekStart = modifier == '다음'
+          ? currentWeekStart.add(const Duration(days: 7))
+          : currentWeekStart;
+      final start = weekStart.add(Duration(days: weekday - 1));
+      return _singleDay(start, '$modifier 주 ${_weekdayLabel(weekday)}');
+    }
+    // 수식어(이번주/다음주) 없이 "월요일"처럼 요일만 말한 경우: 가장 빨리
+    // 돌아오는 그 요일로 해석한다(오늘이 그 요일이면 오늘, 이미 지났으면
+    // 다음 주).
+    var start = currentWeekStart.add(Duration(days: weekday - 1));
+    if (start.isBefore(today)) {
+      start = start.add(const Duration(days: 7));
+    }
+    return _singleDay(start, _weekdayLabel(weekday));
   }
 
   static VoiceDateRangeParseResult _singleDay(DateTime start, String label) {
