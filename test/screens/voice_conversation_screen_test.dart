@@ -385,6 +385,37 @@ class _DelayedAdGateDelegate implements VoiceConversationAdGateDelegate {
   }
 }
 
+/// [_DelayedAdGateDelegate]와 반대로, [delay] 후 **거부**로 끝나는 fake
+/// (onEnterAllowed를 아예 호출하지 않음). self-gate가 지연 후 거부로 끝나는
+/// 동안 그 대기 창 안에서 사용자가 수동 제출한 명령이 처리되지 않아야 함을
+/// 재현하기 위해 쓴다(리뷰어가 위젯테스트로 재현한 거부 케이스 레이스 회귀).
+class _DelayedDeniedAdGateDelegate implements VoiceConversationAdGateDelegate {
+  _DelayedDeniedAdGateDelegate({required this.delay});
+
+  int tryEnterCalls = 0;
+  String? lastUserId;
+  final Duration delay;
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    tryEnterCalls += 1;
+    lastUserId = userId;
+    await Future<void>.delayed(delay);
+    // onEnterAllowed를 호출하지 않음 = 거부.
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1812,6 +1843,122 @@ void main() {
           fakeEntitlementDelegate.consumedSessionIds,
           <String>['session-self-gate-race'],
         );
+      },
+    );
+
+    testWidgets(
+      'self-gate가 지연 후 거부로 끝나면 대기 중 제출된 명령은 처리되지 않는다',
+      (tester) async {
+        // BLOCKER 회귀: self-gate(딥링크 등 entryGrant 미보유 진입)가 아직
+        // 완료 전인데 사용자가 수동으로 텍스트를 제출하면 _submitText가
+        // completer를 기다린다. completer.complete()는 마이크로태스크로
+        // 재개를 스케줄하고, context.go()로 인한 dispose는 그 다음 프레임에야
+        // 일어나므로, 거부 완료 직후 재개되는 지점에서 mounted는 아직 true다.
+        // 이 시점에 grant==null만 확인하지 않고 명시적 거부 판정
+        // (_entryGateDenied)이 없으면, 재개된 코드가 명령을 그대로 처리해
+        // 버려 게이트의 거부 결정이 무시된다.
+        final fakeAdGateDelegate = _DelayedDeniedAdGateDelegate(
+          delay: const Duration(milliseconds: 300),
+        );
+        VoiceConversationAdGate.instance.delegateForTest = fakeAdGateDelegate;
+        authProvider.setUser('user-self-gate-denied');
+
+        final fakeEntitlementDelegate = _FakeEntitlementDelegate();
+        VoiceConversationEntitlementService.instance.delegateForTest =
+            fakeEntitlementDelegate;
+
+        // 화면 dispose(홈 이동) 타이밍과 무관하게 "명령이 실제로 처리됐는가"를
+        // 판정하기 위해 debugPrint 로그를 가로챈다. _submitText가 명령을
+        // 실제 처리하면 '_conversation.handle' 직후 'VoiceConversationScreen
+        // result: action=...' 로그를 남기는데(라인 568~572 참조), 이는 위젯
+        // 리빌드/네비게이션과 무관하게 처리 시점에 동기적으로 찍힌다 — 위젯
+        // 트리가 그 뒤에 dispose돼도 이미 찍힌 로그는 사라지지 않으므로,
+        // find.text 같은 위젯 기반 단언보다 신뢰도가 높은 판정 근거다.
+        // (주의) debugPrint override는 addTearDown으로 복구하면 늦다 —
+        // flutter_test의 foundation debug 변수 불변식 검사(_verifyInvariants)가
+        // package:test의 addTearDown 큐보다 먼저 실행돼 "changed by the
+        // test" 오류로 실패한다(실측 확인). 그래서 이 블록 안에서 캡처가
+        // 끝나는 즉시 명시적으로 원복한다(try/finally).
+        final debugLogs = <String>[];
+        final originalDebugPrint = debugPrint;
+        debugPrint = (String? message, {int? wrapWidth}) {
+          if (message != null) debugLogs.add(message);
+        };
+
+        final router = GoRouter(
+          initialLocation: AppRoutes.voiceConversation,
+          routes: [
+            GoRoute(
+              path: AppRoutes.voiceConversation,
+              builder: (context, state) => const VoiceConversationScreen(),
+            ),
+            GoRoute(
+              path: AppRoutes.home,
+              builder: (context, state) => const Scaffold(
+                body: Text('홈 화면'),
+              ),
+            ),
+          ],
+        );
+
+        try {
+          await tester.pumpWidget(
+            MaterialApp.router(
+              theme: buildPlanFlowTheme(),
+              routerConfig: router,
+            ),
+          );
+          // initState의 addPostFrameCallback이 self-gate 호출을 시작하도록
+          // 한 프레임 더 진행시킨다. 이 시점에는 self-gate가 지연 중이라 아직
+          // 완료(거부 확정)되지 않은 상태다.
+          await tester.pump();
+          expect(fakeAdGateDelegate.tryEnterCalls, 1);
+          expect(fakeEntitlementDelegate.consumeCalls, 0);
+
+          // self-gate가 거부로 끝나기 전에 사용자가 직접 텍스트를 입력해
+          // 전송 버튼을 누른다(onSubmit → _submitText, self-gate 대기 없이
+          // 즉시 호출됨. 함수 내부에서 completer를 기다리게 됨). self-gate가
+          // 아직 미완료이므로 _submitText는 completer await에서 멈춰 있고,
+          // 입력창은 아직 비워지지 않은 채(제출 미처리) 그대로다 — 이 시점의
+          // find.text('오늘 일정 알려줘')는 (아직 지워지지 않은) TextField
+          // 자체의 값과 일치해 findsOneWidget이 나오므로 판정에 쓰지 않는다.
+          await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+          await tester.tap(find.text('전송'));
+          await tester.pump();
+
+          expect(fakeEntitlementDelegate.consumeCalls, 0);
+
+          // self-gate 지연이 끝나 거부가 확정된다. completer가 complete()되고
+          // (마이크로태스크로 _submitText 재개), 곧이어 context.go(home)이
+          // 호출된다.
+          await tester.pump(const Duration(milliseconds: 350));
+          await tester.pumpAndSettle();
+
+          // 거부가 확정된 뒤에도 대기 중이던 제출은 처리되지 않아야 한다:
+          // 소비가 0회이고, 화면은 홈으로 이동해(대화 화면 트리 자체가 사라져)
+          // 있어야 한다. VoiceConversationScreen이 dispose됐으므로 그 안의
+          // TextField/메시지 버블도 함께 사라져, 이 시점의 find.text 결과는
+          // 더 이상 TextField 잔여값이 아니라 실제 메시지 목록 여부를 뜻한다.
+          expect(fakeEntitlementDelegate.consumeCalls, 0);
+          expect(find.byType(VoiceConversationScreen), findsNothing);
+          expect(find.text('오늘 일정 알려줘'), findsNothing);
+          expect(find.text('홈 화면'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+
+          // 핵심 판정: 거부된 제출이 실제 처리 단계(_conversation.handle)까지
+          // 도달하지 않았어야 한다. 도달했다면 이 로그가 남는다(수정 전
+          // 코드에서 실측 재현: action=showEvents 로그가 남으며 게이트의 거부
+          // 결정이 무시됨).
+          expect(
+            debugLogs.any(
+              (log) => log.startsWith('VoiceConversationScreen result:'),
+            ),
+            isFalse,
+            reason: '거부된 self-gate 대기 중 제출이 실제 명령 처리 단계까지 도달하면 안 된다',
+          );
+        } finally {
+          debugPrint = originalDebugPrint;
+        }
       },
     );
   });

@@ -149,6 +149,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   // 이미 있으면 initState에서 즉시 완료된다. 초기 자동 제출/자동 리스닝
   // 시작은 이 신호가 완료된 뒤에만 진행한다.
   final Completer<void> _entryGrantReadyCompleter = Completer<void>();
+  // self-gate가 '진짜 거부'로 끝났는지(광고 실패 등 정책상 거부, 화면이
+  // 닫히는 중). null인 grant라도 (a) userId 미확인 (b) self-gate 시작 시점에
+  // 이미 unmounted 였던 fail-open 경로는 이 플래그를 세우지 않는다 —
+  // 그 경로들은 소비만 건너뛸 뿐 명령 처리 자체는 허용해야 하기 때문이다.
+  // Completer.complete()는 대기 중이던 코드를 동기적으로 깨우지 않고
+  // microtask로 재개하므로, _submitText/_startConversationListen가 completer
+  // await에서 재개될 때 mounted는 아직 true일 수 있다(context.go()로 인한
+  // dispose는 다음 프레임에야 일어남) — 그래서 mounted 체크만으로는 거부를
+  // 감지할 수 없고, 이 플래그로 명시적으로 판정한다.
+  bool _entryGateDenied = false;
 
   /// 현재 유효한 진입 승인. widget.entryGrant(정상 경로)가 우선이고, 없으면
   /// self-gate로 얻은 값을 쓴다.
@@ -232,6 +242,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   void _closeAfterEntryGateDenied(String message) {
+    // 플래그는 mounted 여부와 무관하게 세운다. completer await에서 재개되는
+    // _submitText/_startConversationListen이 이 시점 이후 실행될 수 있고,
+    // 그때는 이미 이 화면이 dispose됐거나(mounted=false, 자체 가드로 걸러짐)
+    // 아직 dispose 전(mounted=true, 이 플래그로 걸러짐)일 수 있기 때문이다.
+    _entryGateDenied = true;
     if (!mounted) {
       return;
     }
@@ -500,6 +515,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       await _entryGrantReadyCompleter.future;
     }
     if (!mounted) {
+      return;
+    }
+    if (_entryGateDenied) {
+      // self-gate가 거부로 끝난 경우 — 명령을 처리하지 않고 조용히 반환한다.
+      // (화면은 _closeAfterEntryGateDenied가 이미 닫는 중이므로 여기서 추가
+      // 안내는 불필요.)
       return;
     }
     final rawText = (overrideText ?? _inputController.text).trim();
@@ -985,6 +1006,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       await _entryGrantReadyCompleter.future;
     }
     if (!mounted) {
+      return;
+    }
+    if (_entryGateDenied) {
+      // self-gate가 거부로 끝난 경우 — 마이크를 시작하지 않고 조용히
+      // 반환한다. (화면은 _closeAfterEntryGateDenied가 이미 닫는 중이므로
+      // 여기서 추가 안내는 불필요.)
       return;
     }
     if (resetRetryPolicy) {
