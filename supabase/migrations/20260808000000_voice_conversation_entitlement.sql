@@ -157,7 +157,8 @@ begin
      where user_id = v_uid
     returning * into v_row;
     v_source := 'initial_free';
-  elsif v_row.voice_conversation_daily_free_date is distinct from v_today then
+  elsif v_daily_limit > 0
+        and v_row.voice_conversation_daily_free_date is distinct from v_today then
     update public.user_settings
        set voice_conversation_daily_free_date = v_today,
            voice_conversation_daily_free_used = 1,

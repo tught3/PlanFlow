@@ -112,6 +112,32 @@ void main() {
     }
   });
 
+  test(
+    'consume RPC does not auto-grant a new-day daily free usage when '
+    'daily_limit is 0',
+    () {
+      for (final sql in <String>[schema, migration]) {
+        final block = _between(
+          sql,
+          'create or replace function public.consume_voice_conversation_free_usage(',
+          'grant execute on function public.consume_voice_conversation_free_usage',
+        );
+        // 새로운 날 첫 요청을 무료로 부여하는 분기는 daily_limit(v_daily_limit)이
+        // 0보다 클 때만 타야 한다. 운영자가 Remote Config에서
+        // voice_conversation_daily_free_count=0으로 일일무료 티어를 완전히
+        // 끄면, 이 분기는 v_daily_limit=0이어도 무조건 daily_free를
+        // 부여해서는 안 된다(정책 일관성 결함 회귀 방지).
+        expect(
+          block,
+          contains(
+            'elsif v_daily_limit > 0\n'
+            '        and v_row.voice_conversation_daily_free_date is distinct from v_today then',
+          ),
+        );
+      }
+    },
+  );
+
   test('consume RPC is granted to authenticated only', () {
     for (final sql in <String>[schema, migration]) {
       expect(
