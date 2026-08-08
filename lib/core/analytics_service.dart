@@ -240,4 +240,62 @@ class AnalyticsService {
         'voice_conv_entered',
         parameters: <String, Object>{'source': source},
       );
+
+  // ── 음성 대화 모드 진입/소비 퍼널 (신규) ─────────────────────────
+  // 자유텍스트(발화 전문/STT/일정 제목/장소/메모/query 원문/이메일/그룹명)는
+  // 절대 파라미터로 받지 않는다. int 또는 제한된 enum만 허용한다.
+  static Future<void> logVoiceConvEntryDirect() =>
+      _logEvent('voice_conversation_entry_direct');
+
+  static Future<void> logVoiceConvEntryQuery() =>
+      _logEvent('voice_conversation_entry_query');
+
+  static Future<void> logVoiceConvEntryDeeplink() =>
+      _logEvent('voice_conversation_entry_deeplink');
+
+  static Future<void> logVoiceConvInitialFreeUsed({
+    required int remainingAfter,
+  }) =>
+      _logEvent(
+        'voice_conversation_initial_free_used',
+        parameters: <String, Object>{'remaining_after': remainingAfter},
+      );
+
+  static Future<void> logVoiceConvDailyFreeUsed({
+    required int remainingAfter,
+  }) =>
+      _logEvent(
+        'voice_conversation_daily_free_used',
+        parameters: <String, Object>{'remaining_after': remainingAfter},
+      );
+
+  static Future<void> logVoiceConvAdRequired() =>
+      _logEvent('voice_conversation_ad_required');
+
+  static Future<void> logVoiceConvAdCompleted() =>
+      _logEvent('voice_conversation_ad_completed');
+
+  static Future<void> logVoiceConvSessionStarted({
+    required VoiceConvSessionSource source,
+  }) =>
+      _logEvent(
+        'voice_conversation_session_started',
+        parameters: <String, Object>{'source': source.wireValue},
+      );
+
+  static Future<void> logVoiceConvSessionAbandonedBeforeUse() =>
+      _logEvent('voice_conversation_session_abandoned_before_use');
+}
+
+/// [AnalyticsService.logVoiceConvSessionStarted]의 소비 출처를 제한된
+/// 값으로만 표현하기 위한 enum. 자유텍스트 문자열을 막기 위해 도입.
+enum VoiceConvSessionSource {
+  initialFree('initial_free'),
+  dailyFree('daily_free'),
+  adRewarded('ad_rewarded');
+
+  const VoiceConvSessionSource(this.wireValue);
+
+  /// Analytics 이벤트 파라미터로 전송되는 고정 문자열 값.
+  final String wireValue;
 }
