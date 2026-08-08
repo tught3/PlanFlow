@@ -19,6 +19,7 @@ import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/services/voice_conversation_ad_gate.dart';
+import 'package:planflow/services/voice_conversation_entitlement.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -870,10 +871,17 @@ class _AllowAllVoiceConversationAdGateDelegate
   Future<void> tryEnter({
     required BuildContext context,
     required String userId,
-    required VoidCallback onEnterAllowed,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
     required VoiceConversationAdGate gate,
   }) async {
-    onEnterAllowed();
+    onEnterAllowed(
+      const VoiceConversationEntryGrant(
+        sessionId: 'home-screen-test-session',
+        source: EntitlementSource.remoteDisabled,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 0,
+      ),
+    );
   }
 }
 
