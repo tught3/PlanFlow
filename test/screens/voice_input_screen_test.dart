@@ -7,6 +7,8 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/services/stt_service.dart';
 import 'package:planflow/services/voice_command_analysis_service.dart';
+import 'package:planflow/services/voice_conversation_ad_gate.dart';
+import 'package:planflow/services/voice_conversation_entitlement.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/screens/voice/voice_input_screen.dart';
 
@@ -276,6 +278,12 @@ GoRoute _voiceConversationTestRoute() {
 }
 
 void main() {
+  tearDown(() {
+    // 게이트 delegate는 static 싱글턴(VoiceConversationAdGate.instance)에
+    // 걸리므로, 한 테스트가 설정한 delegate가 다음 테스트로 새는 것을 막는다.
+    VoiceConversationAdGate.instance.delegateForTest = null;
+  });
+
   testWidgets('위젯 자동 시작은 초기 무음 실패 시 한 번 다시 시도한다', (tester) async {
     final fakeStt = _FakeSttService();
 
@@ -832,6 +840,8 @@ void main() {
   });
 
   testWidgets('제출 후 이어 말하기는 이전 조회 문장에 새 명령을 붙이지 않는다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final fakeStt = _FakeSttService();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
@@ -841,6 +851,7 @@ void main() {
           builder: (context, state) => VoiceInputScreen(
             autoStartOverride: false,
             sttService: fakeStt,
+            userIdOverride: 'user-1',
           ),
         ),
         _voiceConversationTestRoute(),
@@ -880,6 +891,8 @@ void main() {
   });
 
   testWidgets('AI 일정 대화 종료 결과는 부모 음성입력의 잔여 문장을 초기화한다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final fakeStt = _FakeSttService();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
@@ -889,6 +902,7 @@ void main() {
           builder: (context, state) => VoiceInputScreen(
             autoStartOverride: false,
             sttService: fakeStt,
+            userIdOverride: 'user-1',
           ),
         ),
         GoRoute(
@@ -1898,13 +1912,17 @@ void main() {
   });
 
   testWidgets('내일 일정 확인해줘는 음성 조회 화면으로 이동한다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) =>
-              const VoiceInputScreen(autoStartOverride: false),
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
         ),
         GoRoute(
           path: AppRoutes.confirm,
@@ -1940,13 +1958,17 @@ void main() {
   });
 
   testWidgets('오늘 일정 알려줘는 음성 조회 화면으로 이동한다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) =>
-              const VoiceInputScreen(autoStartOverride: false),
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
         ),
         GoRoute(
           path: AppRoutes.confirm,
@@ -1982,13 +2004,17 @@ void main() {
   });
 
   testWidgets('저장된 일정 찾아줘는 음성 조회 화면으로 이동한다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) =>
-              const VoiceInputScreen(autoStartOverride: false),
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
         ),
         GoRoute(
           path: AppRoutes.confirm,
@@ -2024,13 +2050,17 @@ void main() {
   });
 
   testWidgets('내일 일정 확인하기는 일정 추가가 아니라 조회로 분류한다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) =>
-              const VoiceInputScreen(autoStartOverride: false),
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
         ),
         GoRoute(
           path: AppRoutes.confirm,
@@ -2065,13 +2095,17 @@ void main() {
   });
 
   testWidgets('저장된 일정 보여줘는 저장 명령이 아니라 조회로 분류한다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) =>
-              const VoiceInputScreen(autoStartOverride: false),
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
         ),
         GoRoute(
           path: AppRoutes.confirm,
@@ -2331,4 +2365,298 @@ void main() {
     expect(textField.controller?.text, isEmpty);
     expect(find.text('?? ?? 7?? ??? ??? ??'), findsNothing);
   });
+
+  testWidgets('조회 발화는 광고 게이트를 거쳐야 음성 대화 화면으로 이동한다', (tester) async {
+    final delegate = _CapturingVoiceConversationAdGateDelegate();
+    VoiceConversationAdGate.instance.delegateForTest = delegate;
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        _voiceConversationTestRoute(),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '내일 일정 확인해줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.pumpAndSettle();
+
+    expect(
+      delegate.callCount,
+      1,
+      reason: 'query intent는 반드시 VoiceConversationAdGate를 거쳐야 한다.',
+    );
+    expect(delegate.capturedUserId, 'user-1');
+    expect(find.textContaining('음성 대화:'), findsOneWidget);
+  });
+
+  testWidgets('게이트 통과 시 원래 조회 원문이 정확히 그대로 전달된다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _AllowAllVoiceConversationAdGateDelegate();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        _voiceConversationTestRoute(),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '저장된 일정 찾아줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.pumpAndSettle();
+
+    // _voiceConversationTestRoute()는 extra['initial_text']를 그대로
+    // 렌더링한다. 광고 이후 사용자가 같은 말을 다시 하지 않도록, 게이트
+    // 진입 이전에 캡처한 원문이 정확히 그대로 화면까지 전달돼야 한다.
+    expect(find.text('음성 대화: 저장된 일정 찾아줘'), findsOneWidget);
+  });
+
+  testWidgets('게이트가 진입을 거부(취소)하면 음성 대화 화면으로 이동하지 않는다', (tester) async {
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _DenyVoiceConversationAdGateDelegate();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        _voiceConversationTestRoute(),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('음성 대화:'), findsNothing);
+    expect(find.text('음성 관리 화면'), findsNothing);
+    // 화면 전환이 없으므로 그대로 음성입력 화면에 남아 텍스트필드가 보인다.
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('생성(add) intent는 광고 게이트를 전혀 거치지 않고 기존과 동일하게 동작한다', (
+    tester,
+  ) async {
+    // 게이트가 조금이라도 호출되면 즉시 예외를 던지는 delegate. 생성 intent
+    // 경로가 이 정책 변경으로 회귀하지 않았는지(무제한 무료 유지) 확인한다.
+    VoiceConversationAdGate.instance.delegateForTest =
+        const _ThrowingVoiceConversationAdGateDelegate();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '일정 확인: ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        _voiceConversationTestRoute(),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '내일 오전 10시 병원 예약 등록해줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('일정 확인:'), findsOneWidget);
+    expect(find.textContaining('음성 대화:'), findsNothing);
+  });
+}
+
+/// 광고 게이트 정책(무료횟수/광고표시)을 완전히 우회하고 항상 즉시 진입을
+/// 허용하는 fake delegate. (voice_conversation_launcher_test.dart와 동일한
+/// 패턴 — 파일 간 import는 하지 않고 각 테스트 파일에 독립 정의한다.)
+class _AllowAllVoiceConversationAdGateDelegate
+    implements VoiceConversationAdGateDelegate {
+  const _AllowAllVoiceConversationAdGateDelegate();
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    onEnterAllowed(
+      const VoiceConversationEntryGrant(
+        sessionId: 'test-session',
+        source: EntitlementSource.remoteDisabled,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 0,
+      ),
+    );
+  }
+}
+
+/// tryEnter 호출 여부/횟수/전달된 userId를 캡처하는 fake delegate. 항상
+/// 진입을 허용한다(그래야 이후 라우팅 결과도 함께 검증할 수 있다).
+class _CapturingVoiceConversationAdGateDelegate
+    implements VoiceConversationAdGateDelegate {
+  int callCount = 0;
+  String? capturedUserId;
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    callCount += 1;
+    capturedUserId = userId;
+    onEnterAllowed(
+      const VoiceConversationEntryGrant(
+        sessionId: 'test-session',
+        source: EntitlementSource.remoteDisabled,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 0,
+      ),
+    );
+  }
+}
+
+/// 사용자가 광고 시청 다이얼로그를 취소한 상황을 시뮬레이션한다.
+/// onEnterAllowed를 절대 호출하지 않으므로 caller는 화면 전환을 하지
+/// 않아야 한다.
+class _DenyVoiceConversationAdGateDelegate
+    implements VoiceConversationAdGateDelegate {
+  const _DenyVoiceConversationAdGateDelegate();
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    // 의도적으로 onEnterAllowed를 호출하지 않는다.
+  }
+}
+
+/// 호출되는 즉시 예외를 던지는 fake delegate. 생성(add) intent 경로가
+/// 게이트를 전혀 거치지 않는다는 것을 증명하는 데 쓴다 — 만약 실수로
+/// 게이트가 호출되면 이 delegate가 즉시 실패를 드러낸다.
+class _ThrowingVoiceConversationAdGateDelegate
+    implements VoiceConversationAdGateDelegate {
+  const _ThrowingVoiceConversationAdGateDelegate();
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async {
+    throw StateError('생성(add) intent 경로에서 게이트가 호출되면 안 됨');
+  }
+
+  @override
+  Future<int?> useFreeTrial(String userId) async {
+    throw StateError('생성(add) intent 경로에서 게이트가 호출되면 안 됨');
+  }
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    throw StateError('생성(add) intent 경로에서 게이트가 호출되면 안 됨');
+  }
 }

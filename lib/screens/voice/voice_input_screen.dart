@@ -18,6 +18,8 @@ import '../../services/stt_service.dart';
 import '../../services/voice_correction_learning_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_command_analysis_service.dart';
+import '../../services/voice_conversation_ad_gate.dart';
+import '../../services/voice_conversation_entitlement.dart';
 import 'voice_conversation_screen.dart';
 import '../../services/voice_text_cleanup_service.dart';
 import '../../widgets/planflow_action_buttons.dart';
@@ -31,12 +33,17 @@ class VoiceInputScreen extends StatefulWidget {
     this.voiceAnalysisService,
     this.autoStartOverride,
     this.settingsRepository,
+    this.userIdOverride,
   });
 
   final SttService sttService;
   final GptService? gptService;
   final VoiceCommandAnalysisService? voiceAnalysisService;
   final bool? autoStartOverride;
+  /// query intent(일정 조회) → AI일정대화 진입 게이트에 쓰일 userId를
+  /// 강제 지정한다. null이면 실제 로그인 세션(Supabase auth)에서 읽는다.
+  /// 테스트 전용 백도어이며 프로덕션 경로에서는 지정하지 않는다.
+  final String? userIdOverride;
   final SettingsRepository? settingsRepository;
 
   @override
@@ -946,12 +953,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       return;
     }
     if (commandAction == _VoiceCommandAction.query) {
-      await _pushVoiceRoute(
-        '${AppRoutes.voiceConversation}?autoStart=1',
-        extra: <String, dynamic>{
-          'initial_text':
-              cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,
-        },
+      await _openVoiceConversationForQuery(
+        cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,
         submitGeneration: submitGeneration,
       );
       return;
@@ -968,6 +971,62 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         'action': commandAction.name,
       },
       submitGeneration: submitGeneration,
+    );
+  }
+
+  /// query intent(일정 조회) 발화를 AI일정대화(음성 대화) 화면으로 넘기기
+  /// 전에 [VoiceConversationAdGate]를 거치도록 강제한다. 과거에는 광고/무료
+  /// 횟수 게이트를 완전히 우회해 무제한으로 진입할 수 있었던 경로다.
+  ///
+  /// - 광고 시청 등으로 시간이 벌어질 수 있으므로 게이트 통과 콜백 안에서
+  ///   mounted/submitGeneration을 다시 확인해 stale 콜백을 무시한다.
+  /// - 무료 횟수 실제 소비(consume)는 이 메서드가 아니라
+  ///   VoiceConversationScreen의 단일 소비 관문(_submitText)이 담당한다.
+  ///   여기서는 게이트가 승인한 [VoiceConversationEntryGrant]를 화면까지
+  ///   전달하는 역할만 한다(중복 소비 방지).
+  Future<void> _openVoiceConversationForQuery(
+    String queryText, {
+    required int submitGeneration,
+  }) async {
+    final overrideUserId = widget.userIdOverride?.trim();
+    final userId = (overrideUserId != null && overrideUserId.isNotEmpty)
+        ? overrideUserId
+        : (AppEnv.isSupabaseReady
+            ? Supabase.instance.client.auth.currentSession?.user.id
+            : null);
+    if (userId == null || userId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('로그인 세션이 없습니다. 다시 로그인해 주세요.'),
+            ),
+          );
+      }
+      return;
+    }
+    if (!mounted || submitGeneration != _submitGeneration) {
+      return;
+    }
+    await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+      context: context,
+      userId: userId,
+      onEnterAllowed: (VoiceConversationEntryGrant grant) {
+        if (!mounted || submitGeneration != _submitGeneration) {
+          return;
+        }
+        unawaited(
+          _pushVoiceRoute(
+            '${AppRoutes.voiceConversation}?autoStart=1',
+            extra: <String, dynamic>{
+              'initial_text': queryText,
+              'entry_grant': grant,
+            },
+            submitGeneration: submitGeneration,
+          ),
+        );
+      },
     );
   }
 
