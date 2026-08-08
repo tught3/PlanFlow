@@ -30,6 +30,7 @@ class _FakeSttService extends SttService {
   int cancelCalls = 0;
   int stopCalls = 0;
   int listenCalls = 0;
+  int clearActiveTranscriptCalls = 0;
 
   @override
   Future<SttListenResult> listen({
@@ -80,6 +81,12 @@ class _FakeSttService extends SttService {
     if (_completer != null && !_completer!.isCompleted) {
       completeFailure('Stopped.');
     }
+  }
+
+  @override
+  Future<String> clearActiveTranscript() async {
+    clearActiveTranscriptCalls += 1;
+    return '';
   }
 }
 
@@ -542,7 +549,7 @@ void main() {
   });
 
   testWidgets(
-    'AI 일정 대화는 수동 수정 후 제출해도 늦은 STT partial이 입력창을 다시 채우지 않는다',
+    'AI 일정 대화는 듣는 중 전송해도 이후 STT partial을 입력창에 반영한다',
     (tester) async {
       final stt = _FakeSttService();
       await pumpConversation(
@@ -553,16 +560,17 @@ void main() {
       await tester.tap(find.byIcon(Icons.mic));
       await tester.pump();
 
-      stt.emitPartial('첫번째 일정');
+      // GoRouter 없는 경량 헬퍼를 쓰므로, createEvent로 분류돼 화면 전환을
+      // 시도하는 문구(예: "OO 일정")는 피하고 query intent로 분류되는
+      // 문구를 쓴다(이 파일의 다른 통과 테스트들과 동일 패턴, showEvents로
+      // 귀결돼 네비게이션이 필요 없다).
+      stt.emitPartial('이번주 일정 보여줘');
       await tester.pump();
 
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
-        '첫번째 일정',
+        '이번주 일정 보여줘',
       );
-
-      await tester.enterText(find.byType(TextField), '두번째 일정');
-      await tester.pump();
 
       await tester.tap(find.text('전송'));
       await tester.pumpAndSettle();
@@ -571,14 +579,73 @@ void main() {
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
         isEmpty,
       );
+      // 리스닝을 끊지 않고 계속 듣는 경로이므로, STT 서비스 내부에 남은
+      // 이전 발화의 누적 트랜스크립트를 지워야 한다 — 안 그러면 다음 결과에
+      // 방금 제출한 문구가 이어붙거나, 침묵 타임아웃으로 재제출될 수 있다.
+      expect(stt.clearActiveTranscriptCalls, 1);
 
       stt.emitPartial('늦게온 일정');
       await tester.pump();
 
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        '늦게온 일정',
+      );
+    },
+  );
+
+  testWidgets(
+    'AI 일정 대화는 전송 후 명시적으로 정지하면 stale STT partial을 무시한다',
+    (tester) async {
+      final stt = _FakeSttService();
+      await pumpConversation(
+        tester,
+        VoiceConversationScreen(sttService: stt),
+      );
+
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      // 위 테스트와 동일 사유로 query intent 문구를 쓴다.
+      stt.emitPartial('이번주 일정 보여줘');
+      await tester.pump();
+
+      await tester.tap(find.text('전송'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
         isEmpty,
       );
+
+      await tester.tap(find.text('음성 입력 정지'));
+      await tester.pumpAndSettle();
+
+      stt.emitPartial('정지 후 늦은 일정');
+      await tester.pump();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        isEmpty,
+      );
+    },
+  );
+  testWidgets(
+    'AI 일정 대화는 리스닝 중이 아닐 때 제출해도 STT 트랜스크립트를 지우지 않는다',
+    (tester) async {
+      final stt = _FakeSttService();
+      await pumpConversation(
+        tester,
+        VoiceConversationScreen(sttService: stt),
+      );
+
+      // 마이크를 켠 적이 없으므로 _isListening/_keepListening 둘 다 false다 —
+      // 이 경로는 기존 동작(제출 시 generation 증가) 그대로 유지되고,
+      // clearActiveTranscript는 이 케이스와 무관하므로 호출되면 안 된다.
+      await tester.enterText(find.byType(TextField), '이번주 일정 보여줘');
+      await tester.pump();
+      await tester.tap(find.text('전송'));
+      await tester.pumpAndSettle();
+
+      expect(stt.clearActiveTranscriptCalls, 0);
     },
   );
 

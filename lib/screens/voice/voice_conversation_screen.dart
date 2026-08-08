@@ -547,27 +547,22 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
-    _inputTurnGeneration += 1;
-    if (!fromVoiceFinal) {
-      _listenGeneration += 1;
-    }
-    if (_isListening && !fromVoiceFinal) {
-      _manualEditInterruptedListening = true;
-      setState(() {
-        _voicePhase = _VoiceConversationPhase.submitting;
-        _isListening = false;
-        _keepListening = false;
-        _voicePausedByUser = true;
-      });
-      unawaited(widget.sttService.stopActiveListen());
-    } else if (_keepListening && !fromVoiceFinal) {
-      _manualEditInterruptedListening = true;
-      setState(() {
-        _voicePhase = _VoiceConversationPhase.submitting;
-        _keepListening = false;
-        _voicePausedByUser = true;
-      });
-      unawaited(widget.sttService.stopActiveListen());
+    final keepVoiceInputActive =
+        !fromVoiceFinal && (_isListening || _keepListening);
+    if (!keepVoiceInputActive) {
+      _inputTurnGeneration += 1;
+      if (!fromVoiceFinal) {
+        _listenGeneration += 1;
+      }
+    } else {
+      // 리스닝을 끊지 않고 계속 듣게 두는 경우, 화면 입력창만 비우는 것으로는
+      // 부족하다 — STT 서비스 내부에 남아있는 이번 발화의 누적 트랜스크립트를
+      // 지우지 않으면, 사용자가 전송 직후 이어 말할 때 방금 제출한 문구가
+      // 다음 결과 앞에 그대로 이어붙거나(committed 텍스트 병합), 아무 말도
+      // 안 해도 침묵 타임아웃으로 옛 텍스트가 그대로 재제출될 수 있다.
+      // 자매 화면(voice_input_screen.dart의 _clearTranscript)이 동일 상황에서
+      // 쓰는 것과 같은 API로 리셋한다.
+      await widget.sttService.clearActiveTranscript();
     }
     _setConversationInputText('');
     setState(() {
