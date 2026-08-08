@@ -350,6 +350,41 @@ class _FakeAdGateDelegate implements VoiceConversationAdGateDelegate {
   }
 }
 
+/// [_FakeAdGateDelegate]와 달리 승인이 즉시(동기적으로) 끝나지 않고
+/// [delay]만큼 지연된 뒤에야 완료되는 fake. self-gate가 아직 진행 중인
+/// 레이스 윈도우 동안 사용자가 수동으로 텍스트를 제출하는 상황을 재현하기
+/// 위해 쓴다(HIGH: self-gate 대기 중 수동입력 시 소비 영구 누락 회귀 테스트).
+class _DelayedAdGateDelegate implements VoiceConversationAdGateDelegate {
+  _DelayedAdGateDelegate({
+    required this.grantToProvide,
+    required this.delay,
+  });
+
+  int tryEnterCalls = 0;
+  String? lastUserId;
+  final VoiceConversationEntryGrant grantToProvide;
+  final Duration delay;
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    tryEnterCalls += 1;
+    lastUserId = userId;
+    await Future<void>.delayed(delay);
+    onEnterAllowed(grantToProvide);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1712,5 +1747,72 @@ void main() {
       expect(fakeEntitlementDelegate.consumeCalls, 0);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'self-gate가 지연되는 동안 수동 제출해도 제출은 정상 처리되고 소비는 정확히 1회만 일어난다',
+      (tester) async {
+        // HIGH 회귀: entryGrant가 null(딥링크 등)로 진입해 self-gate가
+        // 비동기로 진행 중인데, 그 완료를 기다리지 않는 수동 제출 경로
+        // (onSubmit)가 먼저 _submitText를 호출하면 _usageConsumedForSession이
+        // grant 없이 선점돼 실제 소비(consume RPC)가 영구히 누락됐었다.
+        const grant = VoiceConversationEntryGrant(
+          sessionId: 'session-self-gate-race',
+          source: EntitlementSource.dailyFree,
+          initialRemainingAtGate: 0,
+          dailyRemainingAtGate: 1,
+        );
+        final fakeAdGateDelegate = _DelayedAdGateDelegate(
+          grantToProvide: grant,
+          delay: const Duration(milliseconds: 300),
+        );
+        VoiceConversationAdGate.instance.delegateForTest = fakeAdGateDelegate;
+        authProvider.setUser('user-self-gate-race');
+
+        final fakeEntitlementDelegate = _FakeEntitlementDelegate()
+          ..consumeResult = const VoiceConversationConsumeResult(
+            source: 'daily_free',
+            initialRemaining: 0,
+            dailyRemaining: 0,
+          );
+        VoiceConversationEntitlementService.instance.delegateForTest =
+            fakeEntitlementDelegate;
+
+        await pumpConversation(
+          tester,
+          const VoiceConversationScreen(),
+        );
+        // initState의 addPostFrameCallback이 self-gate 호출을 시작하도록
+        // 한 프레임 더 진행시킨다. 이 시점에는 self-gate가 지연 중이라 아직
+        // 완료되지 않은 상태다.
+        await tester.pump();
+        expect(fakeAdGateDelegate.tryEnterCalls, 1);
+        expect(fakeEntitlementDelegate.consumeCalls, 0);
+
+        // self-gate가 끝나기 전에 사용자가 직접 텍스트를 입력해 전송 버튼을
+        // 누른다(onSubmit → _submitText, self-gate 대기 없이 즉시 호출됨).
+        await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+        await tester.tap(find.text('전송'));
+        await tester.pump();
+
+        // self-gate가 아직 지연 중이므로, 수정 전 코드였다면 이 시점에
+        // grant 없이 소비 플래그만 선점되고 실제 consume은 다시 호출되지
+        // 않았다. 수정 후에는 _submitText가 completer를 기다리므로 아직
+        // 소비가 일어나지 않아야 한다.
+        expect(fakeEntitlementDelegate.consumeCalls, 0);
+
+        // self-gate 지연이 끝나도록 시간을 흘려보낸다.
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+
+        // 제출 자체는 정상 처리됐고(사용자 메시지가 대화에 남음), 소비는
+        // 정확히 1회만 일어나야 한다(0회도 2회도 아님).
+        expect(find.text('오늘 일정 알려줘'), findsOneWidget);
+        expect(fakeEntitlementDelegate.consumeCalls, 1);
+        expect(
+          fakeEntitlementDelegate.consumedSessionIds,
+          <String>['session-self-gate-race'],
+        );
+      },
+    );
   });
 }

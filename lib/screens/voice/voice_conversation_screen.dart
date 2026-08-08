@@ -489,6 +489,19 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     String? overrideText, {
     bool fromVoiceFinal = false,
   }) async {
+    // self-gate(딥링크 등 entryGrant 미보유 진입)가 아직 끝나지 않았는데
+    // 사용자가 입력창의 전송 버튼을 직접 눌러 이 함수가 먼저 호출될 수
+    // 있다. self-gate 완료 전에 진행하면 아래의 _usageConsumedForSession
+    // 선점 로직이 유효한 grant 없이 소비 플래그만 먼저 태워버려, self-gate가
+    // 나중에 grant를 받아와도 이 세션은 다시는 소비되지 않는다(누락).
+    // entryGrant가 이미 있는 정상 경로에서는 completer가 즉시 완료 상태라
+    // 체감 지연이 없다.
+    if (!_entryGrantReadyCompleter.isCompleted) {
+      await _entryGrantReadyCompleter.future;
+    }
+    if (!mounted) {
+      return;
+    }
     final rawText = (overrideText ?? _inputController.text).trim();
     final text = _normalizeSubmitTextForPendingDelete(rawText);
     if (text.isEmpty || _isSubmitting) {
@@ -965,6 +978,15 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   Future<void> _startConversationListen(
       {required bool resetRetryPolicy}) async {
+    // 사용자가 마이크 버튼을 직접 눌러 self-gate 완료 전에 이 함수가 먼저
+    // 호출될 수 있다(위 _submitText와 동일한 레이스). entryGrant가 이미
+    // 있는 정상 경로에서는 completer가 즉시 완료 상태라 체감 지연이 없다.
+    if (!_entryGrantReadyCompleter.isCompleted) {
+      await _entryGrantReadyCompleter.future;
+    }
+    if (!mounted) {
+      return;
+    }
     if (resetRetryPolicy) {
       _didRetryConversationEarlyFailure = false;
       _didRetrySilentNativeStart = false;
