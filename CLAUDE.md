@@ -662,7 +662,7 @@ CC 모드는 Desktop 세션이 CEO OS 큐에 등록되지 않는 정책의 사�
 - **상태는 session_id 한정**이다. 명령을 입력한 그 세션만 ON/OFF가 되고 동시에 열린 다른 세션·다른 프로젝트 세션은 영향받지 않는다. 새 세션은 항상 OFF이며, 세션 종료·Desktop 완전 종료·재부팅 후에도 OFF다(TTL 8시간 + 부팅 시각 + 세션 프로세스 생존으로 판정하고, 종료 훅 성공에 의존하지 않는다). 전역 환경변수나 프로젝트 단위 플래그로 저장하지 않는다 — 단일 소스는 `.fluxos/utils/cc_mode.py`(저장 파일 `.fluxos/memory/cc_mode.json`)다.
 - **OFF면 기존 Desktop 방식 그대로**다. 훅이 아무것도 출력하지 않고, 선택한 Claude 모델이 직접 Edit/Write로 처리하며 Codex task 등록·큐 등록·진행 메시지 강제가 없다. OFF 동작을 바꾸기 위한 새 게이트를 만들지 않는다.
 - **ON이면 실제로 저장소 코드를 바꿔야 하는 요청만** CC 파이프라인을 탄다. 일반 질문·번역·요약·문서 작성·조사만 하는 요청·코드 변경 없는 분석·기존 코드 설명·상태 확인·사용자가 Claude 직접 처리를 명시한 요청은 CC가 켜져 있어도 평소처럼 직접 응답한다(정규식 분류기를 만들지 말고 실제로 파일을 수정해야 하는지로 판정한다).
-- **계획과 최종 QA는 작업 시작 시점에 실측 캡처한 그 세션의 모델**이 맡는다(Opus 고정 금지 — Fable로 시작하면 Fable, Sonnet이면 Sonnet). 모델 식별의 유일한 신뢰 소스는 세션 transcript의 `message.model`이며(`.fluxos/utils/cc_transcript.py`, 조회는 `run.py cc-status --session <id> --json`), 전역 settings의 `model` 값은 stale 기본값이라 쓰지 않는다. 확인 실패 시 모델명을 지어내지 않고 "모델 확인 불가"로 적는다. 작업 도중 세션 모델이 바뀌어 최초 모델로 최종 QA를 재현할 수 없으면 완료보고에 제한사항으로 명시한다.
+- **계획 모델은 세션 시작 모델에 고정하지 않고, 오케스트레이터가 지시사항의 난이도를 먼저 판단해 선택한다**(2026-08-09 CEO 결정 — "세션 캡처 모델 고정" 정책 폐기). 후보는 비용 낮은 순 `Fable(단순) → Sonnet(기본) → Opus(고난도·고위험)`이며, 조사·계획을 문제·무리 없이 해낼 수 있는 최소 모델을 고른다(애매하면 상위로 — 기존 "애매하면 Complex로" 원칙 재사용). 선택은 Agent 도구 `model=` 파라미터로 계획 전용 서브에이전트를 스폰하는 형태로 실행한다 — 메인 대화 세션 자체는 중간에 모델을 못 바꾸므로, "선택된 모델이 계획한다"는 곧 그 모델로 서브에이전트를 스폰해 조사+계획을 시킨다는 뜻이다(구현 단계에서 Codex 3티어를 스폰하는 것과 동일 패턴). **최종 QA는 그 계획을 실제로 세운(스폰된) 모델이 동일하게 담당**해 재현성을 유지한다 — 오케스트레이터 자신의 실행 모델(아래 항목)과는 별개다. 선택 근거(판단한 난이도, 선택 모델)는 진행 상태 표시에 남긴다. 과거 세션 transcript 기반 모델 식별(`cc_transcript.py`, `cc-status`)은 이 계획-모델 선택에는 더 이상 쓰지 않는다(다른 용도로 남아있을 수 있음, 별도 확인 필요).
 - **오케스트레이션·통합검토는 실제 Claude Sonnet이 기본**이고(Agent 도구 `model="sonnet"`), 고난도·고위험이거나 진행 중 판단 신뢰도가 떨어지면 실제 Opus로 승격한다(역할극 대체 금지). 계획 모델과 오케스트레이터는 서로 독립이다. 통합검토는 요약이 아니라 게이트이며 판정은 PASS / NEEDS_REVISION / BLOCKED / REVIEW_ERROR다. 재작업 상한을 초과하면 몰래 완료 처리하지 말고 BLOCKED로 보고한다.
 - **구현은 Codex**가 한다: 단순·일반·복잡 `gpt-5.6-luna`, 고난도·고위험 `gpt-5.6-terra`(`Claude Sonnet`는 종료 예정이라 배제, 단일 소스는 `config.py`의 `CODEX_MODEL_SIMPLE`/`CODEX_MODEL_COMPLEX`/`CODEX_MODEL_ADVANCED`). 전역 `FLUXOS_CODEX_ENABLED`를 켜지 않고 task metadata(`--executor codex`)로만 그 task를 Codex 경로로 보낸다 — 다른 Desktop 세션이나 CEO OS 일반 큐의 라우팅은 영향받지 않는다.
 - **CC 구성에 없는 모델이 끼면 안 된다.** CC는 위 5단계(계획 모델 / 오케스트레이터 / Codex 3티어 / 오케스트레이터 통합검토 / 최초 계획 모델 최종 QA)만으로 완결된다. CEO OS 일반 큐의 라우팅 사다리(GLM·MiniMax·DeepSeek 등)는 CC 경로에 개입하지 않는다. 그래서 CC task는 등록 시 `--review-owner claude_session`을 반드시 붙여 파이프라인 자체 1차검토를 끄고, 독립 검토를 오케스트레이터 통합검토가 온전히 담당한다(이 플래그가 없으면 라우팅 1차검토가 딸려 붙어 사양에 없는 모델이 검토에 낀다 — 2026-07-22 실측).
@@ -1415,6 +1415,12 @@ Windows Git-Bash에서 curl -d 한글포함문자열 처럼 한글을 셸 명령
 
 ### [PREVENT] brandconnect 로그 파일 동시쓰기 충돌로 캡처 스크립트 전체 크래시 (2026-08-07)
 daily-capture.ps1(부모)과 dom-capture.ps1(자식)이 조율 없이 같은 로그 파일에 각자 Add-Content 호출 -> 짧은 순간 겹치면 IOException으로 전체 스크립트 즉시 죽음. 재시도+백오프로 부분완화했으나 완전 해결 안됨(인수인계 문서 docs/BRANDCONNECT_CAPTURE_HANDOFF_20260807.md 참조)
+
+### [PREVENT] x (2026-08-08)
+x
+
+### [PREVENT] win32에서 claude.cmd를 execFile로 spawn하면 EINVAL — .cmd 셸 래퍼가 아니라 실제 claude.exe로 해석해야 함 (2026-08-08)
+CLAUDE_CLI_COMMAND가 win32에서 'claude.cmd'로 하드코딩됐는데 Node는 shell:true 없이 .cmd를 spawn하지 못해 spawn EINVAL이 발생. 그 결과 Claude Code 구독 CLI provider가 이 플랫폼에서 단 한 번도 실행된 적이 없었고, 항상 PROVIDER_UNAVAILABLE로 조용히 OpenAI에 폴백돼 실패가 정상 폴백처럼 위장됨. 수정: npm bin의 실제 네이티브 실행파일(@anthropic-ai/claude-code/bin/claude.exe)을 resolve해 argv 스폰(shell:true 금지 — 프롬프트에 스크레이핑된 미신뢰 상품 텍스트가 들어가 인젝션 표면이 됨).
 
 
 # Flux Studio Business Context
