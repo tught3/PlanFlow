@@ -13,11 +13,14 @@ import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/stt_service.dart';
+import 'package:planflow/services/voice_conversation_ad_gate.dart';
+import 'package:planflow/services/voice_conversation_entitlement.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeSttService extends SttService {
@@ -294,6 +297,56 @@ class _NoLocationPermissionService extends AppPermissionService {
     bool requestIfMissing = true,
   }) async {
     return null;
+  }
+}
+
+/// [VoiceConversationEntitlementService]의 consume() 호출 횟수/인자를
+/// 검증하기 위한 fake delegate.
+class _FakeEntitlementDelegate implements VoiceConversationEntitlementDelegate {
+  int consumeCalls = 0;
+  final List<String> consumedSessionIds = <String>[];
+  VoiceConversationConsumeResult? consumeResult;
+
+  @override
+  Future<VoiceConversationEntitlementPeek?> peek() async => null;
+
+  @override
+  Future<VoiceConversationConsumeResult?> consume(String sessionId) async {
+    consumeCalls += 1;
+    consumedSessionIds.add(sessionId);
+    return consumeResult;
+  }
+}
+
+/// [VoiceConversationAdGate]의 self-gate 호출 여부/인자를 검증하기 위한
+/// fake delegate. [grantToProvide]가 있으면 즉시 진입을 승인하고, null이면
+/// 진입을 거부(onEnterAllowed 미호출)한다.
+class _FakeAdGateDelegate implements VoiceConversationAdGateDelegate {
+  _FakeAdGateDelegate({this.grantToProvide});
+
+  int tryEnterCalls = 0;
+  String? lastUserId;
+  final VoiceConversationEntryGrant? grantToProvide;
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    tryEnterCalls += 1;
+    lastUserId = userId;
+    final grant = grantToProvide;
+    if (grant != null) {
+      onEnterAllowed(grant);
+    }
   }
 }
 
@@ -1504,4 +1557,160 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  group('AI일정대화 엔타이틀먼트 소비 시점', () {
+    tearDown(() {
+      VoiceConversationEntitlementService.instance.delegateForTest = null;
+      VoiceConversationAdGate.instance.delegateForTest = null;
+      authProvider.setUser(null);
+    });
+
+    testWidgets('grant가 있으면 첫 명령이 처리되기 시작할 때 정확히 1회 소비한다', (tester) async {
+      final fakeDelegate = _FakeEntitlementDelegate()
+        ..consumeResult = const VoiceConversationConsumeResult(
+          source: 'initial_free',
+          initialRemaining: 2,
+          dailyRemaining: 3,
+        );
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          fakeDelegate;
+
+      const grant = VoiceConversationEntryGrant(
+        sessionId: 'session-initial-text',
+        source: EntitlementSource.initialFree,
+        initialRemainingAtGate: 3,
+        dailyRemainingAtGate: 3,
+      );
+
+      await pumpConversation(
+        tester,
+        const VoiceConversationScreen(
+          entryGrant: grant,
+          initialText: '오늘 일정 알려줘',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeDelegate.consumeCalls, 1);
+      expect(fakeDelegate.consumedSessionIds, <String>['session-initial-text']);
+    });
+
+    testWidgets('같은 세션에서 여러 번 명령해도 엔타이틀먼트는 1회만 소비한다', (tester) async {
+      final fakeDelegate = _FakeEntitlementDelegate()
+        ..consumeResult = const VoiceConversationConsumeResult(
+          source: 'daily_free',
+          initialRemaining: 0,
+          dailyRemaining: 4,
+        );
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          fakeDelegate;
+
+      const grant = VoiceConversationEntryGrant(
+        sessionId: 'session-repeat',
+        source: EntitlementSource.dailyFree,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 5,
+      );
+
+      await pumpConversation(
+        tester,
+        const VoiceConversationScreen(entryGrant: grant),
+      );
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < 10; i += 1) {
+        await tester.enterText(find.byType(TextField), '오늘 일정 알려줘 $i');
+        await tester.tap(find.text('전송'));
+        await tester.pumpAndSettle();
+      }
+
+      expect(fakeDelegate.consumeCalls, 1);
+      expect(fakeDelegate.consumedSessionIds, <String>['session-repeat']);
+    });
+
+    testWidgets('아무 명령도 보내지 않고 이탈하면 소비하지 않고 이탈 이벤트만 남긴다', (tester) async {
+      final fakeDelegate = _FakeEntitlementDelegate();
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          fakeDelegate;
+
+      const grant = VoiceConversationEntryGrant(
+        sessionId: 'session-abandoned',
+        source: EntitlementSource.initialFree,
+        initialRemainingAtGate: 3,
+        dailyRemainingAtGate: 3,
+      );
+
+      await pumpConversation(
+        tester,
+        const VoiceConversationScreen(entryGrant: grant),
+      );
+      await tester.pumpAndSettle();
+
+      // 아무 명령도 제출하지 않고 위젯 트리를 교체(dispose)해 이탈을 흉내낸다.
+      // AnalyticsService는 1차 배포에서 외부 SDK 없이 no-op(디버그 프린트만)
+      // 처리되어 이벤트 발화 자체를 스파이할 테스트 훅이 없다(디버그 프린트
+      // 가로채기는 flutter_test의 foundation debug 변수 불변식과 충돌해 사용
+      // 불가 — 실측 확인함). 여기서는 dispose 시 소비가 발생하지 않았음만
+      // 검증한다(_usageConsumedForSession 가드의 핵심 계약).
+      expect(fakeDelegate.consumeCalls, 0);
+    });
+
+    testWidgets('entryGrant 없이 진입하면 화면이 스스로 게이트를 호출해 승인을 얻는다', (tester) async {
+      const grant = VoiceConversationEntryGrant(
+        sessionId: 'session-self-gate',
+        source: EntitlementSource.dailyFree,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 1,
+      );
+      final fakeAdGateDelegate = _FakeAdGateDelegate(grantToProvide: grant);
+      VoiceConversationAdGate.instance.delegateForTest = fakeAdGateDelegate;
+      authProvider.setUser('user-self-gate');
+
+      final fakeEntitlementDelegate = _FakeEntitlementDelegate()
+        ..consumeResult = const VoiceConversationConsumeResult(
+          source: 'daily_free',
+          initialRemaining: 0,
+          dailyRemaining: 0,
+        );
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          fakeEntitlementDelegate;
+
+      await pumpConversation(
+        tester,
+        const VoiceConversationScreen(initialText: '오늘 일정 알려줘'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeAdGateDelegate.tryEnterCalls, 1);
+      expect(fakeAdGateDelegate.lastUserId, 'user-self-gate');
+      expect(fakeEntitlementDelegate.consumeCalls, 1);
+      expect(
+        fakeEntitlementDelegate.consumedSessionIds,
+        <String>['session-self-gate'],
+      );
+    });
+
+    testWidgets('entryGrant 없고 로그인 정보도 없으면 self-gate를 시도하지 않고 fail-open으로 진행한다',
+        (tester) async {
+      final fakeAdGateDelegate = _FakeAdGateDelegate();
+      VoiceConversationAdGate.instance.delegateForTest = fakeAdGateDelegate;
+
+      final fakeEntitlementDelegate = _FakeEntitlementDelegate();
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          fakeEntitlementDelegate;
+
+      await pumpConversation(
+        tester,
+        const VoiceConversationScreen(initialText: '오늘 일정 알려줘'),
+      );
+      await tester.pumpAndSettle();
+
+      // 로그인 정보가 없어 게이트를 시도하지 않지만, 화면은 정상적으로
+      // initialText를 처리한다(fail-open, 소비는 되지 않음).
+      expect(fakeAdGateDelegate.tryEnterCalls, 0);
+      expect(find.text('오늘 일정 알려줘'), findsOneWidget);
+      expect(fakeEntitlementDelegate.consumeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

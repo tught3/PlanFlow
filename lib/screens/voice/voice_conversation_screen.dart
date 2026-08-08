@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/analytics_service.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
@@ -19,7 +20,9 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
+import '../../services/voice_conversation_ad_gate.dart';
 import '../../services/voice_conversation_controller.dart';
+import '../../services/voice_conversation_entitlement.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../location/location_pick_flow.dart';
 
@@ -47,6 +50,7 @@ class VoiceConversationScreen extends StatefulWidget {
     this.locationPicker = pickLocationFromQuery,
     this.autoStart = false,
     this.initialText,
+    this.entryGrant,
   });
 
   final EventRepository? repository;
@@ -65,6 +69,14 @@ class VoiceConversationScreen extends StatefulWidget {
   }) locationPicker;
   final bool autoStart;
   final String? initialText;
+
+  /// 진입 게이트(광고/무료횟수 결정)를 이미 통과한 시점의 승인 스냅샷.
+  ///
+  /// 정상 진입 경로(홈 버튼 등)는 [VoiceConversationLauncher]가
+  /// [VoiceConversationAdGate]를 먼저 통과시킨 뒤 이 값을 넘겨준다. 딥링크 등
+  /// 게이트를 거치지 않고 이 화면이 직접 열린 경우에는 null이며, 이 경우 화면이
+  /// 스스로 게이트를 호출한다(initState의 self-gate 참조).
+  final VoiceConversationEntryGrant? entryGrant;
 
   @override
   State<VoiceConversationScreen> createState() =>
@@ -126,19 +138,150 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   Timer? _restartListenTimer;
   Timer? _conversationWatchdogTimer;
 
+  // ── 엔타이틀먼트 소비/세션 게이트 ─────────────────────────────────
+  // 이 화면 인스턴스(세션) 안에서 실제 사용자 명령이 한 번이라도 처리되기
+  // 시작했는지. 세션당 정확히 1회만 소비하기 위한 로컬 가드.
+  bool _usageConsumedForSession = false;
+  // widget.entryGrant가 null(딥링크 등 게이트 미경유 진입)일 때, 화면이
+  // 스스로 게이트를 호출해 얻은 승인 스냅샷.
+  VoiceConversationEntryGrant? _resolvedEntryGrant;
+  // self-gate(필요한 경우) 판정이 끝났음을 알리는 신호. widget.entryGrant가
+  // 이미 있으면 initState에서 즉시 완료된다. 초기 자동 제출/자동 리스닝
+  // 시작은 이 신호가 완료된 뒤에만 진행한다.
+  final Completer<void> _entryGrantReadyCompleter = Completer<void>();
+
+  /// 현재 유효한 진입 승인. widget.entryGrant(정상 경로)가 우선이고, 없으면
+  /// self-gate로 얻은 값을 쓴다.
+  VoiceConversationEntryGrant? get _effectiveEntryGrant =>
+      widget.entryGrant ?? _resolvedEntryGrant;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final providedGrant = widget.entryGrant;
+    if (providedGrant != null) {
+      _resolvedEntryGrant = providedGrant;
+      _entryGrantReadyCompleter.complete();
+    } else {
+      // 딥링크 등 게이트를 거치지 않고 이 화면이 직접 열린 경우의 방어:
+      // 화면이 스스로 게이트를 호출해 진입 승인을 얻는다. 첫 프레임이 그려진
+      // 뒤(BuildContext 사용 가능 시점)에 실행한다.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_resolveEntryGrantViaSelfGate());
+      });
+    }
     unawaited(_loadEvents().then((_) => _submitInitialTextIfNeeded()));
     if (widget.autoStart && (widget.initialText ?? '').trim().isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _isListening) {
-          return;
-        }
-        setState(() => _keepListening = true);
-        unawaited(_startConversationListen(resetRetryPolicy: true));
+        unawaited(_autoStartListeningAfterEntryGrantReady());
       });
+    }
+  }
+
+  /// self-gate가 완료될 때까지 자동 마이크 시작을 보류한 뒤 진행한다.
+  /// widget.entryGrant가 이미 있는 정상 경로에서는 완료된 Future를 즉시
+  /// 통과하므로 기존 동작과 체감상 동일하다.
+  Future<void> _autoStartListeningAfterEntryGrantReady() async {
+    await _entryGrantReadyCompleter.future;
+    if (!mounted || _isListening) {
+      return;
+    }
+    setState(() => _keepListening = true);
+    unawaited(_startConversationListen(resetRetryPolicy: true));
+  }
+
+  /// widget.entryGrant 없이 이 화면이 직접 열린 경우, 화면 스스로
+  /// [VoiceConversationAdGate]를 호출해 진입 승인을 얻는다.
+  ///
+  /// - 로그인 사용자 정보를 확인할 수 없으면(비로그인/세션 미확인) 게이트
+  ///   시도 자체를 생략하고 fail-open으로 진행한다(엔타이틀먼트 소비는
+  ///   되지 않지만 사용자의 명령 처리 자체를 막지 않는다 — 이 화면은 이미
+  ///   비로그인 상태를 [_loadEvents]에서 별도로 안내한다).
+  /// - 게이트가 실제로 진입을 거부한 경우(광고 실패 등 정책상 거부)에는
+  ///   화면을 닫고 안내 스낵바를 보여준다.
+  Future<void> _resolveEntryGrantViaSelfGate() async {
+    if (!mounted) {
+      _completeEntryGrantReadyIfNeeded();
+      return;
+    }
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      _completeEntryGrantReadyIfNeeded();
+      return;
+    }
+    await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+      context: context,
+      userId: userId,
+      onEnterAllowed: (grant) {
+        _resolvedEntryGrant = grant;
+      },
+    );
+    _completeEntryGrantReadyIfNeeded();
+    if (_resolvedEntryGrant == null) {
+      _closeAfterEntryGateDenied(
+        'AI일정대화를 시작할 수 없어요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+  }
+
+  void _completeEntryGrantReadyIfNeeded() {
+    if (!_entryGrantReadyCompleter.isCompleted) {
+      _entryGrantReadyCompleter.complete();
+    }
+  }
+
+  void _closeAfterEntryGateDenied(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+    context.go(AppRoutes.home);
+  }
+
+  /// [sessionId]에 대해 실제 엔타이틀먼트를 소비하고, 소비 출처에 맞는
+  /// 분석 이벤트를 남긴다. 소비 자체가 실패해도(fail-open) 세션 시작
+  /// 이벤트는 항상 남긴다.
+  Future<void> _consumeEntitlement(VoiceConversationEntryGrant grant) async {
+    final result = await VoiceConversationEntitlementService.instance.consume(
+      grant.sessionId,
+    );
+    if (result != null) {
+      if (result.source == 'initial_free') {
+        await AnalyticsService.logVoiceConvInitialFreeUsed(
+          remainingAfter: result.initialRemaining,
+        );
+      } else if (result.source == 'daily_free') {
+        await AnalyticsService.logVoiceConvDailyFreeUsed(
+          remainingAfter: result.dailyRemaining,
+        );
+      }
+      // 'ad_required' 등 그 외 값은 별도 소비 이벤트가 없다.
+    }
+    await AnalyticsService.logVoiceConvSessionStarted(
+      source: _mapEntitlementSourceToSessionSource(grant.source),
+    );
+  }
+
+  /// [EntitlementSource]를 분석 이벤트 파라미터로 쓸 수 있는 제한된
+  /// [VoiceConvSessionSource]로 매핑한다. 무료 횟수를 소비하지 않은 진입
+  /// 근거(광고 시청/광고 실패 무료패스/원격 비활성/광고 불가 무료패스)는
+  /// 모두 가장 가까운 값인 adRewarded로 묶는다.
+  VoiceConvSessionSource _mapEntitlementSourceToSessionSource(
+    EntitlementSource source,
+  ) {
+    switch (source) {
+      case EntitlementSource.initialFree:
+        return VoiceConvSessionSource.initialFree;
+      case EntitlementSource.dailyFree:
+        return VoiceConvSessionSource.dailyFree;
+      case EntitlementSource.adRewarded:
+      case EntitlementSource.adFailedFreePass:
+      case EntitlementSource.remoteDisabled:
+      case EntitlementSource.adsUnavailableFreePass:
+        return VoiceConvSessionSource.adRewarded;
     }
   }
 
@@ -148,6 +291,13 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     final text = widget.initialText?.trim();
     if (text == null || text.isEmpty) {
+      return;
+    }
+    // self-gate가 진행 중이면(딥링크 진입 등) 판정이 끝날 때까지 초기 자동
+    // 제출을 보류한다. widget.entryGrant가 이미 있는 정상 경로에서는 이미
+    // 완료된 Future라 사실상 대기가 없다.
+    await _entryGrantReadyCompleter.future;
+    if (!mounted || _didSubmitInitialText) {
       return;
     }
     debugPrint('VoiceConversationScreen initialText submit: $text');
@@ -205,6 +355,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   @override
   void dispose() {
+    // 세션 안에서 한 번도 명령이 처리되지 않은 채(말없이) 이탈한 경우를
+    // 남긴다. AnalyticsService는 static/부작용 없는 no-op 래퍼라 mounted
+    // 여부와 무관하게 안전하게 호출할 수 있다.
+    if (!_usageConsumedForSession) {
+      unawaited(AnalyticsService.logVoiceConvSessionAbandonedBeforeUse());
+    }
     WidgetsBinding.instance.removeObserver(this);
     _keepListening = false;
     _restartListenTimer?.cancel();
@@ -341,6 +497,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         'empty=${text.isEmpty} submitting=$_isSubmitting',
       );
       return;
+    }
+    // 실제 사용자 명령이 처리되기 시작하는 이 지점이 엔타이틀먼트 소비
+    // 시점이다(화면진입/버튼탭/STT준비 등은 소비하지 않는다). 세션당
+    // 정확히 1회만 소비하도록 동기적으로 먼저 플래그를 선점한 뒤, 실제
+    // RPC 소비는 블로킹 없이 fire-and-forget으로 진행한다(소비 실패해도
+    // 사용자 명령 처리 자체는 막지 않음 — fail-open).
+    if (!_usageConsumedForSession) {
+      _usageConsumedForSession = true;
+      final grant = _effectiveEntryGrant;
+      if (grant != null) {
+        unawaited(_consumeEntitlement(grant));
+      }
     }
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
