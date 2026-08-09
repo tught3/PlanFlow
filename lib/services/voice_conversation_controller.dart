@@ -158,10 +158,7 @@ class VoiceConversationResult {
 }
 
 class VoiceConversationDateRange {
-  const VoiceConversationDateRange({
-    required this.start,
-    required this.end,
-  });
+  const VoiceConversationDateRange({required this.start, required this.end});
 
   final DateTime start;
   final DateTime end;
@@ -248,9 +245,9 @@ class VoiceConversationController {
                   planflowLocal((_now ?? planflowNow)()),
                   expansion.months,
                 ).add(const Duration(days: 1))
-              : planflowLocal((_now ?? planflowNow)()).add(
-                  const Duration(days: 1),
-                ),
+              : planflowLocal(
+                  (_now ?? planflowNow)(),
+                ).add(const Duration(days: 1)),
         );
         if (expanded.inRangeMatches.isNotEmpty) {
           final matched = expanded.inRangeMatches;
@@ -968,9 +965,10 @@ class VoiceConversationController {
       return occurrences.first;
     }
 
-    final visible = hideOverriddenRecurringOccurrences(
-      <EventModel>[...occurrences, ...overridesForEvent],
-    );
+    final visible = hideOverriddenRecurringOccurrences(<EventModel>[
+      ...occurrences,
+      ...overridesForEvent,
+    ]);
     for (final occurrence in occurrences) {
       if (visible.contains(occurrence)) {
         return occurrence;
@@ -1016,14 +1014,17 @@ class VoiceConversationController {
         text.contains('있어?');
   }
 
-  bool _isConvertToPersonalIntent(String text,
-      {VoiceCommandRouteResult? route}) {
+  bool _isConvertToPersonalIntent(
+    String text, {
+    VoiceCommandRouteResult? route,
+  }) {
     final resolvedRoute = route ?? _router.route(text);
     if (resolvedRoute.requestedChanges.contains('convert_to_personal')) {
       return true;
     }
-    return RegExp(r'(개인\s*일정|내\s*일정)\s*(?:으로|로)\s*(?:바꿔|변경|옮겨|전환|돌려|이동)')
-        .hasMatch(text);
+    return RegExp(
+      r'(개인\s*일정|내\s*일정)\s*(?:으로|로)\s*(?:바꿔|변경|옮겨|전환|돌려|이동)',
+    ).hasMatch(text);
   }
 
   bool _isLocationIntent(String text, {VoiceCommandRouteResult? route}) {
@@ -1139,8 +1140,11 @@ class VoiceConversationController {
       final pool = state.visibleEvents.isNotEmpty
           ? state.visibleEvents
           : (List<EventModel>.from(state.events)
-            ..sort((a, b) => (a.startAt ?? DateTime.now())
-                .compareTo(b.startAt ?? DateTime.now())));
+            ..sort(
+              (a, b) => (a.startAt ?? DateTime.now()).compareTo(
+                b.startAt ?? DateTime.now(),
+              ),
+            ));
       if (ordinalIndex >= 0 && ordinalIndex < pool.length) {
         return pool[ordinalIndex];
       }
@@ -1159,6 +1163,19 @@ class VoiceConversationController {
     // 이 추론을 건너뛴다.
     if (route?.intent == VoiceCommandRouteIntent.add) {
       return null;
+    }
+
+    // 조회 결과 안에서 사용자가 일정 제목 전체를 말했으면 한 단어 제목도
+    // 안전하게 선택한다. 같은 제목이 둘 이상이면 자동 수정하지 않는다.
+    final compactInput = _compact(text);
+    final exactTitleMatches = state.visibleEvents.where((event) {
+      final title = _compact(event.title);
+      return title.isNotEmpty &&
+          !event.title.trim().contains(RegExp(r'\s+')) &&
+          compactInput.contains(title);
+    }).toList(growable: false);
+    if (exactTitleMatches.length == 1) {
+      return exactTitleMatches.single;
     }
 
     // 수정 명령은 제목/참석자 토큰으로도 기존 일정을 찾는다. 다만 한 단어
@@ -1425,8 +1442,9 @@ class VoiceConversationController {
     // 신규 생성 경로(GptService().parseSchedule)와 동일한 결정적 로컬 파서로
     // RRULE을 계산해둔다. 시간 변경이 없어도(반복만 바뀌는 경우) 이 draft가
     // 만들어져야 하므로 아래 게이트/분기 각각에 반영한다.
-    final requestsRecurrenceChange =
-        resolvedRoute.requestedChanges.contains('recurrence_rule');
+    final requestsRecurrenceChange = resolvedRoute.requestedChanges.contains(
+      'recurrence_rule',
+    );
     final requestedRecurrenceRule = requestsRecurrenceChange
         ? GptService().localRecurrenceRuleFromRawText(text)
         : null;
@@ -1497,9 +1515,9 @@ class VoiceConversationController {
       return null;
     }
 
-    final shiftedStart = planflowLocal(event.startAt!).add(
-      Duration(days: shiftDays),
-    );
+    final shiftedStart = planflowLocal(
+      event.startAt!,
+    ).add(Duration(days: shiftDays));
     final shiftedEnd = event.endAt == null
         ? null
         : planflowLocal(event.endAt!).add(Duration(days: shiftDays));
@@ -1580,8 +1598,10 @@ class VoiceConversationController {
     final parsingReferenceLocal = _hasExplicitCalendarDateCue(sourceText)
         ? currentLocalNow
         : originalStartLocal;
-    final dateCandidate =
-        _inferLastDateCandidate(sourceText, parsingReferenceLocal);
+    final dateCandidate = _inferLastDateCandidate(
+      sourceText,
+      parsingReferenceLocal,
+    );
     final timeCandidate = _inferLastTimeCandidate(sourceText);
     if (dateCandidate == null && timeCandidate == null) {
       return null;
@@ -1600,8 +1620,9 @@ class VoiceConversationController {
 
   bool _hasExplicitCalendarDateCue(String text) {
     final normalized = _compact(text);
-    return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
-            .hasMatch(normalized) ||
+    return RegExp(
+          r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
+        ).hasMatch(normalized) ||
         RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?').hasMatch(normalized);
   }
 
@@ -1617,9 +1638,9 @@ class VoiceConversationController {
       match.start,
       (match.end + 20).clamp(0, text.length),
     );
-    return GptService(now: () => referenceLocal).inferStartAtFromRawText(
-      snippet,
-    );
+    return GptService(
+      now: () => referenceLocal,
+    ).inferStartAtFromRawText(snippet);
   }
 
   _VoiceRequestedTime? _inferLastTimeCandidate(String text) {
@@ -1712,8 +1733,9 @@ class VoiceConversationController {
   }
 
   bool _hasExplicitDateOrTimeCue(String text) {
-    return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
-            .hasMatch(text) ||
+    return RegExp(
+          r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
+        ).hasMatch(text) ||
         RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?').hasMatch(text) ||
         RegExp(
           r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시',
@@ -1726,14 +1748,16 @@ class VoiceConversationController {
       return null;
     }
 
-    final explicitForward =
-        RegExp(r'(\d+)일(?:뒤|후)(?:로|에|으로)?').firstMatch(normalized);
+    final explicitForward = RegExp(
+      r'(\d+)일(?:뒤|후)(?:로|에|으로)?',
+    ).firstMatch(normalized);
     if (explicitForward != null) {
       return int.tryParse(explicitForward.group(1) ?? '');
     }
 
-    final explicitBackward =
-        RegExp(r'(\d+)일(?:전|앞)(?:으로|로|에)?').firstMatch(normalized);
+    final explicitBackward = RegExp(
+      r'(\d+)일(?:전|앞)(?:으로|로|에)?',
+    ).firstMatch(normalized);
     if (explicitBackward != null) {
       final parsed = int.tryParse(explicitBackward.group(1) ?? '');
       return parsed == null ? null : -parsed;
@@ -1753,8 +1777,9 @@ class VoiceConversationController {
       return -1;
     }
 
-    final directionOnlyDays =
-        RegExp(r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)').firstMatch(normalized);
+    final directionOnlyDays = RegExp(
+      r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)',
+    ).firstMatch(normalized);
     if (directionOnlyDays != null) {
       final textValue = directionOnlyDays.group(0) ?? '';
       if (textValue.contains('이틀')) {
@@ -1872,9 +1897,7 @@ class VoiceConversationController {
   }
 
   _TimeReference? _parseTimeReference(String text) {
-    final match = RegExp(
-      r'(오전|오후|아침|저녁|밤)?\s*(\d{1,2})\s*시',
-    ).firstMatch(text);
+    final match = RegExp(r'(오전|오후|아침|저녁|밤)?\s*(\d{1,2})\s*시').firstMatch(text);
     if (match == null) {
       return null;
     }
@@ -1949,14 +1972,9 @@ class VoiceConversationController {
       ),
       ' ',
     );
+    cleaned = cleaned.replaceAll(RegExp(r'(그|방금)\s*일정(?:에|으로|을|를)?'), ' ');
     cleaned = cleaned.replaceAll(
-      RegExp(r'(그|방금)\s*일정(?:에|으로|을|를)?'),
-      ' ',
-    );
-    cleaned = cleaned.replaceAll(
-      RegExp(
-        r'(오전|오후|아침|저녁|밤)?\s*\d{1,2}\s*시\s*일정(?:에|으로|을|를)?',
-      ),
+      RegExp(r'(오전|오후|아침|저녁|밤)?\s*\d{1,2}\s*시\s*일정(?:에|으로|을|를)?'),
       ' ',
     );
     final fieldFirst = RegExp(
@@ -1970,10 +1988,7 @@ class VoiceConversationController {
       ' ',
     );
     cleaned = cleaned.replaceAll(RegExp(r'(장소|위치)(를|을|에)?'), ' ');
-    cleaned = cleaned.replaceAll(
-      RegExp(r'(추가|변경|바꿔|넣어)(해줘|줘|해)?'),
-      ' ',
-    );
+    cleaned = cleaned.replaceAll(RegExp(r'(추가|변경|바꿔|넣어)(해줘|줘|해)?'), ' ');
     cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
     cleaned = cleaned.replaceFirst(RegExp(r'^(을|를|은|는)\s*'), '');
     cleaned = cleaned.replaceFirst(RegExp(r'^(으로|로|에)\s*'), '');

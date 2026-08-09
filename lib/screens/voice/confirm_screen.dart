@@ -72,20 +72,21 @@ class ConfirmScreen extends StatefulWidget {
     this.voiceCorrectionRuleRepository,
     VoiceCorrectionLearningService? voiceCorrectionLearningService,
     TravelTimeBufferService? travelTimeBufferService,
-  })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
-        gptService = gptService ?? GptService(),
-        notificationService = notificationService ?? NotificationService(),
-        homeWidgetService = homeWidgetService ?? HomeWidgetService(),
-        locationLookupService =
-            locationLookupService ?? LocationLookupService(),
-        smartPreparationAlarmService = smartPreparationAlarmService ??
-            SmartPreparationAlarmService(
-              notificationService: notificationService,
-            ),
-        voiceCorrectionLearningService = voiceCorrectionLearningService ??
-            const VoiceCorrectionLearningService(),
-        travelTimeBufferService =
-            travelTimeBufferService ?? TravelTimeBufferService();
+  }) : backend = backend ?? const SupabaseConfirmScreenBackend(),
+       gptService = gptService ?? GptService(),
+       notificationService = notificationService ?? NotificationService(),
+       homeWidgetService = homeWidgetService ?? HomeWidgetService(),
+       locationLookupService = locationLookupService ?? LocationLookupService(),
+       smartPreparationAlarmService =
+           smartPreparationAlarmService ??
+           SmartPreparationAlarmService(
+             notificationService: notificationService,
+           ),
+       voiceCorrectionLearningService =
+           voiceCorrectionLearningService ??
+           const VoiceCorrectionLearningService(),
+       travelTimeBufferService =
+           travelTimeBufferService ?? TravelTimeBufferService();
 
   final Map<String, dynamic> parsedSchedule;
   final String? userId;
@@ -147,10 +148,7 @@ class _PostSaveFollowUpResult {
 
 /// 그룹 리더의 "그룹에 일정을 공유할까요?" 다이얼로그 응답.
 class _LeaderShareChoice {
-  const _LeaderShareChoice({
-    required this.share,
-    required this.dontAskAgain,
-  });
+  const _LeaderShareChoice({required this.share, required this.dontAskAgain});
 
   final bool share;
   final bool dontAskAgain;
@@ -299,8 +297,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _initialParsedForLearning = Map<String, dynamic>.from(
       widget.parsedSchedule,
     );
-    final rawTextForLocalParse =
-        _stringValue(widget.parsedSchedule['raw_text']);
+    final rawTextForLocalParse = _stringValue(
+      widget.parsedSchedule['raw_text'],
+    );
     final parsedTitle = _stringValue(widget.parsedSchedule['title']) ?? '';
     // parse_pending이면 GPT 결과를 기다리는 동안 제목이 비어 보임.
     // rawText로 로컬 파싱 제목을 즉시 채워 1초대에 표시되도록 한다.
@@ -308,9 +307,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final initialTitle = parsedTitle.isNotEmpty
         ? parsedTitle
         : (rawTextForLocalParse != null && rawTextForLocalParse.isNotEmpty
-            ? const VoiceScheduleStructureService()
-                .normalizeLocalVoiceTitle(rawTextForLocalParse)
-            : '');
+              ? const VoiceScheduleStructureService().normalizeLocalVoiceTitle(
+                  rawTextForLocalParse,
+                )
+              : '');
     _titleController = TextEditingController(text: initialTitle);
     _locationController = TextEditingController(
       text: _stringValue(widget.parsedSchedule['location']) ?? '',
@@ -341,6 +341,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _isMultiDay = _endAt != null && !DateUtils.isSameDay(_startAt, _endAt);
     _category = '기타';
     _isCritical = widget.parsedSchedule['is_critical'] == true;
+    _strongAlarm = widget.parsedSchedule['use_strong_alarm'] == true;
+    if (_strongAlarm) _isCritical = true;
     _titleController.addListener(_markTitleEdited);
     _locationController.addListener(_markLocationEdited);
     _memoController.addListener(_markMemoEdited);
@@ -478,8 +480,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<Set<String>> _readLastSharedGroupIds(String userId) async {
     try {
       final preferences = await SharedPreferences.getInstance();
-      final stored =
-          preferences.getStringList(_lastSharedGroupsPrefKey(userId));
+      final stored = preferences.getStringList(
+        _lastSharedGroupsPrefKey(userId),
+      );
       if (stored == null || stored.isEmpty) {
         return const <String>{};
       }
@@ -605,8 +608,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (group == null) {
       return;
     }
-    final isLeaderOfGroup = _groupContextProvider?.leaderGroups
-            .any((leaderGroup) => leaderGroup.id == group.id) ??
+    final isLeaderOfGroup =
+        _groupContextProvider?.leaderGroups.any(
+          (leaderGroup) => leaderGroup.id == group.id,
+        ) ??
         false;
     if (!isLeaderOfGroup) {
       return;
@@ -647,9 +652,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
-  Future<_LeaderShareChoice?> _showLeaderShareConfirmDialog(
-    String groupName,
-  ) {
+  Future<_LeaderShareChoice?> _showLeaderShareConfirmDialog(String groupName) {
     var dontAskAgain = false;
     return showDialog<_LeaderShareChoice>(
       context: context,
@@ -837,14 +840,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       normalizedCandidate.replaceAll(RegExp(r'\s+'), ''),
     );
     return title
-        .replaceFirst(
-          RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'),
-          '',
-        )
-        .replaceFirst(
-          RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'),
-          '',
-        )
+        .replaceFirst(RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'), '')
+        .replaceFirst(RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
@@ -888,12 +885,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final resolvedLabel = selected.bestPlaceLabel.trim();
       setState(() {
-        _locationController.text =
-            resolvedLabel.isNotEmpty ? resolvedLabel : selected.label;
+        _locationController.text = resolvedLabel.isNotEmpty
+            ? resolvedLabel
+            : selected.label;
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel =
-            resolvedLabel.isNotEmpty ? resolvedLabel : selected.label.trim();
+        _resolvedLocationLabel = resolvedLabel.isNotEmpty
+            ? resolvedLabel
+            : selected.label.trim();
       });
       _removeResolvedLocationFromTitle(
         previousLocationText: query,
@@ -930,14 +929,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     try {
       final gpsFuture = _permissionService
-          .getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      )
+          .getCurrentLocationWithPermission(requestIfMissing: false)
           .catchError((Object error, StackTrace stackTrace) {
-        debugPrint('ConfirmScreen background GPS lookup skipped: $error');
-        debugPrintStack(stackTrace: stackTrace);
-        return null;
-      });
+            debugPrint('ConfirmScreen background GPS lookup skipped: $error');
+            debugPrintStack(stackTrace: stackTrace);
+            return null;
+          });
       unawaited(gpsFuture);
       final results = await widget.locationLookupService.search(
         query,
@@ -959,8 +956,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel =
-            resolvedLabel.isNotEmpty ? resolvedLabel : query;
+        _resolvedLocationLabel = resolvedLabel.isNotEmpty
+            ? resolvedLabel
+            : query;
       });
       _isApplyingHydration = false;
       _removeResolvedLocationFromTitle(
@@ -1007,14 +1005,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     try {
       final gpsFuture = _permissionService
-          .getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      )
+          .getCurrentLocationWithPermission(requestIfMissing: false)
           .catchError((Object error, StackTrace stackTrace) {
-        debugPrint('ConfirmScreen save-time GPS lookup skipped: $error');
-        debugPrintStack(stackTrace: stackTrace);
-        return null;
-      });
+            debugPrint('ConfirmScreen save-time GPS lookup skipped: $error');
+            debugPrintStack(stackTrace: stackTrace);
+            return null;
+          });
       unawaited(gpsFuture);
       DiagLogger.log('GeoResolve', '검색시작: 쿼리="$query"');
       final results = await widget.locationLookupService.search(
@@ -1132,7 +1128,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
-    final shouldHydrate = widget.parsedSchedule['parse_pending'] == true ||
+    final shouldHydrate =
+        widget.parsedSchedule['parse_pending'] == true ||
         widget.parsedSchedule['parse_failed'] == true ||
         (_titleController.text.trim().isEmpty &&
             rawText != null &&
@@ -1256,9 +1253,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       if (parsed['parse_failed'] == true) {
-        unawaited(
-          AnalyticsService.logScheduleParseFailed(reason: 'fallback'),
-        );
+        unawaited(AnalyticsService.logScheduleParseFailed(reason: 'fallback'));
       }
 
       if (parsed['parse_failed'] != true) {
@@ -1317,13 +1312,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
         _setAmbiguousTimeFromParsed(parsed);
         if (!_endEditedByUser) {
-          _endAt = _safeEndAt(
-            parsed['end_at'],
-            _startAt,
-            rawText: rawText,
-          );
+          _endAt = _safeEndAt(parsed['end_at'], _startAt, rawText: rawText);
         }
         if (parsed['is_critical'] == true) {
+          _isCritical = true;
+        }
+        if (parsed['use_strong_alarm'] == true) {
+          _strongAlarm = true;
           _isCritical = true;
         }
       });
@@ -1331,9 +1326,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       unawaited(_resolveLocationCoordinatesIfNeeded());
     } catch (error) {
       if (mounted) {
-        unawaited(
-          AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'),
-        );
+        unawaited(AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'));
         setState(() {
           _hydrateMessage = '일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.';
         });
@@ -1350,7 +1343,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   String? _resolveUserId() {
-    final userId = widget.userId ??
+    final userId =
+        widget.userId ??
         authProvider.userId ??
         Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.trim().isEmpty) {
@@ -1481,13 +1475,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // _resolveEventsMissingCoords가 다음 홈 로드 때 이어서 보정하므로 안전망이
     // 이미 있다(중복 안전망, 데이터 유실 없음).
     final pendingLocationQuery = _locationController.text.trim();
-    final needsBackgroundLocationResolve = pendingLocationQuery.isNotEmpty &&
+    final needsBackgroundLocationResolve =
+        pendingLocationQuery.isNotEmpty &&
         !_shouldSkipAutomaticLocationResolution(pendingLocationQuery) &&
         (_locationLat == null || _locationLng == null);
 
     final normalizedStartAt = planflowLocalDateTimeToUtc(_startAt);
-    final normalizedEndAt =
-        _endAt == null ? null : planflowLocalDateTimeToUtc(_endAt!);
+    final normalizedEndAt = _endAt == null
+        ? null
+        : planflowLocalDateTimeToUtc(_endAt!);
     final isMultiDayByRange =
         _endAt != null && !DateUtils.isSameDay(_startAt, _endAt);
 
@@ -1531,8 +1527,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
       if (duplicateWarningEvents.isNotEmpty) {
         unawaited(AnalyticsService.logConflictDetected());
-        final shouldContinue =
-            await _showOverlapWarning(duplicateWarningEvents);
+        final shouldContinue = await _showOverlapWarning(
+          duplicateWarningEvents,
+        );
         if (!shouldContinue || !mounted) {
           return;
         }
@@ -1584,10 +1581,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       if (needsBackgroundLocationResolve) {
-        unawaited(_resolveLocationCoordinatesAfterSave(
-          savedEvent: savedEvent,
-          repository: repository,
-        ));
+        unawaited(
+          _resolveLocationCoordinatesAfterSave(
+            savedEvent: savedEvent,
+            repository: repository,
+          ),
+        );
       }
 
       _PostSaveFollowUpResult? postSaveResult;
@@ -1735,11 +1734,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     final resolvedHour = afternoon
         ? hour == 12
-            ? 12
-            : hour + 12
+              ? 12
+              : hour + 12
         : hour == 12
-            ? 0
-            : hour;
+        ? 0
+        : hour;
     final previousStart = _startAt;
     final nextStart = DateTime(
       _startAt.year,
@@ -1777,11 +1776,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     final resolvedHour = afternoon
         ? hour == 12
-            ? 12
-            : hour + 12
+              ? 12
+              : hour + 12
         : hour == 12
-            ? 0
-            : hour;
+        ? 0
+        : hour;
     return _startAt.hour == resolvedHour;
   }
 
@@ -1815,8 +1814,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   String _messageForPostgrestError(PostgrestException error) {
     final code = error.code?.toUpperCase() ?? '';
-    final text =
-        '${error.message} ${error.details} ${error.hint}'.toLowerCase();
+    final text = '${error.message} ${error.details} ${error.hint}'
+        .toLowerCase();
     if (code == '42501' ||
         text.contains('row-level security') ||
         text.contains('permission denied')) {
@@ -1836,7 +1835,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   void _setAmbiguousTimeFromParsed(Map<String, dynamic> parsed) {
     final rawText = _stringValue(parsed['raw_text']);
-    final clock = _ambiguousClockFromRawText(rawText) ??
+    final clock =
+        _ambiguousClockFromRawText(rawText) ??
         (parsed['time_period_ambiguous'] == true
             ? _AmbiguousMeridiemClock.fromDateTime(_startAt)
             : null);
@@ -1962,9 +1962,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (text == '십') {
       return 10;
     }
-    final tenMatch =
-        RegExp(r'^(?:(일|이|삼|사|오|육|륙|칠|팔|구)?십)?(일|이|삼|사|오|육|륙|칠|팔|구)?$')
-            .firstMatch(text);
+    final tenMatch = RegExp(
+      r'^(?:(일|이|삼|사|오|육|륙|칠|팔|구)?십)?(일|이|삼|사|오|육|륙|칠|팔|구)?$',
+    ).firstMatch(text);
     if (tenMatch != null && tenMatch.group(0)!.isNotEmpty) {
       final tens = tenMatch.group(1);
       final ones = tenMatch.group(2);
@@ -1975,24 +1975,25 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return null;
   }
 
-  Future<void> _recordVoiceCorrectionLearning({
-    required String userId,
-  }) async {
+  Future<void> _recordVoiceCorrectionLearning({required String userId}) async {
     if (!AppEnv.isSupabaseReady) {
       return;
     }
     try {
-      final settings =
-          await SettingsRepository.supabase().fetchSettings(userId);
+      final settings = await SettingsRepository.supabase().fetchSettings(
+        userId,
+      );
       if (settings?.voiceCorrectionLearningEnabled == false) {
         return;
       }
-      final repository = widget.voiceCorrectionRuleRepository ??
+      final repository =
+          widget.voiceCorrectionRuleRepository ??
           VoiceCorrectionRuleRepository.supabase();
       final rules = <VoiceCorrectionRule>[];
 
-      final originalStt =
-          _stringValue(widget.parsedSchedule['stt_original_text']);
+      final originalStt = _stringValue(
+        widget.parsedSchedule['stt_original_text'],
+      );
       final rawText = _stringValue(widget.parsedSchedule['raw_text']);
       if (widget.parsedSchedule['manual_text_confirmed'] == true &&
           originalStt != null &&
@@ -2011,10 +2012,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final initial = _initialParsedForLearning ?? widget.parsedSchedule;
       rules.addAll(
-        _extractParseCorrectionRules(
-          userId: userId,
-          initial: initial,
-        ),
+        _extractParseCorrectionRules(userId: userId, initial: initial),
       );
 
       var recorded = false;
@@ -2114,42 +2112,37 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       () => widget.backend.insertPreActions(preActionPayloads),
       label: 'pre_actions',
     );
-    await _tryFollowUp(
-      () {
-        DiagLogger.log('SmartPrep',
-            'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"');
-        return widget.smartPreparationAlarmService.schedulePayloads(
-          eventId: event.id,
-          eventTitle: event.title,
-          payloads: preActionPayloads,
-          notificationKeyPrefix: 'pre_action',
-        );
-      },
-      label: 'smart_preparation_alarm_notifications',
-    );
+    await _tryFollowUp(() {
+      DiagLogger.log(
+        'SmartPrep',
+        'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"',
+      );
+      return widget.smartPreparationAlarmService.schedulePayloads(
+        eventId: event.id,
+        eventTitle: event.title,
+        payloads: preActionPayloads,
+        notificationKeyPrefix: 'pre_action',
+      );
+    }, label: 'smart_preparation_alarm_notifications');
     await _tryFollowUp(
       () => widget.backend.insertReminders(reminderPayloads),
       label: 'reminders',
     );
-    await _tryFollowUp(
-      () async {
-        final result = await const DepartureAlarmService().scheduleForEvent(
-          event,
-          safetyMarginOverride: departureSafetyMargin,
-        );
-        final hasCoords =
-            event.locationLat != null && event.locationLng != null;
-        // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
-        DiagLogger.log(
-          'DepartureAlarm',
-          result.isScheduled
-              ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
-              : 'skipped reason=${result.skippedReason ?? 'unknown'} '
+    await _tryFollowUp(() async {
+      final result = await const DepartureAlarmService().scheduleForEvent(
+        event,
+        safetyMarginOverride: departureSafetyMargin,
+      );
+      final hasCoords = event.locationLat != null && event.locationLng != null;
+      // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
+      DiagLogger.log(
+        'DepartureAlarm',
+        result.isScheduled
+            ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
+            : 'skipped reason=${result.skippedReason ?? 'unknown'} '
                   'hasCoords=$hasCoords loc="${event.location ?? ''}"',
-        );
-      },
-      label: 'departure_alarm',
-    );
+      );
+    }, label: 'departure_alarm');
 
     final location = _emptyToNull(_locationController.text);
     if (location != null) {
@@ -2205,26 +2198,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           eventStartAt.isAfter(reminderNow)) {
         eventReminderNotifyAt = eventStartAt;
       }
-      await _tryFollowUp(
-        () async {
-          final result =
-              await widget.notificationService.scheduleEventReminderWithResult(
-            id: widget.notificationService.notificationIdFor(
-              '${event.id}:push',
-            ),
-            title: event.title,
-            body: '일정 시작: ${event.title}',
-            notifyAt: eventReminderNotifyAt,
-            payload: 'event:${event.id}',
-          );
-          _recordAlarmScheduleResult(
-            result,
-            label: 'local_event_reminder',
-            failures: alarmFailures,
-          );
-        },
-        label: 'local_event_reminder',
-      );
+      await _tryFollowUp(() async {
+        final result = await widget.notificationService
+            .scheduleEventReminderWithResult(
+              id: widget.notificationService.notificationIdFor(
+                '${event.id}:push',
+              ),
+              title: event.title,
+              body: '일정 시작: ${event.title}',
+              notifyAt: eventReminderNotifyAt,
+              payload: 'event:${event.id}',
+            );
+        _recordAlarmScheduleResult(
+          result,
+          label: 'local_event_reminder',
+          failures: alarmFailures,
+        );
+      }, label: 'local_event_reminder');
     }
     return _PostSaveFollowUpResult(alarmFailures: alarmFailures);
   }
@@ -2251,26 +2241,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    await _tryFollowUp(
-      () async {
-        final result =
-            await widget.notificationService.scheduleCriticalAlarmWithResult(
-          id: widget.notificationService.notificationIdFor(
-            '${event.id}:critical',
-          ),
-          title: event.title,
-          notifyAt: notifyAt,
-          body: '중요 일정이 곧 시작됩니다.',
-          payload: 'event:${event.id}',
-        );
-        _recordAlarmScheduleResult(
-          result,
-          label: 'critical_alarm',
-          failures: alarmFailures,
-        );
-      },
-      label: 'critical_alarm',
-    );
+    await _tryFollowUp(() async {
+      final result = await widget.notificationService
+          .scheduleCriticalAlarmWithResult(
+            id: widget.notificationService.notificationIdFor(
+              '${event.id}:critical',
+            ),
+            title: event.title,
+            notifyAt: notifyAt,
+            body: '중요 일정이 곧 시작됩니다.',
+            payload: 'event:${event.id}',
+          );
+      _recordAlarmScheduleResult(
+        result,
+        label: 'critical_alarm',
+        failures: alarmFailures,
+      );
+    }, label: 'critical_alarm');
   }
 
   void _recordAlarmScheduleResult(
@@ -2330,7 +2317,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
     }
     final departureSafetyMargin = Duration(
-      minutes: settings?.departureSafetyMarginMin ??
+      minutes:
+          settings?.departureSafetyMarginMin ??
           DepartureAlarmService.safetyMargin.inMinutes,
     );
     await _saveRelatedRecords(
@@ -2410,14 +2398,18 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         dayEvents: updatedEvents,
         userId: userId,
         dayReference: eventStartAt,
-        prepTimeMin: resolvedSettings?.prepTimeMin ??
+        prepTimeMin:
+            resolvedSettings?.prepTimeMin ??
             SmartPreparationAlarmService.defaultPrepTimeMin,
-        prepPreAlarmOffset: resolvedSettings?.prepPreAlarmOffset ??
+        prepPreAlarmOffset:
+            resolvedSettings?.prepPreAlarmOffset ??
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-        departPreAlarmOffset: resolvedSettings?.departPreAlarmOffset ??
+        departPreAlarmOffset:
+            resolvedSettings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
         departureSafetyMargin: Duration(
-          minutes: resolvedSettings?.departureSafetyMarginMin ??
+          minutes:
+              resolvedSettings?.departureSafetyMarginMin ??
               DepartureAlarmService.safetyMargin.inMinutes,
         ),
         travelMode: resolvedSettings?.travelMode ?? 'car',
@@ -2492,8 +2484,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     required Duration? reminderOffset,
   }) {
     final now = DateTime.now();
-    final pushNotifyAt =
-        reminderOffset == null ? null : eventStartAt.subtract(reminderOffset);
+    final pushNotifyAt = reminderOffset == null
+        ? null
+        : eventStartAt.subtract(reminderOffset);
     final payloads = <Map<String, dynamic>>[
       if (pushNotifyAt != null && pushNotifyAt.isAfter(now))
         _reminderPayload(
@@ -2558,8 +2551,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           emptyTitle: fallbackEvent.startAt == null
               ? '예정된 일정이 없어요'
               : fallbackEvent.title,
-          nextTravelBufferMinutes:
-              await _resolveTravelBufferMinutesForWidget(nextEvent),
+          nextTravelBufferMinutes: await _resolveTravelBufferMinutesForWidget(
+            nextEvent,
+          ),
         ),
       );
     } catch (e) {
@@ -2578,14 +2572,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   EventModel? _nextFutureEvent(List<EventModel> events, DateTime now) {
-    final futureEvents = events.where((event) {
-      final startAt = event.startAt;
-      if (startAt == null) {
-        return false;
-      }
-      return !startAt.isBefore(now);
-    }).toList(growable: false)
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    final futureEvents =
+        events
+            .where((event) {
+              final startAt = event.startAt;
+              if (startAt == null) {
+                return false;
+              }
+              return !startAt.isBefore(now);
+            })
+            .toList(growable: false)
+          ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     return futureEvents.isEmpty ? null : futureEvents.first;
   }
 
@@ -2845,8 +2842,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         Card(
                           color: theme.colorScheme.errorContainer,
                           child: const Padding(
-                            padding:
-                                EdgeInsets.all(AppConstants.defaultPadding),
+                            padding: EdgeInsets.all(
+                              AppConstants.defaultPadding,
+                            ),
                             child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                           ),
                         ),
@@ -2947,8 +2945,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         icon: _isSaving
                             ? const SizedBox.square(
                                 dimension: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.save),
                         label: Text(_isSaving ? '저장 중' : '일정 저장'),
@@ -3014,11 +3013,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return parsed;
   }
 
-  DateTime? _safeEndAt(
-    Object? value,
-    DateTime startAt, {
-    String? rawText,
-  }) {
+  DateTime? _safeEndAt(Object? value, DateTime startAt, {String? rawText}) {
     final parsed = _dateTimeValue(value);
     if (parsed == null || parsed.isBefore(startAt)) {
       return null;
@@ -3063,17 +3058,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 }
 
 class _AmbiguousMeridiemClock {
-  const _AmbiguousMeridiemClock({
-    required this.hour,
-    required this.minute,
-  });
+  const _AmbiguousMeridiemClock({required this.hour, required this.minute});
 
   factory _AmbiguousMeridiemClock.fromDateTime(DateTime value) {
     final hour = value.hour == 0
         ? 12
         : value.hour > 12
-            ? value.hour - 12
-            : value.hour;
+        ? value.hour - 12
+        : value.hour;
     return _AmbiguousMeridiemClock(hour: hour, minute: value.minute);
   }
 
@@ -3118,12 +3110,12 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           Text(
             missingBoth
                 ? '정확한 알람 권한과 절전(배터리 최적화) 예외가 꺼져 있습니다. '
-                    '두 가지 모두 켜야 알람이 정확한 시각에 울립니다.'
+                      '두 가지 모두 켜야 알람이 정확한 시각에 울립니다.'
                 : missingExactAlarm
-                    ? '정확한 알람 권한이 꺼져 있습니다. '
-                        'Android 알람 설정에서 PlanFlow를 허용해야 알람이 정확한 시각에 울립니다.'
-                    : '절전(배터리 최적화) 예외가 꺼져 있습니다. '
-                        '삼성·샤오미 등 일부 기기에서 백그라운드 알람을 막을 수 있어요.',
+                ? '정확한 알람 권한이 꺼져 있습니다. '
+                      'Android 알람 설정에서 PlanFlow를 허용해야 알람이 정확한 시각에 울립니다.'
+                : '절전(배터리 최적화) 예외가 꺼져 있습니다. '
+                      '삼성·샤오미 등 일부 기기에서 백그라운드 알람을 막을 수 있어요.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: PlanFlowColors.textSecondary,
             ),

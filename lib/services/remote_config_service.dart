@@ -43,7 +43,7 @@ class RemoteConfigService {
   static const int kVoiceConversationInitialFreeCountDefault = 3;
 
   /// [voiceConversationDailyFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
-  static const int kVoiceConversationDailyFreeCountDefault = 1;
+  static const int kVoiceConversationDailyFreeCountDefault = 0;
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -76,7 +76,7 @@ class RemoteConfigService {
         _kGroupBackupRetentionDays: 30,
         _kRewardAdVoiceConversationEnabled: true,
         _kVoiceConversationFreeTrialCount: 3,
-        _kRewardAdFailurePolicy: 'free_pass',
+        _kRewardAdFailurePolicy: 'retry',
         _kVoiceConversationButtonEnabled: true,
         _kVoiceConversationInitialFreeCount:
             kVoiceConversationInitialFreeCountDefault,

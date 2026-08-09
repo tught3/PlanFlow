@@ -137,13 +137,11 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 광고 요청 가능 상태 확인
+    // 광고 요청 가능 상태 확인. 무료 소진 뒤에는 광고 불가를 무료 통과로
+    // 바꾸지 않는다. 사용자는 재시도해야 한다.
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
-      final policy = RemoteConfigService.rewardAdFailurePolicy;
-      if (policy == 'free_pass') {
-        onEnterAllowed(_grant(EntitlementSource.adsUnavailableFreePass));
-      }
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
       return;
     }
 
@@ -155,14 +153,8 @@ class VoiceConversationAdGate {
       await AnalyticsService.logVoiceConvAdRequired();
     } else if (!peek.requiresAd) {
       // 무료 잔여 있음 → 즉시 진입(소비는 화면 쪽에서 처리).
-      final source = peek.initialRemaining > 0
-          ? EntitlementSource.initialFree
-          : EntitlementSource.dailyFree;
-      await AnalyticsService.logVoiceConvEntered(
-        source: source == EntitlementSource.initialFree
-            ? 'initial_free'
-            : 'daily_free',
-      );
+      final source = EntitlementSource.initialFree;
+      await AnalyticsService.logVoiceConvEntered(source: 'initial_free');
       onEnterAllowed(
         _grant(
           source,
@@ -203,30 +195,8 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 6. 광고 실패 → 정책 분기.
-    final policy = RemoteConfigService.rewardAdFailurePolicy;
-    if (policy == 'free_pass') {
-      await AnalyticsService.logVoiceConvGateBlocked(
-        reason: 'ad_failed_free_pass',
-      );
-      await AnalyticsService.logVoiceConvEntered(source: 'ad_failed_free_pass');
-      onEnterAllowed(
-        _grant(
-          EntitlementSource.adFailedFreePass,
-          initialRemainingAtGate: peek?.initialRemaining ?? 0,
-          dailyRemainingAtGate: peek?.dailyRemaining ?? 0,
-        ),
-      );
-      return;
-    }
-    if (policy == 'retry') {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'ad_failed_retry');
-      return;
-    }
-    // 'feature_unavailable' (default 폴백 포함).
-    await AnalyticsService.logVoiceConvGateBlocked(
-      reason: 'ad_failed_feature_unavailable',
-    );
+    // 광고 실패는 항상 진입 거부다. 4회째부터 광고 완료가 필수다.
+    await AnalyticsService.logVoiceConvGateBlocked(reason: 'ad_failed_retry');
   }
 
   VoiceConversationEntryGrant _grant(
@@ -265,9 +235,7 @@ class VoiceConversationAdGate {
       final remaining = limit - used;
       return remaining < 0 ? 0 : remaining;
     } catch (error, stackTrace) {
-      debugPrint(
-        'VoiceConversationAdGate._fetchRemaining failed: $error',
-      );
+      debugPrint('VoiceConversationAdGate._fetchRemaining failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return null;
     }
@@ -288,13 +256,10 @@ class VoiceConversationAdGate {
           .maybeSingle();
       if (response == null) {
         // row 없음 → 1회 사용으로 신규 row 생성.
-        await client.from('user_settings').upsert(
-              <String, dynamic>{
-                'user_id': userId,
-                'voice_conversation_free_trial_used': 1,
-              },
-              onConflict: 'user_id',
-            );
+        await client.from('user_settings').upsert(<String, dynamic>{
+          'user_id': userId,
+          'voice_conversation_free_trial_used': 1,
+        }, onConflict: 'user_id');
         return limit - 1 < 0 ? 0 : limit - 1;
       }
       final row = Map<String, dynamic>.from(response as Map);

@@ -180,8 +180,10 @@ class VoiceConversationEntitlementService {
       final response = await client.rpc(
         'voice_conversation_entitlement_peek',
         params: <String, dynamic>{
-          'p_initial_limit': RemoteConfigService.voiceConversationInitialFreeCount,
-          'p_daily_limit': RemoteConfigService.voiceConversationDailyFreeCount,
+          'p_initial_limit':
+              RemoteConfigService.voiceConversationInitialFreeCount,
+          // 제품 정책: 최초 3회 이후에는 매일 무료 없이 광고가 필요하다.
+          'p_daily_limit': 0,
         },
       );
       final row = _firstRow(response);
@@ -210,8 +212,9 @@ class VoiceConversationEntitlementService {
         'consume_voice_conversation_free_usage',
         params: <String, dynamic>{
           'p_session_id': sessionId,
-          'p_initial_limit': RemoteConfigService.voiceConversationInitialFreeCount,
-          'p_daily_limit': RemoteConfigService.voiceConversationDailyFreeCount,
+          'p_initial_limit':
+              RemoteConfigService.voiceConversationInitialFreeCount,
+          'p_daily_limit': 0,
         },
       );
       final row = _firstRow(response);
@@ -224,9 +227,7 @@ class VoiceConversationEntitlementService {
         dailyRemaining: _readInt(row['daily_remaining']),
       );
     } catch (error, stackTrace) {
-      debugPrint(
-        'VoiceConversationEntitlementService._consume failed: $error',
-      );
+      debugPrint('VoiceConversationEntitlementService._consume failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return null;
     }
