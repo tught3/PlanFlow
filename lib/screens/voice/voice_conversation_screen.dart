@@ -1182,6 +1182,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (criticalValue != null) {
       edited = _copyEventWithCritical(edited, isCritical: criticalValue);
     }
+    final strongAlarmRequested = RegExp(
+      r'강한\\s*(알림|알람)|강한알림|강한알람',
+    ).hasMatch(result.inputText);
+    if (strongAlarmRequested) {
+      edited = edited.copyWith(isCritical: true, useStrongAlarm: true);
+      // 음성 명령으로 강한 알람을 켠 경우에도 편집 화면과 같은 권한 요청을
+      // 즉시 수행한다. 사용자가 거부하면 저장은 유지하고 OS 설정에서 재허용할 수 있다.
+      await widget.permissionService.requestNotificationPermissions();
+      await widget.permissionService.requestExactAlarmPermission();
+      await widget.permissionService.requestFullScreenIntentPermission();
+    }
 
     try {
       final saved = await _repository.updateEvent(edited);
