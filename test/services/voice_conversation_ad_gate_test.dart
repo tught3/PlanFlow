@@ -13,7 +13,7 @@ import 'package:planflow/services/voice_conversation_entitlement.dart';
 /// 그 grant.source가 승인 근거([EntitlementSource])를 담는다.
 ///
 /// 테스트 전략:
-/// - "킬스위치 OFF" 분기(1단계)는 RemoteConfigService가 Firebase 미초기화
+/// - "킬스위치 OFF" 분기(무료 소진 뒤)는 RemoteConfigService가 Firebase 미초기화
 ///   상태(테스트 환경 기본값)에서 rewardedAdEnabled가 항상 false로 폴백하는
 ///   실제 프로덕션 동작을 그대로 이용해, 실제 `_runGate` 코드 경로를 검증한다.
 /// - 그 외 5개 분기(음성전용 비활성/광고요청불가+free_pass/무료잔여있음
@@ -34,7 +34,7 @@ void main() {
   group('실제 _runGate 경로 (delegate 미주입)', () {
     testWidgets(
       '리워드 광고 킬스위치 OFF(테스트 환경 Firebase 미초기화 기본값)면 '
-      'remoteDisabled grant로 즉시 진입 허용한다',
+      '광고 우회 진입을 허용하지 않는다',
       (tester) async {
         VoiceConversationEntryGrant? captured;
 
@@ -45,7 +45,8 @@ void main() {
                 return ElevatedButton(
                   onPressed: () {
                     unawaited(
-                      VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+                      VoiceConversationAdGate.instance
+                          .tryEnterVoiceConversation(
                         context: context,
                         userId: 'user-1',
                         onEnterAllowed: (grant) => captured = grant,
@@ -62,11 +63,7 @@ void main() {
         await tester.tap(find.text('open'));
         await tester.pumpAndSettle();
 
-        expect(captured, isNotNull);
-        expect(captured!.source, EntitlementSource.remoteDisabled);
-        expect(captured!.sessionId, isNotEmpty);
-        expect(captured!.initialRemainingAtGate, 0);
-        expect(captured!.dailyRemainingAtGate, 0);
+        expect(captured, isNull);
       },
     );
 
@@ -104,10 +101,8 @@ void main() {
       await tester.tap(find.text('open-twice'));
       await tester.pumpAndSettle();
 
-      // 인플라이트 가드가 없었다면 킬스위치 OFF 경로는 동기적으로 즉시
-      // 완료되므로 두 호출 모두 grant를 만들 여지가 있다. 가드가 정상
-      // 작동하면 최소 1건은 무시되어야 한다(둘 다 통과하면 회귀).
-      expect(captured.length, lessThan(2));
+      // 광고 스위치 OFF 정책에서는 어떤 호출도 진입을 허용하지 않는다.
+      expect(captured, isEmpty);
     });
   });
 

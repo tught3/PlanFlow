@@ -268,10 +268,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         await AnalyticsService.logVoiceConvInitialFreeUsed(
           remainingAfter: result.initialRemaining,
         );
-      } else if (result.source == 'daily_free') {
-        await AnalyticsService.logVoiceConvDailyFreeUsed(
-          remainingAfter: result.dailyRemaining,
-        );
       }
       // 'ad_required' 등 그 외 값은 별도 소비 이벤트가 없다.
     }
@@ -291,7 +287,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       case EntitlementSource.initialFree:
         return VoiceConvSessionSource.initialFree;
       case EntitlementSource.dailyFree:
-        return VoiceConvSessionSource.dailyFree;
+        // 이전 앱/서버 응답 호환용 값이다. 새 RPC는 일일 무료를 반환하거나
+        // 소비하지 않으므로 일일 무료 분석 이벤트로 분기하지 않는다.
+        return VoiceConvSessionSource.initialFree;
       case EntitlementSource.adRewarded:
       case EntitlementSource.adFailedFreePass:
       case EntitlementSource.remoteDisabled:
@@ -1189,9 +1187,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       edited = edited.copyWith(isCritical: true, useStrongAlarm: true);
       // 음성 명령으로 강한 알람을 켠 경우에도 편집 화면과 같은 권한 요청을
       // 즉시 수행한다. 사용자가 거부하면 저장은 유지하고 OS 설정에서 재허용할 수 있다.
-      await widget.permissionService.requestNotificationPermissions();
-      await widget.permissionService.requestExactAlarmPermission();
-      await widget.permissionService.requestFullScreenIntentPermission();
+      final permissionService =
+          widget.permissionService ?? AppPermissionService();
+      await permissionService.requestNotificationPermissions();
+      await permissionService.requestExactAlarmPermission();
+      await permissionService.requestFullScreenIntentPermission();
     }
 
     try {

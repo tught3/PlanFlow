@@ -14,14 +14,11 @@ import 'voice_conversation_entitlement.dart';
 /// 음성 대화 모드(voice conversation) 진입 게이트.
 ///
 /// 1. 음성 대화 버튼 탭(또는 자동 진입 시도) 시점에 호출된다.
-/// 2. 무료 사용 횟수(최초 누적 → 일일)가 남아 있으면 즉시 진입을 허용한다.
+/// 2. 최초 누적 무료 3회가 남아 있으면 즉시 진입을 허용한다.
 /// 3. 무료 사용 횟수를 모두 소진한 경우 광고 다이얼로그를 띄우고,
 ///    사용자가 "광고 보고 시작하기"를 누르면 AdService.showForVoiceConversation을
 ///    호출해 광고를 표시한다.
-/// 4. 광고 실패 시 RemoteConfigService.rewardAdFailurePolicy에 따라
-///    - 'free_pass'  : 이 세션 한 번에 한해 무료 진입을 허용.
-///    - 'retry'      : 진입 거부 (호출자가 다이얼로그/스낵바 등을 처리).
-///    - 'feature_unavailable' : 진입 거부 + 기능 일시 사용 불가 메시지 표시.
+/// 4. 광고 취소·실패·요청 불가·기능 비활성은 모두 진입을 거부한다.
 ///
 /// 설계 메모(2026-08 개편):
 /// - 이 게이트는 더 이상 진입 시점에 무료 사용 횟수를 **소비하지 않는다**
@@ -125,27 +122,8 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 1. 마스터 스위치 OFF → 그냥 진입(무료 소비 없음, 근거만 기록).
-    if (!RemoteConfigService.rewardedAdEnabled) {
-      onEnterAllowed(_grant(EntitlementSource.remoteDisabled));
-      return;
-    }
-    // 2. 음성 대화 모드 광고 비활성 → 그냥 진입.
-    if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');
-      onEnterAllowed(_grant(EntitlementSource.remoteDisabled));
-      return;
-    }
-
-    // 광고 요청 가능 상태 확인. 무료 소진 뒤에는 광고 불가를 무료 통과로
-    // 바꾸지 않는다. 사용자는 재시도해야 한다.
-    final adsOk = await AdConsentService.instance.canRequestAdsLive;
-    if (!adsOk) {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
-      return;
-    }
-
-    // 3. 무료 잔여 횟수 조회(부작용 없음).
+    // 1. 무료 잔여 횟수 조회(부작용 없음). 최초 3회는 광고 SDK 상태와
+    // 관계없이 사용할 수 있어야 하므로 광고 요청 가능 여부보다 먼저 확인한다.
     final peek = await VoiceConversationEntitlementService.instance.peek();
     if (peek == null) {
       // peek 실패: 잔여를 알 수 없다 → fail-closed로 광고가 필요한 것처럼
@@ -167,7 +145,26 @@ class VoiceConversationAdGate {
       await AnalyticsService.logVoiceConvAdRequired();
     }
 
-    // 4. 무료 사용 소진(또는 peek 실패) → 광고 다이얼로그.
+    // 2. 무료 3회 이후에는 광고가 필수다. 광고 기능이 꺼져 있으면 우회
+    // 진입시키지 않고 운영 설정을 고친 뒤 다시 시도하도록 막는다.
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      await AnalyticsService.logVoiceConvGateBlocked(
+          reason: 'rewarded_disabled');
+      return;
+    }
+    if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');
+      return;
+    }
+
+    // 3. 무료 사용 소진(또는 peek 실패) → 광고가 실제로 요청 가능한지 확인.
+    final adsOk = await AdConsentService.instance.canRequestAdsLive;
+    if (!adsOk) {
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
+      return;
+    }
+
+    // 4. 광고 다이얼로그.
     if (!context.mounted) {
       return;
     }
@@ -268,8 +265,8 @@ class VoiceConversationAdGate {
       // 2) 증가 반영.
       await client
           .from('user_settings')
-          .update({'voice_conversation_free_trial_used': nextUsed})
-          .eq('user_id', userId);
+          .update({'voice_conversation_free_trial_used': nextUsed}).eq(
+              'user_id', userId);
       final remaining = limit - nextUsed;
       return remaining < 0 ? 0 : remaining;
     } catch (error, stackTrace) {

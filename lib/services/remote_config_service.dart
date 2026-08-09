@@ -142,9 +142,9 @@ class RemoteConfigService {
   static int get voiceConversationFreeTrialCount =>
       getInt(_kVoiceConversationFreeTrialCount, defaultValue: 3);
 
-  /// 광고 실패 시 정책 ('free_pass' | 'retry' | 'feature_unavailable'). 기본 'free_pass'.
+  /// 광고 실패 시 정책. 음성 대화는 항상 재시도(retry)로 fail-closed 한다.
   static String get rewardAdFailurePolicy =>
-      _remoteConfig?.getString(_kRewardAdFailurePolicy) ?? 'free_pass';
+      _remoteConfig?.getString(_kRewardAdFailurePolicy) ?? 'retry';
 
   /// 홈 화면 음성 대화 진입 버튼 표시 여부. 기본 true.
   static bool get voiceConversationButtonEnabled =>
