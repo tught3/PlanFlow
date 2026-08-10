@@ -4206,9 +4206,8 @@ grant execute on function public.clear_naver_caldav_credentials()
 
 -- ============================================================================
 -- AI일정대화(VoiceConversationScreen) 무료체험 엔타이틀먼트 RPC
--- (migration 20260808000000_voice_conversation_entitlement.sql)
--- 정책: 최초 누적 N회 무료 -> 소진 후 매일 1회(KST 기준) 무료 -> 그마저
--- 소진되면 리워드광고 1편 = 1세션.
+-- 정책: 최초 누적 3회 무료 -> 소진되면 리워드광고 1편 = 1세션.
+-- 기존 daily 컬럼/인자는 호환성을 위해 유지하지만 무료 계산에는 사용하지 않는다.
 -- ============================================================================
 
 -- voice_conversation_entitlement_peek: 읽기 전용 조회(부작용 없음).
@@ -4216,7 +4215,7 @@ drop function if exists public.voice_conversation_entitlement_peek(integer, inte
 
 create or replace function public.voice_conversation_entitlement_peek(
   p_initial_limit integer default 3,
-  p_daily_limit integer default 1
+  p_daily_limit integer default 0
 )
 returns table (
   initial_remaining integer,
@@ -4229,8 +4228,8 @@ set search_path = public
 as $$
 declare
   v_uid uuid := auth.uid();
-  v_initial_limit integer := least(greatest(coalesce(p_initial_limit, 3), 0), 10);
-  v_daily_limit integer := least(greatest(coalesce(p_daily_limit, 1), 0), 5);
+  v_initial_limit integer := 3;
+  v_daily_limit integer := 0;
   v_initial_used integer := 0;
   v_daily_used integer := 0;
   v_daily_date date;
@@ -4284,7 +4283,7 @@ drop function if exists public.consume_voice_conversation_free_usage(text, integ
 create or replace function public.consume_voice_conversation_free_usage(
   p_session_id text,
   p_initial_limit integer default 3,
-  p_daily_limit integer default 1
+  p_daily_limit integer default 0
 )
 returns table (
   source text,
@@ -4297,8 +4296,9 @@ set search_path = public
 as $$
 declare
   v_uid uuid := auth.uid();
-  v_initial_limit integer := least(greatest(coalesce(p_initial_limit, 3), 0), 10);
-  v_daily_limit integer := least(greatest(coalesce(p_daily_limit, 1), 0), 5);
+  v_initial_limit integer := 3;
+  -- 일일 무료 경로는 폐기되었지만 기존 인자는 호환성을 위해 유지한다.
+  v_daily_limit integer := 0;
   v_today date := ((timezone('Asia/Seoul', now()))::date);
   v_row public.user_settings%rowtype;
   v_source text;
@@ -4336,12 +4336,10 @@ begin
           when v_row.voice_conversation_free_trial_used > 0
                and v_row.voice_conversation_free_trial_used <= v_initial_limit
             then 'initial_free'
-          when v_row.voice_conversation_daily_free_used > 0
-            then 'daily_free'
           else 'ad_required'
         end,
         greatest(v_initial_limit - v_row.voice_conversation_free_trial_used, 0),
-        greatest(v_daily_limit - v_row.voice_conversation_daily_free_used, 0);
+        0;
     return;
   end if;
 
@@ -4352,22 +4350,6 @@ begin
      where user_id = v_uid
     returning * into v_row;
     v_source := 'initial_free';
-  elsif v_daily_limit > 0
-        and v_row.voice_conversation_daily_free_date is distinct from v_today then
-    update public.user_settings
-       set voice_conversation_daily_free_date = v_today,
-           voice_conversation_daily_free_used = 1,
-           voice_conversation_last_session_id = p_session_id
-     where user_id = v_uid
-    returning * into v_row;
-    v_source := 'daily_free';
-  elsif v_row.voice_conversation_daily_free_used < v_daily_limit then
-    update public.user_settings
-       set voice_conversation_daily_free_used = voice_conversation_daily_free_used + 1,
-           voice_conversation_last_session_id = p_session_id
-     where user_id = v_uid
-    returning * into v_row;
-    v_source := 'daily_free';
   else
     update public.user_settings
        set voice_conversation_last_session_id = p_session_id
@@ -4380,7 +4362,7 @@ begin
     select
       v_source,
       greatest(v_initial_limit - v_row.voice_conversation_free_trial_used, 0),
-      greatest(v_daily_limit - v_row.voice_conversation_daily_free_used, 0);
+      0;
 end;
 $$;
 

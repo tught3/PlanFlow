@@ -223,12 +223,19 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
+      onDenied: (reason) {
+        if (mounted) {
+          _closeAfterEntryGateDenied(
+            voiceConversationGateDenialMessage(reason),
+          );
+        }
+      },
       onEnterAllowed: (grant) {
         _resolvedEntryGrant = grant;
       },
     );
     _completeEntryGrantReadyIfNeeded();
-    if (_resolvedEntryGrant == null) {
+    if (_resolvedEntryGrant == null && !_entryGateDenied) {
       _closeAfterEntryGateDenied(
         'AI일정대화를 시작할 수 없어요. 잠시 후 다시 시도해 주세요.',
       );

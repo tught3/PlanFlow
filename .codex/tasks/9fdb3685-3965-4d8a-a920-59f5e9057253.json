@@ -1,0 +1,92 @@
+{
+  "task_id": "9fdb3685-3965-4d8a-a920-59f5e9057253",
+  "mode": "CM",
+  "status": "verification",
+  "objective": "Unify important/strong event notifications and correct the AI voice conversation entitlement gate.",
+  "database_approval": "authorized_by_user_plan_instruction; remote apply not performed",
+  "roles": [
+    {
+      "role": "explorer",
+      "agent": "/root/cm_explorer",
+      "agent_type": "flux_explorer",
+      "status": "completed",
+      "summary": "Inspected current notification, voice gate, confirm, and Supabase call paths; confirmed unrelated dirty preservation and remaining runtime verification gaps."
+    },
+    {
+      "role": "planner",
+      "agent": "/root/cm_planner",
+      "agent_type": "flux_planner",
+      "status": "completed",
+      "summary": "Planned single event alarm policy, cancellation semantics, strict 3-session gate, Supabase policy, and verification matrix."
+    },
+    {
+      "role": "implementer",
+      "agent": "/root/cm_implementer",
+      "agent_type": "flux_complex_implementer",
+      "status": "completed",
+      "summary": "Implemented notification cancellation-before-navigation/cold-start handling and reason-specific voice gate feedback."
+    },
+    {
+      "role": "test_executor",
+      "agent": "/root/cm_test_executor",
+      "agent_type": "flux_test_executor",
+      "status": "completed",
+      "commands": [
+        {"command": "flutter test --no-pub test/services/notification_service_test.dart", "exit_code": 0},
+        {"command": "flutter test --no-pub test/services/manual_event_side_effect_service_test.dart", "exit_code": 0},
+        {"command": "flutter test --no-pub test/services/voice_conversation_ad_gate_test.dart", "exit_code": 0},
+        {"command": "flutter test --no-pub test/supabase/voice_conversation_entitlement_schema_test.dart", "exit_code": 0},
+        {"command": "flutter test --no-pub test/screens/confirm_screen_test.dart", "exit_code": 0, "note": "All tests passed after updating the fixture to drain background geocoding timers."},
+        {"command": "flutter analyze", "exit_code": 124, "note": "Dart process contention timeout after 304226ms"}
+      ]
+    },
+    {
+      "role": "reviewer",
+      "agent": "/root/cm_reviewer",
+      "agent_type": "flux_reviewer",
+      "status": "conditional_pass_pending_analyze",
+      "summary": "Confirmed high-risk notification and strict policy fixes after re-review; requested focused test evidence and ACL confirmation."
+    },
+    {
+      "role": "integrator",
+      "agent": "/root/cm_integrator",
+      "agent_type": "flux_integrator",
+      "status": "needs_analyze_evidence"
+    }
+  ],
+  "changed_files": [
+    "lib/services/notification_service.dart",
+    "lib/services/manual_event_side_effect_service.dart",
+    "lib/screens/voice/confirm_screen.dart",
+    "lib/services/voice_conversation_ad_gate.dart",
+    "lib/services/voice_conversation_launcher.dart",
+    "lib/screens/voice/voice_conversation_screen.dart",
+    "lib/screens/voice/voice_input_screen.dart",
+    "supabase/schema.sql",
+    "supabase/migrations/20260809000000_voice_conversation_strict_initial_trial.sql",
+    "supabase/migrations/20260810000000_voice_conversation_strict_consume.sql"
+  ],
+  "preserved_unrelated_dirty": [
+    "planflow_v2_group_home_structure.md",
+    "screenshots/01_home.png",
+    "screenshots/02_voice_input.png",
+    "screenshots/03_event_edit.png",
+    "screenshots/04_calendar.png",
+    "screenshots/05_settings.png",
+    "planflow logo(600) dark.png",
+    "planflow logo(600).png",
+    "planflow-1.jpg",
+    "planflow-2.jpg",
+    "planflow-3.jpg",
+    "planflow-garo.jpg"
+  ],
+  "tests": {
+    "diff_check": "pass",
+    "strict_schema_contract": "pass",
+    "focused": "notification/manual/gate/schema/confirm exit 0; flutter analyze and dart analyze timed out due Dart process contention"
+  },
+  "risks": [
+    "Supabase migration source is prepared but not applied to a remote project.",
+    "Physical Android alarm/audio and rewarded-ad smoke tests require a device/build environment."
+  ]
+}

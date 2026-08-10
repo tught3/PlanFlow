@@ -29,9 +29,8 @@ import 'voice_conversation_entitlement.dart';
 ///   [onEnterAllowed]로 전달한다. grant에는 이 진입을 유일하게 식별하는
 ///   `sessionId`(추후 consume 호출 시 멱등 키로 사용)와 승인 근거([EntitlementSource])가
 ///   담긴다.
-/// - peek() 실패(RPC 오류 등)는 "무료 잔여를 알 수 없음"이므로, Gate 단계에서는
-///   fail-closed(안전 방향)로 광고가 필요한 것처럼 취급한다 — 잘못 무료로
-///   흘려보내는 것보다 광고를 한 번 더 요구하는 쪽이 안전하다.
+/// - peek() 실패(RPC 오류 등)는 "무료 잔여를 알 수 없음"이므로,
+///   광고 우회도 허용하지 않고 재시도 안내와 함께 fail-closed 처리한다.
 /// - 동시 호출 안전: 동일 userId + 같은 진입 흐름에서 두 번 카운트가 차는 것을 막기
 ///   위해 인플라이트 가드(_inFlight)로 보호한다.
 class VoiceConversationAdGate {
@@ -48,6 +47,9 @@ class VoiceConversationAdGate {
 
   /// 동일 userId에 대한 tryEnterVoiceConversation의 동시 호출을 거부.
   final Set<String> _inFlight = <String>{};
+
+  @visibleForTesting
+  VoiceConversationGateDenialReason? lastDenialReason;
 
   /// 무료 사용 한도 (Remote Config). 실패 시 0 반환 (항상 광고).
   int freeTrialLimit() {
@@ -89,7 +91,9 @@ class VoiceConversationAdGate {
     required BuildContext context,
     required String userId,
     required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    void Function(VoiceConversationGateDenialReason reason)? onDenied,
   }) async {
+    lastDenialReason = null;
     if (_inFlight.contains(userId)) {
       // 이미 진행 중이면 사일런트하게 무시 (사용자 인지 불필요).
       return;
@@ -100,6 +104,7 @@ class VoiceConversationAdGate {
         context: context,
         userId: userId,
         onEnterAllowed: onEnterAllowed,
+        onDenied: onDenied,
       );
     } finally {
       _inFlight.remove(userId);
@@ -110,6 +115,7 @@ class VoiceConversationAdGate {
     required BuildContext context,
     required String userId,
     required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    void Function(VoiceConversationGateDenialReason reason)? onDenied,
   }) async {
     final delegate = _delegateForTest;
     if (delegate != null) {
@@ -126,9 +132,17 @@ class VoiceConversationAdGate {
     // 관계없이 사용할 수 있어야 하므로 광고 요청 가능 여부보다 먼저 확인한다.
     final peek = await VoiceConversationEntitlementService.instance.peek();
     if (peek == null) {
-      // peek 실패: 잔여를 알 수 없다 → fail-closed로 광고가 필요한 것처럼
-      // 취급한다(무료로 잘못 흘려보내는 것보다 안전).
+      // 잔여를 확인하지 못한 상태에서는 광고로 우회하지 않는다.
+      // 서버 상태를 확인할 수 있을 때만 무료/광고 분기를 결정한다.
       await AnalyticsService.logVoiceConvAdRequired();
+      await AnalyticsService.logVoiceConvGateBlocked(
+        reason: 'entitlement_unavailable',
+      );
+      _deny(
+        VoiceConversationGateDenialReason.entitlementUnavailable,
+        onDenied,
+      );
+      return;
     } else if (!peek.requiresAd) {
       // 무료 잔여 있음 → 즉시 진입(소비는 화면 쪽에서 처리).
       final source = EntitlementSource.initialFree;
@@ -150,10 +164,12 @@ class VoiceConversationAdGate {
     if (!RemoteConfigService.rewardedAdEnabled) {
       await AnalyticsService.logVoiceConvGateBlocked(
           reason: 'rewarded_disabled');
+      _deny(VoiceConversationGateDenialReason.rewardedDisabled, onDenied);
       return;
     }
     if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');
+      _deny(VoiceConversationGateDenialReason.remoteDisabled, onDenied);
       return;
     }
 
@@ -161,16 +177,19 @@ class VoiceConversationAdGate {
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
+      _deny(VoiceConversationGateDenialReason.adsUnavailable, onDenied);
       return;
     }
 
     // 4. 광고 다이얼로그.
     if (!context.mounted) {
+      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
       return;
     }
     final confirmed = await showVoiceConversationAdDialog(context);
     if (!confirmed) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
+      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
       return;
     }
 
@@ -194,6 +213,15 @@ class VoiceConversationAdGate {
 
     // 광고 실패는 항상 진입 거부다. 4회째부터 광고 완료가 필수다.
     await AnalyticsService.logVoiceConvGateBlocked(reason: 'ad_failed_retry');
+    _deny(VoiceConversationGateDenialReason.adFailed, onDenied);
+  }
+
+  void _deny(
+    VoiceConversationGateDenialReason reason,
+    void Function(VoiceConversationGateDenialReason reason)? callback,
+  ) {
+    lastDenialReason = reason;
+    callback?.call(reason);
   }
 
   VoiceConversationEntryGrant _grant(
@@ -291,6 +319,35 @@ class VoiceConversationAdGate {
     final now = DateTime.now().microsecondsSinceEpoch;
     final random = now.toRadixString(36);
     return 'voice_conv_$now-$random';
+  }
+}
+
+enum VoiceConversationGateDenialReason {
+  inFlight,
+  entitlementUnavailable,
+  rewardedDisabled,
+  remoteDisabled,
+  adsUnavailable,
+  userCanceled,
+  adFailed,
+}
+
+String voiceConversationGateDenialMessage(
+    VoiceConversationGateDenialReason reason) {
+  switch (reason) {
+    case VoiceConversationGateDenialReason.inFlight:
+      return 'AI일정대화를 여는 중이에요. 잠시만 기다려 주세요.';
+    case VoiceConversationGateDenialReason.entitlementUnavailable:
+      return '무료 사용 횟수를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    case VoiceConversationGateDenialReason.rewardedDisabled:
+    case VoiceConversationGateDenialReason.remoteDisabled:
+      return 'AI일정대화를 지금 시작할 수 없어요. 잠시 후 다시 시도해 주세요.';
+    case VoiceConversationGateDenialReason.adsUnavailable:
+      return '광고를 불러올 수 없어 AI일정대화를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    case VoiceConversationGateDenialReason.userCanceled:
+      return '광고를 취소해 AI일정대화를 시작하지 않았어요.';
+    case VoiceConversationGateDenialReason.adFailed:
+      return '광고가 완료되지 않아 AI일정대화를 시작하지 못했어요. 다시 시도해 주세요.';
   }
 }
 

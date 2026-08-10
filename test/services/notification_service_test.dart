@@ -159,7 +159,7 @@ void main() {
     test('uses the distinct critical alarm channel and sound', () {
       expect(
         NotificationService.criticalAlarmChannelId,
-        'critical_alarms_v6_alarmstream',
+        'critical_alarms_v7_strong_sound',
       );
       expect(
         NotificationService.criticalAlarmSoundResource,
@@ -365,6 +365,34 @@ void main() {
       expect(notifications.remindTomorrowEventId, 'event-1');
     });
 
+    test('acknowledge and body tap cancel all event notifications', () async {
+      final ack = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload: 'event:event-ack',
+      );
+      final bodyTap = NotificationResponse(
+        notificationResponseType: NotificationResponseType.selectedNotification,
+        payload: 'event:event-body',
+      );
+      final notifications = _FakeNotificationService();
+
+      await handleNotificationResponseAction(
+        ack,
+        notificationService: notifications,
+      );
+      await handleNotificationResponseAction(
+        bodyTap,
+        notificationService: notifications,
+      );
+
+      expect(
+        notifications.cancelledEventIds,
+        containsAll(<String>['event-ack', 'event-body']),
+      );
+    });
+
     test('important alarm tomorrow reminder is scheduled for 9 AM next day',
         () {
       expect(
@@ -382,6 +410,23 @@ void main() {
       expect(source, contains("'확인'"));
       expect(source, contains("'내일 오전 9시'"));
       expect(source, contains('criticalRemindTomorrowActionId'));
+    });
+
+    test('strong alarm changes only sound/vibration profile', () {
+      final source =
+          File('lib/services/notification_service.dart').readAsStringSync(
+        encoding: utf8,
+      );
+
+      expect(source, contains("useStrongAlarm ? criticalAlarmChannelId"));
+      expect(source,
+          contains("useStrongAlarm ? RawResourceAndroidNotificationSound"));
+      expect(source, contains('fullScreenIntent: false'));
+      expect(source, contains('autoCancel: true'));
+      expect(source, contains('category: AndroidNotificationCategory.event'));
+      expect(source, contains('actions: _criticalActions'));
+      expect(source, contains('AudioAttributesUsage.alarm'));
+      expect(source, contains('AudioAttributesUsage.notification'));
     });
 
     test('departure notification has only the departure action', () {
@@ -415,6 +460,17 @@ void main() {
 
 class _FakeNotificationService extends NotificationService {
   String? remindTomorrowEventId;
+  final List<String> cancelledEventIds = <String>[];
+
+  @override
+  Future<void> cancelEventNotifications(String eventId) async {
+    cancelledEventIds.add(eventId);
+  }
+
+  @override
+  Future<void> cancelEventReminderNotifications(String eventId) async {
+    cancelledEventIds.add(eventId);
+  }
 
   @override
   Future<NotificationScheduleResult> scheduleCriticalReminderTomorrow({

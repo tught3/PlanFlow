@@ -45,6 +45,38 @@ void main() {
       expect(payloads.single['is_sent'], false);
     });
 
+    test('critical event still gets one alarm when reminder is disabled', () {
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: _FakeNotificationService(),
+      );
+      final startAt = DateTime.now().add(const Duration(minutes: 5));
+      final event = EventModel(
+        id: 'event-critical-no-reminder',
+        userId: 'user-1',
+        title: '임박 중요 일정',
+        startAt: startAt,
+        isCritical: true,
+      );
+
+      final payloads = service.buildReminderPayloads(
+        event: event,
+        userId: 'user-1',
+        reminderOffset: null,
+        criticalAlarmOffset: null,
+      );
+
+      expect(payloads, hasLength(1));
+      expect(payloads.single['type'], 'system_alarm');
+      expect(
+        DateTime.parse(payloads.single['notify_at'] as String)
+            .isAfter(DateTime.now()),
+        isTrue,
+      );
+    });
+
     // [PREVENT] 1시간 이내 시작 일정은 reminder(기본 60분 전)가 과거가 되어
     // 스킵되던 버그 → 시작 정각으로 보정해 알림이 오게 한다.
     test('1시간 이내 시작 일정은 reminder를 시작 정각에 예약한다(60분 전이 과거여도 스킵 안 함)', () async {
@@ -87,7 +119,7 @@ void main() {
         title: '중요 발표',
         startAt: DateTime.now().add(const Duration(hours: 3)),
         isCritical: true,
-        // 3bc6a28 이후 system_alarm은 useStrongAlarm 필드로 제어됨 (isCritical과 분리)
+        // 중요 일정은 일반 push와 중복하지 않고 한 건으로 예약한다.
         useStrongAlarm: true,
       );
 
@@ -100,13 +132,10 @@ void main() {
       expect(gateway.deletedReminderEventIds, ['event-2']);
       expect(gateway.deletedPreActionEventIds, ['event-2']);
       expect(departure.clearedAcknowledgementEventIds, ['event-2']);
-      expect(gateway.insertedReminders, hasLength(2));
-      expect(gateway.insertedReminders.map((row) => row['type']), [
-        'push',
-        'system_alarm',
-      ]);
+      expect(gateway.insertedReminders, hasLength(1));
+      expect(gateway.insertedReminders.single['type'], 'system_alarm');
       expect(notifications.cancelledEventIds, ['event-2']);
-      expect(notifications.scheduledEventReminderIds, hasLength(1));
+      expect(notifications.scheduledEventReminderIds, isEmpty);
       expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
       expect(
         notifications.scheduledCriticalNotifyAts.single,
@@ -138,9 +167,7 @@ void main() {
         locationLat: 37.4979,
         locationLng: 127.0276,
         isCritical: false,
-        // 3bc6a28 이후 system_alarm은 useStrongAlarm 필드로 제어됨.
-        // pre-action 생성 시 isCritical이 true로 자동 설정되지만
-        // useStrongAlarm은 사용자 토글 값 그대로 유지됨.
+        // pre-action 생성 시 isCritical이 true로 자동 설정된다.
         useStrongAlarm: true,
       );
 
@@ -155,7 +182,7 @@ void main() {
       expect(repository.updatedEvents.single.isCritical, isTrue);
       expect(
         gateway.insertedReminders.map((row) => row['type']),
-        containsAll(<String>['push', 'system_alarm']),
+        contains('system_alarm'),
       );
       expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
     });
@@ -595,16 +622,15 @@ void main() {
           .where((e) => e.id == 'location-event')
           .toList();
       expect(
-        updatesForEvent
-            .every((e) => e.location != 'Wonju Severance Christian Hospital (official)'),
+        updatesForEvent.every((e) =>
+            e.location != 'Wonju Severance Christian Hospital (official)'),
         true,
         reason: 'POI 검색 공식명이 사용자 location 원문을 덮어쓰면 안 된다.',
       );
       final coordBackfills = updatesForEvent
           .where((e) => e.locationLat == 37.3421 && e.locationLng == 127.9421)
           .toList();
-      expect(coordBackfills, isNotEmpty,
-          reason: '좌표 backfill이 최소 1회 일어나야 한다.');
+      expect(coordBackfills, isNotEmpty, reason: '좌표 backfill이 최소 1회 일어나야 한다.');
       expect(
         coordBackfills.every((e) => e.location == '원주세브란스'),
         true,
@@ -716,12 +742,12 @@ void main() {
       );
 
       expect(result, true);
-      expect(gateway.insertedReminders, hasLength(2));
+      expect(gateway.insertedReminders, hasLength(1));
       expect(
         gateway.insertedReminders.map((row) => row['type']),
-        containsAll(<String>['push', 'system_alarm']),
+        contains('system_alarm'),
       );
-      expect(notifications.scheduledEventReminderIds, hasLength(1));
+      expect(notifications.scheduledEventReminderIds, isEmpty);
       expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
     });
 
@@ -1398,6 +1424,7 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);
@@ -1410,6 +1437,7 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);

@@ -40,6 +40,7 @@ class VoiceInputScreen extends StatefulWidget {
   final GptService? gptService;
   final VoiceCommandAnalysisService? voiceAnalysisService;
   final bool? autoStartOverride;
+
   /// query intent(일정 조회) → AI일정대화 진입 게이트에 쓰일 userId를
   /// 강제 지정한다. null이면 실제 로그인 세션(Supabase auth)에서 읽는다.
   /// 테스트 전용 백도어이며 프로덕션 경로에서는 지정하지 않는다.
@@ -1012,6 +1013,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
+      onDenied: (reason) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                  content: Text(voiceConversationGateDenialMessage(reason))),
+            );
+        }
+      },
       onEnterAllowed: (VoiceConversationEntryGrant grant) {
         if (!mounted || submitGeneration != _submitGeneration) {
           return;

@@ -953,6 +953,7 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     criticalTitles.add(title);
     criticalBodies.add(body);

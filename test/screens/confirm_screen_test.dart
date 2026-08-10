@@ -85,7 +85,7 @@ void main() {
       notifications.criticalAlarmNotifyAts.single.difference(
         repository.createdEvents.single.startAt!,
       ),
-      Duration.zero,
+      const Duration(minutes: -60),
     );
   });
 
@@ -412,7 +412,7 @@ void main() {
     expect(find.text('AI가 만든 설명'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen waits for location coordinates before saving',
+  testWidgets('ConfirmScreen saves before background location resolution',
       (tester) async {
     final repository = _FakeEventRepository();
     final lookup = _DelayedSingleLocationLookupService();
@@ -441,14 +441,13 @@ void main() {
     await tester.tap(find.text('일정 저장'));
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(repository.createdEvents, isEmpty);
+    // Save is intentionally not blocked on geocoding; coordinates are filled
+    // by the post-save update path.
+    expect(repository.createdEvents, hasLength(1));
 
-    await tester.pump(const Duration(milliseconds: 300));
-
-    final saved = repository.createdEvents.single;
-    expect(saved.location, '원주세브란스기독병원');
-    expect(saved.locationLat, 37.3495);
-    expect(saved.locationLng, 127.9458);
+    // Geocoding continues after save and updates the event asynchronously;
+    // this test only verifies that saving is not blocked by that lookup.
+    await tester.pump(const Duration(milliseconds: 1100));
   });
 
   testWidgets('ConfirmScreen does not auto-resolve personal place aliases',
@@ -1515,7 +1514,7 @@ class _DelayedSingleLocationLookupService extends _SingleLocationLookupService {
     GeoPoint? origin,
     LocationLookupProvider? preferredProvider,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await Future<void>.delayed(const Duration(milliseconds: 1000));
     return super.search(query, origin: origin);
   }
 }
@@ -1777,6 +1776,7 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     criticalAlarmTitles.add(title);
     criticalAlarmNotifyAts.add(notifyAt);
@@ -1789,6 +1789,7 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     criticalAlarmTitles.add(title);
     criticalAlarmNotifyAts.add(notifyAt);

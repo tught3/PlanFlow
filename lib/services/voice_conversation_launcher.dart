@@ -92,6 +92,11 @@ class VoiceConversationLauncher {
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
+      onDenied: (reason) {
+        if (context.mounted) {
+          _showSnack(context, voiceConversationGateDenialMessage(reason));
+        }
+      },
       onEnterAllowed: (VoiceConversationEntryGrant grant) {
         if (!context.mounted) return;
         final route = shouldAutoStart

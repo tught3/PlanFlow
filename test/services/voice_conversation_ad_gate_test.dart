@@ -13,15 +13,10 @@ import 'package:planflow/services/voice_conversation_entitlement.dart';
 /// 그 grant.source가 승인 근거([EntitlementSource])를 담는다.
 ///
 /// 테스트 전략:
-/// - "킬스위치 OFF" 분기(무료 소진 뒤)는 RemoteConfigService가 Firebase 미초기화
-///   상태(테스트 환경 기본값)에서 rewardedAdEnabled가 항상 false로 폴백하는
-///   실제 프로덕션 동작을 그대로 이용해, 실제 `_runGate` 코드 경로를 검증한다.
-/// - 그 외 5개 분기(음성전용 비활성/광고요청불가+free_pass/무료잔여있음
-///   (최초·일일)/광고시청성공/광고실패 3정책)는 RemoteConfigService·
-///   AdConsentService·AdService가 정적 싱글톤이라 이 프로젝트에 테스트 주입
-///   지점이 없으므로, `VoiceConversationAdGateDelegate` 백도어(기존
-///   `voice_conversation_launcher_test.dart`가 쓰는 것과 동일한 패턴)를 통해
-///   각 분기가 만들어야 할 grant.source 계약을 검증한다.
+/// - Firebase 미초기화 환경에서는 실제 `_runGate`가 광고 비활성 상태를
+///   fail-closed로 처리하는지 검증한다.
+/// - 정적 광고 SDK 의존성이 있는 성공/거부 분기는 delegate를 통해
+///   “초기 3회 무료”와 “광고 보상 완료”만 허용되는 계약을 검증한다.
 void main() {
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -106,99 +101,34 @@ void main() {
     });
   });
 
-  group('6개 광고 분기 (delegate 경유 정책 계약)', () {
-    testWidgets('1) 킬스위치 OFF → remoteDisabled, 진입 허용', (tester) async {
-      final captured = await _runScenario(
-        tester,
-        delegate: _ScenarioAdGateDelegate.allow(
-          source: EntitlementSource.remoteDisabled,
-        ),
-      );
-
-      expect(captured, isNotNull);
-      expect(captured!.source, EntitlementSource.remoteDisabled);
-    });
-
-    testWidgets('2) 음성 대화 모드 광고 자체 비활성 → remoteDisabled, 진입 허용', (
-      tester,
-    ) async {
-      final captured = await _runScenario(
-        tester,
-        delegate: _ScenarioAdGateDelegate.allow(
-          source: EntitlementSource.remoteDisabled,
-        ),
-      );
-
-      expect(captured, isNotNull);
-      expect(captured!.source, EntitlementSource.remoteDisabled);
-    });
-
+  group('strict 무료 3회/광고 보상 계약 (delegate 경유)', () {
     testWidgets(
-      '3) 광고 요청 불가(canRequestAdsLive=false) + policy=free_pass → '
-      'adsUnavailableFreePass, 진입 허용',
-      (tester) async {
-        final captured = await _runScenario(
-          tester,
-          delegate: _ScenarioAdGateDelegate.allow(
-            source: EntitlementSource.adsUnavailableFreePass,
-          ),
-        );
-
-        expect(captured, isNotNull);
-        expect(captured!.source, EntitlementSource.adsUnavailableFreePass);
-      },
-    );
-
-    testWidgets(
-      '3-거부) 광고 요청 불가 + policy != free_pass → 진입 거부(onEnterAllowed 미호출)',
-      (tester) async {
-        final captured = await _runScenario(
-          tester,
-          delegate: _ScenarioAdGateDelegate.deny(),
-        );
-
-        expect(captured, isNull);
-      },
-    );
-
-    testWidgets(
-      '4a) peek 결과 최초 무료 잔여 있음(initialRemaining>0) → initialFree, 진입 허용',
+      '초기 무료 잔여가 있으면 initialFree로 진입 허용',
       (tester) async {
         final captured = await _runScenario(
           tester,
           delegate: _ScenarioAdGateDelegate.allow(
             source: EntitlementSource.initialFree,
             initialRemainingAtGate: 2,
-            dailyRemainingAtGate: 1,
+            dailyRemainingAtGate: 0,
           ),
         );
 
         expect(captured, isNotNull);
         expect(captured!.source, EntitlementSource.initialFree);
         expect(captured.initialRemainingAtGate, 2);
-        expect(captured.dailyRemainingAtGate, 1);
+        expect(captured.dailyRemainingAtGate, 0);
       },
     );
 
-    testWidgets(
-      '4b) peek 결과 최초 무료 소진(initialRemaining=0)이지만 일일 무료 잔여 있음 → '
-      'dailyFree, 진입 허용',
-      (tester) async {
-        final captured = await _runScenario(
-          tester,
-          delegate: _ScenarioAdGateDelegate.allow(
-            source: EntitlementSource.dailyFree,
-            initialRemainingAtGate: 0,
-            dailyRemainingAtGate: 1,
-          ),
-        );
+    testWidgets('초기 무료 소진 후에는 dailyFree 우회가 허용되지 않는다', (tester) async {
+      final captured = await _runScenario(
+        tester,
+        delegate: _ScenarioAdGateDelegate.deny(),
+      );
 
-        expect(captured, isNotNull);
-        expect(captured!.source, EntitlementSource.dailyFree);
-        expect(captured.initialRemainingAtGate, 0);
-        expect(captured.dailyRemainingAtGate, 1);
-      },
-    );
+      expect(captured, isNull);
+    });
 
     testWidgets('5) 무료 소진 → 광고 다이얼로그 확인 → 광고 시청 완료 → adRewarded, 진입 허용', (
       tester,
@@ -214,24 +144,7 @@ void main() {
       expect(captured!.source, EntitlementSource.adRewarded);
     });
 
-    testWidgets(
-      '6a) 광고 시청 실패 + policy=free_pass → adFailedFreePass, 진입 허용',
-      (tester) async {
-        final captured = await _runScenario(
-          tester,
-          delegate: _ScenarioAdGateDelegate.allow(
-            source: EntitlementSource.adFailedFreePass,
-          ),
-        );
-
-        expect(captured, isNotNull);
-        expect(captured!.source, EntitlementSource.adFailedFreePass);
-      },
-    );
-
-    testWidgets('6b) 광고 시청 실패 + policy=retry → 진입 거부(onEnterAllowed 미호출)', (
-      tester,
-    ) async {
+    testWidgets('광고 실패는 진입을 거부한다', (tester) async {
       final captured = await _runScenario(
         tester,
         delegate: _ScenarioAdGateDelegate.deny(),
@@ -239,18 +152,6 @@ void main() {
 
       expect(captured, isNull);
     });
-
-    testWidgets(
-      '6c) 광고 시청 실패 + policy=feature_unavailable → 진입 거부(onEnterAllowed 미호출)',
-      (tester) async {
-        final captured = await _runScenario(
-          tester,
-          delegate: _ScenarioAdGateDelegate.deny(),
-        );
-
-        expect(captured, isNull);
-      },
-    );
   });
 }
 

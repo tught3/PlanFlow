@@ -1064,27 +1064,28 @@ class ManualEventSideEffectService {
 
     final payloads = <Map<String, dynamic>>[];
 
-    if (reminderOffset != null) {
-      payloads.add(
-        _reminderPayload(
-          eventId: event.id,
-          userId: userId,
-          type: 'push',
-          notifyAt: startAt.subtract(reminderOffset),
-        ),
-      );
-    }
-
-    final criticalNotifyAt = criticalAlarmOffset == null
-        ? null
-        : _resolveCriticalNotifyAt(startAt, criticalAlarmOffset);
-    if (event.useStrongAlarm && criticalNotifyAt != null) {
+    final criticalNotifyAt = event.isCritical
+        ? _resolveCriticalNotifyAt(
+            startAt,
+            criticalAlarmOffset ?? Duration.zero,
+          )
+        : null;
+    if (event.isCritical && criticalNotifyAt != null) {
       payloads.add(
         _reminderPayload(
           eventId: event.id,
           userId: userId,
           type: 'system_alarm',
           notifyAt: criticalNotifyAt,
+        ),
+      );
+    } else if (reminderOffset != null) {
+      payloads.add(
+        _reminderPayload(
+          eventId: event.id,
+          userId: userId,
+          type: 'push',
+          notifyAt: startAt.subtract(reminderOffset),
         ),
       );
     }
@@ -1113,7 +1114,15 @@ class ManualEventSideEffectService {
         startAt.isAfter(now)) {
       reminderNotifyAt = startAt;
     }
-    if (reminderNotifyAt != null && reminderNotifyAt.isAfter(now)) {
+    final criticalNotifyAt = event.isCritical
+        ? _resolveCriticalNotifyAt(
+            startAt,
+            criticalAlarmOffset ?? Duration.zero,
+          )
+        : null;
+    if (!event.isCritical &&
+        reminderNotifyAt != null &&
+        reminderNotifyAt.isAfter(now)) {
       await _notifications.scheduleEventReminder(
         id: _notifications.notificationIdFor('${event.id}:push'),
         title: event.title,
@@ -1123,16 +1132,14 @@ class ManualEventSideEffectService {
       );
     }
 
-    final criticalNotifyAt = criticalAlarmOffset == null
-        ? null
-        : _resolveCriticalNotifyAt(startAt, criticalAlarmOffset);
-    if (event.useStrongAlarm && criticalNotifyAt != null) {
+    if (event.isCritical && criticalNotifyAt != null) {
       final result = await _notifications.scheduleCriticalAlarmWithResult(
         id: _notifications.notificationIdFor('${event.id}:critical'),
         title: event.title,
         body: '중요 일정이 곧 시작됩니다.',
         notifyAt: criticalNotifyAt,
         payload: 'event:${event.id}',
+        useStrongAlarm: event.useStrongAlarm,
       );
       if (!result.isScheduled) {
         throw StateError(result.message ?? '중요 알람 예약 실패');

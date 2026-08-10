@@ -54,7 +54,9 @@ class NotificationService {
   // 기본음으로 되돌렸었고, 5834431에서 raw 사운드만 재도입한 뒤 alarm usage는
   // 복원되지 않아 무음 회귀가 발생했다. 채널 id를 반드시 함께 올려야
   // 기존 기기에서도 새 오디오 스트림 설정이 적용된다(Android 채널 불변 정책).
-  static const String criticalAlarmChannelId = 'critical_alarms_v6_alarmstream';
+  static const String criticalAlarmChannelId =
+      'critical_alarms_v7_strong_sound';
+  static const String importantAlarmChannelId = 'important_alarms_v1';
 
   /// 과거 사용됐던 채널 id 이력. 앱 초기화 시 정리 대상이며, 반드시 현재
   /// [eventReminderChannelId]/[criticalAlarmChannelId]와 겹치지 않아야 한다.
@@ -71,6 +73,7 @@ class NotificationService {
     'critical_alarms_v3_loud',
     'critical_alarms_v4_safe',
     'critical_alarms_v5_distinct',
+    'critical_alarms_v6_alarmstream',
   ];
 
   @visibleForTesting
@@ -256,6 +259,7 @@ class NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     await scheduleCriticalAlarmWithResult(
       id: id,
@@ -263,6 +267,7 @@ class NotificationService {
       notifyAt: notifyAt,
       body: body,
       payload: payload,
+      useStrongAlarm: useStrongAlarm,
     );
   }
 
@@ -272,6 +277,7 @@ class NotificationService {
     required DateTime notifyAt,
     String? body,
     String? payload,
+    bool useStrongAlarm = true,
   }) async {
     if (!notifyAt.isAfter(DateTime.now())) {
       debugPrint('Critical alarm skipped because notifyAt is past: $notifyAt');
@@ -288,8 +294,9 @@ class NotificationService {
         'exact alarm before critical notification',
         _requestExactAlarmPermissionIfNeeded,
       );
-      final fullScreenIntentAllowed =
-          await _requestFullScreenIntentPermissionBestEffort();
+      // Event reminders never use full-screen UI. The strong profile changes
+      // only the sound/vibration channel; it must not create a second alarm
+      // surface or keep a stale notification alive after a tap.
       final status = await checkPermissionStatus();
       if (status.notificationsEnabled == false) {
         debugPrint(
@@ -303,8 +310,9 @@ class NotificationService {
           message: _criticalAlarmPermissionMessage(status),
         );
       }
-      final alarmTitle = criticalAlarmDisplayTitle(title);
-      final alarmBody = criticalAlarmDisplayBody(title: title, body: body);
+      final alarmTitle = title.trim().isEmpty ? '중요 일정' : title.trim();
+      final alarmBody =
+          body?.trim().isNotEmpty == true ? body!.trim() : '중요 일정이 곧 시작됩니다.';
       await _scheduleNotification(
         id: id,
         title: alarmTitle,
@@ -313,10 +321,7 @@ class NotificationService {
         details: _criticalAlarmDetails(
           title: alarmTitle,
           body: alarmBody,
-          fullScreenIntent: shouldUseCriticalFullScreenIntent(
-            status: status,
-            requestResult: fullScreenIntentAllowed,
-          ),
+          useStrongAlarm: useStrongAlarm,
         ),
         androidScheduleMode: criticalAlarmScheduleModeForStatus(status),
         payload: payload,
@@ -326,7 +331,7 @@ class NotificationService {
         notifyAt: notifyAt,
         message: _criticalAlarmScheduleWarning(
           status: status,
-          fullScreenIntentAllowed: fullScreenIntentAllowed,
+          fullScreenIntentAllowed: null,
         ),
       );
     } catch (error, stackTrace) {
@@ -533,6 +538,14 @@ class NotificationService {
     await cancel(notificationIdFor('$eventId:departure'));
     await cancelSmartPreparationAlarms(eventId);
     await cancelPreActionAlarms(eventId);
+  }
+
+  /// Cancels only the event reminder channels. Departure and smart-prep
+  /// alarms belong to separate user actions and must not be cleared when a
+  /// user acknowledges or opens the event reminder itself.
+  Future<void> cancelEventReminderNotifications(String eventId) async {
+    await cancel(notificationIdFor('$eventId:push'));
+    await cancel(notificationIdFor('$eventId:critical'));
   }
 
   Future<void> cancelDepartureNotifications(String eventId) async {
@@ -768,11 +781,14 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse:
           _backgroundNotificationResponseCallback,
       onDidReceiveNotificationResponse: (response) {
-        unawaited(handleNotificationResponseAction(response));
-        final route = routeForNotificationResponse(response);
-        if (route != null) {
-          appRouter.go(route);
-        }
+        // Acknowledge/body taps must cancel every pending event alarm before
+        // navigating; otherwise the detail screen can be opened while the
+        // same alarm remains armed.
+        unawaited(() async {
+          await handleNotificationResponseAction(response);
+          final route = routeForNotificationResponse(response);
+          if (route != null) appRouter.go(route);
+        }());
       },
     );
     await _ensureAndroidNotificationChannels();
@@ -810,7 +826,7 @@ class NotificationService {
         criticalAlarmChannelId,
         _criticalAlarmChannelName,
         description: _criticalAlarmChannelDescription,
-        importance: Importance.max,
+        importance: Importance.high,
         playSound: true,
         sound: RawResourceAndroidNotificationSound(
           criticalAlarmSoundResource,
@@ -829,12 +845,24 @@ class NotificationService {
         audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        importantAlarmChannelId,
+        _criticalAlarmChannelName,
+        description: _criticalAlarmChannelDescription,
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList(<int>[0, 300, 120, 300]),
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      ),
+    );
 
     await _deleteLegacyChannels(android);
   }
 
   /// 채널 id를 bump할 때마다 남는 구 채널을 정리한다. 현재 사용 중인
-  /// [eventReminderChannelId]/[criticalAlarmChannelId]는 절대 지우지 않는다.
+  /// 현재 사용하는 세 채널은 절대 지우지 않는다.
   Future<void> _deleteLegacyChannels(
     AndroidFlutterLocalNotificationsPlugin android,
   ) async {
@@ -842,7 +870,10 @@ class NotificationService {
       ...legacyEventReminderChannelIds,
       ...legacyCriticalAlarmChannelIds,
     }..removeWhere(
-        (id) => id == eventReminderChannelId || id == criticalAlarmChannelId,
+        (id) =>
+            id == eventReminderChannelId ||
+            id == criticalAlarmChannelId ||
+            id == importantAlarmChannelId,
       );
 
     for (final legacyId in legacyIds) {
@@ -1048,42 +1079,43 @@ class NotificationService {
   NotificationDetails _criticalAlarmDetails({
     required String title,
     required String body,
-    required bool fullScreenIntent,
+    bool useStrongAlarm = true,
   }) {
+    final channelId =
+        useStrongAlarm ? criticalAlarmChannelId : importantAlarmChannelId;
+    final sound = useStrongAlarm
+        ? RawResourceAndroidNotificationSound(criticalAlarmSoundResource)
+        : null;
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        criticalAlarmChannelId,
+        channelId,
         _criticalAlarmChannelName,
         channelDescription: _criticalAlarmChannelDescription,
-        importance: Importance.max,
-        priority: Priority.max,
+        importance: Importance.high,
+        priority: Priority.high,
         styleInformation: BigTextStyleInformation(
           body,
           contentTitle: title,
           summaryText: '놓치면 안 되는 중요 알람',
         ),
-        category: AndroidNotificationCategory.alarm,
-        fullScreenIntent: fullScreenIntent,
+        category: AndroidNotificationCategory.event,
+        fullScreenIntent: false,
         channelAction: AndroidNotificationChannelAction.update,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound(
-          criticalAlarmSoundResource,
-        ),
+        sound: sound,
         enableVibration: true,
-        autoCancel: false,
-        color: _criticalAlarmColor,
-        colorized: true,
-        enableLights: true,
-        ledColor: _criticalAlarmColor,
-        ledOnMs: 1000,
-        ledOffMs: 500,
+        autoCancel: true,
         vibrationPattern: Int64List.fromList(
-          <int>[0, 1200, 250, 1200, 250, 1600],
+          useStrongAlarm
+              ? <int>[0, 1200, 250, 1200, 250, 1600]
+              : <int>[0, 300, 120, 300],
         ),
         visibility: NotificationVisibility.public,
-        ticker: '중요 일정 알람',
+        ticker: '중요 일정 알림',
         actions: _criticalActions,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
+        audioAttributesUsage: useStrongAlarm
+            ? AudioAttributesUsage.alarm
+            : AudioAttributesUsage.notification,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
@@ -1150,6 +1182,9 @@ class NotificationService {
     if (response == null) {
       return null;
     }
+    // Cold-start body taps use this path instead of the foreground callback;
+    // apply the same cancellation semantics before returning the route.
+    await handleNotificationResponseAction(response, notificationService: this);
     return routeForNotificationResponse(response);
   }
 
@@ -1226,8 +1261,8 @@ class NotificationService {
 
     final blockerText =
         blockers.isEmpty ? 'Android 알림 설정' : blockers.join(', ');
-    return '중요 알람을 강하게 울리려면 $blockerText 권한이 필요합니다. '
-        '휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요. 폴드/플립 겉화면 노출은 기기 정책에 따라 달라질 수 있습니다.';
+    return '중요 알림을 예약하려면 $blockerText 권한이 필요합니다. '
+        '휴대폰 설정에서 PlanFlow 알림과 알람 및 리마인더 허용 상태를 확인해 주세요.';
   }
 
   String? _criticalAlarmScheduleWarning({
@@ -1310,6 +1345,20 @@ Future<void> handleNotificationResponseAction(
     if (eventId.isNotEmpty) {
       await (notificationService ?? NotificationService())
           .scheduleCriticalReminderTomorrow(eventId: eventId);
+    }
+    return;
+  }
+
+  // Critical acknowledgement and a regular event body tap both mean the
+  // user has acted on the event. Cancel all sibling alarms before routing.
+  if (payload.startsWith('event:') &&
+      (actionId == NotificationService.criticalAcknowledgedActionId ||
+          response.notificationResponseType ==
+              NotificationResponseType.selectedNotification)) {
+    final eventId = payload.substring('event:'.length).trim();
+    if (eventId.isNotEmpty) {
+      await (notificationService ?? NotificationService())
+          .cancelEventReminderNotifications(eventId);
     }
   }
 }
