@@ -1,0 +1,29 @@
+{
+  "task_id": "8c7f3d21-4e5a-4a8d-b8e2-voice-loader-coordinates-widget",
+  "request": "음성 일정 입력 로더 전환, 편집 화면 장소 좌표 보존, 위젯 콜드스타트 후 음성 입력 자동 진입",
+  "status": "planned",
+  "roles": {
+    "explorer": {"agent": "date_explorer", "result": "completed", "evidence": "코드 경로 및 회귀 원인 조사 보고"},
+    "planner": {"agent": "date_planner", "result": "completed", "evidence": "허용 파일·수용 테스트·완료 게이트 계획"},
+    "implementer": {"agent": "date_implementer", "result": "assigned"},
+    "test_executor": {"agent": "cm_test_executor", "result": "pending"},
+    "reviewer": {"agent": "cm_reviewer", "result": "pending"},
+    "integrator": {"agent": "cm_integrator", "result": "pending"}
+  },
+  "allowed_files": [
+    "lib/screens/voice/confirm_screen.dart",
+    "lib/screens/event/event_edit_screen.dart",
+    "lib/app.dart",
+    "lib/core/startup_route_gate.dart",
+    "lib/screens/voice/voice_input_screen.dart",
+    "test/screens/confirm_screen_test.dart",
+    "test/screens/event_edit_screen_test.dart",
+    "test/app_home_widget_route_test.dart",
+    "test/screens/voice_input_screen_test.dart"
+  ],
+  "forbidden_files": ["android/app/src/main", "lib/core/router.dart", "lib/data/models/event_model.dart", "supabase"],
+  "tests": [],
+  "changed_files": [],
+  "review_findings": [],
+  "last_update": "2026-08-10T00:00:00+09:00"
+}
