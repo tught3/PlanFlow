@@ -1,7 +1,7 @@
 {
   "task_id": "8c7f3d21-4e5a-4a8d-b8e2-voice-loader-coordinates-widget",
   "request": "음성 일정 입력 로더 전환, 편집 화면 장소 좌표 보존, 위젯 콜드스타트 후 음성 입력 자동 진입",
-  "status": "implemented_with_verification_gap",
+  "status": "deployed_with_verification_gap",
   "roles": {
     "explorer": {"agent": "date_explorer", "result": "completed", "evidence": "코드 경로 및 회귀 원인 조사 보고"},
     "planner": {"agent": "date_planner", "result": "completed", "evidence": "허용 파일·수용 테스트·완료 게이트 계획"},
@@ -32,6 +32,15 @@
     {"command": "dart analyze lib/screens/voice/confirm_screen.dart lib/screens/event/event_edit_screen.dart lib/app.dart", "exit_code": 124, "note": "Dart process contention timeout"}
   ],
   "changed_files": ["lib/screens/voice/confirm_screen.dart", "lib/screens/event/event_edit_screen.dart", "lib/app.dart", "test/screens/event_edit_screen_test.dart", ".codex/tasks/8c7f3d21-4e5a-4a8d-b8e2-voice-loader-coordinates-widget.json"],
+  "deployment": {
+    "command": "android/gradlew.bat :app:publishReleaseBundle --track alpha",
+    "version": "1.1.1+125",
+    "package": "com.fluxstudio.planflow",
+    "track": "alpha",
+    "aab": "build/app/outputs/bundle/release/app-release.aab",
+    "result": "success",
+    "evidence": "Gradle BUILD SUCCESSFUL; App Bundle upload complete; release [125] updated in track alpha"
+  },
   "review_findings": [],
   "last_update": "2026-08-10T00:00:00+09:00"
 }
