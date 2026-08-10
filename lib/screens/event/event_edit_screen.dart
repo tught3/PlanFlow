@@ -124,11 +124,12 @@ class EventEditScreen extends StatefulWidget {
     if (routeEvent == null) {
       return true;
     }
-    final routeLocation = routeEvent.location?.trim();
-    final persistedLocation = persistedEvent.location?.trim();
-    return routeLocation != null &&
-        routeLocation.isNotEmpty &&
-        routeLocation == persistedLocation &&
+    // A route snapshot may carry a stale/localized label, so text equality is
+    // deliberately ignored.  Only a definitive same event ID may hydrate
+    // persisted coordinates; an ID-less draft must never borrow another
+    // event's location.
+    return routeEvent.id.isNotEmpty &&
+        persistedEvent.id == routeEvent.id &&
         !routeEvent.hasResolvedLocation &&
         persistedEvent.hasResolvedLocation;
   }

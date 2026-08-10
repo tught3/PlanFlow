@@ -774,8 +774,19 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         canPop: appRouter.canPop(),
       );
       if (_homeWidgetShouldSeedHomeBase!) {
+        // 콜드스타트에서는 홈을 먼저 실제로 마운트한 뒤 목표 화면을
+        // push해야 초기 root redirect/라우터 복원과 경합하지 않는다.
+        // 동기 go()+push()는 앱이 아직 첫 프레임을 적용하기 전 새 route를
+        // 덮어써 1x1 위젯에서 앱만 열리고 음성 화면이 사라질 수 있다.
         appRouter.go(AppRoutes.home);
-        appRouter.push(route);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted ||
+              generation != _homeWidgetRouteGeneration ||
+              _pendingHomeWidgetRoute != route) {
+            return;
+          }
+          appRouter.push(route);
+        });
       } else if (Uri.parse(route).path == AppRoutes.home) {
         appRouter.go(route);
       } else {

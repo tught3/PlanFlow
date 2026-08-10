@@ -262,6 +262,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   bool _isSaving = false;
   bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
+  bool _showInitialHydrationLoader = false;
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   Timer? _locationDebounce;
   String? _supplyErrorText;
@@ -299,6 +300,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final rawTextForLocalParse = _stringValue(
       widget.parsedSchedule['raw_text'],
     );
+    // parse_pending 진입은 GPT hydrate가 끝날 때까지 편집기를 숨긴다.
+    // 첫 프레임부터 로더를 표시해 로컬 초안이 잠깐 노출되지 않게 한다.
+    _showInitialHydrationLoader =
+        widget.parsedSchedule['parse_pending'] == true &&
+            rawTextForLocalParse != null &&
+            rawTextForLocalParse.isNotEmpty;
     final parsedTitle = _stringValue(widget.parsedSchedule['title']) ?? '';
     // parse_pending이면 GPT 결과를 기다리는 동안 제목이 비어 보임.
     // rawText로 로컬 파싱 제목을 즉시 채워 1초대에 표시되도록 한다.
@@ -1184,6 +1191,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         widget.parsedSchedule['parse_failed'] = true;
         _hydrateMessage = '광고 없이 진행해요. 직접 입력해 주세요.';
         _titleController.text = rawText;
+        _isHydratingParsedSchedule = false;
+        _showInitialHydrationLoader = false;
       });
       return;
     }
@@ -1218,6 +1227,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       setState(() {
         widget.parsedSchedule['parse_failed'] = true;
         _hydrateMessage = '광고를 완료하지 못했어요. 내용을 직접 수정해 주세요.';
+        _isHydratingParsedSchedule = false;
+        _showInitialHydrationLoader = false;
         if (_titleController.text.trim().isEmpty) {
           _titleController.text = rawText;
         }
@@ -1237,6 +1248,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
     setState(() {
       _isHydratingParsedSchedule = true;
+      _showInitialHydrationLoader = false;
       _hydrateMessage = null;
     });
 
@@ -2709,6 +2721,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final showParsePendingLoader =
+        widget.parsedSchedule['parse_pending'] == true &&
+            (_showInitialHydrationLoader || _isHydratingParsedSchedule);
 
     return Scaffold(
       appBar: AppBar(
@@ -2725,7 +2740,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilledButton.icon(
-              onPressed: _isSaving ? null : _save,
+              onPressed: (_isSaving || showParsePendingLoader) ? null : _save,
               icon: _isSaving
                   ? const SizedBox.square(
                       dimension: 16,
@@ -2750,199 +2765,213 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         onSettings: () => context.go(AppRoutes.settings),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(AppConstants.defaultPadding),
-                child: ResponsiveContent(
-                  maxWidth: context.planflowWindowInfo.contentMaxWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.briefing,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      if (_isHydratingParsedSchedule ||
-                          _hydrateMessage != null) ...[
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                        Card(
-                          color: const Color(0xFFF7F9FF),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: const BorderSide(
-                              color: PlanFlowColors.primaryFaint,
-                              width: 0.5,
+        child: showParsePendingLoader
+            ? const Center(
+                child: CircularProgressIndicator(),
+              )
+            : Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      padding:
+                          const EdgeInsets.all(AppConstants.defaultPadding),
+                      child: ResponsiveContent(
+                        maxWidth: context.planflowWindowInfo.contentMaxWidth,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: PlanFlowColors.briefing,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                if (_isHydratingParsedSchedule)
-                                  const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                else
-                                  const Icon(
-                                    Icons.info_outline,
-                                    color: PlanFlowColors.primaryMid,
+                            if (_isHydratingParsedSchedule ||
+                                _hydrateMessage != null) ...[
+                              const SizedBox(
+                                  height: AppConstants.sectionSpacing),
+                              Card(
+                                color: const Color(0xFFF7F9FF),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: const BorderSide(
+                                    color: PlanFlowColors.primaryFaint,
+                                    width: 0.5,
                                   ),
-                                const SizedBox(width: 10),
-                                Expanded(
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      if (_isHydratingParsedSchedule)
+                                        const SizedBox.square(
+                                          dimension: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      else
+                                        const Icon(
+                                          Icons.info_outline,
+                                          color: PlanFlowColors.primaryMid,
+                                        ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          _hydrateMessage ??
+                                              '음성 내용을 정리하는 중이에요. 화면은 바로 열렸고, 아래 항목은 곧 채워집니다.',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: PlanFlowColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: AppConstants.sectionSpacing),
+                            if (_parseFailed)
+                              Card(
+                                color: theme.colorScheme.errorContainer,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(
+                                    AppConstants.defaultPadding,
+                                  ),
                                   child: Text(
-                                    _hydrateMessage ??
-                                        '음성 내용을 정리하는 중이에요. 화면은 바로 열렸고, 아래 항목은 곧 채워집니다.',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: PlanFlowColors.textSecondary,
-                                    ),
-                                  ),
+                                      '자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                                 ),
-                              ],
+                              ),
+                            if (_shouldShowTimePeriodClarification) ...[
+                              const SizedBox(
+                                  height: AppConstants.sectionSpacing),
+                              _buildTimePeriodClarificationReopenButton(),
+                            ],
+                            const SizedBox(height: AppConstants.sectionSpacing),
+                            _buildSaveTargetCard(context),
+                            if (_selectedGroupForSharing != null)
+                              const SizedBox(
+                                  height: AppConstants.sectionSpacing),
+                            CalendarStyleEventEditor(
+                              titleController: _titleController,
+                              locationController: _locationController,
+                              memoController: _memoController,
+                              startAt: _startAt,
+                              endAt: _endAt,
+                              category: _category,
+                              recurrence: _recurrenceSelection,
+                              reminderOffset: _reminderOffset,
+                              isCritical: _isCritical,
+                              useStrongAlarm: _strongAlarm,
+                              isLookingUpLocation: _isLookingUpLocation,
+                              isSearchingLocation: _isLookingUpLocation,
+                              locationLat: _locationLat,
+                              locationLng: _locationLng,
+                              locationHelperText:
+                                  '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                              initiallyExpandClassification:
+                                  !_recurrenceSelection.isNone,
+                              initiallyExpandDetails: false,
+                              initiallyExpandAlarm: true,
+                              initiallyExpandCriticalAlarm: _isCritical,
+                              onLocationTextChanged: _handleLocationTextChanged,
+                              onStartChanged: (value) {
+                                setState(() {
+                                  final previousStart = _startAt;
+                                  _startEditedByUser = true;
+                                  _startAt = value;
+                                  _endAt = shiftEventEndWhenStartChanges(
+                                    previousStart: previousStart,
+                                    newStart: _startAt,
+                                    currentEnd: _endAt,
+                                    endEditedByUser: _endEditedByUser,
+                                  );
+                                  if (_endAt != null &&
+                                      _endAt!.isBefore(_startAt)) {
+                                    _endAt = _startAt;
+                                  }
+                                });
+                              },
+                              onEndChanged: (value) {
+                                setState(() {
+                                  _endEditedByUser = true;
+                                  _endAt = value;
+                                });
+                              },
+                              onCategoryChanged: (value) {
+                                setState(() {
+                                  _category = value;
+                                });
+                              },
+                              onRecurrenceChanged: (value) {
+                                setState(() {
+                                  _recurrenceSelection = value;
+                                });
+                              },
+                              onReminderChanged: (value) {
+                                setState(() {
+                                  _reminderOffset = value;
+                                });
+                              },
+                              onCriticalChanged: (value) {
+                                setState(() {
+                                  _isCritical = value;
+                                  if (!value) _strongAlarm = false;
+                                });
+                              },
+                              onStrongAlarmChanged: (value) {
+                                setState(() {
+                                  _strongAlarm = value;
+                                });
+                              },
+                              onLocationPick: _lookupLocation,
+                              extraAfterLocation: KeyedSubtree(
+                                key: _suppliesKey,
+                                child: _SuppliesEditor(
+                                  supplies: _supplies,
+                                  newSupplyController: _newSupplyController,
+                                  newSupplyFocusNode: _newSupplyFocusNode,
+                                  errorText: _supplyErrorText,
+                                  onAdd: _addSupplyFromInput,
+                                  onRemove: _removeSupply,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      if (_parseFailed)
-                        Card(
-                          color: theme.colorScheme.errorContainer,
-                          child: const Padding(
-                            padding: EdgeInsets.all(
-                              AppConstants.defaultPadding,
+                            const SizedBox(height: 24),
+                            FilledButton.icon(
+                              onPressed: (_isSaving || showParsePendingLoader)
+                                  ? null
+                                  : _save,
+                              icon: _isSaving
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save),
+                              label: Text(_isSaving ? '저장 중' : '일정 저장'),
                             ),
-                            child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
-                          ),
-                        ),
-                      if (_shouldShowTimePeriodClarification) ...[
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                        _buildTimePeriodClarificationReopenButton(),
-                      ],
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      _buildSaveTargetCard(context),
-                      if (_selectedGroupForSharing != null)
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                      CalendarStyleEventEditor(
-                        titleController: _titleController,
-                        locationController: _locationController,
-                        memoController: _memoController,
-                        startAt: _startAt,
-                        endAt: _endAt,
-                        category: _category,
-                        recurrence: _recurrenceSelection,
-                        reminderOffset: _reminderOffset,
-                        isCritical: _isCritical,
-                        useStrongAlarm: _strongAlarm,
-                        isLookingUpLocation: _isLookingUpLocation,
-                        isSearchingLocation: _isLookingUpLocation,
-                        locationLat: _locationLat,
-                        locationLng: _locationLng,
-                        locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
-                        initiallyExpandClassification:
-                            !_recurrenceSelection.isNone,
-                        initiallyExpandDetails: false,
-                        initiallyExpandAlarm: true,
-                        initiallyExpandCriticalAlarm: _isCritical,
-                        onLocationTextChanged: _handleLocationTextChanged,
-                        onStartChanged: (value) {
-                          setState(() {
-                            final previousStart = _startAt;
-                            _startEditedByUser = true;
-                            _startAt = value;
-                            _endAt = shiftEventEndWhenStartChanges(
-                              previousStart: previousStart,
-                              newStart: _startAt,
-                              currentEnd: _endAt,
-                              endEditedByUser: _endEditedByUser,
-                            );
-                            if (_endAt != null && _endAt!.isBefore(_startAt)) {
-                              _endAt = _startAt;
-                            }
-                          });
-                        },
-                        onEndChanged: (value) {
-                          setState(() {
-                            _endEditedByUser = true;
-                            _endAt = value;
-                          });
-                        },
-                        onCategoryChanged: (value) {
-                          setState(() {
-                            _category = value;
-                          });
-                        },
-                        onRecurrenceChanged: (value) {
-                          setState(() {
-                            _recurrenceSelection = value;
-                          });
-                        },
-                        onReminderChanged: (value) {
-                          setState(() {
-                            _reminderOffset = value;
-                          });
-                        },
-                        onCriticalChanged: (value) {
-                          setState(() {
-                            _isCritical = value;
-                            if (!value) _strongAlarm = false;
-                          });
-                        },
-                        onStrongAlarmChanged: (value) {
-                          setState(() {
-                            _strongAlarm = value;
-                          });
-                        },
-                        onLocationPick: _lookupLocation,
-                        extraAfterLocation: KeyedSubtree(
-                          key: _suppliesKey,
-                          child: _SuppliesEditor(
-                            supplies: _supplies,
-                            newSupplyController: _newSupplyController,
-                            newSupplyFocusNode: _newSupplyFocusNode,
-                            errorText: _supplyErrorText,
-                            onAdd: _addSupplyFromInput,
-                            onRemove: _removeSupply,
-                          ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      FilledButton.icon(
-                        onPressed: _isSaving ? null : _save,
-                        icon: _isSaving
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.save),
-                        label: Text(_isSaving ? '저장 중' : '일정 저장'),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

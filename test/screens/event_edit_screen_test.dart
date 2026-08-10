@@ -91,7 +91,9 @@ void main() {
       );
     });
 
-    test('keeps a changed location draft untouched', () {
+    test(
+        'hydrates persisted coordinates even when route location label differs',
+        () {
       expect(
         EventEditScreen.shouldHydratePersistedCoordinates(
           routeEvent: const EventModel(
@@ -99,6 +101,53 @@ void main() {
             userId: 'user-1',
             title: '회의',
             location: '서울 오크우드 호텔',
+          ),
+          persistedEvent: persisted,
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not hydrate coordinates across different event ids', () {
+      expect(
+        EventEditScreen.shouldHydratePersistedCoordinates(
+          routeEvent: const EventModel(
+            id: 'event-2',
+            userId: 'user-1',
+            title: '다른 일정',
+            location: '서울 오크우드 호텔',
+          ),
+          persistedEvent: persisted,
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not hydrate an id-less draft by matching the location label',
+        () {
+      expect(
+        EventEditScreen.shouldHydratePersistedCoordinates(
+          routeEvent: const EventModel(
+            userId: 'user-1',
+            title: '새 일정',
+            location: '강남역',
+          ),
+          persistedEvent: persisted,
+        ),
+        isFalse,
+      );
+    });
+
+    test('keeps route coordinates when they are already resolved', () {
+      expect(
+        EventEditScreen.shouldHydratePersistedCoordinates(
+          routeEvent: const EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '회의',
+            location: '임시 장소',
+            locationLat: 35.0,
+            locationLng: 129.0,
           ),
           persistedEvent: persisted,
         ),
