@@ -1,0 +1,42 @@
+{
+  "task_id": "ac7b4672-e508-4bb4-8653-e80d3e6201f2",
+  "mode": "CM",
+  "status": "implementing",
+  "objective": "Resolve ActionTrampoline and Google SignInHub Crashlytics fatal crashes without changing unrelated widget or calendar behavior.",
+  "roles": [
+    {
+      "role": "explorer",
+      "agent": "/root/crash_explorer",
+      "agent_type": "flux_explorer",
+      "status": "completed",
+      "summary": "Confirmed the Glance trampoline is introduced by home_widget 0.9.1 and identified automatic interactive Google Calendar sign-in paths through shell and OAuth callback flows."
+    },
+    {
+      "role": "planner",
+      "agent": "/root/crash_planner",
+      "agent_type": "flux_planner",
+      "status": "completed",
+      "summary": "Defined dependency, manifest, Google Sign-In flow, test, and device verification gates."
+    },
+    {
+      "role": "implementer",
+      "agent": "/root/crash_implementer",
+      "agent_type": "flux_complex_implementer",
+      "status": "in_progress"
+    }
+  ],
+  "preserved_unrelated_dirty": [
+    "planflow_v2_group_home_structure.md",
+    "screenshots/01_home.png",
+    "screenshots/02_voice_input.png",
+    "screenshots/03_event_edit.png",
+    "screenshots/04_calendar.png",
+    "screenshots/05_settings.png",
+    "planflow logo(600) dark.png",
+    "planflow logo(600).png",
+    "planflow-1.jpg",
+    "planflow-2.jpg",
+    "planflow-3.jpg",
+    "planflow-garo.jpg"
+  ]
+}
