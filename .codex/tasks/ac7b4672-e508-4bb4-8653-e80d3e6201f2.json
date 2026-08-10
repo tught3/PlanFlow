@@ -1,7 +1,7 @@
 {
   "task_id": "ac7b4672-e508-4bb4-8653-e80d3e6201f2",
   "mode": "CM",
-  "status": "ready_to_commit",
+  "status": "completed_and_pushed",
   "objective": "Resolve ActionTrampoline and Google SignInHub Crashlytics fatal crashes without changing unrelated widget or calendar behavior.",
   "roles": [
     {
@@ -63,8 +63,8 @@
       "role": "integrator",
       "agent": "/root/crash_integrator",
       "agent_type": "flux_integrator",
-      "status": "pending_final_state_refresh",
-      "summary": "Confirmed the crash-fix file set and required this persisted state refresh before pathspec commit."
+      "status": "completed",
+      "summary": "Approved final integration after the task-state refresh; only the eight declared crash-fix paths were committed and pushed."
     }
   ],
   "verification": [
@@ -99,5 +99,9 @@
     "planflow-3.jpg",
     "planflow-garo.jpg"
   ],
+  "delivery": {
+    "commit": "74eb0043 fix: prevent Android widget and sign-in crashes",
+    "push": "origin/main updated from 3d82cd8d to 74eb0043"
+  },
   "device_and_release_gap": "No physical-device smoke or production Crashlytics observation is claimed; those require an installed release and post-release monitoring."
 }
