@@ -1,7 +1,7 @@
 {
   "task_id": "9fdb3685-3965-4d8a-a920-59f5e9057253",
   "mode": "CM",
-  "status": "verification",
+  "status": "integrated_with_environment_gap",
   "objective": "Unify important/strong event notifications and correct the AI voice conversation entitlement gate.",
   "database_approval": "authorized_by_user_plan_instruction; remote apply not performed",
   "roles": [
@@ -44,14 +44,14 @@
       "role": "reviewer",
       "agent": "/root/cm_reviewer",
       "agent_type": "flux_reviewer",
-      "status": "conditional_pass_pending_analyze",
+      "status": "approved_with_environment_gap",
       "summary": "Confirmed high-risk notification and strict policy fixes after re-review; requested focused test evidence and ACL confirmation."
     },
     {
       "role": "integrator",
       "agent": "/root/cm_integrator",
       "agent_type": "flux_integrator",
-      "status": "needs_analyze_evidence"
+      "status": "approved_with_environment_gap",
     }
   ],
   "changed_files": [
