@@ -1,0 +1,81 @@
+{
+  "task_id": "4a6f9f43-0f5b-4c2d-9d3a-7b2e8a1c4f90",
+  "mode": "CM",
+  "status": "verification_pending",
+  "objective": "Fix single-date voice event rollover and preserve important/recurrence fields from compound utterances.",
+  "roles": [
+    {
+      "role": "explorer",
+      "agent": "/root/date_explorer",
+      "agent_type": "flux_explorer",
+      "status": "completed",
+      "summary": "Traced half-open single-day ranges into event endAt and identified local important cue gap."
+    },
+    {
+      "role": "planner",
+      "agent": "/root/date_planner",
+      "agent_type": "flux_planner",
+      "status": "completed",
+      "summary": "Defined fail-closed single-day handling, explicit multi-day preservation, and compound-field tests."
+    },
+    {
+      "role": "implementer",
+      "agent": "/root/date_implementer",
+      "agent_type": "flux_complex_implementer",
+      "status": "completed",
+      "summary": "Implemented parser metadata, controller creation boundary, ConfirmScreen guard, and explicit range parsing."
+    },
+    {
+      "role": "test_executor",
+      "agent": "/root/cm_test_executor",
+      "agent_type": "flux_test_executor",
+      "status": "running",
+      "commands": [
+        {"command": "flutter test --no-pub test/services/voice_date_range_parser_test.dart", "exit_code": 124, "note": "Dart/Flutter process contention timeout"},
+        {"command": "flutter test --no-pub test/services/voice_conversation_controller_test.dart", "exit_code": "pending"},
+        {"command": "flutter test --no-pub test/services/voice_command_analysis_service_test.dart", "exit_code": "pending"},
+        {"command": "flutter test --no-pub test/services/gpt_service_test.dart", "exit_code": "pending"}
+      ]
+    },
+    {
+      "role": "reviewer",
+      "agent": "/root/cm_reviewer",
+      "agent_type": "flux_reviewer",
+      "status": "running",
+      "summary": "Independently reviewing final diff and semantic regressions."
+    },
+    {
+      "role": "integrator",
+      "agent": "/root/cm_integrator",
+      "agent_type": "flux_integrator",
+      "status": "pending",
+      "summary": "Will integrate after focused test and review evidence."
+    }
+  ],
+  "changed_files": [
+    "lib/screens/voice/confirm_screen.dart",
+    "lib/screens/voice/voice_conversation_screen.dart",
+    "lib/services/gpt_service.dart",
+    "lib/services/voice_command_analysis_service.dart",
+    "lib/services/voice_conversation_controller.dart",
+    "lib/services/voice_date_range_parser.dart",
+    "test/services/gpt_service_test.dart",
+    "test/services/voice_command_analysis_service_test.dart",
+    "test/services/voice_conversation_controller_test.dart",
+    "test/services/voice_date_range_parser_test.dart"
+  ],
+  "preserved_unrelated_dirty": [
+    "planflow_v2_group_home_structure.md",
+    "screenshots/01_home.png",
+    "screenshots/02_voice_input.png",
+    "screenshots/03_event_edit.png",
+    "screenshots/04_calendar.png",
+    "screenshots/05_settings.png",
+    "planflow logo(600) dark.png",
+    "planflow logo(600).png",
+    "planflow-1.jpg",
+    "planflow-2.jpg",
+    "planflow-3.jpg",
+    "planflow-garo.jpg"
+  ]
+}
