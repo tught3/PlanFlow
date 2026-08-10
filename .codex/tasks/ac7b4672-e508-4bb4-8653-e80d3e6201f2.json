@@ -1,7 +1,7 @@
 {
   "task_id": "ac7b4672-e508-4bb4-8653-e80d3e6201f2",
   "mode": "CM",
-  "status": "implementing",
+  "status": "ready_to_commit",
   "objective": "Resolve ActionTrampoline and Google SignInHub Crashlytics fatal crashes without changing unrelated widget or calendar behavior.",
   "roles": [
     {
@@ -9,23 +9,83 @@
       "agent": "/root/crash_explorer",
       "agent_type": "flux_explorer",
       "status": "completed",
-      "summary": "Confirmed the Glance trampoline is introduced by home_widget 0.9.1 and identified automatic interactive Google Calendar sign-in paths through shell and OAuth callback flows."
+      "summary": "Confirmed home_widget/Glance introduced the trampoline and identified shell and OAuth callback automatic interactive Google sign-in paths."
     },
     {
       "role": "planner",
       "agent": "/root/crash_planner",
       "agent_type": "flux_planner",
       "status": "completed",
-      "summary": "Defined dependency, manifest, Google Sign-In flow, test, and device verification gates."
+      "summary": "Defined dependency, manifest, Google Sign-In flow, regression-test, build, and device-smoke gates."
     },
     {
-      "role": "implementer",
+      "role": "complex_implementer",
       "agent": "/root/crash_implementer",
       "agent_type": "flux_complex_implementer",
-      "status": "in_progress"
+      "status": "completed",
+      "changed_files": [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/build.gradle.kts",
+        "lib/screens/shell_screen.dart",
+        "lib/services/oauth_callback_handler.dart",
+        "pubspec.yaml",
+        "pubspec.lock",
+        "test/android_crash_regression_guard_test.dart"
+      ],
+      "summary": "Removed the unused Glance ActionTrampolineActivity at manifest merge, pinned Glance 1.1.1 and Play Services Auth 21.5.1, upgraded home_widget to 0.9.3, and removed automatic interactive Google account-picker entry paths."
+    },
+    {
+      "role": "test_executor",
+      "agent": "/root/crash_test_executor",
+      "agent_type": "flux_test_executor",
+      "status": "completed",
+      "evidence": [
+        "flutter test --no-pub test/android_crash_regression_guard_test.dart test/android_deep_link_guard_test.dart test/services/calendar_sync_service_test.dart test/services/oauth_callback_handler_test.dart: exit 0",
+        "gradlew :app:dependencyInsight --configuration debugRuntimeClasspath --dependency androidx.glance:glance-appwidget: exit 0; 1.1.1 selected",
+        "gradlew :app:dependencyInsight --configuration debugRuntimeClasspath --dependency com.google.android.gms:play-services-auth: exit 0; 21.5.1 forced and 21.0.0 replaced"
+      ]
+    },
+    {
+      "role": "failure_analyst",
+      "agent": "/root/crash_failure_analysis",
+      "agent_type": "flux_failure_analyst",
+      "status": "completed",
+      "summary": "Separated prior analyzer debt from the crash diff; it was corrected locally and full analysis subsequently passed."
+    },
+    {
+      "role": "reviewer",
+      "agent": "/root/crash_reviewer",
+      "agent_type": "flux_reviewer",
+      "status": "approved",
+      "summary": "Final current-diff review approved with no BLOCKER, HIGH, or MEDIUM findings."
+    },
+    {
+      "role": "integrator",
+      "agent": "/root/crash_integrator",
+      "agent_type": "flux_integrator",
+      "status": "pending_final_state_refresh",
+      "summary": "Confirmed the crash-fix file set and required this persisted state refresh before pathspec commit."
     }
   ],
+  "verification": [
+    "flutter analyze: exit 0",
+    "flutter test --no-pub test/android_crash_regression_guard_test.dart test/android_deep_link_guard_test.dart test/services/calendar_sync_service_test.dart test/services/oauth_callback_handler_test.dart test/screens/event_edit_screen_test.dart: exit 0 (75 tests)",
+    "android/.\\gradlew.bat :app:assembleDebug --console=plain: exit 0",
+    "Fresh debug merged manifest has no exact androidx.glance.appwidget.action.ActionTrampolineActivity entry"
+  ],
+  "commit_scope": [
+    ".codex/tasks/ac7b4672-e508-4bb4-8653-e80d3e6201f2.json",
+    "android/app/src/main/AndroidManifest.xml",
+    "android/build.gradle.kts",
+    "lib/screens/shell_screen.dart",
+    "lib/services/oauth_callback_handler.dart",
+    "pubspec.yaml",
+    "pubspec.lock",
+    "test/android_crash_regression_guard_test.dart"
+  ],
   "preserved_unrelated_dirty": [
+    "lib/services/voice_conversation_ad_gate.dart",
+    "test/screens/event_edit_screen_test.dart",
     "planflow_v2_group_home_structure.md",
     "screenshots/01_home.png",
     "screenshots/02_voice_input.png",
@@ -38,5 +98,6 @@
     "planflow-2.jpg",
     "planflow-3.jpg",
     "planflow-garo.jpg"
-  ]
+  ],
+  "device_and_release_gap": "No physical-device smoke or production Crashlytics observation is claimed; those require an installed release and post-release monitoring."
 }

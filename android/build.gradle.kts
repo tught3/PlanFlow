@@ -5,9 +5,13 @@ allprojects {
     }
 
     configurations.configureEach {
-        // 1.0.0은 위젯 리스트 트램폴린이 target intent 없이 호출될 때
-        // IllegalArgumentException으로 크래시하는 버그가 있어 1.1.0으로 상향.
-        resolutionStrategy.force("androidx.glance:glance-appwidget:1.1.0")
+        // Custom RemoteViews 위젯만 사용하므로 Glance UI/action은 필요 없다.
+        // 그래도 home_widget의 병합 의존성이 Glance를 끌어올 경우를 대비해
+        // trampoline target-intent 크래시가 수정된 버전을 고정한다.
+        resolutionStrategy.force("androidx.glance:glance-appwidget:1.1.1")
+        // google_sign_in 6.x otherwise resolves the crash-trace version 21.0.0;
+        // keep the Play Services Auth API on the compatible 21.x maintenance line.
+        resolutionStrategy.force("com.google.android.gms:play-services-auth:21.5.1")
     }
 }
 

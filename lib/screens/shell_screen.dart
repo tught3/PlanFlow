@@ -307,13 +307,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // 미연동 상태 → interactive sync 팝업 호출
-    if (!mounted) {
-      debugPrint('[GCAL] return: !mounted before interactive sync');
-      return;
-    }
-    debugPrint('[GCAL] interactive sync 호출!');
-    unawaited(calendarSync.syncGoogleCalendar(interactive: true));
+    // Startup/resume must never open the account picker. Interactive Google
+    // sign-in is reserved for the explicit Calendar sync button in Settings;
+    // this status probe is intentionally silent and leaves an unlinked account
+    // for the user to connect on demand.
+    debugPrint(
+      '[GCAL] startup status check complete; interactive sign-in deferred '
+      'to explicit Calendar sync action',
+    );
   }
 
   Future<void> _refreshDepartureAlarmsAndMonitor() async {

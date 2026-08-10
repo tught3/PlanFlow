@@ -13,7 +13,6 @@ import '../core/log_text.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
-import 'calendar_sync_service.dart';
 import 'naver_calendar_permission_service.dart';
 
 enum OAuthCallbackPurpose {
@@ -362,7 +361,8 @@ class OAuthCallbackHandler {
 
     latestUserMessage.value = null;
     final resolvedPending = await _resolvePendingCallback();
-    DiagLogger.log('DIAG', 'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}');
+    DiagLogger.log('DIAG',
+        'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}');
     final pendingPurpose = resolvedPending?.purpose;
     final pendingMethod = resolvedPending?.method;
     final isPendingNaverCalendarLink =
@@ -370,7 +370,8 @@ class OAuthCallbackHandler {
       pendingPurpose: pendingPurpose,
       pendingMethod: pendingMethod,
     );
-    DiagLogger.log('DIAG', 'isPendingNaverCalendarLink=$isPendingNaverCalendarLink');
+    DiagLogger.log(
+        'DIAG', 'isPendingNaverCalendarLink=$isPendingNaverCalendarLink');
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
@@ -438,7 +439,8 @@ class OAuthCallbackHandler {
       hasPendingCalendarLink:
           pendingPurpose == OAuthCallbackPurpose.calendarLink,
     );
-    DiagLogger.log('DIAG', 'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}');
+    DiagLogger.log('DIAG',
+        'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}');
 
     debugPrint(
       'OAuth callback routing: pendingPurpose=$pendingPurpose '
@@ -623,13 +625,9 @@ class OAuthCallbackHandler {
         explicitProviderToken: response.session.providerToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
-      // Google 로그인 시 Google Calendar interactive sync
-      final loginSession = client.auth.currentSession;
-      final loginProvider =
-          loginSession?.user.appMetadata['provider']?.toString() ?? '';
-      if (loginProvider.contains('google')) {
-        unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
-      }
+      // OAuth callback completion must not open a second Google account picker.
+      // Calendar linking is an explicit Settings action; callback paths only
+      // establish the PlanFlow session and route the user home.
       if (isPasswordRecovery) {
         authProvider.markPasswordRecovery();
         clearPendingCallback();
@@ -816,7 +814,8 @@ class OAuthCallbackHandler {
     bool allowWithoutNaverIdentity = false,
   }) async {
     try {
-      DiagLogger.log('DIAG', 'captureToken explicit=${explicitProviderToken?.trim().isNotEmpty == true} allowWithout=$allowWithoutNaverIdentity');
+      DiagLogger.log('DIAG',
+          'captureToken explicit=${explicitProviderToken?.trim().isNotEmpty == true} allowWithout=$allowWithoutNaverIdentity');
       _logNaverCalendar(
         'provider token capture start '
         'explicitTokenPresent=${explicitProviderToken?.trim().isNotEmpty == true} '

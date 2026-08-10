@@ -55,6 +55,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true">
+        <!-- PlanFlow widgets use custom RemoteViews providers and never issue Glance
+             actions. Remove the dependency's exported trampoline so malformed launcher
+             intents cannot enter ActionTrampolineActivity and crash the app. -->
+        <activity
+            android:name="androidx.glance.appwidget.action.ActionTrampolineActivity"
+            tools:node="remove" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
