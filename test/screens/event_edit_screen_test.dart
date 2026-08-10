@@ -128,6 +128,7 @@ void main() {
       expect(
         EventEditScreen.shouldHydratePersistedCoordinates(
           routeEvent: const EventModel(
+            id: '',
             userId: 'user-1',
             title: '새 일정',
             location: '강남역',

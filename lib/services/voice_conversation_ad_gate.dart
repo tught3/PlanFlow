@@ -204,8 +204,8 @@ class VoiceConversationAdGate {
       onEnterAllowed(
         _grant(
           EntitlementSource.adRewarded,
-          initialRemainingAtGate: peek?.initialRemaining ?? 0,
-          dailyRemainingAtGate: peek?.dailyRemaining ?? 0,
+          initialRemainingAtGate: peek.initialRemaining,
+          dailyRemainingAtGate: peek.dailyRemaining,
         ),
       );
       return;

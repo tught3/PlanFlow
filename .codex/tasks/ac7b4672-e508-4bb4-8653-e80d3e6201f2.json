@@ -84,8 +84,6 @@
     "test/android_crash_regression_guard_test.dart"
   ],
   "preserved_unrelated_dirty": [
-    "lib/services/voice_conversation_ad_gate.dart",
-    "test/screens/event_edit_screen_test.dart",
     "planflow_v2_group_home_structure.md",
     "screenshots/01_home.png",
     "screenshots/02_voice_input.png",
@@ -102,6 +100,13 @@
   "delivery": {
     "commit": "74eb0043 fix: prevent Android widget and sign-in crashes",
     "push": "origin/main updated from 3d82cd8d to 74eb0043"
+  },
+  "verification_cleanup": {
+    "changed_files": [
+      "lib/services/voice_conversation_ad_gate.dart",
+      "test/screens/event_edit_screen_test.dart"
+    ],
+    "summary": "Failure analyst identified prior analyzer debt; the reviewer approved the minimal nullability and required-fixture-id corrections, and full flutter analyze plus the related tests passed."
   },
   "device_and_release_gap": "No physical-device smoke or production Crashlytics observation is claimed; those require an installed release and post-release monitoring."
 }
