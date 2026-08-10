@@ -132,8 +132,7 @@ void main() {
               ),
             ).copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU'),
           ],
-          now: () =>
-              DateTime(today.year, today.month, today.day, 9),
+          now: () => DateTime(today.year, today.month, today.day, 9),
         );
 
         final result = controller.handle('내일 일정 보여줘');
@@ -228,8 +227,7 @@ void main() {
             draftStartLocal.day,
           ),
           DateTime(tomorrow.year, tomorrow.month, tomorrow.day),
-          reason:
-              '날짜 단서 없는 시간 변경은 조회한 회차("내일") 날짜를 유지해야 한다 — '
+          reason: '날짜 단서 없는 시간 변경은 조회한 회차("내일") 날짜를 유지해야 한다 — '
               'anchor의 원래 날짜로 새면 안 된다.',
         );
         expect(draftStartLocal.hour, 17);
@@ -945,6 +943,29 @@ void main() {
         DateTime(now.year, now.month, now.day, 9),
       );
     });
+
+    test(
+      'single-date creation does not turn the half-open query end into a second day',
+      () {
+        final testYear = DateTime.now().year + 1;
+        final controller = VoiceConversationController(
+          now: () => DateTime(testYear, 8, 10, 12),
+        );
+
+        final result = controller.handle('9월 12일 태블릿계기반찍기 일정으로 저장');
+
+        expect(result.action, VoiceConversationAction.createEvent);
+        expect(result.draftEvent, isNotNull);
+        expect(
+          planflowLocal(result.draftEvent!.startAt!),
+          DateTime(testYear, 9, 12, 9),
+        );
+        expect(
+          planflowLocal(result.draftEvent!.endAt!),
+          DateTime(testYear, 9, 12, 10),
+        );
+      },
+    );
   });
 }
 

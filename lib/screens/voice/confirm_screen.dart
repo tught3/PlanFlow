@@ -3003,8 +3003,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return null;
     }
     final source = rawText?.trim() ?? '';
-    if (source.isNotEmpty &&
-        !DateUtils.isSameDay(startAt, parsed) &&
+    // Missing raw_text is not evidence of an explicit cross-day request.
+    // Fail closed so an AI-provided next-day end_at cannot turn a single
+    // explicit date into a two-day event. User-edited end dates are applied
+    // through the picker path and are not routed through this hydration guard.
+    if (!DateUtils.isSameDay(startAt, parsed) &&
         !const VoiceScheduleStructureService().hasExplicitCrossDayIntent(
           source,
           now: planflowNow(),

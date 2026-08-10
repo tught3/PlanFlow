@@ -5,11 +5,16 @@ class VoiceDateRangeParseResult {
     required this.start,
     required this.end,
     required this.label,
+    this.isMultiDay = false,
   });
 
   final DateTime start;
   final DateTime end;
   final String label;
+
+  /// Whether [end] is an actual multi-day event boundary rather than the
+  /// half-open next-day boundary used for a single-day query.
+  final bool isMultiDay;
 }
 
 class VoiceDateRangeParser {
@@ -28,6 +33,14 @@ class VoiceDateRangeParser {
     final today = DateTime(localNow.year, localNow.month, localNow.day);
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
     final compact = normalized.replaceAll(' ', '');
+
+    // Check an explicit calendar range before the single-date parser. Without
+    // this, "9월 12일부터 13일까지" is truncated to the first day and later
+    // consumers cannot preserve the requested multi-day boundary.
+    final explicitRange = _parseExplicitRange(normalized, today.year);
+    if (explicitRange != null) {
+      return explicitRange;
+    }
 
     final absolute = _parseAbsoluteDate(normalized, today.year);
     if (absolute != null) {
@@ -69,6 +82,7 @@ class VoiceDateRangeParser {
         start: start,
         end: start.add(const Duration(days: 7)),
         label: '다음 주',
+        isMultiDay: true,
       );
     }
     if (compact.contains('이번주') || compact.contains('주간')) {
@@ -77,6 +91,7 @@ class VoiceDateRangeParser {
         start: start,
         end: start.add(const Duration(days: 7)),
         label: '이번 주',
+        isMultiDay: true,
       );
     }
 
@@ -94,6 +109,7 @@ class VoiceDateRangeParser {
           start: start,
           end: end,
           label: '$month월',
+          isMultiDay: true,
         );
       }
     }
@@ -119,6 +135,48 @@ class VoiceDateRangeParser {
       return null;
     }
     return start;
+  }
+
+  static VoiceDateRangeParseResult? _parseExplicitRange(
+    String normalized,
+    int defaultYear,
+  ) {
+    final match = RegExp(
+      r'(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?\s*(?:부터|에서|~|-|–)\s*'
+      r'(?:(\d{4})\s*년\s*)?(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일?\s*(?:까지|동안)?',
+    ).firstMatch(normalized);
+    if (match == null) return null;
+    final year = int.tryParse(match.group(1) ?? '') ?? defaultYear;
+    final month = int.tryParse(match.group(2) ?? '');
+    final day = int.tryParse(match.group(3) ?? '');
+    final endYear = int.tryParse(match.group(4) ?? '') ?? year;
+    final endMonth = int.tryParse(match.group(5) ?? '') ?? month;
+    final endDay = int.tryParse(match.group(6) ?? '');
+    if (month == null || day == null || endMonth == null || endDay == null) {
+      return null;
+    }
+    final start = DateTime(year, month, day);
+    var end = DateTime(endYear, endMonth, endDay);
+    if (start.year != year ||
+        start.month != month ||
+        start.day != day ||
+        end.year != endYear ||
+        end.month != endMonth ||
+        end.day != endDay) {
+      return null;
+    }
+    if (end.isBefore(start)) {
+      end = (match.group(5) == null)
+          ? DateTime(endYear, endMonth + 1, endDay)
+          : DateTime(endYear + 1, endMonth, endDay);
+    }
+    final isMultiDay = !end.isAtSameMomentAs(start);
+    return VoiceDateRangeParseResult(
+      start: start,
+      end: isMultiDay ? end : start.add(const Duration(days: 1)),
+      label: '${start.month}월 ${start.day}일-${end.month}월 ${end.day}일',
+      isMultiDay: isMultiDay,
+    );
   }
 
   static DateTime? _parseDayOnlyDate(String normalized, DateTime today) {

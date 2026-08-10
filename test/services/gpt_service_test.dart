@@ -855,8 +855,7 @@ void main() {
       expect(result['time_period_ambiguous'], isTrue);
     });
 
-    test('한글 수사 반 표현("여덟시 반")도 분 30으로 로컬 보정된다(P5)',
-        () async {
+    test('한글 수사 반 표현("여덟시 반")도 분 30으로 로컬 보정된다(P5)', () async {
       final client = MockClient((request) async {
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -1395,7 +1394,8 @@ void main() {
       final service = GptService(
         client: client,
         endpoint: Uri.parse(_proxyEndpoint),
-        now: () => DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
+        now: () =>
+            DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
       );
 
       final result = await service.parseSchedule('내일 오후 3시 김민수와 프로젝트 회의');
@@ -1430,7 +1430,8 @@ void main() {
       final service = GptService(
         client: client,
         endpoint: Uri.parse(_proxyEndpoint),
-        now: () => DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
+        now: () =>
+            DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
       );
 
       final result = await service.parseSchedule('오늘 밤 11시부터 내일 새벽 1시까지 서버 점검');
@@ -1948,6 +1949,9 @@ void main() {
         );
 
         expect(result['location'], isNull);
+        expect(result['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=TH');
+        expect(result['is_critical'], isTrue);
+        expect(result['use_strong_alarm'], isFalse);
       },
     );
   });

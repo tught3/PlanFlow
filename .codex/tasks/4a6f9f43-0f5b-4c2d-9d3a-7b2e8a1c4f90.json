@@ -1,7 +1,7 @@
 {
   "task_id": "4a6f9f43-0f5b-4c2d-9d3a-7b2e8a1c4f90",
   "mode": "CM",
-  "status": "verification_pending",
+  "status": "implemented_with_verification_gap",
   "objective": "Fix single-date voice event rollover and preserve important/recurrence fields from compound utterances.",
   "roles": [
     {
@@ -29,27 +29,29 @@
       "role": "test_executor",
       "agent": "/root/cm_test_executor",
       "agent_type": "flux_test_executor",
-      "status": "running",
+      "status": "completed",
       "commands": [
-        {"command": "flutter test --no-pub test/services/voice_date_range_parser_test.dart", "exit_code": 124, "note": "Dart/Flutter process contention timeout"},
-        {"command": "flutter test --no-pub test/services/voice_conversation_controller_test.dart", "exit_code": "pending"},
-        {"command": "flutter test --no-pub test/services/voice_command_analysis_service_test.dart", "exit_code": "pending"},
-        {"command": "flutter test --no-pub test/services/gpt_service_test.dart", "exit_code": "pending"}
+        {"command": "flutter test --no-pub test/services/voice_date_range_parser_test.dart", "exit_code": 0, "note": "All tests passed before final title cleanup."},
+        {"command": "flutter test --no-pub test/services/voice_conversation_controller_test.dart", "exit_code": 0, "note": "All tests passed before final title cleanup."},
+        {"command": "flutter test --no-pub test/services/gpt_service_test.dart", "exit_code": 0, "note": "All tests passed before final title cleanup."},
+        {"command": "flutter test --no-pub test/services/voice_command_analysis_service_test.dart", "exit_code": 1, "note": "Pre-title-cleanup run failed because compound title was reduced to '중요한 일정으로'."},
+        {"command": "flutter test --no-pub test/services/voice_command_analysis_service_test.dart", "exit_code": 124, "note": "Post-title-cleanup reruns were blocked by Dart/Flutter process contention; no current exit-0 evidence."},
+        {"command": "flutter test --no-pub test/screens/confirm_screen_test.dart", "exit_code": 1, "note": "Pre-existing timer/geocoding fixture failures remain."}
       ]
     },
     {
       "role": "reviewer",
       "agent": "/root/cm_reviewer",
       "agent_type": "flux_reviewer",
-      "status": "running",
-      "summary": "Independently reviewing final diff and semantic regressions."
+      "status": "approved_with_verification_gap",
+      "summary": "No remaining static HIGH/BLOCKER after same-day range and title cleanup patches; latest focused title test exit-0 evidence is blocked by environment contention."
     },
     {
       "role": "integrator",
       "agent": "/root/cm_integrator",
       "agent_type": "flux_integrator",
-      "status": "pending",
-      "summary": "Will integrate after focused test and review evidence."
+      "status": "needs_verification",
+      "summary": "Final diff is scoped and logically sound, but current title cleanup requires a fresh exit-0 focused test before full integration approval."
     }
   ],
   "changed_files": [
@@ -59,6 +61,7 @@
     "lib/services/voice_command_analysis_service.dart",
     "lib/services/voice_conversation_controller.dart",
     "lib/services/voice_date_range_parser.dart",
+    "lib/services/voice_schedule_structure_service.dart",
     "test/services/gpt_service_test.dart",
     "test/services/voice_command_analysis_service_test.dart",
     "test/services/voice_conversation_controller_test.dart",

@@ -134,6 +134,7 @@ class VoiceCommandAnalysisResult {
       'participants': scheduleFields['participants'] ?? <String>[],
       'targets': scheduleFields['targets'] ?? <String>[],
       'is_critical': scheduleFields['is_critical'] ?? false,
+      'use_strong_alarm': scheduleFields['use_strong_alarm'] ?? false,
       'recurrence_rule': scheduleFields['recurrence_rule'],
       'is_all_day': scheduleFields['is_all_day'] ?? false,
       'is_multi_day': scheduleFields['is_multi_day'] ?? false,
@@ -160,14 +161,13 @@ class VoiceCommandAnalysisService {
     Uri? endpoint,
     DateTime Function()? now,
     int maxAiRequests = 3,
-  }) : _client = client,
-       _endpoint =
-           endpoint ??
-           Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
-       _now = now ?? planflowNow,
-       _sessionBudget = VoiceAnalysisRequestBudget(
-         maxAiRequests: maxAiRequests,
-       );
+  })  : _client = client,
+        _endpoint = endpoint ??
+            Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
+        _now = now ?? planflowNow,
+        _sessionBudget = VoiceAnalysisRequestBudget(
+          maxAiRequests: maxAiRequests,
+        );
 
   final http.Client? _client;
   final Uri _endpoint;
@@ -289,14 +289,11 @@ class VoiceCommandAnalysisService {
       return localResult;
     }
 
-    final candidateLines = candidates
-        .take(12)
-        .map((candidate) {
-          final startAt = candidate.startAt?.toIso8601String() ?? '시간 미정';
-          final location = candidate.location?.trim();
-          return '- 제목: ${candidate.title}, 장소: ${location == null || location.isEmpty ? '없음' : location}, 시작: $startAt';
-        })
-        .join('\n');
+    final candidateLines = candidates.take(12).map((candidate) {
+      final startAt = candidate.startAt?.toIso8601String() ?? '시간 미정';
+      final location = candidate.location?.trim();
+      return '- 제목: ${candidate.title}, 장소: ${location == null || location.isEmpty ? '없음' : location}, 시작: $startAt';
+    }).join('\n');
 
     final content = await _requestCompletion(
       systemPrompt: _voiceCommandAnalysisPrompt,
@@ -510,6 +507,7 @@ class VoiceCommandAnalysisService {
         'participants',
         'targets',
         'is_critical',
+        'use_strong_alarm',
         'recurrence_rule',
         'is_all_day',
         'is_multi_day',
@@ -544,14 +542,12 @@ class VoiceCommandAnalysisService {
   }) {
     final source = fields ?? <String, dynamic>{};
     final gpt = GptService(now: _now);
-    final localDateRange =
-        _voiceScheduleStructureService.extractDateRange(
+    final localDateRange = _voiceScheduleStructureService.extractDateRange(
           normalizedText,
           now: _now(),
         ) ??
         _voiceScheduleStructureService.extractDateRange(rawText, now: _now());
-    final inferredStartAt =
-        localDateRange?.startAt ??
+    final inferredStartAt = localDateRange?.startAt ??
         _parseDateTime(source['start_at']) ??
         fallbackStartAt ??
         gpt.inferStartAtFromRawText(normalizedText) ??
@@ -559,8 +555,7 @@ class VoiceCommandAnalysisService {
         _parseDateTime(fallback?.scheduleFields['start_at']);
     final rangeStrippedText = _voiceScheduleStructureService
         .stripDateRangeExpression(normalizedText, now: _now());
-    final titleSource =
-        _extractContentClause(rangeStrippedText) ??
+    final titleSource = _extractContentClause(rangeStrippedText) ??
         _stripExplicitMemoClause(rangeStrippedText);
     final structured = _voiceScheduleStructureService.analyze(titleSource);
     final sourceTitle = _normalizeText(
@@ -591,14 +586,19 @@ class VoiceCommandAnalysisService {
             normalizedLocationText,
             normalizedText,
           );
-    final inferredLocation = _voiceScheduleStructureService
-        .normalizeScheduleLocation(
-          location: normalizedLocationCandidate,
-          // 원본 normalizedText 전달: titleSource(정제본)는 "에서/에" 장소 패턴이
-          // 유실돼 location 추출이 실패하던 문제 수정. 제목 제거와 동일 소스로 일치.
-          rawText: normalizedText,
-          title: title,
-        );
+    final inferredLocation =
+        _voiceScheduleStructureService.normalizeScheduleLocation(
+      location: normalizedLocationCandidate,
+      // 원본 normalizedText 전달: titleSource(정제본)는 "에서/에" 장소 패턴이
+      // 유실돼 location 추출이 실패하던 문제 수정. 제목 제거와 동일 소스로 일치.
+      rawText: normalizedText,
+      title: title,
+    );
+    // Cleanup intentionally removes command suffixes from the title, but the
+    // same suffix can carry semantic flags ("중요한 일정으로 등록"). Check
+    // both the cleaned text and the original utterance so metadata is not
+    // lost while noise is stripped.
+    final criticalCueText = '$rawText $normalizedText';
 
     final scheduleFields = <String, dynamic>{
       'title': title.isEmpty ? titleSource : title,
@@ -618,15 +618,18 @@ class VoiceCommandAnalysisService {
       'supplies': _normalizeStringList(source['supplies']),
       'participants': _normalizeStringList(source['participants']),
       'targets': _normalizeStringList(source['targets']),
-      'is_critical':
-          source['is_critical'] == true ||
-          RegExp(r'강한\s*(알림|알람)|강한알림|강한알람').hasMatch(normalizedText),
-      'use_strong_alarm':
-          source['use_strong_alarm'] == true ||
-          RegExp(r'강한\s*(알림|알람)|강한알림|강한알람').hasMatch(normalizedText),
+      'is_critical': source['is_critical'] == true ||
+          RegExp(
+            r'(?:강한\s*(?:알림|알람)|강한알림|강한알람|'
+            r'(?:중요(?:한)?\s*일정|중요하게|(?<![가-힣])중요(?![가-힣]))|긴급|'
+            r'꼭\s*(?:기억해야|챙겨야)|놓치면\s*안\s*되는|'
+            r'절대\s*잊으면\s*안\s*되는)',
+          ).hasMatch(criticalCueText),
+      'use_strong_alarm': source['use_strong_alarm'] == true ||
+          RegExp(r'강한\s*(알림|알람)|강한알림|강한알람').hasMatch(criticalCueText),
       'recurrence_rule': _normalizeText(
         source['recurrence_rule']?.toString(),
-        _inferLocalRecurrence(normalizedText),
+        _inferLocalRecurrence(rawText) ?? _inferLocalRecurrence(normalizedText),
       ),
       'is_all_day': localDateRange?.isAllDay ?? source['is_all_day'] == true,
       'is_multi_day':
@@ -657,13 +660,13 @@ class VoiceCommandAnalysisService {
   }) {
     final hasExplicitCrossDayIntent =
         _voiceScheduleStructureService.hasExplicitCrossDayIntent(
-          normalizedText,
-          now: _now(),
-        ) ||
-        _voiceScheduleStructureService.hasExplicitCrossDayIntent(
-          rawText,
-          now: _now(),
-        );
+              normalizedText,
+              now: _now(),
+            ) ||
+            _voiceScheduleStructureService.hasExplicitCrossDayIntent(
+              rawText,
+              now: _now(),
+            );
     if (hasExplicitCrossDayIntent) {
       return;
     }
@@ -695,8 +698,8 @@ class VoiceCommandAnalysisService {
     );
 
     final title = scheduleFields['title']?.toString() ?? '';
-    scheduleFields['title'] = _voiceScheduleStructureService
-        .ensurePeopleInTitle(title, sourceText);
+    scheduleFields['title'] =
+        _voiceScheduleStructureService.ensurePeopleInTitle(title, sourceText);
   }
 
   List<String> _mergeStringLists(Object? existing, List<String> inferred) {
@@ -857,8 +860,7 @@ class VoiceCommandAnalysisService {
     return _voiceScheduleStructureService.normalizeLocalVoiceTitle(
       text,
       referenceText: referenceText,
-      structured:
-          structured ??
+      structured: structured ??
           _voiceScheduleStructureService.analyze(referenceText ?? text),
     );
   }
@@ -1120,18 +1122,15 @@ class VoiceCommandAnalysisService {
     Iterable<VoiceTextCleanupCandidate> candidates = const [],
   }) {
     final normalizedText = VoiceTextCleanupService.normalizeForSearch(text);
-    final candidateSignature = candidates
-        .take(12)
-        .map((candidate) {
-          final location = candidate.location?.trim() ?? '';
-          final startAt = candidate.startAt?.toIso8601String() ?? '';
-          return [
-            VoiceTextCleanupService.normalizeForSearch(candidate.title),
-            VoiceTextCleanupService.normalizeForSearch(location),
-            startAt,
-          ].join('|');
-        })
-        .join('||');
+    final candidateSignature = candidates.take(12).map((candidate) {
+      final location = candidate.location?.trim() ?? '';
+      final startAt = candidate.startAt?.toIso8601String() ?? '';
+      return [
+        VoiceTextCleanupService.normalizeForSearch(candidate.title),
+        VoiceTextCleanupService.normalizeForSearch(location),
+        startAt,
+      ].join('|');
+    }).join('||');
     final source = [
       context.name,
       normalizedText,

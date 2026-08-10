@@ -668,6 +668,16 @@ class VoiceScheduleStructureService {
       ),
       '',
     );
+    // The local title pass may remove the trailing verb first (for example
+    // "... 등록"), leaving only "중요한 일정으로".  Strip that metadata
+    // suffix as well so it cannot become the title or a location candidate.
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'\s*(?:정말\s*)?(?:중요한|중요)\s*일정\s*'
+        r'(?:으로|로|은|는|을|를|에)?\s*$',
+      ),
+      '',
+    );
     cleaned = cleaned
         .replaceAll(RegExp(r'^\s*(?:에|로|으로)\s+'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -817,6 +827,13 @@ class VoiceScheduleStructureService {
         )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+    // Importance is metadata, not part of the event title.  The local voice
+    // path reaches this method before the structured-title fallback, so apply
+    // the same trailing command cleanup here as the GPT normalization path.
+    title = stripScheduleNoise(
+      title,
+      preserveRelativeDayWords: true,
+    );
     title = preserveLeadingLocationTitle(
       title,
       rawText: referenceText ?? text,

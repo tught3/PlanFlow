@@ -540,6 +540,7 @@ class GptService {
     normalized.putIfAbsent('travel_origin_lng', () => null);
     normalized.putIfAbsent('travel_mode', () => null);
     normalized.putIfAbsent('recurrence_rule', () => null);
+    normalized.putIfAbsent('use_strong_alarm', () => false);
     normalized.putIfAbsent('is_all_day', () => false);
     normalized.putIfAbsent('is_multi_day', () => false);
     normalized.putIfAbsent('category', () => '기타');
@@ -716,6 +717,7 @@ class GptService {
       'participants': <String>[],
       'targets': <String>[],
       'is_critical': false,
+      'use_strong_alarm': false,
       'pre_actions': <Map<String, dynamic>>[],
     };
     _normalizeTitleMemoAndLocation(fallback, rawText);
@@ -1231,6 +1233,21 @@ $_scheduleSystemPrompt
     Map<String, dynamic> normalized,
   ) {
     final text = _normalizeKoreanText(rawText);
+    final strongAlarm = RegExp(
+      r'(?:강한\s*(?:알림|알람)|강한알림|강한알람)',
+    ).hasMatch(text);
+    final criticalCue = strongAlarm ||
+        RegExp(
+          r'(?:(?:중요(?:한)?\s*일정)|중요하게|(?<![가-힣])중요(?![가-힣])|긴급|'
+          r'꼭\s*(?:기억해야|챙겨야)|놓치면\s*안\s*되는|'
+          r'절대\s*잊으면\s*안\s*되는)',
+        ).hasMatch(text);
+    if (criticalCue) {
+      normalized['is_critical'] = true;
+    }
+    if (strongAlarm) {
+      normalized['use_strong_alarm'] = true;
+    }
     final localRange =
         _voiceScheduleStructureService.extractDateRange(text, now: _now());
     if (localRange != null) {

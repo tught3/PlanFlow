@@ -651,7 +651,7 @@ void main() {
         () async {
       final service = VoiceCommandAnalysisService(
         endpoint: Uri.parse(_proxyEndpoint),
-        now: () => DateTime(2026, 5, 7, 9, 0),
+        now: () => DateTime(DateTime.now().year + 1, 5, 7, 9, 0),
         maxAiRequests: 0,
       );
 
@@ -756,6 +756,41 @@ void main() {
       expect(parsed['is_multi_day'], isTrue);
     });
 
+    test(
+      'one utterance preserves weekly time, title, and important flag',
+      () async {
+        final service = VoiceCommandAnalysisService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(DateTime.now().year + 1, 5, 7, 9, 0),
+          maxAiRequests: 0,
+        );
+
+        final result = await service.analyze(
+          '매주 월요일 오전9시 태블릿계기반찍기 중요한 일정으로 등록',
+          stage: VoiceCommandAnalysisStage.complete,
+        );
+        final parsed = result.toParsedScheduleMap();
+
+        expect(result.method, VoiceCommandAnalysisMethod.local);
+        expect(result.intent, VoiceCommandIntent.add);
+        expect(parsed['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=MO');
+        expect(
+          parsed['start_at'],
+          '${DateTime.now().year + 1}-05-11T09:00:00.000',
+        );
+        expect(parsed['is_critical'], isTrue);
+        expect(parsed['use_strong_alarm'], isFalse);
+        expect(parsed['title'].toString(), contains('태블릿계기반'));
+        expect(parsed['title'].toString(), isNot(contains('중요한 일정')));
+
+        final falsePositive = await service.analyze(
+          '중요정형외과에서 진료',
+          stage: VoiceCommandAnalysisStage.complete,
+        );
+        expect(falsePositive.toParsedScheduleMap()['is_critical'], isFalse);
+      },
+    );
+
     test('does not preserve an AI-only overnight end for a single-day command',
         () async {
       final client = MockClient((request) async {
@@ -790,7 +825,8 @@ void main() {
       final service = VoiceCommandAnalysisService(
         client: client,
         endpoint: Uri.parse(_proxyEndpoint),
-        now: () => DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
+        now: () =>
+            DateTime(2026, 5, 7, 9), // banned-ok: mocked AI reference time.
       );
 
       final result = await service.analyze(

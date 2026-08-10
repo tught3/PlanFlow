@@ -1084,6 +1084,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         startAt: resolvedStart,
         endAt: resolvedEnd,
         isCritical: parsed['is_critical'] == true,
+        useStrongAlarm: parsed['use_strong_alarm'] == true,
         recurrenceRule: (parsed['recurrence_rule'] as String?)?.trim(),
         location: (parsed['location'] as String?)?.trim(),
         locationLat: parsed['location_lat'] as double?,

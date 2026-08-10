@@ -158,12 +158,17 @@ class VoiceConversationResult {
 }
 
 class VoiceConversationDateRange {
-  const VoiceConversationDateRange({required this.start, required this.end});
+  const VoiceConversationDateRange({
+    required this.start,
+    required this.end,
+    this.isMultiDay = false,
+  });
 
   final DateTime start;
   final DateTime end;
+  final bool isMultiDay;
 
-  bool get isSingleDay => end.difference(start).inDays == 1;
+  bool get isSingleDay => !isMultiDay;
 }
 
 class VoiceConversationController {
@@ -776,7 +781,13 @@ class VoiceConversationController {
       final range = _parseDateRange(text);
       final now = planflowLocal((_now ?? planflowNow)());
       final startAt = _defaultDraftStartAt(range?.start, now);
-      final endAt = range?.end ?? startAt.add(const Duration(hours: 1));
+      // Date-range parsing uses a half-open [start, end) boundary for
+      // single-day queries (e.g. 9월 12일 -> 9/12 00:00..9/13 00:00).
+      // That boundary must never become the event's actual end time. Only
+      // explicit multi-day input may use the parsed range end for creation.
+      final endAt = range?.isMultiDay == true
+          ? range!.end
+          : startAt.add(const Duration(hours: 1));
       final draft = EventModel(
         id: '',
         userId: '',
@@ -881,7 +892,11 @@ class VoiceConversationController {
     if (parsed == null) {
       return null;
     }
-    return VoiceConversationDateRange(start: parsed.start, end: parsed.end);
+    return VoiceConversationDateRange(
+      start: parsed.start,
+      end: parsed.end,
+      isMultiDay: parsed.isMultiDay,
+    );
   }
 
   DateTime _defaultDraftStartAt(DateTime? candidate, DateTime now) {
