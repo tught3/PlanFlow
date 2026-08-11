@@ -675,6 +675,222 @@ void main() {
     expect(find.textContaining('2026-05-15T01:00:00.000'), findsOneWidget);
   });
 
+  testWidgets('음성 수정 시 표기 없는 1~11시는 오후로 기본 해석된다(f3f2b3a1 정책)', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '에버랜드',
+          startAt: DateTime(2026, 5, 12, 10), // banned-ok: 기존 통과 테스트(625줄)와 동일한 고정 픽스처 재사용, now() 기반 클램프/만료 로직과 무관
+          location: '용인',
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '에버랜드 일정을 3시로 바꿔줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              '편집 시작: ${event.startAt?.toIso8601String()}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('에버랜드'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    // 무표기 3시 -> 오후 3시(KST 15:00) -> UTC 06:00
+    expect(find.textContaining('2026-05-12T06:00:00.000'), findsOneWidget);
+  });
+
+  testWidgets('음성 수정 시 표기 없는 12시는 정오로 유지된다(자정 아님)', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '에버랜드',
+          startAt: DateTime(2026, 5, 12, 10), // banned-ok: 기존 통과 테스트(625줄)와 동일한 고정 픽스처 재사용, now() 기반 클램프/만료 로직과 무관
+          location: '용인',
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '에버랜드 일정을 12시로 바꿔줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              '편집 시작: ${event.startAt?.toIso8601String()}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('에버랜드'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    // 무표기 12시 -> 정오(KST 12:00) 유지 -> UTC 03:00
+    expect(find.textContaining('2026-05-12T03:00:00.000'), findsOneWidget);
+  });
+
+  testWidgets('음성 수정 시 오전 3시는 표기가 있으므로 변경 없이 유지된다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '에버랜드',
+          startAt: DateTime(2026, 5, 12, 10), // banned-ok: 기존 통과 테스트(625줄)와 동일한 고정 픽스처 재사용, now() 기반 클램프/만료 로직과 무관
+          location: '용인',
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '에버랜드 일정을 오전 3시로 바꿔줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              '편집 시작: ${event.startAt?.toIso8601String()}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('에버랜드'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    // 오전 3시(표기 있음, 정책 무관) -> KST 03:00 -> UTC 전날 18:00
+    expect(find.textContaining('2026-05-11T18:00:00.000'), findsOneWidget);
+  });
+
+  testWidgets('음성 수정 시 새벽 12시는 기존 정책대로 자정으로 유지된다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '에버랜드',
+          startAt: DateTime(2026, 5, 12, 10), // banned-ok: 기존 통과 테스트(625줄)와 동일한 고정 픽스처 재사용, now() 기반 클램프/만료 로직과 무관
+          location: '용인',
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '에버랜드 일정을 새벽 12시로 바꿔줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              '편집 시작: ${event.startAt?.toIso8601String()}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('에버랜드'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    // 새벽 12시(표기 있음, 기존 자정 유지 로직) -> KST 00:00 -> UTC 전날 15:00
+    expect(find.textContaining('2026-05-11T15:00:00.000'), findsOneWidget);
+  });
+
   testWidgets('음성 수정 후보 검색은 조사 오류와 새 시간 표현을 걷어내고 대상을 찾는다', (tester) async {
     final repository = _FakeEventRepository(
       events: [

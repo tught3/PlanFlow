@@ -2245,6 +2245,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     if (period == '새벽' && hour == 12) {
       hour = 0;
     }
+    if (period.isEmpty && hour >= 1 && hour <= 11) {
+      // 오전/오후 등 명시 표기가 없는 1~11시는 오후로 기본 해석한다(f3f2b3a1 정책).
+      // hour 12는 정오로 유지, hour 0과 13~23은 이미 명확하므로 손대지 않는다.
+      // 표기가 있으면 period가 비어 있지 않아 이 분기에 들어오지 않는다.
+      hour += 12;
+    }
     final minute =
         match.group(4) != null ? 30 : (_koreanNumber(match.group(3)) ?? 0);
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
