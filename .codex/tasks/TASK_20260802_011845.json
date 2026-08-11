@@ -1,0 +1,126 @@
+{
+  "task_id": "TASK_20260802_011845",
+  "status": "complete",
+  "request": "Prevent voice-created schedules from being incorrectly saved as unintended overnight or two-day events.",
+  "requirements": [
+    "Discard an AI-only cross-day end for ordinary single-day voice input.",
+    "Preserve explicit date-range and overnight intent.",
+    "Keep ConfirmScreen multi-day state derived from the retained date range."
+  ],
+  "non_requirements": [
+    "No Supabase schema, authentication, payment, deployment, or on-device STT changes.",
+    "Do not broaden the unrelated location-coordinate hydration race into this task."
+  ],
+  "allowed_files": [
+    "lib/services/voice_schedule_structure_service.dart",
+    "lib/services/gpt_service.dart",
+    "lib/services/voice_command_analysis_service.dart",
+    "lib/screens/voice/confirm_screen.dart",
+    "test/services/voice_schedule_structure_service_test.dart",
+    "test/services/gpt_service_test.dart",
+    "test/services/voice_command_analysis_service_test.dart",
+    "test/screens/confirm_screen_test.dart"
+  ],
+  "changed_files": [
+    "test/screens/confirm_screen_test.dart"
+  ],
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Trace cross-day voice parsing and persistence behavior.",
+      "result": "303c86ce is an ancestor of HEAD; shared explicit-cross-day guard and save-layer protection are present.",
+      "changed_files": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Set high-risk debug scope, acceptance criteria, allowed files, and focused verification.",
+      "result": "No product-source reimplementation warranted without a direct regression; require focused test and analyze evidence.",
+      "changed_files": []
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Apply only an approved test correction when the focused suite exposed a stale test contract.",
+      "result": "Updated the ConfirmScreen widget test to verify immediate raw-location save and drain its known delayed lookup timers; product source unchanged.",
+      "changed_files": [
+        "test/screens/confirm_screen_test.dart"
+      ]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "assignment": "Run focused widget/service tests and scoped analysis.",
+      "result": "All six final commands exited 0.",
+      "changed_files": []
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Classify focused test failures and constrain remediation.",
+      "result": "Classified stale location-save expectation and timer cleanup as test-only; separately identified a pre-existing location hydration race as out of scope.",
+      "changed_files": []
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review final diff, cross-day safeguards, and test quality.",
+      "result": "APPROVE; no blocker, high, medium, or low findings.",
+      "changed_files": []
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile reports, test evidence, final diff, and completion gate.",
+      "result": "COMPLETE; commit-ready scope is the one widget test plus task state.",
+      "changed_files": []
+    }
+  ],
+  "verification": [
+    {
+      "command": "flutter test --no-pub test/screens/confirm_screen_test.dart --plain-name 'ConfirmScreen saves immediately before location resolution'",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test --no-pub test/screens/confirm_screen_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test --no-pub test/services/gpt_service_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test --no-pub test/services/voice_command_analysis_service_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test --no-pub test/services/voice_schedule_structure_service_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter analyze lib/services/voice_schedule_structure_service.dart lib/services/gpt_service.dart lib/services/voice_command_analysis_service.dart lib/screens/voice/confirm_screen.dart",
+      "exit_code": 0
+    }
+  ],
+  "reviewer_findings": [],
+  "remaining_risks": [
+    "The pre-existing init/save location-coordinate hydration race is intentionally out of scope; the existing post-save safety net remains.",
+    "Explicit cross-day intent detection is deliberately conservative, so novel phrasing outside its supported patterns may be treated as a single-day event."
+  ],
+  "final_verdict": "COMPLETE"
+}

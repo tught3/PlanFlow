@@ -412,7 +412,7 @@ void main() {
     expect(find.text('AI가 만든 설명'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen waits for location coordinates before saving',
+  testWidgets('ConfirmScreen saves immediately before location resolution',
       (tester) async {
     final repository = _FakeEventRepository();
     final lookup = _DelayedSingleLocationLookupService();
@@ -441,14 +441,13 @@ void main() {
     await tester.tap(find.text('일정 저장'));
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(repository.createdEvents, isEmpty);
+    final created = repository.createdEvents.single;
+    expect(created.location, '원주세브란스');
+    expect(created.locationLat, isNull);
+    expect(created.locationLng, isNull);
 
-    await tester.pump(const Duration(milliseconds: 300));
-
-    final saved = repository.createdEvents.single;
-    expect(saved.location, '원주세브란스기독병원');
-    expect(saved.locationLat, 37.3495);
-    expect(saved.locationLng, 127.9458);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
   });
 
   testWidgets('ConfirmScreen does not auto-resolve personal place aliases',
