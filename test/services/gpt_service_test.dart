@@ -722,7 +722,12 @@ void main() {
       expect(result['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=FR');
     });
 
-    test('keeps GPT period choice for ambiguous 7 to 11 oclock text', () async {
+    // GPT가 이미 오후(19:40)로 응답한 픽스처다. "무표기 시각은 오후로
+    // 기본 해석한다" 정책(P6, _applyAmbiguousMeridiemHourCorrection)이 시(hour)를
+    // 보정하는 건 GPT가 리터럴(오전) 시를 그대로 반환했을 때뿐이므로, GPT가
+    // 이미 정책과 일치하는 오후 값을 반환한 이 픽스처는 보정 없이 그대로
+    // 통과해야 한다.
+    test('GPT가 이미 PM으로 응답하면 보정 없이 그대로 통과한다', () async {
       final client = MockClient((request) async {
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -763,13 +768,15 @@ void main() {
     });
 
     // ── 회귀 테스트(P3~P6, "8시 반"이 "8시 30분"이 아니라 "8시"로 잘못
-    // 파싱되는 회귀 방지): 오전/오후 미표시 + 7~12시 + 원문에 분 표현이
-    // 있으면, 시는 GPT 응답 그대로, 분은 원문 파싱값으로 보정해야 한다.
-    // 분 표현이 없으면 GPT 값을 그대로 신뢰한다. time_period_ambiguous는
-    // 기존대로 유지한다.
+    // 파싱되는 회귀 방지 + P6 정책 보정): 오전/오후 미표시 + 7~12시 + 원문에
+    // 분 표현이 있는데 GPT가 리터럴(오전) 시를 그대로 반환하면, 시는
+    // "무표기 시각은 PM 기본"이라는 정책에 따라 12시간을 더해 GPT의 AM
+    // 응답을 보정하고(Option B, _applyAmbiguousMeridiemHourCorrection), 분은
+    // 원문 파싱값으로 보정해야 한다. 분 표현이 없으면 GPT의 분값을 그대로
+    // 신뢰한다. time_period_ambiguous는 기존대로 유지한다.
     test(
-        '오전/오후 미표시 7~12시 발화에 반이 있으면 시는 GPT값 유지, '
-        '분은 로컬파싱값을 쓴다(P3)', () async {
+        '오전/오후 미표시 7~12시 발화에 반이 있으면 무표기 시각은 PM 기본이므로 '
+        'GPT의 AM 응답을 보정하고, 분은 로컬파싱값을 쓴다(P3, P6)', () async {
       final client = MockClient((request) async {
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -806,7 +813,7 @@ void main() {
       final result = await service.parseSchedule('8시 반에 회의');
       final parsedStartAt = DateTime.parse(result['start_at'] as String);
 
-      expect(parsedStartAt.hour, 8);
+      expect(parsedStartAt.hour, 20);
       expect(parsedStartAt.minute, 30);
       expect(result['time_period_ambiguous'], isTrue);
     });
@@ -1253,6 +1260,136 @@ void main() {
       );
     });
 
+    // ── P8: 로컬 추론(inferStartAtFromRawText) 레벨에서 "무표기 시각은
+    // 오후로 기본 해석한다" 정책(P1~P6)이 실제로 적용되는지 검증한다.
+    // 각 케이스는 "이미 지났다" 롤오버 분기(967행 근처)에 우연히 걸리지
+    // 않도록 now를 신중히 골랐다(각 서브케이스 주석 참고).
+
+    test(
+        'P8(i) 앞에 오늘/내일/모레/글피 같은 날짜 앵커가 없는 무표기 1~11시도 '
+        '오후로 기본 해석된다', () {
+      // now=09:30이면 아래 모든 후보 시각(12:00 이후)이 아직 지나지
+      // 않았으므로 967행 근처의 "이미 지났으면 다음날로" 분기에 걸리지 않는다.
+      final now = DateTime(2026, 5, 18, 9, 30); // banned-ok: 결정론적 now 주입값, 실제 시계 아님(P8)
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('4시에 미팅'),
+        DateTime(2026, 5, 18, 16), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+
+      // '목요일 4시 미팅'처럼 요일 접두 표현도 실제로 날짜가 해석되는지
+      // 먼저 확인했다: _extractWeekdayOffset이 "목요일" 포함 여부만으로
+      // 매칭하므로 정상적으로 날짜를 반환한다(요일 변형을 건너뛸 필요
+      // 없음). 실제 달력에서 오늘이 무슨 요일인지에 기대값이 의존하지
+      // 않도록, 기대값도 프로덕션 코드와 동일한 "이번주 이후 가장 가까운
+      // 목요일" 규칙으로 직접 계산한다.
+      var expectedThursday = DateTime(now.year, now.month, now.day);
+      var deltaToThursday = DateTime.thursday - expectedThursday.weekday;
+      if (deltaToThursday <= 0) {
+        deltaToThursday += 7;
+      }
+      expectedThursday = expectedThursday.add(Duration(days: deltaToThursday));
+      expect(
+        service.inferStartAtFromRawText('목요일 4시 미팅'),
+        DateTime(
+          expectedThursday.year,
+          expectedThursday.month,
+          expectedThursday.day,
+          16,
+        ),
+      );
+
+      expect(
+        service.inferStartAtFromRawText('7시 40분까지 모란역 가기'),
+        DateTime(2026, 5, 18, 19, 40), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+    });
+
+    test('P8(ii) 무표기 12시는 정오 예외로 유지되고 자정으로 밀리지 않는다',
+        () {
+      final now = DateTime(2026, 5, 18, 9, 30); // banned-ok: 결정론적 now 주입값, 실제 시계 아님(P8)
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('12시에 점심'),
+        DateTime(2026, 5, 18, 12), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+    });
+
+    test('P8(iii) hour 0과 13~23은 이미 명확하므로 그대로 유지된다', () {
+      // now를 정확히 자정(00:00)으로 둬서 "0시 정산"의 후보 시각(오늘
+      // 00:00)이 now와 같아(엄격한 이전이 아님) 967행 근처의 롤오버 분기가
+      // 발동하지 않게 한다. 이 롤오버 자체는 이번 정책 변경과 무관한
+      // 기존 동작이다(무표기 시각이 이미 지났으면 다음날로 미룸).
+      final now = DateTime(2026, 5, 18); // banned-ok: 결정론적 now 주입값, 실제 시계 아님(P8)
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('16시 회의'),
+        DateTime(2026, 5, 18, 16), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+      expect(
+        service.inferStartAtFromRawText('0시 정산'),
+        DateTime(2026, 5, 18, 0), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+    });
+
+    test('P8(iv) 명시적 오전/오후/새벽 표기는 이 기본값의 영향을 받지 않는다',
+        () {
+      // now를 자정 직후(00:01)로 둬서 08:00/15:00/04:00 후보가 모두 아직
+      // 지나지 않게 한다.
+      final now = DateTime(2026, 5, 18, 0, 1); // banned-ok: 결정론적 now 주입값, 실제 시계 아님(P8)
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('오전 8시'),
+        DateTime(2026, 5, 18, 8), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+      expect(
+        service.inferStartAtFromRawText('오후 3시'),
+        DateTime(2026, 5, 18, 15), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+      expect(
+        service.inferStartAtFromRawText('새벽 4시'),
+        DateTime(2026, 5, 18, 4), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+    });
+
+    test(
+        'P8(v) 이미 지난 무표기 1~6시는 다음날 같은(오후) 시각으로 미뤄지며 '
+        '오전으로 되돌아가지 않는다', () {
+      // now=17:00이면 오늘 16:00(오후로 기본 해석된 "4시" 후보)은 이미
+      // 지났으므로 다음날로 미뤄진다. P2 이전 버그였다면 다음날 04:00(오전
+      // 해석)이 됐겠지만, 이제는 다음날 16:00(오후 해석 유지)이어야 한다.
+      final now = DateTime(2026, 5, 18, 17); // banned-ok: 결정론적 now 주입값, 실제 시계 아님(P8)
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('4시'),
+        DateTime(2026, 5, 19, 16), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+      expect(
+        service.inferStartAtFromRawText('4시 회의'),
+        DateTime(2026, 5, 19, 16), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+      );
+    });
+
     test('locally infers all-day, multi-day, category, and recurrence hints',
         () async {
       final client = MockClient((request) async {
@@ -1684,6 +1821,56 @@ void main() {
         contains('Input: "토요일 병원 병문안" -> include "꽃이나 선물 챙기기"'),
       );
       expect(prompt, contains('Input: "내일 법원" or "내일 학교"'));
+    });
+
+    // ── P9: 무표기 시각 오후 기본 해석 정책이 실제로 GPT 시스템 프롬프트에
+    // 전달되는지만 검증한다(부분/포함 매칭 — 문구를 조금 다듬어도 이 테스트가
+    // 쉽게 깨지지 않도록 전체 문자열 완전일치는 쓰지 않는다). GPT가 이
+    // 지시를 실제로 얼마나 잘 지키는지는 라이브 호출에서만 확인 가능하므로
+    // 단위 테스트로는 검증할 수 없고, 이 테스트는 "지시가 실제로 전송됐는가"
+    // 만 보장한다.
+    test('schedule prompt transmits the unmarked-hour PM default policy',
+        () async {
+      late Map<String, dynamic> body;
+
+      final client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '미팅',
+                    'start_at': null,
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+      );
+
+      await service.parseSchedule('4시에 미팅');
+
+      final prompt = (body['messages'] as List).first['content'] as String;
+      expect(prompt, contains('오후'));
+      expect(prompt, contains('default that hour to PM'));
+      expect(prompt, contains('hour 12'));
+      expect(prompt, contains('"4시에 미팅"'));
     });
 
     test('rate limit blocks GPT API call and returns null', () async {

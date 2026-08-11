@@ -575,8 +575,50 @@ class GptService {
     );
     _applyLocalDateRange(rawText, normalized);
     _removeUnsupportedCrossDayEnd(rawText, normalized);
+    _applyAmbiguousMeridiemHourCorrection(normalized, rawText);
     _applyAmbiguousMeridiemMinuteCorrection(normalized, rawText);
     return normalized;
+  }
+
+  /// (Option B, 결정적 로컬 보정) 원문에 오전/오후 등 명시 표기가 없고
+  /// 로컬 파서가 읽은 리터럴 시(hour)가 1~11 범위인데, GPT가 반환한
+  /// start_at의 시(hour)가 그 리터럴 시 그대로(즉 GPT가 오후로 보정하지
+  /// 않고 오전 그대로 반환)라면, "무표기 시각은 오후로 기본 해석한다"는
+  /// 정책에 맞춰 12시간을 더해 오후로 보정한다. GPT가 이미 오후로 응답했다면
+  /// (hour가 리터럴 값과 다르면) 손대지 않는다 — 프롬프트 지시만으로는
+  /// 정책이 항상 지켜진다는 보장이 없으므로, 이 보정이 정책을 최종적으로
+  /// 강제한다. hour 0/12/13~23이거나 명시 표기가 있으면(= localClock이
+  /// null이거나 범위 밖) 건드리지 않는다. 시(hour) 보정은 분(minute) 보정보다
+  /// 먼저 실행해, 분 보정이 이미 정확한 hour 위에서만 분을 조정하게 한다.
+  void _applyAmbiguousMeridiemHourCorrection(
+    Map<String, dynamic> schedule,
+    String rawText,
+  ) {
+    if (schedule['is_all_day'] == true || schedule['is_multi_day'] == true) {
+      return;
+    }
+    final localClock = _extractAmbiguousMeridiemClock(rawText);
+    if (localClock == null) {
+      return;
+    }
+    if (localClock.hour < 1 || localClock.hour > 11) {
+      return;
+    }
+    final startAt = _parseDateTime(schedule['start_at']);
+    if (startAt == null || startAt.hour != localClock.hour) {
+      return;
+    }
+
+    final correctedStartAt = startAt.add(const Duration(hours: 12));
+    schedule['start_at'] = correctedStartAt.toIso8601String();
+
+    // end_at 역전 방지: 보정으로 start_at이 밀려 end_at 이하가 되면
+    // end_at도 같은 12시간만큼 함께 이동시킨다(분 보정의 기존 가드와 동일 패턴).
+    final endAt = _parseDateTime(schedule['end_at']);
+    if (endAt != null && !endAt.isAfter(correctedStartAt)) {
+      schedule['end_at'] =
+          endAt.add(const Duration(hours: 12)).toIso8601String();
+    }
   }
 
   /// "오전/오후 미표시 + hour 7~12"인 애매한 시각 표현은
@@ -945,10 +987,7 @@ class GptService {
     final recurringDate =
         _extractMonthlyRecurringDateFromText(dateTimeText, now);
     final date = recurringDate ?? _extractDateFromText(dateTimeText, now);
-    final time = _normalizeAmbiguousLeadingTime(
-      dateTimeText,
-      _extractTimeFromText(dateTimeText),
-    );
+    final time = _extractTimeFromText(dateTimeText);
 
     if (date == null && time == null) {
       return null;
@@ -965,13 +1004,24 @@ class GptService {
     );
 
     if (date == null && time != null && candidate.isBefore(now)) {
-      // 오전/오후를 말하지 않은 애매한 시각(7~12시)이 이미 지났으면, 무조건
-      // 다음날 같은 시각(오전 해석)으로 미루지 않는다. "지금 오후 7:55에
-      // '8시'라고 하면" 다음날 오전 8시(약 12시간 뒤)보다 오늘 오후 8시
-      // (약 5분 뒤)가 훨씬 자연스럽다 — 오전 8시를 의도했다면 "내일 8시"처럼
-      // 날짜를 같이 말했을 것이기 때문. 두 후보 중 지금(now) 이후로
-      // 가장 가까운 쪽을 고른다. 두 후보 다 이미 지났을 때만(예: 자정 직전)
-      // 기존처럼 다음날로 넘긴다.
+      // P2/P3 도입 이후 `time`(따라서 `candidate`)은 이미 "명시 표기가 없는
+      // 1~11시는 오후로 기본 해석한다"는 정책이 적용된 값이다
+      // (_clockTimeFromParts의 applyUnmarkedPmDefault, 기본 true). 즉 이
+      // 분기에 들어왔다는 것 자체가 "이미 오후로 해석한 후보 시각도 이미
+      // 지났다"는 뜻이며, 더 이상 candidate가 오전 후보라고 가정할 수 없다.
+      //
+      // - hour 1~6처럼 `_hasAmbiguousMeridiemTime`(리터럴 hour 7~12 판정,
+      //   명시 표기 없을 때만 true)이 false인 경우: 이제는 AM/PM 두 후보
+      //   중 하나를 고르는 게 아니라, 이미 오후로 확정된 candidate를 그대로
+      //   다음날 같은 시각으로 미루기만 한다("이미 지난 오후 후보 ->
+      //   다음날로 이월"). 예: 지금이 17:00인데 "4시"라고 하면 다음날
+      //   16:00(오후)이지 다음날 04:00(오전)이 아니다.
+      // - hour 7~12처럼 `_hasAmbiguousMeridiemTime`이 true인 경우: candidate는
+      //   여전히(root에서 이미 적용된) 오후 후보이고, 아래 분기가 거기서
+      //   다시 +12시간을 더해 지금(now) 이후로 넘어가는지 확인한다. 두 번의
+      //   +12시간(=+24시간=+1일)이 결과적으로 "오전 후보를 다음날로 이월"한
+      //   것과 수치상 동일해, 기존에 관측되던 결과(다음날 같은 오전 시각)는
+      //   그대로 유지된다.
       if (_hasAmbiguousMeridiemTime(dateTimeText)) {
         final pmCandidate = candidate.add(const Duration(hours: 12));
         candidate = pmCandidate.isBefore(now)
@@ -1062,37 +1112,6 @@ class GptService {
     return cursor.month == now.month ? cursor : null;
   }
 
-  _ClockTime? _normalizeAmbiguousLeadingTime(
-    String text,
-    _ClockTime? clock,
-  ) {
-    if (clock == null) {
-      return null;
-    }
-
-    final hasExplicitPeriod = RegExp(
-          r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
-        ).firstMatch(text)?.group(1) !=
-        null;
-    if (hasExplicitPeriod) {
-      return clock;
-    }
-
-    if (!RegExp(r'^(?:\s*(?:오늘|내일|모레|글피))\s*\d{1,2}\s*시').hasMatch(text)) {
-      return clock;
-    }
-
-    if (clock.hour < 1 || clock.hour > 6) {
-      return clock;
-    }
-
-    return _clockTimeFromParts(
-      period: '오후',
-      hour: clock.hour,
-      minute: clock.minute,
-    );
-  }
-
   String _scheduleSystemPromptForRegion() {
     final region = PlanFlowRegionController.instance.region;
     final now = _now();
@@ -1178,6 +1197,13 @@ $_scheduleSystemPrompt
     return clock != null && clock.hour >= 7 && clock.hour <= 12;
   }
 
+  // 이 함수의 계약: 사용자가 말한 "리터럴" 숫자(오전/오후 기본 적용 없이,
+  // 명시 표기가 없으면 그대로의 hour)를 반환한다. `_hasAmbiguousMeridiemTime`의
+  // hour 7~12 애매함 판정, `time_period_ambiguous` 플래그, 분(minute) 보정
+  // 로직이 모두 이 리터럴 값에 의존하므로, 여기서는 절대 오후 기본값을
+  // 스스로 적용하지 않는다(applyUnmarkedPmDefault: false). 실제 오후 기본
+  // 해석 보정은 P6(_applyAmbiguousMeridiemHourCorrection)이 별도로,
+  // GPT 응답 이후 단계에서 수행한다.
   _ClockTime? _extractAmbiguousMeridiemClock(String rawText) {
     final text = _normalizeKoreanText(rawText);
     final numericMatch = RegExp(
@@ -1196,6 +1222,7 @@ $_scheduleSystemPrompt
             : numericMatch.group(3) == null
                 ? 0
                 : int.tryParse(numericMatch.group(3)!),
+        applyUnmarkedPmDefault: false,
       );
     }
 
@@ -1220,6 +1247,7 @@ $_scheduleSystemPrompt
           : minuteText == null
               ? 0
               : int.tryParse(minuteText) ?? _parseKoreanNumber(minuteText),
+      applyUnmarkedPmDefault: false,
     );
   }
 
@@ -1766,6 +1794,7 @@ $_scheduleSystemPrompt
     required String? period,
     required int? hour,
     required int? minute,
+    bool applyUnmarkedPmDefault = true,
   }) {
     final normalizedMinute = minute ?? 0;
     if (hour == null || normalizedMinute < 0 || normalizedMinute > 59) {
@@ -1780,6 +1809,16 @@ $_scheduleSystemPrompt
     } else if ((period == '오전' || period == '아침' || period == '새벽') &&
         hour == 12) {
       hour = 0;
+    } else if (period == null &&
+        applyUnmarkedPmDefault &&
+        hour >= 1 &&
+        hour <= 11) {
+      // 오전/오후 등 명시 표기가 없는 1~11시는 오후로 기본 해석한다.
+      // 일반적인 일정은 오전 6시~오후 11시 사이에 잡히므로, 오전은 사용자가
+      // 명시할 때만 적용한다(새벽 일정은 드물다). hour 12는 별도 분기(위)에서
+      // 다뤄지지 않으므로 이 조건에 포함되지 않고 그대로 정오로 유지되며,
+      // hour 0과 13~23은 이미 명확하므로 손대지 않는다.
+      hour += 12;
     }
 
     return _ClockTime(hour: hour, minute: normalizedMinute);
@@ -1895,6 +1934,7 @@ Keep date, time, recurrence, and reminder expressions out of title and memo; put
 Location names must be kept in the title even when extracted into the location field. Never remove a place name from the title — only remove date, time, recurrence, reminder, and filler words (e.g. "만들어줘", "해줘").
 Always put the location name at the very front of the title in natural Korean word order, even when the user mentions the location after the event/action word in speech. Example: if the user says the event first and the location afterward ("회의 있어 원주세브란스병원에서"), the title must reorder to place the location first ("원주세브란스병원 회의"), not leave the location trailing at the end.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
+When an hour is spoken WITHOUT any explicit meridiem marker (오전, 아침, 새벽, 오후, 저녁, 밤), default that hour to PM, not AM: a bare hour 1 through 11 must be interpreted as 13:00 through 23:00 (hour + 12), never as 01:00-11:00. This is because a normal user schedule falls between 오전 6시 and 오후 11시, and dawn/early-morning scheduling without an explicit "오전" or "새벽" marker is rare — so treat unmarked hours as afternoon/evening unless the user says 오전, 아침, or 새벽. The single exception is hour 12 spoken without a marker: it stays 12:00 noon, never midnight (00:00). Hour 0 and hours 13-23 are already unambiguous and must not be changed. Any hour spoken WITH an explicit marker (오전/아침/새벽 or 오후/저녁/밤) keeps its normal meaning and is never affected by this default.
 "내일" means tomorrow (today + 1 day). "모레" and "내일모레" mean the day after tomorrow (today + 2 days); STT often mishears "모레" as "모래", so "내일모래" also means today + 2 days. "글피" means today + 3 days. Resolve "모레"/"내일모레"/"내일모래" to today + 2 days, never to tomorrow.
 For day-only expressions like "28일" or "28일로", resolve to the 28th of the current month. If that date has already passed, use the 28th of the next month instead. Always output the full date in ISO-8601 format.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
@@ -1910,7 +1950,10 @@ Keep people words, names, job titles, and recipient particles in the title. Do n
 Keep location names in the title even after extracting them into the location field.
 participants and targets are compatibility fields only; leave them empty unless the source explicitly needs legacy export metadata.
 Example: "내일 오전 9시에 대전출발" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo null.
-Example: "12시까지 모란역으로 가기" -> title "모란역으로 가기", location "모란역", start_at today 12:00 local, memo null.
+Example: "12시까지 모란역으로 가기" -> title "모란역으로 가기", location "모란역", start_at today 12:00 local, memo null. (12 with no marker stays noon, never midnight.)
+Example: "4시에 미팅" -> title "미팅", start_at today 16:00 local. (No marker, hour 4 -> defaults to PM/16:00, not 04:00.)
+Example: "목요일 4시 미팅" -> title "미팅", start_at that Thursday 16:00 local. (Same unmarked-hour default applies even when a weekday is specified.)
+Example: "7시 40분까지 모란역 가기" -> title "모란역 가기", location "모란역", start_at today 19:40 local. (No marker, hour 7 -> defaults to PM/19:40, not 07:40.)
 Example: "내일 오전 11시 팀장님 원주세브란스방문" -> title "팀장님 원주세브란스 방문", location "원주세브란스", participants ["팀장님"], targets [].
 Example: "오후 3시에 회의 있어 원주세브란스병원에서" -> title "원주세브란스병원 회의", location "원주세브란스병원", start_at today 15:00 local, memo null.
 Example: "내일 오전 9시에 대전출발 메모에 주차장 B2 확인" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo "주차장 B2 확인".
