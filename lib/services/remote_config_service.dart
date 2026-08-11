@@ -43,7 +43,10 @@ class RemoteConfigService {
   static const int kVoiceConversationInitialFreeCountDefault = 3;
 
   /// [voiceConversationDailyFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
-  static const int kVoiceConversationDailyFreeCountDefault = 0;
+  /// 정책상 "최초 3회 소진 후 매일 1회 무료"이므로 기본값은 1이어야 한다
+  /// (0으로 두면 콘솔 설정 전까지 일일무료가 사실상 꺼진 채로 곧장 광고
+  /// 단계로 넘어가는 버그가 됨 — 2026-08-09 실사용 중 발견).
+  static const int kVoiceConversationDailyFreeCountDefault = 1;
 
   static Future<void> initialize() async {
     if (_initialized) {
