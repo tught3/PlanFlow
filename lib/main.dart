@@ -43,16 +43,18 @@ Future<void> main() async {
 }
 
 Future<void> _initializePlatformServices() async {
-  // Firebase(RemoteConfig)를 먼저 완료시킨다. AdService.initialize()가
-  // RemoteConfigService.rewardedAdEnabled를 동기로 읽는데, RemoteConfig
-  // fetch가 아직 안 끝난 시점에 읽으면 컴파일타임 기본값(false)을 읽고
-  // 광고를 영구 비활성화하는 경쟁 상태가 있었다(2026-08-12 확인).
-  // Naver/Supabase/AdService/공휴일 캐시는 서로 독립이라 그대로 병렬 진행한다.
-  await _initializeFirebaseServices();
+  // Firebase(RemoteConfig) Future를 만들되 즉시 await하지 않는다 — Supabase 등
+  // 나머지 초기화가 다시 time-0부터 병렬로 시작하도록 한다(2026-08-12 f027c0a2가
+  // 이걸 await로 앞세워 Supabase 준비 시점을 늦춰 첫 프레임 크래시를 유발한
+  // 회귀를 되돌린다). AdService만 이 Future를 내부에서 기다린다(_primingAdService
+  // 참조) — 그래서 RemoteConfig 값이 정착하기 전에 광고를 영구 비활성화하던
+  // 원래 버그(f027c0a2가 고친 것)는 재발하지 않는다.
+  final firebaseReady = _initializeFirebaseServices();
   await Future.wait([
+    firebaseReady,
     _initializeNaverMap(),
     _initializeSupabase(),
-    _primingAdService(),
+    _primingAdService(firebaseReady),
     _primeHolidayCache(),
   ]);
 }
@@ -65,6 +67,10 @@ Future<void> _initializePlatformServices() async {
 /// - 10초 타임아웃 / 예외는 앱 시작을 막지 않고 로그만 남긴다(fail-open).
 Future<void> _reconcileStaleGroupAlarms() async {
   try {
+    if (!AppEnv.isSupabaseReady) {
+      debugPrint('[BootReconcile] Supabase not ready, skipping');
+      return;
+    }
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
     if (userId == null || userId.trim().isEmpty) {
@@ -101,11 +107,22 @@ Future<void> _reconcileStaleGroupAlarms() async {
 
 /// 1차 BM: GPT 일정 파싱 리워드 광고 초기화. Remote Config가 OFF면 즉시 종료.
 ///
+/// [firebaseReady]는 `_initializeFirebaseServices()`가 반환한 것과 동일한
+/// Future 인스턴스를 그대로 전달받아 먼저 기다린다. AdService.initialize()가
+/// RemoteConfigService.rewardedAdEnabled를 동기로 읽기 때문에 RemoteConfig
+/// fetch가 settle되기 전에 읽으면 컴파일타임 기본값(false)을 읽어 광고를
+/// 영구 비활성화하는 경쟁 상태가 있었다(2026-08-12 확인, f027c0a2에서 최초 수정).
+/// 단, 여기서 RemoteConfigService.initialize()를 직접 다시 호출하지 않는다 —
+/// 그 함수는 Firebase.apps가 비어 있으면 fetch를 건너뛰고 _initialized를
+/// 영구 true로 고정해버리므로, Firebase.initializeApp() 완료 전에 호출되면
+/// RemoteConfig가 앱 전체에서 영원히 기본값만 쓰게 되는 더 심각한 회귀가 난다.
+///
 /// 의존성 google_mobile_ads가 pubspec에 추가돼 있어야 한다. 빌드 환경에서
 /// 패키지가 누락되면 Dynamic loading 없이도 import 자체가 깨질 수 있어
 /// try/catch로 격리한다.
-Future<void> _primingAdService() async {
+Future<void> _primingAdService(Future<void> firebaseReady) async {
   try {
+    await firebaseReady;
     await AdService.instance.initialize();
   } catch (error) {
     debugPrint('AdService initialize skipped: $error');
