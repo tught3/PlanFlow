@@ -17,6 +17,17 @@ class RemoteConfigService {
 
   static bool _initialized = false;
 
+  /// 마지막 fetchAndActivate() 시도의 성공 여부.
+  ///
+  /// - true: 콘솔 fetch가 정착한 후의 값을 읽고 있다는 신호.
+  /// - false: 네트워크 실패/타임아웃으로 기본값(또는 캐시된 이전 값)을
+  ///   읽고 있을 가능성 — 광고 진단 시 "RC가 진짜 OFF라서 광고가
+  ///   꺼진 건지(fetch 성공 + 콘솔 OFF)", "그저 fetch가 실패해서
+  ///   기본값(false)을 읽은 건지(fetch 실패)"를 구분하는 데 사용.
+  ///
+  /// 진단 책임: M2 (이슈 A). voice_conversation_* 영역은 일체 손대지 않는다.
+  static bool _lastFetchSucceeded = false;
+
   static const String _kGptModel = 'gpt_model';
   static const String _kBriefingEnabled = 'briefing_enabled';
   static const String _kEarlyBirdBannerVisible = 'early_bird_banner_visible';
@@ -90,8 +101,10 @@ class RemoteConfigService {
 
     try {
       await remoteConfig.fetchAndActivate();
+      _lastFetchSucceeded = true;
     } catch (_) {
       // 네트워크가 없어도 앱은 기본값으로 계속 부팅한다.
+      _lastFetchSucceeded = false;
     }
 
     _initialized = true;
@@ -126,6 +139,14 @@ class RemoteConfigService {
   /// 리워드 광고 마스터 스위치. 기본값 false (출시 초기 OFF).
   static bool get rewardedAdEnabled =>
       _remoteConfig?.getBool(_kRewardedAdEnabled) ?? false;
+
+  /// 마지막 fetchAndActivate()가 성공했는지 여부.
+  ///
+  /// [initialize] 호출 이전이면 false. 네트워크 실패 후엔 false가 유지되고,
+  /// 다음 fetch가 성공하면 true로 전환된다. 광고 진단(AdService.initialize)이
+  /// "RC 콘솔에서 진짜 OFF"와 "fetch 실패로 기본값(false)을 잘못 읽음"을
+  /// 구분하기 위해 참조한다.
+  static bool get lastFetchSucceeded => _lastFetchSucceeded;
 
   /// 운영 광고 단위 ID. Remote Config 콘솔에서 설정. 비어 있거나 형식이
   /// 잘못되면 AdService가 폴백 없이 리워드 광고를 비활성화한다(release 한정,
