@@ -16,6 +16,9 @@ void main() {
   final strictPeekMigration = File(
     'supabase/migrations/20260809000000_voice_conversation_strict_initial_trial.sql',
   ).readAsStringSync().replaceAll('\r\n', '\n');
+  final restoreDailyFreeMigration = File(
+    'supabase/migrations/20260812000000_voice_conversation_restore_daily_free.sql',
+  ).readAsStringSync().replaceAll('\r\n', '\n');
 
   test('user_settings gains daily-free and session columns', () {
     for (final sql in <String>[schema, migration]) {
@@ -60,16 +63,23 @@ void main() {
     }
   });
 
-  test('source-of-truth peek RPC fixes initial=3 and daily=0', () {
+  test(
+      'source-of-truth peek RPC restores initial=3 and daily=1(파라미터 기반, KST 매일 리셋)',
+      () {
     final block = _between(
       schema,
       'create or replace function public.voice_conversation_entitlement_peek(',
       'grant execute on function public.voice_conversation_entitlement_peek',
     );
     expect(block, contains('p_initial_limit integer default 3'));
-    expect(block, contains('p_daily_limit integer default 0'));
+    expect(block, contains('p_daily_limit integer default 1'));
     expect(block, contains('v_initial_limit integer := 3;'));
-    expect(block, contains('v_daily_limit integer := 0;'));
+    expect(
+      block,
+      contains(
+        'v_daily_limit integer := least(greatest(coalesce(p_daily_limit, 1), 0), 5);',
+      ),
+    );
   });
 
   test('consume RPC locks the row and is idempotent per session id', () {
@@ -90,7 +100,9 @@ void main() {
     }
   });
 
-  test('source-of-truth consume RPC fixes initial=3 and daily=0', () {
+  test(
+      'source-of-truth consume RPC restores initial=3 and daily=1(파라미터 기반, KST 매일 리셋)',
+      () {
     final block = _between(
       schema,
       'create or replace function public.consume_voice_conversation_free_usage(',
@@ -102,30 +114,43 @@ void main() {
         'p_initial_limit integer default 3',
       ),
     );
-    expect(block, contains('p_daily_limit integer default 0'));
+    expect(block, contains('p_daily_limit integer default 1'));
     expect(block, contains('v_initial_limit integer := 3;'));
-    expect(block, contains('v_daily_limit integer := 0;'));
+    expect(
+      block,
+      contains(
+        'v_daily_limit integer := least(greatest(coalesce(p_daily_limit, 1), 0), 5);',
+      ),
+    );
   });
 
-  test('consume RPC has only initial-free then ad-required progression', () {
+  test(
+      'consume RPC has initial-free -> daily-free -> ad-required progression(일일무료 1회 정책 복원)',
+      () {
     final block = _between(
       schema,
       'create or replace function public.consume_voice_conversation_free_usage(',
       'grant execute on function public.consume_voice_conversation_free_usage',
     );
     expect(block, contains("v_source := 'initial_free';"));
+    expect(block, contains("v_source := 'daily_free';"));
     expect(block, contains("v_source := 'ad_required';"));
-    expect(block, isNot(contains("v_source := 'daily_free';")));
   });
 
-  test('consume RPC never contains a daily-free branch', () {
+  test('consume RPC contains a KST-daily-reset daily-free branch', () {
     final block = _between(
       schema,
       'create or replace function public.consume_voice_conversation_free_usage(',
       'grant execute on function public.consume_voice_conversation_free_usage',
     );
-    expect(block, isNot(contains("v_source := 'daily_free';")));
-    expect(block, isNot(contains('elsif v_daily_limit > 0')));
+    expect(block, contains("v_source := 'daily_free';"));
+    expect(block, contains('elsif v_daily_limit > 0'));
+    expect(
+      block,
+      contains(
+        'v_row.voice_conversation_daily_free_date is distinct from v_today',
+      ),
+    );
   });
 
   test('consume RPC is granted to authenticated only', () {
@@ -168,6 +193,69 @@ void main() {
         '  from public, anon;',
       ),
     );
+  });
+
+  test(
+      'restore-daily-free migration passes through caller args instead of '
+      'hardcoding (3, 0)(CEO 결정 2026-08-12, 일일무료 1회 정책 복원)', () {
+    // 새 wrapper는 legacy 함수 호출부에서 인자를 하드코딩하지 않는다.
+    expect(
+      restoreDailyFreeMigration,
+      isNot(contains('voice_conversation_entitlement_peek_legacy(3, 0)')),
+    );
+    expect(
+      restoreDailyFreeMigration,
+      isNot(contains('p_session_id,\n    3,\n    0')),
+    );
+
+    // 대신 호출자가 넘긴 p_initial_limit/p_daily_limit을 그대로 legacy에
+    // 전달한다.
+    expect(
+      restoreDailyFreeMigration,
+      contains(
+        'voice_conversation_entitlement_peek_legacy(p_initial_limit, p_daily_limit)',
+      ),
+    );
+    expect(
+      restoreDailyFreeMigration,
+      contains(
+        'consume_voice_conversation_free_usage_legacy(\n'
+        '    p_session_id,\n'
+        '    p_initial_limit,\n'
+        '    p_daily_limit\n'
+        '  )',
+      ),
+    );
+
+    // 기본값도 daily=1로 복원됐다.
+    expect(
+      restoreDailyFreeMigration,
+      contains('p_daily_limit integer default 1'),
+    );
+
+    // 기존 grant/revoke 정책은 그대로 유지된다.
+    expect(
+      restoreDailyFreeMigration,
+      contains(
+        'grant execute on function public.voice_conversation_entitlement_peek(integer, integer)\n'
+        '  to authenticated;',
+      ),
+    );
+    expect(
+      restoreDailyFreeMigration,
+      contains(
+        'grant execute on function public.consume_voice_conversation_free_usage(text, integer, integer)\n'
+        '  to authenticated;',
+      ),
+    );
+
+    // 20260809/20260810 마이그레이션 파일 자체는 수정하지 않는다(추가만,
+    // 기존 이력 보존).
+    expect(
+      strictPeekMigration,
+      contains('voice_conversation_entitlement_peek_legacy(3, 0)'),
+    );
+    expect(strictConsumeMigration, contains('p_session_id,\n    3,\n    0'));
   });
 }
 
