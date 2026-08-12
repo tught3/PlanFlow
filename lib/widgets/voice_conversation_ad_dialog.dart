@@ -36,6 +36,7 @@ class _VoiceConversationAdDialog extends StatelessWidget {
             '짧은 광고를 시청하면 AI와 대화하며 일정을 관리할 수 있어요.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: PlanFlowColors.textSecondary,
+              fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) + 2,
             ),
           ),
           const SizedBox(height: 12),
@@ -45,11 +46,40 @@ class _VoiceConversationAdDialog extends StatelessWidget {
               color: PlanFlowColors.primaryFaint,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(
-              '마이크를 길게 눌러 음성으로 “5시에 미팅 추가해줘”처럼 말하면 됩니다.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.primaryMid,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '이렇게 말해보세요',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.primaryMid,
+                    fontSize: (theme.textTheme.bodySmall?.fontSize ?? 12) + 2,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '“내일 일정 오후5시반으로 미뤄줘”',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.primaryMid,
+                    fontSize: (theme.textTheme.bodySmall?.fontSize ?? 12) + 2,
+                  ),
+                ),
+                Text(
+                  '“다음주 금요일 일정 보여줘”',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.primaryMid,
+                    fontSize: (theme.textTheme.bodySmall?.fontSize ?? 12) + 2,
+                  ),
+                ),
+                Text(
+                  '“5시에 미팅 추가해줘”',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.primaryMid,
+                    fontSize: (theme.textTheme.bodySmall?.fontSize ?? 12) + 2,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
