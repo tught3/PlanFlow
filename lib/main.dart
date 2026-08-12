@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/analytics_service.dart';
 import 'core/env.dart';
 import 'core/local_time.dart';
 import 'core/runtime_error_filter.dart';
@@ -124,8 +125,27 @@ Future<void> _primingAdService(Future<void> firebaseReady) async {
   try {
     await firebaseReady;
     await AdService.instance.initialize();
-  } catch (error) {
+    // 진단 신호 (M4, 이슈 A). priming 후에도 _initialized=false면
+    // RC OFF / UMP unavailable / MobileAds 실패 중 어딘가에서 광고가
+    // 조기 종료된 상태다. release에선 AnalyticsService가 no-op이지만
+    // debug/profile에선 즉시 grep 가능하고 추후 SDK 활성화 시 자동 수집.
+    // logAdInitSkipped는 현재 부재해 가장 가까운 logAdLoadFailed 경유.
+    if (!AdService.instance.isInitialized) {
+      unawaited(
+        AnalyticsService.logAdLoadFailed(
+          reason: 'post_prime_not_initialized',
+          requestId: 'ad_init',
+        ),
+      );
+    }
+  } catch (error, stack) {
     debugPrint('AdService initialize skipped: $error');
+    // 진단 신호 (M4, 이슈 A). try/catch 자체가 이미 네트워크/일시 오류를
+    // best-effort로 흡수하지만, 크래시 추적용 Crashlytics에는 fatal=false
+    // 로 남겨 silent fail이 운영 환경에서도 가시화되게 한다.
+    unawaited(
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: false),
+    );
   }
 }
 
