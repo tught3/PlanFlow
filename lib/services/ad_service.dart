@@ -83,7 +83,15 @@ class AdService {
     }
     if (!RemoteConfigService.rewardedAdEnabled) {
       // 마스터 OFF면 AdMob 자체를 띄우지 않는다 (리소스 절약 + 광고 절대 비활성).
-      _initialized = true;
+      //
+      // 주의: 여기서 _initialized = true를 설정하지 않는다. 이 값이
+      // RemoteConfig의 "진짜 OFF" 설정이 아니라 fetch가 아직 끝나지 않은
+      // 시점에 컴파일타임 기본값(false)을 읽은 것일 수 있기 때문이다
+      // (main.dart의 병렬 초기화 경쟁 상태, 2026-08-12 확인된 근본원인 —
+      // 이 경쟁이 걸리면 rewardedAdEnabled가 이후 fetch로 true가 되어도
+      // _initialized가 영구 true로 잠겨 있어 그 세션 내내 광고가 다시는
+      // 초기화되지 않았다). _initialized를 false로 남겨두면 initialize()가
+      // 다시 호출될 때(RemoteConfig 값이 정상 반영된 뒤) 재평가할 수 있다.
       return;
     }
     await _consentService.initialize();

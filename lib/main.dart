@@ -43,8 +43,13 @@ Future<void> main() async {
 }
 
 Future<void> _initializePlatformServices() async {
+  // Firebase(RemoteConfig)를 먼저 완료시킨다. AdService.initialize()가
+  // RemoteConfigService.rewardedAdEnabled를 동기로 읽는데, RemoteConfig
+  // fetch가 아직 안 끝난 시점에 읽으면 컴파일타임 기본값(false)을 읽고
+  // 광고를 영구 비활성화하는 경쟁 상태가 있었다(2026-08-12 확인).
+  // Naver/Supabase/AdService/공휴일 캐시는 서로 독립이라 그대로 병렬 진행한다.
+  await _initializeFirebaseServices();
   await Future.wait([
-    _initializeFirebaseServices(),
     _initializeNaverMap(),
     _initializeSupabase(),
     _primingAdService(),
