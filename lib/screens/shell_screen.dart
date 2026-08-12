@@ -108,6 +108,11 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
   bool _onboardingDecisionPending = false;
+  // 온보딩 게이트 안전망 타이머. 권한 온보딩/튜토리얼 push Future가
+  // 기기별 context.go() 복귀 경로에서 영원히 완료되지 않는(=게이트가 영구히
+  // 닫혀 로딩 화면에 갇히는) 실패 모드를 막는다. _runSignedInStartupTasks
+  // 시작 시 5초 후 강제 해제로 예약하고, 정상 종료 시 취소한다.
+  Timer? _onboardingGateSafetyTimer;
 
   @override
   void initState() {
@@ -134,6 +139,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _homeScrollController.dispose();
     _pendingDepartureTimer?.cancel();
+    _onboardingGateSafetyTimer?.cancel();
     super.dispose();
   }
 
@@ -214,27 +220,60 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _runSignedInStartupTasks({required String reason}) async {
-    await _maybeOpenPermissionOnboarding();
-    if (!mounted) {
-      return;
+    // 온보딩 게이트 안전망: 권한 온보딩/튜토리얼 push Future가 기기별
+    // context.go() 복귀 경로에서 영원히 완료되지 않는(=게이트가 영원히
+    // 닫혀 로딩 화면에 갇히는) 실패를 막기 위한 최후의 보루. 정상 경로에서는
+    // 아래 try 블록의 finally에서 게이트를 해제하고 이 타이머를 취소한다.
+    // 하지만 어떤 이유로든(예외, await 중 위젯 dispose, context.go 복귀 지연)
+    // 게이트가 5초 안에 풀리지 않으면 강제로 해제해 사용자가 홈에 도달한다.
+    _onboardingGateSafetyTimer?.cancel();
+    _onboardingGateSafetyTimer = Timer(
+      const Duration(seconds: 5),
+      () {
+        if (mounted) {
+          debugPrint(
+            '[OnboardingGate] safety timer fired — forcing gate release '
+            '(reason=$reason)',
+          );
+          _clearOnboardingGate();
+        }
+      },
+    );
+
+    try {
+      await _maybeOpenPermissionOnboarding();
+      if (!mounted) {
+        return;
+      }
+      await _maybeOpenFeatureTour();
+      if (!mounted) {
+        return;
+      }
+      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
+        reason: reason,
+        force: reason == 'auth_changed',
+      ));
+      unawaited(_migrateFutureCriticalAlarms());
+      unawaited(_refreshDepartureAlarmsAndMonitor());
+      unawaited(_maybeShowPendingDepartureAlarm());
+      unawaited(_ensureBriefingsScheduled(reason: reason));
+      if (reason == 'app_start') {
+        unawaited(_maybeRecalculateAllAlarms());
+      }
+      debugPrint('[GCAL] _maybeAutoConnect 호출 시도 ($reason)');
+      unawaited(_maybeAutoConnectGoogleCalendar());
+    } finally {
+      // 모든 온보딩 결정이 끝난 뒤(또는 예외 발생 시) 게이트를 해제한다.
+      // 온보딩 push가 발생했더라도 결국엔 사용자가 온보딩을 완료하고
+      // context.go(AppRoutes.home)로 돌아올 때 이 ShellScreen이 재사용되므로,
+      // 그 시점에 게이트가 이미 열려있어야 홈이 보인다. push Future가
+      // context.go 복귀를 만나 영원히 완료되지 않는 기기에서는 안전망
+      // 타이머가 5초 후에 이 코드를 대신해 게이트를 연다.
+      _onboardingGateSafetyTimer?.cancel();
+      if (mounted) {
+        _clearOnboardingGate();
+      }
     }
-    await _maybeOpenFeatureTour();
-    if (!mounted) {
-      return;
-    }
-    unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-      reason: reason,
-      force: reason == 'auth_changed',
-    ));
-    unawaited(_migrateFutureCriticalAlarms());
-    unawaited(_refreshDepartureAlarmsAndMonitor());
-    unawaited(_maybeShowPendingDepartureAlarm());
-    unawaited(_ensureBriefingsScheduled(reason: reason));
-    if (reason == 'app_start') {
-      unawaited(_maybeRecalculateAllAlarms());
-    }
-    debugPrint('[GCAL] _maybeAutoConnect 호출 시도 ($reason)');
-    unawaited(_maybeAutoConnectGoogleCalendar());
   }
 
   Future<void> _maybeOpenFeatureTour() async {
@@ -399,33 +438,29 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   Future<void> _maybeOpenPermissionOnboarding() async {
     if (_checkedPermissionOnboarding || !mounted) {
-      _clearOnboardingGate();
       return;
     }
     _checkedPermissionOnboarding = true;
 
     final userId = authProvider.userId;
     if (userId == null || userId.isEmpty) {
-      _clearOnboardingGate();
       return;
     }
 
     try {
       final completed = await _permissionService.isOnboardingCompleted(userId);
       if (!mounted) {
-        _clearOnboardingGate();
         return;
       }
-      // 온보딩 필요 여부 판단이 끝났으므로 로딩 게이트를 해제한다.
-      // push 이후에 해제하면 context.go()로 복귀하는 기기(태블릿 등)에서
-      // push Future가 완료되지 않아 로딩 화면이 영구히 남는 문제가 있다.
-      _clearOnboardingGate();
+      // 게이트 해제(_clearOnboardingGate)는 이제 _runSignedInStartupTasks의
+      // finally에서 담당한다 — 여기서 해제하면 온보딩 push 직전에 홈이
+      // 1~2 프레임 깜빡이는 원인이 된다(2026-08-12 회귀).
       if (!completed && mounted) {
         await context.push(AppRoutes.permissionOnboarding);
       }
-    } finally {
-      // push Future 완료 전에 이미 해제됐으면 no-op, 예외 발생 시 안전망.
-      _clearOnboardingGate();
+    } catch (error, stackTrace) {
+      debugPrint('Permission onboarding check failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
 
     if (mounted) {
