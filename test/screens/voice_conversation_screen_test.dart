@@ -423,6 +423,41 @@ class _DelayedDeniedAdGateDelegate implements VoiceConversationAdGateDelegate {
   }
 }
 
+/// onEnterAllowed/onDenied 어느 쪽도 호출하지 않는 silent 거부 fake.
+/// 단, [VoiceConversationAdGate.lastDenialReason]을 명시적으로 설정해
+/// 화면 fallback 분기가 어떤 reason 문구를 노출하는지 검증할 수 있게 한다.
+/// 게이트의 tryEnterVoiceConversation이 진입 직전 `lastDenialReason = null`로
+/// 리셋하기 때문에, 이 delegate는 reset 이후에 lastDenialReason을 다시 쓴다 —
+/// 그래야 화면의 fallback에서 `voiceConversationGateDenialMessage`가 정상적으로
+/// 호출되는 흐름이 그대로 재현된다.
+class _SilentAdGateDelegateWithReason implements VoiceConversationAdGateDelegate {
+  _SilentAdGateDelegateWithReason({required this.lastDenialReason});
+
+  int tryEnterCalls = 0;
+  String? lastUserId;
+  final VoiceConversationGateDenialReason lastDenialReason;
+
+  @override
+  Future<int?> getRemainingFreeTrialCount(String userId) async => null;
+
+  @override
+  Future<int?> useFreeTrial(String userId) async => null;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required String userId,
+    required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
+    required VoiceConversationAdGate gate,
+  }) async {
+    tryEnterCalls += 1;
+    lastUserId = userId;
+    // 게이트의 reset(lastDenialReason = null) 이후에 reason을 설정한다.
+    gate.lastDenialReason = lastDenialReason;
+    // onEnterAllowed/onDenied 모두 호출하지 않는다 = silent 거부.
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -2026,6 +2061,121 @@ void main() {
         } finally {
           debugPrint = originalDebugPrint;
         }
+      },
+    );
+  });
+
+  // B-2: self-gate fallback 분기가 거부 진단 코드(reason)를 노출하는 검증.
+  // 게이트가 silent 거부(onEnterAllowed/onDenied 미호출)로 끝났을 때 화면은
+  // lastDenialReason을 읽어 reason별 메시지를 띄우고, reason이 null이면
+  // 'E-GATE1' 진단 코드가 포함된 fallback 메시지를 띄워야 한다.
+  group('self-gate fallback reason 진단 코드 (B-2)', () {
+    tearDown(() {
+      VoiceConversationAdGate.instance.delegateForTest = null;
+      VoiceConversationAdGate.instance.lastDenialReason = null;
+      VoiceConversationEntitlementService.instance.delegateForTest = null;
+      authProvider.setUser(null);
+    });
+
+    Future<GoRouter> pumpWithRouter(
+      WidgetTester tester, {
+      required Widget screen,
+    }) async {
+      final router = GoRouter(
+        initialLocation: AppRoutes.voiceConversation,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => screen,
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) =>
+                const Scaffold(body: Text('B2_FALLBACK_HOME_LANDMARK')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      // initState의 addPostFrameCallback이 self-gate를 호출하고, silent
+      // delegate가 즉시 끝나도록 보장된 상태로 한 프레임 더 진행한다.
+      await tester.pumpAndSettle();
+      return router;
+    }
+
+    testWidgets(
+      'lastDenialReason이 null이면 self-gate fallback 메시지에 E-GATE1 진단 코드가 노출된다',
+      (tester) async {
+        // silent 거부이지만 lastDenialReason은 reset(null)된 채로 둔다.
+        final silentDelegate = _FakeAdGateDelegate();
+        VoiceConversationAdGate.instance.delegateForTest = silentDelegate;
+        VoiceConversationAdGate.instance.lastDenialReason = null;
+        authProvider.setUser('user-b2-fallback-null');
+
+        await pumpWithRouter(
+          tester,
+          screen: const VoiceConversationScreen(),
+        );
+
+        expect(silentDelegate.tryEnterCalls, 1);
+        // 화면은 SnackBar로 E-GATE1 진단 코드가 포함된 메시지를 띄우고
+        // 홈으로 이동한다.
+        expect(find.textContaining('E-GATE1'), findsOneWidget);
+        expect(find.text('B2_FALLBACK_HOME_LANDMARK'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'lastDenialReason이 rewardedDisabled이면 fallback 메시지에 (E-RC1) 코드가 노출된다',
+      (tester) async {
+        final reasonDelegate = _SilentAdGateDelegateWithReason(
+          lastDenialReason: VoiceConversationGateDenialReason.rewardedDisabled,
+        );
+        VoiceConversationAdGate.instance.delegateForTest = reasonDelegate;
+        VoiceConversationAdGate.instance.lastDenialReason = null;
+        authProvider.setUser('user-b2-fallback-rewarded');
+
+        await pumpWithRouter(
+          tester,
+          screen: const VoiceConversationScreen(),
+        );
+
+        expect(reasonDelegate.tryEnterCalls, 1);
+        expect(
+          VoiceConversationAdGate.instance.lastDenialReason,
+          VoiceConversationGateDenialReason.rewardedDisabled,
+        );
+        // reason별 메시지가 SnackBar에 표시되고, 홈으로 이동한다.
+        expect(find.textContaining('(E-RC1)'), findsOneWidget);
+        expect(find.text('B2_FALLBACK_HOME_LANDMARK'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'lastDenialReason이 adsUnavailable이면 fallback 메시지에 (E-ADS0) 코드가 노출된다',
+      (tester) async {
+        final reasonDelegate = _SilentAdGateDelegateWithReason(
+          lastDenialReason: VoiceConversationGateDenialReason.adsUnavailable,
+        );
+        VoiceConversationAdGate.instance.delegateForTest = reasonDelegate;
+        VoiceConversationAdGate.instance.lastDenialReason = null;
+        authProvider.setUser('user-b2-fallback-ads');
+
+        await pumpWithRouter(
+          tester,
+          screen: const VoiceConversationScreen(),
+        );
+
+        expect(reasonDelegate.tryEnterCalls, 1);
+        expect(find.textContaining('(E-ADS0)'), findsOneWidget);
+        expect(find.text('B2_FALLBACK_HOME_LANDMARK'), findsOneWidget);
+        expect(tester.takeException(), isNull);
       },
     );
   });

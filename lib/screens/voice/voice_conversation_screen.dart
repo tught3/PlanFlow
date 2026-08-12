@@ -236,9 +236,13 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     );
     _completeEntryGrantReadyIfNeeded();
     if (_resolvedEntryGrant == null && !_entryGateDenied) {
-      _closeAfterEntryGateDenied(
-        'AI일정대화를 시작할 수 없어요. 잠시 후 다시 시도해 주세요.',
-      );
+      final lastReason =
+          // ignore: invalid_use_of_visible_for_testing_member
+          VoiceConversationAdGate.instance.lastDenialReason;
+      final fallbackMessage = lastReason != null
+          ? voiceConversationGateDenialMessage(lastReason)
+          : 'AI일정대화 진입 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요. (E-GATE1)';
+      _closeAfterEntryGateDenied(fallbackMessage);
     }
   }
 
