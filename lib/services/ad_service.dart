@@ -103,11 +103,17 @@ class AdService {
     try {
       final initializer = _dynamicAdsInitializer;
       if (initializer != null) {
+        // 테스트 등에서 주입된 대체 초기화 경로. 이 경우 실제 SDK를
+        // 직접 호출하지 않고 주입된 콜백만 수행한다(테스트 seam 보존).
         await initializer();
+      } else {
+        // 운영 경로: google_mobile_ads는 compile-time에 import되어 있으므로
+        // (파일 상단 import) 여기서 실제로 AdMob SDK 초기화를 호출해야 한다.
+        // 과거에는 이 호출이 누락된 채 _initialized = true만 설정해,
+        // MobileAds.instance.initialize()가 한 번도 실행되지 않아도 초기화
+        // 완료로 오판하는 버그가 있었다(2026-08-12 확인).
+        await MobileAds.instance.initialize();
       }
-      // 동적 호출이 없으면 compile-time에 google_mobile_ads를 import 해야 한다.
-      // 그 import는 initialize() 호출자(main.dart)에서 await로 수행하고,
-      // 그 결과로 MobileAds.instance.initialize()가 완료되었다고 가정한다.
       _initialized = true;
     } catch (error, stackTrace) {
       debugPrint('AdService.initialize failed: $error');
