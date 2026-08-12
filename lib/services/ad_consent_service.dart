@@ -76,6 +76,13 @@ class AdConsentService {
       _available = false;
       return;
     }
+    // requestConsentInfoUpdate는 콜백 기반(void 반환)이라 자체적으로는
+    // await할 수 없다. 3단계 시퀀스가 전부 끝난 뒤에야 initialize()의
+    // Future가 완료되도록 outerCompleter로 감싼다 — 이걸 빼먹으면
+    // _available이 아직 기본값(false)인 채로 initialize()가 먼저
+    // 반환해버려, 호출부(AdService)가 "동의 미획득"으로 오판하고
+    // 광고 초기화를 조기 종료하는 경쟁 상태가 발생한다.
+    final outerCompleter = Completer<void>();
     try {
       ConsentInformation.instance.requestConsentInfoUpdate(
         ConsentRequestParameters(),
@@ -109,6 +116,10 @@ class AdConsentService {
             );
             debugPrintStack(stackTrace: stackTrace);
             _available = false;
+          } finally {
+            if (!outerCompleter.isCompleted) {
+              outerCompleter.complete();
+            }
           }
         },
         (FormError error) {
@@ -116,13 +127,20 @@ class AdConsentService {
             'AdConsentService UMP failure: ${error.errorCode} ${error.message}',
           );
           _available = false;
+          if (!outerCompleter.isCompleted) {
+            outerCompleter.complete();
+          }
         },
       );
     } catch (error, stackTrace) {
       debugPrint('AdConsentService initialize failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       _available = false;
+      if (!outerCompleter.isCompleted) {
+        outerCompleter.complete();
+      }
     }
+    await outerCompleter.future;
   }
 
   /// GDPR/EEA 사용자에게 동의 폼을 띄워야 하는지.
