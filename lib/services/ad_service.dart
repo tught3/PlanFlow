@@ -82,6 +82,26 @@ class AdService {
       return;
     }
     if (!RemoteConfigService.rewardedAdEnabled) {
+      // 진단 신호 (M1, 이슈 A). lastFetchSucceeded로 OFF 사유를 구분한다:
+      //  - false: RC fetch 실패 → 컴파일타임 기본값(false)을 읽은 것으로
+      //    추정. RC fetch가 정착한 뒤 initialize()가 다시 호출될 수 있도록
+      //    _initialized는 false로 남긴다.
+      //  - true:  콘솔에서 명시적으로 OFF (운영자 의도). 정상 비활성 경로.
+      if (!RemoteConfigService.lastFetchSucceeded) {
+        unawaited(
+          AnalyticsService.logAdLoadFailed(
+            reason: 'rc_fetch_failed',
+            requestId: 'ad_init',
+          ),
+        );
+      } else {
+        unawaited(
+          AnalyticsService.logAdLoadFailed(
+            reason: 'disabled_in_rc',
+            requestId: 'ad_init',
+          ),
+        );
+      }
       // 마스터 OFF면 AdMob 자체를 띄우지 않는다 (리소스 절약 + 광고 절대 비활성).
       //
       // 주의: 여기서 _initialized = true를 설정하지 않는다. 이 값이
@@ -96,8 +116,22 @@ class AdService {
     }
     await _consentService.initialize();
     if (!_consentService.isAvailable) {
-      _initialized = true;
-      return;
+      // 진단 신호 + 잠금 버그 교정 (M1, 이슈 A). UMP가 EEA/동의 추정에
+      // 실패하면 MobileAds 호출 없이 조기 종료한다. 단, 잠금 버그를 막기
+      // 위해 _initialized는 false로 남긴다(이전 코드는 _initialized=true로
+      // 잠가 다음 initialize() 호출이 즉시 return되어 광고가 영구 비활성).
+      // 그 후 사용자 액션 시뮬레이션으로 1회 자동 재시도(retryAfterUserAction)
+      // 하고, 그래도 안 되면 그대로 종료한다.
+      unawaited(
+        AnalyticsService.logAdLoadFailed(
+          reason: 'ump_unavailable',
+          requestId: 'ad_init',
+        ),
+      );
+      await _consentService.retryAfterUserAction();
+      if (!_consentService.isAvailable) {
+        return;
+      }
     }
 
     try {
@@ -167,7 +201,7 @@ class AdService {
     await AnalyticsService.logAdPromptShown();
     try {
       onProgress?.call('loading');
-      final loaded = await _loadRewardedAd();
+      final loaded = await _loadRewardedAd(requestId: requestId);
       if (!loaded) {
         await AnalyticsService.logAdLoadFailed(
           reason: 'load_failed',
@@ -240,7 +274,7 @@ class AdService {
     await AnalyticsService.logVoiceConvButtonTap();
     try {
       onProgress?.call('loading');
-      final loaded = await _loadRewardedAd();
+      final loaded = await _loadRewardedAd(requestId: requestId);
       if (!loaded) {
         await AnalyticsService.logVoiceConvAdFailed(
           reason: 'load_failed',
@@ -302,7 +336,10 @@ class AdService {
   /// RewardedAd 인스턴스를 비동기로 로드.
   /// - throttle: 직전 호출로부터 30초 이내면 캐시된 _rewardedAd를 재사용.
   /// - dedup: 동시에 진행 중인 _loadRewardedAd가 있으면 합류.
-  Future<bool> _loadRewardedAd() async {
+  ///
+  /// [requestId]가 제공되면 empty_unit_id 같은 조기 실패 분기에서
+  /// Analytics에 구체적 reason을 남긴다(2026-08-12 M1 진단 강화).
+  Future<bool> _loadRewardedAd({String? requestId}) async {
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
     }
@@ -310,7 +347,20 @@ class AdService {
       return false;
     }
     final adUnitId = _resolveAdUnitId();
-    if (adUnitId.isEmpty) return false;
+    if (adUnitId.isEmpty) {
+      // 진단 신호 (M1, 이슈 A). RC 미설정 + debug/profile 모드 아님이면
+      // adUnitId가 비어 load가 시도조차 안 됨. 호출부에서 load_failed로
+      // 집계되지만 더 구체적 reason을 Analytics에 남긴다.
+      if (requestId != null) {
+        unawaited(
+          AnalyticsService.logAdLoadFailed(
+            reason: 'empty_unit_id',
+            requestId: requestId,
+          ),
+        );
+      }
+      return false;
+    }
     // 이미 캐시된 광고가 있으면 그대로 사용.
     if (_rewardedAd != null) {
       return true;
