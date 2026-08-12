@@ -153,6 +153,73 @@ void main() {
       expect(captured, isNull);
     });
   });
+
+  group('voiceConversationGateDenialMessage 진단 코드 매핑', () {
+    test('7개 reason 모두에 대해 고유한 메시지를 반환한다', () {
+      final messages = VoiceConversationGateDenialReason.values
+          .map(voiceConversationGateDenialMessage)
+          .toSet();
+
+      expect(messages, hasLength(VoiceConversationGateDenialReason.values.length));
+    });
+
+    test('rewardedDisabled와 remoteDisabled는 서로 다른 메시지를 반환한다', () {
+      final rewarded = voiceConversationGateDenialMessage(
+        VoiceConversationGateDenialReason.rewardedDisabled,
+      );
+      final remote = voiceConversationGateDenialMessage(
+        VoiceConversationGateDenialReason.remoteDisabled,
+      );
+
+      expect(rewarded, isNot(equals(remote)));
+    });
+
+    test('진단 코드가 부여된 reason은 메시지 끝에 E- 코드 suffix를 가진다', () {
+      const expectations = <VoiceConversationGateDenialReason, String>{
+        VoiceConversationGateDenialReason.entitlementUnavailable: 'E-GATE0',
+        VoiceConversationGateDenialReason.rewardedDisabled: 'E-RC1',
+        VoiceConversationGateDenialReason.remoteDisabled: 'E-RC2',
+        VoiceConversationGateDenialReason.adsUnavailable: 'E-ADS0',
+      };
+
+      expectations.forEach((reason, code) {
+        final message = voiceConversationGateDenialMessage(reason);
+        expect(message, endsWith('($code)'));
+        // suffix를 제거해도 기존(코드 부여 전) 메시지 형태가 유지돼야 한다.
+        final base = message.replaceFirst(' ($code)', '');
+        expect(base, isNotEmpty);
+      });
+    });
+
+    test('suffix가 없는 reason은 진단 코드를 메시지에 포함하지 않는다', () {
+      const noCodeReasons = <VoiceConversationGateDenialReason>{
+        VoiceConversationGateDenialReason.inFlight,
+        VoiceConversationGateDenialReason.userCanceled,
+        VoiceConversationGateDenialReason.adFailed,
+      };
+
+      for (final reason in noCodeReasons) {
+        final message = voiceConversationGateDenialMessage(reason);
+        expect(message, isNot(contains('(E-')));
+      }
+    });
+
+    test('voiceConversationGateDenialCode는 모든 reason에 대해 E- 코드를 반환한다', () {
+      for (final reason in VoiceConversationGateDenialReason.values) {
+        final code = voiceConversationGateDenialCode(reason);
+        expect(code, startsWith('E-'));
+        expect(code, isNotEmpty);
+      }
+    });
+
+    test('모든 진단 코드가 서로 다르다 (7개 모두 distinct)', () {
+      final codes = VoiceConversationGateDenialReason.values
+          .map(voiceConversationGateDenialCode)
+          .toSet();
+
+      expect(codes, hasLength(VoiceConversationGateDenialReason.values.length));
+    });
+  });
 }
 
 /// [_ScenarioAdGateDelegate]를 주입한 뒤 tryEnterVoiceConversation을 1회

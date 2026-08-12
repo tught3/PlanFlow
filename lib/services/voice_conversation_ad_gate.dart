@@ -338,16 +338,43 @@ String voiceConversationGateDenialMessage(
     case VoiceConversationGateDenialReason.inFlight:
       return 'AI일정대화를 여는 중이에요. 잠시만 기다려 주세요.';
     case VoiceConversationGateDenialReason.entitlementUnavailable:
-      return '무료 사용 횟수를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.';
+      return '무료 사용 횟수를 확인하지 못했어요. 잠시 후 다시 시도해 주세요. (E-GATE0)';
     case VoiceConversationGateDenialReason.rewardedDisabled:
+      return 'AI일정대화 광고 설정이 꺼져 있어요. 운영자에게 문의해 주세요. (E-RC1)';
     case VoiceConversationGateDenialReason.remoteDisabled:
-      return 'AI일정대화를 지금 시작할 수 없어요. 잠시 후 다시 시도해 주세요.';
+      return 'AI일정대화 광고 설정이 꺼져 있어요. 운영자에게 문의해 주세요. (E-RC2)';
     case VoiceConversationGateDenialReason.adsUnavailable:
-      return '광고를 불러올 수 없어 AI일정대화를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.';
+      return '광고를 불러올 수 없어 AI일정대화를 시작하지 못했어요. 잠시 후 다시 시도해 주세요. (E-ADS0)';
     case VoiceConversationGateDenialReason.userCanceled:
       return '광고를 취소해 AI일정대화를 시작하지 않았어요.';
     case VoiceConversationGateDenialReason.adFailed:
       return '광고가 완료되지 않아 AI일정대화를 시작하지 못했어요. 다시 시도해 주세요.';
+  }
+}
+
+/// [VoiceConversationGateDenialReason]별 진단 코드를 반환한다.
+///
+/// 운영자가 문의 접수 시 어떤 원인으로 진입이 거부됐는지 즉시 파악할 수
+/// 있도록, analytics 로그 부착용으로 사용된다. 코드는 [voiceConversationGateDenialMessage]에
+/// 표시되는 suffix(일부 reason)와 항상 일치해야 한다.
+@visibleForTesting
+String voiceConversationGateDenialCode(
+    VoiceConversationGateDenialReason reason) {
+  switch (reason) {
+    case VoiceConversationGateDenialReason.inFlight:
+      return 'E-GATE1';
+    case VoiceConversationGateDenialReason.entitlementUnavailable:
+      return 'E-GATE0';
+    case VoiceConversationGateDenialReason.rewardedDisabled:
+      return 'E-RC1';
+    case VoiceConversationGateDenialReason.remoteDisabled:
+      return 'E-RC2';
+    case VoiceConversationGateDenialReason.adsUnavailable:
+      return 'E-ADS0';
+    case VoiceConversationGateDenialReason.userCanceled:
+      return 'E-CANCEL';
+    case VoiceConversationGateDenialReason.adFailed:
+      return 'E-ADFAIL';
   }
 }
 
