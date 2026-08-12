@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import '../core/analytics_service.dart';
 import 'remote_config_service.dart';
 
 /// Google UMP(User Messaging Platform) 동의 관리.
@@ -126,6 +127,17 @@ class AdConsentService {
           debugPrint(
             'AdConsentService UMP failure: ${error.errorCode} ${error.message}',
           );
+          // 진단 신호 (M3, 이슈 A). UMP 동의 폼 단계 실패의 errorCode를
+          // 보존해 AdsService가 호출 시 콘솔에서 reason으로 직접 조회할 수
+          // 있게 한다. AnalyticsService.logAdInitSkipped는 현재 존재하지
+          // 않아 가장 가까운 logAdLoadFailed(reason) 경유로 reason 카테고리만
+          // 남긴다(현재 SDK는 no-op이지만 추후 활성화 시 자동 수집).
+          unawaited(
+            AnalyticsService.logAdLoadFailed(
+              reason: 'ump_form_error_${error.errorCode}',
+              requestId: 'consent_init',
+            ),
+          );
           _available = false;
           if (!outerCompleter.isCompleted) {
             outerCompleter.complete();
@@ -135,12 +147,34 @@ class AdConsentService {
     } catch (error, stackTrace) {
       debugPrint('AdConsentService initialize failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+      // 진단 신호 (M3, 이슈 A). 플랫폼 채널 단계 실패는 위 FormError 분기와
+      // 구분하기 위해 reason prefix를 'ump_init_error_'로 둔다.
+      unawaited(
+        AnalyticsService.logAdLoadFailed(
+          reason: 'ump_init_error_${error.runtimeType}',
+          requestId: 'consent_init',
+        ),
+      );
       _available = false;
       if (!outerCompleter.isCompleted) {
         outerCompleter.complete();
       }
     }
     await outerCompleter.future;
+  }
+
+  /// 사용자 액션(예: 설정에서 재시도 버튼) 이후 UMP 동의를 한 번 더 시도.
+  ///
+  /// - 기존 [_initialized]/[_available] 플래그를 리셋한 뒤 [initialize]를
+  ///   재호출해 UMP 동의 폼을 다시 띄울 수 있는 상태로 만든다.
+  /// - 사용자가 EEA/규제 지역에서 동의를 거부했거나 광고 옵션을 변경하려 할 때
+  ///   AdService가 호출한다.
+  ///
+  /// 진단 책임: M3 (이슈 A). 호출자/에러 경로 외 다른 코드는 일체 미수정.
+  Future<void> retryAfterUserAction() async {
+    _initialized = false;
+    _available = false;
+    await initialize();
   }
 
   /// GDPR/EEA 사용자에게 동의 폼을 띄워야 하는지.
