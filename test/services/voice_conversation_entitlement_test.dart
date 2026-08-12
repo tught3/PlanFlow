@@ -8,6 +8,45 @@ void main() {
     AppEnv.resetSupabaseInitializationState();
   });
 
+  group('buildVoiceConversationPeekParams', () {
+    test('일일 무료 정책(daily=1)이 그대로 RPC 파라미터로 전달된다', () {
+      final params = buildVoiceConversationPeekParams(
+        initialLimit: 3,
+        dailyLimit: 1,
+      );
+
+      expect(params, <String, dynamic>{
+        'p_initial_limit': 3,
+        'p_daily_limit': 1,
+      });
+    });
+
+    test('일일 무료가 꺼진 값(daily=0)도 하드코딩 없이 그대로 전달된다', () {
+      final params = buildVoiceConversationPeekParams(
+        initialLimit: 3,
+        dailyLimit: 0,
+      );
+
+      expect(params['p_daily_limit'], 0);
+    });
+  });
+
+  group('buildVoiceConversationConsumeParams', () {
+    test('sessionId와 일일 무료 정책(daily=1)이 그대로 RPC 파라미터로 전달된다', () {
+      final params = buildVoiceConversationConsumeParams(
+        sessionId: 'session-xyz',
+        initialLimit: 3,
+        dailyLimit: 1,
+      );
+
+      expect(params, <String, dynamic>{
+        'p_session_id': 'session-xyz',
+        'p_initial_limit': 3,
+        'p_daily_limit': 1,
+      });
+    });
+  });
+
   group('VoiceConversationEntitlementService.peek', () {
     test('delegate가 주입되면 delegate 결과를 그대로 반환한다', () async {
       VoiceConversationEntitlementService.instance.delegateForTest =

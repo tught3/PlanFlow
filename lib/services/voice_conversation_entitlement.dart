@@ -6,6 +6,43 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 import 'remote_config_service.dart';
 
+/// [VoiceConversationEntitlementService._peek]가 RPC
+/// `voice_conversation_entitlement_peek`에 넘길 파라미터를 구성하는 순수
+/// 함수.
+///
+/// 정책: 최초 누적 [initialLimit]회 무료 소진 후, 매일 [dailyLimit]회 무료
+/// (KST 기준 매일 리셋)까지 허용하고, 그마저 소진되면 광고가 필요하다.
+/// Supabase RPC 호출부는 이 함수의 결과를 그대로 params로 전달하므로,
+/// delegate 주입 없이도 이 함수만으로 실제 RPC에 어떤 값이 나가는지 단위
+/// 테스트할 수 있다(`ad_service.dart`의 `resolveRewardedAdUnitIdFor`,
+/// `remote_config_service.dart`의 `resolveDailyFreeCount`와 동일한 패턴).
+@visibleForTesting
+Map<String, dynamic> buildVoiceConversationPeekParams({
+  required int initialLimit,
+  required int dailyLimit,
+}) {
+  return <String, dynamic>{
+    'p_initial_limit': initialLimit,
+    'p_daily_limit': dailyLimit,
+  };
+}
+
+/// [VoiceConversationEntitlementService._consume]가 RPC
+/// `consume_voice_conversation_free_usage`에 넘길 파라미터를 구성하는 순수
+/// 함수. 정책은 [buildVoiceConversationPeekParams]와 동일.
+@visibleForTesting
+Map<String, dynamic> buildVoiceConversationConsumeParams({
+  required String sessionId,
+  required int initialLimit,
+  required int dailyLimit,
+}) {
+  return <String, dynamic>{
+    'p_session_id': sessionId,
+    'p_initial_limit': initialLimit,
+    'p_daily_limit': dailyLimit,
+  };
+}
+
 /// [VoiceConversationEntryGrant]가 진입을 허용한 근거.
 ///
 /// 이 값은 분석 파라미터/UI 분기에만 쓰이는 제한된 열거형이다. 자유텍스트를
@@ -179,12 +216,10 @@ class VoiceConversationEntitlementService {
       final client = Supabase.instance.client;
       final response = await client.rpc(
         'voice_conversation_entitlement_peek',
-        params: <String, dynamic>{
-          'p_initial_limit':
-              RemoteConfigService.voiceConversationInitialFreeCount,
-          // 제품 정책: 최초 3회 이후에는 매일 무료 없이 광고가 필요하다.
-          'p_daily_limit': 0,
-        },
+        params: buildVoiceConversationPeekParams(
+          initialLimit: RemoteConfigService.voiceConversationInitialFreeCount,
+          dailyLimit: RemoteConfigService.voiceConversationDailyFreeCount,
+        ),
       );
       final row = _firstRow(response);
       if (row == null) {
@@ -210,12 +245,11 @@ class VoiceConversationEntitlementService {
       final client = Supabase.instance.client;
       final response = await client.rpc(
         'consume_voice_conversation_free_usage',
-        params: <String, dynamic>{
-          'p_session_id': sessionId,
-          'p_initial_limit':
-              RemoteConfigService.voiceConversationInitialFreeCount,
-          'p_daily_limit': 0,
-        },
+        params: buildVoiceConversationConsumeParams(
+          sessionId: sessionId,
+          initialLimit: RemoteConfigService.voiceConversationInitialFreeCount,
+          dailyLimit: RemoteConfigService.voiceConversationDailyFreeCount,
+        ),
       );
       final row = _firstRow(response);
       if (row == null) {
