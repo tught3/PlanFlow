@@ -1,0 +1,49 @@
+{
+  "task_id": "voice-conversation-dialog-and-reward-20260813",
+  "objective": "Make the voice conversation ad-consent examples panel full width, expand its supported example phrases, and prevent rewarded-ad callback ordering from falsely denying entry.",
+  "status": "implementing",
+  "classification": "complex",
+  "allowed_files": [
+    "lib/widgets/voice_conversation_ad_dialog.dart",
+    "lib/services/ad_service.dart",
+    "test/widgets/voice_conversation_ad_dialog_test.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/voice_conversation_ad_gate_test.dart"
+  ],
+  "forbidden_files": [
+    "Android/iOS config",
+    "Remote Config",
+    "voice parser",
+    "unrelated user-owned dirty files"
+  ],
+  "plan": [
+    {"id": "P1", "status": "in_progress", "summary": "Stretch the examples panel and add supported distinct phrases with widget coverage."},
+    {"id": "P2", "status": "in_progress", "summary": "Make rewarded-ad completion resilient to dismiss/reward callback ordering."},
+    {"id": "P3", "status": "pending", "summary": "Retain gate allow/deny contract coverage."},
+    {"id": "P4", "status": "pending", "summary": "Run focused verification and independent review."},
+    {"id": "P5", "status": "pending", "summary": "Integrate final diff and delivery evidence."}
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Locate the dialog, supported voice actions, reward path, tests, and existing worktree hazards.",
+      "changed_files": [],
+      "result": "Completed read-only report: dialog Container has no width constraint; ad gate denies when AdService returns false; reward/dismiss callback ordering is the likely false-negative path."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define allowed scope, supported examples, callback-order repair, verification, and delivery gates.",
+      "changed_files": [],
+      "result": "Completed plan P1-P5. P1 and P2 may run independently; P3 depends on P2."
+    }
+  ],
+  "verification": [],
+  "review": null,
+  "last_update": "2026-08-13T00:00:00+09:00"
+}
