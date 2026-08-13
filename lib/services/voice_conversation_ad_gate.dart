@@ -161,11 +161,42 @@ class VoiceConversationAdGate {
 
     // 2. 무료 3회 이후에는 광고가 필수다. 광고 기능이 꺼져 있으면 우회
     // 진입시키지 않고 운영 설정을 고친 뒤 다시 시도하도록 막는다.
+    // 단, RC fetch가 실패한 상태라면(fetch 실패로 기본값을 잘못 읽었을 수
+    // 있음) 강제 재시도 1회 후 재평가한다.
     if (!RemoteConfigService.rewardedAdEnabled) {
-      await AnalyticsService.logVoiceConvGateBlocked(
-          reason: 'rewarded_disabled');
-      _deny(VoiceConversationGateDenialReason.rewardedDisabled, onDenied);
-      return;
+      if (!RemoteConfigService.lastFetchSucceeded) {
+        // fetch 실패 상태 → 강제 재시도 1회 시도.
+        final retrySucceeded =
+            await RemoteConfigService.retryFetchIfFailed();
+        if (retrySucceeded && !RemoteConfigService.rewardedAdEnabled) {
+          // 재시도 성공했지만 여전히 false → 콘솔에서 진짜 OFF.
+          await AnalyticsService.logVoiceConvGateBlocked(
+            reason: 'rewarded_disabled_after_retry',
+          );
+          _deny(
+            VoiceConversationGateDenialReason.rewardedDisabled,
+            onDenied,
+          );
+          return;
+        }
+        if (retrySucceeded) {
+          // 재시도 성공 + 값이 true로 바뀜 → 정상 분기로 계속 진행.
+          // (차단이 아니므로 gate_blocked 이벤트는 호출하지 않음 —
+          //  알림 오염 방지. 회귀 분석은 로그의 다른 사유로 구분 가능.)
+          // 통과 (아래 광고 다이얼로그로).
+        } else {
+          // 재시도도 실패 → 기본값이 true이므로 광고 진행을 시도한다.
+          // (차단이 아니므로 gate_blocked 이벤트는 호출하지 않음.)
+          // 통과 (아래 광고 다이얼로그로).
+        }
+      } else {
+        // fetch는 성공했고 콘솔에서 진짜 OFF.
+        await AnalyticsService.logVoiceConvGateBlocked(
+          reason: 'rewarded_disabled',
+        );
+        _deny(VoiceConversationGateDenialReason.rewardedDisabled, onDenied);
+        return;
+      }
     }
     if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');

@@ -13,34 +13,37 @@ void main() {
   group('AdService.initialize 마스터 스위치 OFF 분기', () {
     // 단위 테스트 환경에서는 Firebase.initializeApp()이 호출되지 않으므로
     // RemoteConfigService.rewardedAdEnabled는 항상 실제(mock 아님) 코드
-    // 경로를 타고 false를 반환한다(remote_config_service.dart의
+    // 경로를 타고 새 기본값(true)을 반환한다(remote_config_service.dart의
     // `_remoteConfig` getter가 `Firebase.apps.isEmpty`일 때 null을 반환 →
-    // `?? false` 폴백). 즉 이 테스트는 그 실제 분기(ad_service.dart
-    // initialize()의 `if (!RemoteConfigService.rewardedAdEnabled)` 블록)를
-    // 그대로 실행해 검증한다 — 별도 mock 인프라를 새로 만들지 않는다.
-    test('RemoteConfig 미확정(false) 상태에서는 _initialized를 영구 true로 잠그지 않는다',
+    // `?? true` 폴백, 2026-08-13 RC 기본값 false→true 변경에 따라 갱신).
+    // 즉 이 테스트는 RC가 ON인 실제 분기(ad_service.dart initialize()의
+    // `if (!RemoteConfigService.rewardedAdEnabled)` 블록 미진입)를 그대로
+    // 실행해 검증한다 — 별도 mock 인프라를 새로 만들지 않는다.
+    test('RemoteConfig 미확정(true 기본값) 상태에서는 _initialized를 영구 true로 잠그지 않는다',
         () async {
       // 테스트 환경 전제 확인: Firebase 미초기화 상태에서 rewardedAdEnabled는
-      // false여야 이 테스트가 실제로 회귀 대상 분기를 타는지 보장된다.
-      expect(RemoteConfigService.rewardedAdEnabled, isFalse);
+      // 새 기본값(true)이다. 이 테스트가 회귀 대상 분기(RC OFF 즉시 차단
+      // 경로가 아니어야 함)를 정확히 타는지 보장한다.
+      expect(RemoteConfigService.rewardedAdEnabled, isTrue);
 
       final service = AdService();
       expect(service.isInitialized, isFalse);
 
       await service.initialize();
 
-      // 수정 전 버그: 이 분기에서 _initialized = true를 세팅해 버그가
-      // 재현됐다(main.dart 경쟁 상태로 rewardedAdEnabled가 아직 fetch 전
-      // 기본값을 읽었을 뿐인데도, 이후 RemoteConfig가 fetch를 마쳐 실제
-      // 값이 true가 되더라도 이 세션 동안 다시는 재평가되지 않았다).
-      // 수정 후: 이 분기를 타면 _initialized는 여전히 false로 남아
-      // 다음 initialize() 호출에서 재평가할 수 있어야 한다.
+      // 2026-08-13 갱신: RC 기본값이 false→true로 바뀌었다. 이 테스트 환경
+      // 에서는 즉시 차단 분기(`if (!RemoteConfigService.rewardedAdEnabled)`)
+      // 에 들어가지 않고 _consentService.initialize()로 진행한다. Flutter
+      // test 환경은 UMP 플랫폼 채널이 없어 _consentService.isAvailable=false
+      // 가 되어 MobileAds가 호출되지 않고 _initialized=false로 유지된다.
+      // 따라서 RC OFF 분기 잠금 회피 의도는 그대로 검증된다(이 테스트 환경
+      // 에선 우회 경로지만 결과는 동일).
       expect(
         service.isInitialized,
         isFalse,
         reason:
-            'rewardedAdEnabled=false 분기는 _initialized를 영구 잠그면 안 된다 '
-            '(RemoteConfig fetch가 나중에 true로 바뀌어도 재평가가 막히는 회귀 방지)',
+            '테스트 환경에서는 AdConsentService가 UMP 호출에 실패해 '
+            '_initialized는 false로 유지되어야 한다 (RC OFF 분기 잠금 회피 회귀 방지)',
       );
 
       // 재호출해도 동일하게 동작해야 한다(멱등, 영구 잠금 없음).

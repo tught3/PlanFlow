@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:flutter/foundation.dart';
 
 /// Firebase Remote Config 래퍼.
 ///
@@ -23,7 +24,7 @@ class RemoteConfigService {
   /// - false: 네트워크 실패/타임아웃으로 기본값(또는 캐시된 이전 값)을
   ///   읽고 있을 가능성 — 광고 진단 시 "RC가 진짜 OFF라서 광고가
   ///   꺼진 건지(fetch 성공 + 콘솔 OFF)", "그저 fetch가 실패해서
-  ///   기본값(false)을 읽은 건지(fetch 실패)"를 구분하는 데 사용.
+  ///   기본값(true)을 잘못 읽은 건지(fetch 실패)"를 구분하는 데 사용.
   ///
   /// 진단 책임: M2 (이슈 A). voice_conversation_* 영역은 일체 손대지 않는다.
   static bool _lastFetchSucceeded = false;
@@ -85,7 +86,7 @@ class RemoteConfigService {
         _kEarlyBirdMessage: '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.',
         _kMaxVoiceDurationSeconds: 60,
         _kMinRequiredVersion: 0,
-        _kRewardedAdEnabled: false,
+        _kRewardedAdEnabled: true,
         _kRewardedAdUnitIdAndroid: '',
         _kGroupBackupRetentionDays: 30,
         _kRewardAdVoiceConversationEnabled: true,
@@ -136,17 +137,71 @@ class RemoteConfigService {
 
   static int get minRequiredVersion => getInt(_kMinRequiredVersion);
 
-  /// 리워드 광고 마스터 스위치. 기본값 false (출시 초기 OFF).
+  /// 리워드 광고 마스터 스위치. 기본값 true (프로덕션 일치;
+  /// 페치 실패 시에도 fail-safe로 광고가 진행되도록 함).
   static bool get rewardedAdEnabled =>
-      _remoteConfig?.getBool(_kRewardedAdEnabled) ?? false;
+      _remoteConfig?.getBool(_kRewardedAdEnabled) ?? true;
 
   /// 마지막 fetchAndActivate()가 성공했는지 여부.
   ///
   /// [initialize] 호출 이전이면 false. 네트워크 실패 후엔 false가 유지되고,
   /// 다음 fetch가 성공하면 true로 전환된다. 광고 진단(AdService.initialize)이
-  /// "RC 콘솔에서 진짜 OFF"와 "fetch 실패로 기본값(false)을 잘못 읽음"을
+  /// "RC 콘솔에서 진짜 OFF"와 "fetch 실패로 기본값(true)을 잘못 읽음"을
   /// 구분하기 위해 참조한다.
   static bool get lastFetchSucceeded => _lastFetchSucceeded;
+
+  /// 테스트 전용 setter: [_lastFetchSucceeded]를 강제로 설정한다.
+  ///
+  /// Firebase Remote Config는 static singleton이고 `_lastFetchSucceeded`가
+  /// private 정적 필드라 flutter test 환경에서 fake로 hit할 수 없다. 이
+  /// setter는 voice_conversation_ad_gate의 fetch 실패/성공 분기를 단위
+  /// 테스트에서 검증할 때만 사용한다. 프로덕션 코드 경로에서는 절대
+  /// 호출되면 안 된다(@visibleForTesting).
+  @visibleForTesting
+  static set lastFetchSucceededForTest(bool value) =>
+      _lastFetchSucceeded = value;
+
+  /// 마지막 fetch가 실패한 경우 1회 강제 재시도.
+  ///
+  /// [minimumFetchInterval](현재 1시간) 때문에 일반 호출은 캐시만 보지만,
+  /// 호출자가 명시적으로 강제 재시도를 원할 때 사용하는 메서드.
+  /// 강제 재시도는 settings를 임시로 Duration.zero로 바꿔 즉시 fetch를
+  /// 트리거하고, 끝나면 원래 값(1시간 캐시)으로 복원한다.
+  ///
+  /// 반환값: 재시도 후 마지막 fetch 성공 여부.
+  static Future<bool> retryFetchIfFailed() async {
+    if (_lastFetchSucceeded) {
+      return true;
+    }
+    final remoteConfig = _remoteConfig;
+    if (remoteConfig == null) {
+      return false;
+    }
+    try {
+      await remoteConfig.setConfigSettings(
+        RemoteConfigSettings(
+          fetchTimeout: const Duration(seconds: 10),
+          minimumFetchInterval: Duration.zero,
+        ),
+      );
+      await remoteConfig.fetchAndActivate();
+      _lastFetchSucceeded = true;
+    } catch (_) {
+      _lastFetchSucceeded = false;
+    } finally {
+      try {
+        await remoteConfig.setConfigSettings(
+          RemoteConfigSettings(
+            fetchTimeout: const Duration(seconds: 10),
+            minimumFetchInterval: const Duration(hours: 1),
+          ),
+        );
+      } catch (_) {
+        // 복원 실패는 무시한다(다음 initialize()가 다시 1시간으로 설정함).
+      }
+    }
+    return _lastFetchSucceeded;
+  }
 
   /// 운영 광고 단위 ID. Remote Config 콘솔에서 설정. 비어 있거나 형식이
   /// 잘못되면 AdService가 폴백 없이 리워드 광고를 비활성화한다(release 한정,

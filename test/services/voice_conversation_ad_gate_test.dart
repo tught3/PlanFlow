@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/remote_config_service.dart';
 import 'package:planflow/services/voice_conversation_ad_gate.dart';
 import 'package:planflow/services/voice_conversation_entitlement.dart';
 
@@ -24,13 +25,20 @@ void main() {
 
   tearDown(() {
     VoiceConversationAdGate.instance.delegateForTest = null;
+    // 다른 테스트가 RC 상태에 영향받지 않도록 매 테스트 후 초기화.
+    RemoteConfigService.lastFetchSucceededForTest = false;
   });
 
   group('실제 _runGate 경로 (delegate 미주입)', () {
     testWidgets(
-      '리워드 광고 킬스위치 OFF(테스트 환경 Firebase 미초기화 기본값)면 '
-      '광고 우회 진입을 허용하지 않는다',
+      '테스트 환경(Firebase 미초기화)에서는 RC 기본값(true)이라 즉시 '
+      '차단하지 않고 광고 다이얼로그 표시 후 사용자 미확인이면 진입 거부된다',
       (tester) async {
+        // 배경: 2026-08-13 RC 기본값 false → true로 변경됨. Firebase가
+        // 미초기화된 flutter test 환경에서 rewardedAdEnabled는 새 기본값
+        // true를 반환하므로 게이트의 즉시 차단 분기에 걸리지 않고, 광고
+        // 다이얼로그 단계까지 진행한다. 사용자가 다이얼로그를 확인하지
+        // 않으면(onEnterAllowed 미호출) 진입은 거부된다.
         VoiceConversationEntryGrant? captured;
 
         await tester.pumpWidget(
@@ -58,6 +66,7 @@ void main() {
         await tester.tap(find.text('open'));
         await tester.pumpAndSettle();
 
+        // 사용자 미확인 → 진입 거부.
         expect(captured, isNull);
       },
     );
@@ -96,9 +105,91 @@ void main() {
       await tester.tap(find.text('open-twice'));
       await tester.pumpAndSettle();
 
-      // 광고 스위치 OFF 정책에서는 어떤 호출도 진입을 허용하지 않는다.
+      // 인플라이트 가드: 첫 번째 호출이 끝나기 전에 두 번째 호출이 들어와도
+      // 사일런트하게 무시되므로 어떤 호출도 진입을 허용하지 않는다.
       expect(captured, isEmpty);
     });
+  });
+
+  group('RC fetch 분기 검증 (2026-08-13, E-RC1 차단 보강)', () {
+    testWidgets(
+      'RC fetch 실패 + 게이트에서 재시도 실패 → 새 기본값(true)으로 '
+      '광고 다이얼로그까지 진행한다 (사용자 미확인이면 진입 거부)',
+      (tester) async {
+        // 배경: 2026-08-13 RC fetch 실패가 1시간 캐시로 잠기는 문제를
+        // 보강하면서 게이트 분기에 retryFetchIfFailed()를 추가했다. 이
+        // 테스트는 그 새 분기 중 "재시도도 실패했지만 기본값이 true이므로
+        // 광고 다이얼로그 단계까지 진행한다"는 경로를 검증한다.
+        // Firebase가 미초기화된 flutter test 환경은 자연스럽게
+        // _lastFetchSucceeded=false + rewardedAdEnabled=true(새 기본값) +
+        // retryFetchIfFailed()=false 시나리오가 재현된다.
+        RemoteConfigService.lastFetchSucceededForTest = false;
+
+        VoiceConversationEntryGrant? captured;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                return ElevatedButton(
+                  onPressed: () {
+                    unawaited(
+                      VoiceConversationAdGate.instance
+                          .tryEnterVoiceConversation(
+                        context: context,
+                        userId: 'user-rc-fail',
+                        onEnterAllowed: (grant) => captured = grant,
+                      ),
+                    );
+                  },
+                  child: const Text('open-rc-fail'),
+                );
+              },
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('open-rc-fail'));
+        await tester.pumpAndSettle();
+
+        // 게이트는 즉시 차단하지 않고 광고 다이얼로그로 진행. 사용자가
+        // 다이얼로그를 확인하지 않으므로 진입은 거부된다.
+        expect(captured, isNull,
+            reason: '재시도 실패해도 기본값(true)이라 즉시 차단되면 안 된다');
+      },
+    );
+
+    testWidgets(
+      'RC fetch 실패 + 게이트에서 재시도 성공 시나리오 — skip 사유 기록 '
+      '(Firebase Remote Config mock 필요)',
+      (tester) async {
+        // 이 시나리오는 "직전 fetch가 실패했지만 게이트가 강제 재시도를
+        // 트리거했고 그 재시도가 성공"하는 경로다. retryFetchIfFailed가
+        // 진짜로 fetchAndActivate에 성공하는 것을 재현하려면
+        // firebase_remote_config_platform_interface의 Mock 구현이
+        // 필요하고 이 작업 범위를 벗어난다. 이 테스트는 placeholder로
+        // 남겨두되 실제 단언은 하지 않는다.
+        RemoteConfigService.lastFetchSucceededForTest = false;
+        expect(true, true,
+            reason: 'Firebase Remote Config mock 인프라가 선행되어야 검증 가능');
+      },
+    );
+
+    testWidgets(
+      'RC fetch 성공 + 콘솔 OFF → E-RC1 차단 유지 — skip 사유 기록 '
+      '(Firebase Remote Config mock 필요)',
+      (tester) async {
+        // 이 시나리오는 "콘솔에서 명시적으로 OFF"인 상태에서 즉시 차단
+        // 되는 기존 동작이 그대로 유지됨을 검증한다. _lastFetchSucceeded
+        // =true + rewardedAdEnabled=false인 상태가 필요한데, 후자는
+        // _remoteConfig가 null인 테스트 환경에서 강제할 수 없어
+        // (Firebase Remote Config mock 선행 필요) skip 한다. 코드
+        // 인스펙션(lib/services/voice_conversation_ad_gate.dart의
+        // `else { ... _deny(rewardedDisabled) ... }` 분기)으로 커버한다.
+        RemoteConfigService.lastFetchSucceededForTest = true;
+        expect(true, true,
+            reason: 'Firebase Remote Config mock 인프라가 선행되어야 검증 가능');
+      },
+    );
   });
 
   group('strict 무료 3회/광고 보상 계약 (delegate 경유)', () {

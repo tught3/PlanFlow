@@ -25,14 +25,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 코드 리뷰(`lib/services/ad_service.dart`의 `if (!RemoteConfigService.
 /// rewardedAdEnabled)` 분기)로 커버된다.
 ///
-/// 검증 가능 시나리오 (시나리오 2):
+/// 검증 가능 시나리오 (시나리오 2, 2026-08-13 갱신):
 ///   - flutter test 환경은 Firebase 미초기화 → `RemoteConfigService._remoteConfig`
-///     가 null → `rewardedAdEnabled`가 false(컴파일타임 기본값 폴백)
-///   - `RemoteConfigService._lastFetchSucceeded`는 초기값 false
-///   - 따라서 AdService.initialize()는 RC OFF 분기를 진입하고
-///     `lastFetchSucceeded == false`이므로 `rc_fetch_failed` reason을
-///     Analytics에 남기고 즉시 return. MobileAds는 호출되지 않고,
-///     `_initialized`는 false로 유지된다.
+///     가 null → `rewardedAdEnabled`가 true(새 기본값, 2026-08-13 false→true 변경).
+///   - 즉 RC OFF 분기 진입 조건은 더 이상 false가 아니라 true로 인해 미진입.
+///   - RC OFF 분기를 직접 검증하려면 (a) RemoteConfigService를 fake로 분리
+///     또는 (b) test-only setter로 _remoteConfig/ rewardedAdEnabled를 주입
+///     가능하게 노출하는 리팩토링이 선행돼야 한다.
+///   - 현재 시점에선 (a)/(b) 모두 미완이므로 시나리오 1/2 단언 대신
+///     "consent 분기 실패 시 MobileAds 미호출 + _initialized=false 유지"를
+///     검증한다(아래 시나리오 C). 이 경로는 RC 기본값(true)에서도 _consentService
+///     .isAvailable=false면 동일하게 MobileAds 미호출로 종결된다.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -42,9 +45,15 @@ void main() {
 
   group('AdService.initialize 진단 분기 (M5, 이슈 A)', () {
     test(
-      '시나리오 2: RC OFF + lastFetchSucceeded=false → MobileAds 미호출, '
-      '_initialized=false (현재 구조상 검증 가능한 유일 시나리오)',
+      '시나리오 C (2026-08-13 추가): RC 기본값(true) + consent 실패 → '
+      'MobileAds 미호출, _initialized=false',
       () async {
+        // 배경: RC 기본값이 false→true로 변경됐고(2026-08-13) 이 테스트
+        // 환경은 Firebase 미초기화 + UMP 플랫폼 채널 미존재라 _consentService
+        // .isAvailable=false가 된다. 따라서 ad_service.initialize()는
+        // RC OFF 분기 미진입 → _consentService.initialize() 실패 →
+        // retryAfterUserAction() 실패 → 즉시 return. MobileAds 미호출 +
+        // _initialized=false가 단언의 핵심.
         int adsInitializerCalls = 0;
         final service = AdService(
           dynamicAdsInitializer: () async {
@@ -55,22 +64,17 @@ void main() {
 
         await service.initialize();
 
-        // RC fetch 실패로 기본값(false)을 읽은 상태. MobileAds(또는 주입된
-        // dynamicAdsInitializer) 미호출 + _initialized 미잠금이 단언의 핵심.
-        // 진단 신호(reason='rc_fetch_failed')는 AnalyticsService가 no-op
-        // 정적 메서드라 직접 검증 불가. 시그니처 변경 후에는 fake Analytics
-        // 또는 Sentry capture 호출 카운팅으로 검증 가능.
         expect(adsInitializerCalls, 0,
-            reason: 'RC OFF 분기에서 MobileAds 초기화는 절대 호출되지 않는다');
+            reason: 'consent 실패 시 MobileAds 초기화는 절대 호출되지 않는다');
         expect(service.isInitialized, false,
-            reason: 'RC OFF면 _initialized는 false 유지(잠금 버그 회피)');
+            reason: 'consent 실패 시 _initialized는 false 유지(잠금 버그 회피)');
       },
     );
 
     test(
-      '시나리오 2 추가 단언: initialize()가 idempotent하게 false를 유지한다',
+      '시나리오 C 추가 단언: initialize()가 idempotent하게 false를 유지한다',
       () async {
-        // 같은 인스턴스에서 initialize()를 두 번 호출해도 _initialized가
+        // 같은 인스턴스에서 initialize()를 세 번 호출해도 _initialized가
         // true로 잠기지 않는지(잠금 버그 재발 방지) 단언.
         int adsInitializerCalls = 0;
         final service = AdService(
