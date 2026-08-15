@@ -10,6 +10,7 @@ import '../data/repositories/event_repository.dart';
 import 'home_widget_platform.dart';
 import 'kasi_holiday_service.dart';
 import 'korean_holidays.dart';
+import 'synced_public_holiday_visibility.dart';
 import 'travel_time_buffer_service.dart';
 
 class HomeWidgetNextEventData {
@@ -175,6 +176,7 @@ class HomeWidgetSchedulePayloadBuilder {
     final month = DateTime(localNow.year, localNow.month);
     final expandedEvents = _expandRecurringEventsForWidget(events, month);
     final sortedEvents = expandedEvents
+        .where((event) => !isSyncedPublicHolidayDuplicate(event))
         .where((event) => event.startAt != null)
         .where((event) => includeWeekends || !_startsOnWeekend(event))
         .toList(growable: false)
@@ -717,9 +719,8 @@ class HomeWidgetSchedulePayloadBuilder {
             if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
               continue;
             }
-            final occurrenceEnd = duration == null
-                ? null
-                : current.add(duration);
+            final occurrenceEnd =
+                duration == null ? null : current.add(duration);
             final candidate = _copyWidgetEventWithTime(
               event,
               startAt: current,
@@ -752,21 +753,21 @@ class HomeWidgetSchedulePayloadBuilder {
         'DAILY' => current.add(Duration(days: interval)),
         'WEEKLY' => current.add(Duration(days: 7 * interval)),
         'MONTHLY' => DateTime(
-          current.year,
-          current.month + interval,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
+            current.year,
+            current.month + interval,
+            current.day,
+            current.hour,
+            current.minute,
+            current.second,
+          ),
         'YEARLY' => DateTime(
-          current.year + interval,
-          current.month,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
+            current.year + interval,
+            current.month,
+            current.day,
+            current.hour,
+            current.minute,
+            current.second,
+          ),
         _ => hardEnd,
       };
     }
@@ -885,23 +886,21 @@ class HomeWidgetSchedulePayloadBuilder {
     // override의 overriddenOccurrenceDate(원본 회차 날짜)로 매칭한다 —
     // startAt(새로 옮긴 날짜)으로 매칭하면 날짜를 바꾼 예외가 원본 회차를
     // 못 숨긴다(2026-07-27).
-    return events
-        .where((event) {
-          final startAt = event.startAt;
-          if (startAt == null) {
-            return true;
-          }
-          final isOverridden = overrides.any((override) {
-            if (override.parentEventId != event.id) {
-              return false;
-            }
-            final overriddenDate = override.overriddenOccurrenceDate;
-            return overriddenDate != null &&
-                planflowIsSameLocalDay(overriddenDate, startAt);
-          });
-          return !isOverridden;
-        })
-        .toList(growable: false);
+    return events.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return true;
+      }
+      final isOverridden = overrides.any((override) {
+        if (override.parentEventId != event.id) {
+          return false;
+        }
+        final overriddenDate = override.overriddenOccurrenceDate;
+        return overriddenDate != null &&
+            planflowIsSameLocalDay(overriddenDate, startAt);
+      });
+      return !isOverridden;
+    }).toList(growable: false);
   }
 }
 
@@ -1722,16 +1721,15 @@ class HomeWidgetService {
         );
         return;
       }
-      final events = await EventRepository.supabase()
-          .listEvents(userId: userId);
+      final events =
+          await EventRepository.supabase().listEvents(userId: userId);
       if (!archived) {
         // restore: 그룹 포함 상태로 전체 새로고침
         await refreshScheduleFromEvents(events);
         return;
       }
       // archive: 그룹에 속한 이벤트는 제외한 목록으로 갱신
-      final excludedIds =
-          await _fetchGroupEventIds(normalizedGroupId);
+      final excludedIds = await _fetchGroupEventIds(normalizedGroupId);
       final filtered = events
           .where((event) => !excludedIds.contains(event.id))
           .toList(growable: false);

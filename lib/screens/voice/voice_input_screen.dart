@@ -904,6 +904,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         AppRoutes.confirm,
         extra: <String, dynamic>{
           ...preparedDraft,
+          // A partial draft is only an optimistic preview. Always run the
+          // final AI parse on the submitted text so the confirm screen owns
+          // the authoritative fields and blocking loader.
+          'raw_text': normalizedText,
+          'parse_pending': true,
           if (_manualEditOriginalTranscript?.trim().isNotEmpty == true)
             'stt_original_text': _manualEditOriginalTranscript!.trim(),
           if (_didEditTranscriptManually) 'manual_text_confirmed': true,
@@ -1228,12 +1233,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     String text,
   ) {
     final action = _actionFromPreparedDraft(draft);
-    if (action == _VoiceCommandAction.query &&
-        _voiceCommandRouter.resolveIntent(text) ==
-            VoiceCommandRouteIntent.add) {
-      return _VoiceCommandAction.add;
+    if (action == null) {
+      return null;
     }
-    return action;
+    // Partial analysis may finish after the user changes the transcript. The
+    // final submit text is authoritative for routing and the conversation ad
+    // gate must never inherit a stale prepared intent.
+    final submittedAction =
+        _actionFromRouteIntent(_voiceCommandRouter.resolveIntent(text));
+    return submittedAction;
   }
 
   void _setTranscriptText(String text) {

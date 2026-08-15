@@ -19,6 +19,7 @@ import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/korean_holidays.dart';
+import '../../services/synced_public_holiday_visibility.dart';
 import '../../services/voice_conversation_launcher.dart';
 import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
@@ -211,6 +212,9 @@ List<EventModel> _eventsForLocalDay(
 ) {
   final result = <EventModel>[];
   for (final event in events) {
+    if (isSyncedPublicHolidayDuplicate(event)) {
+      continue;
+    }
     final startAt = event.startAt;
     if (startAt == null) {
       continue;
@@ -286,23 +290,19 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     return DateTime(monthStart.year, monthStart.month, dayNumber);
   }, growable: false);
 
-  final visibleOverlayEvents = overlayEvents
-      .where((event) {
-        final startAt = event.startAt;
-        if (startAt == null) {
-          return false;
-        }
-        final endAt = event.endAt ?? startAt;
-        final overlayMonthStart =
-            DateTime(focusedMonth.year, focusedMonth.month);
-        final overlayMonthEnd =
-            DateTime(focusedMonth.year, focusedMonth.month + 1);
-        final localStart = planflowLocalDay(startAt);
-        final localEnd = planflowLocalDay(endAt);
-        return !localStart.isAfter(overlayMonthEnd) &&
-            !localEnd.isBefore(overlayMonthStart);
-      })
-      .toList(growable: false)
+  final visibleOverlayEvents = overlayEvents.where((event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final endAt = event.endAt ?? startAt;
+    final overlayMonthStart = DateTime(focusedMonth.year, focusedMonth.month);
+    final overlayMonthEnd = DateTime(focusedMonth.year, focusedMonth.month + 1);
+    final localStart = planflowLocalDay(startAt);
+    final localEnd = planflowLocalDay(endAt);
+    return !localStart.isAfter(overlayMonthEnd) &&
+        !localEnd.isBefore(overlayMonthStart);
+  }).toList(growable: false)
     ..sort((a, b) {
       final aStart = a.startAt ?? DateTime(0);
       final bStart = b.startAt ?? DateTime(0);
@@ -313,7 +313,11 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       return a.title.compareTo(b.title);
     });
 
+  // The mini calendar has its own slot allocator, so filtering only in the
+  // selected-day list is too late: an imported holiday could still consume a
+  // visible slot or overflow count here.
   final sortedEvents = events
+      .where((event) => !isSyncedPublicHolidayDuplicate(event))
       .where((event) => event.startAt != null)
       .toList(growable: false)
     ..sort(compareCalendarEventsForDisplay);
@@ -451,6 +455,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _focusedMonth;
   List<EventModel> _allEvents = const <EventModel>[];
   GroupCalendarOverlayProvider? _groupOverlayProvider;
+
   /// 미확인 리더 지시가 있는 개인 이벤트 id 집합
   Set<String> _instructionEventIds = const <String>{};
   _CalendarLoadState _loadState = _CalendarLoadState.ready;
@@ -705,23 +710,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
         .map((event) => event.groupEventId)
         .whereType<String>()
         .toSet();
-    return groupOverlayProvider.items
-        .where((event) {
-          final start = event.startAt;
-          if (start == null) {
-            return false;
-          }
-          if (event.isGroup && linkedGroupEventIds.contains(event.id)) {
-            return false;
-          }
-          // UTC 원시값이 아닌 로컬(KST) 날짜 기준으로 비교해야, 월 경계
-          // 근처(예: UTC 자정 이전=KST 다음날 오전)의 일정이 잘못 걸러지지
-          // 않는다(이 파일의 다른 로컬 날짜 필터들과 동일하게 정규화).
-          final localStart = planflowLocalDay(start);
-          final localEnd = planflowLocalDay(event.endAt ?? start);
-          return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
-        })
-        .toList(growable: false)
+    return groupOverlayProvider.items.where((event) {
+      final start = event.startAt;
+      if (start == null) {
+        return false;
+      }
+      if (event.isGroup && linkedGroupEventIds.contains(event.id)) {
+        return false;
+      }
+      // UTC 원시값이 아닌 로컬(KST) 날짜 기준으로 비교해야, 월 경계
+      // 근처(예: UTC 자정 이전=KST 다음날 오전)의 일정이 잘못 걸러지지
+      // 않는다(이 파일의 다른 로컬 날짜 필터들과 동일하게 정규화).
+      final localStart = planflowLocalDay(start);
+      final localEnd = planflowLocalDay(event.endAt ?? start);
+      return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
+    }).toList(growable: false)
       ..sort((a, b) {
         final aStart = a.startAt ?? DateTime(0);
         final bStart = b.startAt ?? DateTime(0);
@@ -824,6 +827,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
     final visible = _hideOverriddenRecurringOccurrences(expanded);
+    visible.removeWhere(isSyncedPublicHolidayDuplicate);
     visible.sort(
       (a, b) => (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)),
     );
@@ -975,6 +979,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _changeMonth(-1);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';

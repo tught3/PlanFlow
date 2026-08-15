@@ -440,6 +440,47 @@ void main() {
   });
 
   test(
+      'HomeWidget payload omits synced canonical holidays but keeps manual events',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.utc(2026, 8, 15, 0),
+      events: <EventModel>[
+        EventModel(
+          id: 'synced-holiday',
+          userId: 'user-1',
+          title: '광복절',
+          startAt: DateTime.utc(2026, 8, 15, 0),
+          externalId: 'provider-holiday-1',
+          externalCalendarId: 'google:holidays',
+        ),
+        EventModel(
+          id: 'manual-holiday-event',
+          userId: 'user-1',
+          title: '광복절 행사',
+          startAt: DateTime.utc(2026, 8, 15, 1),
+        ),
+        EventModel(
+          id: 'personal-event',
+          userId: 'user-1',
+          title: '개인 일정',
+          startAt: DateTime.utc(2026, 8, 15, 2),
+        ),
+      ],
+    );
+
+    expect(payload.rawEvents.map((event) => event['id']), <String>[
+      'manual-holiday-event',
+      'personal-event',
+    ]);
+    final august15 = payload.monthCells.firstWhere((cell) => cell.day == 15);
+    expect(august15.holidayName, '광복절');
+    expect(august15.events.map((event) => event.eventId), <String>[
+      'manual-holiday-event',
+      'personal-event',
+    ]);
+  });
+
+  test(
       'HomeWidgetSchedulePayloadBuilder hides a recurring occurrence that was '
       'moved to a different date (single-occurrence override)', () {
     // 원래 버그: 반복 회차를 "이 일정만" 수정해 날짜를 옮기면, 위젯이 옮긴

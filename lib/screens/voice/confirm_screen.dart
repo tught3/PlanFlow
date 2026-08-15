@@ -269,6 +269,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   String? _hydrateMessage;
   bool _isApplyingHydration = false;
   bool _adGateHandled = false;
+  bool _parseAuthorized = false;
   bool _titleEditedByUser = false;
   bool _locationEditedByUser = false;
   bool _memoEditedByUser = false;
@@ -395,6 +396,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   void dispose() {
+    // A rewarded-ad callback can outlive this route when the user backs out.
+    // Always clear the process-wide overlay so it cannot cover the next page.
+    RewardedAdLoadingOverlay.hide();
     WidgetsBinding.instance.removeObserver(this);
     _locationDebounce?.cancel();
     _titleController.removeListener(_markTitleEdited);
@@ -1162,6 +1166,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
+    // The user explicitly confirmed the transcript in the manual editor.
+    // Do not put an ad gate in front of that editing flow; the final AI parse
+    // still runs behind the blocking loader below.
+    if (widget.parsedSchedule['manual_text_confirmed'] == true) {
+      _maybeHydrateParsedSchedule();
+      return;
+    }
+
     final adEnabled = RemoteConfigService.rewardedAdEnabled;
     if (!adEnabled) {
       _maybeHydrateParsedSchedule();
@@ -1180,65 +1192,105 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    final dialogResult = await RewardedAdDialog.show(context);
-    if (dialogResult != true) {
-      // 사용자가 '직접 입력' 선택 또는 dialog가 닫힘 → GPT 파싱 skip.
-      if (!mounted) {
-        return;
-      }
-      await AnalyticsService.logAdCancelled();
-      setState(() {
-        widget.parsedSchedule['parse_failed'] = true;
-        _hydrateMessage = '광고 없이 진행해요. 직접 입력해 주세요.';
-        _titleController.text = rawText;
-        _isHydratingParsedSchedule = false;
-        _showInitialHydrationLoader = false;
-      });
-      return;
-    }
-
-    await AnalyticsService.logAdOptedIn();
-    final requestId = 'adparse_${DateTime.now().microsecondsSinceEpoch}';
-    if (!mounted) {
-      return;
-    }
-    RewardedAdLoadingOverlay.show(context, stage: 'loading');
-
-    final granted = await AdService.instance.showForParseSchedule(
-      requestId: requestId,
-      onProgress: (stage) {
+    bool overlayVisible = false;
+    try {
+      final dialogResult = await RewardedAdDialog.show(context);
+      if (dialogResult != true) {
+        // 사용자가 '직접 입력' 선택 또는 dialog가 닫힘 → GPT 파싱 skip.
         if (!mounted) {
           return;
         }
-        RewardedAdLoadingOverlay.hide();
-        if (stage == 'shown' || stage == 'loading') {
-          RewardedAdLoadingOverlay.show(context, stage: stage);
-        }
-      },
-    );
-
-    RewardedAdLoadingOverlay.hide();
-    if (!mounted) {
-      return;
-    }
-
-    if (!granted) {
-      // 광고 로드 실패 / 사용자가 광고를 닫음 / 백그라운드 이동 / 네트워크 단절.
-      setState(() {
-        widget.parsedSchedule['parse_failed'] = true;
-        _hydrateMessage = '광고를 완료하지 못했어요. 내용을 직접 수정해 주세요.';
-        _isHydratingParsedSchedule = false;
-        _showInitialHydrationLoader = false;
-        if (_titleController.text.trim().isEmpty) {
+        await AnalyticsService.logAdCancelled();
+        setState(() {
+          widget.parsedSchedule['parse_failed'] = true;
+          _hydrateMessage = '광고 없이 진행해요. 직접 입력해 주세요.';
           _titleController.text = rawText;
-        }
-      });
+          _isHydratingParsedSchedule = false;
+          _showInitialHydrationLoader = false;
+        });
+        return;
+      }
+
+      await AnalyticsService.logAdOptedIn();
+      final requestId = 'adparse_${DateTime.now().microsecondsSinceEpoch}';
+      if (!mounted) {
+        return;
+      }
+      RewardedAdLoadingOverlay.show(context, stage: 'loading');
+      overlayVisible = true;
+
+      final granted = await AdService.instance.showForParseSchedule(
+        requestId: requestId,
+        onProgress: (stage) {
+          if (!mounted) {
+            return;
+          }
+          RewardedAdLoadingOverlay.hide();
+          overlayVisible = false;
+          if (stage == 'shown' || stage == 'loading') {
+            RewardedAdLoadingOverlay.show(context, stage: stage);
+            overlayVisible = true;
+          }
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!granted) {
+        // 광고 로드 실패 / 사용자가 광고를 닫음 / 백그라운드 이동 / 네트워크 단절.
+        setState(() {
+          widget.parsedSchedule['parse_failed'] = true;
+          _hydrateMessage = '광고를 완료하지 못했어요. 내용을 직접 수정해 주세요.';
+          _isHydratingParsedSchedule = false;
+          _showInitialHydrationLoader = false;
+          if (_titleController.text.trim().isEmpty) {
+            _titleController.text = rawText;
+          }
+        });
+        return;
+      }
+
+      // 보상 부여됨. GPT 파싱 실행.
+      await AnalyticsService.logAdFeatureSuccess(requestId: requestId);
+      _maybeHydrateParsedSchedule();
+    } catch (error, stackTrace) {
+      debugPrint('ConfirmScreen rewarded parse flow failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          widget.parsedSchedule['parse_pending'] = false;
+          widget.parsedSchedule['parse_failed'] = true;
+          _isHydratingParsedSchedule = false;
+          _showInitialHydrationLoader = false;
+          _hydrateMessage = 'AI 정리를 시작하지 못했어요. 입력 내용을 확인하고 다시 시도해 주세요.';
+        });
+      }
+    } finally {
+      if (overlayVisible) {
+        RewardedAdLoadingOverlay.hide();
+      }
+    }
+  }
+
+  void _retryAiHydration() {
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+    final canRetryWithoutReward =
+        widget.parsedSchedule['manual_text_confirmed'] == true;
+    if ((!_parseAuthorized && !canRetryWithoutReward) ||
+        rawText == null ||
+        rawText.trim().isEmpty) {
       return;
     }
-
-    // 보상 부여됨. GPT 파싱 실행.
-    await AnalyticsService.logAdFeatureSuccess(requestId: requestId);
-    _maybeHydrateParsedSchedule();
+    _adGateHandled = true;
+    setState(() {
+      widget.parsedSchedule['parse_pending'] = true;
+      widget.parsedSchedule['parse_failed'] = false;
+      _hydrateMessage = null;
+      _showInitialHydrationLoader = true;
+    });
+    unawaited(_hydrateParsedSchedule(rawText.trim()));
   }
 
   Future<void> _hydrateParsedSchedule(String rawText) async {
@@ -1246,6 +1298,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
+    _parseAuthorized = true;
     setState(() {
       _isHydratingParsedSchedule = true;
       _showInitialHydrationLoader = false;
@@ -1260,6 +1313,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       if (parsed['parse_failed'] == true) {
         unawaited(AnalyticsService.logScheduleParseFailed(reason: 'fallback'));
+        _hydrateMessage = '일정을 바로 정리하지 못했어요. 입력 내용을 확인하고 다시 시도해 주세요.';
       }
 
       if (parsed['parse_failed'] != true) {
@@ -1272,6 +1326,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       _isApplyingHydration = true;
+      widget.parsedSchedule['parse_pending'] = false;
+      widget.parsedSchedule['parse_failed'] = parsed['parse_failed'] == true;
       _initialParsedForLearning = Map<String, dynamic>.from(parsed);
       setState(() {
         final title = _stringValue(parsed['title']);
@@ -1334,6 +1390,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       if (mounted) {
         unawaited(AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'));
         setState(() {
+          widget.parsedSchedule['parse_pending'] = false;
+          widget.parsedSchedule['parse_failed'] = true;
           _hydrateMessage = '일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.';
         });
       }
@@ -2725,7 +2783,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         widget.parsedSchedule['parse_pending'] == true &&
             (_showInitialHydrationLoader || _isHydratingParsedSchedule);
 
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         title: const Text('일정 확인'),
         leading: IconButton(
@@ -2765,214 +2823,246 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         onSettings: () => context.go(AppRoutes.settings),
       ),
       body: SafeArea(
-        child: showParsePendingLoader
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      controller: _scrollController,
-                      padding:
-                          const EdgeInsets.all(AppConstants.defaultPadding),
-                      child: ResponsiveContent(
-                        maxWidth: context.planflowWindowInfo.contentMaxWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: PlanFlowColors.briefing,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: Colors.white,
-                                ),
-                              ),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                child: ResponsiveContent(
+                  maxWidth: context.planflowWindowInfo.contentMaxWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: PlanFlowColors.briefing,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      if (_isHydratingParsedSchedule ||
+                          _hydrateMessage != null) ...[
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                        Card(
+                          color: const Color(0xFFF7F9FF),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: const BorderSide(
+                              color: PlanFlowColors.primaryFaint,
+                              width: 0.5,
                             ),
-                            if (_isHydratingParsedSchedule ||
-                                _hydrateMessage != null) ...[
-                              const SizedBox(
-                                  height: AppConstants.sectionSpacing),
-                              Card(
-                                color: const Color(0xFFF7F9FF),
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  side: const BorderSide(
-                                    color: PlanFlowColors.primaryFaint,
-                                    width: 0.5,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                if (_isHydratingParsedSchedule)
+                                  const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                else
+                                  const Icon(
+                                    Icons.info_outline,
+                                    color: PlanFlowColors.primaryMid,
                                   ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      if (_isHydratingParsedSchedule)
-                                        const SizedBox.square(
-                                          dimension: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      else
-                                        const Icon(
-                                          Icons.info_outline,
-                                          color: PlanFlowColors.primaryMid,
-                                        ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          _hydrateMessage ??
-                                              '음성 내용을 정리하는 중이에요. 화면은 바로 열렸고, 아래 항목은 곧 채워집니다.',
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                            color: PlanFlowColors.textSecondary,
-                                          ),
+                                      Text(
+                                        _hydrateMessage ??
+                                            'AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.',
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: PlanFlowColors.textSecondary,
                                         ),
                                       ),
+                                      if ((_parseAuthorized ||
+                                              widget.parsedSchedule[
+                                                      'manual_text_confirmed'] ==
+                                                  true) &&
+                                          !_isHydratingParsedSchedule &&
+                                          _hydrateMessage != null)
+                                        TextButton(
+                                          key: const ValueKey('retry-ai-parse'),
+                                          onPressed: _retryAiHydration,
+                                          child: const Text('AI로 다시 정리'),
+                                        ),
                                     ],
                                   ),
                                 ),
-                              ),
-                            ],
-                            const SizedBox(height: AppConstants.sectionSpacing),
-                            if (_parseFailed)
-                              Card(
-                                color: theme.colorScheme.errorContainer,
-                                child: const Padding(
-                                  padding: EdgeInsets.all(
-                                    AppConstants.defaultPadding,
-                                  ),
-                                  child: Text(
-                                      '자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
-                                ),
-                              ),
-                            if (_shouldShowTimePeriodClarification) ...[
-                              const SizedBox(
-                                  height: AppConstants.sectionSpacing),
-                              _buildTimePeriodClarificationReopenButton(),
-                            ],
-                            const SizedBox(height: AppConstants.sectionSpacing),
-                            _buildSaveTargetCard(context),
-                            if (_selectedGroupForSharing != null)
-                              const SizedBox(
-                                  height: AppConstants.sectionSpacing),
-                            CalendarStyleEventEditor(
-                              titleController: _titleController,
-                              locationController: _locationController,
-                              memoController: _memoController,
-                              startAt: _startAt,
-                              endAt: _endAt,
-                              category: _category,
-                              recurrence: _recurrenceSelection,
-                              reminderOffset: _reminderOffset,
-                              isCritical: _isCritical,
-                              useStrongAlarm: _strongAlarm,
-                              isLookingUpLocation: _isLookingUpLocation,
-                              isSearchingLocation: _isLookingUpLocation,
-                              locationLat: _locationLat,
-                              locationLng: _locationLng,
-                              locationHelperText:
-                                  '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
-                              initiallyExpandClassification:
-                                  !_recurrenceSelection.isNone,
-                              initiallyExpandDetails: false,
-                              initiallyExpandAlarm: true,
-                              initiallyExpandCriticalAlarm: _isCritical,
-                              onLocationTextChanged: _handleLocationTextChanged,
-                              onStartChanged: (value) {
-                                setState(() {
-                                  final previousStart = _startAt;
-                                  _startEditedByUser = true;
-                                  _startAt = value;
-                                  _endAt = shiftEventEndWhenStartChanges(
-                                    previousStart: previousStart,
-                                    newStart: _startAt,
-                                    currentEnd: _endAt,
-                                    endEditedByUser: _endEditedByUser,
-                                  );
-                                  if (_endAt != null &&
-                                      _endAt!.isBefore(_startAt)) {
-                                    _endAt = _startAt;
-                                  }
-                                });
-                              },
-                              onEndChanged: (value) {
-                                setState(() {
-                                  _endEditedByUser = true;
-                                  _endAt = value;
-                                });
-                              },
-                              onCategoryChanged: (value) {
-                                setState(() {
-                                  _category = value;
-                                });
-                              },
-                              onRecurrenceChanged: (value) {
-                                setState(() {
-                                  _recurrenceSelection = value;
-                                });
-                              },
-                              onReminderChanged: (value) {
-                                setState(() {
-                                  _reminderOffset = value;
-                                });
-                              },
-                              onCriticalChanged: (value) {
-                                setState(() {
-                                  _isCritical = value;
-                                  if (!value) _strongAlarm = false;
-                                });
-                              },
-                              onStrongAlarmChanged: (value) {
-                                setState(() {
-                                  _strongAlarm = value;
-                                });
-                              },
-                              onLocationPick: _lookupLocation,
-                              extraAfterLocation: KeyedSubtree(
-                                key: _suppliesKey,
-                                child: _SuppliesEditor(
-                                  supplies: _supplies,
-                                  newSupplyController: _newSupplyController,
-                                  newSupplyFocusNode: _newSupplyFocusNode,
-                                  errorText: _supplyErrorText,
-                                  onAdd: _addSupplyFromInput,
-                                  onRemove: _removeSupply,
-                                ),
-                              ),
+                              ],
                             ),
-                            const SizedBox(height: 24),
-                            FilledButton.icon(
-                              onPressed: (_isSaving || showParsePendingLoader)
-                                  ? null
-                                  : _save,
-                              icon: _isSaving
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.save),
-                              label: Text(_isSaving ? '저장 중' : '일정 저장'),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppConstants.sectionSpacing),
+                      if (_parseFailed)
+                        Card(
+                          color: theme.colorScheme.errorContainer,
+                          child: const Padding(
+                            padding: EdgeInsets.all(
+                              AppConstants.defaultPadding,
                             ),
-                          ],
+                            child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
+                          ),
+                        ),
+                      if (_shouldShowTimePeriodClarification) ...[
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                        _buildTimePeriodClarificationReopenButton(),
+                      ],
+                      const SizedBox(height: AppConstants.sectionSpacing),
+                      _buildSaveTargetCard(context),
+                      if (_selectedGroupForSharing != null)
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                      CalendarStyleEventEditor(
+                        titleController: _titleController,
+                        locationController: _locationController,
+                        memoController: _memoController,
+                        startAt: _startAt,
+                        endAt: _endAt,
+                        category: _category,
+                        recurrence: _recurrenceSelection,
+                        reminderOffset: _reminderOffset,
+                        isCritical: _isCritical,
+                        useStrongAlarm: _strongAlarm,
+                        isLookingUpLocation: _isLookingUpLocation,
+                        isSearchingLocation: _isLookingUpLocation,
+                        locationLat: _locationLat,
+                        locationLng: _locationLng,
+                        locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                        initiallyExpandClassification:
+                            !_recurrenceSelection.isNone,
+                        initiallyExpandDetails: false,
+                        initiallyExpandAlarm: true,
+                        initiallyExpandCriticalAlarm: _isCritical,
+                        onLocationTextChanged: _handleLocationTextChanged,
+                        onStartChanged: (value) {
+                          setState(() {
+                            final previousStart = _startAt;
+                            _startEditedByUser = true;
+                            _startAt = value;
+                            _endAt = shiftEventEndWhenStartChanges(
+                              previousStart: previousStart,
+                              newStart: _startAt,
+                              currentEnd: _endAt,
+                              endEditedByUser: _endEditedByUser,
+                            );
+                            if (_endAt != null && _endAt!.isBefore(_startAt)) {
+                              _endAt = _startAt;
+                            }
+                          });
+                        },
+                        onEndChanged: (value) {
+                          setState(() {
+                            _endEditedByUser = true;
+                            _endAt = value;
+                          });
+                        },
+                        onCategoryChanged: (value) {
+                          setState(() {
+                            _category = value;
+                          });
+                        },
+                        onRecurrenceChanged: (value) {
+                          setState(() {
+                            _recurrenceSelection = value;
+                          });
+                        },
+                        onReminderChanged: (value) {
+                          setState(() {
+                            _reminderOffset = value;
+                          });
+                        },
+                        onCriticalChanged: (value) {
+                          setState(() {
+                            _isCritical = value;
+                            if (!value) _strongAlarm = false;
+                          });
+                        },
+                        onStrongAlarmChanged: (value) {
+                          setState(() {
+                            _strongAlarm = value;
+                          });
+                        },
+                        onLocationPick: _lookupLocation,
+                        extraAfterLocation: KeyedSubtree(
+                          key: _suppliesKey,
+                          child: _SuppliesEditor(
+                            supplies: _supplies,
+                            newSupplyController: _newSupplyController,
+                            newSupplyFocusNode: _newSupplyFocusNode,
+                            errorText: _supplyErrorText,
+                            onAdd: _addSupplyFromInput,
+                            onRemove: _removeSupply,
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: (_isSaving || showParsePendingLoader)
+                            ? null
+                            : _save,
+                        icon: _isSaving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save),
+                        label: Text(_isSaving ? '저장 중' : '일정 저장'),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
+            ),
+          ],
+        ),
       ),
+    );
+    if (!showParsePendingLoader) {
+      return scaffold;
+    }
+    return Stack(
+      children: [
+        scaffold,
+        Positioned.fill(
+          child: AbsorbPointer(
+            absorbing: true,
+            child: ColoredBox(
+              color: Color(0xF7FFFFFF),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

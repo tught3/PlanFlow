@@ -248,6 +248,35 @@ void main() {
     },
   );
 
+  test('calendar mini month hides only synced canonical holiday duplicates',
+      () {
+    final holidayYear = DateTime.now().year;
+    final cells = buildCalendarMiniMonthCells(
+      focusedMonth: DateTime(holidayYear, 8),
+      events: <EventModel>[
+        EventModel(
+          id: 'synced-holiday',
+          userId: 'user-1',
+          title: '광복절',
+          startAt: DateTime(holidayYear, 8, 15, 9),
+          externalId: 'provider-1',
+          externalCalendarId: 'google:holidays',
+        ),
+        EventModel(
+          id: 'manual-holiday-note',
+          userId: 'user-1',
+          title: '광복절 행사',
+          startAt: DateTime(holidayYear, 8, 15, 10),
+        ),
+      ],
+    );
+
+    final day15 = cells.firstWhere((cell) => cell.dayNumber == 15);
+    expect(day15.events.map((event) => event.id), <String>[
+      'manual-holiday-note',
+    ]);
+  });
+
   testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {
     final repository = _AsyncEventRepository([
       Future.value([_event('holiday', '현충일', DateTime(2026, 6, 6, 9))]),

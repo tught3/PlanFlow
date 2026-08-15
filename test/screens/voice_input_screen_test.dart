@@ -372,7 +372,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('draft:내일 오전 10시 정장집 방문|pending:false|manual:false'),
+      find.textContaining('draft:내일 오전 10시 정장집 방문|pending:true|manual:false'),
       findsOneWidget,
     );
     expect(fakeAnalysis.analyzeCalls, 1);
@@ -1052,7 +1052,8 @@ void main() {
           builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>;
             return Text(
-              '일정 확인: ${extra['raw_text']} / ${extra['start_at']}',
+              '일정 확인: ${extra['raw_text']} / ${extra['start_at']} / '
+              'pending:${extra['parse_pending'] == true}',
               textDirection: TextDirection.ltr,
             );
           },
@@ -1079,6 +1080,7 @@ void main() {
     expect(find.textContaining('일정 확인:'), findsOneWidget);
     expect(find.textContaining('5분 뒤 요미 허리 약 주기'), findsOneWidget);
     expect(find.textContaining('T'), findsOneWidget);
+    expect(find.textContaining('pending:true'), findsOneWidget);
     expect(find.text('음성 관리 화면'), findsNothing);
   });
 

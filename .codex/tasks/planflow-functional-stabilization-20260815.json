@@ -1,0 +1,117 @@
+{
+  "task_id": "planflow-functional-stabilization-20260815",
+  "objective": "Stabilize query-only voice conversation advertising, final AI schedule hydration with blocking loader and retry, and duplicate synced holiday visibility while deferring color redesign until preview approval.",
+  "status": "complete",
+  "classification": "complex",
+  "allowed_files": [
+    "lib/screens/voice/voice_input_screen.dart",
+    "lib/screens/voice/confirm_screen.dart",
+    "lib/screens/calendar/calendar_screen.dart",
+    "lib/services/home_widget_service.dart",
+    "lib/services/synced_public_holiday_visibility.dart",
+    "test/screens/voice_input_screen_test.dart",
+    "test/screens/confirm_screen_test.dart",
+    "test/screens/calendar_screen_test.dart",
+    "test/services/home_widget_service_test.dart",
+    "test/services/synced_public_holiday_visibility_test.dart"
+  ],
+  "forbidden_scope": [
+    "color tokens and calendar widget styling",
+    "Android Kotlin/XML widget renderer changes",
+    "Supabase schema/data migration",
+    "unrelated dirty files"
+  ],
+  "plan": [
+    {"id": "P1", "status": "completed", "summary": "Route ad gate only for submitted query/conversation intent; ordinary add/edit/delete bypasses it."},
+    {"id": "P2", "status": "completed", "summary": "Always execute final AI hydration when pending, show one route-wide blocking loader, clean overlays on success/failure/retry/dispose, and preserve retryable failures."},
+    {"id": "P3", "status": "completed", "summary": "Filter exact canonical synced holidays with externalId OR externalCalendarId at calendar and widget payload boundaries; preserve source data/manual events."},
+    {"id": "P4", "status": "completed", "summary": "Run focused tests, scoped analyze, and Android debug build."},
+    {"id": "P5", "status": "completed", "summary": "Independent review PASS and integrator PASS."}
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "explore_stabilization",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Locate voice ad gate, Confirm hydration, calendar/widget payload paths, existing tests, and scope hazards.",
+      "changed_files": [],
+      "result": "Read-only exploration completed; identified query gate, Confirm ad/AI path, calendar/widget boundaries, and existing color-test baseline."
+    },
+    {
+      "role": "Planner",
+      "agent": "planner_stabilization",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define complex implementation slices, routing, allowed files, tests, and color deferral.",
+      "changed_files": [],
+      "result": "Plan completed with P1-P5; color and Android renderer explicitly deferred."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "implement_stabilization",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement P1-P3 and regression tests without touching unrelated dirty files.",
+      "changed_files": [
+        "lib/screens/voice/voice_input_screen.dart",
+        "lib/screens/voice/confirm_screen.dart",
+        "lib/screens/calendar/calendar_screen.dart",
+        "lib/services/home_widget_service.dart",
+        "lib/services/synced_public_holiday_visibility.dart",
+        "test/screens/voice_input_screen_test.dart",
+        "test/screens/confirm_screen_test.dart",
+        "test/screens/calendar_screen_test.dart",
+        "test/services/home_widget_service_test.dart",
+        "test/services/synced_public_holiday_visibility_test.dart"
+      ],
+      "result": "Implemented query-only gate routing, final parse_pending propagation, route-wide loader, parse authorization/retry including resolved parse_failed, holiday visibility helper and payload filters, and regressions."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "test_executor_stabilization",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run project-defined tests, analyze, and APK build; record exit codes and deferred baselines.",
+      "changed_files": [],
+      "result": "Final evidence: voice 52 tests exit 0; Confirm 30 tests exit 0; holiday helper exit 0; widget service exit 0; scoped analyze exit 0; APK build exit 0. Calendar suite has only two pre-existing/deferred color expectation failures."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "planner_stabilization (independent review follow-up)",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Independently inspect final diff, scope, tests, and risks.",
+      "changed_files": [],
+      "result": "PASS. Prior blockers were rechecked as fixed: fallback/prepared parse_pending, parse authorization for all AI attempts, resolved parse_failed retry message, loader cleanup, OR holiday filtering, and no color/Kotlin scope creep."
+    },
+    {
+      "role": "Integrator",
+      "agent": "test_executor_stabilization (integration follow-up)",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Integrate latest review and final verification evidence; make the completion decision.",
+      "changed_files": [],
+      "result": "PASS after latest reruns, including successful Android debug APK build and retry regression test."
+    }
+  ],
+  "verification": [
+    {"command": "flutter test --no-pub test/screens/voice_input_screen_test.dart", "exit_code": 0, "evidence": "52 tests passed; query gate and ordinary add flow covered."},
+    {"command": "flutter test --no-pub test/screens/confirm_screen_test.dart", "exit_code": 0, "evidence": "30 tests passed; full loader and resolved parse failure/retry covered."},
+    {"command": "flutter test --no-pub test/services/synced_public_holiday_visibility_test.dart", "exit_code": 0, "evidence": "Canonical holiday filtering with either external identifier passed."},
+    {"command": "flutter test --no-pub test/services/home_widget_service_test.dart", "exit_code": 0, "evidence": "Synced holiday omitted from raw/month payload while canonical label/manual events remain."},
+    {"command": "flutter test --no-pub test/screens/calendar_screen_test.dart", "exit_code": 1, "evidence": "Only two deferred holiday color expectation failures; duplicate-holiday mini-calendar regression passed."},
+    {"command": "dart analyze lib/screens/voice/voice_input_screen.dart lib/screens/voice/confirm_screen.dart lib/screens/calendar/calendar_screen.dart lib/services/home_widget_service.dart lib/services/synced_public_holiday_visibility.dart test/screens/voice_input_screen_test.dart test/screens/confirm_screen_test.dart test/screens/calendar_screen_test.dart test/services/home_widget_service_test.dart test/services/synced_public_holiday_visibility_test.dart", "exit_code": 0, "evidence": "No issues found."},
+    {"command": "flutter build apk --debug --no-pub", "exit_code": 0, "evidence": "Built build\\app\\outputs\\flutter-apk\\app-debug.apk in 82.8s after an earlier shared-file-lock retry."}
+  ],
+  "review": {
+    "decision": "PASS",
+    "blockers": [],
+    "medium_notes": [
+      "Full calendar suite still contains two deferred color assertions; color redesign remains intentionally out of scope until preview approval."
+    ]
+  },
+  "unrelated_dirty_preserved": true,
+  "color_preview_status": "deferred_pending_user_review",
+  "last_update": "2026-08-15T21:52:00+09:00"
+}

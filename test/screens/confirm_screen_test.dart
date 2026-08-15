@@ -492,7 +492,7 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
+      'ConfirmScreen blocks the editor with a full-screen loader while hydrating',
       (tester) async {
     final parseCompleter = Completer<Map<String, dynamic>>();
     await tester.pumpWidget(
@@ -517,20 +517,14 @@ void main() {
     );
 
     await tester.pump();
-
-    await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.tap(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 250));
-
-    final titleField = _textFieldWithLabel('제목');
-    final locationField = _textFieldWithLabel('장소');
-    final memoField = _textFieldWithLabel('설명');
-
-    expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
-
-    await tester.enterText(titleField, '사용자 제목');
-    await tester.enterText(memoField, '사용자 메모');
-    await tester.pump();
+    expect(
+      find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'),
+      findsAtLeastNWidgets(1),
+    );
+    // The route-wide loader covers the editor while the deferred AI call is
+    // pending, so no fields can be edited or saved at this point.
+    expect(find.text('설명 · 준비물'), findsOneWidget);
+    expect(find.text('제목'), findsOneWidget);
 
     parseCompleter.complete(
       <String, dynamic>{
@@ -546,13 +540,84 @@ void main() {
       },
     );
     await tester.pump(const Duration(milliseconds: 200));
+    for (var attempt = 0;
+        attempt < 20 &&
+            find
+                .text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.')
+                .evaluate()
+                .isNotEmpty;
+        attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
-    expect(tester.widget<TextFormField>(titleField).controller?.text, '사용자 제목');
+    // Once parsing completes the loader disappears and AI results populate
+    // the editable fields.
     expect(
-        tester.widget<TextFormField>(locationField).controller?.text, 'AI 장소');
-    expect(tester.widget<TextFormField>(memoField).controller?.text, '사용자 메모');
-    expect(find.text('AI 제목'), findsNothing);
-    expect(find.text('AI 메모'), findsNothing);
+      find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'),
+      findsNothing,
+    );
+    final titleField = _textFieldWithLabel('제목');
+    final locationField = _textFieldWithLabel('장소');
+    expect(tester.widget<TextFormField>(titleField).controller?.text, 'AI 제목');
+    expect(
+      tester.widget<TextFormField>(locationField).controller?.text,
+      'AI 장소',
+    );
+  });
+
+  testWidgets(
+      'ConfirmScreen retries a resolved AI parse failure without re-consuming reward',
+      (tester) async {
+    final gpt = _SequenceGptService();
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '원본 제목',
+            rawText: '내일 오전 9시 원본 제목',
+          )
+            ..['parse_pending'] = true
+            ..['manual_text_confirmed'] = true,
+          gptService: gpt,
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(gpt.calls, 1);
+    expect(
+        find.text('일정을 바로 정리하지 못했어요. 입력 내용을 확인하고 다시 시도해 주세요.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('retry-ai-parse')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('retry-ai-parse')));
+    await tester.pump();
+    expect(
+      find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'),
+      findsAtLeastNWidgets(1),
+    );
+    gpt.completeRetry();
+    for (var attempt = 0; attempt < 20 && gpt.calls < 2; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(gpt.calls, 2);
+    for (var attempt = 0;
+        attempt < 20 &&
+            find
+                .text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.')
+                .evaluate()
+                .isNotEmpty;
+        attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byKey(const ValueKey('retry-ai-parse')), findsNothing);
+    final titleField = _textFieldWithLabel('제목');
+    expect(tester.widget<TextFormField>(titleField).controller?.text, '재시도 제목');
   });
 
   testWidgets('ConfirmScreen stores Korean wall time as UTC once',
@@ -1475,6 +1540,36 @@ class _DeferredGptService extends GptService {
   @override
   Future<Map<String, dynamic>> parseSchedule(String rawText) async {
     return _resultFuture;
+  }
+}
+
+class _SequenceGptService extends GptService {
+  int calls = 0;
+  final Completer<Map<String, dynamic>> _retryCompleter =
+      Completer<Map<String, dynamic>>();
+
+  @override
+  Future<Map<String, dynamic>> parseSchedule(String rawText) async {
+    calls += 1;
+    if (calls == 1) {
+      return <String, dynamic>{'parse_failed': true};
+    }
+    return _retryCompleter.future;
+  }
+
+  void completeRetry() {
+    final retryStartAt = DateTime.now().add(const Duration(days: 1));
+    _retryCompleter.complete(<String, dynamic>{
+      'title': '재시도 제목',
+      'location': '재시도 장소',
+      'memo': null,
+      'start_at': retryStartAt.toIso8601String(),
+      'end_at': null,
+      'supplies': <String>[],
+      'is_critical': false,
+      'pre_actions': <Map<String, dynamic>>[],
+      'parse_failed': false,
+    });
   }
 }
 
