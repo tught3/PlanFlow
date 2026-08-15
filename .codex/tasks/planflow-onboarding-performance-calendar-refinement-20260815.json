@@ -1,0 +1,104 @@
+{
+  "task_id": "planflow-onboarding-performance-calendar-refinement-20260815",
+  "status": "reviewing",
+  "objective": "Stabilize login/onboarding performance and order; refine continuous, critical-strong-alarm, recurring, and softened calendar/widget rendering.",
+  "scope": [
+    "lib/main.dart",
+    "lib/app.dart",
+    "lib/core/startup_route_gate.dart",
+    "lib/services/onboarding_startup_gate.dart",
+    "lib/services/app_permission_service.dart",
+    "lib/screens/shell_screen.dart",
+    "lib/screens/onboarding/permission_onboarding_screen.dart",
+    "lib/screens/calendar/calendar_screen.dart",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "lib/services/home_widget_service.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "android/app/src/main/res/drawable/widget_month_event_critical_start.xml",
+    "android/app/src/main/res/drawable/widget_month_event_critical_middle.xml",
+    "android/app/src/main/res/drawable/widget_month_event_critical_end.xml",
+    "targeted tests"
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Trace onboarding order, startup work, and permission return paths.",
+      "result": "Read-only findings recorded; identified original battery test harness failure and gate retry risk for review."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Plan deferred startup, fixed onboarding order, and battery resume semantics.",
+      "result": "Plan delivered and implemented."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement onboarding/startup gating and calendar/widget semantic refinements.",
+      "result": "Implemented onboarding changes and refined calendar/widget rendering."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Classify initial targeted test failures.",
+      "result": "Found two test harness defects: nested MediaQuery feature loss and Card-vs-TextButton tap target."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Repair isolated test harness defects.",
+      "result": "Targeted test fixes applied; subsequent permission test passed (+10)."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run tests, analysis, build, APK update, and device launch.",
+      "result": "All targeted suites, analyze, diff check, debug build, adb install -r, and launch passed."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent final current-diff review.",
+      "result": "pending"
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Verify final evidence and completion gate.",
+      "result": "pending"
+    }
+  ],
+  "verification": [
+    {"command": "git diff --check", "exit_code": 0},
+    {"command": "flutter test --no-pub test/screens/permission_onboarding_screen_test.dart test/screens/shell_screen_onboarding_order_test.dart test/screens/shell_screen_briefing_resume_test.dart test/services/onboarding_startup_gate_test.dart", "exit_code": 0},
+    {"command": "flutter test --no-pub test/screens/calendar_screen_test.dart test/screens/calendar_marker_test.dart test/screens/calendar_deeplink_test.dart test/screens/calendar_day_events_sheet_test.dart test/services/home_widget_service_test.dart", "exit_code": 0},
+    {"command": "flutter analyze --no-pub lib/app.dart lib/main.dart lib/core/startup_route_gate.dart lib/services/onboarding_startup_gate.dart lib/screens/shell_screen.dart lib/screens/onboarding/permission_onboarding_screen.dart lib/screens/calendar/calendar_screen.dart lib/screens/calendar/calendar_widgets.dart lib/services/home_widget_service.dart", "exit_code": 0},
+    {"command": "flutter build apk --debug --no-pub", "exit_code": 0},
+    {"command": "adb -s 192.168.0.103:44159 install -r build/app/outputs/flutter-apk/app-debug.apk", "exit_code": 0},
+    {"command": "adb -s 192.168.0.103:44159 shell monkey -p com.fluxstudio.planflow 1", "exit_code": 0}
+  ],
+  "device_proof": {
+    "device": "192.168.0.103:44159",
+    "install": "Success; -r preserves app data",
+    "launch": "Events injected: 1",
+    "gap": "Fresh-user full visual flow and subjective frame pacing require manual device confirmation without clearing existing user data."
+  },
+  "unrelated_dirty_work_preserved": true
+}
