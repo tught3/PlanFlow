@@ -1,0 +1,102 @@
+{
+  "taskId": "planflow-calendar-date-latency-20260816",
+  "objective": "달력 탭 내부의 날짜 및 월 이동 지연을 줄이고 늦은 비동기 응답이 현재 월을 덮어쓰지 않도록 안정화",
+  "status": "complete",
+  "scope": {
+    "allowedFiles": [
+      "lib/screens/calendar/calendar_screen.dart",
+      "lib/screens/calendar/calendar_projection.dart",
+      "lib/features/groups/providers/group_calendar_overlay_provider.dart",
+      "test/screens/calendar_screen_test.dart",
+      "test/features/groups/group_calendar_overlay_provider_test.dart"
+    ],
+    "preserveUnrelatedDirty": true,
+    "deviceInstall": "debug APK installed with adb install -r; no uninstall or data wipe"
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "calendar_date_latency_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "result": "identified synchronous month projection, repeated day cache work, and stale async overlay paths"
+    },
+    {
+      "role": "Planner",
+      "agent": "calendar_date_latency_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "result": "planned month projection caching, immediate date selection, latest-request guards, and regression coverage"
+    },
+    {
+      "role": "ComplexImplementer",
+      "agent": "calendar_date_latency_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "changedFiles": [
+        "lib/screens/calendar/calendar_screen.dart",
+      "lib/screens/calendar/calendar_projection.dart",
+      "lib/features/groups/providers/group_calendar_overlay_provider.dart",
+      "test/screens/calendar_screen_test.dart",
+      "test/features/groups/group_calendar_overlay_provider_test.dart"
+      ],
+      "result": "implemented cached/chunked projection, immediate cache invalidation, generation/month guards, and provider stale-response cancellation"
+    },
+    {
+      "role": "TestExecutor",
+      "agent": "calendar_date_latency_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "evidence": [
+        "flutter analyze final calendar and provider files exit 0",
+        "calendar screen, day sheet, and group overlay provider tests exit 0 (25 tests)",
+        "calendar marker, group overlay, widget, auto-sync, sync, and prefetch tests exit 0",
+        "flutter build apk --debug --no-pub exit 0 after final generation guard",
+        "adb install -r and launcher smoke exit 0 on 192.168.0.103:40059 at 2026-08-16 09:07:42"
+      ],
+      "gap": "no automated human-level frame-timeline measurement of the 2-3 second tap delay"
+    },
+    {
+      "role": "Reviewer",
+      "agent": "calendar_date_latency_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "status": "PASS",
+      "result": "independently reviewed the final current diff after rework; no BLOCKER or HIGH remained. Verified input revision guards around every chunk, projection result, and group overlay stale-response guard.",
+      "observation": "group overlay response during a search may defer its redraw by one frame; not a date-navigation correctness or latency blocker"
+    },
+    {
+      "role": "Integrator",
+      "agent": "calendar_date_latency_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "status": "complete",
+      "result": "final current diff, role evidence, test evidence, APK install metadata, and unrelated dirty-worktree preservation checked"
+    }
+  ],
+  "verification": {
+    "gitDiffCheck": "git diff --check exit 0 (CRLF warnings only)",
+    "analysis": "flutter analyze lib/screens/calendar/calendar_screen.dart lib/screens/calendar/calendar_projection.dart lib/features/groups/providers/group_calendar_overlay_provider.dart exit 0",
+    "focusedCalendarTests": "flutter test --no-pub test/screens/calendar_screen_test.dart test/screens/calendar_day_events_sheet_test.dart test/features/groups/group_calendar_overlay_provider_test.dart exit 0; 25 tests",
+    "apk": "flutter build apk --debug --no-pub exit 0; build/app/outputs/flutter-apk/app-debug.apk",
+    "device": "adb install -r and launcher smoke exit 0 on 192.168.0.103:40059; package versionCode=132, lastUpdateTime=2026-08-16 09:12:01"
+  },
+  "finalVerdict": {
+    "status": "COMPLETE",
+    "requirements": [
+      "date taps use cached per-day projection instead of scanning expanded events",
+      "month changes paint first and run recurrence projection in stale-cancellable chunks",
+      "reload/search and group overlay responses cannot overwrite a newer month state",
+      "selected-day and group caches are cleared before a new month projection arrives"
+    ],
+    "changedFilesWithinScope": [
+      "lib/screens/calendar/calendar_screen.dart",
+      "lib/screens/calendar/calendar_projection.dart",
+      "lib/features/groups/providers/group_calendar_overlay_provider.dart",
+      "test/screens/calendar_screen_test.dart",
+      "test/features/groups/group_calendar_overlay_provider_test.dart"
+    ],
+    "unrelatedDirtyFiles": "preserved without modification by this integration stage",
+    "verificationGap": "No automated real-device frame timeline or human tap-latency measurement was captured; install/launch, static analysis, and targeted regression tests are verified."
+  }
+}
