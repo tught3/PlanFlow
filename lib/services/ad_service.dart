@@ -16,6 +16,163 @@ final RegExp _rewardedAdUnitIdPattern = RegExp(r'^ca-app-pub-\d{16}/\d{1,20}$');
 bool isValidRewardedAdUnitId(String value) =>
     _rewardedAdUnitIdPattern.hasMatch(value);
 
+/// Stable outcome categories for a voice-conversation rewarded-ad attempt.
+enum VoiceConversationAdOutcomeKind {
+  disabled,
+  initializationUnavailable,
+  unitIdInvalid,
+  loadThrottled,
+  loadFailed,
+  showFailed,
+  dismissedWithoutReward,
+  rewarded,
+}
+
+class VoiceConversationAdOutcome {
+  const VoiceConversationAdOutcome(
+    this.kind, {
+    this.loadErrorCode,
+    this.loadErrorDomain,
+    this.loadErrorMessage,
+  });
+
+  final VoiceConversationAdOutcomeKind kind;
+  final int? loadErrorCode;
+  final String? loadErrorDomain;
+  final String? loadErrorMessage;
+
+  bool get isRewarded => kind == VoiceConversationAdOutcomeKind.rewarded;
+
+  String get analyticsReason {
+    switch (kind) {
+      case VoiceConversationAdOutcomeKind.disabled:
+        return 'disabled';
+      case VoiceConversationAdOutcomeKind.initializationUnavailable:
+        return 'initialization_unavailable';
+      case VoiceConversationAdOutcomeKind.unitIdInvalid:
+        return 'unit_id_invalid';
+      case VoiceConversationAdOutcomeKind.loadThrottled:
+        return 'load_throttled';
+      case VoiceConversationAdOutcomeKind.loadFailed:
+        return 'load_failed';
+      case VoiceConversationAdOutcomeKind.showFailed:
+        return 'show_failed';
+      case VoiceConversationAdOutcomeKind.dismissedWithoutReward:
+        return 'dismissed_without_reward';
+      case VoiceConversationAdOutcomeKind.rewarded:
+        return 'rewarded';
+    }
+  }
+
+  String get debugReason {
+    final details = <String>['reason=$analyticsReason'];
+    if (loadErrorCode != null) details.add('code=$loadErrorCode');
+    if (loadErrorDomain != null) {
+      details.add('domain=${_safeAdDetail(loadErrorDomain!)}');
+    }
+    if (loadErrorMessage != null) {
+      details.add('message=${_safeAdDetail(loadErrorMessage!)}');
+    }
+    return details.join(',');
+  }
+}
+
+String _safeAdDetail(String value) {
+  final sanitized = value.replaceAll(RegExp(r'[\r\n]'), ' ').trim();
+  return sanitized.length <= 120
+      ? sanitized
+      : '${sanitized.substring(0, 120)}…';
+}
+
+enum _AdLoadOutcomeKind { loaded, throttled, failed }
+
+class _AdLoadOutcome {
+  const _AdLoadOutcome(this.kind, {this.code, this.domain, this.message});
+  final _AdLoadOutcomeKind kind;
+  final int? code;
+  final String? domain;
+  final String? message;
+}
+
+// Legacy callback-order experiment removed: dismissal is a terminal event;
+// reward is granted only when the SDK invokes onUserEarnedReward.
+// Coordinates the two callbacks emitted by a rewarded ad.
+///
+/// Some SDK versions deliver `onAdDismissedFullScreenContent` just before
+/// `onUserEarnedReward`.  Dismissal therefore gets a short grace period rather
+/// than immediately being treated as a failed reward.  This small, SDK-free
+/// coordinator is intentionally public so the ordering contract can be tested
+/// deterministically without constructing a platform [RewardedAd].
+class RewardedAdLifecycleCoordinator {
+  RewardedAdLifecycleCoordinator({
+    this.gracePeriod = const Duration(milliseconds: 500),
+  });
+
+  final Duration gracePeriod;
+  final Completer<bool> _result = Completer<bool>();
+  Timer? _graceTimer;
+  bool _rewardEarned = false;
+
+  Future<bool> get result => _result.future;
+  bool get isCompleted => _result.isCompleted;
+
+  void onUserEarnedReward() {
+    _rewardEarned = true;
+    if (_graceTimer != null) {
+      _finish(true);
+    }
+  }
+
+  void onAdDismissed() {
+    if (_result.isCompleted) return;
+    if (_rewardEarned) {
+      _finish(true);
+      return;
+    }
+    _graceTimer ??= Timer(gracePeriod, () => _finish(false));
+  }
+
+  void onAdFailedToShow() => _finish(false);
+
+  /// Completes an abandoned lifecycle and releases its timer.
+  void dispose() {
+    _graceTimer?.cancel();
+    _graceTimer = null;
+    if (!_result.isCompleted) {
+      _result.complete(false);
+    }
+  }
+
+  void _finish(bool value) {
+    if (_result.isCompleted) return;
+    _graceTimer?.cancel();
+    _graceTimer = null;
+    _result.complete(value);
+  }
+}
+
+@visibleForTesting
+Future<bool> runRewardedAdLifecycle({
+  required Future<void> Function({
+    required void Function() onUserEarnedReward,
+    required void Function() onAdDismissed,
+    required void Function() onAdFailedToShow,
+  }) drive,
+  Duration gracePeriod = const Duration(milliseconds: 500),
+}) async {
+  final lifecycle = RewardedAdLifecycleCoordinator(gracePeriod: gracePeriod);
+  try {
+    await drive(
+      onUserEarnedReward: lifecycle.onUserEarnedReward,
+      onAdDismissed: lifecycle.onAdDismissed,
+      onAdFailedToShow: lifecycle.onAdFailedToShow,
+    );
+    return await lifecycle.result;
+  } finally {
+    lifecycle.dispose();
+  }
+}
+
 /// [useTestUnit]을 파라미터로 주입받아 kDebugMode에 직접 의존하지 않는
 /// 순수 버전의 광고 단위 ID 해석 함수. 단위 테스트가 release 분기를
 /// 검증할 수 있도록 [AdService._resolveAdUnitId]에서 위임 호출한다.
@@ -65,6 +222,9 @@ class AdService {
   RewardedAd? _rewardedAd;
   bool _loadingAd = false;
   DateTime? _lastLoadAt;
+  int? _lastLoadErrorCode;
+  String? _lastLoadErrorDomain;
+  String? _lastLoadErrorMessage;
 
   final AdRewardState _rewardState;
   final AdConsentService _consentService;
@@ -120,18 +280,16 @@ class AdService {
       // 실패하면 MobileAds 호출 없이 조기 종료한다. 단, 잠금 버그를 막기
       // 위해 _initialized는 false로 남긴다(이전 코드는 _initialized=true로
       // 잠가 다음 initialize() 호출이 즉시 return되어 광고가 영구 비활성).
-      // 그 후 사용자 액션 시뮬레이션으로 1회 자동 재시도(retryAfterUserAction)
-      // 하고, 그래도 안 되면 그대로 종료한다.
+      // UMP가 부재/타임아웃이면 여기서 멈춘다. 과거의 자동 재시도는
+      // 부팅을 길게 만들고, 5초 상한을 넘긴 뒤에도 다시 UMP를 띄우는
+      // 부작용이 있어 제거했다.
       unawaited(
         AnalyticsService.logAdLoadFailed(
           reason: 'ump_unavailable',
           requestId: 'ad_init',
         ),
       );
-      await _consentService.retryAfterUserAction();
-      if (!_consentService.isAvailable) {
-        return;
-      }
+      return;
     }
 
     try {
@@ -257,43 +415,93 @@ class AdService {
   Future<bool> showForVoiceConversation({
     required String requestId,
     void Function(String stage)? onProgress,
+  }) async =>
+      (await showForVoiceConversationWithOutcome(
+        requestId: requestId,
+        onProgress: onProgress,
+      ))
+          .isRewarded;
+
+  Future<VoiceConversationAdOutcome> showForVoiceConversationWithOutcome({
+    required String requestId,
+    void Function(String stage)? onProgress,
   }) async {
     if (!RemoteConfigService.rewardedAdEnabled ||
         !RemoteConfigService.rewardAdVoiceConversationEnabled) {
-      return false;
+      return const VoiceConversationAdOutcome(
+        VoiceConversationAdOutcomeKind.disabled,
+      );
     }
     if (_showingAd) {
       await AnalyticsService.logVoiceConvAdFailed(
         reason: 'already_showing',
         requestId: requestId,
       );
-      return false;
+      return const VoiceConversationAdOutcome(
+        VoiceConversationAdOutcomeKind.loadThrottled,
+      );
     }
     _showingAd = true;
     _promptShown += 1;
     await AnalyticsService.logVoiceConvButtonTap();
     try {
-      onProgress?.call('loading');
-      final loaded = await _loadRewardedAd(requestId: requestId);
-      if (!loaded) {
+      // A caller may arrive before app-start priming has completed. Await one
+      // initialization attempt here; initialize() is idempotent.
+      if (!_initialized) {
+        await initialize();
+      }
+      if (!_initialized) {
+        final outcome = const VoiceConversationAdOutcome(
+          VoiceConversationAdOutcomeKind.initializationUnavailable,
+        );
         await AnalyticsService.logVoiceConvAdFailed(
-          reason: 'load_failed',
+          reason: outcome.analyticsReason,
+          requestId: requestId,
+        );
+        return outcome;
+      }
+      if (_resolveAdUnitId().isEmpty) {
+        final outcome = const VoiceConversationAdOutcome(
+          VoiceConversationAdOutcomeKind.unitIdInvalid,
+        );
+        await AnalyticsService.logVoiceConvAdFailed(
+          reason: outcome.analyticsReason,
+          requestId: requestId,
+        );
+        return outcome;
+      }
+      onProgress?.call('loading');
+      final load = await _loadRewardedAdDetailed();
+      if (load.kind != _AdLoadOutcomeKind.loaded) {
+        final outcome = VoiceConversationAdOutcome(
+          load.kind == _AdLoadOutcomeKind.throttled
+              ? VoiceConversationAdOutcomeKind.loadThrottled
+              : VoiceConversationAdOutcomeKind.loadFailed,
+          loadErrorCode: load.code,
+          loadErrorDomain: load.domain,
+          loadErrorMessage: load.message,
+        );
+        await AnalyticsService.logVoiceConvAdFailed(
+          reason: outcome.analyticsReason,
           requestId: requestId,
         );
         onProgress?.call('failed');
-        return false;
+        return outcome;
       }
       await AnalyticsService.logVoiceConvAdShown(requestId: requestId);
 
       onProgress?.call('shown');
       final completed = await _showRewardedAd();
       if (!completed) {
+        final outcome = const VoiceConversationAdOutcome(
+          VoiceConversationAdOutcomeKind.dismissedWithoutReward,
+        );
         await AnalyticsService.logVoiceConvAdFailed(
-          reason: 'cancelled_or_backgrounded',
+          reason: outcome.analyticsReason,
           requestId: requestId,
         );
         onProgress?.call('cancelled');
-        return false;
+        return outcome;
       }
 
       // 보상 부여 (다음 대화 모드 진입에 사용하지는 않지만, 일관된 grant 패턴 유지).
@@ -305,7 +513,9 @@ class AdService {
         optedIn: _optIn,
       );
       onProgress?.call('completed');
-      return true;
+      return const VoiceConversationAdOutcome(
+        VoiceConversationAdOutcomeKind.rewarded,
+      );
     } catch (error, stackTrace) {
       debugPrint('AdService.showForVoiceConversation failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -314,7 +524,9 @@ class AdService {
         requestId: requestId,
       );
       onProgress?.call('failed');
-      return false;
+      return const VoiceConversationAdOutcome(
+        VoiceConversationAdOutcomeKind.showFailed,
+      );
     } finally {
       _showingAd = false;
     }
@@ -379,6 +591,24 @@ class AdService {
     return await _doLoad();
   }
 
+  Future<_AdLoadOutcome> _loadRewardedAdDetailed() async {
+    _lastLoadErrorCode = null;
+    _lastLoadErrorDomain = null;
+    _lastLoadErrorMessage = null;
+    final last = _lastLoadAt;
+    final throttled = last != null &&
+        DateTime.now().difference(last) < _kReloadThrottle &&
+        _rewardedAd == null;
+    final loaded = await _loadRewardedAd();
+    if (loaded) return const _AdLoadOutcome(_AdLoadOutcomeKind.loaded);
+    return _AdLoadOutcome(
+      throttled ? _AdLoadOutcomeKind.throttled : _AdLoadOutcomeKind.failed,
+      code: _lastLoadErrorCode,
+      domain: _lastLoadErrorDomain,
+      message: _lastLoadErrorMessage,
+    );
+  }
+
   Future<bool> _awaitLoad() async {
     // 단순 폴링으로 캐시 생성 대기 (로드 대기 시간은 보통 수 초).
     const pollInterval = Duration(milliseconds: 200);
@@ -414,6 +644,9 @@ class AdService {
               'AdService._loadRewardedAd failed: code=${error.code} '
               'domain=${error.domain} message=${error.message}',
             );
+            _lastLoadErrorCode = error.code;
+            _lastLoadErrorDomain = error.domain;
+            _lastLoadErrorMessage = _safeAdDetail(error.message);
             if (!completer.isCompleted) {
               completer.complete(false);
             }
@@ -436,45 +669,46 @@ class AdService {
     if (ad == null) {
       return false;
     }
-    bool rewardEarned = false;
-    final completer = Completer<bool>();
     try {
-      ad.fullScreenContentCallback = FullScreenContentCallback<RewardedAd>(
-        onAdDismissedFullScreenContent: (RewardedAd closedAd) {
-          if (!completer.isCompleted) {
-            completer.complete(rewardEarned);
-          }
-        },
-        onAdFailedToShowFullScreenContent:
-            (RewardedAd failedAd, AdError error) {
-          debugPrint(
-            'AdService._showRewardedAd failed: code=${error.code} '
-            'message=${error.message}',
+      return await runRewardedAdLifecycle(
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          ad.fullScreenContentCallback = FullScreenContentCallback<RewardedAd>(
+            onAdDismissedFullScreenContent: (RewardedAd closedAd) {
+              onAdDismissed();
+            },
+            onAdFailedToShowFullScreenContent:
+                (RewardedAd failedAd, AdError error) {
+              debugPrint(
+                'AdService._showRewardedAd failed: code=${error.code} '
+                'message=${error.message}',
+              );
+              onAdFailedToShow();
+            },
           );
-          if (!completer.isCompleted) {
-            completer.complete(false);
-          }
+          await ad.show(
+            onUserEarnedReward: (AdWithoutView rewardedAd, RewardItem reward) {
+              onUserEarnedReward();
+            },
+          );
         },
       );
-      await ad.show(
-        onUserEarnedReward: (AdWithoutView rewardedAd, RewardItem reward) {
-          rewardEarned = true;
-        },
-      );
-      final result = await completer.future;
-      _rewardedAd?.dispose();
-      _rewardedAd = null;
-      _preloadNextAd();
-      return result;
     } catch (error, stackTrace) {
       debugPrint('AdService._showRewardedAd exception: $error');
       debugPrintStack(stackTrace: stackTrace);
-      _rewardedAd?.dispose();
-      _rewardedAd = null;
-      if (!completer.isCompleted) {
-        completer.complete(false);
-      }
       return false;
+    } finally {
+      // There is one ownership/cleanup path for both success and failure.
+      // This prevents duplicate disposal when SDK callbacks and show() errors
+      // race each other.
+      ad.dispose();
+      if (identical(_rewardedAd, ad)) {
+        _rewardedAd = null;
+      }
+      _preloadNextAd();
     }
   }
 

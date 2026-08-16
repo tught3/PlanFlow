@@ -1,0 +1,31 @@
+{
+  "task_id": "planflow-ad-consent-recovery-20260816",
+  "objective": "Make UMP consent initialization fail closed and bounded on unsupported or missing-plugin platforms while preserving mobile callbacks.",
+  "status": "completed",
+  "classification": "complex",
+  "allowed_files": [
+    "lib/services/ad_consent_service.dart",
+    "lib/services/ad_service.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/ad_consent_service_test.dart"
+  ],
+  "changes": [
+    "Gate UMP on Android/iOS, recover async-void MissingPluginException through a guarded zone, and enforce a five-second timeout.",
+    "Preserve mobile callback availability and existing analytics reason categories.",
+    "Add deterministic unsupported-platform and mocked mobile callback tests; fix two curly-brace lints."
+  ],
+  "verification": [
+    {"command": "flutter test test/services/ad_consent_service_test.dart test/services/ad_service_test.dart test/services/ad_service_init_flow_test.dart", "exit_code": 0, "result": "All tests passed; expected timeout diagnostics exercised the fail-closed branch."},
+    {"command": "flutter analyze lib/services/ad_consent_service.dart lib/services/ad_service.dart test/services/ad_consent_service_test.dart test/services/ad_service_test.dart test/services/ad_service_init_flow_test.dart", "exit_code": 0, "result": "No issues found"},
+    {"command": "git diff --check -- lib/services/ad_consent_service.dart lib/services/ad_service.dart test/services/ad_consent_service_test.dart test/services/ad_service_test.dart test/services/ad_service_init_flow_test.dart", "exit_code": 0, "result": "clean"}
+  ],
+  "roles": {
+    "implementer": {"agent": "flux_complex_implementer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "medium", "result": "Bounded UMP initialization and wired RewardedAdLifecycleCoordinator into the production callback path."},
+    "simple_rework": {"agent": "flux_simple_implementer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "medium", "result": "Removed duplicate FormError analytics and prevented UMP channel calls during test cleanup."},
+    "reviewer": {"agent": "flux_reviewer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "high", "result": "PASS after production callback and cleanup re-review."},
+    "test_executor": {"agent": "flux_test_executor", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "low", "result": "Focused project validation passed with exit code 0."}
+  },
+  "commit": null,
+  "push": null,
+  "last_update": "2026-08-16T00:00:00+09:00"
+}

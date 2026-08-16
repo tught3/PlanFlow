@@ -1,4 +1,8 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_mobile_ads/src/ump/user_messaging_codec.dart';
+import 'package:planflow/services/ad_consent_service.dart';
 import 'package:planflow/services/ad_service.dart';
 import 'package:planflow/services/remote_config_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +12,58 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  tearDown(() async {
+    debugDefaultTargetPlatformOverride = null;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      MethodChannel(
+        'plugins.flutter.io/google_mobile_ads/ump',
+        StandardMethodCodec(UserMessagingCodec()),
+      ),
+      null,
+    );
+    // Reset the singleton so later tests cannot inherit a simulated mobile
+    // consent result and attempt the real MobileAds channel.
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    await AdConsentService.instance.retryAfterUserAction();
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  group('AdConsentService platform availability', () {
+    test('unsupported test platform completes unavailable without a channel',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      final consent = AdConsentService.instance;
+
+      await consent.retryAfterUserAction();
+
+      expect(consent.isAvailable, isFalse);
+      expect(consent.canRequestAds, isFalse);
+    });
+
+    test('mobile callback sequence records a successful consent result',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final channel = MethodChannel(
+        'plugins.flutter.io/google_mobile_ads/ump',
+        StandardMethodCodec(UserMessagingCodec()),
+      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'ConsentInformation#canRequestAds') {
+          return true;
+        }
+        return null;
+      });
+
+      final consent = AdConsentService.instance;
+      await consent.retryAfterUserAction();
+
+      expect(consent.isAvailable, isTrue);
+      expect(consent.canRequestAds, isTrue);
+    });
   });
 
   group('AdService.initialize 마스터 스위치 OFF 분기', () {
@@ -41,8 +97,7 @@ void main() {
       expect(
         service.isInitialized,
         isFalse,
-        reason:
-            '테스트 환경에서는 AdConsentService가 UMP 호출에 실패해 '
+        reason: '테스트 환경에서는 AdConsentService가 UMP 호출에 실패해 '
             '_initialized는 false로 유지되어야 한다 (RC OFF 분기 잠금 회피 회귀 방지)',
       );
 
@@ -161,6 +216,157 @@ void main() {
           configured: '  ca-app-pub-3753374909078516/4571759225  ',
         ),
         'ca-app-pub-3753374909078516/4571759225',
+      );
+    });
+  });
+
+  group('RewardedAdLifecycleCoordinator', () {
+    test('reward-before-dismiss completes successfully on dismissal', () async {
+      final lifecycle = RewardedAdLifecycleCoordinator(
+        gracePeriod: const Duration(milliseconds: 1),
+      );
+
+      lifecycle.onUserEarnedReward();
+      lifecycle.onAdDismissed();
+
+      expect(await lifecycle.result, isTrue);
+      expect(lifecycle.isCompleted, isTrue);
+    });
+
+    test('dismiss-before-reward succeeds within the grace period', () async {
+      final lifecycle = RewardedAdLifecycleCoordinator(
+        gracePeriod: const Duration(milliseconds: 20),
+      );
+
+      lifecycle.onAdDismissed();
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+      lifecycle.onUserEarnedReward();
+
+      expect(await lifecycle.result, isTrue);
+    });
+
+    test('dismissal without a reward remains unsuccessful after grace',
+        () async {
+      final lifecycle = RewardedAdLifecycleCoordinator(
+        gracePeriod: const Duration(milliseconds: 1),
+      );
+
+      lifecycle.onAdDismissed();
+
+      expect(await lifecycle.result, isFalse);
+    });
+
+    test('show failure and duplicate completion stay unsuccessful', () async {
+      final lifecycle = RewardedAdLifecycleCoordinator(
+        gracePeriod: const Duration(milliseconds: 1),
+      );
+
+      lifecycle.onAdFailedToShow();
+      lifecycle.onUserEarnedReward();
+      lifecycle.onAdDismissed();
+
+      expect(await lifecycle.result, isFalse);
+      expect(lifecycle.isCompleted, isTrue);
+    });
+  });
+
+  group('AdService rewarded lifecycle production seam', () {
+    test('dismiss-before-reward resolves successfully within grace period',
+        () async {
+      final outcome = runRewardedAdLifecycle(
+        gracePeriod: const Duration(milliseconds: 20),
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          onAdDismissed();
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+          onUserEarnedReward();
+        },
+      );
+
+      expect(await outcome, isTrue);
+    });
+
+    test('reward-before-dismiss resolves successfully on dismissal', () async {
+      final outcome = runRewardedAdLifecycle(
+        gracePeriod: const Duration(milliseconds: 1),
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          onUserEarnedReward();
+          onAdDismissed();
+        },
+      );
+
+      expect(await outcome, isTrue);
+    });
+
+    test('show failure stays unsuccessful even if later callbacks fire',
+        () async {
+      final outcome = runRewardedAdLifecycle(
+        gracePeriod: const Duration(milliseconds: 1),
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          onAdFailedToShow();
+          onUserEarnedReward();
+          onAdDismissed();
+        },
+      );
+
+      expect(await outcome, isFalse);
+    });
+  });
+
+  group('AdService.initialize UMP timeout', () {
+    test('6s UMP request is bounded by the 5s boot deadline', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      final channel = MethodChannel(
+        'plugins.flutter.io/google_mobile_ads/ump',
+        StandardMethodCodec(UserMessagingCodec()),
+      );
+      var requestConsentInfoUpdateCalls = 0;
+      var mobileAdsInitializerCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'ConsentInformation#requestConsentInfoUpdate':
+            requestConsentInfoUpdateCalls += 1;
+            await Future<void>.delayed(const Duration(seconds: 6));
+            return null;
+          case 'UserMessagingPlatform#loadAndShowConsentFormIfRequired':
+            return null;
+          case 'ConsentInformation#canRequestAds':
+            return false;
+        }
+        return null;
+      });
+
+      final service = AdService(
+        dynamicAdsInitializer: () async {
+          mobileAdsInitializerCalls += 1;
+          return null;
+        },
+      );
+
+      final stopwatch = Stopwatch()..start();
+      await service.initialize();
+      stopwatch.stop();
+
+      expect(requestConsentInfoUpdateCalls, 1);
+      expect(mobileAdsInitializerCalls, 0);
+      expect(service.isInitialized, isFalse);
+      expect(
+        stopwatch.elapsed,
+        lessThan(const Duration(seconds: 6)),
+        reason: '6초 지연이 있어도 initialize()는 5초 상한에서 반환해야 한다',
       );
     });
   });

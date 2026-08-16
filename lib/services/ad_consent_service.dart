@@ -22,6 +22,8 @@ class AdConsentService {
   bool _initialized = false;
   bool _available = false;
 
+  static const Duration _initializationTimeout = Duration(seconds: 5);
+
   bool get isAvailable => _available;
 
   /// 광고 활성화 여부 (마스터 스위치 OFF면 비활성).
@@ -72,11 +74,21 @@ class AdConsentService {
     if (_initialized) {
       return;
     }
-    _initialized = true;
     if (!RemoteConfigService.rewardedAdEnabled) {
       _available = false;
       return;
     }
+    // UMP only registers a platform channel on Android/iOS.  Flutter test,
+    // desktop, and web runners do not have that channel; calling the package's
+    // async-void API there turns MissingPluginException into an uncaught zone
+    // error.  Keep the service explicitly unavailable on those platforms.
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      _available = false;
+      return;
+    }
+    _initialized = true;
     // requestConsentInfoUpdate는 콜백 기반(void 반환)이라 자체적으로는
     // await할 수 없다. 3단계 시퀀스가 전부 끝난 뒤에야 initialize()의
     // Future가 완료되도록 outerCompleter로 감싼다 — 이걸 빼먹으면
@@ -84,7 +96,40 @@ class AdConsentService {
     // 반환해버려, 호출부(AdService)가 "동의 미획득"으로 오판하고
     // 광고 초기화를 조기 종료하는 경쟁 상태가 발생한다.
     final outerCompleter = Completer<void>();
-    try {
+    bool settled = false;
+    void completeUnavailable(
+      Object error, [
+      StackTrace? stackTrace,
+      String? analyticsReason,
+    ]) {
+      if (settled) return;
+      settled = true;
+      _available = false;
+      debugPrint('AdConsentService initialize failed: $error');
+      if (stackTrace != null) {
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      unawaited(
+        AnalyticsService.logAdLoadFailed(
+          reason: analyticsReason ?? 'ump_init_error_${error.runtimeType}',
+          requestId: 'consent_init',
+        ),
+      );
+      if (!outerCompleter.isCompleted) {
+        outerCompleter.complete();
+      }
+    }
+
+    void completeAvailable(bool available) {
+      if (settled) return;
+      settled = true;
+      _available = available;
+      if (!outerCompleter.isCompleted) {
+        outerCompleter.complete();
+      }
+    }
+
+    runZonedGuarded(() {
       ConsentInformation.instance.requestConsentInfoUpdate(
         ConsentRequestParameters(),
         () async {
@@ -107,60 +152,46 @@ class AdConsentService {
             await completer.future;
             // 폼이 닫힌 뒤 UMP의 라이브 상태로 _available 결정.
             try {
-              _available = await ConsentInformation.instance.canRequestAds();
+              final available =
+                  await ConsentInformation.instance.canRequestAds();
+              completeAvailable(available);
             } catch (_) {
-              _available = false;
+              completeAvailable(false);
             }
           } catch (error, stackTrace) {
             debugPrint(
               'AdConsentService loadAndShowConsentFormIfRequired failed: $error',
             );
             debugPrintStack(stackTrace: stackTrace);
-            _available = false;
+            completeUnavailable(error, stackTrace);
           } finally {
-            if (!outerCompleter.isCompleted) {
-              outerCompleter.complete();
-            }
+            if (!settled) completeAvailable(false);
           }
         },
         (FormError error) {
           debugPrint(
             'AdConsentService UMP failure: ${error.errorCode} ${error.message}',
           );
-          // 진단 신호 (M3, 이슈 A). UMP 동의 폼 단계 실패의 errorCode를
-          // 보존해 AdsService가 호출 시 콘솔에서 reason으로 직접 조회할 수
-          // 있게 한다. AnalyticsService.logAdInitSkipped는 현재 존재하지
-          // 않아 가장 가까운 logAdLoadFailed(reason) 경유로 reason 카테고리만
-          // 남긴다(현재 SDK는 no-op이지만 추후 활성화 시 자동 수집).
-          unawaited(
-            AnalyticsService.logAdLoadFailed(
-              reason: 'ump_form_error_${error.errorCode}',
-              requestId: 'consent_init',
-            ),
+          // completeUnavailable가 reason을 한 번만 기록한다.
+          completeUnavailable(
+            StateError('UMP form error ${error.errorCode}: ${error.message}'),
+            null,
+            'ump_form_error_${error.errorCode}',
           );
-          _available = false;
-          if (!outerCompleter.isCompleted) {
-            outerCompleter.complete();
-          }
         },
       );
-    } catch (error, stackTrace) {
-      debugPrint('AdConsentService initialize failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      // 진단 신호 (M3, 이슈 A). 플랫폼 채널 단계 실패는 위 FormError 분기와
-      // 구분하기 위해 reason prefix를 'ump_init_error_'로 둔다.
-      unawaited(
-        AnalyticsService.logAdLoadFailed(
-          reason: 'ump_init_error_${error.runtimeType}',
-          requestId: 'consent_init',
-        ),
-      );
-      _available = false;
-      if (!outerCompleter.isCompleted) {
-        outerCompleter.complete();
-      }
-    }
-    await outerCompleter.future;
+    }, (error, stackTrace) {
+      // google_mobile_ads exposes requestConsentInfoUpdate as async void and
+      // catches only PlatformException. MissingPluginException therefore
+      // arrives here instead of the surrounding try/catch.
+      completeUnavailable(error, stackTrace);
+    });
+    await outerCompleter.future.timeout(
+      _initializationTimeout,
+      onTimeout: () => completeUnavailable(
+        TimeoutException('UMP consent initialization timed out'),
+      ),
+    );
   }
 
   /// 사용자 액션(예: 설정에서 재시도 버튼) 이후 UMP 동의를 한 번 더 시도.
@@ -190,7 +221,8 @@ class AdConsentService {
       return false;
     }
     try {
-      return (await ConsentInformation.instance.getPrivacyOptionsRequirementStatus()) ==
+      return (await ConsentInformation.instance
+              .getPrivacyOptionsRequirementStatus()) ==
           PrivacyOptionsRequirementStatus.required;
     } catch (_) {
       return false;
