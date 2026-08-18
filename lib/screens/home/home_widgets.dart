@@ -1024,7 +1024,7 @@ class _UpcomingEventCard extends StatelessWidget {
                 ),
                 child: Icon(
                   event.isCritical
-                      ? Icons.priority_high
+                      ? Icons.notifications_active
                       : Icons.schedule_outlined,
                   color: event.isCritical
                       ? const Color(0xFFB42318)

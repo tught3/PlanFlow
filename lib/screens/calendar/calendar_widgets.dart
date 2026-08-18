@@ -1011,13 +1011,7 @@ InlineSpan _calendarEventTitleSpan(
   }
   if (isCritical && useStrongAlarm) {
     spans.add(TextSpan(
-      text: '! ',
-      style: TextStyle(color: markerColor, fontWeight: FontWeight.w900),
-    ));
-  }
-  if (isRecurring) {
-    spans.add(TextSpan(
-      text: '↻ ',
+      text: '🔔 ',
       style: TextStyle(color: markerColor, fontWeight: FontWeight.w900),
     ));
   }
