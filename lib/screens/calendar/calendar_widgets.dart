@@ -879,7 +879,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                     : isSelected
                         ? Colors.white.withValues(alpha: 0.18)
                         : calendarNormalEventBackgroundColor;
-    final fg = isSelected ? baseColor : baseColor;
+    final fg = baseColor;
     final borderColor = isMultiDay
         ? (event.isCritical
             ? calendarCriticalEventTextColor

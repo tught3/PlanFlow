@@ -76,17 +76,26 @@ Future<void> _scheduleDailyCalendarSyncAfterStartup() {
 }
 
 Future<void> _initializePlatformServices() async {
-  // Firebase(RemoteConfig) Future를 만들되 즉시 await하지 않는다 — Supabase 등
-  // 나머지 초기화가 다시 time-0부터 병렬로 시작하도록 한다(2026-08-12 f027c0a2가
-  // 이걸 await로 앞세워 Supabase 준비 시점을 늦춰 첫 프레임 크래시를 유발한
-  // 회귀를 되돌린다). AdService만 이 Future를 내부에서 기다린다(_primingAdService
+  // Firebase/Crashlytics/NaverMap/광고/공휴일 캐시는 로그인 여부와 무관하게
+  // time-0부터 즉시 시작한다 — 이들은 필수 인프라라, 로그인에 도달하지 못하는
+  // 세션(예: _initializeSupabase의 재시도 루프가 버텨내려는 "Supabase가
+  // 끝내 준비되지 않는" 실패 모드)에서도 에러 리포팅(Crashlytics)이 반드시
+  // 살아있어야 한다. startupRouteGate.startupWorkAllowedWhenIdle에는
+  // 타임아웃/폴백이 없고 shell_screen이 로그인 후 홈 화면에 도달해야만
+  // 풀리므로, 과거 이 함수 전체를 그 게이트 뒤로 묶었던 버전(7a57af99)은
+  // 로그인하지 못한 모든 세션에서 Firebase/NaverMap/광고를 영구히 실행하지
+  // 않는 회귀였다(리뷰에서 확인, 여기서 수정). 진짜 로그인 의존적인 작업
+  // (그룹 알람 정리, 일일 캘린더 동기화)만 각자의 스케줄 함수 내부에서 그
+  // 게이트를 계속 기다린다 — 이 함수 자체에는 더 이상 게이트가 없다.
+  //
+  // firebaseReady는 여기서 만들되 즉시 await하지 않는다 — Supabase 초기화가
+  // 이 Future와 병렬로 진행되게 하기 위함이다(2026-08-12 f027c0a2가 이걸
+  // await로 앞세워 Supabase 준비 시점을 늦춰 첫 프레임 크래시를 유발한 회귀를
+  // 되돌린다). AdService만 이 Future를 내부에서 기다린다(_primingAdService
   // 참조) — 그래서 RemoteConfig 값이 정착하기 전에 광고를 영구 비활성화하던
   // 원래 버그(f027c0a2가 고친 것)는 재발하지 않는다.
-  // Supabase/auth remains available for login and route resolution. Other
-  // platform work waits until onboarding has presented the first home frame.
-  await _initializeSupabase();
-  await startupRouteGate.startupWorkAllowedWhenIdle;
   final firebaseReady = _initializeFirebaseServices();
+  await _initializeSupabase();
   await Future.wait([
     firebaseReady,
     _initializeNaverMap(),
