@@ -24,6 +24,7 @@ import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/departure_alarm_service.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
@@ -38,17 +39,20 @@ class EventDetailScreen extends StatefulWidget {
     this.groupEventRepository,
     this.groupRepository,
     this.showDeparturePrompt = false,
+    this.showCriticalAckButton = false,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
     SmartPreparationAlarmService? smartPreparationAlarmService,
     DepartureAlarmService? departureAlarmService,
+    NotificationService? notificationService,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
         smartPreparationAlarmService = smartPreparationAlarmService ??
             const SmartPreparationAlarmService(),
         departureAlarmService =
-            departureAlarmService ?? const DepartureAlarmService();
+            departureAlarmService ?? const DepartureAlarmService(),
+        notificationService = notificationService ?? NotificationService();
 
   final EventModel? event;
   final String? eventId;
@@ -56,10 +60,15 @@ class EventDetailScreen extends StatefulWidget {
   final GroupEventRepository? groupEventRepository;
   final GroupRepository? groupRepository;
   final bool showDeparturePrompt;
+
+  /// 강한알람 알림을 눌러 딥링크로 들어왔을 때만 true. 이 경우에만 화면에
+  /// "확인(출발)" 버튼을 노출한다(캘린더 직접 진입에는 뜨지 않아야 함).
+  final bool showCriticalAckButton;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
   final SmartPreparationAlarmService smartPreparationAlarmService;
   final DepartureAlarmService departureAlarmService;
+  final NotificationService notificationService;
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -71,6 +80,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _isDeleting = false;
   bool _isSavingSupplies = false;
   bool _departurePromptShown = false;
+  bool _criticalAckHandled = false;
   String? _loadError;
   final Set<String> _checkedSupplies = <String>{};
   List<PreActionModel> _smartPreparationAlarms = const <PreActionModel>[];
@@ -230,6 +240,33 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('출발 알림을 멈췄어요.')),
+    );
+  }
+
+  /// 강한알람 알림에서 딥링크로 들어왔을 때 노출되는 "확인(출발)" 버튼 핸들러.
+  /// 알림 액션 버튼(criticalAcknowledgedActionId)과 동일하게 이벤트 알림을
+  /// 명시적으로 취소한다. cancelEventReminderNotifications는 멱등 호출이라
+  /// 여러 번 눌러도 안전하다.
+  Future<void> _handleCriticalAck() async {
+    final eventId = _resolvedEventId;
+    if (eventId == null || eventId.isEmpty) {
+      return;
+    }
+    setState(() {
+      _criticalAckHandled = true;
+    });
+    try {
+      await widget.notificationService
+          .cancelEventReminderNotifications(eventId);
+    } catch (error, stackTrace) {
+      debugPrint('Critical ack cancel failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('알림을 확인했어요.')),
     );
   }
 
@@ -623,6 +660,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 time: timeLabel ?? '시간 미정',
                 critical: event.isCritical,
               ),
+              if (widget.showCriticalAckButton && !_criticalAckHandled) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                PlanFlowActionButtons(
+                  buttons: [
+                    PlanFlowActionButton(
+                      label: '확인(출발)',
+                      onPressed: _handleCriticalAck,
+                      type: ActionButtonType.primary,
+                    ),
+                  ],
+                ),
+              ],
               if (_loadError != null) ...[
                 const SizedBox(height: AppConstants.sectionSpacing),
                 _InfoCard(

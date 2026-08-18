@@ -242,6 +242,8 @@ final GoRouter appRouter = GoRouter(
           eventId: _resolveEventId(state, event),
           showDeparturePrompt:
               state.uri.queryParameters['departureAction'] == 'prompt',
+          showCriticalAckButton:
+              state.uri.queryParameters['criticalAck'] == '1',
         );
       },
     ),
@@ -255,6 +257,8 @@ final GoRouter appRouter = GoRouter(
           eventId: _resolveEventId(state, event),
           showDeparturePrompt:
               state.uri.queryParameters['departureAction'] == 'prompt',
+          showCriticalAckButton:
+              state.uri.queryParameters['criticalAck'] == '1',
         );
       },
     ),

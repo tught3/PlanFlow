@@ -351,7 +351,7 @@ void main() {
 
       expect(
         NotificationService.routeForNotificationResponse(acknowledged),
-        '${AppRoutes.eventDetail}/event-1',
+        '${AppRoutes.eventDetail}/event-1?criticalAck=1',
       );
       expect(
         NotificationService.routeForNotificationResponse(tomorrow),
@@ -407,7 +407,7 @@ void main() {
         encoding: utf8,
       );
 
-      expect(source, contains("'확인'"));
+      expect(source, contains("'확인(출발)'"));
       expect(source, contains("'내일 오전 9시'"));
       expect(source, contains('criticalRemindTomorrowActionId'));
     });

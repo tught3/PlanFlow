@@ -101,7 +101,7 @@ class NotificationService {
       <AndroidNotificationAction>[
     AndroidNotificationAction(
       criticalAcknowledgedActionId,
-      '확인',
+      '확인(출발)',
       cancelNotification: true,
       showsUserInterface: true,
       semanticAction: SemanticAction.none,
@@ -1212,7 +1212,8 @@ class NotificationService {
       if (eventId.isEmpty) {
         return null;
       }
-      return '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}';
+      return '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}'
+          '?criticalAck=1';
     }
 
     if (payload.startsWith('departure:')) {
