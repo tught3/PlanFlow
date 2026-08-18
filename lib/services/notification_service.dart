@@ -87,6 +87,15 @@ class NotificationService {
   static const String criticalAcknowledgedActionId = 'critical_ack';
   static const String criticalRemindTomorrowActionId =
       'critical_remind_tomorrow';
+
+  /// [scheduleCriticalAlarmWithResult]가 예약하는 `event:` payload에만 붙는
+  /// 구분용 suffix. 일반 리마인더/준비알람/"내일 다시 알림"은 같은
+  /// `event:<id>` prefix를 쓰지만 강한알람(critical alarm) 채널이 아니므로
+  /// 이 suffix가 붙지 않는다. [routeForNotificationResponse]가 이 suffix
+  /// 유무로 `criticalAck` 쿼리파라미터를 강한알람 응답에만 부여한다.
+  /// (M1: criticalAck가 모든 event: payload에 무차별로 붙던 문제 수정)
+  @visibleForTesting
+  static const String criticalAlarmPayloadSuffix = ':critical';
   static const List<AndroidNotificationAction> _departureActions =
       <AndroidNotificationAction>[
     AndroidNotificationAction(
@@ -324,7 +333,7 @@ class NotificationService {
           useStrongAlarm: useStrongAlarm,
         ),
         androidScheduleMode: criticalAlarmScheduleModeForStatus(status),
-        payload: payload,
+        payload: _criticalAlarmPayload(payload),
       );
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.scheduled,
@@ -1208,12 +1217,15 @@ class NotificationService {
       if (response.actionId == criticalRemindTomorrowActionId) {
         return null;
       }
-      final eventId = payload.substring('event:'.length).trim();
+      final eventId = _eventIdFromEventPayload(payload);
       if (eventId.isEmpty) {
         return null;
       }
-      return '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}'
-          '?criticalAck=1';
+      // M1: criticalAck는 강한알람(critical alarm) payload에만 붙는다.
+      // 일반 리마인더/준비알람/"내일 다시 알림"은 같은 event: prefix를
+      // 쓰지만 criticalAlarmPayloadSuffix가 없으므로 붙지 않는다.
+      final query = _isCriticalAlarmPayload(payload) ? '?criticalAck=1' : '';
+      return '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}$query';
     }
 
     if (payload.startsWith('departure:')) {
@@ -1229,6 +1241,41 @@ class NotificationService {
     }
 
     return null;
+  }
+
+  /// [scheduleCriticalAlarmWithResult]가 예약 직전 payload에
+  /// [criticalAlarmPayloadSuffix]를 붙인다. `event:` prefix가 아닌 payload
+  /// (예: null)는 손대지 않고, 이미 suffix가 붙어 있으면 중복으로 붙이지
+  /// 않는다.
+  static String? _criticalAlarmPayload(String? payload) {
+    if (payload == null || !payload.startsWith('event:')) {
+      return payload;
+    }
+    if (payload.endsWith(criticalAlarmPayloadSuffix)) {
+      return payload;
+    }
+    return '$payload$criticalAlarmPayloadSuffix';
+  }
+
+  /// [payload]가 강한알람(critical alarm) 채널에서 예약된 `event:` payload인지
+  /// 판정한다.
+  static bool _isCriticalAlarmPayload(String payload) {
+    return payload.startsWith('event:') &&
+        payload.endsWith(criticalAlarmPayloadSuffix);
+  }
+
+  /// `event:` payload(강한알람 suffix가 붙어 있을 수도 있음)에서 순수
+  /// eventId만 추출한다.
+  static String _eventIdFromEventPayload(String payload) {
+    var value =
+        payload.startsWith('event:') ? payload.substring('event:'.length) : payload;
+    if (value.endsWith(criticalAlarmPayloadSuffix)) {
+      value = value.substring(
+        0,
+        value.length - criticalAlarmPayloadSuffix.length,
+      );
+    }
+    return value.trim();
   }
 
   int _stableNotificationId(String id) {
@@ -1342,7 +1389,7 @@ Future<void> handleNotificationResponseAction(
 
   if (actionId == NotificationService.criticalRemindTomorrowActionId &&
       payload.startsWith('event:')) {
-    final eventId = payload.substring('event:'.length).trim();
+    final eventId = NotificationService._eventIdFromEventPayload(payload);
     if (eventId.isNotEmpty) {
       await (notificationService ?? NotificationService())
           .scheduleCriticalReminderTomorrow(eventId: eventId);
@@ -1356,7 +1403,7 @@ Future<void> handleNotificationResponseAction(
       (actionId == NotificationService.criticalAcknowledgedActionId ||
           response.notificationResponseType ==
               NotificationResponseType.selectedNotification)) {
-    final eventId = payload.substring('event:'.length).trim();
+    final eventId = NotificationService._eventIdFromEventPayload(payload);
     if (eventId.isNotEmpty) {
       await (notificationService ?? NotificationService())
           .cancelEventReminderNotifications(eventId);
