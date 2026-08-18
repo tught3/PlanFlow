@@ -51,7 +51,8 @@ import '../../widgets/rewarded_ad_dialog.dart';
 import '../../widgets/schedule_save_scope_card.dart';
 import '../../services/ad_service.dart';
 import '../../services/ad_reward_state.dart';
-import '../../services/remote_config_service.dart';
+import '../../services/schedule_parse_ad_gate.dart';
+import '../../services/schedule_parse_entitlement.dart';
 part 'confirm_widgets.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -270,6 +271,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   bool _isApplyingHydration = false;
   bool _adGateHandled = false;
   bool _parseAuthorized = false;
+  // ScheduleParseAdGate가 승인한 진입 스냅샷. 승인 시점의 sessionId를
+  // 실제 파싱 시작 시점(_hydrateParsedSchedule)의 consume() 멱등 키로
+  // 재사용한다. 게이트를 거치지 않은 경로(manual_text_confirmed 등)에서는
+  // null로 남고, 그때는 새 sessionId를 즉석에서 생성한다.
+  ScheduleParseEntryGrant? _scheduleParseGrant;
   bool _titleEditedByUser = false;
   bool _locationEditedByUser = false;
   bool _memoEditedByUser = false;
@@ -1174,12 +1180,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    final adEnabled = RemoteConfigService.rewardedAdEnabled;
-    if (!adEnabled) {
-      _maybeHydrateParsedSchedule();
-      return;
-    }
-
     // 보상 잔여 상태가 있으면 (앱 재시작 후 또는 이전 시도 잔여) 그냥 hydrate.
     final reentry = await AdRewardState.instance.consumeActiveRequestId();
     if (reentry != null) {
@@ -1192,36 +1192,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
+    // ScheduleParseAdGate가 하루 무료 잔여를 먼저 확인한다. 잔여가 남아
+    // 있으면 광고 다이얼로그 없이 즉시 onEnterAllowed가 호출되고, 소진된
+    // 경우에만 다이얼로그 → 광고 순으로 진행한다(게이트 내부에서 처리).
     bool overlayVisible = false;
     try {
-      final dialogResult = await RewardedAdDialog.show(context);
-      if (dialogResult != true) {
-        // 사용자가 '직접 입력' 선택 또는 dialog가 닫힘 → GPT 파싱 skip.
-        if (!mounted) {
-          return;
-        }
-        await AnalyticsService.logAdCancelled();
-        setState(() {
-          widget.parsedSchedule['parse_failed'] = true;
-          _hydrateMessage = '광고 없이 진행해요. 직접 입력해 주세요.';
-          _titleController.text = rawText;
-          _isHydratingParsedSchedule = false;
-          _showInitialHydrationLoader = false;
-        });
-        return;
-      }
-
-      await AnalyticsService.logAdOptedIn();
-      final requestId = 'adparse_${DateTime.now().microsecondsSinceEpoch}';
-      if (!mounted) {
-        return;
-      }
-      RewardedAdLoadingOverlay.show(context, stage: 'loading');
-      overlayVisible = true;
-
-      final granted = await AdService.instance.showForParseSchedule(
-        requestId: requestId,
-        onProgress: (stage) {
+      await ScheduleParseAdGate.instance.tryEnterScheduleParse(
+        context: context,
+        onAdProgress: (stage) {
           if (!mounted) {
             return;
           }
@@ -1232,29 +1210,40 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             overlayVisible = true;
           }
         },
+        onEnterAllowed: (grant) {
+          _scheduleParseGrant = grant;
+          if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
+            unawaited(
+              AnalyticsService.logAdFeatureSuccess(
+                requestId: grant.sessionId,
+              ),
+            );
+          }
+        },
+        onDenied: (reason) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            widget.parsedSchedule['parse_failed'] = true;
+            _hydrateMessage = scheduleParseGateDenialMessage(reason);
+            if (_titleController.text.trim().isEmpty) {
+              _titleController.text = rawText;
+            }
+            _isHydratingParsedSchedule = false;
+            _showInitialHydrationLoader = false;
+          });
+        },
       );
 
       if (!mounted) {
         return;
       }
 
-      if (!granted) {
-        // 광고 로드 실패 / 사용자가 광고를 닫음 / 백그라운드 이동 / 네트워크 단절.
-        setState(() {
-          widget.parsedSchedule['parse_failed'] = true;
-          _hydrateMessage = '광고를 완료하지 못했어요. 내용을 직접 수정해 주세요.';
-          _isHydratingParsedSchedule = false;
-          _showInitialHydrationLoader = false;
-          if (_titleController.text.trim().isEmpty) {
-            _titleController.text = rawText;
-          }
-        });
-        return;
+      if (_scheduleParseGrant != null) {
+        // 진입 승인됨. GPT 파싱 실행(실제 소비는 파싱 시작 시점에 처리).
+        _maybeHydrateParsedSchedule();
       }
-
-      // 보상 부여됨. GPT 파싱 실행.
-      await AnalyticsService.logAdFeatureSuccess(requestId: requestId);
-      _maybeHydrateParsedSchedule();
     } catch (error, stackTrace) {
       debugPrint('ConfirmScreen rewarded parse flow failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -1299,6 +1288,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
 
     _parseAuthorized = true;
+
+    // 실제 GPT 파싱이 시작되는 이 시점에 정확히 1회 무료/광고 카운터를
+    // 소비한다. ScheduleParseAdGate가 승인한 세션이 있으면 그 sessionId를
+    // 그대로 재사용하고(서버가 같은 sessionId 재호출을 멱등 처리),
+    // 게이트를 거치지 않은 경로(manual_text_confirmed, 재시도 등)에서는
+    // 새 sessionId를 발급한다. consume()은 fail-open(null 반환)이라 실패해도
+    // 파싱 자체를 막지 않는다.
+    final consumeSessionId =
+        _scheduleParseGrant?.sessionId ?? ScheduleParseSessionIdGenerator.next();
+    _scheduleParseGrant = null;
+    unawaited(
+      ScheduleParseEntitlementService.instance.consume(consumeSessionId),
+    );
+
     setState(() {
       _isHydratingParsedSchedule = true;
       _showInitialHydrationLoader = false;
