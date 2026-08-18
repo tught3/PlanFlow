@@ -153,6 +153,7 @@ class DayEventsSheet extends StatelessWidget {
     required this.onGroupEventTap,
     this.scrollController,
     this.holidayName,
+    this.isDayOff = false,
   });
 
   final DateTime day;
@@ -164,6 +165,11 @@ class DayEventsSheet extends StatelessWidget {
   final ValueChanged<CalendarOverlayItem> onGroupEventTap;
   final ScrollController? scrollController;
   final String? holidayName;
+
+  /// 공휴일 이름이 있어도 실제 쉬는 날이 아니면(예: 2025년까지의 제헌절)
+  /// false. [_CalendarSelectedDateHeader]의 isHoliday와 동일한 의미로,
+  /// 휴무색(calendarHolidayColor) 강조 여부를 가른다.
+  final bool isDayOff;
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +211,10 @@ class DayEventsSheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 holidayName!,
-                style: const TextStyle(
-                  color: calendarHolidayColor,
+                style: TextStyle(
+                  color: isDayOff
+                      ? calendarHolidayColor
+                      : PlanFlowColors.textSecondary,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
