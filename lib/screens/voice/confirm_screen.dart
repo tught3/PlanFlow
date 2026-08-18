@@ -1290,17 +1290,19 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _parseAuthorized = true;
 
     // 실제 GPT 파싱이 시작되는 이 시점에 정확히 1회 무료/광고 카운터를
-    // 소비한다. ScheduleParseAdGate가 승인한 세션이 있으면 그 sessionId를
-    // 그대로 재사용하고(서버가 같은 sessionId 재호출을 멱등 처리),
-    // 게이트를 거치지 않은 경로(manual_text_confirmed, 재시도 등)에서는
-    // 새 sessionId를 발급한다. consume()은 fail-open(null 반환)이라 실패해도
-    // 파싱 자체를 막지 않는다.
-    final consumeSessionId =
-        _scheduleParseGrant?.sessionId ?? ScheduleParseSessionIdGenerator.next();
+    // 소비한다. ScheduleParseAdGate가 실제로 승인한 진입(grant가 있는
+    // 경우)에서만 그 grant.sessionId로 consume()을 호출한다(서버가 같은
+    // sessionId 재호출을 멱등 처리). 게이트를 아예 거치지 않은 경로
+    // (manual_text_confirmed, 재시도 버튼)에는 grant가 없으므로 소비하지
+    // 않는다 — 그 경로들은 무료 잔여와 무관하게 진행되도록 의도됐다.
+    // consume()은 fail-open(null 반환)이라 실패해도 파싱 자체를 막지 않는다.
+    final grant = _scheduleParseGrant;
     _scheduleParseGrant = null;
-    unawaited(
-      ScheduleParseEntitlementService.instance.consume(consumeSessionId),
-    );
+    if (grant != null) {
+      unawaited(
+        ScheduleParseEntitlementService.instance.consume(grant.sessionId),
+      );
+    }
 
     setState(() {
       _isHydratingParsedSchedule = true;
