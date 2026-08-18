@@ -35,7 +35,7 @@ private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFF6B46C1.toInt()
 private const val CRITICAL_BACKGROUND_COLOR = 0xFFF3EEFF.toInt()
 private const val TEAM_BACKGROUND_COLOR = 0xFFFFF1C2.toInt()
-private const val RECURRING_TEXT_COLOR = 0xFF00695C.toInt()
+private const val RECURRING_TEXT_COLOR = 0xFF00838F.toInt()
 private const val TEAM_TEXT_COLOR = 0xFF9A5B00.toInt()
 // 공휴일/일요일 날짜와 공휴일 라벨 색상. 일정 자체의 색상과 분리한다.
 private const val HOLIDAY_TEXT_COLOR = 0xFFC62828.toInt()
