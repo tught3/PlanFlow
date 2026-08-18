@@ -50,6 +50,8 @@ class RemoteConfigService {
       'voice_conversation_initial_free_count';
   static const String _kVoiceConversationDailyFreeCount =
       'voice_conversation_daily_free_count';
+  static const String _kScheduleParseDailyFreeCount =
+      'schedule_parse_daily_free_count';
 
   /// [voiceConversationInitialFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
   static const int kVoiceConversationInitialFreeCountDefault = 3;
@@ -59,6 +61,10 @@ class RemoteConfigService {
   /// (0으로 두면 콘솔 설정 전까지 일일무료가 사실상 꺼진 채로 곧장 광고
   /// 단계로 넘어가는 버그가 됨 — 2026-08-09 실사용 중 발견).
   static const int kVoiceConversationDailyFreeCountDefault = 1;
+
+  /// [scheduleParseDailyFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
+  /// AI 일정분석(GPT 파싱)은 하루 3회까지 광고 없이 무료로 사용할 수 있다.
+  static const int kScheduleParseDailyFreeCountDefault = 3;
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -97,6 +103,7 @@ class RemoteConfigService {
             kVoiceConversationInitialFreeCountDefault,
         _kVoiceConversationDailyFreeCount:
             kVoiceConversationDailyFreeCountDefault,
+        _kScheduleParseDailyFreeCount: kScheduleParseDailyFreeCountDefault,
       },
     );
 
@@ -307,6 +314,32 @@ class RemoteConfigService {
   static int get voiceConversationDailyFreeCount {
     final newValue = _getIntIfRemote(_kVoiceConversationDailyFreeCount);
     return resolveDailyFreeCount(
+      newKeySet: newValue != null,
+      newKeyValue: newValue ?? 0,
+    );
+  }
+
+  /// AI 일정분석(GPT 파싱) 일일 무료 횟수 판단 우선순위를 결정하는 순수 함수.
+  ///
+  /// 신규 키가 콘솔에서 실제로 fetch됐을 때만(0 포함) 그 값을 채택하고,
+  /// 미설정이면 코드 기본값([kScheduleParseDailyFreeCountDefault])으로
+  /// 폴백한다. ([resolveDailyFreeCount]와 동일한 정책, 별도 함수로 분리해
+  /// voice_conversation 쪽 시그니처를 건드리지 않는다.)
+  static int resolveScheduleParseDailyFreeCount({
+    required bool newKeySet,
+    required int newKeyValue,
+  }) {
+    if (newKeySet) {
+      return newKeyValue;
+    }
+    return kScheduleParseDailyFreeCountDefault;
+  }
+
+  /// AI 일정분석(GPT 파싱) 일일 무료 횟수. 콘솔 미설정 시 기본값
+  /// [kScheduleParseDailyFreeCountDefault]로 폴백한다.
+  static int get scheduleParseDailyFreeCount {
+    final newValue = _getIntIfRemote(_kScheduleParseDailyFreeCount);
+    return resolveScheduleParseDailyFreeCount(
       newKeySet: newValue != null,
       newKeyValue: newValue ?? 0,
     );
