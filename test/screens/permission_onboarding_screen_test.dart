@@ -177,21 +177,25 @@ void main() {
       final permissionService = _FakePermissionService();
 
       await tester.pumpWidget(
-        MediaQuery(
-          data: MediaQueryData(
-            size: const Size(390, 844),
-            displayFeatures: <ui.DisplayFeature>[
-              ui.DisplayFeature(
-                bounds: const Rect.fromLTWH(180, 0, 30, 24),
-                type: ui.DisplayFeatureType.unknown,
-                state: ui.DisplayFeatureState.postureFlat,
-              ),
-            ],
-          ),
-          child: MaterialApp(
-            home: PermissionOnboardingScreen(
-              permissionService: permissionService,
-            ),
+        MaterialApp(
+          builder: (context, child) {
+            final mediaQuery = MediaQuery.of(context).copyWith(
+              size: const Size(390, 844),
+              displayFeatures: <ui.DisplayFeature>[
+                const ui.DisplayFeature(
+                  bounds: Rect.fromLTWH(180, 0, 30, 24),
+                  type: ui.DisplayFeatureType.unknown,
+                  state: ui.DisplayFeatureState.postureFlat,
+                ),
+              ],
+            );
+            return MediaQuery(
+              data: mediaQuery,
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
           ),
         ),
       );
@@ -218,26 +222,31 @@ void main() {
       final permissionService = _FakePermissionService();
 
       await tester.pumpWidget(
-        MediaQuery(
-          data: const MediaQueryData(
-            size: Size(1000, 800),
-            displayFeatures: <ui.DisplayFeature>[
-              ui.DisplayFeature(
-                bounds: Rect.fromLTWH(495, 0, 10, 800),
-                type: ui.DisplayFeatureType.hinge,
-                state: ui.DisplayFeatureState.postureHalfOpened,
-              ),
-            ],
-          ),
-          child: MaterialApp(
-            home: PermissionOnboardingScreen(
-              permissionService: permissionService,
-            ),
+        MaterialApp(
+          builder: (context, child) {
+            final mediaQuery = MediaQuery.of(context).copyWith(
+              size: const Size(1000, 800),
+              displayFeatures: <ui.DisplayFeature>[
+                const ui.DisplayFeature(
+                  bounds: Rect.fromLTWH(495, 0, 10, 800),
+                  type: ui.DisplayFeatureType.hinge,
+                  state: ui.DisplayFeatureState.postureHalfOpened,
+                ),
+              ],
+            );
+            return MediaQuery(
+              data: mediaQuery,
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
+      permissionService.batteryOptimizationGranted = true;
       final fullScreenIntentTile = find.byKey(
         const ValueKey('permission-onboarding-full-screen-intent-tile'),
       );
@@ -370,6 +379,67 @@ void main() {
       expect(permissionService.alarmSettingsOpened, isTrue);
     },
   );
+
+  testWidgets(
+    'PermissionOnboardingScreen rechecks battery optimization only after resume',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..batteryOptimizationRequestGranted = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final initialCheckCount = permissionService.checkAllCalls;
+
+      final batteryTile = find.byKey(
+        const ValueKey('permission-onboarding-battery-optimization-tile'),
+      );
+      await tester.scrollUntilVisible(
+        batteryTile,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      final batteryRequestButton = find.descendant(
+        of: batteryTile,
+        matching: find.byType(TextButton),
+      );
+      await tester.tap(batteryRequestButton);
+      await tester.pumpAndSettle();
+
+      expect(permissionService.batteryOptimizationRequests, 1);
+      expect(permissionService.checkAllCalls, initialCheckCount);
+      expect(
+        find.textContaining('절전 예외 설정을 확인한 뒤 앱으로 돌아와 주세요.'),
+        findsOneWidget,
+      );
+
+      permissionService.batteryOptimizationGranted = true;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(permissionService.checkAllCalls, initialCheckCount + 1);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey('permission-onboarding-battery-optimization-tile'),
+          ),
+          matching: find.byIcon(Icons.check_circle_outline),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 class _FakePermissionService extends AppPermissionService {
@@ -384,6 +454,8 @@ class _FakePermissionService extends AppPermissionService {
   bool notificationGranted = false;
   bool notificationRequestGranted = true;
   bool exactAlarmRequestGranted = true;
+  bool batteryOptimizationGranted = false;
+  bool batteryOptimizationRequestGranted = true;
   bool notificationSettingsOpened = false;
   bool alarmSettingsOpened = false;
   bool appSettingsOpened = false;
@@ -393,6 +465,8 @@ class _FakePermissionService extends AppPermissionService {
   int notificationRequests = 0;
   int exactAlarmRequests = 0;
   int fullScreenIntentRequests = 0;
+  int batteryOptimizationRequests = 0;
+  int checkAllCalls = 0;
   String? completedUserId;
 
   int get totalRequests =>
@@ -405,6 +479,7 @@ class _FakePermissionService extends AppPermissionService {
 
   @override
   Future<AppPermissionSnapshot> checkAll() async {
+    checkAllCalls += 1;
     return AppPermissionSnapshot(
       microphoneGranted: microphoneGranted,
       locationGranted: locationGranted,
@@ -416,6 +491,7 @@ class _FakePermissionService extends AppPermissionService {
             ? PermissionCheckState.granted
             : PermissionCheckState.denied,
       ),
+      batteryOptimizationIgnored: batteryOptimizationGranted,
     );
   }
 
@@ -470,6 +546,13 @@ class _FakePermissionService extends AppPermissionService {
     fullScreenIntentRequests += 1;
     fullScreenIntentGranted = true;
     return true;
+  }
+
+  @override
+  Future<bool> requestIgnoreBatteryOptimizations() async {
+    batteryOptimizationRequests += 1;
+    batteryOptimizationGranted = batteryOptimizationRequestGranted;
+    return batteryOptimizationRequestGranted;
   }
 
   @override

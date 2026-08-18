@@ -12,6 +12,7 @@ import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
 void main() {
   setUp(() {
@@ -22,6 +23,15 @@ void main() {
 
   tearDown(() {
     authProvider.setUser(null);
+  });
+
+  test('sync claims the global guard before asynchronous throttle loading', () {
+    final source =
+        File('lib/services/calendar_auto_sync_service.dart').readAsStringSync();
+    final claim = source.indexOf('_globalSyncInProgress = true;');
+    final load = source.indexOf('await _loadLastAttemptAt()');
+    expect(claim, greaterThanOrEqualTo(0));
+    expect(load, greaterThan(claim));
   });
 
   test('syncConnectedCalendars records skipped providers separately', () async {

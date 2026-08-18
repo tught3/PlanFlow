@@ -21,6 +21,9 @@ class HomeWidgetNextEventData {
     this.location,
     this.travelBufferMinutes,
     this.isCritical = false,
+    this.useStrongAlarm = false,
+    this.isRecurring = false,
+    this.isTeam = false,
   });
 
   final String title;
@@ -29,6 +32,9 @@ class HomeWidgetNextEventData {
   final String? location;
   final int? travelBufferMinutes;
   final bool isCritical;
+  final bool useStrongAlarm;
+  final bool isRecurring;
+  final bool isTeam;
 }
 
 class HomeWidgetListEventData {
@@ -38,6 +44,9 @@ class HomeWidgetListEventData {
     this.startAt,
     this.location,
     this.isCritical = false,
+    this.isRecurring = false,
+    this.isTeam = false,
+    this.useStrongAlarm = false,
     this.monthSegment,
     this.showTitleInMonth = true,
   });
@@ -47,6 +56,9 @@ class HomeWidgetListEventData {
   final DateTime? startAt;
   final String? location;
   final bool isCritical;
+  final bool isRecurring;
+  final bool isTeam;
+  final bool useStrongAlarm;
 
   /// 월간 달력 셀 segment 타입: 'single' | 'start' | 'middle' | 'end'
   final String? monthSegment;
@@ -239,6 +251,11 @@ class HomeWidgetSchedulePayloadBuilder {
               location: nextEvent.location,
               travelBufferMinutes: nextTravelBufferMinutes,
               isCritical: nextEvent.isCritical,
+              useStrongAlarm: nextEvent.useStrongAlarm,
+              isRecurring:
+                  nextEvent.recurrenceRule?.trim().isNotEmpty == true ||
+                      nextEvent.parentEventId != null,
+              isTeam: nextEvent.groupEventId?.trim().isNotEmpty == true,
             ),
       month: month,
       lastPastEvent: todayPast.isEmpty ? null : _listEvent(todayPast.last),
@@ -273,8 +290,12 @@ class HomeWidgetSchedulePayloadBuilder {
             'end_at': event.endAt?.toUtc().toIso8601String(),
             'location': event.location,
             'is_critical': event.isCritical,
+            'use_strong_alarm': event.useStrongAlarm,
             'is_all_day': event.isAllDay,
             'is_multi_day': event.isMultiDay,
+            'is_recurring': event.recurrenceRule?.trim().isNotEmpty == true ||
+                event.parentEventId != null,
+            'is_team': event.groupEventId?.trim().isNotEmpty == true,
             'parent_event_id': event.parentEventId,
           },
         )
@@ -456,6 +477,10 @@ class HomeWidgetSchedulePayloadBuilder {
         startAt: event.startAt,
         location: event.location,
         isCritical: event.isCritical,
+        isRecurring: event.recurrenceRule?.trim().isNotEmpty == true ||
+            event.parentEventId != null,
+        isTeam: event.groupEventId?.trim().isNotEmpty == true,
+        useStrongAlarm: event.useStrongAlarm,
         monthSegment: 'single',
         showTitleInMonth: true,
       );
@@ -486,6 +511,10 @@ class HomeWidgetSchedulePayloadBuilder {
       startAt: event.startAt,
       location: event.location,
       isCritical: event.isCritical,
+      isRecurring: event.recurrenceRule?.trim().isNotEmpty == true ||
+          (event.parentEventId != null && event.parentEventId != event.id),
+      isTeam: event.groupEventId?.trim().isNotEmpty == true,
+      useStrongAlarm: event.useStrongAlarm,
       monthSegment: segment,
       showTitleInMonth: segment == 'single' || segment == 'start',
     );
@@ -594,6 +623,10 @@ class HomeWidgetSchedulePayloadBuilder {
       startAt: event.startAt,
       location: event.location,
       isCritical: event.isCritical,
+      isRecurring: event.recurrenceRule?.trim().isNotEmpty == true ||
+          event.parentEventId != null,
+      isTeam: event.groupEventId?.trim().isNotEmpty == true,
+      useStrongAlarm: event.useStrongAlarm,
     );
   }
 
@@ -1056,6 +1089,12 @@ class HomeWidgetService {
         success;
     success =
         await _saveValue('next_event_is_critical', data.isCritical) && success;
+    success =
+        await _saveValue('next_event_use_strong_alarm', data.useStrongAlarm) &&
+            success;
+    success = await _saveValue('next_event_is_recurring', data.isRecurring) &&
+        success;
+    success = await _saveValue('next_event_is_team', data.isTeam) && success;
     success = await _saveTodayEvents(upcomingEvents) && success;
 
     final refreshed = await _refreshWidgets(
@@ -1128,6 +1167,18 @@ class HomeWidgetService {
           nextEvent.isCritical,
         ) &&
         success;
+    success = await _saveValue(
+          'next_event_use_strong_alarm',
+          nextEvent.useStrongAlarm,
+        ) &&
+        success;
+    success = await _saveValue(
+          'next_event_is_recurring',
+          nextEvent.isRecurring,
+        ) &&
+        success;
+    success =
+        await _saveValue('next_event_is_team', nextEvent.isTeam) && success;
     success = await _saveTodayEvents(todayEvents) && success;
     success = await _saveTodayScheduleData(
           lastPastEvent: lastPastEvent,
@@ -1291,6 +1342,15 @@ class HomeWidgetService {
             'event_list_${slot}_is_critical',
             event?.isCritical ?? false,
           ) &&
+          success;
+      success = await _saveValue('event_list_${slot}_use_strong_alarm',
+              event?.useStrongAlarm ?? false) &&
+          success;
+      success = await _saveValue(
+              'event_list_${slot}_is_recurring', event?.isRecurring ?? false) &&
+          success;
+      success = await _saveValue(
+              'event_list_${slot}_is_team', event?.isTeam ?? false) &&
           success;
     }
 
@@ -1464,6 +1524,21 @@ class HomeWidgetService {
               event?.isCritical ?? false,
             ) &&
             success;
+        success = await _saveValue(
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_use_strong_alarm',
+              event?.useStrongAlarm ?? false,
+            ) &&
+            success;
+        success = await _saveValue(
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_is_recurring',
+              event?.isRecurring ?? false,
+            ) &&
+            success;
+        success = await _saveValue(
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_is_team',
+              event?.isTeam ?? false,
+            ) &&
+            success;
         // multi-day 연속 일정 pill 표시용
         success = await _saveOptionalValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_segment',
@@ -1563,6 +1638,18 @@ class HomeWidgetService {
               event?.isCritical ?? false,
             ) &&
             success;
+        success = await _saveValue(
+                '${keyPrefix}_${slot}_event_${eventSlot}_use_strong_alarm',
+                event?.useStrongAlarm ?? false) &&
+            success;
+        success = await _saveValue(
+                '${keyPrefix}_${slot}_event_${eventSlot}_is_recurring',
+                event?.isRecurring ?? false) &&
+            success;
+        success = await _saveValue(
+                '${keyPrefix}_${slot}_event_${eventSlot}_is_team',
+                event?.isTeam ?? false) &&
+            success;
       }
     }
 
@@ -1600,6 +1687,17 @@ class HomeWidgetService {
             'day_offset_${offset}_event_${slot}_is_critical',
             event?.isCritical ?? false,
           ) &&
+          success;
+      success = await _saveValue(
+              'day_offset_${offset}_event_${slot}_use_strong_alarm',
+              event?.useStrongAlarm ?? false) &&
+          success;
+      success = await _saveValue(
+              'day_offset_${offset}_event_${slot}_is_recurring',
+              event?.isRecurring ?? false) &&
+          success;
+      success = await _saveValue('day_offset_${offset}_event_${slot}_is_team',
+              event?.isTeam ?? false) &&
           success;
     }
     // 총 개수 및 overflow 미리보기 제목 저장
@@ -1668,6 +1766,14 @@ class HomeWidgetService {
           '${prefix}_is_critical',
           event?.isCritical ?? false,
         ) &&
+        success;
+    success = await _saveValue(
+            '${prefix}_use_strong_alarm', event?.useStrongAlarm ?? false) &&
+        success;
+    success = await _saveValue(
+            '${prefix}_is_recurring', event?.isRecurring ?? false) &&
+        success;
+    success = await _saveValue('${prefix}_is_team', event?.isTeam ?? false) &&
         success;
     return success;
   }

@@ -735,7 +735,8 @@ class NaverCalDavService {
       if (cached != null &&
           cachedAt != null &&
           DateTime.now().difference(cachedAt) < _calendarCacheTtl) {
-        DiagLogger.log('NaverCalDav', 'getCalendars cacheHit count=${cached.length}');
+        DiagLogger.log(
+            'NaverCalDav', 'getCalendars cacheHit count=${cached.length}');
         return cached;
       }
     }
@@ -1302,8 +1303,7 @@ class NaverCalDavService {
             if (eStart == null) {
               continue;
             }
-            final diff =
-                eStart.toUtc().difference(startUtc).abs();
+            final diff = eStart.toUtc().difference(startUtc).abs();
             if (diff <= const Duration(minutes: 1)) {
               return e;
             }
@@ -1349,13 +1349,12 @@ class NaverCalDavService {
 
       // 저장 후보 목록 (루프 중 수집, 저장은 chunk 병렬 처리)
       // 각 항목: (eventModel, calendarDisplayName, uid, existingForUpsert)
-      final saveCandidates = <
-          ({
-            EventModel eventModel,
-            String calendarDisplayName,
-            String uid,
-            EventModel? existingForUpsert,
-          })>[];
+      final saveCandidates = <({
+        EventModel eventModel,
+        String calendarDisplayName,
+        String uid,
+        EventModel? existingForUpsert,
+      })>[];
 
       for (var index = 0; index < calendars.length; index += 1) {
         final calendar = calendars[index];
@@ -1741,7 +1740,11 @@ class NaverCalDavService {
   static String _titleStartKey(String normalizedTitle, DateTime startUtc) {
     final t = startUtc.toUtc();
     final truncated = DateTime.utc(
-      t.year, t.month, t.day, t.hour, t.minute,
+      t.year,
+      t.month,
+      t.day,
+      t.hour,
+      t.minute,
     );
     return '$normalizedTitle|${truncated.millisecondsSinceEpoch}';
   }
@@ -1997,11 +2000,9 @@ class NaverCalDavService {
         startAt = startAt.subtract(const Duration(days: 1));
       }
       endAt = null;
-      debugPrint(
-        'Naver CalDAV recovered placeholder DTSTART from DTEND: '
-        'uid=$uid, href=$href, rawStart=$startRaw, rawEnd=$endRaw, '
-        'allDay=$endIsAllDay, startAt=$startAt',
-      );
+      // Do not log once per recovered resource: large Naver calendars can
+      // produce thousands of these and flood the Flutter UI isolate.  The
+      // sync summary below retains aggregate diagnostics for troubleshooting.
     }
 
     if (startAt == null) {

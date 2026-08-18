@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/diag_logger.dart';
 import '../../core/env.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
@@ -38,6 +39,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   String? _activeRequestKey;
   String? _message;
   int _prepTimeMin = 30;
+  Future<void>? _refreshInFlight;
+  bool _awaitingExternalSettings = false;
 
   @override
   void initState() {
@@ -58,6 +61,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     if (state != AppLifecycleState.resumed) {
       return;
     }
+    if (_awaitingExternalSettings) {
+      _awaitingExternalSettings = false;
+    }
     if (_resumeRequestAll) {
       unawaited(_continueRequestAllAfterResume());
       return;
@@ -66,33 +72,39 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   }
 
   Future<void> _refresh({bool clearMessage = false}) async {
+    final existing = _refreshInFlight;
+    if (existing != null) return existing;
+    final future = _refreshInternal(clearMessage: clearMessage);
+    _refreshInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    }
+  }
+
+  Future<void> _refreshInternal({required bool clearMessage}) async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
-      if (clearMessage) {
-        _message = null;
-      }
+      if (clearMessage) _message = null;
     });
-
+    final startedAt = DateTime.now();
     try {
       final snapshot = await _permissionService.checkAll();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _snapshot = snapshot;
-      });
+      if (!mounted) return;
+      setState(() => _snapshot = snapshot);
     } catch (_) {
       if (mounted) {
-        setState(() {
-          _message = '권한 상태를 확인하지 못했습니다. 휴대폰 설정에서 PlanFlow 권한을 확인해 주세요.';
-        });
+        setState(() =>
+            _message = '권한 상태를 확인하지 못했습니다. 휴대폰 설정에서 PlanFlow 권한을 확인해 주세요.');
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      DiagLogger.log(
+        'Onboarding',
+        'permission refresh ${DateTime.now().difference(startedAt).inMilliseconds}ms',
+      );
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -114,15 +126,26 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     });
 
     try {
-      await _withPermissionTimeout(request);
+      final requested = await _withPermissionTimeout(request);
+      if (key == 'batteryOptimization' && requested) {
+        _awaitingExternalSettings = true;
+        if (mounted) {
+          setState(() => _message = '절전 예외 설정을 확인한 뒤 앱으로 돌아와 주세요.');
+        }
+        return;
+      }
       await _refresh();
       final afterRequest = _snapshot;
       var granted = afterRequest != null && isGranted(afterRequest);
       if (!granted && openSettings != null) {
         await _withPermissionTimeout(openSettings);
-        await _refresh();
-        final afterSettings = _snapshot;
-        granted = afterSettings != null && isGranted(afterSettings);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _message = '설정에서 돌아오면 권한 상태를 다시 확인할게요.';
+        });
+        return;
       }
 
       if (!mounted) {
@@ -196,8 +219,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           snapshot == null || !_isStepGrantedForLabel(snapshot, resumeLabel);
       if (stillMissing) {
         setState(() {
-          _message =
-              '$resumeLabel 권한은 아직 꺼져 있습니다. 다시 켠 뒤 돌아오면 다음 단계로 이어집니다.';
+          _message = '$resumeLabel 권한은 아직 꺼져 있습니다. 다시 켠 뒤 돌아오면 다음 단계로 이어집니다.';
         });
         return;
       }
@@ -262,8 +284,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         key: 'microphone',
         label: '마이크',
         grantedMessage: '마이크 권한이 허용되었습니다.',
-        deniedMessage:
-            '마이크 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+        deniedMessage: '마이크 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
         isGranted: (snapshot) => snapshot.microphoneGranted,
         request: _permissionService.requestMicrophonePermission,
       ),
@@ -281,8 +302,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         key: 'location',
         label: '위치',
         grantedMessage: '위치 권한이 허용되었습니다.',
-        deniedMessage:
-            '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+        deniedMessage: '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
         isGranted: (snapshot) => snapshot.locationGranted,
         request: _permissionService.requestLocationPermission,
       ),
@@ -347,6 +367,17 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     try {
       final granted = await _withPermissionTimeout(step.request,
           timeout: const Duration(seconds: 12));
+      if (step.key == 'batteryOptimization' && granted) {
+        _resumeRequestAll = true;
+        _resumeRequestIndex = index;
+        _resumeRequestLabel = step.label;
+        if (mounted) {
+          setState(() {
+            _message = '절전 예외 설정을 확인한 뒤 앱으로 돌아와 주세요.';
+          });
+        }
+        return false;
+      }
       if (granted && mounted) {
         setState(() {
           _message = step.grantedMessage;
@@ -360,8 +391,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _resumeRequestLabel = step.label;
           if (mounted) {
             setState(() {
-              _message =
-                  '${step.label} 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = '${step.label} 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -384,8 +414,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _resumeRequestLabel = step.label;
           if (mounted) {
             setState(() {
-              _message =
-                  '${step.label} 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = '${step.label} 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -407,7 +436,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _activeRequestKey = null;
         });
       }
-      if (after != null && !step.isGranted(after) && step.openSettings != null) {
+      if (after != null &&
+          !step.isGranted(after) &&
+          step.openSettings != null) {
         _resumeRequestAll = true;
         _resumeRequestIndex = index;
         _resumeRequestLabel = step.label;
@@ -678,8 +709,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               _PermissionTile(
                 icon: Icons.battery_saver_outlined,
                 title: '절전 예외',
-                description:
-                    '삼성·샤오미 등 일부 기기는 절전(배터리 최적화)으로 백그라운드 알람을 막습니다. '
+                description: '삼성·샤오미 등 일부 기기는 절전(배터리 최적화)으로 백그라운드 알람을 막습니다. '
                     '예외로 추가하면 알람이 정시에 울립니다.',
                 descriptionMaxLines: 3,
                 granted: snapshot?.batteryOptimizationIgnored == true,

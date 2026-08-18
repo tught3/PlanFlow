@@ -193,9 +193,8 @@ final GoRouter appRouter = GoRouter(
             ? state.extra! as Map<String, dynamic>
             : const <String, dynamic>{};
         final entryGrantRaw = extra['entry_grant'];
-        final entryGrant = entryGrantRaw is VoiceConversationEntryGrant
-            ? entryGrantRaw
-            : null;
+        final entryGrant =
+            entryGrantRaw is VoiceConversationEntryGrant ? entryGrantRaw : null;
         return VoiceConversationScreen(
           autoStart: _isAutoStart(state),
           initialText: extra['initial_text']?.toString(),

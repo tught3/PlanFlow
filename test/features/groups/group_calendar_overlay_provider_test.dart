@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -68,7 +70,8 @@ class _FakeGroupEventRepository extends GroupEventRepository {
     DateTime from,
     DateTime to,
   ) async {
-    return List<GroupEventModel>.from(eventsByGroupId[groupId] ?? const <GroupEventModel>[]);
+    return List<GroupEventModel>.from(
+        eventsByGroupId[groupId] ?? const <GroupEventModel>[]);
   }
 
   @override
@@ -94,6 +97,24 @@ class _FakeGroupEventRepository extends GroupEventRepository {
   @override
   Future<GroupEventModel> fetchGroupEvent(String eventId) {
     throw UnimplementedError();
+  }
+}
+
+class _GatedGroupEventRepository extends _FakeGroupEventRepository {
+  _GatedGroupEventRepository(super.eventsByGroupId);
+
+  final List<Completer<void>> gates = <Completer<void>>[];
+
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final gate = Completer<void>();
+    gates.add(gate);
+    await gate.future;
+    return super.getEventsForGroup(groupId, from, to);
   }
 }
 
@@ -213,5 +234,59 @@ void main() {
     expect(provider.isPersonalMode, isTrue);
     expect(provider.items, isEmpty);
     expect(provider.error, isNull);
+  });
+
+  test('ignores stale month response after a newer load starts', () async {
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'leader-row',
+              groupId: 'group-1',
+              userId: 'leader-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final repository =
+        _GatedGroupEventRepository(<String, List<GroupEventModel>>{
+      'group-1': <GroupEventModel>[
+        _groupEvent(
+          id: 'stale',
+          groupId: 'group-1',
+          title: '이전 달 일정',
+          startAt: DateTime.utc(2026, 6, 15, 9),
+          endAt: DateTime.utc(2026, 6, 15, 10),
+        ),
+      ],
+    });
+    final provider = GroupCalendarOverlayProvider(
+      contextProvider: contextProvider,
+      repository: repository,
+    );
+
+    // banned-ok: 고정 캘린더 월 fixture, now() 상대 클램프/만료 없음(시한폭탄 아님)
+    final first = provider.loadForMonth('leader-1', DateTime(2026, 6, 1));
+    while (repository.gates.isEmpty) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    // banned-ok: 위와 동일(고정 월 fixture)
+    final second = provider.loadForMonth('leader-1', DateTime(2026, 7, 1));
+    while (repository.gates.length < 2) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    repository.gates[1].complete();
+    await second;
+    repository.gates[0].complete();
+    await first;
+
+    // banned-ok: 고정 월 fixture 검증(위와 동일 사유)
+    expect(provider.state.rangeStart, DateTime(2026, 7));
   });
 }

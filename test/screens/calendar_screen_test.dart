@@ -15,6 +15,7 @@ import 'package:planflow/features/groups/providers/group_context_provider.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
+import 'package:planflow/screens/calendar/calendar_projection.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -133,6 +134,66 @@ void main() {
       findsNothing,
     );
   });
+
+  test('calendar day projection indexes many events without a scan per tap',
+      () {
+    // banned-ok: 고정 월 fixture, now() 상대 클램프/만료 없음(시한폭탄 아님)
+    final month = DateTime(2026, 8);
+    final events = List<EventModel>.generate(
+      2500,
+      (index) => _event(
+        'projection-$index',
+        '일정 $index',
+        DateTime(2026, 8, (index % 28) + 1, 9), // banned-ok: 고정 월 fixture(위와 동일 사유)
+      ),
+    );
+    final index = buildCalendarDayEventIndex(
+      events: events,
+      focusedMonth: month,
+    );
+
+    expect(index.length, 28);
+    expect(index[1], hasLength((2500 / 28).ceil()));
+    // The returned day lists are immutable snapshots suitable for reuse by
+    // immediate date taps.
+    expect(() => index[1]!.add(events.first), throwsUnsupportedError);
+  });
+
+  testWidgets(
+    'CalendarScreen repaints selected day immediately after tap',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: DateTime(2026, 5, 12), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('5월 12일'), findsWidgets);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
+      );
+      await tester.pump();
+
+      final selectedDayLabel = tester.widget<Text>(
+        find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
+      );
+      expect(selectedDayLabel.style?.color, Colors.white);
+      expect(selectedDayLabel.style?.fontWeight, FontWeight.w700);
+    },
+  );
 
   testWidgets('CalendarScreen direct add passes selected date to edit route', (
     tester,
@@ -296,7 +357,7 @@ void main() {
     final dayLabel = tester.widget<Text>(
       find.byKey(const ValueKey('calendar-mini-day-2026-6-6')),
     );
-    expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
+    expect(dayLabel.style?.color, calendarHolidayColor);
   });
 
   testWidgets(
@@ -319,7 +380,7 @@ void main() {
       final dayLabel = tester.widget<Text>(
         find.byKey(const ValueKey('calendar-mini-day-2026-10-3')),
       );
-      expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
+      expect(dayLabel.style?.color, calendarHolidayColor);
     },
   );
 
@@ -353,7 +414,7 @@ void main() {
       final dayLabel = tester.widget<Text>(
         find.byKey(const ValueKey('calendar-mini-day-2026-7-17')),
       );
-      expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
+      expect(dayLabel.style?.color, calendarHolidayColor);
     },
   );
 
@@ -580,8 +641,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('팀 A일정'), findsNothing);
-    // 대신 팀 공유 뱃지가 붙는다.
-    expect(find.text('팀 공유'), findsOneWidget);
+    // 팀 일정은 금색으로 구분하되 별도 팀 뱃지는 표시하지 않는다.
+    expect(find.text('팀 공유'), findsNothing);
   });
 
   testWidgets(

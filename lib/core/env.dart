@@ -68,9 +68,15 @@ class AppEnv {
     _supabaseInitialized = false;
     _supabaseInitializationFailed = true;
     final message = error?.toString().trim();
-    _supabaseInitializationErrorMessage = message != null && message.isNotEmpty
-        ? message
-        : 'Supabase 초기화에 실패했습니다.';
+    final isPlatformBootstrapError = message != null &&
+        (message.contains('channel-error') ||
+            message.contains('MissingPluginException') ||
+            message.contains('SharedPreferencesApi'));
+    _supabaseInitializationErrorMessage = isPlatformBootstrapError
+        ? '앱 초기화가 지연되고 있습니다. 잠시 후 다시 시도해 주세요.'
+        : message != null && message.isNotEmpty
+            ? '로그인 서비스를 초기화하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+            : '로그인 서비스를 초기화하지 못했습니다.';
   }
 
   static void resetSupabaseInitializationState() {

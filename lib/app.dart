@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
@@ -27,6 +28,7 @@ import 'services/activity_tracking_service.dart';
 import 'services/smart_preparation_payload_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
+import 'services/interaction_idle_gate.dart';
 import 'services/oauth_callback_handler.dart';
 import 'services/update_service.dart';
 import 'widgets/planflow_action_buttons.dart';
@@ -51,6 +53,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   bool _reauthSnackBarShown = false;
   bool _startupUpdateCheckRunning = false;
   int _startupUpdateCheckGeneration = 0;
+  bool _startupSessionSyncRunning = false;
+  int _startupSessionSyncGeneration = 0;
   final AppLinks _appLinks = AppLinks();
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
   final CalendarAutoSyncService _calendarAutoSyncService =
@@ -60,12 +64,15 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   final NotificationService _notificationService = NotificationService();
   final ActivityTrackingService _activityTrackingService =
       ActivityTrackingService();
+  final InteractionIdleGate _interactionIdleGate = InteractionIdleGate.instance;
   late final AppLifecycleListener _lifecycleListener;
   String? _pendingHomeWidgetRoute;
   String? _lastHandledHomeWidgetRoute;
   DateTime? _lastHandledHomeWidgetRouteAt;
   int _homeWidgetRouteGeneration = 0;
   bool? _homeWidgetShouldSeedHomeBase;
+  final Map<String, Future<void>> _startupLifecycleJobs =
+      <String, Future<void>>{};
 
   @override
   void initState() {
@@ -75,22 +82,28 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     startupRouteGate.addListener(_onStartupRouteGateChange);
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
-        unawaited(BriefingSchedulerService.recordAppForegroundState(false));
-        unawaited(_syncCalendarInBackground());
+        unawaited(_deferStartupLifecycleWork(
+          'foreground_state',
+          () => BriefingSchedulerService.recordAppForegroundState(false),
+        ));
       },
       onResume: () {
-        unawaited(_markForegroundAndCheckPendingBriefing());
-        // widgetClicked 스트림이 유실된 warm-start를 복구하기 위해 먼저 실행
-        unawaited(_resumeHomeWidgetCheck());
-        unawaited(_syncSessionAndCalendar(reason: 'resume'));
-        unawaited(_activityTrackingService.recordActive());
+        unawaited(_deferStartupLifecycleWork('resume', () async {
+          await _markForegroundAndCheckPendingBriefing();
+          await _resumeHomeWidgetCheck();
+          await _activityTrackingService.recordActive();
+        }));
+        unawaited(_scheduleDeferredSessionSync(reason: 'foreground_idle'));
         unawaited(_scheduleDeferredUpdateCheck());
       },
     );
     _foregroundBriefingSubscription = BriefingSchedulerService
         .foregroundBriefingStream
         .listen(_showForegroundBriefingDialog);
-    unawaited(_markForegroundAndCheckPendingBriefing());
+    unawaited(_deferStartupLifecycleWork(
+      'initial_briefing',
+      _markForegroundAndCheckPendingBriefing,
+    ));
     // alarm_service의 알람 콜백은 별도 Dart VM에서 실행되므로 IsolateNameServer가
     // 작동하지 않는다. SharedPreferences pending key를 2초마다 확인해 모달로 전환한다.
     _foregroundBriefingPollTimer = Timer.periodic(
@@ -98,14 +111,21 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       (_) {
         // 포그라운드 heartbeat 갱신: 앱이 백그라운드/종료되면 이 타이머가 멈춰
         // heartbeat가 낡고, 알람 콜백이 이를 백그라운드로 판정해 알림을 발화한다.
-        unawaited(BriefingSchedulerService.refreshForegroundHeartbeat());
-        unawaited(BriefingSchedulerService.checkPendingModalTrigger());
+        unawaited(_deferStartupLifecycleWork('briefing_heartbeat', () async {
+          await BriefingSchedulerService.refreshForegroundHeartbeat();
+          await BriefingSchedulerService.checkPendingModalTrigger();
+        }));
       },
     );
-    unawaited(_syncSessionAndCalendar(reason: 'startup'));
-    unawaited(_listenForSharedIcsFiles());
-    unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
-    unawaited(_scheduleBetaSurveyReminderIfNeeded());
+    unawaited(_scheduleDeferredSessionSync(reason: 'startup'));
+    unawaited(
+        _deferStartupLifecycleWork('shared_ics', _listenForSharedIcsFiles));
+    unawaited(_deferStartupLifecycleWork(
+      'naver_ics_reminder',
+      _notificationService.scheduleMonthlyNaverIcsReminder,
+    ));
+    unawaited(_deferStartupLifecycleWork(
+        'beta_survey', _scheduleBetaSurveyReminderIfNeeded));
     _routeInitialHomeWidgetLaunch();
     unawaited(_routeInitialNotificationLaunch());
     _listenForPlanFlowDeepLinks();
@@ -113,7 +133,33 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       _handleHomeWidgetUri,
     );
     unawaited(_scheduleDeferredUpdateCheck());
-    unawaited(_logStartupAlarmPermissions());
+    unawaited(_deferStartupLifecycleWork(
+        'alarm_permissions', _logStartupAlarmPermissions));
+  }
+
+  Future<void> _deferStartupLifecycleWork(
+    String key,
+    Future<void> Function() work,
+  ) {
+    final existing = _startupLifecycleJobs[key];
+    if (existing != null) return existing;
+    final future = () async {
+      try {
+        await startupRouteGate.startupWorkAllowedWhenIdle;
+        await work();
+      } catch (error, stackTrace) {
+        debugPrint('Deferred startup lifecycle work skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }();
+    late final Future<void> tracked;
+    tracked = future.whenComplete(() {
+      if (identical(_startupLifecycleJobs[key], tracked)) {
+        _startupLifecycleJobs.remove(key);
+      }
+    });
+    _startupLifecycleJobs[key] = tracked;
+    return tracked;
   }
 
   Future<void> _markForegroundAndCheckPendingBriefing() async {
@@ -139,26 +185,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
   }
 
-  Future<void> _syncCalendarInBackground() async {
-    try {
-      if (!await _waitForInitialAuthResolution()) {
-        return;
-      }
-      final signedIn =
-          authProvider.isSignedIn || await authProvider.syncCurrentSession();
-      if (!signedIn) {
-        return;
-      }
-      await _calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'background',
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Background calendar sync skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }
-  }
-
   Future<void> _syncSessionAndCalendar({required String reason}) async {
+    if (startupRouteGate.startupWorkDeferred) {
+      return;
+    }
     if (!await _waitForInitialAuthResolution()) {
       return;
     }
@@ -184,6 +214,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);
       return;
     }
+    // Keep the app-level in-flight guard held until the calendar service has
+    // actually finished.  Launching this unawaited allowed a second resume
+    // or Shell instance to overlap the CalDAV import after the guard cleared.
     await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
   }
 
@@ -215,6 +248,108 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     await _notificationService.scheduleBetaSurveyReminder();
   }
 
+  Future<void> _scheduleDeferredSessionSync({required String reason}) async {
+    if (!mounted) {
+      return;
+    }
+    final generation = ++_startupSessionSyncGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final graceDelay = (reason == 'startup' || reason == 'foreground_idle')
+          ? const Duration(seconds: 4)
+          : Duration.zero;
+      Future<void>.delayed(graceDelay, () {
+        if (!mounted || generation != _startupSessionSyncGeneration) {
+          return;
+        }
+        // Keep the first interactive frames free of network/CalDAV work.  An
+        // idle-priority task is automatically postponed while the user is
+        // tapping or scrolling, unlike a fixed timer which fires mid-gesture.
+        SchedulerBinding.instance.scheduleTask<void>(
+          () => _runDeferredSessionSync(generation, reason: reason, attempt: 0),
+          Priority.idle,
+        );
+      });
+    });
+  }
+
+  void _runDeferredSessionSync(
+    int generation, {
+    required String reason,
+    required int attempt,
+  }) {
+    if (!mounted || generation != _startupSessionSyncGeneration) {
+      return;
+    }
+    if (!_interactionIdleGate.isIdle) {
+      _retryDeferredSessionSync(generation, reason: reason, attempt: attempt);
+      return;
+    }
+    if (_startupSessionSyncRunning) {
+      return;
+    }
+    if (!authProvider.hasResolvedInitialSession ||
+        startupRouteGate.startupWorkDeferred) {
+      _retryDeferredSessionSync(generation, reason: reason, attempt: attempt);
+      return;
+    }
+
+    final currentRoute = _currentRouteLocation();
+    if (currentRoute == null ||
+        currentRoute == AppRoutes.root ||
+        _isOnboardingRoute(currentRoute)) {
+      _retryDeferredSessionSync(generation, reason: reason, attempt: attempt);
+      return;
+    }
+
+    unawaited(() async {
+      final interactionGeneration = _interactionIdleGate.generation;
+      await _interactionIdleGate.waitForIdle();
+      if (!mounted ||
+          interactionGeneration != _interactionIdleGate.generation ||
+          !_interactionIdleGate.isIdle) {
+        _retryDeferredSessionSync(generation, reason: reason, attempt: attempt);
+        return;
+      }
+      _startupSessionSyncRunning = true;
+      try {
+        await _syncSessionAndCalendar(reason: reason);
+      } catch (error, stackTrace) {
+        debugPrint('Deferred session sync skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      } finally {
+        _startupSessionSyncRunning = false;
+      }
+    }());
+  }
+
+  void _retryDeferredSessionSync(
+    int generation, {
+    required String reason,
+    required int attempt,
+  }) {
+    if (!mounted || generation != _startupSessionSyncGeneration) {
+      return;
+    }
+    if (attempt >= 20) {
+      // Do not abandon the sync after repeated interaction blocks. Wait for
+      // one settled idle window, then restart the bounded backoff sequence.
+      unawaited(_interactionIdleGate.waitForStableIdle().then((_) {
+        _runDeferredSessionSync(generation, reason: reason, attempt: 0);
+      }));
+      return;
+    }
+    final delay = Duration(milliseconds: attempt == 0 ? 80 : 160);
+    unawaited(
+      Future<void>.delayed(delay, () {
+        _runDeferredSessionSync(
+          generation,
+          reason: reason,
+          attempt: attempt + 1,
+        );
+      }),
+    );
+  }
+
   Future<void> _scheduleDeferredUpdateCheck() async {
     if (!mounted) {
       return;
@@ -237,13 +372,15 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
 
     if (!authProvider.hasResolvedInitialSession ||
-        startupRouteGate.widgetLaunchPending) {
+        startupRouteGate.startupWorkDeferred) {
       _retryDeferredUpdateCheck(generation, attempt: attempt);
       return;
     }
 
     final currentRoute = _currentRouteLocation();
-    if (currentRoute == null || currentRoute == AppRoutes.root) {
+    if (currentRoute == null ||
+        currentRoute == AppRoutes.root ||
+        _isOnboardingRoute(currentRoute)) {
       _retryDeferredUpdateCheck(generation, attempt: attempt);
       return;
     }
@@ -292,6 +429,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     if (attempt >= 20) {
+      unawaited(_interactionIdleGate.waitForStableIdle().then((_) {
+        _runDeferredUpdateCheck(generation, attempt: 0);
+      }));
       return;
     }
     final delay = Duration(milliseconds: attempt == 0 ? 80 : 160);
@@ -322,6 +462,12 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         route != AppRoutes.login &&
         route != AppRoutes.permissionOnboarding &&
         route != AppRoutes.resetPassword;
+  }
+
+  bool _isOnboardingRoute(String route) {
+    return route == AppRoutes.login ||
+        route == AppRoutes.permissionOnboarding ||
+        route == AppRoutes.featureTour;
   }
 
   Future<String?> _loadPendingUpdateRestoreRoute() async {
@@ -463,10 +609,12 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       // 정상 로그인 복구 시 플래그 리셋
       _reauthSnackBarShown = false;
     }
+    unawaited(_scheduleDeferredSessionSync(reason: 'auth_changed'));
     unawaited(_scheduleDeferredUpdateCheck());
   }
 
   void _onStartupRouteGateChange() {
+    unawaited(_scheduleDeferredSessionSync(reason: 'startup_gate'));
     unawaited(_scheduleDeferredUpdateCheck());
   }
 

@@ -87,6 +87,10 @@ class AlarmService {
   }
 
   Future<bool> _ensureInitialized() {
+    return ensureInitialized();
+  }
+
+  static Future<bool> ensureInitialized() {
     _initializeFuture ??= AndroidAlarmManager.initialize();
     return _initializeFuture!;
   }

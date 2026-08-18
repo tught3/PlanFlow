@@ -15,6 +15,7 @@ import 'core/analytics_service.dart';
 import 'core/env.dart';
 import 'core/local_time.dart';
 import 'core/runtime_error_filter.dart';
+import 'core/startup_route_gate.dart';
 import 'core/supabase_auth_options.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
@@ -27,6 +28,7 @@ import 'features/groups/services/group_cleanup_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  startupRouteGate.beginStartupWorkDeferral();
   ensureTimeZonesInitialized();
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
@@ -40,7 +42,37 @@ Future<void> main() async {
 
   runApp(const ProviderScope(child: PlanFlowApp()));
   unawaited(_initializePlatformServices());
-  unawaited(_reconcileStaleGroupAlarms());
+  unawaited(_scheduleStaleGroupAlarmReconcile());
+}
+
+Future<void>? _staleGroupAlarmReconcile;
+Future<void>? _dailyCalendarSyncSchedule;
+
+Future<void> _scheduleStaleGroupAlarmReconcile() {
+  return _staleGroupAlarmReconcile ??= () async {
+    // This is non-essential startup work. Keep it behind the same onboarding
+    // and settled-idle permit as platform services, and claim it once so
+    // auth/lifecycle callbacks cannot start duplicate queries.
+    await startupRouteGate.startupWorkAllowedWhenIdle;
+    await _reconcileStaleGroupAlarms();
+  }();
+}
+
+Future<void> _scheduleDailyCalendarSyncAfterStartup() {
+  final existing = _dailyCalendarSyncSchedule;
+  if (existing != null) return existing;
+  final future = () async {
+    try {
+      await startupRouteGate.startupWorkAllowedWhenIdle;
+      await const DailyCalendarSyncSchedulerService().scheduleDaily();
+    } catch (error, stackTrace) {
+      _dailyCalendarSyncSchedule = null;
+      debugPrint('Daily calendar sync scheduling deferred: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }();
+  _dailyCalendarSyncSchedule = future;
+  return future;
 }
 
 Future<void> _initializePlatformServices() async {
@@ -50,11 +82,14 @@ Future<void> _initializePlatformServices() async {
   // 회귀를 되돌린다). AdService만 이 Future를 내부에서 기다린다(_primingAdService
   // 참조) — 그래서 RemoteConfig 값이 정착하기 전에 광고를 영구 비활성화하던
   // 원래 버그(f027c0a2가 고친 것)는 재발하지 않는다.
+  // Supabase/auth remains available for login and route resolution. Other
+  // platform work waits until onboarding has presented the first home frame.
+  await _initializeSupabase();
+  await startupRouteGate.startupWorkAllowedWhenIdle;
   final firebaseReady = _initializeFirebaseServices();
   await Future.wait([
     firebaseReady,
     _initializeNaverMap(),
-    _initializeSupabase(),
     _primingAdService(firebaseReady),
     _primeHolidayCache(),
   ]);
@@ -87,9 +122,8 @@ Future<void> _reconcileStaleGroupAlarms() async {
         .eq('status', 'active')
         .timeout(const Duration(seconds: 10));
 
-    final activeGroupIds = (activeGroups as List)
-        .map((row) => row['id'] as String)
-        .toSet();
+    final activeGroupIds =
+        (activeGroups as List).map((row) => row['id'] as String).toSet();
 
     debugPrint(
       '[BootReconcile] Found ${activeGroupIds.length} active groups',
@@ -244,18 +278,37 @@ Future<void> _initializeNaverMap() async {
 
 Future<void> _initializeSupabase() async {
   if (AppEnv.hasValidSupabaseConfig) {
-    try {
-      developer.log('Supabase init start', name: 'PlanFlow');
-      await Supabase.initialize(
-        url: AppEnv.supabaseUrl,
-        anonKey: AppEnv.supabaseAnonKey,
-        authOptions: buildPlanFlowAuthOptions(
-          supabaseUrl: AppEnv.supabaseUrl,
-          detectSessionInUri: false,
-        ),
-      ).timeout(const Duration(seconds: 10));
-      AppEnv.markSupabaseInitialized();
-      developer.log('Supabase init success', name: 'PlanFlow');
+    Object? lastError;
+    for (var attempt = 0; attempt < 3 && !AppEnv.isSupabaseReady; attempt++) {
+      try {
+        developer.log('Supabase init start attempt=${attempt + 1}',
+            name: 'PlanFlow');
+        await Supabase.initialize(
+          url: AppEnv.supabaseUrl,
+          anonKey: AppEnv.supabaseAnonKey,
+          authOptions: buildPlanFlowAuthOptions(
+            supabaseUrl: AppEnv.supabaseUrl,
+            detectSessionInUri: false,
+          ),
+        ).timeout(const Duration(seconds: 10));
+        AppEnv.markSupabaseInitialized();
+        developer.log('Supabase init success', name: 'PlanFlow');
+      } catch (error) {
+        lastError = error;
+        developer.log('Supabase init attempt failed',
+            name: 'PlanFlow', error: error);
+        if (attempt < 2) {
+          await Future<void>.delayed(
+              Duration(milliseconds: 250 * (attempt + 1)));
+        }
+      }
+    }
+    if (!AppEnv.isSupabaseReady) {
+      final error = lastError ?? StateError('Supabase initialization failed');
+      AppEnv.markSupabaseInitializationFailed(error);
+      debugPrint('Supabase initialization unavailable after retry: $error');
+      authProvider.start();
+    } else {
       authProvider.start();
       String? lastPrefetchedUserId;
       void syncPrefetchForAuthUser() {
@@ -274,16 +327,7 @@ Future<void> _initializeSupabase() async {
 
       syncPrefetchForAuthUser();
       authProvider.addListener(syncPrefetchForAuthUser);
-      unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
-    } catch (error) {
-      AppEnv.markSupabaseInitializationFailed(error);
-      developer.log(
-        'Supabase init failed: $error',
-        name: 'PlanFlow',
-        error: error,
-        stackTrace: StackTrace.current,
-      );
-      authProvider.start();
+      unawaited(_scheduleDailyCalendarSyncAfterStartup());
     }
   } else {
     authProvider.start();

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 import 'backup_service.dart';
+import 'alarm_service.dart';
 
 class DailyBackupSchedulerService {
   const DailyBackupSchedulerService();
@@ -16,7 +17,7 @@ class DailyBackupSchedulerService {
       return false;
     }
 
-    final initialized = await AndroidAlarmManager.initialize();
+    final initialized = await AlarmService.ensureInitialized();
     if (!initialized) {
       return false;
     }

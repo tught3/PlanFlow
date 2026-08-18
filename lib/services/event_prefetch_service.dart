@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import '../core/startup_route_gate.dart';
 
 class EventPrefetchService {
   EventPrefetchService._();
@@ -26,7 +27,10 @@ class EventPrefetchService {
     if (resolvedUserId.isEmpty || _warmingUserIds.contains(resolvedUserId)) {
       return;
     }
+    // Claim before the first await so auth listeners cannot enqueue duplicate
+    // warmups for the same user while onboarding is still deferred.
     _warmingUserIds.add(resolvedUserId);
+    await startupRouteGate.startupWorkAllowedWhenIdle;
     try {
       final events = await (repository ?? EventRepository.supabase())
           .listEvents(userId: resolvedUserId);

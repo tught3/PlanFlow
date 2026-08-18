@@ -19,4 +19,19 @@ void main() {
     expect(identical(first, second), isTrue);
     expect(runs, 0);
   });
+
+  testWidgets('reset makes a queued post-frame callback obsolete',
+      (tester) async {
+    await tester.pumpWidget(const SizedBox());
+    final gate = OnboardingStartupGate();
+    var runs = 0;
+    final pending = gate.runAfterFirstHomeFrame(() async => runs++);
+    gate.reset();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    // The obsolete future is intentionally not awaited here: reset callers
+    // discard it, while the frame assertion proves stale work did not run.
+    unawaited(pending);
+    expect(runs, 0);
+  });
 }

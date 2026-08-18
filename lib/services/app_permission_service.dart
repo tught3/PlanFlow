@@ -22,6 +22,7 @@ class AppPermissionService {
   final NotificationService _notificationService;
   final SharedPreferencesAsync? _preferences;
   final BatteryOptimizationService _batteryOptimizationService;
+  Future<AppPermissionSnapshot>? _checkAllInFlight;
 
   SharedPreferencesAsync get _resolvedPreferences =>
       _preferences ?? SharedPreferencesAsync();
@@ -35,15 +36,31 @@ class AppPermissionService {
   }
 
   Future<AppPermissionSnapshot> checkAll() async {
-    final notificationStatus =
-        await _notificationService.checkPermissionStatus();
+    final existing = _checkAllInFlight;
+    if (existing != null) return existing;
+    final future = _checkAllInternal();
+    _checkAllInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_checkAllInFlight, future)) _checkAllInFlight = null;
+    }
+  }
+
+  Future<AppPermissionSnapshot> _checkAllInternal() async {
+    final notificationFuture = _notificationService.checkPermissionStatus();
+    final microphoneFuture = checkMicrophonePermission();
+    final locationFuture = checkLocationPermission();
+    final calendarFuture = checkCalendarPermission();
+    final batteryFuture =
+        _batteryOptimizationService.isIgnoringBatteryOptimizations();
+    final notificationStatus = await notificationFuture;
     return AppPermissionSnapshot(
-      microphoneGranted: await checkMicrophonePermission(),
-      locationGranted: await checkLocationPermission(),
-      calendarGranted: await checkCalendarPermission(),
+      microphoneGranted: await microphoneFuture,
+      locationGranted: await locationFuture,
+      calendarGranted: await calendarFuture,
       notificationStatus: notificationStatus,
-      batteryOptimizationIgnored:
-          await _batteryOptimizationService.isIgnoringBatteryOptimizations(),
+      batteryOptimizationIgnored: await batteryFuture,
     );
   }
 

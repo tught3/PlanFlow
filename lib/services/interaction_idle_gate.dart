@@ -35,4 +35,15 @@ class InteractionIdleGate {
       }
     }
   }
+
+  /// Waits for an idle window that survived a microtask turn. This closes the
+  /// small race where a startup permit is released immediately before a tap.
+  Future<void> waitForStableIdle() async {
+    while (true) {
+      await waitForIdle();
+      final observedGeneration = _generation;
+      await Future<void>.microtask(() {});
+      if (observedGeneration == _generation && isIdle) return;
+    }
+  }
 }

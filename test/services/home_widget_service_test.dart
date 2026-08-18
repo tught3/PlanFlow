@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
@@ -9,6 +10,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  test('marker styling keeps markers separate from semantic title color', () {
+    final calendarSource =
+        File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
+    expect(calendarSource, contains('_calendarEventTitleSpan'));
+    expect(calendarSource, contains('FontWeight.w900'));
+    expect(calendarSource, contains('semanticColor'));
+    expect(calendarSource, contains('left: segment.\$1'));
+    expect(calendarSource, contains('right: segment.\$2'));
+    final homeSource =
+        File('lib/services/home_widget_service.dart').readAsStringSync();
+    expect(homeSource, contains('_event_\${eventSlot}_use_strong_alarm'));
+
+    final widgetSource = File(
+      'android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt',
+    ).readAsStringSync();
+    expect(widgetSource, contains('displayWidgetTitleSpanned'));
+    expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
+    expect(widgetSource, contains('ForegroundColorSpan'));
   });
 
   test('HomeWidgetService updates next-event widget payload', () async {
@@ -217,6 +238,7 @@ void main() {
               title: 'Cell event 1',
               eventId: 'cell-1',
               isCritical: true,
+              useStrongAlarm: true,
             ),
             const HomeWidgetListEventData(title: 'Cell event 2'),
             const HomeWidgetListEventData(title: 'Cell event 3'),
@@ -295,6 +317,8 @@ void main() {
     expect(platform.savedValues['month_cell_1_event_1_title'], 'Cell event 1');
     expect(platform.savedValues['month_cell_1_event_1_id'], 'cell-1');
     expect(platform.savedValues['month_cell_1_event_1_is_critical'], isTrue);
+    expect(
+        platform.savedValues['month_cell_1_event_1_use_strong_alarm'], isTrue);
     expect(platform.savedValues['month_cell_1_event_3_title'], 'Cell event 3');
     expect(platform.savedValues['month_cell_1_event_4_title'], 'Cell event 4');
     expect(platform.savedValues['month_cell_1_overflow_count'], 2);
@@ -478,6 +502,35 @@ void main() {
       'manual-holiday-event',
       'personal-event',
     ]);
+  });
+
+  test('HomeWidget raw payload preserves team and recurring semantic flags',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.utc(2026, 8, 15),
+      events: <EventModel>[
+        EventModel(
+          id: 'team-event',
+          userId: 'user-1',
+          title: '팀 일정',
+          startAt: DateTime.utc(2026, 8, 15, 9),
+          groupEventId: 'group-1',
+        ),
+        EventModel(
+          id: 'recurring-event',
+          userId: 'user-1',
+          title: '반복 일정',
+          startAt: DateTime.utc(2026, 8, 15, 10),
+          recurrenceRule: 'FREQ=WEEKLY',
+        ),
+      ],
+    );
+
+    final byId = <String, Map<String, Object?>>{
+      for (final event in payload.rawEvents) event['id']! as String: event,
+    };
+    expect(byId['team-event']?['is_team'], isTrue);
+    expect(byId['recurring-event']?['is_recurring'], isTrue);
   });
 
   test(

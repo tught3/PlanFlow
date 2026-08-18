@@ -12,6 +12,7 @@ import '../data/repositories/event_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../providers/auth_provider.dart';
 import 'calendar_sync_service.dart';
+import 'alarm_service.dart';
 import 'device_calendar_service.dart';
 import 'departure_alarm_service.dart';
 import 'event_preparation_service.dart';
@@ -127,32 +128,35 @@ class CalendarAutoSyncService {
     String reason = 'app_lifecycle',
     bool force = false,
   }) async {
-    if (!_canSync) {
-      await _recordProviderStatus(
-        'all',
-        status: 'attention',
-        message: '로그인 또는 Supabase 설정이 필요합니다.',
-      );
-      return CalendarAutoSyncResult.skipped('not_ready');
-    }
-
+    // Claim both guards before the first await. Loading the persisted throttle
+    // timestamp is asynchronous; claiming afterwards allowed two lifecycle
+    // callbacks to enter the expensive providers concurrently.
     if (_isSyncing || _globalSyncInProgress) {
       return CalendarAutoSyncResult.skipped('already_syncing');
     }
-
-    final now = _now();
-    final lastAttemptAt = _lastAttemptAt ?? await _loadLastAttemptAt();
-    if (!force &&
-        lastAttemptAt != null &&
-        now.difference(lastAttemptAt) < _throttle) {
-      _lastAttemptAt = lastAttemptAt;
-      return CalendarAutoSyncResult.skipped('throttled');
-    }
-
     _isSyncing = true;
     _globalSyncInProgress = true;
-    var result = CalendarAutoSyncResult();
+
     try {
+      if (!_canSync) {
+        await _recordProviderStatus(
+          'all',
+          status: 'attention',
+          message: '로그인 또는 Supabase 설정이 필요합니다.',
+        );
+        return CalendarAutoSyncResult.skipped('not_ready');
+      }
+
+      final now = _now();
+      final lastAttemptAt = _lastAttemptAt ?? await _loadLastAttemptAt();
+      if (!force &&
+          lastAttemptAt != null &&
+          now.difference(lastAttemptAt) < _throttle) {
+        _lastAttemptAt = lastAttemptAt;
+        return CalendarAutoSyncResult.skipped('throttled');
+      }
+
+      var result = CalendarAutoSyncResult();
       await _storeLastStartedAt(now);
       for (var retryCount = 0;; retryCount += 1) {
         // 재시도(retry)에서는 알림 재예약(_resyncUpcomingPreparation)을 건너뛴다.
@@ -208,6 +212,15 @@ class CalendarAutoSyncService {
       return _calendarOutcome(naver);
     });
     await _runStep(result, 'naver_caldav_auto_import', () async {
+      // CalDAV parsing/import is comparatively expensive (Naver can return
+      // thousands of resources).  Never start it from the interactive
+      // startup/resume paths; Settings' explicit import and the scheduled
+      // alarm remain available.  The existing local events are untouched.
+      if (_deferAutomaticNaverImport(reason)) {
+        return CalendarAutoSyncStepOutcome.skipped(
+          '화면 전환 중에는 Naver CalDAV 자동 가져오기를 보류합니다.',
+        );
+      }
       if (!await _naverCalDav.hasCredentials()) {
         return CalendarAutoSyncStepOutcome.skipped(
           'Naver CalDAV가 아직 연결되지 않아 자동 가져오기를 건너뜁니다.',
@@ -245,6 +258,21 @@ class CalendarAutoSyncService {
       );
     }
     return result;
+  }
+
+  bool _deferAutomaticNaverImport(String reason) {
+    switch (reason) {
+      case 'startup':
+      case 'app_start':
+      case 'app_resumed':
+      case 'background':
+      case 'auth_changed':
+      case 'foreground_idle':
+      case 'startup_gate':
+        return true;
+      default:
+        return false;
+    }
   }
 
   bool get _canSync {
@@ -377,8 +405,7 @@ class CalendarAutoSyncService {
     }
     try {
       final prefs = await SharedPreferences.getInstance();
-      final current =
-          prefs.getStringList(_excludedGroupsKey) ?? <String>[];
+      final current = prefs.getStringList(_excludedGroupsKey) ?? <String>[];
       final next = List<String>.from(current);
       if (excluded) {
         if (!next.contains(normalizedGroupId)) {
@@ -677,7 +704,7 @@ class DailyCalendarSyncSchedulerService {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
-    final initialized = await AndroidAlarmManager.initialize();
+    final initialized = await AlarmService.ensureInitialized();
     if (!initialized) {
       return false;
     }

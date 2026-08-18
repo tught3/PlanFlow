@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -98,7 +99,24 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Supabase 초기화에 실패했습니다'), findsOneWidget);
+    expect(
+      find.textContaining('로그인 서비스를 초기화하지 못했습니다'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('LoginScreen sanitizes platform channel failures',
+      (tester) async {
+    AppEnv.markSupabaseInitializationFailed(
+      PlatformException(
+        code: 'channel-error',
+        message: 'Unable to establish SharedPreferencesApi.getAll',
+      ),
+    );
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('channel-error'), findsNothing);
+    expect(find.textContaining('앱 초기화가 지연되고 있습니다'), findsOneWidget);
   });
 
   testWidgets('LoginScreen shows safer email sign-up guidance', (tester) async {

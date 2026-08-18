@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin
 import java.util.Locale
 
 class MainActivity : FlutterActivity() {
@@ -100,6 +101,15 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        // Register this lightweight, required plugin before Flutter's generated
+        // registrant. A transitive plugin can throw during cold-start
+        // registration; if that aborts the generated list before shared prefs,
+        // Supabase auth and every preferences consumer lose their channel.
+        try {
+            flutterEngine.plugins.add(SharedPreferencesPlugin())
+        } catch (error: Throwable) {
+            Log.w("PlanFlow", "SharedPreferences pre-registration skipped", error)
+        }
         super.configureFlutterEngine(flutterEngine)
         planFlowStt = PlanFlowSttChannel(this, flutterEngine)
         settingsChannel = MethodChannel(

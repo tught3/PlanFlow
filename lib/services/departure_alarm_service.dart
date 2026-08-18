@@ -13,6 +13,7 @@ import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import 'app_permission_service.dart';
+import 'alarm_service.dart';
 import 'departure_acknowledgement_store.dart';
 import 'map_service.dart';
 import 'notification_service.dart';
@@ -167,6 +168,7 @@ class DepartureAlarmService {
     Duration? safetyMarginOverride,
     MapTravelMode? travelModeOverride,
     bool fireDueDeparture = false,
+
     /// 백그라운드 isolate(모니터·preflight 콜백)에서 호출할 때 true로 설정한다.
     /// 라이브 GPS 조회를 건너뛰고 캐시된 위치만 사용해 LocationManager 폭주를 막는다.
     bool cacheOnlyLocation = false,
@@ -475,7 +477,7 @@ class DepartureAlarmService {
       await _recordNextMonitorStatus(nextMonitorAt, scheduled: false);
       return false;
     }
-    final initialized = await AndroidAlarmManager.initialize();
+    final initialized = await AlarmService.ensureInitialized();
     if (!initialized) {
       await _recordNextMonitorStatus(nextMonitorAt, scheduled: false);
       return false;
@@ -517,7 +519,7 @@ class DepartureAlarmService {
     }
 
     try {
-      final initialized = await AndroidAlarmManager.initialize();
+      final initialized = await AlarmService.ensureInitialized();
       if (!initialized) {
         return false;
       }
@@ -616,7 +618,7 @@ class DepartureAlarmService {
       return false;
     }
     try {
-      final initialized = await AndroidAlarmManager.initialize();
+      final initialized = await AlarmService.ensureInitialized();
       if (!initialized) {
         return false;
       }
@@ -1019,7 +1021,7 @@ Future<void> _departureAlarmMonitorCallback() async {
   DiagLogger.log(
     'DepartureMonitor',
     'monitorCallback 시작 at=${DateTime.now().toIso8601String()} '
-    'cacheOnlyLocation=true (라이브 GPS 조회 금지)',
+        'cacheOnlyLocation=true (라이브 GPS 조회 금지)',
   );
   Duration? scheduledInterval;
   try {
@@ -1041,8 +1043,8 @@ Future<void> _departureAlarmMonitorCallback() async {
     DiagLogger.log(
       'DepartureMonitor',
       'monitorCallback 완료 scheduled=${refreshResult.scheduled} '
-      'skipped=${refreshResult.skipped} '
-      'nextInterval=${scheduledInterval?.inMinutes ?? 30}min',
+          'skipped=${refreshResult.skipped} '
+          'nextInterval=${scheduledInterval?.inMinutes ?? 30}min',
     );
   } catch (error, stackTrace) {
     debugPrint('Departure alarm monitor skipped: $error');

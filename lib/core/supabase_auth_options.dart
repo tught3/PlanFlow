@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -63,9 +64,38 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
 
   @override
   Future<void> initialize() async {
-    _preferences =
-        _preferencesOverride ?? await SharedPreferences.getInstance();
-    _initialized = true;
+    final override = _preferencesOverride;
+    if (override != null) {
+      _preferences = override;
+      _initialized = true;
+      return;
+    }
+
+    // On a cold Android start the Flutter engine can finish attaching the
+    // shared_preferences channel a moment after Supabase asks its storage to
+    // initialize.  Let that transient race settle instead of surfacing the
+    // raw channel-error on the login screen.
+    Object? lastError;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        _preferences = await SharedPreferences.getInstance();
+        _initialized = true;
+        return;
+      } on MissingPluginException catch (error) {
+        lastError = error;
+      } on PlatformException catch (error) {
+        lastError = error;
+      }
+      if (attempt < 3) {
+        await Future<void>.delayed(
+          Duration(milliseconds: 100 * (attempt + 1)),
+        );
+      }
+    }
+    Error.throwWithStackTrace(
+      lastError ?? StateError('SharedPreferences initialization failed'),
+      StackTrace.current,
+    );
   }
 
   @override
@@ -193,6 +223,7 @@ FlutterAuthClientOptions buildPlanFlowAuthOptions({
   required String supabaseUrl,
   bool detectSessionInUri = false,
   bool autoRefreshToken = true,
+
   /// true이면 저장된 세션을 로드하지 않는다 (백그라운드 isolate용).
   /// autoRefreshToken=false만으로는 초기 recoverSession() 호출을 막지 못해
   /// 토큰 rotation이 발생해 메인 앱 세션이 invalidate되는 문제 방지.
@@ -212,6 +243,9 @@ FlutterAuthClientOptions buildPlanFlowAuthOptions({
       legacyPersistSessionKey:
           PlanFlowAuthLocalStorage.legacyKeyForSupabaseUrl(supabaseUrl),
     ),
+    // Keep the package PKCE bridge: OAuth callback state must survive the
+    // browser round-trip. The Android host pre-registers SharedPreferences
+    // before generated plugin registration, eliminating the cold-start race.
     pkceAsyncStorage: SharedPreferencesGotrueAsyncStorage(),
   );
 }

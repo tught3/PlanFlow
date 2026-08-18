@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
-import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/recurrence_expansion.dart' as recurrence_expansion;
@@ -23,6 +22,7 @@ import '../../services/synced_public_holiday_visibility.dart';
 import '../../services/voice_conversation_launcher.dart';
 import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
+import 'calendar_projection.dart';
 part 'calendar_widgets.dart';
 
 enum _CalendarLoadState {
@@ -33,25 +33,23 @@ enum _CalendarLoadState {
   error,
 }
 
-const calendarCriticalEventMarkerColor = Color(0xFFB42318);
-const calendarMultiDayEventBackgroundColor = Color(0xFFDDEFE6);
-const calendarMultiDayEventTextColor = Color(0xFF174F4A);
-const calendarCriticalMultiDayAccentColor = Color(0xFFE98B86);
-// 홈 위젯의 CRITICAL_TEXT_COLOR(0xFFD94444)와 톤을 맞춘 인앱 캘린더 중요 일정 텍스트 색상.
-const calendarCriticalEventTextColor = Color(0xFFD94444);
-const calendarGroupEventColor = Color(0xFF7C3AED);
-// 반복 일정 강조용 색상(호박색). 연속(멀티데이) 일정은 이미 위 초록 계열
-// (calendarMultiDayEventTextColor)을 쓰고 있어, 반복 일정은 겹치지 않게
-// 별도 색으로 구분한다.
-const calendarRecurringEventColor = Color(0xFFB8720A);
-// 공휴일 표시 색상. 과거엔 calendarCriticalEventMarkerColor(중요 일정과 동일한
-// 빨강)를 그대로 재사용해 공휴일과 중요 일정이 캘린더에서 구분되지 않았다
-// (사용자 지적, 2026-07-22). 중요 일정의 빨강과 겹치지 않는 파랑 계열로 분리.
-const calendarHolidayColor = Color(0xFF2563EB);
-
-Color _categoryColor(String category) {
-  return PlanFlowEventCategories.colorOf(category);
-}
+// Calendar semantic palette. Weekday colors are applied only to date numbers;
+// event colors never inherit the weekday color.
+const calendarCriticalEventMarkerColor = Color(0xFF7A5AC8);
+const calendarCriticalEventTextColor = Color(0xFF6B46C1);
+const calendarCriticalEventBackgroundColor = Color(0xFFF3EEFF);
+const calendarNormalEventTextColor = Color(0xFF38516B);
+const calendarNormalEventBackgroundColor = Color(0xFFEDF2F7);
+const calendarMultiDayEventBackgroundColor = Color(0xFFE8EEF5);
+const calendarMultiDayEventTextColor = Color(0xFF334E68);
+const calendarMultiDayEventBorderColor = Color(0xFF1F3B57);
+const calendarCriticalMultiDayAccentColor = Color(0xFF7A5AC8);
+const calendarGroupEventColor = Color(0xFF9A5B00);
+const calendarGroupEventBackgroundColor = Color(0xFFFFF1C2);
+const calendarRecurringEventColor = Color(0xFF0F766E);
+const calendarRecurringEventBackgroundColor = Color(0xFFE1F4F0);
+const calendarHolidayColor = Color(0xFFC62828);
+const calendarSaturdayColor = Color(0xFF1E64B7);
 
 @visibleForTesting
 List<EventModel> mergeCalendarEventsAfterReload({
@@ -450,10 +448,32 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
+class _CalendarMonthProjection {
+  const _CalendarMonthProjection({
+    required this.visibleEvents,
+    required this.cells,
+    required this.dayEvents,
+  });
+
+  final List<EventModel> visibleEvents;
+  final List<CalendarMiniMonthCellData> cells;
+  final Map<int, List<EventModel>> dayEvents;
+}
+
 class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _focusedMonth;
   List<EventModel> _allEvents = const <EventModel>[];
+  List<EventModel> _visibleEventsCache = const <EventModel>[];
+  List<CalendarOverlayItem> _visibleGroupOverlayEventsCache =
+      const <CalendarOverlayItem>[];
+  List<CalendarMiniMonthCellData> _miniMonthCellsCache =
+      const <CalendarMiniMonthCellData>[];
+  List<EventModel> _selectedDateEventsCache = const <EventModel>[];
+  List<CalendarOverlayItem> _selectedDateGroupEventsCache =
+      const <CalendarOverlayItem>[];
+  final Map<String, _CalendarMonthProjection> _monthProjectionCache =
+      <String, _CalendarMonthProjection>{};
   GroupCalendarOverlayProvider? _groupOverlayProvider;
 
   /// 미확인 리더 지시가 있는 개인 이벤트 id 집합
@@ -463,6 +483,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _isSearching = false;
   bool _isRefreshing = false;
   bool _hasPendingRefresh = false;
+  int _monthNavigationGeneration = 0;
+  int _calendarInputRevision = 0;
   DateTime? _pendingFocusDate;
   DateTime? _pendingOpenDaySheetDate;
   final TextEditingController _searchController = TextEditingController();
@@ -475,7 +497,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _focusedMonth = DateTime(initialDate.year, initialDate.month);
     _pendingOpenDaySheetDate = widget.initialDate;
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
-    _searchController.addListener(() => setState(() {}));
+    _searchController.addListener(_handleSearchChanged);
     _loadEvents(focusDate: widget.initialDate);
   }
 
@@ -492,6 +514,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _selectedDate = today;
         _focusedMonth = DateTime(today.year, today.month);
       });
+      _refreshCalendarViewCache();
       return;
     }
     _pendingOpenDaySheetDate = nextDate;
@@ -509,9 +532,221 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String? get _selectedDateHolidayName =>
       KoreanHolidays.holidayName(_selectedDate);
 
+  void _handleSearchChanged() {
+    if (!mounted) {
+      return;
+    }
+    _calendarInputRevision += 1;
+    _monthProjectionCache.clear();
+    _refreshCalendarViewCache();
+  }
+
+  String _monthCacheKey(DateTime month) =>
+      '${month.year}-${month.month}-${_searchController.text.trim().toLowerCase()}';
+
+  _CalendarMonthProjection _projectionForMonth(DateTime month) {
+    final key = _monthCacheKey(month);
+    final cached = _monthProjectionCache[key];
+    if (cached != null) return cached;
+    final visibleEvents = _computeVisibleEvents(month: month);
+    final projection = _CalendarMonthProjection(
+      visibleEvents: visibleEvents,
+      cells: buildCalendarMiniMonthCells(
+        events: visibleEvents,
+        focusedMonth: month,
+      ),
+      dayEvents: buildCalendarDayEventIndex(
+        events: visibleEvents,
+        focusedMonth: month,
+      ),
+    );
+    _monthProjectionCache[key] = projection;
+    return projection;
+  }
+
+  Future<_CalendarMonthProjection?> _projectionForMonthInChunks(
+    DateTime month, {
+    required int expectedGeneration,
+    required int expectedInputRevision,
+  }) async {
+    final key = _monthCacheKey(month);
+    final cached = _monthProjectionCache[key];
+    if (cached != null) return cached;
+    bool isCurrent() =>
+        mounted &&
+        expectedGeneration == _monthNavigationGeneration &&
+        expectedInputRevision == _calendarInputRevision;
+    if (!isCurrent()) return null;
+    final monthStart = DateTime(month.year, month.month);
+    final monthEnd =
+        DateTime(month.year, month.month + 1, 0).add(const Duration(days: 1));
+    final expanded = <EventModel>[];
+    final source = _filteredEvents;
+    const chunkSize = 64;
+    for (var offset = 0; offset < source.length; offset += chunkSize) {
+      if (!isCurrent()) return null;
+      final end = (offset + chunkSize).clamp(0, source.length);
+      for (final event in source.sublist(offset, end)) {
+        expanded.addAll(
+          _expandRecurringEvent(
+            event,
+            rangeStart: monthStart,
+            rangeEnd: monthEnd,
+          ),
+        );
+      }
+      // Give the renderer a chance to paint month navigation and receive a
+      // newer tap before continuing the projection.
+      await Future<void>.delayed(Duration.zero);
+      if (!isCurrent()) return null;
+    }
+    final visible = _hideOverriddenRecurringOccurrences(expanded)
+      ..removeWhere(isSyncedPublicHolidayDuplicate)
+      ..sort(
+        (a, b) =>
+            (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)),
+      );
+    if (!isCurrent()) return null;
+    await Future<void>.delayed(Duration.zero);
+    if (!isCurrent()) return null;
+    final cells = buildCalendarMiniMonthCells(
+      events: visible,
+      focusedMonth: month,
+    );
+    if (!isCurrent()) return null;
+    await Future<void>.delayed(Duration.zero);
+    if (!isCurrent()) return null;
+    final dayEvents = buildCalendarDayEventIndex(
+      events: visible,
+      focusedMonth: month,
+    );
+    if (!isCurrent()) return null;
+    final projection = _CalendarMonthProjection(
+      visibleEvents: visible,
+      cells: cells,
+      dayEvents: dayEvents,
+    );
+    _monthProjectionCache[key] = projection;
+    return projection;
+  }
+
   void _handleEventRefresh() {
     final signal = EventRefreshBus.instance.latest.value;
     unawaited(_loadEvents(focusDate: signal?.startAt));
+  }
+
+  void _refreshCalendarViewCache({bool includeOverlayEvents = true}) {
+    final projection = _projectionForMonth(_focusedMonth);
+    final visibleEvents = projection.visibleEvents;
+    final visibleGroupOverlayEvents = includeOverlayEvents
+        ? _computeVisibleGroupOverlayEvents(visibleEvents)
+        : const <CalendarOverlayItem>[];
+    final miniMonthCells = visibleGroupOverlayEvents.isEmpty
+        ? projection.cells
+        : buildCalendarMiniMonthCells(
+            events: visibleEvents,
+            focusedMonth: _focusedMonth,
+            overlayEvents: visibleGroupOverlayEvents,
+          );
+    final selectedDayEvents = _selectedDate.year == _focusedMonth.year &&
+            _selectedDate.month == _focusedMonth.month
+        ? projection.dayEvents[_selectedDate.day] ?? const <EventModel>[]
+        : _eventsForLocalDay(visibleEvents, _selectedDate);
+    final selectedGroupEvents = visibleGroupOverlayEvents
+        .where((event) => event.spansLocalDay(_selectedDate))
+        .toList(growable: false);
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _visibleEventsCache = visibleEvents;
+      _visibleGroupOverlayEventsCache = visibleGroupOverlayEvents;
+      _miniMonthCellsCache = miniMonthCells;
+      _selectedDateEventsCache = selectedDayEvents;
+      _selectedDateGroupEventsCache = selectedGroupEvents;
+    });
+  }
+
+  List<EventModel> _computeVisibleEvents({DateTime? month}) {
+    final targetMonth = month ?? _focusedMonth;
+    final monthStart = DateTime(targetMonth.year, targetMonth.month);
+    final monthEnd = DateTime(targetMonth.year, targetMonth.month + 1, 0)
+        .add(const Duration(days: 1));
+    final expanded = <EventModel>[];
+    for (final event in _filteredEvents) {
+      expanded.addAll(
+        _expandRecurringEvent(
+          event,
+          rangeStart: monthStart,
+          rangeEnd: monthEnd,
+        ),
+      );
+    }
+    final visible = _hideOverriddenRecurringOccurrences(expanded);
+    visible.removeWhere(isSyncedPublicHolidayDuplicate);
+    visible.sort(
+      (a, b) => (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)),
+    );
+    return visible;
+  }
+
+  List<CalendarOverlayItem> _computeVisibleGroupOverlayEvents(
+    List<EventModel> visibleEvents,
+  ) {
+    final groupOverlayProvider = _groupOverlayProvider;
+    if (groupOverlayProvider == null) {
+      return const <CalendarOverlayItem>[];
+    }
+    final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
+    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
+    final linkedGroupEventIds = visibleEvents
+        .map((event) => event.groupEventId)
+        .whereType<String>()
+        .toSet();
+    return groupOverlayProvider.items.where((event) {
+      final start = event.startAt;
+      if (start == null) {
+        return false;
+      }
+      if (event.isGroup && linkedGroupEventIds.contains(event.id)) {
+        return false;
+      }
+      final localStart = planflowLocalDay(start);
+      final localEnd = planflowLocalDay(event.endAt ?? start);
+      return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
+    }).toList(growable: false)
+      ..sort((a, b) {
+        final aStart = a.startAt ?? DateTime(0);
+        final bStart = b.startAt ?? DateTime(0);
+        final byStart = aStart.compareTo(bStart);
+        if (byStart != 0) {
+          return byStart;
+        }
+        return a.title.compareTo(b.title);
+      });
+  }
+
+  void _updateSelectedDateCache(DateTime day) {
+    final projection =
+        day.year == _focusedMonth.year && day.month == _focusedMonth.month
+            ? _monthProjectionCache[_monthCacheKey(_focusedMonth)]
+            : null;
+    final selectedEvents = projection?.dayEvents[day.day] ??
+        (day.year == _focusedMonth.year && day.month == _focusedMonth.month
+            ? _eventsForLocalDay(_visibleEventsCache, day)
+            : const <EventModel>[]);
+    final selectedGroupEvents = _visibleGroupOverlayEventsCache
+        .where((event) => event.spansLocalDay(day))
+        .toList(growable: false);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _selectedDate = day;
+      _selectedDateEventsCache = selectedEvents;
+      _selectedDateGroupEventsCache = selectedGroupEvents;
+    });
   }
 
   Future<void> _loadEvents({DateTime? focusDate}) async {
@@ -582,6 +817,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (mounted) {
         setState(() {
           _allEvents = _eventsForDisplayAfterReload(events);
+          _calendarInputRevision += 1;
+          // Loaded data changes the projection inputs; never reuse a month
+          // computed from the previous repository snapshot.
+          _monthProjectionCache.clear();
           if (focusDate != null) {
             _selectedDate = focusDate;
             _focusedMonth = DateTime(focusDate.year, focusDate.month);
@@ -596,12 +835,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _loadMessage = null;
         });
       }
+      _refreshCalendarViewCache(includeOverlayEvents: false);
       await _loadGroupOverlay(userId: userId);
       unawaited(_loadGroupInstructionBadges(userId));
       if (shouldOpenDaySheet && daySheetDate != null && mounted) {
+        final personalEvents = List<EventModel>.of(_selectedDateEventsCache);
+        final groupEvents = List<CalendarOverlayItem>.of(
+          _selectedDateGroupEventsCache,
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            _showDayEventsSheet(daySheetDate!);
+            _showDayEventsSheet(
+              daySheetDate!,
+              personalEvents: personalEvents,
+              groupEvents: groupEvents,
+            );
           }
         });
       }
@@ -667,73 +915,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   List<EventModel> get _eventsForSelectedDate {
-    return _visibleEvents.where((event) {
-      final startAt = event.startAt;
-      if (startAt == null) {
-        return false;
-      }
-      return _eventIntersectsDay(event, _selectedDate);
-    }).toList(growable: false);
+    return _selectedDateEventsCache;
   }
 
   List<CalendarOverlayItem> get _overlayEventsForSelectedDate {
-    return _visibleGroupOverlayEvents.where((event) {
-      return event.spansLocalDay(_selectedDate);
-    }).toList(growable: false);
-  }
-
-  List<CalendarOverlayItem> _overlayEventsForDay(DateTime day) {
-    return _visibleGroupOverlayEvents.where((event) {
-      return event.spansLocalDay(day);
-    }).toList(growable: false);
+    return _selectedDateGroupEventsCache;
   }
 
   List<CalendarMiniMonthCellData> get _miniMonthCells {
-    return buildCalendarMiniMonthCells(
-      events: _visibleEvents,
-      focusedMonth: _focusedMonth,
-      overlayEvents: _visibleGroupOverlayEvents,
-    );
-  }
-
-  List<CalendarOverlayItem> get _visibleGroupOverlayEvents {
-    final groupOverlayProvider = _groupOverlayProvider;
-    if (groupOverlayProvider == null) {
-      return const <CalendarOverlayItem>[];
-    }
-    final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
-    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
-    // 개인 일정으로 이미 저장된(=groupEventId로 연결된) 그룹 일정은 오버레이로
-    // 또 그리지 않는다. 안 그러면 "A일정"(개인)과 "팀 A일정"(오버레이)이
-    // 같은 날 두 줄로 중복 표시된다(같은 일정을 개인+팀 동시 저장했을 때).
-    final linkedGroupEventIds = _visibleEvents
-        .map((event) => event.groupEventId)
-        .whereType<String>()
-        .toSet();
-    return groupOverlayProvider.items.where((event) {
-      final start = event.startAt;
-      if (start == null) {
-        return false;
-      }
-      if (event.isGroup && linkedGroupEventIds.contains(event.id)) {
-        return false;
-      }
-      // UTC 원시값이 아닌 로컬(KST) 날짜 기준으로 비교해야, 월 경계
-      // 근처(예: UTC 자정 이전=KST 다음날 오전)의 일정이 잘못 걸러지지
-      // 않는다(이 파일의 다른 로컬 날짜 필터들과 동일하게 정규화).
-      final localStart = planflowLocalDay(start);
-      final localEnd = planflowLocalDay(event.endAt ?? start);
-      return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
-    }).toList(growable: false)
-      ..sort((a, b) {
-        final aStart = a.startAt ?? DateTime(0);
-        final bStart = b.startAt ?? DateTime(0);
-        final byStart = aStart.compareTo(bStart);
-        if (byStart != 0) {
-          return byStart;
-        }
-        return a.title.compareTo(b.title);
-      });
+    return _miniMonthCellsCache;
   }
 
   /// 미확인 리더 지시가 있는 개인 이벤트 id 를 로드해 badge 표시에 사용한다.
@@ -756,14 +946,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  Future<void> _loadGroupOverlay({String? userId}) async {
+  Future<void> _loadGroupOverlay({
+    String? userId,
+    DateTime? requestedMonth,
+    int? requestedGeneration,
+  }) async {
+    final loadMonth = requestedMonth ?? _focusedMonth;
+    final loadKey = _monthCacheKey(loadMonth);
     try {
       if (!AppEnv.isSupabaseReady &&
           widget.groupCalendarOverlayProvider == null) {
         _groupOverlayProvider?.clear();
-        if (mounted) {
-          setState(() {});
-        }
+        _refreshCalendarViewCache(includeOverlayEvents: false);
         return;
       }
       _groupOverlayProvider ??=
@@ -771,15 +965,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final resolvedUserId = userId ?? _resolveCalendarUserId();
       if (resolvedUserId == null || resolvedUserId.isEmpty) {
         await _groupOverlayProvider!.clear();
-        if (mounted) {
-          setState(() {});
-        }
+        _refreshCalendarViewCache(includeOverlayEvents: false);
         return;
       }
-      await _groupOverlayProvider!.loadForMonth(resolvedUserId, _focusedMonth);
-      if (mounted) {
-        setState(() {});
+      await _groupOverlayProvider!.loadForMonth(resolvedUserId, loadMonth);
+      if (!mounted ||
+          (requestedGeneration != null &&
+              requestedGeneration != _monthNavigationGeneration) ||
+          loadKey != _monthCacheKey(_focusedMonth)) {
+        return;
       }
+      _refreshCalendarViewCache();
     } catch (error, stackTrace) {
       // 그룹 오버레이 로드 실패가 개인 일정 로드 흐름(_loadEvents의 재시도
       // 로직)에 영향을 주지 않도록 여기서 흡수한다.
@@ -812,28 +1008,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList(growable: false);
   }
 
-  List<EventModel> get _visibleEvents {
-    final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
-    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0)
-        .add(const Duration(days: 1));
-    final expanded = <EventModel>[];
-    for (final event in _filteredEvents) {
-      expanded.addAll(
-        _expandRecurringEvent(
-          event,
-          rangeStart: monthStart,
-          rangeEnd: monthEnd,
-        ),
-      );
-    }
-    final visible = _hideOverriddenRecurringOccurrences(expanded);
-    visible.removeWhere(isSyncedPublicHolidayDuplicate);
-    visible.sort(
-      (a, b) => (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)),
-    );
-    return visible;
-  }
-
   // lib/core/recurrence_expansion.dart의 공용 유틸로 위임한다(순수 리팩터,
   // 동작 동일 — 예외 이벤트가 대체하는 원본 회차 날짜(overriddenOccurrenceDate)로
   // 매칭하는 로직 그대로 유지).
@@ -841,18 +1015,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     List<EventModel> events,
   ) {
     return recurrence_expansion.hideOverriddenRecurringOccurrences(events);
-  }
-
-  bool _eventIntersectsDay(EventModel event, DateTime day) {
-    final startAt = event.startAt;
-    if (startAt == null) {
-      return false;
-    }
-    return planflowEventIntersectsLocalDay(
-      startAt: startAt,
-      endAt: event.endAt,
-      day: day,
-    );
   }
 
   // lib/core/recurrence_expansion.dart의 공용 유틸로 위임한다(순수 리팩터,
@@ -896,10 +1058,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         eventDisplayEndExclusive.isAfter(rangeStart);
   }
 
-  void _showDayEventsSheet(DateTime day) {
-    final events = _visibleEvents.where((event) {
-      return _eventIntersectsDay(event, day);
-    }).toList(growable: false);
+  void _showDayEventsSheet(
+    DateTime day, {
+    List<EventModel>? personalEvents,
+    List<CalendarOverlayItem>? groupEvents,
+  }) {
+    final events = personalEvents ?? _selectedDateEventsCache;
+    final resolvedGroupEvents = groupEvents ?? _selectedDateGroupEventsCache;
     final groupOverlayProvider = _groupOverlayProvider;
     showModalBottomSheet<void>(
       context: context,
@@ -920,7 +1085,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             return DayEventsSheet(
               day: day,
               personalEvents: events,
-              groupEvents: _overlayEventsForDay(day),
+              groupEvents: resolvedGroupEvents,
               scrollController: scrollController,
               onAdd: () {
                 Navigator.of(context).pop();
@@ -959,13 +1124,58 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _changeMonth(int delta) {
+    final nextMonth = DateTime(
+      _focusedMonth.year,
+      _focusedMonth.month + delta,
+    );
+    final generation = ++_monthNavigationGeneration;
+    final inputRevision = _calendarInputRevision;
     setState(() {
-      _focusedMonth = DateTime(
-        _focusedMonth.year,
-        _focusedMonth.month + delta,
-      );
+      _focusedMonth = nextMonth;
+      _visibleEventsCache = const <EventModel>[];
+      _visibleGroupOverlayEventsCache = const <CalendarOverlayItem>[];
+      _selectedDateGroupEventsCache = const <CalendarOverlayItem>[];
+      _selectedDateEventsCache = const <EventModel>[];
+      _miniMonthCellsCache = const <CalendarMiniMonthCellData>[];
     });
-    unawaited(_loadGroupOverlay());
+    // Yield the month-transition frame before recurrence expansion and slot
+    // allocation. This keeps rapid month taps responsive even with thousands
+    // of events; stale projections are discarded by the generation check.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || generation != _monthNavigationGeneration) return;
+      final projection = await _projectionForMonthInChunks(
+        nextMonth,
+        expectedGeneration: generation,
+        expectedInputRevision: inputRevision,
+      );
+      if (projection == null ||
+          !mounted ||
+          generation != _monthNavigationGeneration ||
+          inputRevision != _calendarInputRevision) {
+        return;
+      }
+      setState(() {
+        _visibleEventsCache = projection.visibleEvents;
+        _miniMonthCellsCache = projection.cells;
+        if (_selectedDate.year == nextMonth.year &&
+            _selectedDate.month == nextMonth.month) {
+          _selectedDateEventsCache =
+              projection.dayEvents[_selectedDate.day] ?? const <EventModel>[];
+        }
+      });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          generation == _monthNavigationGeneration &&
+          inputRevision == _calendarInputRevision) {
+        unawaited(
+          _loadGroupOverlay(
+            requestedMonth: nextMonth,
+            requestedGeneration: generation,
+          ),
+        );
+      }
+    });
   }
 
   void _handleMonthSwipe(DragEndDetails details) {
@@ -1046,6 +1256,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             _focusedMonth = DateTime.now();
                             _selectedDate = DateTime.now();
                           });
+                          _refreshCalendarViewCache(
+                              includeOverlayEvents: false);
                           unawaited(_loadGroupOverlay());
                         },
                       ),
@@ -1057,11 +1269,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         selectedDate: _selectedDate,
                         monthCells: _miniMonthCells,
                         onDaySelected: (day) {
-                          setState(() {
-                            _selectedDate = day;
-                          });
+                          _updateSelectedDateCache(day);
                           if (!useTwoPane) {
-                            _showDayEventsSheet(day);
+                            final personalEvents =
+                                List<EventModel>.of(_selectedDateEventsCache);
+                            final groupEvents = List<CalendarOverlayItem>.of(
+                              _selectedDateGroupEventsCache,
+                            );
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                _showDayEventsSheet(
+                                  day,
+                                  personalEvents: personalEvents,
+                                  groupEvents: groupEvents,
+                                );
+                              }
+                            });
                           }
                         },
                       ),

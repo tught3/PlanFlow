@@ -27,6 +27,7 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
   GroupCalendarOverlayState _state = const GroupCalendarOverlayState.initial();
   String? _currentUserId;
   bool _isDisposed = false;
+  int _loadGeneration = 0;
 
   GroupCalendarOverlayState get state => _state;
   List<CalendarOverlayItem> get items => _state.items;
@@ -44,9 +45,12 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
     required DateTime rangeStart,
     required DateTime rangeEnd,
   }) async {
+    final generation = ++_loadGeneration;
     if (userId.isEmpty) {
       _currentUserId = null;
-      _setState(const GroupCalendarOverlayState.initial());
+      if (_isLatest(generation)) {
+        _setState(const GroupCalendarOverlayState.initial());
+      }
       return;
     }
 
@@ -60,6 +64,7 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
 
     try {
       await _contextProvider.load(userId);
+      if (!_isLatest(generation)) return;
       if (_contextProvider.error != null) {
         throw StateError(_contextProvider.error!);
       }
@@ -81,6 +86,7 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
 
       final events =
           await _repository.getEventsForGroup(group.id, rangeStart, rangeEnd);
+      if (!_isLatest(generation)) return;
       // 반복 일정은 표시 구간 안의 개별 발생으로 전개해 매 발생일마다 보이게 한다.
       final items = <CalendarOverlayItem>[];
       for (final event in events) {
@@ -94,6 +100,7 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
           );
         }
       }
+      if (!_isLatest(generation)) return;
       _setState(
         GroupCalendarOverlayState(
           items: items,
@@ -106,6 +113,7 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
         ),
       );
     } catch (error) {
+      if (!_isLatest(generation)) return;
       _setState(
         GroupCalendarOverlayState(
           items: const <CalendarOverlayItem>[],
@@ -124,7 +132,10 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
     final userId = _currentUserId;
     final rangeStart = _state.rangeStart;
     final rangeEnd = _state.rangeEnd;
-    if (userId == null || userId.isEmpty || rangeStart == null || rangeEnd == null) {
+    if (userId == null ||
+        userId.isEmpty ||
+        rangeStart == null ||
+        rangeEnd == null) {
       await load('', rangeStart: DateTime.now(), rangeEnd: DateTime.now());
       return;
     }
@@ -132,6 +143,7 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
   }
 
   Future<void> clear() async {
+    _loadGeneration++;
     _currentUserId = null;
     _setState(const GroupCalendarOverlayState.initial());
   }
@@ -155,6 +167,9 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  bool _isLatest(int generation) =>
+      !_isDisposed && generation == _loadGeneration;
 
   @override
   void dispose() {

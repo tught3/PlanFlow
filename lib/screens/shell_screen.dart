@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/responsive.dart';
 import '../data/models/user_settings_model.dart';
@@ -21,6 +22,9 @@ import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
 import '../services/feature_tour_service.dart';
 import '../services/manual_event_side_effect_service.dart';
+import '../core/startup_route_gate.dart';
+import '../services/onboarding_startup_gate.dart';
+import '../services/interaction_idle_gate.dart';
 import '../services/pending_departure_store.dart';
 import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
@@ -77,7 +81,15 @@ class ShellScreen extends StatefulWidget {
 }
 
 class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
+  // GoRouter may recreate ShellScreen for each bottom-tab route. These
+  // process/session claims keep that implementation detail from rerunning
+  // onboarding and expensive post-onboarding work for the same account.
+  static String? _sessionOnboardingUserId;
+  static Future<void>? _sessionOnboardingFlow;
+  static String? _sessionDeferredWorkUserId;
+
   late int _currentIndex;
+  late final List<Widget?> _tabChildren;
   late final ScrollController _homeScrollController;
   final AppPermissionService _permissionService = AppPermissionService();
   final CalendarAutoSyncService _calendarAutoSyncService =
@@ -104,24 +116,33 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _checkedExternalCalendarGuide = false;
   bool _checkedGoogleCalendarAutoPrompt = false;
   bool _checkedFeatureTour = false;
+  bool _postOnboardingStartupTasksQueued = false;
+  final OnboardingStartupGate _startupGate = OnboardingStartupGate();
+  final InteractionIdleGate _interactionIdleGate = InteractionIdleGate.instance;
+  int _startupWorkGeneration = 0;
   String? _observedUserId;
   // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
   bool _onboardingDecisionPending = false;
-  // 온보딩 게이트 안전망 타이머. 권한 온보딩/튜토리얼 push Future가
-  // 기기별 context.go() 복귀 경로에서 영원히 완료되지 않는(=게이트가 영구히
-  // 닫혀 로딩 화면에 갇히는) 실패 모드를 막는다. _runSignedInStartupTasks
-  // 시작 시 5초 후 강제 해제로 예약하고, 정상 종료 시 취소한다.
-  Timer? _onboardingGateSafetyTimer;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _homeScrollController = ScrollController(keepScrollOffset: false);
+    _tabChildren = List<Widget?>.filled(3, null);
+    _tabChildren[_currentIndex] = _buildTabChild(_currentIndex);
     _observedUserId = authProvider.userId;
     _onboardingDecisionPending =
         _observedUserId != null && _observedUserId!.isNotEmpty;
+    if (_observedUserId != null &&
+        _observedUserId!.isNotEmpty &&
+        _sessionOnboardingUserId == _observedUserId) {
+      _onboardingDecisionPending = false;
+    }
+    if (_onboardingDecisionPending) {
+      startupRouteGate.beginStartupWorkDeferral();
+    }
     WidgetsBinding.instance.addObserver(this);
     authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -135,11 +156,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _startupWorkGeneration += 1;
     authProvider.removeListener(_handleAuthChanged);
     WidgetsBinding.instance.removeObserver(this);
     _homeScrollController.dispose();
     _pendingDepartureTimer?.cancel();
-    _onboardingGateSafetyTimer?.cancel();
+    startupRouteGate.completeStartupWorkDeferral();
     super.dispose();
   }
 
@@ -147,18 +169,17 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'app_resumed',
-      ));
-      unawaited(_refreshDepartureAlarmsAndMonitor());
-      unawaited(_maybeShowPendingDepartureAlarm());
-      // 브리핑 알람은 "알람 콜백이 스스로 다음 날 것을 재예약"하는 체인
-      // 하나에만 의존했다 — 그 체인이 한 번이라도 조용히 끊기면(스케줄
-      // 실패·예외) 콜드스타트/설정 재저장 전까지 영구히 무음이 됐다(반복
-      // 신고 5회째). scheduleDaily는 멱등이라(이미 맞게 예약돼 있으면
-      // 그대로 두거나 동일하게 재예약) resume마다 불러도 안전하며, 이걸로
-      // 앱을 여는 것 자체가 재예약 백스톱이 된다.
-      unawaited(_ensureBriefingsScheduled(reason: 'app_resumed'));
+      if (_onboardingDecisionPending) return;
+      // Resume recovery and deferred startup share one singleflight future.
+      // _runAlarmRecovery() internally awaits _refreshDepartureAlarmsAndMonitor()
+      // and _maybeShowPendingDepartureAlarm(). Briefing rescheduling is a
+      // separate idempotent backstop (scheduleDaily is safe to call on every
+      // resume) so it must never be dropped from this branch again — losing
+      // it previously caused permanent silence until a cold start.
+      unawaited(startupRouteGate.startupWorkAllowedWhenIdle.then((_) async {
+        await _runAlarmRecovery();
+        await _ensureBriefingsScheduled(reason: 'app_resumed');
+      }));
     }
   }
 
@@ -203,6 +224,15 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _checkedExternalCalendarGuide = false;
     _checkedGoogleCalendarAutoPrompt = false;
     _checkedFeatureTour = false;
+    _postOnboardingStartupTasksQueued = false;
+    _startupGate.reset();
+    _startupWorkGeneration += 1;
+
+    // Only an actual auth identity transition resets the process-scoped
+    // claims. Recreating ShellScreen for a tab change must not reset them.
+    _sessionOnboardingUserId = null;
+    _sessionOnboardingFlow = null;
+    _sessionDeferredWorkUserId = null;
 
     if (!mounted) {
       return;
@@ -212,6 +242,11 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       _onboardingDecisionPending =
           currentUserId != null && currentUserId.isNotEmpty;
     });
+    if (currentUserId != null && currentUserId.isNotEmpty) {
+      startupRouteGate.beginStartupWorkDeferral();
+    } else {
+      startupRouteGate.completeStartupWorkDeferral();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_runSignedInStartupTasks(reason: 'auth_changed'));
@@ -220,60 +255,164 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _runSignedInStartupTasks({required String reason}) async {
-    // 온보딩 게이트 안전망: 권한 온보딩/튜토리얼 push Future가 기기별
-    // context.go() 복귀 경로에서 영원히 완료되지 않는(=게이트가 영원히
-    // 닫혀 로딩 화면에 갇히는) 실패를 막기 위한 최후의 보루. 정상 경로에서는
-    // 아래 try 블록의 finally에서 게이트를 해제하고 이 타이머를 취소한다.
-    // 하지만 어떤 이유로든(예외, await 중 위젯 dispose, context.go 복귀 지연)
-    // 게이트가 5초 안에 풀리지 않으면 강제로 해제해 사용자가 홈에 도달한다.
-    _onboardingGateSafetyTimer?.cancel();
-    _onboardingGateSafetyTimer = Timer(
-      const Duration(seconds: 5),
-      () {
-        if (mounted) {
-          debugPrint(
-            '[OnboardingGate] safety timer fired — forcing gate release '
-            '(reason=$reason)',
-          );
-          _clearOnboardingGate();
-        }
-      },
-    );
-
-    try {
-      await _maybeOpenPermissionOnboarding();
-      if (!mounted) {
-        return;
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    if (_sessionOnboardingUserId == userId) {
+      if (mounted && _onboardingDecisionPending) {
+        setState(() => _onboardingDecisionPending = false);
       }
+      return;
+    }
+    final inFlight = _sessionOnboardingFlow;
+    if (inFlight != null) {
+      await inFlight;
+      if (mounted && _onboardingDecisionPending) {
+        setState(() => _onboardingDecisionPending = false);
+      }
+      return;
+    }
+
+    final flow = _performSignedInStartupTasks(reason: reason, userId: userId);
+    _sessionOnboardingFlow = flow;
+    try {
+      await flow;
+    } finally {
+      if (identical(_sessionOnboardingFlow, flow)) {
+        _sessionOnboardingFlow = null;
+      }
+    }
+  }
+
+  Future<void> _performSignedInStartupTasks({
+    required String reason,
+    required String userId,
+  }) async {
+    final startedAt = DateTime.now();
+    var flowCompleted = false;
+    try {
       await _maybeOpenFeatureTour();
       if (!mounted) {
         return;
       }
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: reason,
-        force: reason == 'auth_changed',
-      ));
-      unawaited(_migrateFutureCriticalAlarms());
-      unawaited(_refreshDepartureAlarmsAndMonitor());
-      unawaited(_maybeShowPendingDepartureAlarm());
-      unawaited(_ensureBriefingsScheduled(reason: reason));
-      if (reason == 'app_start') {
-        unawaited(_maybeRecalculateAllAlarms());
+      await _maybeOpenPermissionOnboarding();
+      if (!mounted) {
+        return;
       }
-      debugPrint('[GCAL] _maybeAutoConnect 호출 시도 ($reason)');
-      unawaited(_maybeAutoConnectGoogleCalendar());
+      await _maybeShowExternalCalendarSyncGuide();
+      flowCompleted = true;
     } finally {
-      // 모든 온보딩 결정이 끝난 뒤(또는 예외 발생 시) 게이트를 해제한다.
-      // 온보딩 push가 발생했더라도 결국엔 사용자가 온보딩을 완료하고
-      // context.go(AppRoutes.home)로 돌아올 때 이 ShellScreen이 재사용되므로,
-      // 그 시점에 게이트가 이미 열려있어야 홈이 보인다. push Future가
-      // context.go 복귀를 만나 영원히 완료되지 않는 기기에서는 안전망
-      // 타이머가 5초 후에 이 코드를 대신해 게이트를 연다.
-      _onboardingGateSafetyTimer?.cancel();
+      // Always release the route gate, including onboarding/prefs exceptions.
+      // Nonessential platform work has its own settled-idle permit, so this
+      // cannot strand the app behind a permanent startup lock.
+      startupRouteGate.completeStartupWorkDeferral();
       if (mounted) {
         _clearOnboardingGate();
+        if (flowCompleted && authProvider.userId == userId) {
+          _sessionOnboardingUserId = userId;
+        }
+        DiagLogger.log(
+          'Onboarding',
+          'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms',
+        );
+      }
+      if (flowCompleted) {
+        _queuePostOnboardingStartupTasks(
+          reason: reason,
+          generation: _startupWorkGeneration,
+        );
       }
     }
+  }
+
+  void _queuePostOnboardingStartupTasks({
+    required String reason,
+    required int generation,
+  }) {
+    final userId = authProvider.userId;
+    if (userId == null ||
+        userId.isEmpty ||
+        _sessionDeferredWorkUserId == userId) {
+      return;
+    }
+    _sessionDeferredWorkUserId = userId;
+    if (_postOnboardingStartupTasksQueued) {
+      return;
+    }
+    _postOnboardingStartupTasksQueued = true;
+    unawaited(
+      _startupGate
+          .runAfterFirstHomeFrame(
+        () => _runDeferredStartupTasks(
+          reason: reason,
+          generation: generation,
+        ),
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        // A failed deferred task must not consume the session claim. The next
+        // resume/auth lifecycle can retry after the transient failure.
+        if (_sessionDeferredWorkUserId == userId) {
+          _sessionDeferredWorkUserId = null;
+        }
+        _postOnboardingStartupTasksQueued = false;
+        DiagLogger.log('Onboarding', 'deferred startup failed; claim cleared');
+        debugPrintStack(stackTrace: stackTrace);
+      }),
+    );
+  }
+
+  Future<void> _runDeferredStartupTasks({
+    required String reason,
+    required int generation,
+  }) async {
+    DiagLogger.log('Onboarding', 'deferred startup begin reason=$reason');
+    final userId = authProvider.userId;
+    if (!mounted ||
+        generation != _startupWorkGeneration ||
+        userId == null ||
+        userId.isEmpty) {
+      throw StateError('deferred startup became obsolete');
+    }
+    // Leave the first home frame completely quiet before releasing the global
+    // startup permit. A frame being drawn does not mean the user has stopped
+    // interacting, so require a short grace period plus a settled idle window.
+    await Future<void>.delayed(const Duration(seconds: 1));
+    await _interactionIdleGate.waitForStableIdle();
+    if (!mounted ||
+        generation != _startupWorkGeneration ||
+        authProvider.userId != userId) {
+      DiagLogger.log(
+        'Onboarding',
+        'deferred startup cancelled before gate release',
+      );
+      throw StateError('deferred startup became obsolete');
+    }
+    startupRouteGate.completeStartupWorkDeferral();
+    // CalendarAutoSyncService is owned by PlanFlowApp.  Shell instances can
+    // be recreated when navigation changes, so starting it here caused each
+    // recreation to compete for the UI isolate and CalDAV parser.
+    Future<bool> runWhenIdle(Future<void> Function() work) async {
+      final token = _interactionIdleGate.generation; // banned-ok: 시크릿 아님, idle-gate 세대 카운터(int)
+      await _interactionIdleGate.waitForIdle();
+      if (!mounted ||
+          generation != _startupWorkGeneration ||
+          authProvider.userId != userId ||
+          token != _interactionIdleGate.generation) {
+        DiagLogger.log('Onboarding', 'deferred startup task cancelled');
+        throw StateError('deferred startup cancelled by interaction');
+      }
+      await work();
+      return true;
+    }
+
+    await runWhenIdle(_migrateFutureCriticalAlarms);
+    await runWhenIdle(_runAlarmRecovery);
+    await runWhenIdle(() => _ensureBriefingsScheduled(reason: reason));
+    if (reason == 'app_start') {
+      await runWhenIdle(_maybeRecalculateAllAlarms);
+    }
+    await runWhenIdle(_maybeAutoConnectGoogleCalendar);
   }
 
   Future<void> _maybeOpenFeatureTour() async {
@@ -363,6 +502,23 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void>? _alarmRecoveryFuture;
+
+  Future<void> _runAlarmRecovery() {
+    final existing = _alarmRecoveryFuture;
+    if (existing != null) return existing;
+    final future = () async {
+      await _refreshDepartureAlarmsAndMonitor();
+      await _maybeShowPendingDepartureAlarm();
+    }();
+    late final Future<void> tracked;
+    tracked = future.whenComplete(() {
+      if (identical(_alarmRecoveryFuture, tracked)) _alarmRecoveryFuture = null;
+    });
+    _alarmRecoveryFuture = tracked;
+    return tracked;
+  }
+
   Future<void> _migrateFutureCriticalAlarms() async {
     final userId = authProvider.userId;
     if (userId == null || userId.isEmpty) {
@@ -380,6 +536,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         _currentIndex != widget.initialIndex) {
       setState(() {
         _currentIndex = widget.initialIndex;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _tabChildren[_currentIndex] == null) {
+          setState(() =>
+              _tabChildren[_currentIndex] = _buildTabChild(_currentIndex));
+        }
       });
     }
     if (oldWidget.initialCalendarDate != widget.initialCalendarDate &&
@@ -406,22 +568,15 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     setState(() {
       _currentIndex = index;
     });
-    switch (index) {
-      case 0:
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _showHomeAtTop();
-          }
-        });
-        context.go(AppRoutes.home);
-        break;
-      case 1:
-        context.go(AppRoutes.calendar);
-        break;
-      case 2:
-        context.go(AppRoutes.settings);
-        break;
-    }
+    // Keep this Shell alive while switching tabs. The inactive tab gets a
+    // cheap placeholder for the transition frame and is mounted afterward.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (index == 0) _showHomeAtTop();
+      if (_tabChildren[index] == null) {
+        setState(() => _tabChildren[index] = _buildTabChild(index));
+      }
+    });
   }
 
   void _handleTabSwipe(DragEndDetails details) {
@@ -461,10 +616,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     } catch (error, stackTrace) {
       debugPrint('Permission onboarding check failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-    }
-
-    if (mounted) {
-      await _maybeShowExternalCalendarSyncGuide();
     }
   }
 
@@ -575,18 +726,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       children: [
         IndexedStack(
           index: _currentIndex,
-          children: [
-            HomeScreen(scrollController: _homeScrollController),
-            CalendarScreen(initialDate: widget.initialCalendarDate),
-            SettingsScreen(
-              key: ValueKey<String?>(
-                'settings-${authProvider.userId}-'
-                '${widget.initialSettingsAction?.name ?? 'none'}',
-              ),
-              userId: authProvider.userId,
-              initialAction: widget.initialSettingsAction,
-            ),
-          ],
+          children: List<Widget>.generate(
+            3,
+            (index) => _tabChildren[index] ?? const SizedBox.shrink(),
+          ),
         ),
         Positioned(
           left: 0,
@@ -610,6 +753,26 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         ),
       ],
     );
+  }
+
+  Widget _buildTabChild(int index) {
+    switch (index) {
+      case 0:
+        return HomeScreen(scrollController: _homeScrollController);
+      case 1:
+        return CalendarScreen(initialDate: widget.initialCalendarDate);
+      case 2:
+        return SettingsScreen(
+          key: ValueKey<String?>(
+            'settings-${authProvider.userId}-'
+            '${widget.initialSettingsAction?.name ?? 'none'}',
+          ),
+          userId: authProvider.userId,
+          initialAction: widget.initialSettingsAction,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
   Widget _buildBottomNavigationBar() {
@@ -698,48 +861,55 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         ),
       );
     }
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) {
-          return;
-        }
-        if (_currentIndex != 0) {
-          setState(() {
-            _currentIndex = 0;
-          });
-          context.go(AppRoutes.home);
-          return;
-        }
-        SystemNavigator.pop();
-      },
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final windowInfo = PlanFlowResponsive.windowInfoOf(
-            context,
-            constraints: constraints,
-          );
-          final layoutSize = windowInfo.sizeClass;
-          final useRail = windowInfo.useNavigationRail;
-
-          return Scaffold(
-            body: useRail
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildNavigationRail(layoutSize),
-                      VerticalDivider(
-                        width: 1,
-                        thickness: 1,
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                      Expanded(child: _buildShellBody()),
-                    ],
-                  )
-                : _buildShellBody(),
-            bottomNavigationBar: useRail ? null : _buildBottomNavigationBar(),
-          );
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _interactionIdleGate.notifyInteraction(),
+      onPointerMove: (_) => _interactionIdleGate.notifyInteraction(),
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            return;
+          }
+          if (_currentIndex != 0) {
+            setState(() {
+              _currentIndex = 0;
+            });
+            if (_tabChildren[0] == null) {
+              setState(() => _tabChildren[0] = _buildTabChild(0));
+            }
+            return;
+          }
+          SystemNavigator.pop();
         },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final windowInfo = PlanFlowResponsive.windowInfoOf(
+              context,
+              constraints: constraints,
+            );
+            final layoutSize = windowInfo.sizeClass;
+            final useRail = windowInfo.useNavigationRail;
+
+            return Scaffold(
+              body: useRail
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildNavigationRail(layoutSize),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        Expanded(child: _buildShellBody()),
+                      ],
+                    )
+                  : _buildShellBody(),
+              bottomNavigationBar: useRail ? null : _buildBottomNavigationBar(),
+            );
+          },
+        ),
       ),
     );
   }

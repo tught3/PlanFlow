@@ -337,30 +337,30 @@ class _CalendarStatusCard extends StatelessWidget {
     final theme = Theme.of(context);
     final (icon, title, body) = switch (state) {
       _CalendarLoadState.supabaseMissing => (
-        Icons.cloud_off_outlined,
-        'Supabase 설정이 필요해요',
-        '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
-      ),
+          Icons.cloud_off_outlined,
+          'Supabase 설정이 필요해요',
+          '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
+        ),
       _CalendarLoadState.signedOut => (
-        Icons.lock_outline,
-        '로그인이 필요해요',
-        '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
-      ),
+          Icons.lock_outline,
+          '로그인이 필요해요',
+          '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
+        ),
       _CalendarLoadState.error => (
-        Icons.error_outline,
-        '캘린더 불러오기 실패',
-        message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
-      ),
+          Icons.error_outline,
+          '캘린더 불러오기 실패',
+          message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
+        ),
       _CalendarLoadState.loading => (
-        Icons.hourglass_top_outlined,
-        '캘린더 확인 중',
-        '잠시만 기다려 주세요.',
-      ),
+          Icons.hourglass_top_outlined,
+          '캘린더 확인 중',
+          '잠시만 기다려 주세요.',
+        ),
       _CalendarLoadState.ready => (
-        Icons.check_circle_outline,
-        '정상',
-        '캘린더 데이터를 불러왔어요.',
-      ),
+          Icons.check_circle_outline,
+          '정상',
+          '캘린더 데이터를 불러왔어요.',
+        ),
     };
 
     return Container(
@@ -529,10 +529,10 @@ class _MiniCalendarGrid extends StatelessWidget {
                       label,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: isSunday
-                            ? const Color(0xFFB42318)
+                            ? calendarHolidayColor
                             : isSaturday
-                            ? PlanFlowColors.primaryMid
-                            : PlanFlowColors.textSecondary,
+                                ? calendarSaturdayColor
+                                : PlanFlowColors.textSecondary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -589,12 +589,10 @@ class _MiniCalendarGrid extends StatelessWidget {
                       }
                       final dayNumber = cell.dayNumber ?? dayDate.day;
 
-                      final isToday =
-                          today.year == dayDate.year &&
+                      final isToday = today.year == dayDate.year &&
                           today.month == dayDate.month &&
                           today.day == dayDate.day;
-                      final isSelected =
-                          selectedDate.year == dayDate.year &&
+                      final isSelected = selectedDate.year == dayDate.year &&
                           selectedDate.month == dayDate.month &&
                           selectedDate.day == dayDate.day;
 
@@ -611,8 +609,8 @@ class _MiniCalendarGrid extends StatelessWidget {
                               color: isSelected
                                   ? PlanFlowColors.primaryMid
                                   : isToday
-                                  ? PlanFlowColors.calendarTodayCellBg
-                                  : PlanFlowColors.surface,
+                                      ? PlanFlowColors.calendarTodayCellBg
+                                      : PlanFlowColors.surface,
                               border: Border(
                                 right: BorderSide(
                                   color: PlanFlowColors.calendarGridLine,
@@ -640,8 +638,9 @@ class _MiniCalendarGrid extends StatelessWidget {
                                         color: isSelected
                                             ? PlanFlowColors.primaryMid
                                             : isToday
-                                            ? PlanFlowColors.calendarTodayCircle
-                                            : Colors.transparent,
+                                                ? PlanFlowColors
+                                                    .calendarTodayCircle
+                                                : Colors.transparent,
                                         shape: BoxShape.circle,
                                       ),
                                       child: Text(
@@ -656,9 +655,15 @@ class _MiniCalendarGrid extends StatelessWidget {
                                               : FontWeight.w400,
                                           color: isSelected || isToday
                                               ? Colors.white
-                                              : cell.isHoliday
-                                              ? calendarHolidayColor
-                                              : PlanFlowColors.textPrimary,
+                                              : cell.isHoliday ||
+                                                      dayDate.weekday ==
+                                                          DateTime.sunday
+                                                  ? calendarHolidayColor
+                                                  : dayDate.weekday ==
+                                                          DateTime.saturday
+                                                      ? calendarSaturdayColor
+                                                      : PlanFlowColors
+                                                          .textPrimary,
                                         ),
                                       ),
                                     ),
@@ -750,8 +755,7 @@ class _CalendarMiniEventList extends StatelessWidget {
     final displayOverlayEvents = remainingRows > 0
         ? overlayEvents.take(remainingRows).toList(growable: false)
         : const <CalendarOverlayItem>[];
-    final hiddenCount =
-        (totalItems + overflowCount) -
+    final hiddenCount = (totalItems + overflowCount) -
         displayEvents.length -
         displayOverlayEvents.length;
 
@@ -771,7 +775,7 @@ class _CalendarMiniEventList extends StatelessWidget {
             isSelected: isSelected,
             day: day,
           ),
-        // 공휴일 라벨(쉬는 날이면 파랑, 아니면 차분한 톤)은 이벤트 뒤에
+        // 공휴일 라벨은 이벤트 뒤에
         // 배치해 연속 일정 밴드가 인접한 날짜 셀과 같은 행을 유지한다.
         if (holidayName != null)
           LayoutBuilder(
@@ -792,8 +796,8 @@ class _CalendarMiniEventList extends StatelessWidget {
                       color: isSelected
                           ? Colors.white
                           : isHoliday
-                          ? calendarHolidayColor
-                          : PlanFlowColors.textSecondary,
+                              ? calendarHolidayColor
+                              : PlanFlowColors.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -850,95 +854,122 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
     final isCriticalMultiDay = isMultiDay && event.isCritical;
-    final bg = isMultiDay
-        ? calendarMultiDayEventBackgroundColor
-        : isSelected
-        ? event.isCritical
-              ? calendarCriticalEventTextColor.withValues(alpha: 0.35)
-              : Colors.white.withValues(alpha: 0.18)
-        : event.isCritical
-        ? calendarCriticalEventTextColor.withValues(alpha: 0.20)
-        : _categoryColor(event.category).withValues(alpha: 0.16);
-    final fg = isMultiDay
-        ? calendarMultiDayEventTextColor
-        : isSelected
-        ? event.isCritical
-              ? calendarCriticalEventTextColor
-              : Colors.white
-        : event.isCritical
+    final isRecurring = (event.recurrenceRule?.trim().isNotEmpty ?? false) ||
+        event.parentEventId != null;
+    final isTeam = event.groupEventId?.trim().isNotEmpty == true;
+    final baseColor = event.isCritical
         ? calendarCriticalEventTextColor
-        : _categoryColor(event.category);
+        : isTeam
+            ? calendarGroupEventColor
+            : isRecurring
+                ? calendarRecurringEventColor
+                : calendarNormalEventTextColor;
+    final bg = isMultiDay
+        ? (event.isCritical
+            ? calendarCriticalEventBackgroundColor
+            : isTeam
+                ? calendarGroupEventBackgroundColor
+                : calendarNormalEventBackgroundColor)
+        : event.isCritical
+            ? calendarCriticalEventBackgroundColor
+            : isTeam
+                ? calendarGroupEventBackgroundColor
+                : isRecurring
+                    ? calendarRecurringEventBackgroundColor
+                    : isSelected
+                        ? Colors.white.withValues(alpha: 0.18)
+                        : calendarNormalEventBackgroundColor;
+    final fg = isSelected ? baseColor : baseColor;
+    final borderColor = isMultiDay
+        ? (event.isCritical
+            ? calendarCriticalEventTextColor
+            : calendarMultiDayEventBorderColor)
+        : baseColor;
     final showTitle = !isMultiDay || segment.$1;
-    final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
-    // Neighboring day cells have 1.5px margins on each side, so extending
-    // halfway into that gap lets range bars touch without alpha overlap.
-    final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
-    final extendRight = isMultiDay && !segment.$2 ? 1.5 : 0.0;
+    final hPadding = 2.0;
     return SizedBox(
       key: ValueKey(
         'calendar-mini-event-${event.id}-${day.year}-${day.month}-${day.day}',
       ),
       height: 9,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: -extendLeft,
-            right: -extendRight,
-            top: 1,
-            bottom: 0,
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.horizontal(
-                  left: Radius.circular(segment.$1 ? 3 : 0),
-                  right: Radius.circular(segment.$2 ? 3 : 0),
-                ),
-              ),
-              alignment: Alignment.centerLeft,
-              child: Stack(
-                children: [
-                  if (isCriticalMultiDay)
-                    const Positioned(
-                      left: 0,
-                      top: 0,
-                      right: 0,
-                      height: 1.4,
-                      child: ColoredBox(
-                        color: calendarCriticalMultiDayAccentColor,
-                      ),
-                    ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: hPadding)
-                          .copyWith(
-                            top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
-                          ),
-                      child: Text(
-                        showTitle
-                            ? (event.isAllDay && !isMultiDay
-                                  ? '종일 ${event.title}'
-                                  : event.title)
-                            : '',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 6.8,
-                          height: 1.0,
-                          color: fg,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+      child: ClipRect(
+        child: Container(
+          margin: const EdgeInsets.only(top: 1),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: bg,
+            border: isMultiDay
+                ? Border(
+                    top: BorderSide(
+                        color: borderColor.withValues(alpha: 0.9), width: 0.8),
+                    bottom: BorderSide(
+                        color: borderColor.withValues(alpha: 0.9), width: 0.8),
+                    left: segment.$1
+                        ? BorderSide(
+                            color: borderColor.withValues(alpha: 0.9),
+                            width: 0.8)
+                        : BorderSide.none,
+                    right: segment.$2
+                        ? BorderSide(
+                            color: borderColor.withValues(alpha: 0.9),
+                            width: 0.8)
+                        : BorderSide.none,
+                  )
+                : Border.all(
+                    color: borderColor.withValues(alpha: 0.35),
+                    width: 0.35,
                   ),
-                ],
-              ),
+            borderRadius: BorderRadius.horizontal(
+              left: Radius.circular(segment.$1 ? 3 : 0),
+              right: Radius.circular(segment.$2 ? 3 : 0),
             ),
           ),
-        ],
+          alignment: Alignment.centerLeft,
+          child: Stack(
+            children: [
+              if (isCriticalMultiDay)
+                const Positioned(
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  height: 1.4,
+                  child: ColoredBox(
+                    color: calendarCriticalMultiDayAccentColor,
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: hPadding).copyWith(
+                    top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
+                  ),
+                  child: showTitle
+                      ? Text.rich(
+                          _calendarEventTitleSpan(
+                            event.title,
+                            isCritical: event.isCritical,
+                            useStrongAlarm: event.useStrongAlarm,
+                            isRecurring: isRecurring,
+                            semanticColor: fg,
+                            leadingText:
+                                event.isAllDay && !isMultiDay ? '종일 ' : null,
+                          ),
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 6.8,
+                            height: 1.0,
+                            color: fg,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -959,6 +990,41 @@ class _CalendarMiniEventLabel extends StatelessWidget {
   }
 }
 
+InlineSpan _calendarEventTitleSpan(
+  String title, {
+  required bool isCritical,
+  required bool useStrongAlarm,
+  required bool isRecurring,
+  String? leadingText,
+  Color? semanticColor,
+}) {
+  final titleColor = semanticColor ??
+      (isCritical
+          ? calendarCriticalEventTextColor
+          : isRecurring
+              ? calendarRecurringEventColor
+              : calendarNormalEventTextColor);
+  final markerColor = Color.lerp(titleColor, Colors.black, 0.28)!;
+  final spans = <InlineSpan>[];
+  if (leadingText != null && leadingText.isNotEmpty) {
+    spans.add(TextSpan(text: leadingText));
+  }
+  if (isCritical && useStrongAlarm) {
+    spans.add(TextSpan(
+      text: '! ',
+      style: TextStyle(color: markerColor, fontWeight: FontWeight.w900),
+    ));
+  }
+  if (isRecurring) {
+    spans.add(TextSpan(
+      text: '↻ ',
+      style: TextStyle(color: markerColor, fontWeight: FontWeight.w900),
+    ));
+  }
+  spans.add(TextSpan(text: title));
+  return TextSpan(children: spans);
+}
+
 class _CalendarMiniOverlayLabel extends StatelessWidget {
   const _CalendarMiniOverlayLabel({
     required this.event,
@@ -974,66 +1040,67 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final segment = _multiDaySegment(event, day);
     final isMultiDay = event.isMultiDay;
-    final bg = isMultiDay
-        ? calendarGroupEventColor.withValues(alpha: 0.14)
-        : isSelected
-        ? Colors.white.withValues(alpha: 0.2)
-        : calendarGroupEventColor.withValues(alpha: 0.14);
+    final bg = calendarGroupEventBackgroundColor;
     final fg = isSelected ? Colors.white : calendarGroupEventColor;
     final showTitle = !isMultiDay || segment.$1;
-    final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
-    final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
-    final extendRight = isMultiDay && !segment.$2 ? 1.5 : 0.0;
+    const hPadding = 2.0;
     return SizedBox(
       height: 9,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: -extendLeft,
-            right: -extendRight,
-            top: 1,
-            bottom: 0,
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.horizontal(
-                  left: Radius.circular(segment.$1 ? 3 : 0),
-                  right: Radius.circular(segment.$2 ? 3 : 0),
-                ),
-                border: Border.all(
-                  color: calendarGroupEventColor.withValues(alpha: 0.18),
-                  width: 0.4,
-                ),
-              ),
-              alignment: Alignment.centerLeft,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hPadding),
-                  child: Text(
-                    showTitle
-                        ? (event.groupName != null &&
-                                  event.groupName!.isNotEmpty
-                              ? '팀 ${event.title}'
-                              : event.title)
-                        : '',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 6.8,
-                      height: 1.0,
-                      color: fg,
-                      fontWeight: FontWeight.w700,
+      child: ClipRect(
+        child: Container(
+          margin: const EdgeInsets.only(top: 1),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.horizontal(
+              left: Radius.circular(segment.$1 ? 3 : 0),
+              right: Radius.circular(segment.$2 ? 3 : 0),
+            ),
+            border: isMultiDay
+                ? Border(
+                    top: BorderSide(
+                      color: calendarGroupEventColor,
+                      width: 0.5,
                     ),
-                  ),
+                    bottom: BorderSide(
+                      color: calendarGroupEventColor,
+                      width: 0.5,
+                    ),
+                    left: segment.$1
+                        ? const BorderSide(
+                            color: calendarGroupEventColor,
+                            width: 0.5,
+                          )
+                        : BorderSide.none,
+                    right: segment.$2
+                        ? const BorderSide(
+                            color: calendarGroupEventColor,
+                            width: 0.5,
+                          )
+                        : BorderSide.none,
+                  )
+                : Border.all(color: calendarGroupEventColor, width: 0.5),
+          ),
+          alignment: Alignment.centerLeft,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: hPadding),
+              child: Text(
+                showTitle ? event.title : '',
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 6.8,
+                  height: 1.0,
+                  color: fg,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1065,9 +1132,16 @@ class _EventAgendaCard extends StatelessWidget {
     final startAt = event.startAt;
     final endAt = event.endAt;
     final timeLabel = _formatTimeRange(startAt, endAt);
+    final isRecurring = (event.recurrenceRule?.trim().isNotEmpty ?? false) ||
+        event.parentEventId != null;
+    final isTeam = event.groupEventId?.trim().isNotEmpty == true;
     final accentColor = event.isCritical
-        ? const Color(0xFFE53935)
-        : _categoryColor(event.category);
+        ? calendarCriticalEventTextColor
+        : isTeam
+            ? calendarGroupEventColor
+            : isRecurring
+                ? calendarRecurringEventColor
+                : calendarNormalEventTextColor;
 
     return Card(
       color: accentColor.withValues(alpha: 0.08),
@@ -1113,8 +1187,14 @@ class _EventAgendaCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Flexible(
-                          child: Text(
-                            event.title,
+                          child: Text.rich(
+                            _calendarEventTitleSpan(
+                              event.title,
+                              isCritical: event.isCritical,
+                              useStrongAlarm: event.useStrongAlarm,
+                              isRecurring: isRecurring,
+                              semanticColor: accentColor,
+                            ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,
                               fontSize: 13,
@@ -1126,32 +1206,6 @@ class _EventAgendaCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // 팀에도 동시에 공유된 개인 일정임을 알리는 작은
-                        // 뱃지. 팀 오버레이 항목과 중복 표시하지 않는 대신
-                        // 이걸로 "공유됨"을 알려준다.
-                        if (event.groupEventId != null) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: calendarGroupEventColor.withValues(
-                                alpha: 0.12,
-                              ),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '팀 공유',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: calendarGroupEventColor,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                     if (event.location != null) ...[

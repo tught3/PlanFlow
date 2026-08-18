@@ -4,8 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
+import 'dart:io';
 
 void main() {
+  test('prefetch source is gated by onboarding idle permit', () {
+    final source =
+        File('lib/services/event_prefetch_service.dart').readAsStringSync();
+    expect(source, contains('startupRouteGate.startupWorkAllowedWhenIdle'));
+    expect(source, contains('_warmingUserIds.add(resolvedUserId)'));
+  });
   const userId = 'user-wave1';
   const otherUserId = 'user-wave1-other';
 

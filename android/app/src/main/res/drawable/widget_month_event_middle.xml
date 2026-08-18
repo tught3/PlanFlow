@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 연속 일정 중간 셀: 직각 bar (이음새) -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#DDEFE6" />
-    <corners android:radius="0dp" />
-</shape>
+<!-- 중간 셀: 상/하만 그려 날짜 칸 사이의 세로선을 제거한다. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="rectangle"><solid android:color="#DDEFE6" /></shape></item>
+    <item android:gravity="top"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#52706A" /></shape></item>
+    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#52706A" /></shape></item>
+</layer-list>

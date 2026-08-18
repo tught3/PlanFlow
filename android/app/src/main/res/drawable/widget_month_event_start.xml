@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 연속 일정 시작 셀: 왼쪽만 둥근 pill -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#DDEFE6" />
-    <corners
-        android:topLeftRadius="4dp"
-        android:bottomLeftRadius="4dp"
-        android:topRightRadius="0dp"
-        android:bottomRightRadius="0dp" />
-</shape>
+<!-- 시작 셀: 외곽(상/하/좌)만 그려 인접 날짜 사이 선을 만들지 않는다. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="rectangle"><solid android:color="#DDEFE6" /><corners android:radius="4dp" /></shape></item>
+    <item android:gravity="top"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#52706A" /></shape></item>
+    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#52706A" /></shape></item>
+    <item android:gravity="left"><shape android:shape="rectangle"><size android:width="1dp" /><solid android:color="#52706A" /></shape></item>
+</layer-list>

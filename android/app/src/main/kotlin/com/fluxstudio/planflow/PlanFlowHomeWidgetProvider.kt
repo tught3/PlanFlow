@@ -10,6 +10,10 @@ import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
@@ -23,15 +27,19 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import android.graphics.Typeface
 
 private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
 private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
-private const val CRITICAL_TEXT_COLOR = 0xFFD94444.toInt()
-// 공휴일 색상. 과거엔 중요 일정(CRITICAL_TEXT_COLOR)과 같은 붉은 계열이라
-// 위젯에서 공휴일과 중요 일정이 구분되지 않았다(사용자 지적, 2026-07-22).
-// 인앱 캘린더의 calendarHolidayColor와 맞춘 파랑 계열로 분리.
-private const val HOLIDAY_TEXT_COLOR = 0xFF2563EB.toInt()
-private const val MULTI_DAY_TEXT_COLOR = 0xFF174F4A.toInt()
+private const val CRITICAL_TEXT_COLOR = 0xFF6B46C1.toInt()
+private const val CRITICAL_BACKGROUND_COLOR = 0xFFF3EEFF.toInt()
+private const val TEAM_BACKGROUND_COLOR = 0xFFFFF1C2.toInt()
+private const val RECURRING_TEXT_COLOR = 0xFF0F766E.toInt()
+private const val TEAM_TEXT_COLOR = 0xFF9A5B00.toInt()
+// 공휴일/일요일 날짜와 공휴일 라벨 색상. 일정 자체의 색상과 분리한다.
+private const val HOLIDAY_TEXT_COLOR = 0xFFC62828.toInt()
+private const val SATURDAY_TEXT_COLOR = 0xFF1E64B7.toInt()
+private const val MULTI_DAY_TEXT_COLOR = 0xFF334E68.toInt()
 private const val PLANFLOW_SCHEME = "planflow"
 private const val PLANFLOW_CALENDAR_HOST = "calendar"
 private const val PLANFLOW_EVENT_HOST = "event"
@@ -59,12 +67,63 @@ data class RawWidgetEvent(
     val isCritical: Boolean,
     val isAllDay: Boolean,
     val isMultiDay: Boolean,
+    val isRecurring: Boolean,
+    val isTeam: Boolean,
+    val useStrongAlarm: Boolean,
     val parentEventId: String?,
 )
 
 abstract class BasePlanFlowWidgetProvider(
     private val layoutId: Int,
 ) : HomeWidgetProvider() {
+    protected fun displayWidgetTitle(
+        title: String?,
+        isCritical: Boolean = false,
+        useStrongAlarm: Boolean = false,
+        isRecurring: Boolean = false,
+    ): String? {
+        val value = title?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val prefix = buildList {
+            if (isCritical && useStrongAlarm) add("!")
+            if (isRecurring) add("↻")
+        }
+        return if (prefix.isEmpty()) value else "${prefix.joinToString(" ")} $value"
+    }
+
+    protected fun displayWidgetTitleSpanned(
+        title: String?,
+        isCritical: Boolean = false,
+        useStrongAlarm: Boolean = false,
+        isRecurring: Boolean = false,
+        isTeam: Boolean = false,
+    ): CharSequence? {
+        val value = title?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val markerColor = when {
+            isCritical -> CRITICAL_TEXT_COLOR
+            isTeam -> TEAM_TEXT_COLOR
+            isRecurring -> RECURRING_TEXT_COLOR
+            else -> DEFAULT_TEXT_COLOR
+        }
+        val builder = SpannableStringBuilder()
+        fun appendMarker(marker: String) {
+            val start = builder.length
+            builder.append(marker).append(' ')
+            builder.setSpan(StyleSpan(Typeface.BOLD), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            builder.setSpan(ForegroundColorSpan(darkenColor(markerColor)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        if (isCritical && useStrongAlarm) appendMarker("!")
+        if (isRecurring) appendMarker("↻")
+        builder.append(value)
+        return builder
+    }
+
+    private fun darkenColor(color: Int): Int {
+        val red = (color shr 16 and 0xff) * 0.72
+        val green = (color shr 8 and 0xff) * 0.72
+        val blue = (color and 0xff) * 0.72
+        return (0xff shl 24) or (red.toInt() shl 16) or
+            (green.toInt() shl 8) or blue.toInt()
+    }
     protected val planFlowZone: ZoneId = ZoneId.of("Asia/Seoul")
 
     override fun onUpdate(
@@ -403,6 +462,9 @@ abstract class BasePlanFlowWidgetProvider(
         time: String?,
         isCritical: Boolean,
         isMuted: Boolean = false,
+        useStrongAlarm: Boolean = false,
+        isRecurring: Boolean = false,
+        isTeam: Boolean = false,
         emptyText: String? = null,
         hourOnly: Boolean = false,
     ) {
@@ -419,11 +481,24 @@ abstract class BasePlanFlowWidgetProvider(
         }
 
         val formattedTime = if (hourOnly) formatHourOnly(time) else formatShortTime(time)
-        val content = if (formattedTime.isBlank()) text else "$formattedTime  $text"
+        val displayTitle = displayWidgetTitleSpanned(
+            text, isCritical, useStrongAlarm, isRecurring, isTeam,
+        ) ?: text
+        val content = if (formattedTime.isBlank()) {
+            displayTitle
+        } else {
+            SpannableStringBuilder(formattedTime).append("  ").append(displayTitle)
+        }
         views.setTextViewText(id, content)
         views.setTextColor(
             id,
-            if (isMuted) MUTED_TEXT_COLOR else if (isCritical) CRITICAL_TEXT_COLOR else DEFAULT_TEXT_COLOR,
+            when {
+                isMuted -> MUTED_TEXT_COLOR
+                isCritical -> CRITICAL_TEXT_COLOR
+                isTeam -> TEAM_TEXT_COLOR
+                isRecurring -> RECURRING_TEXT_COLOR
+                else -> DEFAULT_TEXT_COLOR
+            },
         )
         views.setViewVisibility(id, View.VISIBLE)
     }
@@ -449,8 +524,20 @@ abstract class BasePlanFlowWidgetProvider(
             }
 
         val isCritical = widgetData.getBoolean("event_list_${slot}_is_critical", false)
+        val useStrongAlarm = widgetData.getBoolean("event_list_${slot}_use_strong_alarm", false)
+        val isRecurring = widgetData.getBoolean("event_list_${slot}_is_recurring", false)
+        val isTeam = widgetData.getBoolean("event_list_${slot}_is_team", false)
         val rawTime = widgetData.getString("event_list_${slot}_time", null)
-        bindEventText(views, id, title, rawTime, isCritical)
+        bindEventText(
+            views,
+            id,
+            title,
+            rawTime,
+            isCritical,
+            useStrongAlarm = useStrongAlarm,
+            isRecurring = isRecurring,
+            isTeam = isTeam,
+        )
     }
 
     protected fun findViewId(context: Context, idName: String): Int {
@@ -475,13 +562,16 @@ abstract class BasePlanFlowWidgetProvider(
             var title = widgetData.getString("${prefix}_${slot}_title", null)?.takeIf { it.isNotBlank() }
             val time = widgetData.getString("${prefix}_${slot}_time", null)
             val isCritical = widgetData.getBoolean("${prefix}_${slot}_is_critical", false)
+            val useStrongAlarm = widgetData.getBoolean("${prefix}_${slot}_use_strong_alarm", false)
+            val isRecurring = widgetData.getBoolean("${prefix}_${slot}_is_recurring", false)
+            val isTeam = widgetData.getBoolean("${prefix}_${slot}_is_team", false)
             if (hideWeekendEvents && isWeekend(parseDate(time))) {
                 title = null
             }
             if (!title.isNullOrBlank()) {
                 hasAnyEvent = true
             }
-            bindEventText(views, id, title, time, isCritical, isFaded)
+            bindEventText(views, id, title, time, isCritical, isFaded, useStrongAlarm, isRecurring, isTeam = isTeam)
         }
 
         if (emptyMessageId != null) {
@@ -561,6 +651,9 @@ abstract class BasePlanFlowWidgetProvider(
                             isCritical = item.optBoolean("is_critical", false),
                             isAllDay = item.optBoolean("is_all_day", false),
                             isMultiDay = item.optBoolean("is_multi_day", false),
+                            isRecurring = item.optBoolean("is_recurring", false),
+                            isTeam = item.optBoolean("is_team", false),
+                            useStrongAlarm = item.optBoolean("use_strong_alarm", false),
                             parentEventId = item.optString("parent_event_id", null)?.trim()?.takeIf { it.isNotBlank() },
                         ),
                     )
@@ -660,6 +753,15 @@ abstract class BasePlanFlowWidgetProvider(
         }
     }
 
+    protected fun monthTeamRangeBackground(segment: String?): Int {
+        return when (segment) {
+            "start" -> R.drawable.widget_month_event_team_start
+            "middle" -> R.drawable.widget_month_event_team_middle
+            "end" -> R.drawable.widget_month_event_team_end
+            else -> android.R.color.transparent
+        }
+    }
+
     protected fun formatLocalMonthDay(date: LocalDate): String {
         return DateTimeFormatter.ofPattern("M/d", Locale.KOREA).format(date)
     }
@@ -725,13 +827,19 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
             val title = widgetData.getString("next_event_title", null) ?: "\uc624\ub298 \uccab \uc77c\uc815"
             val location = widgetData.getString("next_event_location", null)
             val isCritical = widgetData.getBoolean("next_event_is_critical", false)
+            val useStrongAlarm = widgetData.getBoolean("next_event_use_strong_alarm", false)
+            val isRecurring = widgetData.getBoolean("next_event_is_recurring", false)
+            val isTeam = widgetData.getBoolean("next_event_is_team", false)
             val travelMinutes = if (widgetData.contains("next_event_travel_buffer_minutes")) {
                 widgetData.getInt("next_event_travel_buffer_minutes", 0)
             } else {
                 null
             }
 
-            views.setTextViewText(R.id.widget_title, title)
+            views.setTextViewText(
+                R.id.widget_title,
+                displayWidgetTitleSpanned(title, isCritical, useStrongAlarm, isRecurring, isTeam),
+            )
             views.setTextViewText(R.id.widget_time, formatTime(startAt))
             views.setViewVisibility(R.id.widget_time, View.VISIBLE)
             bindTextIfNotEmpty(views, R.id.widget_location, location ?: "")
@@ -848,6 +956,9 @@ class PlanFlowVerticalScheduleWidgetProvider :
                         event.title,
                         null,
                         event.isCritical,
+                        useStrongAlarm = event.useStrongAlarm,
+                        isRecurring = event.isRecurring,
+                        isTeam = event.isTeam,
                         emptyText = null,
                     )
                     bindEventLinkIfAvailable(context, views, eventId, event.id)
@@ -1065,13 +1176,23 @@ class PlanFlowWeeklyWidgetProvider :
                     visibleEvents.getOrNull(0)?.title,
                     null,
                     visibleEvents.getOrNull(0)?.isCritical == true,
+                    useStrongAlarm = visibleEvents.getOrNull(0)?.useStrongAlarm == true,
+                    isRecurring = visibleEvents.getOrNull(0)?.isRecurring == true,
+                    isTeam = visibleEvents.getOrNull(0)?.isTeam == true,
                     emptyText = if (visibleEvents.isEmpty()) "일정 없음" else null,
                 )
                 visibleEvents.getOrNull(0)?.let { bindEventLinkIfAvailable(context, views, event1Ids[index], it.id) }
                 if (hasOverflow) {
                     views.setViewVisibility(event2Ids[index], View.GONE)
                 } else {
-                    bindEventText(views, event2Ids[index], visibleEvents.getOrNull(1)?.title, null, visibleEvents.getOrNull(1)?.isCritical == true)
+                    visibleEvents.getOrNull(1)?.let { event ->
+                        bindEventText(
+                            views, event2Ids[index], event.title, null, event.isCritical,
+                            useStrongAlarm = event.useStrongAlarm,
+                            isRecurring = event.isRecurring,
+                            isTeam = event.isTeam,
+                        )
+                    } ?: views.setViewVisibility(event2Ids[index], View.GONE)
                     visibleEvents.getOrNull(1)?.let { bindEventLinkIfAvailable(context, views, event2Ids[index], it.id) }
                 }
 
@@ -1110,13 +1231,19 @@ class PlanFlowWeeklyWidgetProvider :
                 }
                 val overflowLabel = formatOverflowLabel(legacyOverflow)
 
-                bindEventText(views, event1Ids[index], e1Title, null, e1Critical,
-                    emptyText = if (e1Title == null && e2Title == null && legacyOverflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
+                    bindEventText(views, event1Ids[index], e1Title, null, e1Critical,
+                        useStrongAlarm = widgetData.getBoolean("${weekPrefix}_${slot}_event_1_use_strong_alarm", false),
+                        isRecurring = widgetData.getBoolean("${weekPrefix}_${slot}_event_1_is_recurring", false),
+                        isTeam = widgetData.getBoolean("${weekPrefix}_${slot}_event_1_is_team", false),
+                        emptyText = if (e1Title == null && e2Title == null && legacyOverflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
                 bindEventLinkIfAvailable(context, views, event1Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_1_id", null))
                 if (legacyOverflow > 0) {
                     views.setViewVisibility(event2Ids[index], View.GONE)
                 } else {
-                    bindEventText(views, event2Ids[index], e2Title, null, e2Critical)
+                    bindEventText(views, event2Ids[index], e2Title, null, e2Critical,
+                        useStrongAlarm = widgetData.getBoolean("${weekPrefix}_${slot}_event_2_use_strong_alarm", false),
+                        isRecurring = widgetData.getBoolean("${weekPrefix}_${slot}_event_2_is_recurring", false),
+                        isTeam = widgetData.getBoolean("${weekPrefix}_${slot}_event_2_is_team", false))
                     bindEventLinkIfAvailable(context, views, event2Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_2_id", null))
                 }
 
@@ -1242,6 +1369,9 @@ class PlanFlowWeeklyListWidgetProvider :
                         event.title,
                         null,
                         event.isCritical,
+                        useStrongAlarm = event.useStrongAlarm,
+                        isRecurring = event.isRecurring,
+                        isTeam = event.isTeam,
                     )
                     bindEventLinkIfAvailable(context, views, eventId, event.id)
                 }
@@ -1277,7 +1407,13 @@ class PlanFlowWeeklyListWidgetProvider :
                     }
                     val title = widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
                     val isCritical = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_is_critical", false)
+                    val useStrongAlarm = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_use_strong_alarm", false)
+                    val isRecurring = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_is_recurring", false)
+                    val isTeam = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_is_team", false)
                     bindEventText(views, eventId, title, null, isCritical,
+                        useStrongAlarm = useStrongAlarm,
+                        isRecurring = isRecurring,
+                        isTeam = isTeam,
                         emptyText = if (eventSlot == 1) "\uc77c\uc815 \uc5c6\uc74c" else null)
                     bindEventLinkIfAvailable(context, views, eventId,
                         widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_id", null))
@@ -1443,7 +1579,8 @@ class PlanFlowMonthlyWidgetProvider :
                             dayId,
                             when {
                                 isToday -> 0xFFFFFFFF.toInt()
-                                isHoliday -> HOLIDAY_TEXT_COLOR
+                                isHoliday || day.dayOfWeek == java.time.DayOfWeek.SUNDAY -> HOLIDAY_TEXT_COLOR
+                                day.dayOfWeek == java.time.DayOfWeek.SATURDAY -> SATURDAY_TEXT_COLOR
                                 inMonth -> DEFAULT_TEXT_COLOR
                                 else -> MUTED_TEXT_COLOR
                             },
@@ -1515,7 +1652,11 @@ class PlanFlowMonthlyWidgetProvider :
 
                         val segment = rawWidgetMonthSegment(event, day)
                         val showTitle = segment == "single" || segment == "start"
-                        val bgRes = monthRangeBackground(segment, event.isCritical)
+                        val bgRes = when {
+                            event.isCritical -> monthRangeBackground(segment, true)
+                            event.isTeam && isMonthRangeSegment(segment) -> monthTeamRangeBackground(segment)
+                            else -> monthRangeBackground(segment, false)
+                        }
                         views.setInt(eventId, "setBackgroundResource", bgRes)
                         views.setViewPadding(
                             eventId,
@@ -1525,27 +1666,40 @@ class PlanFlowMonthlyWidgetProvider :
                             0,
                         )
                         if (showTitle) {
-                            val displayTitle = if (eventSlot == 1 && holidayNameFromPrefs != null) {
-                                "$holidayNameFromPrefs · ${event.title}"
-                            } else {
-                                event.title
-                            }
+                            // Holiday is rendered by its own lower label slot;
+                            // never concatenate it into a user's event title.
                             bindEventText(
                                 views,
                                 eventId,
-                                displayTitle,
+                                event.title,
                                 null,
                                 event.isCritical,
                                 isMuted = !inMonth,
+                                useStrongAlarm = event.useStrongAlarm,
+                                isRecurring = event.isRecurring,
+                                isTeam = event.isTeam,
                             )
-                            if (isMonthRangeSegment(segment) && inMonth) {
-                                views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
-                            } else if (event.isCritical && inMonth) {
+                            if (event.isCritical && inMonth) {
                                 views.setTextColor(eventId, CRITICAL_TEXT_COLOR)
+                            } else if (event.isTeam && inMonth) {
+                                views.setTextColor(eventId, TEAM_TEXT_COLOR)
+                            } else if (event.isRecurring && inMonth) {
+                                views.setTextColor(eventId, RECURRING_TEXT_COLOR)
+                            } else if (isMonthRangeSegment(segment) && inMonth) {
+                                views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
                             }
                         } else {
                             views.setTextViewText(eventId, "")
-                            views.setTextColor(eventId, if (inMonth) MULTI_DAY_TEXT_COLOR else MUTED_TEXT_COLOR)
+                            views.setTextColor(
+                                eventId,
+                                when {
+                                    !inMonth -> MUTED_TEXT_COLOR
+                                    event.isCritical -> CRITICAL_TEXT_COLOR
+                                    event.isTeam -> TEAM_TEXT_COLOR
+                                    event.isRecurring -> RECURRING_TEXT_COLOR
+                                    else -> MULTI_DAY_TEXT_COLOR
+                                },
+                            )
                             views.setViewVisibility(eventId, View.VISIBLE)
                         }
                     }
@@ -1616,7 +1770,8 @@ class PlanFlowMonthlyWidgetProvider :
                     dayId,
                     when {
                         isToday -> 0xFFFFFFFF.toInt()
-                        isHoliday -> HOLIDAY_TEXT_COLOR
+                        isHoliday || targetDate.dayOfWeek == java.time.DayOfWeek.SUNDAY -> HOLIDAY_TEXT_COLOR
+                        targetDate.dayOfWeek == java.time.DayOfWeek.SATURDAY -> SATURDAY_TEXT_COLOR
                         inMonth -> DEFAULT_TEXT_COLOR
                         else -> MUTED_TEXT_COLOR
                     },
@@ -1682,12 +1837,22 @@ class PlanFlowMonthlyWidgetProvider :
                     val eventCritical = if (hasMonthCellPayload) {
                         widgetData.getBoolean("${prefix}_event_${eventSlot}_is_critical", false)
                     } else false
+                    val eventRecurring = if (hasMonthCellPayload) {
+                        widgetData.getBoolean("${prefix}_event_${eventSlot}_is_recurring", false)
+                    } else false
+                    val eventTeam = if (hasMonthCellPayload) {
+                        widgetData.getBoolean("${prefix}_event_${eventSlot}_is_team", false)
+                    } else false
                     val segment = widgetData.getString("${prefix}_event_${eventSlot}_segment", null)
                     val showTitle = widgetData.getBoolean("${prefix}_event_${eventSlot}_show_title", true)
 
                     if (eventId != 0) {
                         // segment 배경 적용 (single은 배경 없음)
-                        val bgRes = monthRangeBackground(segment, eventCritical)
+                        val bgRes = when {
+                            eventCritical -> monthRangeBackground(segment, true)
+                            eventTeam && isMonthRangeSegment(segment) -> monthTeamRangeBackground(segment)
+                            else -> monthRangeBackground(segment, false)
+                        }
                         views.setInt(eventId, "setBackgroundResource", bgRes)
                         views.setViewPadding(
                             eventId,
@@ -1710,16 +1875,30 @@ class PlanFlowMonthlyWidgetProvider :
                             )
                             views.setViewVisibility(eventId, View.VISIBLE)
                         } else {
-                            val displayTitle = if (eventSlot == 1 && holidayNameFromPrefs != null && rawTitle != null) {
-                                "$holidayNameFromPrefs · $rawTitle"
-                            } else {
-                                rawTitle
-                            }
-                            bindEventText(views, eventId, displayTitle, null, isCritical = eventCritical, isMuted = !inMonth)
+                            // Keep the public-holiday label separate from the
+                            // event row in legacy payloads as well.
+                            val eventStrongAlarm = widgetData.getBoolean(
+                                "${prefix}_event_${eventSlot}_use_strong_alarm", false,
+                            )
+                            bindEventText(
+                                views,
+                                eventId,
+                                rawTitle,
+                                null,
+                                isCritical = eventCritical,
+                                isMuted = !inMonth,
+                                useStrongAlarm = eventStrongAlarm,
+                                isRecurring = eventRecurring,
+                                isTeam = eventTeam,
+                            )
                             if (isMonthRangeSegment(segment) && inMonth) {
                                 views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
                             } else if (eventCritical && inMonth) {
                                 views.setTextColor(eventId, CRITICAL_TEXT_COLOR)
+                            } else if (eventTeam && inMonth) {
+                                views.setTextColor(eventId, TEAM_TEXT_COLOR)
+                            } else if (eventRecurring && inMonth) {
+                                views.setTextColor(eventId, RECURRING_TEXT_COLOR)
                             }
                         }
                     }

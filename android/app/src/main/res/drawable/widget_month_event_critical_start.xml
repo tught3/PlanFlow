@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 중요 연속 일정 시작 셀: 세이지 배경 + 코랄 상단 포인트 -->
+<!-- 중요 연속 일정 시작 셀: 외곽(상/하/좌)만 표시 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#DDEFE6" />
+            <solid android:color="#F3EEFF" />
             <corners
                 android:topLeftRadius="4dp"
                 android:bottomLeftRadius="4dp"
@@ -14,10 +14,12 @@
     <item android:gravity="top">
         <shape android:shape="rectangle">
             <size android:height="1dp" />
-            <solid android:color="#E98B86" />
+            <solid android:color="#7A5AC8" />
             <corners
                 android:topLeftRadius="4dp"
                 android:topRightRadius="0dp" />
         </shape>
     </item>
+    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#7A5AC8" /></shape></item>
+    <item android:gravity="left"><shape android:shape="rectangle"><size android:width="1dp" /><solid android:color="#7A5AC8" /></shape></item>
 </layer-list>

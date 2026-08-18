@@ -10,7 +10,6 @@ import '../../services/auth_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
 
-
 enum _AuthMode {
   login,
   signUp,
@@ -411,7 +410,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
             if (AppEnv.isSupabaseInitializationFailed)
               _MessageBox(
                 message: AppEnv.supabaseInitializationErrorMessage ??
-                    l10n.supabaseLoginMissing,
+                    '로그인 서비스를 초기화하지 못했습니다. 잠시 후 다시 시도해 주세요.',
                 isError: true,
               )
             else if (authProvider.hasResolvedInitialSession &&
