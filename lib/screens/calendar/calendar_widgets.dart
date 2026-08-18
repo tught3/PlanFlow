@@ -152,6 +152,7 @@ class DayEventsSheet extends StatelessWidget {
     required this.onEventTap,
     required this.onGroupEventTap,
     this.scrollController,
+    this.holidayName,
   });
 
   final DateTime day;
@@ -162,6 +163,7 @@ class DayEventsSheet extends StatelessWidget {
   final ValueChanged<EventModel> onEventTap;
   final ValueChanged<CalendarOverlayItem> onGroupEventTap;
   final ScrollController? scrollController;
+  final String? holidayName;
 
   @override
   Widget build(BuildContext context) {
@@ -199,6 +201,17 @@ class DayEventsSheet extends StatelessWidget {
                 ),
               ],
             ),
+            if (holidayName != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                holidayName!,
+                style: const TextStyle(
+                  color: calendarHolidayColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
             const SizedBox(height: 4),
             const Text(
               '위로 끌어올려 더 많은 일정을 볼 수 있어요.',

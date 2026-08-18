@@ -1087,6 +1087,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               personalEvents: events,
               groupEvents: resolvedGroupEvents,
               scrollController: scrollController,
+              holidayName: KoreanHolidays.holidayName(day),
               onAdd: () {
                 Navigator.of(context).pop();
                 context.push(_eventEditRouteForDay(day));
