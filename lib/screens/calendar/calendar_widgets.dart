@@ -974,6 +974,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             semanticColor: fg,
                             leadingText:
                                 event.isAllDay && !isMultiDay ? '종일 ' : null,
+                            markerFontSize: 5.8,
                           ),
                           maxLines: 1,
                           softWrap: false,
@@ -1018,6 +1019,7 @@ InlineSpan _calendarEventTitleSpan(
   required bool isRecurring,
   String? leadingText,
   Color? semanticColor,
+  double? markerFontSize,
 }) {
   final titleColor = semanticColor ??
       (isCritical
@@ -1033,7 +1035,11 @@ InlineSpan _calendarEventTitleSpan(
   if (isCritical && useStrongAlarm) {
     spans.add(TextSpan(
       text: '🔔 ',
-      style: TextStyle(color: markerColor, fontWeight: FontWeight.w900),
+      style: TextStyle(
+        color: markerColor,
+        fontWeight: FontWeight.w900,
+        fontSize: markerFontSize,
+      ),
     ));
   }
   spans.add(TextSpan(text: title));
@@ -1209,6 +1215,7 @@ class _EventAgendaCard extends StatelessWidget {
                               useStrongAlarm: event.useStrongAlarm,
                               isRecurring: isRecurring,
                               semanticColor: accentColor,
+                              markerFontSize: 12,
                             ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,

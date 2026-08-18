@@ -46,8 +46,8 @@ const calendarMultiDayEventBorderColor = Color(0xFF1F3B57);
 const calendarCriticalMultiDayAccentColor = Color(0xFF7A5AC8);
 const calendarGroupEventColor = Color(0xFF9A5B00);
 const calendarGroupEventBackgroundColor = Color(0xFFFFF1C2);
-const calendarRecurringEventColor = Color(0xFF2E7D32);
-const calendarRecurringEventBackgroundColor = Color(0xFFE6F2E6);
+const calendarRecurringEventColor = Color(0xFF00695C);
+const calendarRecurringEventBackgroundColor = Color(0xFFDCEEEC);
 const calendarHolidayColor = Color(0xFFC62828);
 const calendarSaturdayColor = Color(0xFF1E64B7);
 
