@@ -335,17 +335,23 @@ void main() {
 
     test('important alarm actions either open the event or schedule tomorrow',
         () async {
+      // M1: criticalAck는 강한알람(critical alarm) payload에만 붙는다.
+      // criticalAcknowledgedActionId/criticalRemindTomorrowActionId는 실제
+      // 스케줄링에서 항상 강한알람 채널(scheduleCriticalAlarmWithResult)의
+      // 응답으로만 오므로 payload에 criticalAlarmPayloadSuffix가 붙는다.
       final acknowledged = NotificationResponse(
         notificationResponseType:
             NotificationResponseType.selectedNotificationAction,
         actionId: NotificationService.criticalAcknowledgedActionId,
-        payload: 'event:event-1',
+        payload:
+            'event:event-1${NotificationService.criticalAlarmPayloadSuffix}',
       );
       final tomorrow = NotificationResponse(
         notificationResponseType:
             NotificationResponseType.selectedNotificationAction,
         actionId: NotificationService.criticalRemindTomorrowActionId,
-        payload: 'event:event-1',
+        payload:
+            'event:event-1${NotificationService.criticalAlarmPayloadSuffix}',
       );
       final notifications = _FakeNotificationService();
 
@@ -363,6 +369,48 @@ void main() {
         notificationService: notifications,
       );
       expect(notifications.remindTomorrowEventId, 'event-1');
+    });
+
+    test(
+        'M1: regular (non-critical) event reminder body tap does not carry '
+        'criticalAck', () {
+      // 일반 리마인더/준비알람/"내일 다시 알림"은 강한알람 채널이 아니므로
+      // payload에 criticalAlarmPayloadSuffix가 없다. 이 payload로 body tap
+      // 응답을 라우팅하면 criticalAck 쿼리파라미터가 붙으면 안 된다
+      // (수정 전 회귀: 모든 event: payload에 무차별로 criticalAck=1이 붙던
+      // 버그).
+      final regularBodyTap = NotificationResponse(
+        notificationResponseType: NotificationResponseType.selectedNotification,
+        payload: 'event:event-regular',
+      );
+
+      expect(
+        NotificationService.routeForNotificationResponse(regularBodyTap),
+        '${AppRoutes.eventDetail}/event-regular',
+      );
+    });
+
+    test(
+        'M1: critical alarm body tap carries criticalAck while regular '
+        'reminder body tap for the same event id does not', () {
+      final criticalBodyTap = NotificationResponse(
+        notificationResponseType: NotificationResponseType.selectedNotification,
+        payload:
+            'event:event-shared${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+      final regularBodyTap = NotificationResponse(
+        notificationResponseType: NotificationResponseType.selectedNotification,
+        payload: 'event:event-shared',
+      );
+
+      expect(
+        NotificationService.routeForNotificationResponse(criticalBodyTap),
+        '${AppRoutes.eventDetail}/event-shared?criticalAck=1',
+      );
+      expect(
+        NotificationService.routeForNotificationResponse(regularBodyTap),
+        '${AppRoutes.eventDetail}/event-shared',
+      );
     });
 
     test('acknowledge and body tap cancel all event notifications', () async {
