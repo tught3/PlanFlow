@@ -34,7 +34,7 @@ private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFF6B46C1.toInt()
 private const val CRITICAL_BACKGROUND_COLOR = 0xFFF3EEFF.toInt()
 private const val TEAM_BACKGROUND_COLOR = 0xFFFFF1C2.toInt()
-private const val RECURRING_TEXT_COLOR = 0xFF0F766E.toInt()
+private const val RECURRING_TEXT_COLOR = 0xFF2E7D32.toInt()
 private const val TEAM_TEXT_COLOR = 0xFF9A5B00.toInt()
 // 공휴일/일요일 날짜와 공휴일 라벨 색상. 일정 자체의 색상과 분리한다.
 private const val HOLIDAY_TEXT_COLOR = 0xFFC62828.toInt()
@@ -84,8 +84,7 @@ abstract class BasePlanFlowWidgetProvider(
     ): String? {
         val value = title?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val prefix = buildList {
-            if (isCritical && useStrongAlarm) add("!")
-            if (isRecurring) add("↻")
+            if (isCritical && useStrongAlarm) add("🔔")
         }
         return if (prefix.isEmpty()) value else "${prefix.joinToString(" ")} $value"
     }
@@ -111,8 +110,7 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(StyleSpan(Typeface.BOLD), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             builder.setSpan(ForegroundColorSpan(darkenColor(markerColor)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (isCritical && useStrongAlarm) appendMarker("!")
-        if (isRecurring) appendMarker("↻")
+        if (isCritical && useStrongAlarm) appendMarker("🔔")
         builder.append(value)
         return builder
     }
