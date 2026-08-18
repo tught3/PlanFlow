@@ -582,6 +582,7 @@ class AuthProvider extends ChangeNotifier {
       snapshotUser = service.currentSession?.user ?? service.currentUser;
     }
 
+    var refreshFailedTransiently = false;
     try {
       debugPrint(
         'auth_bootstrap phase=refresh_start '
@@ -593,10 +594,12 @@ class AuthProvider extends ChangeNotifier {
         'hasSession=${service.currentSession != null}',
       );
     } catch (error) {
+      refreshFailedTransiently = _isTransientRefreshFailure(error);
       debugPrint(
         'auth_bootstrap phase=refresh_failed '
         'hasSnapshotUser=${snapshotUser != null} '
-        'errorType=${error.runtimeType}',
+        'errorType=${error.runtimeType} '
+        'transient=$refreshFailedTransiently',
       );
     }
     final activeUser = service.currentSession?.user;
@@ -610,6 +613,18 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     final fallbackUser = service.currentUser ?? snapshotUser;
+    // 네트워크/타임아웃 등 일시적 갱신 실패는 syncCurrentSession()의 방어 로직
+    // (249-257줄 부근)과 동일하게 캐시된 사용자를 만료로 강등하지 않는다.
+    // 진짜 인증 실패(401/invalid refresh token 등)만 reauthRequired로 분류한다.
+    if (refreshFailedTransiently && fallbackUser != null) {
+      await _syncProfileAndApplyUser(
+        service,
+        fallbackUser,
+        sessionStatus: AuthSessionStatus.active,
+        resolvesInitialSession: true,
+      );
+      return;
+    }
     await _syncProfileAndApplyUser(
       service,
       fallbackUser,
@@ -618,6 +633,22 @@ class AuthProvider extends ChangeNotifier {
           : AuthSessionStatus.signedOut,
       resolvesInitialSession: true,
     );
+  }
+
+  /// 세션 갱신 실패가 "진짜 만료"가 아니라 네트워크/타임아웃 같은 일시적
+  /// 실패인지 판정한다. gotrue의 `_callRefreshToken`은
+  /// [AuthRetryableFetchException]일 때만 세션을 보존하고 그 외
+  /// [AuthException](예: 401 invalid refresh token)에는 세션을 제거하므로,
+  /// 그 구분을 그대로 따른다. 우리 쪽 10초 타임아웃(`_refreshSessionOnce`)이
+  /// 던지는 [TimeoutException]도 같은 일시적 실패로 취급한다.
+  bool _isTransientRefreshFailure(Object error) {
+    if (error is TimeoutException) {
+      return true;
+    }
+    if (error is AuthRetryableFetchException) {
+      return true;
+    }
+    return false;
   }
 
   Future<void> _refreshSessionOnce(AuthSessionClient service) {

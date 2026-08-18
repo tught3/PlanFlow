@@ -196,6 +196,62 @@ void main() {
     await service.dispose();
   });
 
+  test(
+      'keeps cached user active when bootstrap refresh times out '
+      '(콜드부팅 네트워크 타임아웃은 세션 만료로 오판정하지 않는다)', () async {
+    final service = _FakeAuthService(
+      currentSession: null,
+      currentUser: _user(
+        userId: 'cached-user-timeout',
+        email: 'timeout@example.com',
+      ),
+      refreshError: TimeoutException('network timeout'),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.hasAccountSnapshot, isTrue);
+    expect(provider.needsReauthentication, isFalse);
+    expect(provider.hasActiveSession, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'cached-user-timeout');
+    expect(provider.accountDisplayName, 'timeout@example.com');
+
+    provider.dispose();
+    await service.dispose();
+  });
+
+  test(
+      'keeps cached user active when bootstrap refresh fails with a '
+      'retryable fetch exception (네트워크 재시도성 실패도 세션 유지)', () async {
+    final service = _FakeAuthService(
+      currentSession: null,
+      currentUser: _user(
+        userId: 'cached-user-retryable',
+        email: 'retryable@example.com',
+      ),
+      refreshError: AuthRetryableFetchException(),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.hasAccountSnapshot, isTrue);
+    expect(provider.needsReauthentication, isFalse);
+    expect(provider.hasActiveSession, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'cached-user-retryable');
+    expect(provider.accountDisplayName, 'retryable@example.com');
+
+    provider.dispose();
+    await service.dispose();
+  });
+
   test('shows provider label when social account has no email', () async {
     final service = _FakeAuthService(
       currentSession: _session(
@@ -585,7 +641,7 @@ class _FakeAuthService implements AuthSessionClient {
   })  : _currentSession = currentSession,
         _currentUser = currentSession?.user ?? currentUser;
 
-  final AuthException? refreshError;
+  final Object? refreshError;
   final Completer<void>? refreshCompleter;
   final StreamController<AuthState> _controller =
       StreamController<AuthState>.broadcast();
