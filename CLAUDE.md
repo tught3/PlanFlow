@@ -173,6 +173,7 @@ How to apply: CEO가 "앞으로 ~하게 해", "무조건 ~해", "~이 기본이�
   - Why(2026-08-01 CEO 승인): CEO OS must be an independently owned runtime with one validated policy source. The older global GLM/Flash/M3 workflow remains applicable to its original shared-pipeline scope but would otherwise contradict the explicitly approved CEO OS routing ladder and incorrectly suggest a shared mutable routing dependency.
 
 How to apply: CEO OS production callers obtain immutable policy data from the CEO policy registry only. Unsupported provider aliases, missing capabilities, unvalidated reasons, GLM peak invocation attempts, and fallback outside the configured ladder fail closed. Telegram, Web, and CLI display the policy event and reason code projected from the same validated CEO event stream; they do not infer a provider, quota, or fallback reason independently. Compatibility and feature flags must have an owner, expiry, removal condition, and no dual writer, dual daemon, or dual execution path may remain after cutover.
+- **CM task 36756ba9-6e71-42ec-b743-53bced1af17f. Independently review current working-tree diff for the AI_VIDEO Higgsfield Marketing Studio Adapter Migration. Do not edit files or call Higgsfield. Inspect requested scope and final diff: default direct kling3_0 disabled for AI_VIDEO, marketing_studio_video mapping, explicit product_ids binding, cost get_cost=true, handoff additive fields/fingerprint, lifecycle fail-closed, no changes to existing runs/contracts. Run/inspect targeted tests if useful. Report BLOCKER/HIGH/MEDIUM/LOW findings, exact files/lines, and PASS/BLOCKED recommendation. Note any concern from minimal additive pipeline/runner propagation.**
 - **GLM이 구현 task(Flash/M3)에게 전달하는 위임 프롬프트의 "완료 조건"에는 항상 **① 커밋(pathspec) ② push(origin 동기화) ③ REQUIRED_CHECKS 전부 exit 0 ④ git status 최종 clean 확인**을 명시적으로 적는다. "코드 다 짬"은 완료가 아니라 커밋+검증까지 끝나야 완료다.**
   - Why(2026-07-19 실측 사고): GLM이 Flash에게 "Task-A"를 위임하면서 완료 조건에 "테스트 통과"만 적어두고 커밋/push/REQUIRED_CHECKS를 안 적었다. Flash는 코드를 다 짜고 테스트 통과한 뒤 "완료 보고"를 올렸지만 커밋을 안 해서 8개 파일이 전부 dirty/untracked로 남았다. GLM이 검증 단계에서야 발견해서 다시 Flash에게 커밋 지시를 내야 하는 이중 작업이 발생. "완료"의 정의가 명확하지 않으면 구현자가 어디서 멈춰야 할지 못 알아본다.
 
@@ -243,7 +244,7 @@ CEO가 설계한 루프를 GLM이 수동으로 매번 실행하던 것을 자동
 **모델 선택 기준**:
 - M3 (`minimax-coding-plan/MiniMax-M3`): 다중 파일·로직·외부 API·신규 모듈·스키마. thinking=none.
 - Flash (`deepseek/deepseek-v4-flash`): 단일/소수 파일·문자열·문서·테스트 스캐폴드.
-- Pro (`deepseek/deepseek-v4-pro`): 중간 복잡도·조사·디버깅.
+- Pro (`deepseek/deepseek-v4-pro`): 긴급 폴백 전용 (OC-P14) — quota_exhausted / provider_unavailable / executor_failure / timeout 시에만. 평시 일반 구현에 쓰지 않음.
 - Codex (`gpt-5.4-mini` via codex exec): 도구 호출·CLI 작업 (단, 인증 별도 필요).
 
 **예외 (GLM 직접 수행)**:
@@ -302,6 +303,68 @@ CEO가 설계한 루프를 GLM이 수동으로 매번 실행하던 것을 자동
 **예외 한계 (정직 고백)**:
 - 이 preference가 "모든 권한 전부 허용"이라 하더라도, 보안 비밀(API key 등)을 로그/보고에 평문 노출하지 않는 것, pathspec 커밋 원칙, fail-closed 안전 게이트 등 **코드 품질·안전·감사에 관한 규칙**까지 무력화하지는 않는다. 이런 규칙은 사용자 권한과 무관한 시스템 무결성 영역이다.
 - 따라서 "이건 내가 직접 해야겠다"가 아니라 "이건 시니어 엔지니어라면 규칙을 준수하면서 진행한다"가 정확한 해석이다.
+- ****Naver 계열 액션은 사람이 하는 것처럼 일정하고 인간적인 cadence로 실행해야 한다.** 기계적인 high-throughput 패턴 (예: sub-1초/요청, 동시 4+ 병렬 요청, 균일한 interval) 으로 Naver brandconnect / smartstore / blog / affiliate / session-cookie 가드를 우회하려는 시도는 절대 금지.
+
+사람이 하는 것처럼 보이려면 다음을 모두 만족해야 한다:
+
+1. **요청 간 delay (inter-request gap)** — 최소 1.5초, 평균 2.5~4.5초, 가끔 5~10초 "쉬는 구간" 포함. 일정하지 않게 randomize.
+2. **페이지간 delay (inter-page gap)** — 페이지 1개를 처리한 뒤 다음으로 가기 전, 최소 3초, 평균 4~7초. random.
+3. **동시성 (concurrency)** — 같은 chrome browser session에 attach하는 작업자는 최대 1개. 같은 OAuth/session cookie를 공유하는 도메인 (brandconnect / smartstore / blog 등) 으로는 절대 worker fan-out 금지.
+4. **불규칙성 (irregularity)** — random jitter, "스크롤/탐색" 의 흉내 (간단한 eval), 또는 "next click" 지연을 주기적으로 끼워 넣어 bot 패턴 감지 회피.
+5. **에러 후 cooldown** — 429, CAPTCHA, redirect-loop 발생 시 즉시 일시정지하고 최대 60~120초 후 단일 재시도. 두 번째 연속 429면 그 작업은 그 세션에서 중단.
+
+### 적용 대상
+
+- affiliate URL 발급 (`brandconnect-issue-links`, `issue-pending-links`)
+- brandconnect / smartstore 페이지 자동 캡처 (XHR 캡처, product / category 수집)
+- blog.naver.com 발행·댓글·좋아요·통계 조회
+- search API 연속 호출 (같은 세션 안에서)
+- publisher / scheduler가 같은 browser/CDP session을 공유하는 모든 automation
+
+### 적용 제외
+
+- read-only manifest/JSON 집계 (`manifest.json` checkpoint 작성, atomic write, sha256 checksum — 디스크 I/O, HTTP 아님)
+- registry 조회 (registry.json 자체는 cached read-only 데이터)
+- DB transaction (Supabase RLS — 사람 행동 무관)
+- 광고/영상 콘텐츠 자동 생성 (ad-director, video generation — 별도 모델 provider 정책 영역)
+- 다른 도메인 (non-naver.com 도메인 — 해당 도메인 정책 따름)**
+  - ### Why (2026-08-17 CEO 결정)
+
+CEO: "링크발급은 절대로 그렇게 빨리하면 안되 사람이하는것처럼 일정 딜레이를 줘야해. 그니까 카테고리 파악하는거지? 네이버 정책에 위배되는거 아니지? 그러면해도되"
+
+맥락: brandconnect-browser-category-binding-collector를 200ms delay으로 빠르게 돌리고 있었을 때 CEO가 "속도가 너무 빠르다"라고 의심 → 사실은 read-only category XHR 캡처라 사람이 해도 비슷한 속도지만, **affiliate link issuance 같은 mutation 액션에서 동등한 high-throughput 패턴은 절대 금지**라는 명확한 신호. anti-bot 우회 의도가 아니라 **정책 준수** 차원 (네이버 이용약관 + 사람의 정상 사용 패턴).
+
+연계 결정:
+- Category binding (read-only XHR capture) = OK, 사람 패턴 delay으로 진행 가능 (브라우저가 발생시키는 XHR은 정상 사용자 트래픽과 동일 signature)
+- Affiliate link issuance (mutation, edge endpoint) = 더 보수적 (사람 한 건당 5~10초 + 사고 시 60초 cooldown)
+- "카테고리 파악" / "XHR 캡처" 같은 read-only 작업이라도 "기계적 cadence" 의심이 CEO 마음에 걸리므로 사람 패턴으로 통일
+
+### How to apply
+
+**진행 전 (지시 분석)**:
+
+1. 작업이 위 "적용 대상"에 해당하면 cadence를 사람 패턴으로 설계
+   - 단일 thread (no fan-out)
+   - inter-page: 3~7초 random
+   - inter-request: 1.5~4.5초 random
+2. delay 상수만 코드에 박지 말고 random jitter 포함 (단조로운 패턴 = bot 신호)
+
+**진행 중**:
+
+3. 매 N개마다 elapsed 확인 후 P50/P95 cadence 측정. sub-1초 cadence가 일정하게 지속되면 강제 일시정지 후 30~60초 쉬고 다시 시작
+4. 429 / CAPTCHA / redirect-loop 발견 시 즉시 single retry, 두 번째면 그 작업 중단
+
+**완료 시**:
+
+5. CDN 로그가 봇으로 분류될 우려가 있다면 user와 사전 협의 (예: scheduler로 매일 자동 호출 시 day N에 차단될 수 있음)
+6. 동일 browser session을 공유하는 다른 worker를 띄우지 않는다 (anti-bot 패턴 normal distribution 깨짐)
+
+**한계 (정직 고백)**:
+
+- 사람처럼 보이게 delay을 주는 것이 anti-bot 가드를 영구적으로 우회하는 것은 아니다. Naver가 패턴 탐지를 강화하면 결국 차단 가능. 이 규칙은 "감지 회피"가 아니라 "정상 사용자 트래픽과 동일한 시그니처 유지"를 목적.
+- read-only XHR 캡처는 사람이 같은 페이지를 열어 발생하는 트래픽과 구별 불가능하므로 사람 패턴 delay이 의미 있는 보호가 아닐 수 있다. 그래도 **정책 준수 + CEO 안심** 측면에서 일관되게 적용.
+- 절대 우회 의도 (CAPTCHA 우회, fingerprint spoofing, IP rotation 등) 가 아니라 **rate + cadence 정상화** 만 한다. 그 이상으로 가는 시도는 별도 CEO 결정 + 별도 정책 영역.
+- **Implement the Simple item for BRANDCONNECT_BACKUP_SCOPE_UPDATE_PDMV_MANIFEST in the current E:\FluxStudio checkout. Ownership: E:\FluxStudio\tools\fluxstudio-backup\backup-config.json only. Inspect current state first; the requested root files preserve-manifest.json and preserve-manifest.sha256.json should be in allowedRootFiles, and existing PDMV manifest paths must remain while these canonical paths are added. If the change is already present, do not alter it; report that it is already satisfied. Do not modify preserve artifacts, tests, source code outside this config, DB, scheduler, deployment, or live issuance. Return changed files, exact diff intent, and verification performed.**
 - **GLM이 세운 모든 구현 계획서에는 **"구현은 무조건 서브에이전트로 병렬 위임"**을 기본으로 명시한다. 단일 세션이 직렬로 파일을 수정하는 방식은 기본값에서 제외한다.**
   - Why(2026-07-19 CEO 결정): GLM·Flash·M3 각 모델이 계획만 보고 자율 판단으로 서브에이전트를 띄우지 않는다는 걸 실측으로 확인했다(AGENTS.md "위임이 자동으로 항상 적용되지는 않는다" 정책과 일치). 그래서 계획서에 명시 안 하면 직렬 처리로 빠져 병렬 이점이 사라진다. 무조건 명시해야지만 병렬 진행이 보장된다.
 
@@ -316,30 +379,121 @@ How to apply: GLM 계획서에서 위임 프롬프트를 작성할 때, M3 구�
   - Why(2026-07-19 CEO 결정): 모델 역할을 경직되게 고정하면 작업이 막힐 수 있다. 중요한 건 역할을 잘 수행하는 것, 그리고 동일 역할에 2개 이상 모델이 적합하면 더 싼 모델을 우선하는 것. 이 원칙만 지키면 세부 배정은 자유롭게.
 
 How to apply: GLM이 계획서를 쓸 때 ① 각 항목의 성격(조사/단순 구현/복잡 로직/디버깅/테스트 작성)을 보고 ② 역할 수행 능력이 충분한 모델 후보를 식별한다. 후보가 2개 이상이면 비용 순으로 정렬해 가장 싼 모델을 기본으로 지정. 단, 기본값(Glm/Flash/M3/M3-thinking)을 무시해야 할 만한 사유가 있으면 계획서에 명시(예: "이 항목은 M3로는 감당 어려워 판단하는 다중 파일 아키텍처 변경 → GLM 직접 수행"). CEO가 위임을 받을 때 "이 부분은 GLM이 직접"이라고 적혀 있으면 그대로 GLM이 진행, 그렇지 않으면 기본값 모델(Flash/M3)에게 위임.
+- **Phase — Material-to-Video Automation Finalization을 진행해라.
+
+목표:
+특정 상품 7402697564를 완벽히 검증하는 작업을 중단하고,
+임의의 정상적인 쇼핑 소재를 입력하면 사람의 개별 상품 조사 없이
+최종 쇼츠 MP4까지 자동 생성되는 시스템을 완성한다.
+
+현재 이미 존재:
+상품선정/InfoPack/confirmedFacts/claim grounding/
+PreProductionSpec/hookPsychology/rotation/
+Higgsfield/ElevenLabs/compositor/PublishPack/Daily Pipeline.
+
+이번 작업은 기존 구조를 재사용하고,
+자동화를 막는 일반화된 결함만 수정한다.
+
+1. Input identity
+쿠팡 offer는 productId만 사용하지 말고
+productId + itemId + vendorItemId를 하나의 canonical offer identity로 고정.
+선택 이후 가격/배송/URL/facts가 다른 offer와 섞이지 않게 한다.
+특정 offer의 상업적 타당성을 사람이 조사하는 로직은 만들지 말 것.
+
+2. Fact extraction
+선택된 소재에서 실제 확인 가능한 정보만 confirmedFacts로 추출.
+정보 부족 시 AI가 장점을 만들어내지 않도록 기존 Claim Grounding 유지.
+개별 상품용 하드코딩 금지.
+
+3. Creative
+confirmedFacts를 사용해
+hook → script → scenes → VO를 자동 생성.
+placeholder/unsupported claim은 fail-closed 또는 기존 rewrite 계약으로 처리.
+
+4. Product/reference
+허용된 product image가 있으면 자동 productRef 연결.
+없으면 전체 파이프라인을 깨지 말고 정책에 맞는 fallback 상태 사용.
+특정 상품 수동 이미지 조사 금지.
+
+5. Video
+PreProductionSpec에서 scene request를 자동 생성하고
+현재 기본 모델 정책을 사용.
+Higgsfield 유료 generate는 이번 검증에서 실행하지 말고
+기존 fixture/mock 또는 이미 생성된 asset을 우선 사용.
+
+6. TTS/Compositor
+duration budget → TTS 실측 → caption/CTA/disclosure →
+final.mp4 계약이 모든 상품에서 공통으로 작동해야 함.
+
+7. 시스템 Acceptance Test
+최소 3개의 서로 다른 정상 상품 fixture/capture를 사용해
+Input → InfoPack → PreProduction → video handoff →
+TTS/compositor 또는 mock → PublishPack
+전체 경로를 검증.
+
+특정 7402697564만 통과하는 테스트 금지.
+
+8. 자동화 과정에서 사람이 매번 해야 하는 단계가 무엇인지 전수 조사.
+MVP에서 반드시 필요한 사람 개입만 남기고
+상품별 수동 가격/offer/문구 조사 같은 개입은 제거.
+
+9. 이번 작업에서 금지:
+- 7402697564 offer forensic 추가조사
+- 쇼핑몰별 개별 상품 수동검증 시스템
+- 성과 최적화/A-B
+- SNS 실제 게시
+- 새 AI framework
+- 불필요한 리팩터링
+
+완료 보고:
+1. 현재 Material→Final Video 전체 구조
+2. 아직 수동이었던 지점
+3. 제거한 수동 의존성
+4. canonical offer identity 계약
+5. 3개 서로 다른 상품 E2E 결과
+6. 자동 생성 실패 시 처리
+7. 실제 사람 개입이 남는 지점
+8. 신규 유료 호출 여부
+9. 시스템적으로 아직 막힌 blocker
+10. MATERIAL-TO-VIDEO AUTOMATION READY: YES/NO**
 - **FluxOS 계열 프로젝트의 비단순 개발 작업 파이프라인은 **GLM 계획 → DeepSeek Flash + MiniMax M3 구현 → M3 검토 → GLM 완료 보고** 흐름을 기본으로 한다. 단일 모델이 계획·구현·검토를 다 담당하지 않고, 역할을 4단계로 분리한다.**
   - Why(2026-07-19 CEO 결정): CEO OS에서 지시를 내리면 파이프라인이 끝까지 간 적이 없었다. 근본 원인 3가지: ① 표시 라벨은 Claude로 고정되어 있고 실제 실행은 routing_engine이 GLM을 선택하는 모순, ② Claude 한도 소진 시 자동 폴백 루프가 blocked 상태로 영원히 막힘, ③ 같은 모델이 계획·구현·검토를 다 하니 검증 독립성이 없었다. 그래서 모델별 역할을 명확히 분리하되, GLM(계획/보고)은 routing_engine 사다리에 있고, DeepSeek Flash·MiniMax M3(구현)·M3(검토)도 routing_engine 사다리에 있어 자동 연쇄가 가능한 조합으로 확정했다. Claude는 자동 라우팅에서 제외(2026-07-16 결정 유지)하고 CEO OS 큐가 아닌 대화형 세션에서만 쓴다.
 
 How to apply: GLM 세션이 계획을 세우고(본문+REQUIRED_CHECKS+위임 컨텍스트 포함), CEO가 Flash 세션과 M3 세션을 따로 띄워 각각 구현을 맡긴다(난이도별 분배 — 별도 preference 참조). 구현이 끝나면 M3가 독립 검토(1단계, 2026-07-16 통합 정책 유지)하고, 그 결과를 GLM 세션으로 보고한다. GLM은 검토 통과 시 최종 보고서를 CEO에게 제출한다. 이 흐름은 CEO OS 자동 파이프라인과 대화형 세션 양쪽 모두에 적용한다.
+- ****파이프라인으로 디스패치된 사용자 요청도 원문이 그대로 보여야 한다. 디스패처가 원문을 지우거나 교체하는 것 금지 — 핸드오프 안내는 원문 뒤에 "추가"한다. 핸드오프에는 Task ID·child PID·상한시각·요청 요약이 포함되고, 사용자가 물으면 외부 세션이 실측 진행 상태를 보고하며, child가 죽었으면 외부 세션이 잔여 작업을 이어받아 끝까지 완료한다.** (2026-08-17 CEO 2차 지시: "앞으로도 그렇게 가로채서 안 보이게 하지 마. 원래대로 잘 보이게 해줘.")**
+  - ### Why (2026-08-17 CEO 결정)
+CEO가 "m3 orchestrator" 트리거 포함 프롬프트를 보냈더니 `[OC-P3 DISPATCHER HANDOFF] spawned` 한 줄로 원문이 치환돼 백그라운드로 사라짐. 실제로는 child 4개가 뒤엉켜 돌다가 전부 죽었고, REQUIRED_CHECKS 미완료·테스트 파일 dirty·최종 보고 부재 상태로 방치됐음. CEO 항의: "그게 그렇게 사라지면 난 모르잖아. 처리가 되는 걸 보여줘야지. 왜 니 맘대로 그렇게 해."
+
+### How to apply
+1. **원문 보존 (핵심, 2026-08-17 2차 지시)**: `opencode_entry_boundary.js`의 `chat.message`가 핸드오프 시 원문 parts를 교체(replacePartsInPlace)하지 않고 핸드오프 안내를 뒤에 추가(appendSyntheticPart)한다. 배포 완료 — 테스트 32/32 통과, 원문 유지 단언 포함.
+2. **접수 가시성**: `handoffText(result, originalText)`가 Task ID / child PID / 상한시각 / 지시문 요약 120자 / 상태 질의 안내를 포함한다.
+3. **진행 질의**: 사용자가 "상태 어때?"라고 물으면 (트리거 단어 없이 → DIRECT) 외부 세션이 `E:\FluxStudio\sessions\pipeline_state.jsonl`·`pipeline_execution.jsonl`·git log를 실측해 진행률·커밋·PID 생존 여부를 보고한다.
+4. **child 죽었을 때**: 외부 세션이 dirty 변경 검수 → REQUIRED_CHECKS 실행 → pathspec 커밋으로 끝까지 마무리한다 (2026-08-17 OC-P18 사례: a3493bd9로 완료).
+5. **중복 재전송**: 사용자가 같은 프롬프트를 재전송하면 task_id 해시가 같아 새 스폰이 아닌 already_running/recovery 분기로 가므로, 외부 세션은 재전송 감지 시 기존 run 상태를 먼저 보고한다.
+- **Please conclude implementation now with files changed and test evidence. Keep scope narrow.**
 - **GLM이 세우는 구현 계획서에는 Flash와 M3가 **적당히 큰 작업 단위가 끝날 때마다 현재 대략 몇 % 완료됐는지 CEO에게 알리도록** 명시한다. 최종 완료 보고만 기다리게 하지 않고 중간 진행률을 투명하게 보고한다.**
   - Why(2026-07-19 CEO 결정): 완료 보고만 기다리면 CEO가 진행 상황을 몰라 답답하고, 문제가 생겨도 늦게 발견한다. 특히 Flash·M3가 병렬로 돌면 어느 쪽이 빠르고 어느 쪽이 막혔는지 한눈에 안 보인다. 큰 작업 단위가 끝날 때마다 %를 받으면 CEO가 진척도를 실시간으로 파악할 수 있고, 막힌 쪽을 조기 개입할 수 있다.
 
 How to apply: 계획서의 모든 구현 task에 "큰 작업 단위(예: 파일 수정 완료, 테스트 통과, 디버깅 1단계 종료, 회귀 테스트 50% 돌파 등)가 끝날 때마다 현재 진행률(대략 몇 %)을 CEO에게 보고"라는 문구를 포함한다. 보고 형식은 간단하게 "[진행률] TASK-A: 약 60% (router.py 완료, task_splitter.py 진행 중)". 단, 작업이 단순해서 한 번에 끝나는 경우(예: 단일 파일 문자열 1곳 변경)는 중간 보고 없이 완료 보고만 해도 된다 — 그 사유를 계획서에 명시.
-- **opencode 메인 세션(사용자 창) 모델은 **DeepSeek Pro**다. Pro는 사용자 지시를 이해·분석해 **m3-orchestrator**(M3 조율자)에게 작업을 위임한다. m3-orchestrator는 `glm-planner`(GLM 계획) → `flash-worker`/`m3-worker`(구현) → `glm-reviewer`(GLM 검토)를 조율해 완료 결과를 Pro에게 반환하면, **Pro가 사용자에게 한국어로 표시**한다.
+- **opencode 메인 세션(사용자 창) 진입 모델은 **MiniMax-M3**다 (OC-P14, 2026-08-16). 진입 에이전트(pro-main)는 사용자 지시를 이해·분석해 **m3-orchestrator**(M3 조율자)에게 작업을 위임한다. m3-orchestrator는 `glm-planner`(GLM 계획) → `flash-worker`/`m3-worker`(구현) → `glm-reviewer`(GLM 검토)를 조율해 완료 결과를 진입 에이전트에게 반환하면, **진입 에이전트가 사용자에게 한국어로 표시**한다.
+
+**DeepSeek Pro는 긴급 폴백 전용**이다 (OC-P14). quota_exhausted / provider_unavailable / executor_failure / timeout일 때만 pro-worker로 폴백하며, 평시 진입·일반 구현에는 쓰지 않는다.
 
 이 규칙은 `pipeline_workflow_glm_plan_flash_m3_impl_m3_review`(GLM 메인 계획)와 `m3-main-relay-pipeline`(M3 메인 직접 릴레이)를 모두 **대체**하는 최신 상위 규칙이다.**
   - ### Why
 CEO가 2026-08-03 세션에서 3차 구조 확정:
 1. **1차(M3 직접 릴레이)**: M3가 메인에서 사용자 소통 → M3 한국어 한계로 인해 CEO 반려("한국말을 그렇게 못해?")
 2. **2차(Pro 직접 릴레이)**: Pro가 메인, GLM에 직접 릴레이 → CEO 재차 개선("다시 바꿀게")
-3. **3차(Pro+M3 조율자+GLM, 현재)**: Pro는 분석+표시(한국어 OK), M3는 조율(한국어 소통 안 함), GLM은 계획/검토. Pro가 최종 표시 담당이라 한국어 품질 보장 + M3 한국어 한계 irrelevant(사용자와 직접 대화 안 함)
+3. **3차(Pro+M3 조율자+GLM, 2026-08-03)**: Pro는 분석+표시, M3는 조율, GLM은 계획/검토.
+4. **4차(OC-P14, 2026-08-16 — 현재)**: 진입 모델을 **MiniMax-M3로 일원화**하고 DeepSeek Pro는 긴급 폴백 전용으로 강등. M3가 진입+조율을 맡고 최종 사용자 표시는 진입 에이전트가 담당해 한국어 품질 유지 + DeepSeek Pro 비용 절감.
 
-CEO 통찰: "이미 프로로 분석이 된 거니까 한국어 못하는 거랑 상관없잖아" — M3가 조율만 하고 최종 사용자 표시는 Pro가 하므로 M3 한국어 약점이 구조적으로 차단됨.
+CEO 통찰: "이미 프로로 분석이 된 거니까 한국어 못하는 거랑 상관없잖아" — 3차 구조의 교훈(사용자 표시 품질 보장)은 유지하되, 진입 모델은 M3로 내려 비용을 줄인다.
 
 ### How to apply
 
-**구현 위치** (2026-08-03 배포 완료):
-- `~/.config/opencode/opencode.jsonc`: `default_agent: "pro-main"`, `model: "deepseek/deepseek-v4-pro"`
-- `~/.config/opencode/agent/pro-main.md`: Pro primary, 분석+위임+표시
+**구현 위치** (2026-08-16 OC-P14 배포 완료):
+- `~/.config/opencode/opencode.jsonc`: top-level `model: "minimax-coding-plan/MiniMax-M3"`, `pro-main` model = `minimax-coding-plan/MiniMax-M3`
+- `~/.config/opencode/agent/pro-main.md`: M3 진입(OC-P14), 분석+위임+표시. DeepSeek Pro 긴급 폴백 전용
 - `~/.config/opencode/agent/m3-orchestrator.md`: M3 subagent, 조율자(신규)
 - `~/.config/opencode/agent/glm-planner.md`: GLM subagent, 계획 + 어려운 구현 직접
 - `~/.config/opencode/agent/glm-reviewer.md`: GLM subagent, 독립 검토
@@ -347,7 +501,7 @@ CEO 통찰: "이미 프로로 분석이 된 거니까 한국어 못하는 거랑
 
 **3단계 릴레이 워크플로우**:
 ```
-사용자 ↔ Pro(메인, 한국어 소통+분석+최종 표시)
+사용자 ↔ pro-main(M3 진입, 한국어 소통+분석+최종 표시)
          ↓ 분석 결과 위임
         m3-orchestrator(M3 조율자, 사용자 직접 대화 금지)
          ↓ 계획 의뢰              ↓ 검토 의뢰
@@ -355,40 +509,41 @@ CEO 통찰: "이미 프로로 분석이 된 거니까 한국어 못하는 거랑
          ↓ 계획                    ↑ 결과
         flash-worker(단순) / m3-worker(복잡) / glm-planner(어려운 구현 직접)
          ↓ 완료
-        (glm-reviewer 검토) → m3-orchestrator → Pro → 사용자 표시
+        (glm-reviewer 검토) → m3-orchestrator → pro-main → 사용자 표시
 ```
 
 **에이전트 역할 분담**:
 | 역할 | 에이전트 | 모델 | 책임 |
 |------|----------|------|------|
-| 메인 | pro-main | DeepSeek Pro | 사용자 소통, 지시 분석, m3-orchestrator 위임, 결과 한국어 표시 |
+| 진입 | pro-main | MiniMax M3 | 사용자 소통, 지시 분석, m3-orchestrator 위임, 결과 한국어 표시 |
 | 조율자 | m3-orchestrator | MiniMax M3 | GLM 계획→구현 분배→GLM 검토 조율, 사용자 직접 대화 금지 |
 | 계획+어려운 구현 | glm-planner | GLM-5.2 | 계획 수립, 어려운 구현(아키텍처·복잡 로직) 직접 수행 |
 | 검토 | glm-reviewer | GLM-5.2 | 독립 검토, 판정 PASS/REQUEST_CHANGES |
 | 단순 구현 | flash-worker | DeepSeek Flash | 단일 파일/문자열/문서/테스트 |
 | 복잡 구현 | m3-worker | MiniMax M3 | 다중 파일/로직/API/스키마 |
+| 긴급 폴백 | pro-worker | DeepSeek Pro | quota/provider/runtime/timeout 실패 시에만 (평시 사용 금지) |
 
-**예외 (Pro 직접 응답, 릴레이 없음)**:
+**예외 (진입 에이전트 직접 응답, 릴레이 없음)**:
 - 단순 질문·조사·상태 확인·읽기 전용 요청
 - 코드 변경 필요 없는 대화
 - m3-orchestrator 호출 실패 시 fallback
 
 **한계 (정직 고백)**:
-- 중첩 서브에이전트 호출(Pro → m3-orchestrator → glm-planner/flash-worker/m3-worker) 체인이 김. 각 단계 latency 누적. 하지만 비용 절감(M3 조율이 GLM/Pro 직접보다 저렴)과 품질 분리(Pro 표시/GLM 판단/M3 조율)가 이점.
+- 중첩 서브에이전트 호출(pro-main → m3-orchestrator → glm-planner/flash-worker/m3-worker) 체인이 김. 각 단계 latency 누적. 하지만 비용 절감(M3 조율이 GLM/Pro 직접보다 저렴)과 품질 분리(진입 표시/GLM 판단/M3 조율)가 이점.
 - m3-orchestrator가 m3-worker를 호출하는 것은 동일 모델(M3)이지만 다른 에이전트라 "무한 재귀" 아님(한 단계 위임).
-- AGENTS.md/CLAUDE.md의 기존 "GLM 니가 ~해" 직접 지시 preference들이 이 3단계 구조와 표면적 충돌. 단, 규칙 자체는 provider 무연(big 콘텐츠)이라 기능엔 영향 없음. 문서 정정은 별도 작업.
+- AGENTS.md/CLAUDE.md의 기존 "GLM 니가 ~해" 직접 지시 preference들이 이 3단계 구조와 표면적 충돌. 단, 규칙 자체는 provider 무연(big 콘텐츠)이라 기능엔 영향 없음. 문서 정정은 별도 작업(OC-P19에서 처리).
 - config 변경 후 opencode 재시작 필요 (핫리로드 안 됨).
 
 
-## 강제 조항 (2026-08-04 CEO 재확인 — 모든 세션 필수)
+## 강제 조항 (2026-08-04 CEO 재확인, OC-P14 진입 모델 정정 — 모든 세션 필수)
 
-**Pro 메인(사용자 창)은 절대 직접 구현하지 않는다.** 역할은 정확히 세 가지뿐이다:
+**진입 에이전트(pro-main, MiniMax-M3)는 절대 직접 구현하지 않는다.** 역할은 정확히 세 가지뿐이다:
 
 1. 사용자 지시를 이해·분석해 **"사용자가 무엇을 하려는지"**를 정리한다.
 2. 그 분석 결과를 **m3-orchestrator에게 위임**한다 (계획·구현·검토 전체).
 3. m3-orchestrator의 완료 보고를 받아 **사용자에게 한국어로 보고**한다.
 
-위반 금지 (Pro 메인 직접 수행 금지):
+위반 금지 (진입 에이전트 직접 수행 금지):
 - 코드 수정·파일 편집 (구현은 flash-worker/m3-worker, 어려운 건 glm-planner)
 - 테스트 작성·실행으로 검토 대체
 - glm-planner / glm-reviewer / flash-worker / m3-worker **직접** 호출 (반드시 m3-orchestrator 경유)
@@ -396,7 +551,7 @@ CEO 통찰: "이미 프로로 분석이 된 거니까 한국어 못하는 거랑
 
 **적용 범위**: 이 preference는 global scope이며, opencode/Claude/Codex 등 모든 세션 시작 시 로드된다. 컴퓨터 재부팅 후에도 유지. 세션/프로젝트 무관 동일 적용.
 
-**예외 (Pro 직접 응답)**:
+**예외 (진입 에이전트 직접 응답)**:
 - 단순 질문·조사·상태 확인·읽기 전용 요청
 - 코드 변경 필요 없는 대화
 - m3-orchestrator 호출 실패 시 fallback (fallback 사유를 사용자에게 명시)
@@ -430,6 +585,174 @@ finish 시퀀스는 반드시 fail-safe로 배선한다:
   - Why(2026-07-19 CEO 결정): 단일 구현 task를 한 모델에게 몰아주면 병목이 생기고, 모든 task를 같은 모델에 맡기면 모델 강점이 안 살난다. DeepSeek Flash는 가벼운 단순 작업(라벨/문자열 변경, 단일 파일 수정)에 빠르고 저렴하고, MiniMax M3는 복잡한 로직 변경·디버깅·테스트 작성에 적합하다. 그래서 계획 단계에서 난이도를 2분하여 각 모델 강점에 맞춰 배정하면 병렬 진행이 가능하고 비용·시간이 모두 줄어든다.
 
 How to apply: 계획서를 쓸 때 구현 항목을 "단순(Flash용)"과 "복잡(M3용)" 두 묶음으로 나눈다. 분배 기준은 ①수정 파일 수 ②로직 변경 깊이 ③원인 진단 필요 여부 ④테스트 신규 작성 필요 여부다. 각 task는 파일이 겹치지 않게(비중첩) 설계하고, 각각 별도 REQUIRED_CHECKS와 위임용 컨텍스트(다른 세션에 복붙 가능)를 명시한다. 애매한 작업은 복잡(M3) 쪽으로 보수적으로 분류한다.
+- **TASK: OC-P18 — Integrator Runtime Fallback
+
+목표:
+OpenCode pipeline의 integrator 단계가 runtime failure 발생 시
+bounded fallback을 수행하도록 개선한다.
+
+현재:
+integrator = m3-orchestrator
+fallback_agents = 없음
+
+
+==================================================
+GOAL
+
+Integrator:
+
+MiniMax M3 orchestrator
+
+↓
+
+실패 감지
+
+↓
+
+GLM 5.2 fallback
+
+↓
+
+실패
+
+↓
+
+DeepSeek Pro emergency
+
+
+구현.
+
+
+==================================================
+FAILURE CLASSIFICATION
+
+Fallback 허용:
+
+- timeout
+- provider_unavailable
+- executor_failure
+- auth failure
+- rate limit
+
+
+Fallback 금지:
+
+- validation failure
+- integration logic failure
+- user requirement failure
+
+
+==================================================
+POLICY
+
+정상:
+
+M3 orchestrator
+
+
+Fallback:
+
+GLM 5.2
+
+
+Emergency:
+
+DeepSeek Pro
+
+
+DeepSeek Pro는 모든 정상 후보 실패 시만.
+
+
+==================================================
+EVIDENCE
+
+pipeline_execution.jsonl 기록:
+
+
+selected_model
+
+actual_model
+
+fallback_from
+
+fallback_to
+
+reason
+
+attempt_number
+
+emergency_fallback
+
+
+==================================================
+EVENT
+
+OC-P17 emergency event 재사용.
+
+
+DeepSeek Pro 선택 시:
+
+OC_EMERGENCY_FALLBACK 생성.
+
+
+==================================================
+TESTS
+
+1.
+normal integrator M3
+
+
+2.
+M3 timeout → GLM fallback
+
+
+3.
+GLM failure → Pro emergency
+
+
+4.
+normal route Pro 0
+
+
+5.
+fallback evidence
+
+
+6.
+terminal complete
+
+
+7.
+OC-P13~P17 regression
+
+
+==================================================
+REAL PROVIDER
+
+NO
+
+
+FINAL REPORT:
+
+TASK:
+OC-P18
+
+RESULT:
+
+FILES:
+
+INTEGRATOR:
+
+FALLBACK:
+
+EMERGENCY:
+
+TELEMETRY:
+
+TESTS:
+
+REAL PROVIDER:
+NO**
 - **<turn_aborted>
 The user interrupted the previous turn on purpose. Any running unified exec processes may still be running in the background. If any tools/commands were aborted, they may have partially executed.
 </turn_aborted>**
@@ -493,6 +816,7 @@ CEO가 M3 worker 정체 상황에서 "난 이럴 때 항상(앞으로도 계속,
 - "원인 해결"이 외부 의존성(모델 한도, 네트워크 장애, API down)이면 즉시 해결 안 될 수 있음. 그 경우 CEO에게 보고하고 대안(다른 모델 전환, 재시도, 로컬 진행)을 제안.
 - worker가 종료 시점에 뭔가 쓰고 있었다면 dirty 파일이 반쪽짜리일 수 있음. GLM이 직접 검증 없이 커밋하지 말 것. 정상/비정상 판정 후 처리.
 - "좀비/고아"와 "정상이지만 느린 작업"을 구분하는 건 모델/작업 유형마다 다름. 경험적 기준을 이 규칙에 계속 축적할 것.
+- **게속해줘**
 - **그럼 니가 해야할건 다한거야?**
 - **그럼다한거야?**
 - **다시시도해봐**
@@ -510,10 +834,12 @@ CEO가 M3 worker 정체 상황에서 "난 이럴 때 항상(앞으로도 계속,
 - **진행해**
 - **모든 상태·판단은 추측이 아니라 실측 근거(로그, 실제 조회 결과, 코드 확인)에 기반해서 보고한다. python datetime.now()는 UTC이므로 사용자에게 말할 때는 KST(+9) 환산값을 함께 제시한다.**
   - Why: 근거 없는 추측이 잘못된 조치로 이어져 문제를 키운다. 실제로 시각 착오(UTC를 그대로 KST처럼 말해 '9시간+ lock 만료 버그'로 오진단, 실제론 1시간 미만 정상 lock)로 문제를 키운 사례가 있었다. How to apply: 상태/숫자는 추정하지 말고 실측(audit_tasks, load_locks, git status 등)으로 집계해 보고한다. '확실하냐'는 질문엔 100% 보장 대신 보장 가능한 범위를 정직하게 말한다.
+- **컴퓨터 재부팅햇으니까 기존에 하던거 찾아서 게속 진행해줘.**
 - **When publishing shared instruction documents such as AGENTS.md or CLAUDE.md, first review length, duplicate and conflicting rules, consolidate overlapping rules, and split oversized documents into focused files instead of blindly appending rules.**
 - **하던거 게속해**
 - **하던거 게속해줘**
 - **항상 언제나 내가 지시햇던 모델라우팅으로 진행해야되**
+- **현재 네 agent 이름과 model을 알려줘. 그리고 이 응답을 위해 subagent를 호출했는지도 알려줘. 파일은 수정하지 마.**
 
 
 ---
@@ -665,6 +991,7 @@ CC 모드는 Desktop 세션이 CEO OS 큐에 등록되지 않는 정책의 사�
 - **계획 모델은 세션 시작 모델에 고정하지 않고, 오케스트레이터가 지시사항의 난이도를 먼저 판단해 선택한다**(2026-08-09 CEO 결정 — "세션 캡처 모델 고정" 정책 폐기). 후보는 비용 낮은 순 `Fable(단순) → Sonnet(기본) → Opus(고난도·고위험)`이며, 조사·계획을 문제·무리 없이 해낼 수 있는 최소 모델을 고른다(애매하면 상위로 — 기존 "애매하면 Complex로" 원칙 재사용). 선택은 Agent 도구 `model=` 파라미터로 계획 전용 서브에이전트를 스폰하는 형태로 실행한다 — 메인 대화 세션 자체는 중간에 모델을 못 바꾸므로, "선택된 모델이 계획한다"는 곧 그 모델로 서브에이전트를 스폰해 조사+계획을 시킨다는 뜻이다(구현 단계에서 Codex 3티어를 스폰하는 것과 동일 패턴). **최종 QA는 그 계획을 실제로 세운(스폰된) 모델이 동일하게 담당**해 재현성을 유지한다 — 오케스트레이터 자신의 실행 모델(아래 항목)과는 별개다. 선택 근거(판단한 난이도, 선택 모델)는 진행 상태 표시에 남긴다. 과거 세션 transcript 기반 모델 식별(`cc_transcript.py`, `cc-status`)은 이 계획-모델 선택에는 더 이상 쓰지 않는다(다른 용도로 남아있을 수 있음, 별도 확인 필요).
 - **오케스트레이션·통합검토는 실제 Claude Sonnet이 기본**이고(Agent 도구 `model="sonnet"`), 고난도·고위험이거나 진행 중 판단 신뢰도가 떨어지면 실제 Opus로 승격한다(역할극 대체 금지). 계획 모델과 오케스트레이터는 서로 독립이다. 통합검토는 요약이 아니라 게이트이며 판정은 PASS / NEEDS_REVISION / BLOCKED / REVIEW_ERROR다. 재작업 상한을 초과하면 몰래 완료 처리하지 말고 BLOCKED로 보고한다.
 - **구현은 Codex**가 한다: 단순·일반·복잡 `gpt-5.6-luna`, 고난도·고위험 `gpt-5.6-terra`(`Claude Sonnet`는 종료 예정이라 배제, 단일 소스는 `config.py`의 `CODEX_MODEL_SIMPLE`/`CODEX_MODEL_COMPLEX`/`CODEX_MODEL_ADVANCED`). 전역 `FLUXOS_CODEX_ENABLED`를 켜지 않고 task metadata(`--executor codex`)로만 그 task를 Codex 경로로 보낸다 — 다른 Desktop 세션이나 CEO OS 일반 큐의 라우팅은 영향받지 않는다.
+- **단, Codex(luna/terra) 한도 소진 시 원래 배정된 밴드에 따라 자동 폴백한다**(2026-08-11 사용자 승인): 고난도·고위험(BAND_COMPLEX)은 GLM-5.2 → DeepSeek Pro, 일반(BAND_GENERAL)은 MiniMax M3 → DeepSeek Pro, 단순(BAND_SIMPLE)은 MiniMax M3 → DeepSeek Flash 순서다. GLM은 피크타임(15-19 KST)엔 건너뛰고 바로 2순위로 간다. Claude는 폴백 대상이 아니다. 폴백이 발동하면 반드시 채팅창에 알린다. 밴드별 폴백 매트릭스의 단일 소스는 `.fluxos/utils/cc_fallback.py`의 `FALLBACK_MATRIX`이며, 각 모델의 실제 실행 경로(opencode provider)·피크게이트 여부는 `config/model_policy.yaml`이 제공한다. 여기 나열한 모델명은 참조일 뿐 매핑을 이 문서에 하드코딩하지 않는다.
 - **CC 구성에 없는 모델이 끼면 안 된다.** CC는 위 5단계(계획 모델 / 오케스트레이터 / Codex 3티어 / 오케스트레이터 통합검토 / 최초 계획 모델 최종 QA)만으로 완결된다. CEO OS 일반 큐의 라우팅 사다리(GLM·MiniMax·DeepSeek 등)는 CC 경로에 개입하지 않는다. 그래서 CC task는 등록 시 `--review-owner claude_session`을 반드시 붙여 파이프라인 자체 1차검토를 끄고, 독립 검토를 오케스트레이터 통합검토가 온전히 담당한다(이 플래그가 없으면 라우팅 1차검토가 딸려 붙어 사양에 없는 모델이 검토에 낀다 — 2026-07-22 실측).
 - **파일 충돌·병렬 상한은 코드로 강제한다.** 분해 결과는 `.fluxos/utils/cc_dispatch.py`의 `plan_batches()`에 통과시켜야 파일 범위 겹침 순차화·의존성 순서·동시 4개 상한이 실제로 보장된다(훅 지시문·문서는 강제가 아니다). task마다 독립 worktree를 쓰고 기존 방치 worktree를 재사용하지 않는다.
 - **진행 상태는 지시를 받은 그 채팅창의 assistant 본문**으로 단계별 출력한다(작업 시작·계획 완료·승격·dispatch·결과 회수·재작업·PASS·차단). 훅 stdout·additionalContext·로그·artifact·터미널·외부 대시보드는 표시로 인정하지 않는다. 문구는 실측 artifact에서만 만들고(`.fluxos/utils/cc_progress.py`) 실제 상태보다 앞질러 표시하지 않는다: TASK_ID를 다 받기 전 dispatch 문구 금지, `real_codex_spawn=False`인데 Codex 성공 표기 금지, fallback 은폐 금지, `REVIEW_ERROR`를 PASS로 표기 금지.
@@ -677,6 +1004,7 @@ CC 모드는 Desktop 세션이 CEO OS 큐에 등록되지 않는 정책의 사�
 - Claude Desktop 개발 작업 진행 중에는 주요 단계 전환(계획 확정·구현 완료/실패·검토·수정/모델 승격·최종 검증·승인 대기/차단)에서만 한국어 `[작업 진행 상황]`을 표시한다(현재 단계·현재 단계의 실제 모델·완료 단계의 실제 소요시간). 저수준 로그나 명령 한 줄마다 표시하지 않는다. 값은 그 세션이 직접 관측한 실제 단계 이벤트에서만 읽고 단계·모델·시간을 추측하지 않으며, 계산 불가한 시간은 미기록으로 둔다. 실시간 메시지 수정은 Desktop 제약상 불가하므로 기존 메시지를 덮어쓰지 말고 전환 시 스냅샷을 새로 보여준다. 최종 완료 보고에는 단계별 소요시간을 포함한다. 질문·조사에는 진행 표시를 하지 않는다.
 - 검증된 Claude Desktop 세션에서는 세션 배너와 별개로, **모든 사용자 응답 맨 위에** 한국어 `[요청 처리 상태]`를 한 번 표시한다(매 응답, 4줄 안팎 간결). 방금 요청의 출처·요청 유형(개발/질문/조사)·저장소 변경 필요·현재 단계를 실제 데이터에서만 채운다(추측 금지). Desktop 세션은 CEO OS 큐에 등록되지 않으므로 "Claude 직접 응답 / Codex 실행: 없음" 또는 그 세션이 직접 수행 중인 단계로 표기하고, CEO OS 큐 조회 출력(`run.py request-status` 등)을 인용하지 않는다. 사용자 노출 문구(상태·단계·판정·사유)는 전부 한국어로 렌더한다(내부 코드/JSON 키는 영어 유지). 다른 출처에는 이 상태를 적용하지 않는다.
 - 실제 검증(테스트·독립 검토)을 통과하기 전에는 사용자에게 완료보고를 하지 않는다.
+- 검증된 Claude Desktop 세션은 **응답 맨 마지막에** 그 세션의 현재 CC모드 상태를 한 줄로 간단히 표시한다(`[CC모드: ON]` 또는 `[CC모드: OFF]`). 값은 `.fluxos/memory/cc_mode.json`을 그 세션의 실제 session_id(환경변수 `CLAUDE_CODE_SESSION_ID`, 없으면 `FLUXOS_SESSION_ID`)로 조회해 판정한다 — 항목이 없거나 `expires_at`이 지났으면 OFF, 있고 유효하면 ON. 추측하지 않는다(확인 불가하면 `[CC모드: 확인불가]`로 정직하게 표기). 세션 배너(세션당 1회, 맨 위)·`[요청 처리 상태]`(매 응답 맨 위)와는 표시 위치·용도가 다르므로 서로 대체하지 않는다.
 - 날짜·가격·구체 모델명·fallback 순서 같은 가변 정책은 이 문서에 하드코딩하지 않고 중앙 코드/설정(`config.py`·`ai_schedule.py`·`plans.json`)에 둔다.
 
 ## 기본 원칙
@@ -1421,6 +1749,21 @@ x
 
 ### [PREVENT] win32에서 claude.cmd를 execFile로 spawn하면 EINVAL — .cmd 셸 래퍼가 아니라 실제 claude.exe로 해석해야 함 (2026-08-08)
 CLAUDE_CLI_COMMAND가 win32에서 'claude.cmd'로 하드코딩됐는데 Node는 shell:true 없이 .cmd를 spawn하지 못해 spawn EINVAL이 발생. 그 결과 Claude Code 구독 CLI provider가 이 플랫폼에서 단 한 번도 실행된 적이 없었고, 항상 PROVIDER_UNAVAILABLE로 조용히 OpenAI에 폴백돼 실패가 정상 폴백처럼 위장됨. 수정: npm bin의 실제 네이티브 실행파일(@anthropic-ai/claude-code/bin/claude.exe)을 resolve해 argv 스폰(shell:true 금지 — 프롬프트에 스크레이핑된 미신뢰 상품 텍스트가 들어가 인젝션 표면이 됨).
+
+### [PREVENT] Phase10 runtime closure evidence (2026-08-09)
+Runtime closure report records official supervisor recovery, deferred scheduler/pipeline restart, 60-scenario evidence, and the remaining live Web projection reload mismatch without touching another session's server.
+
+### [PREVENT] \ EOL-only and ancestor-safe finalization\ (2026-08-10)
+\Finalizer
+
+### [PREVENT] requested production capabilities hardcoded, blocking honest partial-capability providers (2026-08-11)
+pipeline-coordinator.mjs hardcoded the PRODUCTION_REQUEST requested_content_capabilities to a fixed 6-item list, so any production provider that honestly declares fewer capabilities (e.g. an AI_VIDEO-backed provider with only VIDEO_RENDER/METADATA/AUDIO_TRACK/TEXT_DRAFT) always failed PROVIDER_CAPABILITY_UNAVAILABLE instead of succeeding with its true capability set
+
+### [PREVENT] Higgsfield ProductionProvider adapter closes AI_VIDEO-to-Core integration gap (2026-08-11)
+Core's ProductionProvider.v1 contract requires produce() to synchronously return a ProductionResult, but Higgsfield generation can only be triggered from a live Claude MCP session, never from this Node process, so a naive adapter calling produce() would hang or fabricate results. Fixed with a fail-closed Precondition-Gate-plus-Harvest adapter: checkReadiness() only returns true after a Phase-1 out-of-process daily run has genuinely reached COMPLETED with a fingerprint-valid publish pack and an on-disk rendered file, and produce() performs a pure local file harvest (zero MCP calls, zero credits) while Core's own createProductionResult() independently re-verifies every artifact bytes/sha256 from disk.
+
+### [PREVENT] perf-canary 회복 텔레그램 진동 재발신 (2026-08-11)
+Dispatch-Alert의 회복(RECOVERY) 경로가 정상 3연속마다 텔레그램을 발신해, 6시간 쿨다운을 회복 시점마다 무효화하고 심각/회복이 반복 진동하는 구간에서 SENT/RECOVERY가 계속 재발신됐다(2026-08-11 실측 8건/8건)
 
 
 # Flux Studio Business Context
