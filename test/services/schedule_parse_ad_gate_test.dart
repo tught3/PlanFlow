@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/remote_config_service.dart';
 import 'package:planflow/services/schedule_parse_ad_gate.dart';
 import 'package:planflow/services/schedule_parse_entitlement.dart';
 
@@ -31,6 +32,8 @@ void main() {
   tearDown(() {
     ScheduleParseAdGate.instance.delegateForTest = null;
     ScheduleParseEntitlementService.instance.delegateForTest = null;
+    RemoteConfigService.rewardAdFailurePolicyForTest = null;
+    ScheduleParseAdGate.instance.lastFreePassApplied = false;
   });
 
   group('실제 _runGate 경로 (ScheduleParseAdGate delegate 미주입)', () {
@@ -216,6 +219,61 @@ void main() {
       expect(id, isNotEmpty);
       expect(id, startsWith('schedule_parse_session_'));
     });
+  });
+
+  group('free_pass 정책 (RemoteConfigService.rewardAdFailurePolicy)', () {
+    test(
+      "rewardAdFailurePolicy == 'free_pass'면 광고 실패 시에도 무료 진입 "
+      'grant를 반환하고, consume()은 호출하지 않는다',
+      () async {
+        RemoteConfigService.rewardAdFailurePolicyForTest = 'free_pass';
+
+        final fake = _FakeEntitlementDelegate(
+          peekResult: const ScheduleParseEntitlementPeek(
+            dailyRemaining: 0,
+            requiresAd: true,
+          ),
+        );
+        ScheduleParseEntitlementService.instance.delegateForTest = fake;
+
+        final grant = ScheduleParseAdGate.instance.maybeFreePassGrant(
+          dailyRemainingAtGate: 0,
+        );
+
+        expect(grant, isNotNull);
+        expect(
+          grant!.source,
+          ScheduleParseEntitlementSource.adFailedFreePass,
+        );
+        expect(grant.dailyRemainingAtGate, 0);
+        expect(ScheduleParseAdGate.instance.lastFreePassApplied, isTrue);
+        // maybeFreePassGrant()는 entitlement 서비스를 전혀 건드리지 않는다
+        // (peek/consume 어느 쪽도 호출하지 않음) — 광고도 무료횟수도 소진된
+        // 상태의 예외 통과이지 정상 무료소진이 아니므로 소비가 없어야 한다.
+        expect(fake.consumeCallCount, 0);
+      },
+    );
+
+    test(
+      "rewardAdFailurePolicy가 'free_pass'가 아니면(기본값 'retry' 및 그 외 "
+      "명시 값) 무료 진입을 허용하지 않는다(fail-closed 유지)",
+      () {
+        for (final policy in <String?>[null, 'retry', 'deny', '']) {
+          RemoteConfigService.rewardAdFailurePolicyForTest = policy;
+
+          final grant = ScheduleParseAdGate.instance.maybeFreePassGrant(
+            dailyRemainingAtGate: 3,
+          );
+
+          expect(
+            grant,
+            isNull,
+            reason: 'policy=$policy 상태에서는 free_pass grant가 만들어지면 안 된다',
+          );
+        }
+        expect(ScheduleParseAdGate.instance.lastFreePassApplied, isFalse);
+      },
+    );
   });
 }
 

@@ -52,6 +52,11 @@ enum ScheduleParseEntitlementSource {
 
   /// 리워드 광고 시청 완료.
   adRewarded,
+
+  /// 광고가 실패했지만 RemoteConfigService.rewardAdFailurePolicy
+  /// = 'free_pass' 정책에 따라 무료 진입이 허용된 경우. consume()은
+  /// 호출되지 않는다(광고도 무료횟수도 소진된 상태의 예외 통과).
+  adFailedFreePass,
 }
 
 /// AI 일정분석(GPT 파싱) 진입이 승인된 시점의 스냅샷.

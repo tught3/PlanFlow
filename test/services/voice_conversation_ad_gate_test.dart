@@ -27,6 +27,7 @@ void main() {
     VoiceConversationAdGate.instance.delegateForTest = null;
     // 다른 테스트가 RC 상태에 영향받지 않도록 매 테스트 후 초기화.
     RemoteConfigService.lastFetchSucceededForTest = false;
+    RemoteConfigService.rewardAdFailurePolicyForTest = null;
   });
 
   group('실제 _runGate 경로 (delegate 미주입)', () {
@@ -310,6 +311,47 @@ void main() {
 
       expect(codes, hasLength(VoiceConversationGateDenialReason.values.length));
     });
+  });
+
+  group('free_pass 정책 (RemoteConfigService.rewardAdFailurePolicy)', () {
+    test(
+      "rewardAdFailurePolicy == 'free_pass'면 광고 실패 시에도 무료 진입 "
+      'grant를 반환한다(entitlement 소비 없음)',
+      () {
+        RemoteConfigService.rewardAdFailurePolicyForTest = 'free_pass';
+
+        final grant = VoiceConversationAdGate.instance.maybeFreePassGrant(
+          initialRemainingAtGate: 0,
+          dailyRemainingAtGate: 0,
+        );
+
+        expect(grant, isNotNull);
+        expect(grant!.source, EntitlementSource.adFailedFreePass);
+        expect(grant.initialRemainingAtGate, 0);
+        expect(grant.dailyRemainingAtGate, 0);
+      },
+    );
+
+    test(
+      "rewardAdFailurePolicy가 'free_pass'가 아니면(기본값 'retry' 및 그 외 "
+      "명시 값) 무료 진입을 허용하지 않는다(fail-closed 유지)",
+      () {
+        for (final policy in <String?>[null, 'retry', 'deny', '']) {
+          RemoteConfigService.rewardAdFailurePolicyForTest = policy;
+
+          final grant = VoiceConversationAdGate.instance.maybeFreePassGrant(
+            initialRemainingAtGate: 0,
+            dailyRemainingAtGate: 0,
+          );
+
+          expect(
+            grant,
+            isNull,
+            reason: 'policy=$policy 상태에서는 free_pass grant가 만들어지면 안 된다',
+          );
+        }
+      },
+    );
   });
 }
 

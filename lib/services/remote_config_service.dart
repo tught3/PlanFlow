@@ -229,8 +229,25 @@ class RemoteConfigService {
       getInt(_kVoiceConversationFreeTrialCount, defaultValue: 3);
 
   /// 광고 실패 시 정책. 음성 대화는 항상 재시도(retry)로 fail-closed 한다.
+  /// 'free_pass'가 명시적으로 설정된 경우에만 광고 실패 시 무료 진입을
+  /// 허용한다(schedule_parse_ad_gate.dart/voice_conversation_ad_gate.dart).
   static String get rewardAdFailurePolicy =>
-      _remoteConfig?.getString(_kRewardAdFailurePolicy) ?? 'retry';
+      _rewardAdFailurePolicyOverride ??
+      _remoteConfig?.getString(_kRewardAdFailurePolicy) ??
+      'retry';
+
+  /// 테스트 전용 오버라이드. null이면 실제 Remote Config 값을 사용한다.
+  ///
+  /// [lastFetchSucceededForTest]와 동일한 이유(Firebase Remote Config가
+  /// static singleton이라 flutter test 환경에서 fake로 hit할 수 없음)로
+  /// schedule_parse_ad_gate/voice_conversation_ad_gate의 free_pass 분기를
+  /// 단위 테스트에서 검증할 때만 사용한다. 프로덕션 코드 경로에서는 절대
+  /// 호출되면 안 된다(@visibleForTesting).
+  static String? _rewardAdFailurePolicyOverride;
+
+  @visibleForTesting
+  static set rewardAdFailurePolicyForTest(String? value) =>
+      _rewardAdFailurePolicyOverride = value;
 
   /// 홈 화면 음성 대화 진입 버튼 표시 여부. 기본 true.
   static bool get voiceConversationButtonEnabled =>

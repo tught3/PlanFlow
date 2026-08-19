@@ -242,9 +242,54 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 광고 실패는 항상 진입 거부다. 4회째부터 광고 완료가 필수다.
+    // 광고 실패는 원칙적으로 진입 거부다(4회째부터 광고 완료가 필수).
+    // 단, 운영 설정(RemoteConfigService.rewardAdFailurePolicy)이 명시적으로
+    // 'free_pass'로 설정된 경우에만 예외적으로 무료 진입을 허용한다. 이
+    // 경우 consume()은 호출하지 않는다 — 광고도 무료횟수도 소진된 상태에서의
+    // 예외 통과이지 정상적인 무료소진이 아니다.
+    final freePassGrant = maybeFreePassGrant(
+      initialRemainingAtGate: peek.initialRemaining,
+      dailyRemainingAtGate: peek.dailyRemaining,
+    );
+    if (freePassGrant != null) {
+      await AnalyticsService.logVoiceConvEntered(
+        source: 'ad_failed_free_pass',
+      );
+      onEnterAllowed(freePassGrant);
+      return;
+    }
+
     await AnalyticsService.logVoiceConvGateBlocked(reason: 'ad_failed_retry');
     _deny(VoiceConversationGateDenialReason.adFailed, onDenied);
+  }
+
+  /// RemoteConfigService.rewardAdFailurePolicy가 명시적으로 'free_pass'로
+  /// 설정된 경우에만 무료 진입 grant를 만들어 반환한다(그 외에는 null).
+  ///
+  /// `_runGate`의 광고 실패 분기가 실제로 사용하는 로직을 그대로 노출한
+  /// 것이다 — Firebase/AdService 의존 없이 정책 분기를 직접 단위 테스트할
+  /// 수 있도록 `@visibleForTesting`으로 공개한다.
+  @visibleForTesting
+  VoiceConversationEntryGrant? maybeFreePassGrant({
+    required int initialRemainingAtGate,
+    required int dailyRemainingAtGate,
+  }) {
+    if (!_isFreePassPolicy()) {
+      return null;
+    }
+    return _grant(
+      EntitlementSource.adFailedFreePass,
+      initialRemainingAtGate: initialRemainingAtGate,
+      dailyRemainingAtGate: dailyRemainingAtGate,
+    );
+  }
+
+  /// RemoteConfigService.rewardAdFailurePolicy가 명시적으로 'free_pass'로
+  /// 설정됐는지 확인한다(대소문자 무관). 기본값('retry') 또는 그 외 값은
+  /// false — fail-closed 유지.
+  bool _isFreePassPolicy() {
+    return RemoteConfigService.rewardAdFailurePolicy.trim().toLowerCase() ==
+        'free_pass';
   }
 
   void _deny(

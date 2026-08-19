@@ -57,6 +57,11 @@ class ScheduleParseAdGate {
   @visibleForTesting
   ScheduleParseEntitlementPeek? lastPeek;
 
+  /// 직전 `_runGate` 실행에서 rewardAdFailurePolicy='free_pass' 정책에
+  /// 따라 광고 실패를 무료 진입으로 넘겨준 경우 true. 테스트/추적용.
+  @visibleForTesting
+  bool lastFreePassApplied = false;
+
   /// 실제 진입 게이트. UI 컨텍스트(context)와 진입 허용 시 호출될 콜백을 받는다.
   /// - 광고/실패 정책 분기는 이 메서드 안에서 끝낸다.
   /// - 진입이 최종 거부된 경우에는 [onEnterAllowed]를 호출하지 않는다.
@@ -74,6 +79,7 @@ class ScheduleParseAdGate {
     void Function(String stage)? onAdProgress,
   }) async {
     lastDenialReason = null;
+    lastFreePassApplied = false;
     if (_inFlight) {
       // 이미 진행 중이면 사일런트하게 무시(사용자 인지 불필요).
       return;
@@ -189,8 +195,49 @@ class ScheduleParseAdGate {
       return;
     }
 
-    // 광고 실패는 항상 진입 거부다.
+    // 광고 실패는 원칙적으로 진입 거부다. 단, 운영 설정
+    // (RemoteConfigService.rewardAdFailurePolicy)이 명시적으로 'free_pass'로
+    // 설정된 경우에만 예외적으로 무료 진입을 허용한다. 이 경우 consume()은
+    // 호출하지 않는다 — 광고도 무료횟수도 소진된 상태에서의 예외 통과이지
+    // 정상적인 무료소진이 아니다(호출자가 consume을 호출하지 않도록
+    // 화면 쪽에서 grant.source로 분기해야 한다).
+    final freePassGrant = maybeFreePassGrant(
+      dailyRemainingAtGate: peek.dailyRemaining,
+    );
+    if (freePassGrant != null) {
+      onEnterAllowed(freePassGrant);
+      return;
+    }
+
     _deny(ScheduleParseGateDenialReason.adFailed, onDenied);
+  }
+
+  /// RemoteConfigService.rewardAdFailurePolicy가 명시적으로 'free_pass'로
+  /// 설정된 경우에만 무료 진입 grant를 만들어 반환한다(그 외에는 null).
+  ///
+  /// `_runGate`의 광고 실패 분기가 실제로 사용하는 로직을 그대로 노출한
+  /// 것이다 — Firebase/AdService 의존 없이 정책 분기를 직접 단위 테스트할
+  /// 수 있도록 `@visibleForTesting`으로 공개한다.
+  @visibleForTesting
+  ScheduleParseEntryGrant? maybeFreePassGrant({
+    required int dailyRemainingAtGate,
+  }) {
+    if (!_isFreePassPolicy()) {
+      return null;
+    }
+    lastFreePassApplied = true;
+    return _grant(
+      ScheduleParseEntitlementSource.adFailedFreePass,
+      dailyRemainingAtGate: dailyRemainingAtGate,
+    );
+  }
+
+  /// RemoteConfigService.rewardAdFailurePolicy가 명시적으로 'free_pass'로
+  /// 설정됐는지 확인한다(대소문자 무관). 기본값('retry') 또는 그 외 값은
+  /// false — fail-closed 유지.
+  bool _isFreePassPolicy() {
+    return RemoteConfigService.rewardAdFailurePolicy.trim().toLowerCase() ==
+        'free_pass';
   }
 
   void _deny(
