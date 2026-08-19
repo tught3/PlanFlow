@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/supabase_auth_options.dart';
@@ -8,6 +9,9 @@ import 'package:planflow/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+
+// 이 스로틀(AuthProvider._shouldSkipNetworkRefresh)은 lib/services/calendar_sync_service.dart:1849와
+// lib/features/groups/screens/group_create_screen.dart:107의 raw refreshSession() 호출은 커버하지 않는다(범위 밖, 별도 확인 필요).
 
 void main() {
   setUpAll(() {
@@ -583,6 +587,91 @@ void main() {
 
     provider.dispose();
   });
+
+  test(
+      'skips a rapid repeat network refresh when session expiry is unknown '
+      '(10초 뒤 재호출해도 refreshCount가 늘지 않는다)', () async {
+    DateTime now = DateTime.utc(2026, 1, 1, 12, 0, 0);
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'user-throttle',
+        email: 'throttle@example.com',
+      ),
+    );
+    final provider = AuthProvider(authService: service, clock: () => now);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.isSignedIn, isTrue);
+    expect(service.refreshCount, 1);
+
+    // refreshMinInterval(60초) 이내이므로 스로틀에 걸려 네트워크 갱신이 생략돼야 한다.
+    now = now.add(const Duration(seconds: 10));
+    final signedIn = await provider.syncCurrentSession();
+
+    expect(signedIn, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(service.refreshCount, 1);
+
+    provider.dispose();
+    await service.dispose();
+  });
+
+  test(
+      'keeps active session without requiring reauth when refresh hits the '
+      'gotrue rate limit (429는 세션 만료로 오판정하지 않는다)', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'user-429',
+        email: 'rate-limited@example.com',
+      ),
+      refreshError: const AuthException(
+        'rate limited',
+        statusCode: '429',
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.hasActiveSession, isTrue);
+    expect(provider.needsReauthentication, isFalse);
+    expect(provider.userId, 'user-429');
+    expect(provider.email, 'rate-limited@example.com');
+    expect(service.refreshCount, 1);
+
+    provider.dispose();
+    await service.dispose();
+  });
+
+  test(
+      'still performs a network refresh when the session expiry is imminent '
+      '(만료 임박 세션은 스로틀 대상에서 제외된다)', () async {
+    final now = DateTime.utc(2026, 1, 1, 12, 0, 0);
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'user-imminent',
+        email: 'imminent@example.com',
+        // refreshSkipRemainingLifetime(5분)보다 짧게 남아 스킵되면 안 된다.
+        expiresAt: now.add(const Duration(minutes: 2)),
+      ),
+    );
+    final provider = AuthProvider(authService: service, clock: () => now);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.hasActiveSession, isTrue);
+    expect(provider.userId, 'user-imminent');
+    expect(service.refreshCount, 1);
+
+    provider.dispose();
+    await service.dispose();
+  });
 }
 
 Session _session({
@@ -593,6 +682,10 @@ Session _session({
     'name': 'Test User',
   },
   List<UserIdentity>? identities,
+  // 지정하면 gotrue가 파싱 가능한 실제 JWT 형태 accessToken을 생성해
+  // Session.expiresAt이 이 시각을 반환하게 한다. 미지정 시 기존 기본값
+  // 'access-token'(파싱 불가 -> expiresAt == null)을 그대로 유지한다.
+  DateTime? expiresAt,
 }) {
   final user = _user(
     userId: userId,
@@ -603,11 +696,23 @@ Session _session({
   );
 
   return Session(
-    accessToken: 'access-token',
+    accessToken: expiresAt == null ? 'access-token' : _fakeAccessToken(expiresAt),
     refreshToken: 'refresh-token',
     tokenType: 'bearer',
     user: user,
   );
+}
+
+/// gotrue의 `Session.expiresAt`는 accessToken을 `Jwt.parseJwt`(jwt_decode
+/// 패키지)로 파싱해 payload의 `exp`(초 단위 UNIX epoch)를 읽는다. 서명 검증은
+/// 하지 않으므로 `.`으로 구분된 3파트 문자열 형태만 맞추면 테스트에서
+/// 만료 시각을 자유롭게 제어할 수 있다.
+String _fakeAccessToken(DateTime expiresAt) {
+  final expSeconds = expiresAt.millisecondsSinceEpoch ~/ 1000;
+  final payload = base64Url.encode(
+    utf8.encode(jsonEncode(<String, dynamic>{'exp': expSeconds})),
+  );
+  return 'header.$payload.sig';
 }
 
 User _user({

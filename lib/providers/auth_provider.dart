@@ -366,9 +366,10 @@ class AuthProvider extends ChangeNotifier {
   }
 
   void _applyUser(User? user) {
-    // 로그아웃 확정(user == null) 또는 다른 계정의 새 세션 적용 시 스로틀 상태를
-    // 초기화한다. 이전 계정의 타임스탬프가 새 세션 판정에 새어들면 안 된다.
-    if (user == null || user.id != _userId) {
+    // 로그아웃 확정(user == null) 또는 이미 로그인된 상태에서 다른 계정의 새 세션이
+    // 적용될 때만 스로틀 상태를 초기화한다. 최초 로그인(_userId가 처음부터 null)은
+    // 계정 전환이 아니므로 제외 — 이전 계정의 타임스탬프가 새 세션 판정에 새어들면 안 된다.
+    if (user == null || (_userId != null && user.id != _userId)) {
       _lastSuccessfulRefreshAt = null;
       _rateLimitedUntil = null;
     }
