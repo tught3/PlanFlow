@@ -107,6 +107,52 @@ void main() {
     });
   });
 
+  group('AdService.showForParseSchedule 부팅 초기화 실패 시 재시도', () {
+    // showForVoiceConversationWithOutcome은 이미 "_initialized=false로
+    // 진입한 호출은 initialize()를 한 번 더 시도한다"는 회귀 방지 로직을
+    // 갖고 있다(449-462줄 부근). showForParseSchedule에는 이 로직이 없어서
+    // 부팅 시 initialize()가 한 번 실패하면(main.dart 경쟁 상태 등) 그
+    // 세션 내내 _loadRewardedAd가 조용히 false만 반환했다. 이 테스트는
+    // showForParseSchedule 호출이 initialize()를 실제로 (재)시도하는지를
+    // 검증한다.
+    test('_initialized=false로 시작하면 initialize()를 (재)호출한다', () async {
+      final service = _SpyAdService();
+      expect(service.isInitialized, isFalse);
+      expect(service.initializeCallCount, 0);
+
+      final result = await service.showForParseSchedule(
+        requestId: 'test-request-id',
+      );
+
+      // 테스트 환경(플랫폼 채널 없음)에서는 consent가 끝내 unavailable로
+      // 남아 _initialized는 여전히 false이지만, initialize()가 실제로
+      // 호출됐는지(=재시도 시도 여부)는 스파이로 별도 관측한다.
+      expect(
+        service.initializeCallCount,
+        1,
+        reason: 'showForParseSchedule은 _initialized=false일 때 '
+            'initialize()를 한 번 (재)시도해야 한다',
+      );
+      expect(service.isInitialized, isFalse);
+      expect(result, isFalse);
+    });
+
+    test('초기화 재시도가 실패해도 광고 로드(_loadRewardedAd)로 진행하지 않는다', () async {
+      final service = _SpyAdService();
+
+      final stages = <String>[];
+      final result = await service.showForParseSchedule(
+        requestId: 'test-request-id-2',
+        onProgress: stages.add,
+      );
+
+      expect(result, isFalse);
+      // 'shown' 단계는 _loadRewardedAd 성공 이후에만 발화한다. 초기화
+      // 재시도가 실패하면 'loading' -> 'failed'로 바로 끝나야 한다.
+      expect(stages, <String>['loading', 'failed']);
+    });
+  });
+
   group('isValidRewardedAdUnitId', () {
     test('운영 형식(16자리 숫자/최대 20자리 숫자)은 통과한다', () {
       expect(
@@ -370,4 +416,19 @@ void main() {
       );
     });
   });
+}
+
+/// [AdService.initialize] 호출 횟수를 관측하기 위한 테스트 전용 스파이.
+///
+/// AdConsentService/RemoteConfigService는 싱글턴이거나 생성자가 private라
+/// 직접 mock 카운터를 주입할 수 없으므로, `initialize()`를 오버라이드해
+/// 실제 로직(super.initialize())을 그대로 수행하면서 호출 횟수만 센다.
+class _SpyAdService extends AdService {
+  int initializeCallCount = 0;
+
+  @override
+  Future<void> initialize() async {
+    initializeCallCount += 1;
+    await super.initialize();
+  }
 }
