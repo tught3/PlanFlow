@@ -1763,6 +1763,36 @@ void main() {
       expect(fakeDelegate.consumedSessionIds, <String>['session-initial-text']);
     });
 
+    testWidgets(
+        'grant.source가 adFailedFreePass면 첫 명령이 처리돼도 소비하지 않는다 (H1 리뷰 지적)',
+        (tester) async {
+      // VoiceConversationAdGate.maybeFreePassGrant가 광고 실패+free_pass
+      // 정책으로 승인한 grant는 광고도 무료횟수도 소진된 상태의 예외
+      // 통과이므로, 화면이 grant.source를 확인하지 않고 무조건 consume()을
+      // 호출하면 안 된다.
+      final fakeDelegate = _FakeEntitlementDelegate();
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          fakeDelegate;
+
+      const grant = VoiceConversationEntryGrant(
+        sessionId: 'session-free-pass',
+        source: EntitlementSource.adFailedFreePass,
+        initialRemainingAtGate: 0,
+        dailyRemainingAtGate: 0,
+      );
+
+      await pumpConversation(
+        tester,
+        const VoiceConversationScreen(
+          entryGrant: grant,
+          initialText: '오늘 일정 알려줘',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeDelegate.consumeCalls, 0);
+    });
+
     testWidgets('같은 세션에서 여러 번 명령해도 엔타이틀먼트는 1회만 소비한다', (tester) async {
       final fakeDelegate = _FakeEntitlementDelegate()
         ..consumeResult = const VoiceConversationConsumeResult(

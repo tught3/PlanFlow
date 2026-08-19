@@ -271,16 +271,20 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 분석 이벤트를 남긴다. 소비 자체가 실패해도(fail-open) 세션 시작
   /// 이벤트는 항상 남긴다.
   Future<void> _consumeEntitlement(VoiceConversationEntryGrant grant) async {
-    final result = await VoiceConversationEntitlementService.instance.consume(
-      grant.sessionId,
-    );
-    if (result != null) {
-      if (result.source == 'initial_free') {
-        await AnalyticsService.logVoiceConvInitialFreeUsed(
-          remainingAfter: result.initialRemaining,
-        );
+    // adFailedFreePass는 광고도 무료횟수도 소진된 상태에서의 예외 통과다
+    // (VoiceConversationAdGate.maybeFreePassGrant 참조). 이 경로는 정상적인
+    // 무료소진이 아니므로 consume()을 호출하지 않는다.
+    if (grant.source != EntitlementSource.adFailedFreePass) {
+      final result = await VoiceConversationEntitlementService.instance
+          .consume(grant.sessionId);
+      if (result != null) {
+        if (result.source == 'initial_free') {
+          await AnalyticsService.logVoiceConvInitialFreeUsed(
+            remainingAfter: result.initialRemaining,
+          );
+        }
+        // 'ad_required' 등 그 외 값은 별도 소비 이벤트가 없다.
       }
-      // 'ad_required' 등 그 외 값은 별도 소비 이벤트가 없다.
     }
     await AnalyticsService.logVoiceConvSessionStarted(
       source: _mapEntitlementSourceToSessionSource(grant.source),

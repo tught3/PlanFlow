@@ -17,6 +17,8 @@ import 'package:planflow/features/groups/repositories/group_event_repository.dar
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
 import 'package:planflow/services/gpt_service.dart';
+import 'package:planflow/services/schedule_parse_ad_gate.dart';
+import 'package:planflow/services/schedule_parse_entitlement.dart';
 import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/app_feedback_service.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -36,6 +38,8 @@ void main() {
 
   tearDown(() {
     SharedPreferencesAsyncPlatform.instance = null;
+    ScheduleParseAdGate.instance.delegateForTest = null;
+    ScheduleParseEntitlementService.instance.delegateForTest = null;
   });
 
   testWidgets(
@@ -1429,6 +1433,52 @@ void main() {
 
     expect(eventRepository.createdEvents, hasLength(1));
   });
+
+  testWidgets(
+      'ConfirmScreen does not consume entitlement when the ad gate grants an '
+      'adFailedFreePass entry', (tester) async {
+    // ScheduleParseAdGate가 광고 실패+free_pass 정책으로 진입을 허용한
+    // 경우(H1 리뷰 지적) — 화면이 grant.source를 확인하지 않고 무조건
+    // consume()을 호출하면 안 된다.
+    ScheduleParseAdGate.instance.delegateForTest = _FreePassAdGateDelegate();
+    final entitlementDelegate = _CountingEntitlementDelegate();
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        entitlementDelegate;
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '초기 제목',
+            rawText: '내일 오전 9시에 대전출발',
+          )..['parse_pending'] = true,
+          gptService: _DeferredGptService(
+            Future.value(<String, dynamic>{
+              'title': 'AI 제목',
+              'location': 'AI 장소',
+              'memo': 'AI 메모',
+              'start_at':
+                  DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+              'end_at': null,
+              'supplies': <String>[],
+              'is_critical': false,
+              'pre_actions': <Map<String, dynamic>>[],
+              'parse_failed': false,
+            }),
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(entitlementDelegate.consumeCallCount, 0);
+  });
 }
 
 Widget _testApp(Widget child) {
@@ -1982,6 +2032,45 @@ class _AlarmReadyPermissionService extends _DeniedPermissionService {
         fullScreenIntentStatus: PermissionCheckState.granted,
       ),
       batteryOptimizationIgnored: true,
+    );
+  }
+}
+
+/// [ScheduleParseAdGate] delegate that always simulates the "광고 실패 +
+/// rewardAdFailurePolicy=free_pass" 진입 승인 분기(consume()을 호출하면
+/// 안 되는 grant.source).
+class _FreePassAdGateDelegate implements ScheduleParseAdGateDelegate {
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required void Function(ScheduleParseEntryGrant grant) onEnterAllowed,
+    void Function(ScheduleParseGateDenialReason reason)? onDenied,
+    required ScheduleParseAdGate gate,
+  }) async {
+    onEnterAllowed(
+      ScheduleParseEntryGrant(
+        sessionId: ScheduleParseSessionIdGenerator.next(),
+        source: ScheduleParseEntitlementSource.adFailedFreePass,
+        dailyRemainingAtGate: 0,
+      ),
+    );
+  }
+}
+
+/// [ScheduleParseEntitlementService]의 consume() 호출 횟수를 세는 fake.
+class _CountingEntitlementDelegate implements ScheduleParseEntitlementDelegate {
+  int consumeCallCount = 0;
+
+  @override
+  Future<ScheduleParseEntitlementPeek?> peek() async =>
+      const ScheduleParseEntitlementPeek(dailyRemaining: 0, requiresAd: true);
+
+  @override
+  Future<ScheduleParseConsumeResult?> consume(String sessionId) async {
+    consumeCallCount += 1;
+    return const ScheduleParseConsumeResult(
+      source: 'daily_free',
+      dailyRemaining: 0,
     );
   }
 }

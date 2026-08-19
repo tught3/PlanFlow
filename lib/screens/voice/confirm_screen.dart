@@ -1299,7 +1299,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // consume()은 fail-open(null 반환)이라 실패해도 파싱 자체를 막지 않는다.
     final grant = _scheduleParseGrant;
     _scheduleParseGrant = null;
-    if (grant != null) {
+    if (grant != null &&
+        grant.source != ScheduleParseEntitlementSource.adFailedFreePass) {
       unawaited(
         ScheduleParseEntitlementService.instance.consume(grant.sessionId),
       );
