@@ -359,6 +359,21 @@ class AdService {
     await AnalyticsService.logAdPromptShown();
     try {
       onProgress?.call('loading');
+      // A caller may arrive before app-start priming has completed. Await one
+      // initialization attempt here; initialize() is idempotent. Without this,
+      // a failed startup init leaves _initialized permanently false for the
+      // rest of the session and _loadRewardedAd short-circuits silently.
+      if (!_initialized) {
+        await initialize();
+      }
+      if (!_initialized) {
+        await AnalyticsService.logAdLoadFailed(
+          reason: 'initialization_unavailable',
+          requestId: requestId,
+        );
+        onProgress?.call('failed');
+        return false;
+      }
       final loaded = await _loadRewardedAd(requestId: requestId);
       if (!loaded) {
         await AnalyticsService.logAdLoadFailed(
