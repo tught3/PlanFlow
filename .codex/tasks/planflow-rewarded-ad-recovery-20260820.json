@@ -1,0 +1,85 @@
+{
+  "task_id": "planflow-rewarded-ad-recovery-20260820",
+  "status": "implementation_verified_device_blocked",
+  "objective": "Recover rewarded-ad consent/load state and require actual reward before AI schedule conversation entry.",
+  "scope": [
+    "lib/services/ad_consent_service.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/voice_conversation_ad_gate.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/ad_consent_service_test.dart"
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Trace rewarded-ad consent, load, gate, and verification paths.",
+      "result": "Found consent retry lock after timeout/failure and rewarded load in-flight hang; physical device was unavailable."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define consent retry, load timeout, outcome, diagnostics, and real-device acceptance gates.",
+      "result": "Plan accepted: no free-pass bypass, reward callback required, two-stage device verification."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement consent/load recovery, detailed outcomes, diagnostics, and gate integration.",
+      "result": "Implemented retryable consent state, live UMP fallback, single-flight timed rewarded loading, late-callback disposal, outcome propagation, sanitized attempt snapshots, and reward-only gate entry."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run focused tests and static analysis; verify Android runtime when device is available.",
+      "result": "Focused ad/consent/gate tests passed; scoped flutter analyze passed after curly-brace fix. No ADB device connected, so visual ad proof remains outstanding."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Inspect final diff for reward bypass, stale callback, consent fallback, and unrelated changes.",
+      "result": "Pending independent final review and physical-device acceptance."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Integrate only after reviewer PASS and two-stage actual ad display evidence.",
+      "result": "Blocked from COMPLETE until connected-device test ad and Play Alpha production-config ad are visibly confirmed."
+    }
+  ],
+  "verification": {
+    "analyze": {
+      "command": "flutter analyze lib/services/ad_consent_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart test/services/ad_service_test.dart test/services/ad_consent_service_test.dart",
+      "exit_code": 0
+    },
+    "focused_tests": {
+      "command": "flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/ad_service_init_flow_test.dart test/services/voice_conversation_ad_gate_test.dart --reporter compact",
+      "exit_code": 0,
+      "tests_passed": 52
+    },
+    "device_acceptance": {
+      "status": "blocked_no_connected_android_device",
+      "required_evidence": [
+        "Google test rewarded ad visibly shown and reward opens AI schedule conversation",
+        "Play Alpha production-config ad visibly shown on registered test device",
+        "load/show/reward/conversation-open diagnostic sequence"
+      ]
+    }
+  },
+  "notes": [
+    "Unrelated dirty files were preserved.",
+    "No commit or push performed by implementer."
+  ]
+}
