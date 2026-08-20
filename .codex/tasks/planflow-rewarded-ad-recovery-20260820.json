@@ -179,7 +179,7 @@
     },
     "device_acceptance": {
       "status": "BLOCKED_DEVICE_RUNTIME",
-      "observed_device": "SM-S918N is stable over ADB. The accessible primary profile still shows the older com.fluxstudio.planflow versionCode 137; the newer Alpha 139 upload is not yet propagated to that profile. A separate copy remains isolated in Secure Folder Android user 150, which shell/ADB cannot access. The primary-profile app opens to login, so no signed-in test flow can be driven and no visual load/show/reward/conversation proof can be collected.",
+      "observed_device": "No Android device is currently visible to ADB. The latest verified upload is Alpha 140; the prior accessible primary profile was versionCode 137 and a separate copy remained isolated in Secure Folder Android user 150. No signed-in test flow or visual load/show/reward/conversation proof can be collected until an ADB-accessible profile has Alpha 140 installed.",
       "required_evidence": [
         "Google test rewarded ad visibly shown and reward opens AI schedule conversation",
         "Play Alpha production-config ad visibly shown on registered test device",
@@ -197,5 +197,5 @@
     "code_level_status": "PASS: independent re-review, scoped analysis, focused tests (58), debug APK, release AAB 140, and Play Alpha 140 upload all have successful evidence. Device ad proof remains outstanding.",
     "completion_gate": "Not COMPLETE until the accessible physical-device flow visibly shows the rewarded ad, delivers reward, and opens AI schedule conversation."
   },
-  "last_updated": "2026-08-20T23:02:00+09:00"
+  "last_updated": "2026-08-20T23:21:00+09:00"
 }
