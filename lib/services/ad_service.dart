@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../core/analytics_service.dart';
+import '../core/diag_logger.dart';
 import 'ad_consent_service.dart';
 import 'ad_reward_state.dart';
 import 'remote_config_service.dart';
@@ -23,6 +26,7 @@ enum VoiceConversationAdOutcomeKind {
   unitIdInvalid,
   loadThrottled,
   loadFailed,
+  loadTimedOut,
   showFailed,
   dismissedWithoutReward,
   rewarded,
@@ -55,6 +59,8 @@ class VoiceConversationAdOutcome {
         return 'load_throttled';
       case VoiceConversationAdOutcomeKind.loadFailed:
         return 'load_failed';
+      case VoiceConversationAdOutcomeKind.loadTimedOut:
+        return 'load_timeout';
       case VoiceConversationAdOutcomeKind.showFailed:
         return 'show_failed';
       case VoiceConversationAdOutcomeKind.dismissedWithoutReward:
@@ -77,14 +83,45 @@ class VoiceConversationAdOutcome {
   }
 }
 
+/// Sanitized state of the most recent voice rewarded-ad attempt.
+///
+/// This is intentionally metadata-only: it contains no schedule text and no
+/// full ad unit ID. It is exposed for QA/Crashlytics adapters so a release
+/// build can identify whether an attempt stopped at load, show, or reward.
+class RewardedAdAttemptSnapshot {
+  const RewardedAdAttemptSnapshot({
+    required this.attemptId,
+    required this.phase,
+    required this.at,
+    this.errorCode,
+    this.errorDomain,
+    this.errorMessage,
+    this.responseId,
+  });
+
+  final String attemptId;
+  final String phase;
+  final DateTime at;
+  final int? errorCode;
+  final String? errorDomain;
+  final String? errorMessage;
+  final String? responseId;
+}
+
 String _safeAdDetail(String value) {
-  final sanitized = value.replaceAll(RegExp(r'[\r\n]'), ' ').trim();
+  final sanitized = value
+      .replaceAll(RegExp(r'[\r\n]'), ' ')
+      .replaceAll(
+        RegExp(r'ca-app-pub-\d{16}[~/]\d{1,20}'),
+        'ad_unit_redacted',
+      )
+      .trim();
   return sanitized.length <= 120
       ? sanitized
       : '${sanitized.substring(0, 120)}…';
 }
 
-enum _AdLoadOutcomeKind { loaded, throttled, failed }
+enum _AdLoadOutcomeKind { loaded, throttled, failed, timedOut }
 
 class _AdLoadOutcome {
   const _AdLoadOutcome(this.kind, {this.code, this.domain, this.message});
@@ -159,15 +196,30 @@ Future<bool> runRewardedAdLifecycle({
     required void Function() onAdFailedToShow,
   }) drive,
   Duration gracePeriod = const Duration(milliseconds: 500),
+  Duration lifecycleTimeout = const Duration(minutes: 2),
 }) async {
+  // The SDK must never keep an ad attempt alive longer than this, even when
+  // a caller supplies a longer test/configuration timeout.  A missing
+  // dismiss/reward/failure callback is a failed attempt, not an indefinitely
+  // pending UI state.
+  const hardMaximum = Duration(minutes: 2);
+  final boundedTimeout =
+      lifecycleTimeout < hardMaximum ? lifecycleTimeout : hardMaximum;
   final lifecycle = RewardedAdLifecycleCoordinator(gracePeriod: gracePeriod);
   try {
-    await drive(
+    final driveAndAwaitResult = drive(
       onUserEarnedReward: lifecycle.onUserEarnedReward,
       onAdDismissed: lifecycle.onAdDismissed,
       onAdFailedToShow: lifecycle.onAdFailedToShow,
-    );
-    return await lifecycle.result;
+    ).then((_) => lifecycle.result);
+    final timeout = Future<void>.delayed(boundedTimeout).then((_) {
+      lifecycle.dispose();
+      return false;
+    });
+    return await Future.any<bool>(<Future<bool>>[
+      driveAndAwaitResult,
+      timeout,
+    ]);
   } finally {
     lifecycle.dispose();
   }
@@ -187,6 +239,26 @@ String resolveRewardedAdUnitIdFor({
   if (!isValidRewardedAdUnitId(trimmed)) return '';
   return trimmed;
 }
+
+/// Release에서 Remote Config fetch 실패로 광고 단위 ID가 비어 있을 때만
+/// 사용자 요청 경로의 1회 재시도를 허용한다. Debug/Profile은 항상 공식
+/// 테스트 단위 ID를 사용하므로 이 조건에 들어오지 않는다.
+@visibleForTesting
+bool shouldRetryRemoteConfigForRewardedUnit({
+  required bool useTestUnit,
+  required bool fetchSucceeded,
+  required String configured,
+}) =>
+    !useTestUnit && !fetchSucceeded && configured.trim().isEmpty;
+
+/// Release용 빈 rewarded unit 보강 재시도 뒤, 광고 관련 스위치가 꺼졌으면
+/// 즉시 광고 경로를 중단해야 하는지 판단한다.
+@visibleForTesting
+bool shouldDisableVoiceConversationAdsAfterRemoteConfigRetry({
+  required bool rewardedAdEnabled,
+  required bool rewardAdVoiceConversationEnabled,
+}) =>
+    !rewardedAdEnabled || !rewardAdVoiceConversationEnabled;
 
 /// 리워드 광고(AdMob) 서비스.
 ///
@@ -221,10 +293,19 @@ class AdService {
   // RewardedAd SDK 호출에 필요한 상태.
   RewardedAd? _rewardedAd;
   bool _loadingAd = false;
+  Future<bool>? _loadFuture;
+  int _loadGeneration = 0;
   DateTime? _lastLoadAt;
   int? _lastLoadErrorCode;
   String? _lastLoadErrorDomain;
   String? _lastLoadErrorMessage;
+  int? _lastShowErrorCode;
+  String? _lastShowErrorDomain;
+  String? _lastShowErrorMessage;
+  bool _lastShowFailed = false;
+  void Function()? _cancelActiveLoad;
+  String? _lastAdResponseId;
+  RewardedAdAttemptSnapshot? _lastVoiceAttempt;
 
   final AdRewardState _rewardState;
   final AdConsentService _consentService;
@@ -232,6 +313,75 @@ class AdService {
 
   bool get isInitialized => _initialized;
   bool get isShowing => _showingAd;
+  RewardedAdAttemptSnapshot? get lastVoiceAttempt => _lastVoiceAttempt;
+
+  void _recordVoiceAttempt(
+    String attemptId,
+    String phase, {
+    int? errorCode,
+    String? errorDomain,
+    String? errorMessage,
+    String? responseId,
+  }) {
+    _lastVoiceAttempt = RewardedAdAttemptSnapshot(
+      attemptId: attemptId,
+      phase: phase,
+      at: DateTime.now(),
+      errorCode: errorCode,
+      errorDomain: errorDomain == null ? null : _safeAdDetail(errorDomain),
+      errorMessage: errorMessage == null ? null : _safeAdDetail(errorMessage),
+      responseId: responseId ?? _lastAdResponseId,
+    );
+    // 앱 내부의 "진단 로그"에도 광고 시도 단계를 남긴다. 기존에는
+    // Crashlytics breadcrumb에만 기록되어 실기기에서 광고 실패 원인을
+    // 확인할 수 없었다. 일정 내용·전체 광고 ID·원본 requestId는 기록하지
+    // 않고 시도 ID의 해시와 단계/안전한 오류 메타데이터만 저장한다.
+    final fingerprint = attemptId.hashCode.toRadixString(16);
+    final diagnostic = <String>[
+      'attempt=$fingerprint',
+      'phase=${_safeAdDetail(phase)}',
+      'consent=${_consentService.readiness.name}',
+      'rcFetch=${RemoteConfigService.lastFetchSucceeded}',
+      'rcSource=${RemoteConfigService.rewardedAdConfigSource}',
+      'rcEnabled=${RemoteConfigService.rewardedAdEnabled}',
+      'voiceEnabled=${RemoteConfigService.rewardAdVoiceConversationEnabled}',
+    ];
+    if (errorCode != null) diagnostic.add('code=$errorCode');
+    if (errorDomain != null) {
+      diagnostic.add('domain=${_safeAdDetail(errorDomain)}');
+    }
+    if (errorMessage != null) {
+      diagnostic.add('message=${_safeAdDetail(errorMessage)}');
+    }
+    final safeResponseId = responseId ?? _lastAdResponseId;
+    if (safeResponseId != null && safeResponseId.isNotEmpty) {
+      diagnostic.add('responseId=${_safeAdDetail(safeResponseId)}');
+    }
+    DiagLogger.log('RewardedAd', diagnostic.join(' '));
+    // Keep a release-visible breadcrumb without sending request IDs, schedule
+    // text, or the full ad-unit ID. Firebase may not be initialized in tests
+    // or during early startup, so this path must remain best-effort.
+    if (Firebase.apps.isEmpty) return;
+    final details = <String>[
+      'rewarded_ad_attempt id=$fingerprint phase=${_safeAdDetail(phase)}',
+    ];
+    if (errorCode != null) details.add('code=$errorCode');
+    if (errorDomain != null) {
+      details.add('domain=${_safeAdDetail(errorDomain)}');
+    }
+    if (errorMessage != null) {
+      details.add('message=${_safeAdDetail(errorMessage)}');
+    }
+    unawaited(_writeCrashlyticsBreadcrumb(details.join(' ')));
+  }
+
+  Future<void> _writeCrashlyticsBreadcrumb(String message) async {
+    try {
+      await FirebaseCrashlytics.instance.log(message);
+    } catch (_) {
+      // Crashlytics is optional during startup and in local/test builds.
+    }
+  }
 
   /// 사용량 추적 (옵션 전환율 진단).
   int get promptShownCount => _promptShown;
@@ -274,8 +424,13 @@ class AdService {
       // 다시 호출될 때(RemoteConfig 값이 정상 반영된 뒤) 재평가할 수 있다.
       return;
     }
-    await _consentService.initialize();
-    if (!_consentService.isAvailable) {
+    await _consentService.ensureReady(userInitiated: false);
+    // UMP documents that a previous consent decision can remain usable when
+    // the latest requestConsentInfoUpdate failed. Query the live state before
+    // abandoning initialization so a transient network/platform failure does
+    // not permanently suppress rewarded ads for this process.
+    if (!_consentService.isAvailable &&
+        !(await _consentService.canRequestAdsLive)) {
       // 진단 신호 + 잠금 버그 교정 (M1, 이슈 A). UMP가 EEA/동의 추정에
       // 실패하면 MobileAds 호출 없이 조기 종료한다. 단, 잠금 버그를 막기
       // 위해 _initialized는 false로 남긴다(이전 코드는 _initialized=true로
@@ -316,6 +471,12 @@ class AdService {
 
   /// 보유 중인 RewardedAd 자원 해제 (앱 종료 / 위젯 정리 시).
   void dispose() {
+    // Invalidate and complete an SDK load that may never call either callback.
+    // Without this, callers awaiting the shared Future remain blocked forever
+    // after a lifecycle/generation reset.
+    _cancelActiveLoad?.call();
+    _cancelActiveLoad = null;
+    _loadGeneration++;
     _rewardedAd?.dispose();
     _rewardedAd = null;
     _loadingAd = false;
@@ -441,8 +602,11 @@ class AdService {
     required String requestId,
     void Function(String stage)? onProgress,
   }) async {
+    _lastAdResponseId = null;
+    _recordVoiceAttempt(requestId, 'started');
     if (!RemoteConfigService.rewardedAdEnabled ||
         !RemoteConfigService.rewardAdVoiceConversationEnabled) {
+      _recordVoiceAttempt(requestId, 'disabled');
       return const VoiceConversationAdOutcome(
         VoiceConversationAdOutcomeKind.disabled,
       );
@@ -466,6 +630,7 @@ class AdService {
         await initialize();
       }
       if (!_initialized) {
+        _recordVoiceAttempt(requestId, 'initialization_failed');
         final outcome = const VoiceConversationAdOutcome(
           VoiceConversationAdOutcomeKind.initializationUnavailable,
         );
@@ -475,9 +640,39 @@ class AdService {
         );
         return outcome;
       }
-      if (_resolveAdUnitId().isEmpty) {
-        final outcome = const VoiceConversationAdOutcome(
+      var adUnitId = _resolveAdUnitId();
+      if (adUnitId.isEmpty &&
+          shouldRetryRemoteConfigForRewardedUnit(
+            useTestUnit: kDebugMode || kProfileMode,
+            fetchSucceeded: RemoteConfigService.lastFetchSucceeded,
+            configured: RemoteConfigService.rewardedAdUnitIdAndroid,
+          )) {
+        // A failed startup fetch can leave the fail-safe enabled default true
+        // while the unit ID default remains empty. Retry only for this explicit
+        // user request; never invent or fall back to an operational unit ID.
+        await RemoteConfigService.retryFetchIfFailed();
+        if (shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
+          rewardedAdEnabled: RemoteConfigService.rewardedAdEnabled,
+          rewardAdVoiceConversationEnabled:
+              RemoteConfigService.rewardAdVoiceConversationEnabled,
+        )) {
+          _recordVoiceAttempt(requestId, 'disabled_after_rc_retry');
+          final outcome = const VoiceConversationAdOutcome(
+            VoiceConversationAdOutcomeKind.disabled,
+          );
+          await AnalyticsService.logVoiceConvAdFailed(
+            reason: outcome.analyticsReason,
+            requestId: requestId,
+          );
+          return outcome;
+        }
+        adUnitId = _resolveAdUnitId();
+      }
+      if (adUnitId.isEmpty) {
+        _recordVoiceAttempt(requestId, 'unit_id_invalid_after_rc_retry');
+        final outcome = VoiceConversationAdOutcome(
           VoiceConversationAdOutcomeKind.unitIdInvalid,
+          loadErrorMessage: 'remote_config_unit_id_missing',
         );
         await AnalyticsService.logVoiceConvAdFailed(
           reason: outcome.analyticsReason,
@@ -486,12 +681,23 @@ class AdService {
         return outcome;
       }
       onProgress?.call('loading');
-      final load = await _loadRewardedAdDetailed();
+      final load = await _loadRewardedAdDetailed(userInitiated: true);
       if (load.kind != _AdLoadOutcomeKind.loaded) {
+        _recordVoiceAttempt(
+          requestId,
+          load.kind == _AdLoadOutcomeKind.timedOut
+              ? 'load_timeout'
+              : 'load_failed',
+          errorCode: load.code,
+          errorDomain: load.domain,
+          errorMessage: load.message,
+        );
         final outcome = VoiceConversationAdOutcome(
           load.kind == _AdLoadOutcomeKind.throttled
               ? VoiceConversationAdOutcomeKind.loadThrottled
-              : VoiceConversationAdOutcomeKind.loadFailed,
+              : load.kind == _AdLoadOutcomeKind.timedOut
+                  ? VoiceConversationAdOutcomeKind.loadTimedOut
+                  : VoiceConversationAdOutcomeKind.loadFailed,
           loadErrorCode: load.code,
           loadErrorDomain: load.domain,
           loadErrorMessage: load.message,
@@ -504,12 +710,26 @@ class AdService {
         return outcome;
       }
       await AnalyticsService.logVoiceConvAdShown(requestId: requestId);
+      _recordVoiceAttempt(requestId, 'shown');
 
       onProgress?.call('shown');
       final completed = await _showRewardedAd();
       if (!completed) {
-        final outcome = const VoiceConversationAdOutcome(
-          VoiceConversationAdOutcomeKind.dismissedWithoutReward,
+        final showFailed = _lastShowFailed;
+        _recordVoiceAttempt(
+          requestId,
+          showFailed ? 'show_failed' : 'dismissed_without_reward',
+          errorCode: _lastShowErrorCode,
+          errorDomain: _lastShowErrorDomain,
+          errorMessage: _lastShowErrorMessage,
+        );
+        final outcome = VoiceConversationAdOutcome(
+          showFailed
+              ? VoiceConversationAdOutcomeKind.showFailed
+              : VoiceConversationAdOutcomeKind.dismissedWithoutReward,
+          loadErrorCode: _lastShowErrorCode,
+          loadErrorDomain: _lastShowErrorDomain,
+          loadErrorMessage: _lastShowErrorMessage,
         );
         await AnalyticsService.logVoiceConvAdFailed(
           reason: outcome.analyticsReason,
@@ -522,6 +742,7 @@ class AdService {
       // 보상 부여 (다음 대화 모드 진입에 사용하지는 않지만, 일관된 grant 패턴 유지).
       await _rewardState.grant(requestId: requestId);
       await AnalyticsService.logVoiceConvAdRewardEarned(requestId: requestId);
+      _recordVoiceAttempt(requestId, 'rewarded');
       _optIn += 1;
       await AnalyticsService.logAdConversionRate(
         promptsShown: _promptShown,
@@ -532,6 +753,8 @@ class AdService {
         VoiceConversationAdOutcomeKind.rewarded,
       );
     } catch (error, stackTrace) {
+      _recordVoiceAttempt(requestId, 'show_failed',
+          errorMessage: error.toString());
       debugPrint('AdService.showForVoiceConversation failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       await AnalyticsService.logVoiceConvAdFailed(
@@ -567,6 +790,13 @@ class AdService {
   /// [requestId]가 제공되면 empty_unit_id 같은 조기 실패 분기에서
   /// Analytics에 구체적 reason을 남긴다(2026-08-12 M1 진단 강화).
   Future<bool> _loadRewardedAd({String? requestId}) async {
+    return _loadRewardedAdInternal(userInitiated: true, requestId: requestId);
+  }
+
+  Future<bool> _loadRewardedAdInternal({
+    bool userInitiated = false,
+    String? requestId,
+  }) async {
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
     }
@@ -594,65 +824,87 @@ class AdService {
     }
     // throttle: 30초 이내 재요청은 스킵 (없으면 false).
     final last = _lastLoadAt;
-    if (last != null &&
+    if (!userInitiated &&
+        last != null &&
         DateTime.now().difference(last) < _kReloadThrottle &&
         _rewardedAd == null) {
       return false;
     }
-    if (_loadingAd) {
-      // dedup: 이미 로드 중이면 캐시될 때까지 대기.
-      return await _awaitLoad();
+    final inFlight = _loadFuture;
+    if (inFlight != null) {
+      return await inFlight;
     }
-    return await _doLoad();
+    final future = _doLoad();
+    _loadFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_loadFuture, future)) _loadFuture = null;
+    }
   }
 
-  Future<_AdLoadOutcome> _loadRewardedAdDetailed() async {
+  Future<_AdLoadOutcome> _loadRewardedAdDetailed(
+      {bool userInitiated = false}) async {
     _lastLoadErrorCode = null;
     _lastLoadErrorDomain = null;
     _lastLoadErrorMessage = null;
     final last = _lastLoadAt;
-    final throttled = last != null &&
+    final throttled = !userInitiated &&
+        last != null &&
         DateTime.now().difference(last) < _kReloadThrottle &&
         _rewardedAd == null;
-    final loaded = await _loadRewardedAd();
+    final loaded = await _loadRewardedAdInternal(userInitiated: userInitiated);
     if (loaded) return const _AdLoadOutcome(_AdLoadOutcomeKind.loaded);
     return _AdLoadOutcome(
-      throttled ? _AdLoadOutcomeKind.throttled : _AdLoadOutcomeKind.failed,
+      throttled
+          ? _AdLoadOutcomeKind.throttled
+          : (_lastLoadErrorMessage == 'load_timeout'
+              ? _AdLoadOutcomeKind.timedOut
+              : _AdLoadOutcomeKind.failed),
       code: _lastLoadErrorCode,
       domain: _lastLoadErrorDomain,
       message: _lastLoadErrorMessage,
     );
   }
 
-  Future<bool> _awaitLoad() async {
-    // 단순 폴링으로 캐시 생성 대기 (로드 대기 시간은 보통 수 초).
-    const pollInterval = Duration(milliseconds: 200);
-    const timeout = Duration(seconds: 8);
-    final start = DateTime.now();
-    while (_loadingAd && DateTime.now().difference(start) < timeout) {
-      await Future<void>.delayed(pollInterval);
-    }
-    return _rewardedAd != null;
-  }
-
   Future<bool> _doLoad() async {
     _loadingAd = true;
+    final generation = ++_loadGeneration;
     _lastLoadAt = DateTime.now();
     final adUnitId = _resolveAdUnitId();
+    void Function()? cancelActiveLoad;
     try {
       final completer = Completer<bool>();
+      Timer? timeoutTimer;
+      void finish(bool value) {
+        timeoutTimer?.cancel();
+        if (!completer.isCompleted) completer.complete(value);
+      }
+
+      cancelActiveLoad = () {
+        if (generation != _loadGeneration || completer.isCompleted) return;
+        _loadingAd = false;
+        _lastLoadErrorMessage = 'load_cancelled';
+        finish(false);
+      };
+      _cancelActiveLoad = cancelActiveLoad;
+
       RewardedAd.load(
         adUnitId: adUnitId,
         request: const AdRequest(),
         rewardedAdLoadCallback: RewardedAdLoadCallback(
           onAdLoaded: (RewardedAd ad) {
-            _rewardedAd = ad;
-            _loadingAd = false;
-            if (!completer.isCompleted) {
-              completer.complete(true);
+            if (generation != _loadGeneration || completer.isCompleted) {
+              ad.dispose();
+              return;
             }
+            _rewardedAd = ad;
+            _lastAdResponseId = _readAdResponseId(ad);
+            _loadingAd = false;
+            finish(true);
           },
           onAdFailedToLoad: (LoadAdError error) {
+            if (generation != _loadGeneration || completer.isCompleted) return;
             _rewardedAd = null;
             _loadingAd = false;
             debugPrint(
@@ -662,12 +914,16 @@ class AdService {
             _lastLoadErrorCode = error.code;
             _lastLoadErrorDomain = error.domain;
             _lastLoadErrorMessage = _safeAdDetail(error.message);
-            if (!completer.isCompleted) {
-              completer.complete(false);
-            }
+            finish(false);
           },
         ),
       );
+      timeoutTimer = Timer(const Duration(seconds: 15), () {
+        if (generation != _loadGeneration || completer.isCompleted) return;
+        _loadingAd = false;
+        _lastLoadErrorMessage = 'load_timeout';
+        finish(false);
+      });
       return await completer.future;
     } catch (error, stackTrace) {
       debugPrint('AdService._loadRewardedAd exception: $error');
@@ -675,7 +931,26 @@ class AdService {
       _loadingAd = false;
       _rewardedAd = null;
       return false;
+    } finally {
+      if (identical(_cancelActiveLoad, cancelActiveLoad)) {
+        _cancelActiveLoad = null;
+      }
+      if (generation == _loadGeneration) _loadingAd = false;
     }
+  }
+
+  String? _readAdResponseId(RewardedAd ad) {
+    try {
+      final dynamic dynamicAd = ad;
+      final dynamic responseInfo = dynamicAd.responseInfo;
+      final dynamic responseId = responseInfo?.responseId;
+      if (responseId is String && responseId.trim().isNotEmpty) {
+        return _safeAdDetail(responseId);
+      }
+    } catch (_) {
+      // Older SDKs may not expose responseInfo; diagnostics remain valid.
+    }
+    return null;
   }
 
   /// 캐시된 _rewardedAd를 표시하고, 보상 획득 여부를 반환.
@@ -684,6 +959,10 @@ class AdService {
     if (ad == null) {
       return false;
     }
+    _lastShowFailed = false;
+    _lastShowErrorCode = null;
+    _lastShowErrorDomain = null;
+    _lastShowErrorMessage = null;
     try {
       return await runRewardedAdLifecycle(
         drive: ({
@@ -697,6 +976,10 @@ class AdService {
             },
             onAdFailedToShowFullScreenContent:
                 (RewardedAd failedAd, AdError error) {
+              _lastShowFailed = true;
+              _lastShowErrorCode = error.code;
+              _lastShowErrorDomain = _safeAdDetail(error.domain);
+              _lastShowErrorMessage = _safeAdDetail(error.message);
               debugPrint(
                 'AdService._showRewardedAd failed: code=${error.code} '
                 'message=${error.message}',
@@ -712,6 +995,8 @@ class AdService {
         },
       );
     } catch (error, stackTrace) {
+      _lastShowFailed = true;
+      _lastShowErrorMessage = _safeAdDetail(error.toString());
       debugPrint('AdService._showRewardedAd exception: $error');
       debugPrintStack(stackTrace: stackTrace);
       return false;
@@ -728,7 +1013,9 @@ class AdService {
   }
 
   void _preloadNextAd() {
-    _doLoad();
+    if (_rewardedAd != null || _loadFuture != null || _loadingAd) return;
+    final future = _loadRewardedAdInternal(userInitiated: false);
+    unawaited(future);
   }
 }
 

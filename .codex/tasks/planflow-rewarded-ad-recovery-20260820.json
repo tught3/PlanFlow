@@ -1,11 +1,12 @@
 {
   "task_id": "planflow-rewarded-ad-recovery-20260820",
-  "status": "implementation_verified_device_blocked",
+  "status": "BLOCKED_DEVICE_RUNTIME",
   "objective": "Recover rewarded-ad consent/load state and require actual reward before AI schedule conversation entry.",
   "scope": [
     "lib/services/ad_consent_service.dart",
     "lib/services/ad_service.dart",
     "lib/services/voice_conversation_ad_gate.dart",
+    "lib/services/remote_config_service.dart",
     "test/services/ad_service_test.dart",
     "test/services/ad_consent_service_test.dart"
   ],
@@ -32,7 +33,7 @@
       "mapped_model": "gpt-5.6-luna",
       "reasoning_effort": "medium",
       "assignment": "Implement consent/load recovery, detailed outcomes, diagnostics, and gate integration.",
-      "result": "Implemented retryable consent state, live UMP fallback, single-flight timed rewarded loading, late-callback disposal, outcome propagation, sanitized attempt snapshots, and reward-only gate entry."
+      "result": "Implemented retryable consent state, live UMP fallback, single-flight timed rewarded loading, late-callback disposal, outcome propagation, sanitized attempt snapshots, reward-only gate entry, and guarded Crashlytics breadcrumbs containing only hashed attempt identity plus phase/error metadata."
     },
     {
       "role": "Test Executor",
@@ -40,7 +41,7 @@
       "mapped_model": "gpt-5.4-mini",
       "reasoning_effort": "low",
       "assignment": "Run focused tests and static analysis; verify Android runtime when device is available.",
-      "result": "Focused ad/consent/gate tests passed; scoped flutter analyze passed after curly-brace fix. No ADB device connected, so visual ad proof remains outstanding."
+      "result": "Focused ad/consent/gate tests passed (latest focused run 57); scoped flutter analyze passed after the switch recheck patch. ADB device is connected but the accessible profile still lacks the signed-in Alpha 139 runtime, so visual ad proof remains outstanding."
     },
     {
       "role": "Reviewer",
@@ -48,7 +49,7 @@
       "mapped_model": "gpt-5.6-luna",
       "reasoning_effort": "high",
       "assignment": "Inspect final diff for reward bypass, stale callback, consent fallback, and unrelated changes.",
-      "result": "Pending independent final review and physical-device acceptance."
+      "result": "PASS after the bounded-lifecycle and Remote Config switch-recheck reworks. Final current diff contains no BLOCKER or HIGH code-level finding; reward remains required, late callbacks are safely ignored, and a successful RC retry cannot bypass either ad kill-switch. This PASS does not replace the required visible device-runtime proof."
     },
     {
       "role": "Integrator",
@@ -57,20 +58,114 @@
       "reasoning_effort": "medium",
       "assignment": "Integrate only after reviewer PASS and two-stage actual ad display evidence.",
       "result": "Blocked from COMPLETE until connected-device test ad and Play Alpha production-config ad are visibly confirmed."
+    },
+    {
+      "role": "Complex Implementer Rework",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Address reviewer HIGH findings around bounded rewarded lifecycle and deterministic late-callback behavior.",
+      "result": "Bound runRewardedAdLifecycle to a hard two-minute maximum even when a longer timeout is supplied; retained lifecycle disposal and caller finally cleanup; added deterministic late-SDK-callback-after-timeout regression test. No free_pass API, gate contract, or unrelated files changed.",
+      "changed_files": [
+        "lib/services/ad_service.dart",
+        "test/services/ad_service_test.dart"
+      ],
+      "test_evidence": {
+        "command": "flutter test --no-pub test/services/ad_service_test.dart --reporter compact",
+        "exit_code": 0,
+        "tests_passed": 32
+      },
+      "analysis_evidence": {
+        "command": "flutter analyze lib/services/ad_service.dart test/services/ad_service_test.dart",
+        "exit_code": 0
+      }
+    },
+    {
+      "role": "Complex Implementer Rework 2",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Recover the release path where failed Remote Config fetch leaves rewarded ads enabled but the rewarded unit ID empty.",
+      "result": "On an explicit voice-ad request, retry Remote Config once only when release mode, last fetch failed, and the configured unit ID is empty. If still empty, preserve fail-closed unitIdInvalid outcome with sanitized remote_config_unit_id_missing diagnostic; no invented fallback ID or free-pass bypass.",
+      "changed_files": [
+        "lib/services/ad_service.dart",
+        "test/services/ad_service_test.dart"
+      ],
+      "test_evidence": {
+        "command": "flutter test --no-pub test/services/ad_service_test.dart --reporter compact",
+        "exit_code": 0,
+        "tests_passed": 33
+      },
+      "analysis_evidence": {
+        "command": "flutter analyze lib/services/ad_service.dart test/services/ad_service_test.dart",
+        "exit_code": 0
+      }
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Add the narrow post-retry remote-config switch recheck for voice rewarded ads and a focused regression test.",
+      "result": "Implemented a helper-backed recheck so an explicit empty-unit Remote Config retry now returns disabled when rewardedAdEnabled or rewardAdVoiceConversationEnabled is false. Added a focused unit test covering both switch-off combinations and verified the targeted analyze/test commands pass.",
+      "changed_files": [
+        "lib/services/ad_service.dart",
+        "test/services/ad_service_test.dart"
+      ],
+      "test_evidence": {
+        "command": "flutter analyze lib/services/ad_service.dart test/services/ad_service_test.dart && flutter test --no-pub test/services/ad_service_test.dart --reporter compact",
+        "exit_code": 0,
+        "tests_passed": 34
+      }
+    },
+    {
+      "role": "Complex Implementer Rework 3",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Add app-visible rewarded-ad diagnostics and close reviewer lifecycle gaps without changing reward policy.",
+      "result": "Added DiagLogger entries for consent, ads_unavailable, load/show/reward/dismiss phases; completed in-flight loads on dispose/cancel and ignored late callbacks; separated show_failed from dismissed_without_reward; sanitized ad metadata; added Remote Config source and AdMob response ID metadata without logging full ad-unit IDs.",
+      "changed_files": [
+        "lib/services/ad_consent_service.dart",
+        "lib/services/ad_service.dart",
+        "lib/services/voice_conversation_ad_gate.dart",
+        "lib/services/remote_config_service.dart"
+      ],
+      "test_evidence": {
+        "command": "flutter analyze lib/services/ad_service.dart lib/services/ad_consent_service.dart lib/services/voice_conversation_ad_gate.dart lib/services/remote_config_service.dart && flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/ad_service_init_flow_test.dart test/services/voice_conversation_ad_gate_test.dart test/widgets/voice_conversation_ad_dialog_test.dart --reporter compact",
+        "exit_code": 0,
+        "tests_passed": 58
+      }
     }
   ],
   "verification": {
     "analyze": {
-      "command": "flutter analyze lib/services/ad_consent_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart test/services/ad_service_test.dart test/services/ad_consent_service_test.dart",
+      "command": "flutter analyze lib/services/ad_consent_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart lib/services/remote_config_service.dart test/services/ad_service_test.dart test/services/ad_consent_service_test.dart",
       "exit_code": 0
     },
     "focused_tests": {
       "command": "flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/ad_service_init_flow_test.dart test/services/voice_conversation_ad_gate_test.dart --reporter compact",
       "exit_code": 0,
-      "tests_passed": 52
+      "tests_passed": 58
+    },
+    "debug_apk": {
+      "command": "flutter build apk --debug --no-pub",
+      "exit_code": 0,
+      "artifact": "build/app/outputs/flutter-apk/app-debug.apk"
+    },
+    "release_aab": {
+      "command": "flutter build appbundle --release --no-pub --build-number=140",
+      "exit_code": 0,
+      "build_number": 140,
+      "play_alpha_upload": "success: release com.fluxstudio.planflow:[140] committed to alpha"
+    },
+    "crashlytics_breadcrumb": {
+      "status": "verified_safe_without_firebase_initialization",
+      "behavior": "Firebase.apps is checked before emission; async Crashlytics failures are swallowed; no schedule text or full ad-unit ID is emitted."
     },
     "device_acceptance": {
-      "status": "blocked_no_connected_android_device",
+      "status": "BLOCKED_DEVICE_RUNTIME",
+      "observed_device": "SM-S918N is stable over ADB. The accessible primary profile still shows the older com.fluxstudio.planflow versionCode 137; the newer Alpha 139 upload is not yet propagated to that profile. A separate copy remains isolated in Secure Folder Android user 150, which shell/ADB cannot access. The primary-profile app opens to login, so no signed-in test flow can be driven and no visual load/show/reward/conversation proof can be collected.",
       "required_evidence": [
         "Google test rewarded ad visibly shown and reward opens AI schedule conversation",
         "Play Alpha production-config ad visibly shown on registered test device",
@@ -80,6 +175,13 @@
   },
   "notes": [
     "Unrelated dirty files were preserved.",
-    "No commit or push performed by implementer."
-  ]
+    "No commit or push performed by implementer.",
+    "Diagnostic logging patch is included in Alpha 140. Next step: wait for Play Alpha 140 propagation and install it into the phone primary profile (or another ADB-accessible test profile), sign in with an enrolled test account, register the device as an AdMob test device if needed, then capture visual test-ad and production-config load/show/reward/conversation evidence. Open Settings > 진단 로그 after one attempt and confirm RewardedAd/RewardedAdGate phases. Do not uninstall/clear the existing app because its signature/data must be preserved."
+  ],
+  "integration": {
+    "verdict": "BLOCKED_DEVICE_RUNTIME",
+    "code_level_status": "PASS: independent re-review, scoped analysis, focused tests (58), debug APK, release AAB 140, and Play Alpha 140 upload all have successful evidence. Device ad proof remains outstanding.",
+    "completion_gate": "Not COMPLETE until the accessible physical-device flow visibly shows the rewarded ad, delivers reward, and opens AI schedule conversation."
+  },
+  "last_updated": "2026-08-20T23:02:00+09:00"
 }

@@ -4,7 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../core/analytics_service.dart';
+import '../core/diag_logger.dart';
 import 'remote_config_service.dart';
+
+enum ConsentReadiness { idle, checking, ready, retryableFailure, notEligible }
 
 /// Google UMP(User Messaging Platform) 동의 관리.
 ///
@@ -19,12 +22,15 @@ class AdConsentService {
 
   static final AdConsentService instance = AdConsentService._();
 
-  bool _initialized = false;
   bool _available = false;
+  ConsentReadiness _readiness = ConsentReadiness.idle;
+  Future<void>? _inFlight;
+  int _attemptGeneration = 0;
 
   static const Duration _initializationTimeout = Duration(seconds: 5);
 
   bool get isAvailable => _available;
+  ConsentReadiness get readiness => _readiness;
 
   /// 광고 활성화 여부 (마스터 스위치 OFF면 비활성).
   /// - EEA에서 동의 거부 시에도 false 반환 (광고 미표시).
@@ -35,7 +41,7 @@ class AdConsentService {
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
     }
-    if (!_initialized) {
+    if (_readiness != ConsentReadiness.ready) {
       return false;
     }
     return _available;
@@ -48,11 +54,20 @@ class AdConsentService {
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
     }
-    if (!_initialized) {
+    if (_readiness != ConsentReadiness.ready &&
+        _readiness != ConsentReadiness.retryableFailure) {
       return false;
     }
     try {
-      return await ConsentInformation.instance.canRequestAds();
+      final available = await ConsentInformation.instance.canRequestAds();
+      // UMP guidance allows an existing consent decision to remain usable
+      // even when the latest update failed. Promote that live result so the
+      // ad SDK is not blocked by a transient retryable failure.
+      if (available && _readiness == ConsentReadiness.retryableFailure) {
+        _available = true;
+        _readiness = ConsentReadiness.ready;
+      }
+      return available;
     } catch (_) {
       return _available;
     }
@@ -71,11 +86,51 @@ class AdConsentService {
   ///    실측해 `_available`에 반영한다. 이 시점 이전에 `_available=true`를
   ///    설정하면 EEA 사용자가 동의 폼을 보기 전에 광고가 노출될 수 있다.
   Future<void> initialize() async {
-    if (_initialized) {
+    await ensureReady(userInitiated: false);
+  }
+
+  /// Ensures UMP is ready. A user initiated request may retry one transient
+  /// failure; background startup must never create an endless retry loop.
+  Future<void> ensureReady({bool userInitiated = false}) async {
+    if (_readiness == ConsentReadiness.ready ||
+        _readiness == ConsentReadiness.notEligible) {
       return;
     }
+    final existing = _inFlight;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+    if (_readiness == ConsentReadiness.retryableFailure && !userInitiated) {
+      return;
+    }
+    final generation = ++_attemptGeneration;
+    final future = _runConsentAttempt(generation);
+    _inFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_inFlight, future)) _inFlight = null;
+    }
+  }
+
+  Future<void> _runConsentAttempt(int generation) async {
+    _readiness = ConsentReadiness.checking;
+    _available = false;
+    DiagLogger.log(
+      'RewardedAdConsent',
+      'phase=checking attempt=$generation '
+          'rcFetch=${RemoteConfigService.lastFetchSucceeded} '
+          'rcSource=${RemoteConfigService.rewardedAdConfigSource} '
+          'rcEnabled=${RemoteConfigService.rewardedAdEnabled}',
+    );
     if (!RemoteConfigService.rewardedAdEnabled) {
       _available = false;
+      _readiness = ConsentReadiness.notEligible;
+      DiagLogger.log(
+        'RewardedAdConsent',
+        'phase=not_eligible attempt=$generation reason=rc_disabled',
+      );
       return;
     }
     // UMP only registers a platform channel on Android/iOS.  Flutter test,
@@ -86,9 +141,13 @@ class AdConsentService {
         (defaultTargetPlatform != TargetPlatform.android &&
             defaultTargetPlatform != TargetPlatform.iOS)) {
       _available = false;
+      _readiness = ConsentReadiness.notEligible;
+      DiagLogger.log(
+        'RewardedAdConsent',
+        'phase=not_eligible attempt=$generation reason=platform',
+      );
       return;
     }
-    _initialized = true;
     // requestConsentInfoUpdate는 콜백 기반(void 반환)이라 자체적으로는
     // await할 수 없다. 3단계 시퀀스가 전부 끝난 뒤에야 initialize()의
     // Future가 완료되도록 outerCompleter로 감싼다 — 이걸 빼먹으면
@@ -104,7 +163,17 @@ class AdConsentService {
     ]) {
       if (settled) return;
       settled = true;
+      if (generation != _attemptGeneration) {
+        if (!outerCompleter.isCompleted) outerCompleter.complete();
+        return;
+      }
       _available = false;
+      _readiness = ConsentReadiness.retryableFailure;
+      DiagLogger.log(
+        'RewardedAdConsent',
+        'phase=retryable_failure attempt=$generation '
+            'reason=${analyticsReason ?? error.runtimeType}',
+      );
       debugPrint('AdConsentService initialize failed: $error');
       if (stackTrace != null) {
         debugPrintStack(stackTrace: stackTrace);
@@ -123,7 +192,18 @@ class AdConsentService {
     void completeAvailable(bool available) {
       if (settled) return;
       settled = true;
+      if (generation != _attemptGeneration) {
+        if (!outerCompleter.isCompleted) outerCompleter.complete();
+        return;
+      }
       _available = available;
+      _readiness =
+          available ? ConsentReadiness.ready : ConsentReadiness.notEligible;
+      DiagLogger.log(
+        'RewardedAdConsent',
+        'phase=${available ? 'ready' : 'not_eligible'} '
+            'attempt=$generation available=$available',
+      );
       if (!outerCompleter.isCompleted) {
         outerCompleter.complete();
       }
@@ -133,11 +213,21 @@ class AdConsentService {
       ConsentInformation.instance.requestConsentInfoUpdate(
         ConsentRequestParameters(),
         () async {
+          // The platform API is callback-based and can invoke this success
+          // callback after our bounded attempt has timed out or after a newer
+          // user-initiated attempt superseded it. Never start a consent form
+          // for an obsolete attempt.
+          if (generation != _attemptGeneration || settled) return;
           // 1단계 성공 → EEA 사용자에게 동의 폼 표시 (비-EEA는 즉시 콜백 발화).
           final completer = Completer<void>();
           try {
+            if (generation != _attemptGeneration || settled) return;
             await ConsentForm.loadAndShowConsentFormIfRequired(
               (FormError? formError) {
+                if (generation != _attemptGeneration || settled) {
+                  if (!completer.isCompleted) completer.complete();
+                  return;
+                }
                 if (formError != null) {
                   debugPrint(
                     'AdConsentService consentForm failure: '
@@ -150,6 +240,7 @@ class AdConsentService {
               },
             );
             await completer.future;
+            if (generation != _attemptGeneration || settled) return;
             // 폼이 닫힌 뒤 UMP의 라이브 상태로 _available 결정.
             try {
               final available =
@@ -165,7 +256,9 @@ class AdConsentService {
             debugPrintStack(stackTrace: stackTrace);
             completeUnavailable(error, stackTrace);
           } finally {
-            if (!settled) completeAvailable(false);
+            if (generation == _attemptGeneration && !settled) {
+              completeAvailable(false);
+            }
           }
         },
         (FormError error) {
@@ -203,9 +296,19 @@ class AdConsentService {
   ///
   /// 진단 책임: M3 (이슈 A). 호출자/에러 경로 외 다른 코드는 일체 미수정.
   Future<void> retryAfterUserAction() async {
-    _initialized = false;
+    // An explicit user action is allowed to re-evaluate even a prior
+    // notEligible result (for example after changing privacy options).
+    _readiness = ConsentReadiness.idle;
     _available = false;
-    await initialize();
+    await ensureReady(userInitiated: true);
+  }
+
+  @visibleForTesting
+  void resetForTesting() {
+    _inFlight = null;
+    _attemptGeneration++;
+    _available = false;
+    _readiness = ConsentReadiness.idle;
   }
 
   /// GDPR/EEA 사용자에게 동의 폼을 띄워야 하는지.

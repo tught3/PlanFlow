@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/analytics_service.dart';
 import '../core/env.dart';
+import '../core/diag_logger.dart';
 import '../widgets/voice_conversation_ad_dialog.dart';
 import 'ad_consent_service.dart';
 import 'ad_service.dart';
@@ -166,8 +167,7 @@ class VoiceConversationAdGate {
     if (!RemoteConfigService.rewardedAdEnabled) {
       if (!RemoteConfigService.lastFetchSucceeded) {
         // fetch 실패 상태 → 강제 재시도 1회 시도.
-        final retrySucceeded =
-            await RemoteConfigService.retryFetchIfFailed();
+        final retrySucceeded = await RemoteConfigService.retryFetchIfFailed();
         if (retrySucceeded && !RemoteConfigService.rewardedAdEnabled) {
           // 재시도 성공했지만 여전히 false → 콘솔에서 진짜 OFF.
           await AnalyticsService.logVoiceConvGateBlocked(
@@ -205,8 +205,19 @@ class VoiceConversationAdGate {
     }
 
     // 3. 무료 사용 소진(또는 peek 실패) → 광고가 실제로 요청 가능한지 확인.
+    await AdConsentService.instance.ensureReady(userInitiated: true);
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
+      DiagLogger.log(
+        'RewardedAdGate',
+        'phase=ads_unavailable '
+            'consent=${AdConsentService.instance.readiness.name} '
+            'canRequestLive=$adsOk '
+            'rcFetch=${RemoteConfigService.lastFetchSucceeded} '
+            'rcSource=${RemoteConfigService.rewardedAdConfigSource} '
+            'rcEnabled=${RemoteConfigService.rewardedAdEnabled} '
+            'voiceEnabled=${RemoteConfigService.rewardAdVoiceConversationEnabled}',
+      );
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
       _deny(VoiceConversationGateDenialReason.adsUnavailable, onDenied);
       return;
@@ -226,10 +237,17 @@ class VoiceConversationAdGate {
 
     // 5. 광고 표시.
     final requestId = _requestId();
-    final watched = await AdService.instance.showForVoiceConversation(
+    final outcome =
+        await AdService.instance.showForVoiceConversationWithOutcome(
       requestId: requestId,
     );
-    if (watched) {
+    DiagLogger.log(
+      'RewardedAdGate',
+      'phase=outcome reason=${outcome.analyticsReason}'
+          '${outcome.loadErrorCode == null ? '' : ' code=${outcome.loadErrorCode}'}'
+          '${outcome.loadErrorDomain == null ? '' : ' domain=${_safeGateAdDetail(outcome.loadErrorDomain!)}'}',
+    );
+    if (outcome.isRewarded) {
       await AnalyticsService.logVoiceConvAdCompleted();
       await AnalyticsService.logVoiceConvEntered(source: 'ad_rewarded');
       onEnterAllowed(
@@ -242,24 +260,9 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 광고 실패는 원칙적으로 진입 거부다(4회째부터 광고 완료가 필수).
-    // 단, 운영 설정(RemoteConfigService.rewardAdFailurePolicy)이 명시적으로
-    // 'free_pass'로 설정된 경우에만 예외적으로 무료 진입을 허용한다. 이
-    // 경우 consume()은 호출하지 않는다 — 광고도 무료횟수도 소진된 상태에서의
-    // 예외 통과이지 정상적인 무료소진이 아니다.
-    final freePassGrant = maybeFreePassGrant(
-      initialRemainingAtGate: peek.initialRemaining,
-      dailyRemainingAtGate: peek.dailyRemaining,
+    await AnalyticsService.logVoiceConvGateBlocked(
+      reason: 'ad_failed_retry_${outcome.analyticsReason}',
     );
-    if (freePassGrant != null) {
-      await AnalyticsService.logVoiceConvEntered(
-        source: 'ad_failed_free_pass',
-      );
-      onEnterAllowed(freePassGrant);
-      return;
-    }
-
-    await AnalyticsService.logVoiceConvGateBlocked(reason: 'ad_failed_retry');
     _deny(VoiceConversationGateDenialReason.adFailed, onDenied);
   }
 
@@ -269,6 +272,7 @@ class VoiceConversationAdGate {
   /// `_runGate`의 광고 실패 분기가 실제로 사용하는 로직을 그대로 노출한
   /// 것이다 — Firebase/AdService 의존 없이 정책 분기를 직접 단위 테스트할
   /// 수 있도록 `@visibleForTesting`으로 공개한다.
+  @Deprecated('Voice conversation must require a completed rewarded ad.')
   @visibleForTesting
   VoiceConversationEntryGrant? maybeFreePassGrant({
     required int initialRemainingAtGate,
@@ -396,6 +400,19 @@ class VoiceConversationAdGate {
     final random = now.toRadixString(36);
     return 'voice_conv_$now-$random';
   }
+}
+
+String _safeGateAdDetail(String value) {
+  final sanitized = value
+      .replaceAll(RegExp(r'[\r\n]'), ' ')
+      .replaceAll(
+        RegExp(r'ca-app-pub-\d{16}[~/]\d{1,20}'),
+        'ad_unit_redacted',
+      )
+      .trim();
+  return sanitized.length <= 120
+      ? sanitized
+      : '${sanitized.substring(0, 120)}…';
 }
 
 enum VoiceConversationGateDenialReason {

@@ -27,7 +27,7 @@ void main() {
     // Reset the singleton so later tests cannot inherit a simulated mobile
     // consent result and attempt the real MobileAds channel.
     debugDefaultTargetPlatformOverride = TargetPlatform.linux;
-    await AdConsentService.instance.retryAfterUserAction();
+    AdConsentService.instance.resetForTesting();
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -63,6 +63,58 @@ void main() {
 
       expect(consent.isAvailable, isTrue);
       expect(consent.canRequestAds, isTrue);
+    });
+
+    test('a retryable UMP failure can be retried by the next user action',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final channel = MethodChannel(
+        'plugins.flutter.io/google_mobile_ads/ump',
+        StandardMethodCodec(UserMessagingCodec()),
+      );
+      var updateCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'ConsentInformation#requestConsentInfoUpdate') {
+          updateCalls += 1;
+          if (updateCalls == 1) {
+            throw PlatformException(code: 'temporary');
+          }
+        }
+        if (call.method == 'ConsentInformation#canRequestAds') return true;
+        return null;
+      });
+
+      final consent = AdConsentService.instance;
+      await consent.retryAfterUserAction();
+      expect(consent.readiness, ConsentReadiness.retryableFailure);
+
+      await consent.retryAfterUserAction();
+      expect(updateCalls, 2);
+      expect(consent.isAvailable, isTrue);
+      expect(consent.canRequestAds, isTrue);
+    });
+
+    test('live UMP consent remains usable after a transient update failure',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final channel = MethodChannel(
+        'plugins.flutter.io/google_mobile_ads/ump',
+        StandardMethodCodec(UserMessagingCodec()),
+      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'ConsentInformation#requestConsentInfoUpdate') {
+          throw PlatformException(code: 'temporary');
+        }
+        if (call.method == 'ConsentInformation#canRequestAds') return true;
+        return null;
+      });
+
+      final consent = AdConsentService.instance;
+      await consent.retryAfterUserAction();
+      expect(await consent.canRequestAdsLive, isTrue);
+      expect(consent.readiness, ConsentReadiness.ready);
     });
   });
 
@@ -317,6 +369,53 @@ void main() {
   });
 
   group('AdService rewarded lifecycle production seam', () {
+    test('missing SDK callbacks time out and release lifecycle state',
+        () async {
+      final stopwatch = Stopwatch()..start();
+      final outcome = await runRewardedAdLifecycle(
+        lifecycleTimeout: const Duration(milliseconds: 20),
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          // Simulate an SDK show() that never returns and emits no callback.
+          await Future<void>.delayed(const Duration(seconds: 1));
+        },
+      );
+      stopwatch.stop();
+
+      expect(outcome, isFalse);
+      expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 250)));
+    });
+
+    test('late SDK callbacks after timeout cannot revive a completed attempt',
+        () async {
+      void Function()? reward;
+      void Function()? dismiss;
+      void Function()? failure;
+
+      final outcome = await runRewardedAdLifecycle(
+        lifecycleTimeout: const Duration(milliseconds: 10),
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          reward = onUserEarnedReward;
+          dismiss = onAdDismissed;
+          failure = onAdFailedToShow;
+        },
+      );
+
+      expect(outcome, isFalse);
+      // Simulate a platform callback arriving after the ad was disposed.
+      reward?.call();
+      dismiss?.call();
+      failure?.call();
+      expect(outcome, isFalse);
+    });
+
     test('dismiss-before-reward resolves successfully within grace period',
         () async {
       final outcome = runRewardedAdLifecycle(
@@ -367,6 +466,69 @@ void main() {
       );
 
       expect(await outcome, isFalse);
+    });
+  });
+
+  group('Remote Config rewarded unit retry guard', () {
+    test('retries only for release mode after a failed fetch and empty unit',
+        () {
+      expect(
+        shouldRetryRemoteConfigForRewardedUnit(
+          useTestUnit: false,
+          fetchSucceeded: false,
+          configured: '',
+        ),
+        isTrue,
+      );
+      expect(
+        shouldRetryRemoteConfigForRewardedUnit(
+          useTestUnit: true,
+          fetchSucceeded: false,
+          configured: '',
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRetryRemoteConfigForRewardedUnit(
+          useTestUnit: false,
+          fetchSucceeded: true,
+          configured: '',
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRetryRemoteConfigForRewardedUnit(
+          useTestUnit: false,
+          fetchSucceeded: false,
+          configured: 'ca-app-pub-1234567890123456/123',
+        ),
+        isFalse,
+      );
+    });
+
+    test('re-checking after retry disables voice ads when either switch is off',
+        () {
+      expect(
+        shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
+          rewardedAdEnabled: false,
+          rewardAdVoiceConversationEnabled: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
+          rewardedAdEnabled: true,
+          rewardAdVoiceConversationEnabled: false,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
+          rewardedAdEnabled: true,
+          rewardAdVoiceConversationEnabled: true,
+        ),
+        isFalse,
+      );
     });
   });
 

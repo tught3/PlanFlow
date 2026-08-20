@@ -157,6 +157,23 @@ class RemoteConfigService {
   /// 구분하기 위해 참조한다.
   static bool get lastFetchSucceeded => _lastFetchSucceeded;
 
+  /// 광고 진단용 적용 출처. 값 자체나 광고 단위 ID는 노출하지 않고,
+  /// 각 스위치/단위 ID가 원격·기본·정적 중 어디에서 왔는지만 반환한다.
+  static String get rewardedAdConfigSource {
+    final remoteConfig = _remoteConfig;
+    if (remoteConfig == null) return 'unavailable';
+    try {
+      String sourceFor(String key) => remoteConfig.getValue(key).source.name;
+      return 'enabled=${sourceFor(_kRewardedAdEnabled)},'
+          'unit=${sourceFor(_kRewardedAdUnitIdAndroid)},'
+          'voice=${sourceFor(_kRewardAdVoiceConversationEnabled)}';
+    } catch (_) {
+      return _lastFetchSucceeded
+          ? 'fetch_success_unknown'
+          : 'default_or_cached';
+    }
+  }
+
   /// 테스트 전용 setter: [_lastFetchSucceeded]를 강제로 설정한다.
   ///
   /// Firebase Remote Config는 static singleton이고 `_lastFetchSucceeded`가
