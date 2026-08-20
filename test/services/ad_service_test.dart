@@ -317,6 +317,33 @@ void main() {
   });
 
   group('AdService rewarded lifecycle production seam', () {
+    test(
+        'SDK full-screen show failure is distinct from dismissal without reward',
+        () async {
+      final failed = await runRewardedAdLifecycleWithOutcome(
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          onAdFailedToShow();
+        },
+      );
+      final dismissed = await runRewardedAdLifecycleWithOutcome(
+        gracePeriod: const Duration(milliseconds: 1),
+        drive: ({
+          required void Function() onUserEarnedReward,
+          required void Function() onAdDismissed,
+          required void Function() onAdFailedToShow,
+        }) async {
+          onAdDismissed();
+        },
+      );
+
+      expect(failed, RewardedAdShowOutcome.showFailed);
+      expect(dismissed, RewardedAdShowOutcome.dismissedWithoutReward);
+    });
+
     test('dismiss-before-reward resolves successfully within grace period',
         () async {
       final outcome = runRewardedAdLifecycle(

@@ -77,6 +77,20 @@ class VoiceConversationAdOutcome {
   }
 }
 
+/// Full-screen rewarded-ad display terminal state.
+///
+/// 광고가 닫혔지만 보상이 없었던 경우와 SDK가 전체 화면을 표시하지 못한
+/// 경우를 분리해 voice conversation의 진단 UI가 정확한 outcome을 표시한다.
+enum RewardedAdShowOutcome {
+  rewarded,
+  dismissedWithoutReward,
+  showFailed,
+}
+
+extension on RewardedAdShowOutcome {
+  bool get isRewarded => this == RewardedAdShowOutcome.rewarded;
+}
+
 String _safeAdDetail(String value) {
   final sanitized = value.replaceAll(RegExp(r'[\r\n]'), ' ').trim();
   return sanitized.length <= 120
@@ -112,6 +126,7 @@ class RewardedAdLifecycleCoordinator {
   final Completer<bool> _result = Completer<bool>();
   Timer? _graceTimer;
   bool _rewardEarned = false;
+  bool _failedToShow = false;
 
   Future<bool> get result => _result.future;
   bool get isCompleted => _result.isCompleted;
@@ -132,7 +147,12 @@ class RewardedAdLifecycleCoordinator {
     _graceTimer ??= Timer(gracePeriod, () => _finish(false));
   }
 
-  void onAdFailedToShow() => _finish(false);
+  void onAdFailedToShow() {
+    _failedToShow = true;
+    _finish(false);
+  }
+
+  bool get failedToShow => _failedToShow;
 
   /// Completes an abandoned lifecycle and releases its timer.
   void dispose() {
@@ -160,6 +180,24 @@ Future<bool> runRewardedAdLifecycle({
   }) drive,
   Duration gracePeriod = const Duration(milliseconds: 500),
 }) async {
+  return (await runRewardedAdLifecycleWithOutcome(
+    drive: drive,
+    gracePeriod: gracePeriod,
+  ))
+      .isRewarded;
+}
+
+/// [runRewardedAdLifecycle]과 같은 콜백 순서를 실행하되, SDK 표시 실패와
+/// 사용자 닫힘을 구분한다. 플랫폼 SDK 없이 결과 분류를 집중 테스트한다.
+@visibleForTesting
+Future<RewardedAdShowOutcome> runRewardedAdLifecycleWithOutcome({
+  required Future<void> Function({
+    required void Function() onUserEarnedReward,
+    required void Function() onAdDismissed,
+    required void Function() onAdFailedToShow,
+  }) drive,
+  Duration gracePeriod = const Duration(milliseconds: 500),
+}) async {
   final lifecycle = RewardedAdLifecycleCoordinator(gracePeriod: gracePeriod);
   try {
     await drive(
@@ -167,7 +205,11 @@ Future<bool> runRewardedAdLifecycle({
       onAdDismissed: lifecycle.onAdDismissed,
       onAdFailedToShow: lifecycle.onAdFailedToShow,
     );
-    return await lifecycle.result;
+    final rewarded = await lifecycle.result;
+    if (rewarded) return RewardedAdShowOutcome.rewarded;
+    return lifecycle.failedToShow
+        ? RewardedAdShowOutcome.showFailed
+        : RewardedAdShowOutcome.dismissedWithoutReward;
   } finally {
     lifecycle.dispose();
   }
@@ -506,16 +548,22 @@ class AdService {
       await AnalyticsService.logVoiceConvAdShown(requestId: requestId);
 
       onProgress?.call('shown');
-      final completed = await _showRewardedAd();
-      if (!completed) {
-        final outcome = const VoiceConversationAdOutcome(
-          VoiceConversationAdOutcomeKind.dismissedWithoutReward,
+      final showOutcome = await _showRewardedAdWithOutcome();
+      if (!showOutcome.isRewarded) {
+        final outcome = VoiceConversationAdOutcome(
+          showOutcome == RewardedAdShowOutcome.showFailed
+              ? VoiceConversationAdOutcomeKind.showFailed
+              : VoiceConversationAdOutcomeKind.dismissedWithoutReward,
         );
         await AnalyticsService.logVoiceConvAdFailed(
           reason: outcome.analyticsReason,
           requestId: requestId,
         );
-        onProgress?.call('cancelled');
+        onProgress?.call(
+          showOutcome == RewardedAdShowOutcome.showFailed
+              ? 'failed'
+              : 'cancelled',
+        );
         return outcome;
       }
 
@@ -679,13 +727,17 @@ class AdService {
   }
 
   /// 캐시된 _rewardedAd를 표시하고, 보상 획득 여부를 반환.
-  Future<bool> _showRewardedAd() async {
+  Future<bool> _showRewardedAd() async =>
+      (await _showRewardedAdWithOutcome()).isRewarded;
+
+  /// 캐시된 광고 표시의 실패 원인을 SDK 실패/사용자 닫힘으로 구분한다.
+  Future<RewardedAdShowOutcome> _showRewardedAdWithOutcome() async {
     final ad = _rewardedAd;
     if (ad == null) {
-      return false;
+      return RewardedAdShowOutcome.showFailed;
     }
     try {
-      return await runRewardedAdLifecycle(
+      return await runRewardedAdLifecycleWithOutcome(
         drive: ({
           required void Function() onUserEarnedReward,
           required void Function() onAdDismissed,
@@ -714,7 +766,7 @@ class AdService {
     } catch (error, stackTrace) {
       debugPrint('AdService._showRewardedAd exception: $error');
       debugPrintStack(stackTrace: stackTrace);
-      return false;
+      return RewardedAdShowOutcome.showFailed;
     } finally {
       // There is one ownership/cleanup path for both success and failure.
       // This prevents duplicate disposal when SDK callbacks and show() errors

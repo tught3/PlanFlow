@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/ad_service.dart';
 import 'package:planflow/services/remote_config_service.dart';
 import 'package:planflow/services/voice_conversation_ad_gate.dart';
 import 'package:planflow/services/voice_conversation_entitlement.dart';
+import 'package:planflow/widgets/voice_conversation_ad_dialog.dart';
 
 /// [VoiceConversationAdGate]의 회귀 테스트.
 ///
@@ -25,6 +27,8 @@ void main() {
 
   tearDown(() {
     VoiceConversationAdGate.instance.delegateForTest = null;
+    VoiceConversationAdGate.instance.retryAfterUserActionForTest = null;
+    VoiceConversationAdGate.instance.canRequestAdsLiveForTest = null;
     // 다른 테스트가 RC 상태에 영향받지 않도록 매 테스트 후 초기화.
     RemoteConfigService.lastFetchSucceededForTest = false;
     RemoteConfigService.rewardAdFailurePolicyForTest = null;
@@ -154,8 +158,7 @@ void main() {
 
         // 게이트는 즉시 차단하지 않고 광고 다이얼로그로 진행. 사용자가
         // 다이얼로그를 확인하지 않으므로 진입은 거부된다.
-        expect(captured, isNull,
-            reason: '재시도 실패해도 기본값(true)이라 즉시 차단되면 안 된다');
+        expect(captured, isNull, reason: '재시도 실패해도 기본값(true)이라 즉시 차단되면 안 된다');
       },
     );
 
@@ -191,6 +194,60 @@ void main() {
             reason: 'Firebase Remote Config mock 인프라가 선행되어야 검증 가능');
       },
     );
+  });
+
+  group('사용자 재시도 consent 재평가', () {
+    test('두 번째 시도는 UMP 재초기화 후 live availability를 fail-closed로 읽는다', () async {
+      final events = <String>[];
+      VoiceConversationAdGate.instance.retryAfterUserActionForTest = () async {
+        events.add('retry');
+      };
+      VoiceConversationAdGate.instance.canRequestAdsLiveForTest = () async {
+        events.add('availability');
+        return false;
+      };
+
+      final result = await VoiceConversationAdGate.instance.runAdAttemptForTest(
+        peek: const VoiceConversationEntitlementPeek(
+          initialRemaining: 0,
+          dailyRemaining: 0,
+          requiresAd: true,
+        ),
+        attemptNumber: 2,
+      );
+
+      expect(events, <String>['retry', 'availability']);
+      expect(result.isAllowed, isFalse);
+      expect(result.diagnosticCode, 'E-ADS0');
+    });
+  });
+
+  group('광고 terminal 단계 매핑', () {
+    test('dismiss-without-reward만 cancelled이고 SDK 표시 실패는 failed다', () {
+      expect(
+        voiceConversationAdTerminalStageForOutcome(
+          VoiceConversationAdOutcomeKind.dismissedWithoutReward,
+        ),
+        VoiceConversationAdDialogStage.cancelled,
+      );
+      expect(
+        voiceConversationAdTerminalStageForOutcome(
+          VoiceConversationAdOutcomeKind.showFailed,
+        ),
+        VoiceConversationAdDialogStage.failed,
+      );
+    });
+
+    test('보상 성공 완료 목록은 failed/cancelled terminal을 완료 처리하지 않는다', () {
+      expect(
+        voiceConversationAdRewardCompletedStages,
+        isNot(contains(VoiceConversationAdDialogStage.failed)),
+      );
+      expect(
+        voiceConversationAdRewardCompletedStages,
+        isNot(contains(VoiceConversationAdDialogStage.cancelled)),
+      );
+    });
   });
 
   group('strict 무료 3회/광고 보상 계약 (delegate 경유)', () {
@@ -252,7 +309,8 @@ void main() {
           .map(voiceConversationGateDenialMessage)
           .toSet();
 
-      expect(messages, hasLength(VoiceConversationGateDenialReason.values.length));
+      expect(
+          messages, hasLength(VoiceConversationGateDenialReason.values.length));
     });
 
     test('rewardedDisabled와 remoteDisabled는 서로 다른 메시지를 반환한다', () {
@@ -310,6 +368,28 @@ void main() {
           .toSet();
 
       expect(codes, hasLength(VoiceConversationGateDenialReason.values.length));
+    });
+  });
+
+  group('진단 시도 결과의 fail-closed 계약', () {
+    test('보상 완료만 일반 승인으로 표현하고 실패는 진입을 허용하지 않는다', () {
+      const rewarded = VoiceConversationAdDialogAttemptResult.rewarded();
+      const failed = VoiceConversationAdDialogAttemptResult.failure(
+        diagnosticCode: 'E-ADFAIL',
+        diagnosticDetail: 'reason=load_failed',
+      );
+
+      expect(rewarded.isAllowed, isTrue);
+      expect(rewarded.isRewarded, isTrue);
+      expect(failed.isAllowed, isFalse);
+      expect(failed.isRewarded, isFalse);
+    });
+
+    test('free_pass 표시는 기존 명시 예외이며 보상 완료로 위장하지 않는다', () {
+      const freePass = VoiceConversationAdDialogAttemptResult.freePass();
+
+      expect(freePass.isAllowed, isTrue);
+      expect(freePass.isRewarded, isFalse);
     });
   });
 

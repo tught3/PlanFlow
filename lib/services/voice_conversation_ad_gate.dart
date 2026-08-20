@@ -45,6 +45,15 @@ class VoiceConversationAdGate {
     _delegateForTest = value;
   }
 
+  /// 테스트에서 재시도 순서를 관측하기 위한 제한된 seam이다. null이면
+  /// 항상 실제 UMP 서비스를 호출하므로 운영 계약에는 영향을 주지 않는다.
+  @visibleForTesting
+  Future<void> Function()? retryAfterUserActionForTest;
+
+  /// 테스트에서 live consent 재평가 결과를 주입하기 위한 제한된 seam이다.
+  @visibleForTesting
+  Future<bool> Function()? canRequestAdsLiveForTest;
+
   /// 동일 userId에 대한 tryEnterVoiceConversation의 동시 호출을 거부.
   final Set<String> _inFlight = <String>{};
 
@@ -159,77 +168,30 @@ class VoiceConversationAdGate {
       await AnalyticsService.logVoiceConvAdRequired();
     }
 
-    // 2. 무료 3회 이후에는 광고가 필수다. 광고 기능이 꺼져 있으면 우회
-    // 진입시키지 않고 운영 설정을 고친 뒤 다시 시도하도록 막는다.
-    // 단, RC fetch가 실패한 상태라면(fetch 실패로 기본값을 잘못 읽었을 수
-    // 있음) 강제 재시도 1회 후 재평가한다.
-    if (!RemoteConfigService.rewardedAdEnabled) {
-      if (!RemoteConfigService.lastFetchSucceeded) {
-        // fetch 실패 상태 → 강제 재시도 1회 시도.
-        final retrySucceeded =
-            await RemoteConfigService.retryFetchIfFailed();
-        if (retrySucceeded && !RemoteConfigService.rewardedAdEnabled) {
-          // 재시도 성공했지만 여전히 false → 콘솔에서 진짜 OFF.
-          await AnalyticsService.logVoiceConvGateBlocked(
-            reason: 'rewarded_disabled_after_retry',
-          );
-          _deny(
-            VoiceConversationGateDenialReason.rewardedDisabled,
-            onDenied,
-          );
-          return;
-        }
-        if (retrySucceeded) {
-          // 재시도 성공 + 값이 true로 바뀜 → 정상 분기로 계속 진행.
-          // (차단이 아니므로 gate_blocked 이벤트는 호출하지 않음 —
-          //  알림 오염 방지. 회귀 분석은 로그의 다른 사유로 구분 가능.)
-          // 통과 (아래 광고 다이얼로그로).
-        } else {
-          // 재시도도 실패 → 기본값이 true이므로 광고 진행을 시도한다.
-          // (차단이 아니므로 gate_blocked 이벤트는 호출하지 않음.)
-          // 통과 (아래 광고 다이얼로그로).
-        }
-      } else {
-        // fetch는 성공했고 콘솔에서 진짜 OFF.
-        await AnalyticsService.logVoiceConvGateBlocked(
-          reason: 'rewarded_disabled',
-        );
-        _deny(VoiceConversationGateDenialReason.rewardedDisabled, onDenied);
-        return;
-      }
-    }
-    if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');
-      _deny(VoiceConversationGateDenialReason.remoteDisabled, onDenied);
-      return;
-    }
-
-    // 3. 무료 사용 소진(또는 peek 실패) → 광고가 실제로 요청 가능한지 확인.
-    final adsOk = await AdConsentService.instance.canRequestAdsLive;
-    if (!adsOk) {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
-      _deny(VoiceConversationGateDenialReason.adsUnavailable, onDenied);
-      return;
-    }
-
-    // 4. 광고 다이얼로그.
+    // 2. 무료 사용 소진 후의 광고 진단/재시도는 한 상태형 다이얼로그에서
+    // 진행한다. 재시도는 이 클로저를 다시 호출하므로 매번 새 requestId와
+    // AdService outcome API를 사용하며, AdService의 single-flight/30초
+    // throttle은 그대로 보존된다.
     if (!context.mounted) {
       _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
       return;
     }
-    final confirmed = await showVoiceConversationAdDialog(context);
-    if (!confirmed) {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
-      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
-      return;
-    }
-
-    // 5. 광고 표시.
-    final requestId = _requestId();
-    final watched = await AdService.instance.showForVoiceConversation(
-      requestId: requestId,
+    VoiceConversationGateDenialReason? latestDenial;
+    VoiceConversationEntryGrant? freePassGrant;
+    final dialogResult = await showVoiceConversationAdDialog(
+      context,
+      initialCompletedStages: const <VoiceConversationAdDialogStage>{
+        VoiceConversationAdDialogStage.entitlement,
+      },
+      onStartAttempt: (reportProgress, attemptNumber) => _runAdAttempt(
+        peek: peek,
+        reportProgress: reportProgress,
+        isUserRetry: attemptNumber > 1,
+        onDenied: (reason) => latestDenial = reason,
+        onFreePass: (grant) => freePassGrant = grant,
+      ),
     );
-    if (watched) {
+    if (dialogResult.isRewarded) {
       await AnalyticsService.logVoiceConvAdCompleted();
       await AnalyticsService.logVoiceConvEntered(source: 'ad_rewarded');
       onEnterAllowed(
@@ -241,26 +203,147 @@ class VoiceConversationAdGate {
       );
       return;
     }
+    if (dialogResult.isAllowed && freePassGrant != null) {
+      await AnalyticsService.logVoiceConvEntered(
+        source: 'ad_failed_free_pass',
+      );
+      onEnterAllowed(freePassGrant!);
+      return;
+    }
+    final denial =
+        latestDenial ?? VoiceConversationGateDenialReason.userCanceled;
+    if (latestDenial == null) {
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
+    }
+    _deny(denial, onDenied);
+  }
 
-    // 광고 실패는 원칙적으로 진입 거부다(4회째부터 광고 완료가 필수).
-    // 단, 운영 설정(RemoteConfigService.rewardAdFailurePolicy)이 명시적으로
-    // 'free_pass'로 설정된 경우에만 예외적으로 무료 진입을 허용한다. 이
-    // 경우 consume()은 호출하지 않는다 — 광고도 무료횟수도 소진된 상태에서의
-    // 예외 통과이지 정상적인 무료소진이 아니다.
+  Future<VoiceConversationAdDialogAttemptResult> _runAdAttempt({
+    required VoiceConversationEntitlementPeek peek,
+    required VoiceConversationAdDialogProgress reportProgress,
+    required bool isUserRetry,
+    required void Function(VoiceConversationGateDenialReason reason) onDenied,
+    required void Function(VoiceConversationEntryGrant grant) onFreePass,
+  }) async {
+    reportProgress(VoiceConversationAdDialogStage.remoteConfig);
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      if (!RemoteConfigService.lastFetchSucceeded) {
+        final retrySucceeded = await RemoteConfigService.retryFetchIfFailed();
+        if (retrySucceeded && !RemoteConfigService.rewardedAdEnabled) {
+          await AnalyticsService.logVoiceConvGateBlocked(
+            reason: 'rewarded_disabled_after_retry',
+          );
+          return _attemptDenied(
+            VoiceConversationGateDenialReason.rewardedDisabled,
+            onDenied,
+          );
+        }
+      } else {
+        await AnalyticsService.logVoiceConvGateBlocked(
+          reason: 'rewarded_disabled',
+        );
+        return _attemptDenied(
+          VoiceConversationGateDenialReason.rewardedDisabled,
+          onDenied,
+        );
+      }
+    }
+    if (!RemoteConfigService.rewardAdVoiceConversationEnabled) {
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'remote_disabled');
+      return _attemptDenied(
+        VoiceConversationGateDenialReason.remoteDisabled,
+        onDenied,
+      );
+    }
+
+    reportProgress(VoiceConversationAdDialogStage.consent);
+    if (isUserRetry) {
+      // 재시도 버튼은 명시적 사용자 액션이다. UMP 상태를 새로 초기화한 뒤
+      // live consent를 다시 읽어야 이전 거부/플랫폼 오류 캐시를 우회하지
+      // 않으면서도 정책을 fail-closed로 재평가할 수 있다.
+      final retry = retryAfterUserActionForTest ??
+          AdConsentService.instance.retryAfterUserAction;
+      await retry();
+    }
+    final canRequestAds = canRequestAdsLiveForTest ??
+        (() => AdConsentService.instance.canRequestAdsLive);
+    final adsOk = await canRequestAds();
+    if (!adsOk) {
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'ads_unavailable');
+      return _attemptDenied(
+        VoiceConversationGateDenialReason.adsUnavailable,
+        onDenied,
+      );
+    }
+
+    reportProgress(VoiceConversationAdDialogStage.initializing);
+    final outcome =
+        await AdService.instance.showForVoiceConversationWithOutcome(
+      requestId: _requestId(),
+      onProgress: (stage) {
+        switch (stage) {
+          case 'loading':
+            reportProgress(VoiceConversationAdDialogStage.loading);
+          case 'shown':
+            reportProgress(VoiceConversationAdDialogStage.showing);
+          case 'completed':
+            reportProgress(VoiceConversationAdDialogStage.rewardVerified);
+          case 'failed':
+          case 'cancelled':
+            break;
+        }
+      },
+    );
+    if (outcome.isRewarded) {
+      return const VoiceConversationAdDialogAttemptResult.rewarded();
+    }
+
+    // 기존의 명시적 RC 예외만 그대로 보존한다. 이것은 다이얼로그/재시도가
+    // 새 우회 경로를 만든 것이 아니라 기존 gate 정책을 그대로 적용한 것이다.
     final freePassGrant = maybeFreePassGrant(
       initialRemainingAtGate: peek.initialRemaining,
       dailyRemainingAtGate: peek.dailyRemaining,
     );
     if (freePassGrant != null) {
-      await AnalyticsService.logVoiceConvEntered(
-        source: 'ad_failed_free_pass',
-      );
-      onEnterAllowed(freePassGrant);
-      return;
+      onFreePass(freePassGrant);
+      return const VoiceConversationAdDialogAttemptResult.freePass();
     }
 
     await AnalyticsService.logVoiceConvGateBlocked(reason: 'ad_failed_retry');
-    _deny(VoiceConversationGateDenialReason.adFailed, onDenied);
+    onDenied(VoiceConversationGateDenialReason.adFailed);
+    return VoiceConversationAdDialogAttemptResult.failure(
+      diagnosticCode: voiceConversationGateDenialCode(
+        VoiceConversationGateDenialReason.adFailed,
+      ),
+      diagnosticDetail: outcome.debugReason,
+      terminalStage: voiceConversationAdTerminalStageForOutcome(outcome.kind),
+    );
+  }
+
+  VoiceConversationAdDialogAttemptResult _attemptDenied(
+    VoiceConversationGateDenialReason reason,
+    void Function(VoiceConversationGateDenialReason reason) onDenied,
+  ) {
+    onDenied(reason);
+    return VoiceConversationAdDialogAttemptResult.failure(
+      diagnosticCode: voiceConversationGateDenialCode(reason),
+      diagnosticDetail: voiceConversationGateDenialMessage(reason),
+    );
+  }
+
+  /// UMP/광고 SDK 없이 재시도 순서와 fail-closed consent 거부를 검증한다.
+  @visibleForTesting
+  Future<VoiceConversationAdDialogAttemptResult> runAdAttemptForTest({
+    required VoiceConversationEntitlementPeek peek,
+    required int attemptNumber,
+  }) {
+    return _runAdAttempt(
+      peek: peek,
+      reportProgress: (_) {},
+      isUserRetry: attemptNumber > 1,
+      onDenied: (_) {},
+      onFreePass: (_) {},
+    );
   }
 
   /// RemoteConfigService.rewardAdFailurePolicy가 명시적으로 'free_pass'로
@@ -407,6 +490,15 @@ enum VoiceConversationGateDenialReason {
   userCanceled,
   adFailed,
 }
+
+/// 광고 outcome이 다이얼로그에 남겨야 할 terminal 단계.
+@visibleForTesting
+VoiceConversationAdDialogStage voiceConversationAdTerminalStageForOutcome(
+  VoiceConversationAdOutcomeKind kind,
+) =>
+    kind == VoiceConversationAdOutcomeKind.dismissedWithoutReward
+        ? VoiceConversationAdDialogStage.cancelled
+        : VoiceConversationAdDialogStage.failed;
 
 String voiceConversationGateDenialMessage(
     VoiceConversationGateDenialReason reason) {
