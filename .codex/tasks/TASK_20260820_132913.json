@@ -1,0 +1,122 @@
+{
+  "taskId": "TASK_20260820_132913",
+  "request": "AI 일정대화 광고 실패 원인을 UI에 단계별로 표시하고 재시도 가능하게 해 실제 재현을 진단한다.",
+  "classification": "complex",
+  "allowedFiles": [
+    "lib/services/ad_service.dart",
+    "lib/services/voice_conversation_ad_gate.dart",
+    "lib/widgets/voice_conversation_ad_dialog.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/voice_conversation_ad_gate_test.dart",
+    "test/widgets/voice_conversation_ad_dialog_test.dart"
+  ],
+  "forbiddenFiles": [
+    "supabase/**",
+    "android/**",
+    "pubspec.yaml"
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Read-only code investigation",
+      "result": "AdService already exposes detailed outcomes but VoiceConversationAdGate reduces them to bool; all entry points only show a SnackBar. Existing active lock L1107 owns the core source/test files."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "assignment": "Read-only requirements and delivery plan",
+      "result": "Complex: preserve the reward-before-entry contract, propagate structured outcomes, show agreement/request/load/show/reward stages, and retry only a new attempt. No DB, RC policy, Android, or deployment changes."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Implement the stateful ad-diagnostic and retry flow within Planner scope.",
+      "changedFiles": [
+        "lib/services/ad_service.dart",
+        "lib/services/voice_conversation_ad_gate.dart",
+        "lib/widgets/voice_conversation_ad_dialog.dart",
+        "test/services/ad_service_test.dart",
+        "test/services/voice_conversation_ad_gate_test.dart",
+        "test/widgets/voice_conversation_ad_dialog_test.dart"
+      ],
+      "result": "Propagated AdService structured outcomes through the gate into a stateful dialog; added staged diagnostics, retry action, show-failure outcome preservation, and focused regressions while preserving reward-only entry and the existing free-pass policy exception. Implementer reported flutter analyze exit 0, targeted widget/service tests (22) passing, and git diff --check exit 0."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "assignment": "Read-only reconciliation of Explorer, Planner, and Complex Implementer results against the current diff.",
+      "result": "Final integration PASS: current status/diff contains exactly six Planner-allowed files (AdService, voice ad gate, diagnostic dialog, and three focused tests); no forbidden path is changed. Explorer, Planner, Complex Implementer, Test Executor, and independent Reviewer evidence is present. All recorded verification commands exited 0, Reviewer returned PASS with no findings, and no unresolved delivery item remains."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Run independent focused Flutter regression tests, full analyze, and diff whitespace validation.",
+      "result": "Focused test command completed with exit 0 for 55 tests; flutter analyze completed with exit 0; git diff --check completed with exit 0."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Independent read-only final review of the request, plan, current diff, verification evidence, and task state.",
+      "result": "PASS. No BLOCKER, HIGH, MEDIUM, or LOW findings; prior rework is resolved and the final six-file diff remains within Planner scope."
+    }
+  ],
+  "plan": [
+    "Preserve structured ad outcomes from AdService through VoiceConversationAdGate.",
+    "Add a stateful diagnostic UI with stage, reason, code, cancellation, and a bounded retry action.",
+    "Keep all existing gate entry points consistent and add targeted service/widget regressions.",
+    "Run targeted tests, analyze, independent review, integration, scoped commit and push."
+  ],
+  "currentChangedFiles": [
+    "lib/services/ad_service.dart",
+    "lib/services/voice_conversation_ad_gate.dart",
+    "lib/widgets/voice_conversation_ad_dialog.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/voice_conversation_ad_gate_test.dart",
+    "test/widgets/voice_conversation_ad_dialog_test.dart"
+  ],
+  "lock": {
+    "id": "L1107",
+    "owner": "codex-TASK_20260820_132913",
+    "status": "released"
+  },
+  "testEvidence": [
+    {
+      "command": "focused Flutter test suite",
+      "result": "55 tests passed",
+      "exitCode": 0
+    },
+    {
+      "command": "flutter analyze",
+      "result": "passed",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "exitCode": 0
+    }
+  ],
+  "review": {
+    "status": "PASS",
+    "findings": [],
+    "priorFindingsRework": "resolved"
+  },
+  "blocker": null,
+  "unresolvedItems": [],
+  "nextStep": "COMPLETE",
+  "finalVerdict": "COMPLETE",
+  "lastUpdated": "2026-08-20T23:20:00+09:00"
+}
