@@ -184,6 +184,14 @@
       ]
     }
   },
+  "deployment": {
+    "version": "1.1.1+144",
+    "track": "alpha",
+    "package": "com.fluxstudio.planflow",
+    "aabSha256": "C1B0C58193CC6D1E45EA193BFFCEFFAD15DB060EF8D32FE4234939F7C6522BFE",
+    "uploadExitCode": 0,
+    "result": "Play Alpha upload completed; connected device still reports versionCode 143 pending Play propagation."
+  },
   "verification": {
     "required": [
       "flutter analyze lib/main.dart lib/services/remote_config_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart",
@@ -197,5 +205,5 @@
     "Exact Remote Config fetch exception",
     "Real ad display and reward callback after new build"
   ],
-  "updatedAt": "2026-08-21T21:36:04.6693570+09:00"
+  "updatedAt": "2026-08-21T21:51:00+09:00"
 }
