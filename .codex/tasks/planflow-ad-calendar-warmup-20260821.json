@@ -168,6 +168,26 @@
     "adAcceptance": {
       "result": "not_run",
       "reason": "The corrected build could not be installed. There is no updated-device evidence for rewarded load, full-screen show, reward callback, or conversation opening."
+    },
+    "alpha143": {
+      "upload": "Play Alpha upload completed for version 1.1.1+143.",
+      "device": "S918N 192.168.0.102:43129",
+      "installedVersionCode": 143,
+      "checkedAt": "2026-08-21T21:03:22+09:00",
+      "adAcceptance": {
+        "result": "blocked_before_load",
+        "evidence": [
+          "RewardedAdConsent phase=ready attempt=1 available=true",
+          "RewardedAd attempt=37c6ace7 phase=started consent=ready rcFetch=false rcSource=enabled=valueDefault,unit=valueDefault,voice=valueDefault",
+          "RewardedAd attempt=37c6ace7 phase=unit_id_invalid_after_rc_retry",
+          "RewardedAdGate phase=outcome reason=unit_id_invalid"
+        ],
+        "notObserved": [
+          "rewarded ad full-screen show",
+          "onUserEarnedReward",
+          "AI conversation opened"
+        ]
+      }
     }
   }
 }
