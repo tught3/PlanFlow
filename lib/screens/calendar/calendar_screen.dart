@@ -36,19 +36,19 @@ enum _CalendarLoadState {
 
 // Calendar semantic palette. Weekday colors are applied only to date numbers;
 // event colors never inherit the weekday color.
-const calendarCriticalEventMarkerColor = Color(0xFF7A5AC8);
-const calendarCriticalEventTextColor = Color(0xFF6B46C1);
-const calendarCriticalEventBackgroundColor = Color(0xFFF3EEFF);
-const calendarNormalEventTextColor = Color(0xFF38516B);
-const calendarNormalEventBackgroundColor = Color(0xFFEDF2F7);
-const calendarMultiDayEventBackgroundColor = Color(0xFFE8EEF5);
-const calendarMultiDayEventTextColor = Color(0xFF334E68);
-const calendarMultiDayEventBorderColor = Color(0xFF1F3B57);
-const calendarCriticalMultiDayAccentColor = Color(0xFF7A5AC8);
-const calendarGroupEventColor = Color(0xFF9A5B00);
-const calendarGroupEventBackgroundColor = Color(0xFFFFF1C2);
-const calendarRecurringEventColor = Color(0xFF00838F);
-const calendarRecurringEventBackgroundColor = Color(0xFFDCF0F2);
+const calendarCriticalEventMarkerColor = Color(0xFF8051B2);
+const calendarCriticalEventTextColor = Color(0xFF633B8E);
+const calendarCriticalEventBackgroundColor = Color(0xFFE2D2F3);
+const calendarNormalEventTextColor = Color(0xFF435A70);
+const calendarNormalEventBackgroundColor = Color(0xFFDCE8F2);
+const calendarMultiDayEventBackgroundColor = Color(0xFFDCE8C9);
+const calendarMultiDayEventTextColor = Color(0xFF4B6336);
+const calendarMultiDayEventBorderColor = Color(0xFF78935B);
+const calendarCriticalMultiDayAccentColor = Color(0xFF8051B2);
+const calendarGroupEventColor = Color(0xFF7B560B);
+const calendarGroupEventBackgroundColor = Color(0xFFF4DEAA);
+const calendarRecurringEventColor = Color(0xFF126E68);
+const calendarRecurringEventBackgroundColor = Color(0xFFD2ECE8);
 const calendarHolidayColor = Color(0xFFC62828);
 const calendarSaturdayColor = Color(0xFF1E64B7);
 
@@ -242,6 +242,7 @@ class CalendarMiniMonthCellData {
     required this.overflowCount,
     required this.isHoliday,
     this.holidayName,
+    this.leadingEventRowCount = 0,
   });
 
   final int index;
@@ -253,6 +254,10 @@ class CalendarMiniMonthCellData {
   final int overflowCount;
   final bool isHoliday;
   final String? holidayName;
+
+  /// Empty rows reserved before a multi-day band so it stays aligned with a
+  /// holiday row on another day in the same span.
+  final int leadingEventRowCount;
 }
 
 @visibleForTesting
@@ -351,8 +356,14 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       continue;
     }
 
+    final spanContainsHoliday = cellIndices.any((index) {
+      final day = cellDates[index];
+      return day != null && KoreanHolidays.holidayName(day) != null;
+    });
     var reserved = false;
-    for (var slot = 0; slot < _calendarMiniMonthEventRows; slot += 1) {
+    for (var slot = spanContainsHoliday ? 1 : 0;
+        slot < _calendarMiniMonthEventRows;
+        slot += 1) {
       if (cellIndices.every((index) => slotMap[index][slot] == null)) {
         for (final index in cellIndices) {
           slotMap[index][slot] = event;
@@ -385,7 +396,11 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     }).toList(growable: false);
     for (final event in singleEvents) {
       var placed = false;
-      for (var slot = 0; slot < _calendarMiniMonthEventRows; slot += 1) {
+      final firstAvailableSlot =
+          KoreanHolidays.holidayName(day) != null ? 1 : 0;
+      for (var slot = firstAvailableSlot;
+          slot < _calendarMiniMonthEventRows;
+          slot += 1) {
         if (slotMap[index][slot] == null) {
           slotMap[index][slot] = event;
           placed = true;
@@ -412,6 +427,9 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     final day = cellDates[index];
     final visibleEvents =
         slotMap[index].whereType<EventModel>().toList(growable: false);
+    final holidayName = day == null ? null : KoreanHolidays.holidayName(day);
+    final firstOccupiedSlot =
+        slotMap[index].indexWhere((event) => event != null);
     return CalendarMiniMonthCellData(
       index: index,
       date: day,
@@ -426,7 +444,9 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
           (KoreanHolidays.isDayOff(day) ||
               _eventsForLocalDay(sortedEvents, day)
                   .any((event) => _looksLikeHolidayTitle(event.title))),
-      holidayName: day == null ? null : KoreanHolidays.holidayName(day),
+      holidayName: holidayName,
+      leadingEventRowCount:
+          holidayName == null && firstOccupiedSlot > 0 ? firstOccupiedSlot : 0,
     );
   }, growable: false);
 }
@@ -496,6 +516,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final initialDate = widget.initialDate ?? DateTime.now();
     _selectedDate = initialDate;
     _focusedMonth = DateTime(initialDate.year, initialDate.month);
+    _miniMonthCellsCache = buildCalendarMiniMonthCells(
+      events: const <EventModel>[],
+      focusedMonth: _focusedMonth,
+    );
     _pendingOpenDaySheetDate = widget.initialDate;
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _searchController.addListener(_handleSearchChanged);
@@ -1174,7 +1198,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _visibleGroupOverlayEventsCache = const <CalendarOverlayItem>[];
       _selectedDateGroupEventsCache = const <CalendarOverlayItem>[];
       _selectedDateEventsCache = const <EventModel>[];
-      _miniMonthCellsCache = const <CalendarMiniMonthCellData>[];
+      _miniMonthCellsCache = buildCalendarMiniMonthCells(
+        events: const <EventModel>[],
+        focusedMonth: nextMonth,
+      );
     });
     // Yield the month-transition frame before recurrence expansion and slot
     // allocation. This keeps rapid month taps responsive even with thousands
