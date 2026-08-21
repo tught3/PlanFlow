@@ -7,12 +7,17 @@
   "createdAt": "2026-08-21T21:08:00+09:00",
   "evidence": {
     "device": "S918N 192.168.0.102:43129",
-    "versionCode": 143,
+    "versionCode": 144,
     "observed": [
+      "Alpha 144 installed from Play; package com.fluxstudio.planflow",
+      "FirebaseCore phase=ready elapsedMs=34 source=shared",
+      "Firebase Installations HTTP 403 API_KEY_ANDROID_APP_BLOCKED for service firebaseinstallations.googleapis.com and package com.fluxstudio.planflow",
       "RewardedAdConsent phase=ready",
       "rcFetch=false and unit source=valueDefault",
-      "unit_id_invalid_after_rc_retry before RewardedAd.load",
-      "No full-screen ad, reward callback, or conversation opened"
+      "RemoteConfig retryable_failure code=internal domain=firebase_remote_config on startup and user retry",
+      "unit_id_missing_after_rc_retry before RewardedAd.load",
+      "No full-screen ad, reward callback, or conversation opened",
+      "Installed Play App Signing certificate SHA-1=1c13b60176f0950fb85634c79b528cbfbe522f8c; this fingerprint is not present in the checked-in Firebase OAuth client list"
     ]
   },
   "requirements": [
@@ -190,7 +195,7 @@
     "package": "com.fluxstudio.planflow",
     "aabSha256": "C1B0C58193CC6D1E45EA193BFFCEFFAD15DB060EF8D32FE4234939F7C6522BFE",
     "uploadExitCode": 0,
-    "result": "Play Alpha upload completed; connected device still reports versionCode 143 pending Play propagation."
+    "result": "Play Alpha upload completed and versionCode 144 is installed on the connected device; runtime remains blocked by Firebase API_KEY_ANDROID_APP_BLOCKED before Remote Config can resolve the rewarded unit."
   },
   "verification": {
     "required": [
@@ -202,8 +207,8 @@
     "runtimeGate": "Alpha device must show Remote Config unit source remote/cache, then load -> full-screen show -> onUserEarnedReward -> conversation opened. No runtime proof means PENDING_RUNTIME, not COMPLETE."
   },
   "unresolved": [
-    "Exact Remote Config fetch exception",
-    "Real ad display and reward callback after new build"
+    "Firebase Console/Google Cloud API key Android application restriction must allow package com.fluxstudio.planflow with Play App Signing SHA-1 1c13b60176f0950fb85634c79b528cbfbe522f8c",
+    "Real ad display and reward callback after the Firebase API key restriction is corrected"
   ],
-  "updatedAt": "2026-08-21T21:51:00+09:00"
+  "updatedAt": "2026-08-22T00:10:00+09:00"
 }
