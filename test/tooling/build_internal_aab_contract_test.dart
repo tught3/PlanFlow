@@ -50,8 +50,11 @@ void main() {
 
       expect(
           source,
-          contains(
-              'val requestedTasks = gradle.startParameter.taskNames.map { it.lowercase() }'));
+          contains('val requestedTasks = gradle.startParameter.taskNames'));
+      expect(source, contains('!taskName.startsWith("-")'));
+      expect(source, contains('!taskName.contains("\\\\")'));
+      expect(source, contains('!taskName.contains("/")'));
+      expect(source, contains('substringAfterLast(":").lowercase()'));
       expect(source,
           contains('val releaseArtifactRequested = requestedTasks.any'));
       expect(source, contains('taskName.contains("release")'));

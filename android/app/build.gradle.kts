@@ -80,7 +80,13 @@ fun isPlaceholderDartDefineValue(value: String): Boolean {
         normalized == "replace-me"
 }
 
-val requestedTasks = gradle.startParameter.taskNames.map { it.lowercase() }
+val requestedTasks = gradle.startParameter.taskNames
+    .filter { taskName ->
+        !taskName.startsWith("-") &&
+            !taskName.contains("\\") &&
+            !taskName.contains("/")
+    }
+    .map { taskName -> taskName.substringAfterLast(":").lowercase() }
 val publishLikeTaskRequested = requestedTasks.any { taskName ->
     taskName.contains("publish") ||
         taskName.contains("upload") ||
