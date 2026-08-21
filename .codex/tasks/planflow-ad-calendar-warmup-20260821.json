@@ -1,0 +1,156 @@
+{
+  "taskId": "planflow-ad-calendar-warmup-20260821",
+  "title": "Rewarded ad runtime recovery and immediate calendar rendering with app-start warm-up",
+  "status": "BLOCKED_DEVICE_RUNTIME",
+  "scope": {
+    "included": [
+      "Fix Firebase Android identity used by Remote Config so rewarded-ad configuration can be fetched.",
+      "Coalesce concurrent Mobile Ads initialization calls.",
+      "Render CalendarScreen from a protected prefetch snapshot before foreground reload completes.",
+      "Start group decorations independently after personal calendar data is available.",
+      "Keep app-start event warm-up from replacing a usable cache with an empty or partial response."
+    ],
+    "excluded": [
+      "Remote Config values, rewarded unit IDs, free-pass policy, map configuration, onboarding, and existing unrelated working-tree changes.",
+      "Production data changes and any destructive device reinstall."
+    ]
+  },
+  "rootCause": {
+    "rewardedAd": "The installed Alpha 141 diagnostic log reached consent ready, but Remote Config fetch remained false and supplied default/empty rewarded unit configuration. The Android Firebase appId in lib/firebase_options.dart did not match android/app/google-services.json, preventing the intended Firebase configuration path from being used. The gate therefore stopped at unit_id_invalid before an SDK load/show attempt.",
+    "calendar": "CalendarScreen waited for foreground repository data before it could show events, even though app-start warm-up could already have a usable snapshot. A transient small foreground or warm-up response also risked replacing that snapshot."
+  },
+  "ownedFiles": [
+    "lib/firebase_options.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/event_prefetch_service.dart",
+    "lib/screens/calendar/calendar_screen.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/event_prefetch_service_test.dart",
+    "test/screens/calendar_screen_test.dart",
+    ".codex/tasks/planflow-ad-calendar-warmup-20260821.json"
+  ],
+  "implementation": {
+    "firebase": "Aligned Android Firebase appId with the authoritative Android google-services configuration; no API key, rewarded unit ID, or Remote Config policy value was changed.",
+    "ads": "AdService now shares one in-flight initialize Future, preventing competing initialization paths from racing or duplicating work.",
+    "calendar": "CalendarScreen synchronously seeds its first frame from EventPrefetchService, then performs the normal foreground reload. Personal-event rendering is the critical path; group overlays and instruction badges load independently. Both foreground reload and app-start warm-up preserve an existing usable snapshot when an implausibly small response arrives.",
+    "safety": "The cache receives the same protected display snapshot that the foreground calendar renders, preventing a transient empty/partial response from poisoning the next first frame."
+  },
+  "roleReports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "assignment": "Inspect rewarded-ad lifecycle diagnostics and calendar loading path without edits.",
+      "result": "Read-only findings: device log showed RewardedAdConsent ready, followed by rcFetch=false, default configuration values, and unit_id_invalid before any rewarded SDK load. Source comparison found Firebase Android appId mismatch against google-services.json. Calendar first-frame path had no synchronous prefetch seed.",
+      "changedFiles": [],
+      "evidence": [
+        "Alpha 141 device diagnostic sequence: consent ready -> rcFetch=false -> unit_id_invalid -> gate outcome.",
+        "Compared lib/firebase_options.dart with android/app/google-services.json."
+      ]
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "assignment": "Define bounded implementation and verification plan.",
+      "result": "Classified ad lifecycle/configuration plus calendar prefetch/progressive rendering as Complex, with focused tests as Simple. Required code checks, focused Flutter tests, diff validation, independent review, and a separate real-device ad acceptance gate.",
+      "changedFiles": [],
+      "testCommands": [
+        "flutter analyze lib/services/ad_service.dart lib/services/ad_consent_service.dart lib/services/voice_conversation_ad_gate.dart lib/services/event_prefetch_service.dart lib/screens/calendar/calendar_screen.dart lib/main.dart lib/firebase_options.dart",
+        "flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/voice_conversation_ad_gate_test.dart test/services/event_prefetch_service_test.dart test/screens/calendar_screen_test.dart",
+        "git diff --check"
+      ]
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Implement Firebase identity correction, shared ad initialization, calendar prefetch seed, progressive overlays, and guarded cache writes.",
+      "result": "Implemented all scoped production changes. Firebase identity is aligned, concurrent ad initialization is merged, CalendarScreen renders a cached first frame then refreshes, group decorations are non-critical asynchronous work, and protected display data is used for cache publication.",
+      "changedFiles": [
+        "lib/firebase_options.dart",
+        "lib/services/ad_service.dart",
+        "lib/services/event_prefetch_service.dart",
+        "lib/screens/calendar/calendar_screen.dart"
+      ],
+      "testEvidence": "Focused analyze and calendar tests passed before final regression additions."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "assignment": "Add focused regression coverage for initialization merge, prefetch first frame, and cache-safety behavior.",
+      "result": "Added coverage that concurrent AdService.initialize calls invoke the initializer once, CalendarScreen displays a prefetched event while repository reload is pending, CalendarScreen retains a protected snapshot after an empty foreground result, and app-start warmUp retains a usable cache after a suspiciously small response.",
+      "changedFiles": [
+        "test/services/ad_service_test.dart",
+        "test/services/event_prefetch_service_test.dart",
+        "test/screens/calendar_screen_test.dart"
+      ],
+      "testEvidence": "Included in the fresh focused Flutter test run with exit code 0."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "assignment": "Run project-defined focused static analysis, tests, and diff validation.",
+      "result": "All requested automated checks passed.",
+      "changedFiles": [],
+      "verification": [
+        {
+          "command": "flutter analyze lib/services/ad_service.dart lib/services/ad_consent_service.dart lib/services/voice_conversation_ad_gate.dart lib/services/event_prefetch_service.dart lib/screens/calendar/calendar_screen.dart lib/main.dart lib/firebase_options.dart",
+          "exitCode": 0,
+          "output": "No issues found."
+        },
+        {
+          "command": "flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/voice_conversation_ad_gate_test.dart test/services/event_prefetch_service_test.dart test/screens/calendar_screen_test.dart",
+          "exitCode": 0,
+          "output": "All tests passed (79 tests)."
+        },
+        {
+          "command": "git diff --check",
+          "exitCode": 0,
+          "output": "No whitespace errors; line-ending warnings only."
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Independently review final current diff and regression evidence for policy, cache, and lifecycle regressions.",
+      "result": "Initial review found one HIGH cache-poisoning issue: raw repository data was cached before the protected display merge. It was corrected so the cache stores displayEvents only, and corresponding regression coverage was added. Final review found no BLOCKER, HIGH, MEDIUM, or LOW findings in the scoped diff.",
+      "changedFiles": [],
+      "decision": "PASS",
+      "findings": []
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "assignment": "Integrate reports, inspect final scope, and enforce runtime completion gate.",
+      "result": "Code scope, focused tests, and independent review are complete. Runtime completion is intentionally blocked: the connected device remains on Alpha 141, no APK containing this Firebase identity fix was installed, and no updated-device load -> show -> reward -> conversation-opened evidence exists.",
+      "changedFiles": [
+        ".codex/tasks/planflow-ad-calendar-warmup-20260821.json"
+      ],
+      "decision": "BLOCKED_DEVICE_RUNTIME"
+    }
+  ],
+  "completionGate": {
+    "automated": "passed",
+    "independentReview": "passed",
+    "runtime": "blocked",
+    "requiredRuntimeEvidence": [
+      "Install an APK/AAB-derived build containing the corrected Firebase Android appId.",
+      "Use the rewarded flow after free usage is exhausted and capture a single attempt showing load -> show -> onUserEarnedReward -> AI conversation opened.",
+      "Confirm the same flow after app restart; distinguish no-fill from code/configuration errors using the new diagnostics."
+    ],
+    "reasonNotComplete": "No new build was installed on a connected device during this task, so the requested actual rewarded-ad display cannot be truthfully claimed."
+  }
+}

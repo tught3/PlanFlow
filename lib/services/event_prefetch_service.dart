@@ -34,7 +34,23 @@ class EventPrefetchService {
     try {
       final events = await (repository ?? EventRepository.supabase())
           .listEvents(userId: resolvedUserId);
-      store(resolvedUserId, events);
+      // A transient empty/partial warm-up response must not erase a fresh
+      // snapshot that the CalendarScreen can already render immediately.
+      // The screen performs the same protection for its foreground reload;
+      // keeping it here prevents the app-start path from poisoning that
+      // first-frame cache before the user opens the calendar.
+      final existing = getCached(resolvedUserId);
+      if (existing != null && existing.isNotEmpty && events.length <= 1) {
+        final byId = <String, EventModel>{
+          for (final event in existing)
+            if (event.id.trim().isNotEmpty) event.id: event,
+          for (final event in events)
+            if (event.id.trim().isNotEmpty) event.id: event,
+        };
+        store(resolvedUserId, byId.values.toList(growable: false));
+      } else {
+        store(resolvedUserId, events);
+      }
     } catch (error, stackTrace) {
       debugPrint('Event prefetch skipped: $error');
       debugPrintStack(stackTrace: stackTrace);

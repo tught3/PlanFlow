@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -533,6 +535,40 @@ void main() {
   });
 
   group('AdService.initialize UMP timeout', () {
+    test('concurrent initialize calls share one in-flight future', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      final channel = MethodChannel(
+        'plugins.flutter.io/google_mobile_ads/ump',
+        StandardMethodCodec(UserMessagingCodec()),
+      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'ConsentInformation#canRequestAds') {
+          return true;
+        }
+        return null;
+      });
+
+      final initializer = Completer<void>();
+      var initializerCalls = 0;
+      final service = AdService(
+        dynamicAdsInitializer: () {
+          initializerCalls += 1;
+          return initializer.future;
+        },
+      );
+
+      final first = service.initialize();
+      final second = service.initialize();
+
+      initializer.complete();
+      await Future.wait([first, second]);
+
+      expect(initializerCalls, 1);
+      expect(service.isInitialized, isTrue);
+    });
+
     test('6s UMP request is bounded by the 5s boot deadline', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
 

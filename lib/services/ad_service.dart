@@ -286,6 +286,7 @@ class AdService {
   static final AdService instance = AdService();
 
   bool _initialized = false;
+  Future<void>? _initializeFuture;
   bool _showingAd = false;
   int _promptShown = 0;
   int _optIn = 0;
@@ -387,7 +388,24 @@ class AdService {
   int get promptShownCount => _promptShown;
   int get optInCount => _optIn;
 
-  Future<void> initialize() async {
+  Future<void> initialize() {
+    if (_initialized) {
+      return Future<void>.value();
+    }
+    final existing = _initializeFuture;
+    if (existing != null) {
+      return existing;
+    }
+    final future = _initializeInternal();
+    _initializeFuture = future;
+    return future.whenComplete(() {
+      if (identical(_initializeFuture, future)) {
+        _initializeFuture = null;
+      }
+    });
+  }
+
+  Future<void> _initializeInternal() async {
     if (_initialized) {
       return;
     }
