@@ -25,6 +25,7 @@ $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $FlutterLocal = Join-Path $PSScriptRoot 'flutter-local.ps1'
 $PubspecPath = Join-Path $WorkspaceRoot 'pubspec.yaml'
 $AabPath = Join-Path $WorkspaceRoot 'build\app\outputs\bundle\release\app-release.aab'
+$MapArtifactMarkerPath = "$AabPath.map-marker"
 $DeployLogDir = Join-Path $WorkspaceRoot '.deploy-logs'
 $PreviousPlanFlowSkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION
 if ($SkipFluxOsSession) {
@@ -574,6 +575,7 @@ try {
 
   Write-DeployStatus 'build'
   Write-Stage "Building release appbundle"
+  Remove-Item -LiteralPath $MapArtifactMarkerPath -Force -ErrorAction SilentlyContinue
   $buildLogPath = New-DeployLogPath -Stage 'build'
   $buildOutput = & $FlutterLocal build appbundle --release --no-pub 2>&1 | Tee-Object -FilePath $buildLogPath
   if ($LASTEXITCODE -ne 0) {
@@ -594,6 +596,17 @@ try {
   }
 
   $resolvedAabPath = (Resolve-Path -LiteralPath $AabPath).Path
+  $aabHash = (Get-FileHash -LiteralPath $resolvedAabPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $markerContent = @(
+    "aabPath=$resolvedAabPath"
+    "sha256=$aabHash"
+  ) -join "`n"
+  [System.IO.File]::WriteAllText(
+    $MapArtifactMarkerPath,
+    $markerContent + "`n",
+    [System.Text.UTF8Encoding]::new($false)
+  )
+  $resolvedMapArtifactMarkerPath = (Resolve-Path -LiteralPath $MapArtifactMarkerPath).Path
   $finalVersion = $null
   if ($versionInfo -is [System.Management.Automation.PSObject]) {
     if ($versionInfo.PSObject.Properties.Name -contains 'NewVersion') {
@@ -631,6 +644,7 @@ try {
     OldVersion = if ($versionInfo -and $versionInfo.PSObject.Properties.Name -contains 'OldVersion') { [string]$versionInfo.OldVersion } else { $null }
     NewVersion = $finalVersion
     AabPath    = $resolvedAabPath
+    MapArtifactMarkerPath = $resolvedMapArtifactMarkerPath
   }
 } catch {
   Write-Error $_

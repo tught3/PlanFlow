@@ -96,6 +96,40 @@ function Get-VersionFromResult {
   return $candidate
 }
 
+function Assert-MapArtifactMarker {
+  param(
+    [Parameter(Mandatory = $true)][string]$MarkerPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedAabPath
+  )
+
+  Assert-FileExists -Path $MarkerPath -Label 'map artifact marker'
+  $values = @{}
+  foreach ($line in [System.IO.File]::ReadAllLines($MarkerPath, [System.Text.UTF8Encoding]::new($false))) {
+    $separator = $line.IndexOf('=')
+    if ($separator -gt 0) {
+      $values[$line.Substring(0, $separator)] = $line.Substring($separator + 1)
+    }
+  }
+
+  $markerAabPath = if ($values.ContainsKey('aabPath')) { [string]$values['aabPath'] } else { '' }
+  $markerHash = if ($values.ContainsKey('sha256')) { [string]$values['sha256'] } else { '' }
+  $resolvedExpected = (Resolve-Path -LiteralPath $ExpectedAabPath).Path
+  $resolvedMarkerAab = if (-not [string]::IsNullOrWhiteSpace($markerAabPath) -and (Test-Path -LiteralPath $markerAabPath)) {
+    (Resolve-Path -LiteralPath $markerAabPath).Path
+  } else {
+    ''
+  }
+  if ($resolvedMarkerAab -ne $resolvedExpected -or $markerHash -notmatch '^[0-9a-fA-F]{64}$') {
+    throw 'Map artifact marker is invalid or points to a different AAB. Rebuild through scripts/build-internal-aab.ps1.'
+  }
+
+  $actualHash = (Get-FileHash -LiteralPath $resolvedExpected -Algorithm SHA256).Hash
+  if ($actualHash -ine $markerHash) {
+    throw 'Map artifact marker SHA-256 does not match the AAB. Rebuild through scripts/build-internal-aab.ps1.'
+  }
+  return (Resolve-Path -LiteralPath $MarkerPath).Path
+}
+
 function Get-EntryCount {
   param([Parameter(Mandatory = $true)]$Value)
 
@@ -324,6 +358,8 @@ try {
     }
 
     $resolvedAabPath = (Resolve-Path -LiteralPath $aabPath).Path
+    $mapArtifactMarkerPath = "$resolvedAabPath.map-marker"
+    $resolvedMapArtifactMarkerPath = Assert-MapArtifactMarker -MarkerPath $mapArtifactMarkerPath -ExpectedAabPath $resolvedAabPath
     $finalVersion = Get-VersionFromResult -Result $buildResult -PubspecPath (Join-Path $projectPath 'pubspec.yaml')
 
     if ($SkipUpload) {
@@ -340,7 +376,7 @@ try {
       Push-Location $androidDir
       try {
         Invoke-Checked {
-          & $gradlew ':app:publishReleaseBundle' '--track' $track '--artifact-dir' $artifactDir "-PplanflowPlayServiceAccountJson=$serviceAccountJson"
+          & $gradlew ':app:publishReleaseBundle' '--track' $track '--artifact-dir' $artifactDir "-PplanflowPlayServiceAccountJson=$serviceAccountJson" "-PplanflowMapArtifactMarker=$resolvedMapArtifactMarkerPath"
         } 'android/gradlew.bat :app:publishReleaseBundle'
       } finally {
         Pop-Location

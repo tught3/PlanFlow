@@ -1,0 +1,241 @@
+{
+  "task_id": "planflow-raw-build-guard-20260821",
+  "status": "BLOCKED_DEVICE_RUNTIME",
+  "objective": "Prevent every supported and raw PlanFlow release/publish path from producing or uploading a mapless Android artifact when map dart-defines are missing, while preserving unrelated work and withholding completion until a Play-delivered build is visually verified on the connected Android device.",
+  "source_incident": {
+    "release": "Play Alpha 140",
+    "root_cause": "A raw Flutter release command omitted the env/local.json dart-defines, leaving the Android map manifest key empty even though the build succeeded.",
+    "prior_recovery_reference": ".codex/tasks/planflow-map-ad-regression-20260821.json",
+    "prior_deploy_evidence": "Alpha 141 was uploaded through the supported deploy path with non-empty merged-manifest Google Maps key evidence; the currently connected phone still reports versionCode 140."
+  },
+  "requirements": [
+    "Raw release artifact commands fail closed when GOOGLE_MAPS_API_KEY, TMAP_API_KEY, or NAVER_MAP_CLIENT_ID are absent or placeholder values.",
+    "The supported builder continues to inject local defines through scripts/flutter-local.ps1 and creates a non-secret marker bound to the produced AAB.",
+    "A Play publish requires that marker and validates its AAB path and SHA-256 before uploading.",
+    "A combined release-artifact plus publish invocation cannot bypass the dart-define guard.",
+    "No map key values may be emitted in source diagnostics, marker files, or deployment arguments.",
+    "Do not change rewarded-ad policy, map credentials, calendar/color/onboarding code, or unrelated dirty work.",
+    "Do not declare completion before a Play-installed protected build visibly renders the map; rewarded-ad runtime evidence remains tracked by the prior incident task."
+  ],
+  "scope": {
+    "allowed_files": [
+      "android/app/build.gradle.kts",
+      "scripts/build-internal-aab.ps1",
+      "scripts/deploy-play-internal.ps1",
+      "test/tooling/build_internal_aab_contract_test.dart",
+      ".codex/tasks/planflow-raw-build-guard-20260821.json"
+    ],
+    "forbidden_files": [
+      "env/local.json",
+      "rewarded-ad policy and Remote Config values",
+      "calendar, color, onboarding, map application code, and unrelated user-owned dirty files"
+    ]
+  },
+  "plan": [
+    {
+      "item": "Inspect the Alpha 140 regression path and identify every release build/publish bypass.",
+      "classification": "Complex",
+      "status": "completed"
+    },
+    {
+      "item": "Add Gradle configuration-time raw-release guards and a verified marker requirement for publish.",
+      "classification": "Complex",
+      "status": "completed"
+    },
+    {
+      "item": "Bind the supported AAB builder and Play deploy script using a non-secret SHA-256 marker.",
+      "classification": "Complex",
+      "status": "completed"
+    },
+    {
+      "item": "Add narrow contract coverage and exercise raw failure, combined-task failure, marker failure, and supported build success.",
+      "classification": "Simple plus verification",
+      "status": "completed"
+    },
+    {
+      "item": "Upload a post-guard Play Alpha artifact and visually verify map rendering on the connected phone.",
+      "classification": "External deployment and runtime verification",
+      "status": "blocked"
+    }
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Bound the source incident and raw build exposure using the prior Alpha-140 task evidence.",
+      "result": "The original raw Flutter command bypassed env/local.json injection. The supported flutter-local path was the intended source of map dart-defines. This evidence is retained in the prior task state; the incremental explorer turn was interrupted after the already-established facts were sufficient."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Plan a fail-closed defense spanning raw Gradle release tasks, the supported AAB builder, Play publish, contract tests, and connected-device proof.",
+      "result": "Classified the Gradle/publish lifecycle as Complex. Required configuration-time raw-release validation, a non-secret AAB marker with hash binding, no value leakage, regression coverage for combined tasks, and Play/device evidence before completion."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement the Gradle guard and marker-based supported build/publish chain without touching application behavior or unrelated files.",
+      "changed_files": [
+        "android/app/build.gradle.kts",
+        "scripts/build-internal-aab.ps1",
+        "scripts/deploy-play-internal.ps1"
+      ],
+      "result": "Added placeholder-aware dart-define validation for release artifact tasks; separated publish validation; makes the builder write an AAB path plus SHA-256 marker; and makes the deploy script validate and pass that marker. Marker contents are only AAB path and SHA-256."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Extend the narrow tooling contract test for the Gradle guard, marker flow, no secret-value leakage, and combined-task bypass regression.",
+      "changed_files": [
+        "test/tooling/build_internal_aab_contract_test.dart"
+      ],
+      "result": "Added three contract checks covering the supported builder, Gradle release/publish guards, and deploy marker propagation; asserted the former publish-like bypass expression remains absent."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run fresh scoped tests, script parse checks, raw and supported build proof, marker validation, and connected-device state checks.",
+      "result": "All scoped code/build checks passed; physical runtime proof is not yet present because the connected phone remains on versionCode 140 and the current guarded artifact has not been uploaded in this incremental turn.",
+      "verification": [
+        {
+          "command": "flutter test --no-pub test/tooling/build_internal_aab_contract_test.dart",
+          "exit_code": 0,
+          "evidence": "3 tests passed."
+        },
+        {
+          "command": "PowerShell Parser::ParseFile for scripts/build-internal-aab.ps1, scripts/deploy-play-internal.ps1, scripts/flutter-local.ps1",
+          "exit_code": 0,
+          "evidence": "All three scripts reported PARSE_OK."
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "evidence": "No whitespace errors; only CRLF conversion warnings."
+        },
+        {
+          "command": "flutter build apk --release --no-pub",
+          "exit_code": 1,
+          "expected": true,
+          "evidence": "Release build blocked: missing or placeholder dart-defines (GOOGLE_MAPS_API_KEY, TMAP_API_KEY, NAVER_MAP_CLIENT_ID). Run the build through scripts/flutter-local.ps1 so env/local.json is injected."
+        },
+        {
+          "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-internal-aab.ps1 -SkipVersionBump -SkipTests -SkipFluxOsSession",
+          "exit_code": 0,
+          "evidence": "Release map define preflight passed: 3 required keys present; built build/app/outputs/bundle/release/app-release.aab; produced app-release.aab.map-marker."
+        },
+        {
+          "command": "Get-FileHash build/app/outputs/bundle/release/app-release.aab -Algorithm SHA256 compared with app-release.aab.map-marker",
+          "exit_code": 0,
+          "evidence": "Marker SHA-256 equals AAB SHA-256: 51df2feda93a6a2043bbb08a4701a02428b0fdfb39985f2227a95ec3f81ff8f1."
+        },
+        {
+          "command": "adb devices -l and adb shell dumpsys package com.fluxstudio.planflow",
+          "exit_code": 0,
+          "evidence": "SM-S918N is wirelessly connected (two endpoints for the same phone); installed PlanFlow is versionCode 140/versionName 1.1.1. Tablet endpoint has no PlanFlow package output."
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently inspect the final current diff and fresh failure/success evidence for bypasses, secret leakage, and unrelated changes.",
+      "result": "PASS. No BLOCKER or HIGH finding. Raw assembleRelease and combined assembleRelease plus publishReleaseBundle are fail-closed when defines are absent; publish-only requires a valid marker/hash; tests and diff check passed; no key values are written."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile the current final diff, prior incident state, routed-role reports, proof, and remaining external gates without changing source.",
+      "result": "Integrated in this state record. Code-level hardening is PASS, but completion is blocked because this guarded artifact has not yet been uploaded to Play and no Play-installed guarded build has visually rendered the map."
+    }
+  ],
+  "final_diff": {
+    "changed_files": [
+      "android/app/build.gradle.kts",
+      "scripts/build-internal-aab.ps1",
+      "scripts/deploy-play-internal.ps1",
+      "test/tooling/build_internal_aab_contract_test.dart"
+    ],
+    "reviewed_against": [
+      ".codex/tasks/planflow-map-ad-regression-20260821.json"
+    ],
+    "unrelated_work_preserved": [
+      ".codex/tasks/planflow-onboarding-performance-calendar-refinement-20260815.json",
+      "planflow_v2_group_home_structure.md deletion",
+      "screenshots/01_home.png through screenshots/05_settings.png deletions",
+      "planflow logo(600) dark.png, planflow logo(600).png, planflow-1.jpg, planflow-2.jpg, planflow-3.jpg, and planflow-garo.jpg untracked files"
+    ]
+  },
+  "bypass_proof": [
+    {
+      "case": "Raw Flutter release artifact",
+      "result": "blocked",
+      "exit_code": 1,
+      "evidence": "flutter build apk --release --no-pub failed before artifact production with the missing dart-defines message."
+    },
+    {
+      "case": "Raw Gradle assembleRelease",
+      "result": "blocked",
+      "exit_code": 1,
+      "evidence": "Independent reviewer reran the no-define release task and observed the same Gradle guard error."
+    },
+    {
+      "case": "Combined assembleRelease plus publishReleaseBundle",
+      "result": "blocked",
+      "exit_code": 1,
+      "evidence": "Independent reviewer verified the former publish-like bypass is removed and the combined invocation fails on the dart-define guard."
+    },
+    {
+      "case": "Publish-only with no marker",
+      "result": "blocked",
+      "exit_code": 1,
+      "evidence": "Independent reviewer verified publish requires planflowMapArtifactMarker before upload."
+    },
+    {
+      "case": "Supported release AAB build",
+      "result": "passed",
+      "exit_code": 0,
+      "evidence": "Build script injected all 3 required defines, built the AAB, and wrote a marker whose SHA-256 matches the resulting AAB."
+    }
+  ],
+  "artifact": {
+    "aab_path": "build/app/outputs/bundle/release/app-release.aab",
+    "marker_path": "build/app/outputs/bundle/release/app-release.aab.map-marker",
+    "length_bytes": 83894778,
+    "last_write": "2026-08-21T17:06:04+09:00",
+    "sha256": "51df2feda93a6a2043bbb08a4701a02428b0fdfb39985f2227a95ec3f81ff8f1",
+    "marker_contains_secrets": false
+  },
+  "deployment_and_runtime": {
+    "incremental_turn_play_upload": "not performed",
+    "why": "The guarded artifact needs a new versioned Play Alpha upload before device proof; existing Alpha 141 was uploaded before this Gradle/marker hardening.",
+    "device_connection": "Wireless ADB connected.",
+    "phone": "SM-S918N at 192.168.0.102:37791 (also visible through an ADB TLS endpoint).",
+    "installed_planflow": "versionCode 140, versionName 1.1.1",
+    "runtime_proof": "missing",
+    "not_attempted": [
+      "Uninstalling the Play-signed app or clearing data to force-install a locally upload-key-signed APK",
+      "Claiming map or rewarded-ad success without visual evidence"
+    ]
+  },
+  "integration": {
+    "verdict": "BLOCKED_DEVICE_RUNTIME",
+    "code_level_status": "PASS",
+    "review_status": "PASS; no BLOCKER or HIGH findings",
+    "completion_gate": "Bump the release version, upload the guarded AAB through scripts/deploy-play-internal.ps1 with explicit ConfigPath, install that Play Alpha version on the connected SM-S918N, and record visible map rendering. Retain the separate rewarded-ad load -> show -> reward -> AI conversation proof required by planflow-map-ad-regression-20260821."
+  },
+  "last_updated": "2026-08-21T17:12:00+09:00"
+}

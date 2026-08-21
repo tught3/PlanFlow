@@ -1,5 +1,6 @@
 import java.util.Base64
 import java.util.Properties
+import java.security.MessageDigest
 import org.gradle.api.GradleException
 
 plugins {
@@ -68,6 +69,97 @@ fun readDartDefineValue(key: String): String {
         ?.substringAfter("=")
         ?.trim()
         ?: ""
+}
+
+fun isPlaceholderDartDefineValue(value: String): Boolean {
+    val normalized = value.trim().lowercase()
+    return normalized.isBlank() ||
+        normalized.startsWith("your-") ||
+        normalized.startsWith("your_") ||
+        normalized == "changeme" ||
+        normalized == "replace-me"
+}
+
+val requestedTasks = gradle.startParameter.taskNames.map { it.lowercase() }
+val publishLikeTaskRequested = requestedTasks.any { taskName ->
+    taskName.contains("publish") ||
+        taskName.contains("upload") ||
+        taskName.contains("promote")
+}
+val releaseArtifactRequested = requestedTasks.any { taskName ->
+    val isRelease = taskName.contains("release")
+    val isArtifactTask = taskName.contains("assemble") ||
+        taskName.contains("bundle") ||
+        taskName.contains("package")
+    isRelease && isArtifactTask
+}
+val releasePublishRequested = publishLikeTaskRequested
+
+if (releaseArtifactRequested) {
+    val requiredMapDefines = listOf(
+        "GOOGLE_MAPS_API_KEY",
+        "TMAP_API_KEY",
+        "NAVER_MAP_CLIENT_ID",
+    )
+    val missingMapDefines = requiredMapDefines.filter { key ->
+        isPlaceholderDartDefineValue(readDartDefineValue(key))
+    }
+    if (missingMapDefines.isNotEmpty()) {
+        throw GradleException(
+            "Release build blocked: missing or placeholder dart-defines " +
+                "(${missingMapDefines.joinToString(", ")}). " +
+                "Run the build through scripts/flutter-local.ps1 so env/local.json is injected.",
+        )
+    }
+}
+
+if (releasePublishRequested) {
+    val markerPath = providers.gradleProperty("planflowMapArtifactMarker").orNull?.trim().orEmpty()
+    if (markerPath.isBlank()) {
+        throw GradleException(
+            "Release publish blocked: missing PlanFlow map artifact marker. " +
+                "Run scripts/deploy-play-internal.ps1 so the verified AAB marker is passed.",
+        )
+    }
+
+    val markerFile = file(markerPath)
+    if (!markerFile.isFile) {
+        throw GradleException(
+            "Release publish blocked: PlanFlow map artifact marker was not found. " +
+                "Run scripts/deploy-play-internal.ps1 to rebuild and verify the AAB.",
+        )
+    }
+    val markerValues = markerFile.readLines(Charsets.UTF_8)
+        .mapNotNull { line ->
+            val separator = line.indexOf('=')
+            if (separator <= 0) null else line.substring(0, separator) to line.substring(separator + 1)
+        }
+        .toMap()
+    val markerAabPath = markerValues["aabPath"]?.trim().orEmpty()
+    val markerSha256 = markerValues["sha256"]?.trim()?.lowercase().orEmpty()
+    val markerAab = if (markerAabPath.isBlank()) null else file(markerAabPath)
+    if (markerAab == null || !markerAab.isFile || !markerSha256.matches(Regex("[0-9a-f]{64}"))) {
+        throw GradleException(
+            "Release publish blocked: PlanFlow map artifact marker is invalid. " +
+                "Run scripts/deploy-play-internal.ps1 to rebuild the AAB.",
+        )
+    }
+    val digest = MessageDigest.getInstance("SHA-256")
+    markerAab.inputStream().use { input ->
+        val buffer = ByteArray(1024 * 1024)
+        var read = input.read(buffer)
+        while (read >= 0) {
+            if (read > 0) digest.update(buffer, 0, read)
+            read = input.read(buffer)
+        }
+    }
+    val actualSha256 = digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    if (actualSha256 != markerSha256) {
+        throw GradleException(
+            "Release publish blocked: PlanFlow map artifact marker does not match the AAB. " +
+                "Run scripts/deploy-play-internal.ps1 to rebuild the AAB.",
+        )
+    }
 }
 
 android {
