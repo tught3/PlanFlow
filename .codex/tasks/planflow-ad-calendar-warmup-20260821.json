@@ -109,7 +109,7 @@
         {
           "command": "flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/voice_conversation_ad_gate_test.dart test/services/event_prefetch_service_test.dart test/screens/calendar_screen_test.dart",
           "exitCode": 0,
-          "output": "All tests passed (79 tests)."
+          "output": "All tests passed (83 tests)."
         },
         {
           "command": "git diff --check",
