@@ -462,6 +462,54 @@ function Read-PubspecVersion {
   return "$($match.Groups[1].Value)+$($match.Groups[2].Value)"
 }
 
+function Assert-ReleaseMapDefines {
+  # A release built without env/local.json still compiles successfully, but
+  # leaves both map providers without credentials.  Fail before version bump
+  # or Gradle work so an invalid AAB cannot be uploaded accidentally.  Values
+  # are intentionally never printed.
+  $definePath = Join-Path $WorkspaceRoot 'env\local.json'
+  if (-not (Test-Path -LiteralPath $definePath -PathType Leaf)) {
+    throw "Release preflight failed: env/local.json is missing. Restore the local define file before building."
+  }
+
+  try {
+    $defines = Get-Content -LiteralPath $definePath -Raw -Encoding utf8 | ConvertFrom-Json
+  } catch {
+    throw "Release preflight failed: env/local.json is not valid JSON."
+  }
+
+  $requiredMapKeys = @(
+    'GOOGLE_MAPS_API_KEY',
+    'TMAP_API_KEY',
+    'NAVER_MAP_CLIENT_ID'
+  )
+  $placeholderPatterns = @(
+    '^your-',
+    'your-google-maps-api-key',
+    'your-tmap-api-key',
+    'your-naver-map-client-id'
+  )
+  $missing = @()
+  foreach ($key in $requiredMapKeys) {
+    $property = $defines.PSObject.Properties[$key]
+    $value = if ($null -ne $property) { [string]$property.Value } else { '' }
+    $isPlaceholder = $false
+    foreach ($pattern in $placeholderPatterns) {
+      if ($value.Trim().ToLowerInvariant() -match $pattern) {
+        $isPlaceholder = $true
+        break
+      }
+    }
+    if ([string]::IsNullOrWhiteSpace($value) -or $isPlaceholder) {
+      $missing += $key
+    }
+  }
+  if ($missing.Count -gt 0) {
+    throw "Release preflight failed: required map define(s) are missing or placeholders ($($missing -join ', '))."
+  }
+  Write-Host ("Release map define preflight passed: {0} required keys present." -f $requiredMapKeys.Count)
+}
+
 try {
   if ([string]::IsNullOrWhiteSpace($AnalyzeAuditPath)) {
     $AnalyzeAuditPath = New-DeployLogPath -Stage 'analyze-audit'
@@ -471,6 +519,8 @@ try {
   }
 
   Write-Stage "PlanFlow internal test AAB build"
+
+  Assert-ReleaseMapDefines
 
   $versionInfo = $null
   if (-not $SkipVersionBump) {

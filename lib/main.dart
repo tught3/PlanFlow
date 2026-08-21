@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/analytics_service.dart';
+import 'core/diag_logger.dart';
 import 'core/env.dart';
 import 'core/local_time.dart';
 import 'core/runtime_error_filter.dart';
@@ -249,13 +250,22 @@ Future<void> _initializeFirebaseServices() async {
 }
 
 Future<void> _initializeNaverMap() async {
-  if (AppEnv.naverMapClientId.trim().isNotEmpty) {
+  final naverConfigured = AppEnv.naverMapClientId.trim().isNotEmpty;
+  final googleConfigured = AppEnv.googleMapsApiKey.trim().isNotEmpty;
+  final tmapConfigured = AppEnv.tmapApiKey.trim().isNotEmpty;
+  DiagLogger.log(
+    'MapInit',
+    'config naver=$naverConfigured google=$googleConfigured tmap=$tmapConfigured',
+  );
+
+  if (naverConfigured) {
     var naverMapAuthFailed = false;
     developer.log(
       'Naver Map init start',
       name: 'PlanFlow',
       error: 'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
     );
+    DiagLogger.log('MapInit', 'naver start');
     try {
       await FlutterNaverMap()
           .init(
@@ -263,18 +273,23 @@ Future<void> _initializeNaverMap() async {
             onAuthFailed: (error) {
               naverMapAuthFailed = true;
               debugPrint('Naver Map auth failed: $error');
+              DiagLogger.log('MapInit', 'naver auth_failed');
             },
           )
           .timeout(const Duration(seconds: 8));
       if (!naverMapAuthFailed) {
         AppEnv.markNaverMapInitialized();
+        DiagLogger.log('MapInit', 'naver success');
         developer.log(
           'Naver Map init success',
           name: 'PlanFlow',
           error: 'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
         );
       }
+    } on TimeoutException {
+      DiagLogger.log('MapInit', 'naver timeout');
     } catch (error) {
+      DiagLogger.log('MapInit', 'naver failed type=${error.runtimeType}');
       developer.log(
         'Naver Map init failed: $error',
         name: 'PlanFlow',
@@ -282,6 +297,12 @@ Future<void> _initializeNaverMap() async {
         stackTrace: StackTrace.current,
       );
     }
+  }
+
+  if (!AppEnv.isNaverMapReady && googleConfigured) {
+    DiagLogger.log('MapInit', 'google fallback available');
+  } else if (!AppEnv.isNaverMapReady && !googleConfigured) {
+    DiagLogger.log('MapInit', 'unavailable naver=false google=false');
   }
 }
 

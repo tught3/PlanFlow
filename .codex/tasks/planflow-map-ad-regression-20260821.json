@@ -1,0 +1,209 @@
+{
+  "task_id": "planflow-map-ad-regression-20260821",
+  "status": "BLOCKED_DEVICE_RUNTIME",
+  "objective": "Recover the post-Alpha-140 map regression without weakening the rewarded-ad gate, deploy a correctly configured Alpha build, and obtain runtime evidence for both map rendering and rewarded-ad completion.",
+  "interpreted_requirements": [
+    "Release builds must not upload with empty Naver, Google Maps, or TMap Dart defines.",
+    "Map startup and fallback must provide privacy-safe diagnostics without API key values.",
+    "Existing rewarded-ad logic must remain reward-only; no free-pass or policy bypass may be introduced.",
+    "Deploy the corrected Android App Bundle to Play Alpha and retain evidence.",
+    "Do not claim completion until an ADB-accessible physical device visibly renders a map and completes rewarded-ad load, show, reward, and AI conversation entry."
+  ],
+  "scope": {
+    "allowed_files": [
+      "scripts/build-internal-aab.ps1",
+      "lib/main.dart",
+      "lib/screens/location/location_picker_screen.dart",
+      "pubspec.yaml",
+      "test/tooling/build_internal_aab_contract_test.dart",
+      ".codex/tasks/planflow-map-ad-regression-20260821.json"
+    ],
+    "forbidden_files": [
+      "env/local.json",
+      "existing rewarded-ad policy and Remote Config values",
+      "calendar, color, onboarding, and unrelated user-owned dirty files"
+    ]
+  },
+  "root_cause": {
+    "finding": "The Alpha 140 AAB was built by a raw Flutter command that did not inject env/local.json Dart defines. The Android manifest and runtime environment consequently had no configured map provider keys although the build itself succeeded.",
+    "remediation": "The release builder now requires valid, non-placeholder map defines before version bump/build and delegates AAB creation through scripts/flutter-local.ps1, which injects env/local.json."
+  },
+  "plan": [
+    {
+      "item": "Trace map configuration and release-build input path; verify rewarded-ad policy is unaffected.",
+      "classification": "Complex",
+      "status": "completed"
+    },
+    {
+      "item": "Fail closed before release build when required map defines are missing or placeholders, and add safe map diagnostics/fallback visibility.",
+      "classification": "Complex",
+      "status": "completed"
+    },
+    {
+      "item": "Add a narrow build-contract regression test.",
+      "classification": "Simple",
+      "status": "completed"
+    },
+    {
+      "item": "Build and upload Alpha 141 with injected defines and inspect the generated release manifests without revealing key values.",
+      "classification": "Complex",
+      "status": "completed"
+    },
+    {
+      "item": "Obtain visible physical-device map and rewarded-ad proof.",
+      "classification": "Runtime verification",
+      "status": "blocked"
+    }
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Trace the map regression through Dart defines, Android manifest placeholders, startup initialization, location picker fallback, and existing rewarded-ad boundary.",
+      "result": "Confirmed the deployment regression: the prior raw appbundle command omitted env/local.json while the supported local Flutter launcher injects it. Confirmed the map depends on Naver/Google runtime defines and the rewarded-ad gate is a separate reward-only path."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define a scoped recovery plan that preserves unrelated work and requires code, artifact, upload, and device-runtime evidence.",
+      "result": "Classified release preflight/map startup behavior as Complex and contract coverage as Simple. Required no key-value logging, no ad policy changes, Alpha deployment evidence, and fail-closed device acceptance."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement release define preflight and safe map initialization/location-screen diagnostics without touching unrelated work.",
+      "result": "Added required-key and placeholder preflight for GOOGLE_MAPS_API_KEY, TMAP_API_KEY, and NAVER_MAP_CLIENT_ID; retained flutter-local build delegation; added boolean-only provider/start/success/failure/fallback diagnostics. No key values, schedules, or ad bypasses are logged.",
+      "changed_files": [
+        "scripts/build-internal-aab.ps1",
+        "lib/main.dart",
+        "lib/screens/location/location_picker_screen.dart"
+      ],
+      "verification": [
+        {
+          "command": "PowerShell syntax validation for scripts/build-internal-aab.ps1",
+          "exit_code": 0
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0
+        },
+        {
+          "command": "dart format lib/main.dart lib/screens/location/location_picker_screen.dart",
+          "exit_code": 0
+        }
+      ]
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Add focused coverage proving the internal AAB builder retains map preflight and invokes flutter-local rather than raw Flutter.",
+      "result": "Added the narrow build contract test.",
+      "changed_files": [
+        "test/tooling/build_internal_aab_contract_test.dart"
+      ],
+      "verification": [
+        {
+          "command": "flutter test test/tooling/build_internal_aab_contract_test.dart --no-pub",
+          "exit_code": 0
+        }
+      ]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run scoped static/contract verification, release build validation, artifact-manifest inspection, upload verification, and physical-device check when available.",
+      "result": "Contract test and release deployment evidence passed. The physical Android acceptance step cannot run because no ADB-accessible device is available.",
+      "verification": [
+        {
+          "command": "flutter test test/tooling/build_internal_aab_contract_test.dart --no-pub",
+          "exit_code": 0
+        },
+        {
+          "command": "scripts/deploy-play-internal.ps1 -ConfigPath E:\\FluxStudio\\tools\\deploy-play-config.json -ProjectKey planflow -SkipVersionBump",
+          "exit_code": 0,
+          "evidence": "Version: 1.1.1+141; App Bundle upload complete; Updating [completed] release (com.fluxstudio.planflow:[141]) in track 'alpha'; BUILD SUCCESSFUL"
+        },
+        {
+          "command": "Inspect release merged AndroidManifest.xml files for com.google.android.geo.API_KEY value length only",
+          "exit_code": 0,
+          "evidence": "Five release merged manifests each contain a non-empty Google Maps key with valueLength=39; no key value was printed."
+        },
+        {
+          "command": "adb devices -l",
+          "exit_code": 0,
+          "evidence": "No ADB-accessible Android device available for visual map or rewarded-ad verification."
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review the final diff for map credential leakage, fallback correctness, rewarded-ad bypasses, and unrelated changes.",
+      "result": "PASS at code level. No BLOCKER or HIGH finding. The release preflight, flutter-local delegation, safe map diagnostics, fallback behavior, and reward-only gate are consistent. Reviewer requires physical-device proof before final completion."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile final diff, role evidence, deployment, artifact inspection, and remaining runtime gates without modifying unrelated work.",
+      "result": "Code, contract test, AAB artifact, Alpha 141 upload, and manifest key-presence evidence are integrated. The task remains BLOCKED_DEVICE_RUNTIME because neither visible map rendering nor rewarded-ad load/show/reward/conversation entry can be proven without an ADB-accessible device."
+    }
+  ],
+  "changed_files": [
+    "scripts/build-internal-aab.ps1",
+    "lib/main.dart",
+    "lib/screens/location/location_picker_screen.dart",
+    "pubspec.yaml",
+    "test/tooling/build_internal_aab_contract_test.dart",
+    ".codex/tasks/planflow-map-ad-regression-20260821.json"
+  ],
+  "deployment": {
+    "version": "1.1.1+141",
+    "track": "alpha",
+    "package": "com.fluxstudio.planflow",
+    "command": "scripts/deploy-play-internal.ps1 -ConfigPath E:\\FluxStudio\\tools\\deploy-play-config.json -ProjectKey planflow -SkipVersionBump",
+    "exit_code": 0,
+    "upload_evidence": "App Bundle upload complete; Updating [completed] release (com.fluxstudio.planflow:[141]) in track 'alpha'; BUILD SUCCESSFUL",
+    "artifact": {
+      "path": "build/app/outputs/bundle/release/app-release.aab",
+      "length_bytes": 83894785,
+      "last_write": "2026-08-21T16:29:01+09:00"
+    },
+    "manifest_evidence": {
+      "check": "com.google.android.geo.API_KEY exists in release merged manifests",
+      "release_manifest_count": 5,
+      "value_length_each": 39,
+      "secrets_printed": false
+    }
+  },
+  "verification_gaps": [
+    "No ADB-accessible device currently has Alpha 141 available for visual map proof.",
+    "No physical-device evidence yet shows rewarded-ad load, full-screen show, onUserEarnedReward, and AI schedule conversation opening.",
+    "The deploy script default ConfigPath path was observed to fail in this invocation context when omitted; explicit ConfigPath succeeded. This is a non-blocking existing deployment-script usability note and was intentionally not expanded into this regression fix."
+  ],
+  "unrelated_work_preserved": [
+    ".codex/tasks/planflow-onboarding-performance-calendar-refinement-20260815.json",
+    "planflow_v2_group_home_structure.md deletion",
+    "screenshots/* deletions",
+    "planflow logo*.png and planflow-*.jpg untracked images"
+  ],
+  "integration": {
+    "verdict": "BLOCKED_DEVICE_RUNTIME",
+    "code_level_status": "PASS",
+    "completion_gate": "Install Alpha 141 on an ADB-accessible Android device, confirm map rendering, then capture the rewarded sequence load -> show -> reward -> AI conversation opened. Do not mark COMPLETE before both visible proofs exist."
+  },
+  "last_updated": "2026-08-21T16:35:00+09:00"
+}
