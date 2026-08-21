@@ -1,0 +1,133 @@
+{
+  "task_id": "TASK_20260821_075611",
+  "status": "CODE_PASS_DEVICE_NOT_VALIDATED",
+  "objective": "Harden raw Flutter Android release map dart-define validation and record wireless-device verification evidence without exposing credentials.",
+  "routing": {
+    "requested_model": "gpt-5.6-terra",
+    "execution": "current adopted Codex Desktop session; host does not expose a selectable model identity"
+  },
+  "allowed_files": [
+    "android/app/build.gradle.kts",
+    "lib/core/env.dart",
+    "test/core/app_env_test.dart",
+    "test/tooling/build_internal_aab_contract_test.dart",
+    ".codex/tasks/TASK_20260821_075611.json"
+  ],
+  "forbidden_files": [
+    "env/local.json",
+    "android/key.properties",
+    "AndroidManifest.xml",
+    "map UI screens",
+    "Play publishing, ads, DB, authentication, and iOS configuration"
+  ],
+  "plan": [
+    {
+      "item": "Trace raw release configuration and define an allowed change set.",
+      "classification": "Advanced",
+      "status": "completed"
+    },
+    {
+      "item": "Fail closed for missing or placeholder release map dart-defines and align runtime placeholder handling.",
+      "classification": "Advanced",
+      "status": "completed"
+    },
+    {
+      "item": "Run scoped tests and independent review.",
+      "classification": "Verification",
+      "status": "completed"
+    },
+    {
+      "item": "Verify signed Alpha 141 map rendering on a roster-isolated wireless S23.",
+      "classification": "Runtime verification",
+      "status": "not_validated"
+    }
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "not exposed by in-app host",
+      "reasoning_effort": "read-only investigation",
+      "result": "Confirmed the existing PowerShell preflight can be bypassed by raw Flutter release commands and narrowed scope to Gradle, AppEnv, and tests."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "not exposed by in-app host",
+      "reasoning_effort": "advanced planning",
+      "result": "Required release-only dart-define validation, runtime placeholder safety, no credential/UI changes, and fail-closed device evidence."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "current adopted Codex Desktop session",
+      "mapped_model": "not exposed by in-app host",
+      "reasoning_effort": "advanced",
+      "changed_files": [
+        "android/app/build.gradle.kts",
+        "lib/core/env.dart",
+        "test/core/app_env_test.dart",
+        "test/tooling/build_internal_aab_contract_test.dart"
+      ],
+      "result": "Added release-only raw Gradle dart-define guard, aligned runtime placeholder rejection, and added contract/regression coverage."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "not exposed by in-app host",
+      "reasoning_effort": "independent verification",
+      "result": "Focused Flutter tests and targeted analysis passed; raw Gradle release commands correctly rejected missing and placeholder defines."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "not exposed by in-app host",
+      "reasoning_effort": "independent review",
+      "result": "PASS with no BLOCKER/HIGH/MEDIUM/LOW code findings. Signed release and physical map proof remain blocked."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "not exposed by in-app host",
+      "reasoning_effort": "integration",
+      "result": "Code PASS; wireless runtime acceptance NOT VALIDATED."
+    }
+  ],
+  "verification": [
+    {
+      "command": "scripts/flutter-local.ps1 test --no-pub test/core/app_env_test.dart test/tooling/build_internal_aab_contract_test.dart (with PLANFLOW_SKIP_FLUXOS_SESSION=1 in this isolated worktree)",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test --no-pub with absent, your-*, and embedded-placeholder map defines",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test --no-pub test/screens/location_picker_screen_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "dart analyze lib/core/env.dart test/core/app_env_test.dart test/tooling/build_internal_aab_contract_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "android/gradlew.bat :app:assembleRelease without, with your-*, and with embedded-placeholder base64 dart-defines",
+      "exit_code": 1,
+      "expected": "release map dart-define guard"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "device_evidence": {
+    "serial": "192.168.0.102:37791",
+    "model": "SM-S918N",
+    "connection": "wireless ADB authorized",
+    "installed_version_code": 140,
+    "source_version_code": 141,
+    "verdict": "NOT_VALIDATED",
+    "reason": "The device does not have the target signed release; this isolated worktree has no real map define or signing material for an honest positive build/install."
+  },
+  "final_verdict": "CODE_PASS_DEVICE_NOT_VALIDATED",
+  "last_updated": "2026-08-21T17:30:00+09:00"
+}

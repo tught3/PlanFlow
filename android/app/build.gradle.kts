@@ -15,26 +15,9 @@ val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
-} else {
-    throw GradleException(
-        "Missing android/key.properties. Restore the PlanFlow signing files before building.",
-    )
 }
 
 val releaseStoreFile = keystoreProperties["storeFile"] as String?
-    ?: throw GradleException(
-        "android/key.properties is missing storeFile. Restore the PlanFlow signing files before building.",
-    )
-if (releaseStoreFile.isBlank()) {
-    throw GradleException(
-        "android/key.properties storeFile is blank. Restore the PlanFlow signing files before building.",
-    )
-}
-if (!file(releaseStoreFile).exists()) {
-    throw GradleException(
-        "Release keystore file does not exist at $releaseStoreFile. Restore the PlanFlow signing files before building.",
-    )
-}
 
 val playServiceAccountPath = (
     providers.gradleProperty("planflowPlayServiceAccountJson").orNull?.trim()
@@ -70,6 +53,50 @@ fun readDartDefineValue(key: String): String {
         ?: ""
 }
 
+fun isPlaceholderMapDefine(value: String): Boolean {
+    val normalized = value.trim().lowercase()
+    return normalized.startsWith("your-") ||
+        normalized.contains("your-google-maps-api-key") ||
+        normalized.contains("your-tmap-api-key") ||
+        normalized.contains("your-naver-map-client-id")
+}
+
+val releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.contains("release", ignoreCase = true)
+}
+
+if (releaseBuildRequested) {
+    // Flutter passes --dart-define values to Gradle as base64-encoded
+    // `dart-defines`. An Android environment variable can populate the
+    // manifest placeholder, but cannot configure the Dart runtime. Require
+    // the defines themselves so raw Flutter release commands fail closed.
+    val missingMapDartDefines = listOf(
+        "GOOGLE_MAPS_API_KEY",
+        "TMAP_API_KEY",
+        "NAVER_MAP_CLIENT_ID",
+    ).filter { key ->
+        val value = readDartDefineValue(key)
+        value.isBlank() || isPlaceholderMapDefine(value)
+    }
+    if (missingMapDartDefines.isNotEmpty()) {
+        throw GradleException(
+            "Release map dart-defines are missing or placeholders: " +
+                missingMapDartDefines.joinToString(", ") +
+                ". Pass non-placeholder values with --dart-define-from-file or --dart-define.",
+        )
+    }
+}
+
+val releaseStoreFilePath = releaseStoreFile?.takeIf { it.isNotBlank() }
+    ?: throw GradleException(
+        "android/key.properties is missing storeFile. Restore the PlanFlow signing files before building.",
+    )
+if (!file(releaseStoreFilePath).exists()) {
+    throw GradleException(
+        "Release keystore file does not exist at $releaseStoreFilePath. Restore the PlanFlow signing files before building.",
+    )
+}
+
 android {
     namespace = "com.fluxstudio.planflow"
     compileSdk = flutter.compileSdkVersion
@@ -100,7 +127,7 @@ android {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as String?
             keyPassword = keystoreProperties["keyPassword"] as String?
-            storeFile = file(releaseStoreFile)
+            storeFile = file(releaseStoreFilePath)
             storePassword = keystoreProperties["storePassword"] as String?
         }
     }

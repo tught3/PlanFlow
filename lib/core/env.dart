@@ -11,9 +11,11 @@ class AppEnv {
 
   static String get supabaseUrl => _envValue('SUPABASE_URL');
   static String get supabaseAnonKey => _envValue('SUPABASE_ANON_KEY');
-  static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
-  static String get tmapApiKey => _envValue('TMAP_API_KEY');
-  static String get naverMapClientId => _envValue('NAVER_MAP_CLIENT_ID');
+  static String get googleMapsApiKey =>
+      _nonPlaceholderEnvValue('GOOGLE_MAPS_API_KEY');
+  static String get tmapApiKey => _nonPlaceholderEnvValue('TMAP_API_KEY');
+  static String get naverMapClientId =>
+      _nonPlaceholderEnvValue('NAVER_MAP_CLIENT_ID');
   static String get naverMapProxyUrl =>
       _nonPlaceholderEnvValue('NAVER_MAP_PROXY_URL');
   static String get googleAndroidClientId =>
@@ -91,7 +93,8 @@ class AppEnv {
 
   static String _envValue(String key) {
     final compileTimeValue = _compileTimeEnvValue(key);
-    if (compileTimeValue.trim().isNotEmpty) {
+    if (compileTimeValue.trim().isNotEmpty &&
+        !_looksLikePlaceholder(compileTimeValue)) {
       return compileTimeValue;
     }
     return switch (key) {

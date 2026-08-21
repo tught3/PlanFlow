@@ -8,4 +8,11 @@ void main() {
     expect(AppEnv.supabaseAnonKey, isNotEmpty);
     expect(AppEnv.hasValidSupabaseConfig, isTrue);
   });
+
+  test('AppEnv does not treat absent or placeholder map defines as configured',
+      () {
+    expect(AppEnv.googleMapsApiKey, isEmpty);
+    expect(AppEnv.tmapApiKey, isEmpty);
+    expect(AppEnv.naverMapClientId, isEmpty);
+  });
 }
