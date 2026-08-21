@@ -1,6 +1,48 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+import '../core/diag_logger.dart';
+import '../firebase_options.dart';
+
+enum RemoteConfigReadiness {
+  idle,
+  checking,
+  ready,
+  retryableFailure,
+  notEligible
+}
+
+@visibleForTesting
+bool shouldAcceptRemoteConfigAttempt({
+  required int completionAttempt,
+  required int currentAttempt,
+}) =>
+    completionAttempt == currentAttempt;
+
+/// Remote Config failure metadata safe for release diagnostics.
+/// Values are deliberately limited to type/code/domain and never include the
+/// fetched payload or an ad unit value.
+class RemoteConfigFailureSnapshot {
+  const RemoteConfigFailureSnapshot({
+    required this.attempt,
+    required this.failureType,
+    required this.elapsedMs,
+    required this.source,
+    this.code,
+    this.domain,
+  });
+
+  final int attempt;
+  final String failureType;
+  final int elapsedMs;
+  final String source;
+  final String? code;
+  final String? domain;
+}
 
 /// Firebase Remote Config 래퍼.
 ///
@@ -17,6 +59,50 @@ class RemoteConfigService {
   }
 
   static bool _initialized = false;
+  static Future<void>? _initializeFuture;
+  static Future<bool>? _retryFuture;
+  static Future<bool>? _firebaseInitFuture;
+  static int _attempt = 0;
+  static RemoteConfigReadiness _readiness = RemoteConfigReadiness.idle;
+  static RemoteConfigFailureSnapshot? _lastFailure;
+
+  static RemoteConfigReadiness get readiness => _readiness;
+  static RemoteConfigFailureSnapshot? get lastFailure => _lastFailure;
+
+  /// Firebase Core startup is shared by main and explicit ad retries. A
+  /// timed-out startup attempt must not be considered permanently fatal:
+  /// a later user action can join or start a fresh attempt safely.
+  static Future<bool> ensureFirebaseInitialized() {
+    if (Firebase.apps.isNotEmpty) return Future<bool>.value(true);
+    final existing = _firebaseInitFuture;
+    if (existing != null) return existing;
+    final future = _runFirebaseInitialization();
+    _firebaseInitFuture = future;
+    return future.whenComplete(() {
+      if (identical(_firebaseInitFuture, future)) _firebaseInitFuture = null;
+    });
+  }
+
+  static Future<bool> _runFirebaseInitialization() async {
+    final startedAt = DateTime.now();
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).timeout(const Duration(seconds: 8));
+      DiagLogger.log(
+        'FirebaseCore',
+        'phase=ready elapsedMs=${DateTime.now().difference(startedAt).inMilliseconds} source=shared',
+      );
+      return true;
+    } catch (error) {
+      final type = error is TimeoutException ? 'timeout' : error.runtimeType;
+      DiagLogger.log(
+        'FirebaseCore',
+        'phase=retryable_failure type=$type elapsedMs=${DateTime.now().difference(startedAt).inMilliseconds} source=shared',
+      );
+      return Firebase.apps.isNotEmpty;
+    }
+  }
 
   /// 마지막 fetchAndActivate() 시도의 성공 여부.
   ///
@@ -66,56 +152,212 @@ class RemoteConfigService {
   /// AI 일정분석(GPT 파싱)은 하루 3회까지 광고 없이 무료로 사용할 수 있다.
   static const int kScheduleParseDailyFreeCountDefault = 3;
 
-  static Future<void> initialize() async {
-    if (_initialized) {
-      return;
+  static Future<void> initialize() {
+    if (_initialized || _readiness == RemoteConfigReadiness.notEligible) {
+      return Future<void>.value();
     }
+    final retry = _retryFuture;
+    if (retry != null) {
+      return retry.then<void>((_) {});
+    }
+    final existing = _initializeFuture;
+    if (existing != null) return existing;
+    final future = _runInitialize(forceFetch: false);
+    _initializeFuture = future;
+    return future.whenComplete(() {
+      if (identical(_initializeFuture, future)) _initializeFuture = null;
+    });
+  }
 
+  static Future<void> _runInitialize({required bool forceFetch}) async {
     final remoteConfig = _remoteConfig;
     if (remoteConfig == null) {
-      _initialized = true;
+      _initialized = false;
+      _readiness = RemoteConfigReadiness.retryableFailure;
+      _recordFailure(
+        attempt: ++_attempt,
+        startedAt: DateTime.now(),
+        error: StateError('firebase_core_unavailable'),
+        source: 'firebase_core',
+      );
       return;
     }
 
-    await remoteConfig.setConfigSettings(
-      RemoteConfigSettings(
-        fetchTimeout: const Duration(seconds: 10),
-        minimumFetchInterval: const Duration(hours: 1),
-      ),
-    );
-
-    await remoteConfig.setDefaults(
-      <String, Object>{
-        _kGptModel: 'gpt-4o-mini',
-        _kBriefingEnabled: true,
-        _kEarlyBirdBannerVisible: true,
-        _kEarlyBirdMessage: '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.',
-        _kMaxVoiceDurationSeconds: 60,
-        _kMinRequiredVersion: 0,
-        _kRewardedAdEnabled: true,
-        _kRewardedAdUnitIdAndroid: '',
-        _kGroupBackupRetentionDays: 30,
-        _kRewardAdVoiceConversationEnabled: true,
-        _kVoiceConversationFreeTrialCount: 3,
-        _kRewardAdFailurePolicy: 'retry',
-        _kVoiceConversationButtonEnabled: true,
-        _kVoiceConversationInitialFreeCount:
-            kVoiceConversationInitialFreeCountDefault,
-        _kVoiceConversationDailyFreeCount:
-            kVoiceConversationDailyFreeCountDefault,
-        _kScheduleParseDailyFreeCount: kScheduleParseDailyFreeCountDefault,
-      },
-    );
-
+    final attempt = ++_attempt;
+    final startedAt = DateTime.now();
+    _readiness = RemoteConfigReadiness.checking;
     try {
-      await remoteConfig.fetchAndActivate();
-      _lastFetchSucceeded = true;
-    } catch (_) {
-      // 네트워크가 없어도 앱은 기본값으로 계속 부팅한다.
-      _lastFetchSucceeded = false;
-    }
+      await remoteConfig.setConfigSettings(
+        RemoteConfigSettings(
+          fetchTimeout: const Duration(seconds: 10),
+          minimumFetchInterval:
+              forceFetch ? Duration.zero : const Duration(hours: 1),
+        ),
+      );
 
-    _initialized = true;
+      await remoteConfig.setDefaults(
+        <String, Object>{
+          _kGptModel: 'gpt-4o-mini',
+          _kBriefingEnabled: true,
+          _kEarlyBirdBannerVisible: true,
+          _kEarlyBirdMessage: '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.',
+          _kMaxVoiceDurationSeconds: 60,
+          _kMinRequiredVersion: 0,
+          _kRewardedAdEnabled: true,
+          _kRewardedAdUnitIdAndroid: '',
+          _kGroupBackupRetentionDays: 30,
+          _kRewardAdVoiceConversationEnabled: true,
+          _kVoiceConversationFreeTrialCount: 3,
+          _kRewardAdFailurePolicy: 'retry',
+          _kVoiceConversationButtonEnabled: true,
+          _kVoiceConversationInitialFreeCount:
+              kVoiceConversationInitialFreeCountDefault,
+          _kVoiceConversationDailyFreeCount:
+              kVoiceConversationDailyFreeCountDefault,
+          _kScheduleParseDailyFreeCount: kScheduleParseDailyFreeCountDefault,
+        },
+      );
+
+      // This timeout belongs to Remote Config only. Firebase core startup is
+      // bounded independently in main.dart and must not abort this 10s fetch.
+      await remoteConfig
+          .fetchAndActivate()
+          .timeout(const Duration(seconds: 10));
+      if (shouldAcceptRemoteConfigAttempt(
+        completionAttempt: attempt,
+        currentAttempt: _attempt,
+      )) {
+        _lastFetchSucceeded = true;
+        _initialized = true;
+        _readiness = RemoteConfigReadiness.ready;
+        _lastFailure = null;
+        DiagLogger.log(
+          'RemoteConfig',
+          'phase=ready attempt=$attempt elapsedMs=${DateTime.now().difference(startedAt).inMilliseconds} source=fetch',
+        );
+      }
+    } catch (error) {
+      if (shouldAcceptRemoteConfigAttempt(
+        completionAttempt: attempt,
+        currentAttempt: _attempt,
+      )) {
+        _lastFetchSucceeded = false;
+        _initialized = false;
+        _readiness = RemoteConfigReadiness.retryableFailure;
+        _recordFailure(
+          attempt: attempt,
+          startedAt: startedAt,
+          error: error,
+          source: forceFetch ? 'user_retry' : 'startup',
+        );
+      }
+    } finally {
+      if (forceFetch &&
+          shouldAcceptRemoteConfigAttempt(
+            completionAttempt: attempt,
+            currentAttempt: _attempt,
+          )) {
+        try {
+          await remoteConfig.setConfigSettings(
+            RemoteConfigSettings(
+              fetchTimeout: Duration(seconds: 10),
+              minimumFetchInterval: Duration(hours: 1),
+            ),
+          );
+        } catch (_) {
+          // Settings restoration is best effort; the next attempt resets it.
+        }
+      }
+    }
+  }
+
+  static void _recordFailure({
+    required int attempt,
+    required DateTime startedAt,
+    required Object error,
+    required String source,
+  }) {
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    String? code;
+    String? domain;
+    if (error is FirebaseException) {
+      code = _sanitize(error.code);
+      domain = _sanitize(error.plugin);
+    } else if (error is PlatformException) {
+      code = _sanitize(error.code);
+      domain = 'platform';
+    }
+    final type =
+        error is TimeoutException ? 'timeout' : error.runtimeType.toString();
+    _lastFailure = RemoteConfigFailureSnapshot(
+      attempt: attempt,
+      failureType: _sanitize(type),
+      elapsedMs: elapsedMs,
+      source: _sanitize(source),
+      code: code,
+      domain: domain,
+    );
+    final details = <String>[
+      'phase=retryable_failure',
+      'attempt=$attempt',
+      'type=${_sanitize(type)}',
+      'elapsedMs=$elapsedMs',
+      'source=${_sanitize(source)}',
+    ];
+    if (code != null && code.isNotEmpty) details.add('code=$code');
+    if (domain != null && domain.isNotEmpty) details.add('domain=$domain');
+    DiagLogger.log('RemoteConfig', details.join(' '));
+  }
+
+  static String _sanitize(String value) {
+    final normalized = value.replaceAll(RegExp(r'[\r\n]'), ' ').trim();
+    return normalized.length <= 80 ? normalized : normalized.substring(0, 80);
+  }
+
+  static Future<bool> retryFetchIfFailed() async {
+    if (_lastFetchSucceeded) return true;
+    final existingRetry = _retryFuture;
+    if (existingRetry != null) return existingRetry;
+
+    final future = _runUserRetry();
+    _retryFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_retryFuture, future)) _retryFuture = null;
+    }
+    return _lastFetchSucceeded;
+  }
+
+  static Future<bool> _runUserRetry() async {
+    var startup = _initializeFuture;
+    if (startup != null) {
+      await startup;
+      if (_lastFetchSucceeded) return true;
+      // A startup fetch may have just completed with a retryable failure.
+      // Continue into a fresh user-initiated attempt instead of returning the
+      // stale failure and blocking the same button tap.
+      startup = _initializeFuture;
+      if (startup != null) {
+        await startup;
+        if (_lastFetchSucceeded) return true;
+      }
+    }
+    if (_lastFetchSucceeded) return true;
+    var remoteConfig = _remoteConfig;
+    if (remoteConfig == null) {
+      if (!await ensureFirebaseInitialized()) return false;
+      remoteConfig = _remoteConfig;
+    }
+    if (remoteConfig == null) return false;
+    final future = _runInitialize(forceFetch: true);
+    _initializeFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_initializeFuture, future)) _initializeFuture = null;
+    }
+    return _lastFetchSucceeded;
   }
 
   static String get gptModel =>
@@ -184,48 +426,6 @@ class RemoteConfigService {
   @visibleForTesting
   static set lastFetchSucceededForTest(bool value) =>
       _lastFetchSucceeded = value;
-
-  /// 마지막 fetch가 실패한 경우 1회 강제 재시도.
-  ///
-  /// [minimumFetchInterval](현재 1시간) 때문에 일반 호출은 캐시만 보지만,
-  /// 호출자가 명시적으로 강제 재시도를 원할 때 사용하는 메서드.
-  /// 강제 재시도는 settings를 임시로 Duration.zero로 바꿔 즉시 fetch를
-  /// 트리거하고, 끝나면 원래 값(1시간 캐시)으로 복원한다.
-  ///
-  /// 반환값: 재시도 후 마지막 fetch 성공 여부.
-  static Future<bool> retryFetchIfFailed() async {
-    if (_lastFetchSucceeded) {
-      return true;
-    }
-    final remoteConfig = _remoteConfig;
-    if (remoteConfig == null) {
-      return false;
-    }
-    try {
-      await remoteConfig.setConfigSettings(
-        RemoteConfigSettings(
-          fetchTimeout: const Duration(seconds: 10),
-          minimumFetchInterval: Duration.zero,
-        ),
-      );
-      await remoteConfig.fetchAndActivate();
-      _lastFetchSucceeded = true;
-    } catch (_) {
-      _lastFetchSucceeded = false;
-    } finally {
-      try {
-        await remoteConfig.setConfigSettings(
-          RemoteConfigSettings(
-            fetchTimeout: const Duration(seconds: 10),
-            minimumFetchInterval: const Duration(hours: 1),
-          ),
-        );
-      } catch (_) {
-        // 복원 실패는 무시한다(다음 initialize()가 다시 1시간으로 설정함).
-      }
-    }
-    return _lastFetchSucceeded;
-  }
 
   /// 운영 광고 단위 ID. Remote Config 콘솔에서 설정. 비어 있거나 형식이
   /// 잘못되면 AdService가 폴백 없이 리워드 광고를 비활성화한다(release 한정,

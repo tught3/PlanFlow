@@ -23,6 +23,7 @@ bool isValidRewardedAdUnitId(String value) =>
 enum VoiceConversationAdOutcomeKind {
   disabled,
   initializationUnavailable,
+  unitIdMissing,
   unitIdInvalid,
   loadThrottled,
   loadFailed,
@@ -53,6 +54,8 @@ class VoiceConversationAdOutcome {
         return 'disabled';
       case VoiceConversationAdOutcomeKind.initializationUnavailable:
         return 'initialization_unavailable';
+      case VoiceConversationAdOutcomeKind.unitIdMissing:
+        return 'unit_id_missing';
       case VoiceConversationAdOutcomeKind.unitIdInvalid:
         return 'unit_id_invalid';
       case VoiceConversationAdOutcomeKind.loadThrottled:
@@ -687,10 +690,19 @@ class AdService {
         adUnitId = _resolveAdUnitId();
       }
       if (adUnitId.isEmpty) {
-        _recordVoiceAttempt(requestId, 'unit_id_invalid_after_rc_retry');
+        final configured = RemoteConfigService.rewardedAdUnitIdAndroid.trim();
+        final missing = configured.isEmpty;
+        _recordVoiceAttempt(
+          requestId,
+          missing ? 'unit_id_missing_after_rc_retry' : 'unit_id_invalid',
+        );
         final outcome = VoiceConversationAdOutcome(
-          VoiceConversationAdOutcomeKind.unitIdInvalid,
-          loadErrorMessage: 'remote_config_unit_id_missing',
+          missing
+              ? VoiceConversationAdOutcomeKind.unitIdMissing
+              : VoiceConversationAdOutcomeKind.unitIdInvalid,
+          loadErrorMessage: missing
+              ? 'remote_config_unit_id_missing'
+              : 'remote_config_unit_id_invalid',
         );
         await AnalyticsService.logVoiceConvAdFailed(
           reason: outcome.analyticsReason,
@@ -816,9 +828,17 @@ class AdService {
     String? requestId,
   }) async {
     if (!RemoteConfigService.rewardedAdEnabled) {
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=load_skip reason=rc_disabled userInitiated=$userInitiated',
+      );
       return false;
     }
     if (!_initialized) {
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=load_skip reason=not_initialized userInitiated=$userInitiated',
+      );
       return false;
     }
     final adUnitId = _resolveAdUnitId();
@@ -826,6 +846,10 @@ class AdService {
       // 진단 신호 (M1, 이슈 A). RC 미설정 + debug/profile 모드 아님이면
       // adUnitId가 비어 load가 시도조차 안 됨. 호출부에서 load_failed로
       // 집계되지만 더 구체적 reason을 Analytics에 남긴다.
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=load_skip reason=empty_unit_id userInitiated=$userInitiated',
+      );
       if (requestId != null) {
         unawaited(
           AnalyticsService.logAdLoadFailed(
@@ -846,6 +870,10 @@ class AdService {
         last != null &&
         DateTime.now().difference(last) < _kReloadThrottle &&
         _rewardedAd == null) {
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=load_skip reason=throttled userInitiated=$userInitiated',
+      );
       return false;
     }
     final inFlight = _loadFuture;

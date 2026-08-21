@@ -7,6 +7,25 @@ import 'package:planflow/services/remote_config_service.dart';
 /// (resolveInitialFreeCount / resolveDailyFreeCount)로 분리해뒀으므로 그
 /// 함수만 직접 검증한다.
 void main() {
+  group('Remote Config attempt generation guard', () {
+    test('accepts only the latest completion', () {
+      expect(
+        shouldAcceptRemoteConfigAttempt(
+          completionAttempt: 4,
+          currentAttempt: 4,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldAcceptRemoteConfigAttempt(
+          completionAttempt: 3,
+          currentAttempt: 4,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('RemoteConfigService.resolveInitialFreeCount', () {
     test('신규 키가 콘솔에서 fetch됐으면 신규 키 값을 채택한다', () {
       final result = RemoteConfigService.resolveInitialFreeCount(

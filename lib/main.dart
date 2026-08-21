@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +17,6 @@ import 'core/local_time.dart';
 import 'core/runtime_error_filter.dart';
 import 'core/startup_route_gate.dart';
 import 'core/supabase_auth_options.dart';
-import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
@@ -209,9 +207,9 @@ Future<void> _primeHolidayCache() async {
 
 Future<void> _initializeFirebaseServices() async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    ).timeout(const Duration(seconds: 8));
+    // Firebase Core has one shared, recoverable startup path. Remote Config
+    // owns its separate 10s fetch timeout and retry state.
+    if (!await RemoteConfigService.ensureFirebaseInitialized()) return;
     await RemoteConfigService.initialize();
     FlutterError.onError = (FlutterErrorDetails details) {
       // 오프라인/네트워크 단절은 사용자 환경 문제라 Crashlytics 이슈로 보내지 않는다.

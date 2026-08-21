@@ -1,0 +1,201 @@
+{
+  "taskId": "planflow-alpha143-remote-config-ad-recovery-20260821",
+  "project": "PlanFlow",
+  "request": "Repair Alpha 143 rewarded-ad flow blocked by missing Remote Config rewarded unit without changing ad policy or bypassing reward verification.",
+  "status": "PENDING_RUNTIME",
+  "finalVerdict": "PENDING_RUNTIME",
+  "createdAt": "2026-08-21T21:08:00+09:00",
+  "evidence": {
+    "device": "S918N 192.168.0.102:43129",
+    "versionCode": 143,
+    "observed": [
+      "RewardedAdConsent phase=ready",
+      "rcFetch=false and unit source=valueDefault",
+      "unit_id_invalid_after_rc_retry before RewardedAd.load",
+      "No full-screen ad, reward callback, or conversation opened"
+    ]
+  },
+  "requirements": [
+    "Separate Firebase core initialization timeout from Remote Config fetch/retry timeout.",
+    "Merge concurrent Remote Config initialization/retry requests and release failed in-flight state.",
+    "Record privacy-safe fetch/retry failure diagnostics without schedule content, user IDs, or full ad IDs.",
+    "Keep operational rewarded unit Remote Config-only and fail closed when missing or invalid.",
+    "Preserve reward-only conversation entry and distinguish Remote Config unavailability from ad load/show failures.",
+    "Do not change free usage policy, free_pass, Remote Config values, map, calendar, onboarding, or unrelated dirty files."
+  ],
+  "allowedFiles": [
+    "lib/main.dart",
+    "lib/services/remote_config_service.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/voice_conversation_ad_gate.dart",
+    "firebase.json",
+    "test/services/remote_config_service_test.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/voice_conversation_ad_gate_test.dart",
+    ".codex/tasks/planflow-alpha143-remote-config-ad-recovery-20260821.json"
+  ],
+  "forbiddenFiles": [
+    "env/local.json",
+    "android/app/google-services.json",
+    "lib/firebase_options.dart",
+    "Remote Config console values",
+    "unrelated dirty documents, screenshots, and images"
+  ],
+  "routing": {
+    "explorer": {
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium"
+    },
+    "planner": {
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high"
+    },
+    "complexImplementer": {
+      "agent": "flux_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium"
+    },
+    "simpleImplementer": {
+      "agent": "flux_simple_implementer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium"
+    },
+    "testExecutor": {
+      "agent": "flux_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low"
+    },
+    "reviewer": {
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high"
+    },
+    "integrator": {
+      "agent": "flux_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium"
+    }
+  },
+  "reports": {
+    "explorer": {
+      "result": "Direct blocker is Remote Config value resolution: consent is ready but fetch is false and default unit is empty; Firebase Android app IDs in runtime files match. Main timeout and swallowed errors are likely structural causes.",
+      "changedFiles": []
+    },
+    "planner": {
+      "result": "Complex split for Firebase/Remote Config and ad outcome; Simple firebase.json drift correction; focused tests and real-device gates required.",
+      "changedFiles": []
+    },
+    "complexImplementer": {
+      "agent": "flux_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "result": "Separated Firebase Core and Remote Config time budgets; added shared Firebase Core initialization recovery, Remote Config readiness/single-flight user retry state, generation guard, privacy-safe failure snapshots, and distinguished missing rewarded unit from invalid unit without adding a fallback or reward bypass.",
+      "changedFiles": [
+        "lib/main.dart",
+        "lib/services/remote_config_service.dart",
+        "lib/services/ad_service.dart"
+      ],
+      "verification": [
+        {
+          "command": "dart format lib/main.dart lib/services/remote_config_service.dart test/services/remote_config_service_test.dart",
+          "exitCode": 0
+        },
+        {
+          "command": "flutter analyze lib/main.dart lib/services/remote_config_service.dart",
+          "exitCode": 0,
+          "result": "No issues found"
+        },
+        {
+          "command": "flutter test test/services/remote_config_service_test.dart --reporter compact",
+          "exitCode": 0,
+          "result": "11 tests passed"
+        },
+        {
+          "command": "git diff --check",
+          "exitCode": 0
+        }
+      ]
+    },
+    "simpleImplementer": {
+      "agent": "flux_simple_implementer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "result": "Synchronized firebase.json Android and Dart FlutterFire appId mappings with the canonical Android app registration; no runtime secrets or Remote Config values changed.",
+      "changedFiles": [
+        "firebase.json"
+      ],
+      "verification": [
+        {
+          "command": "ConvertFrom-Json firebase.json and compare Android IDs in firebase.json, google-services.json, and firebase_options.dart",
+          "exitCode": 0,
+          "result": "FIREBASE_APP_IDS_MATCH"
+        }
+      ]
+    },
+    "testExecutor": {
+      "verification": [
+        {
+          "command": "flutter analyze lib/main.dart lib/services/remote_config_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart",
+          "exitCode": 0,
+          "result": "No issues found"
+        },
+        {
+          "command": "flutter test --no-pub test/services/remote_config_service_test.dart --reporter compact",
+          "exitCode": 0,
+          "result": "All tests passed"
+        },
+        {
+          "command": "flutter test --no-pub test/services/ad_service_test.dart --reporter compact",
+          "exitCode": 0,
+          "result": "All tests passed"
+        },
+        {
+          "command": "flutter test --no-pub test/services/ad_consent_service_test.dart --reporter compact",
+          "exitCode": 0,
+          "result": "All tests passed"
+        },
+        {
+          "command": "flutter test --no-pub test/services/voice_conversation_ad_gate_test.dart --reporter compact",
+          "exitCode": 0,
+          "result": "All tests passed"
+        },
+        {
+          "command": "git diff --check",
+          "exitCode": 0,
+          "result": "No format errors; line-ending warnings only"
+        }
+      ],
+      "reasoningEffort": "low",
+      "result": "Independent focused verification passed; unrelated dirty files preserved.",
+      "mappedModel": "gpt-5.4-mini",
+      "agent": "flux_test_executor"
+    },
+    "reviewer": {
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "result": "Code PASS; runtime BLOCKED pending real Alpha ad evidence. HIGH/BLOCKER code findings resolved. Medium remains for full platform-fake retry tests and possible duplicate Firebase Core initialization after timeout.",
+      "verification": [
+        {"command": "flutter analyze lib/main.dart lib/services/remote_config_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart", "exitCode": 0},
+        {"command": "flutter test --no-pub test/services/remote_config_service_test.dart test/services/ad_service_test.dart --reporter compact", "exitCode": 0, "result": "46 tests passed"},
+        {"command": "git diff --check", "exitCode": 0}
+      ]
+    }
+  },
+  "verification": {
+    "required": [
+      "flutter analyze lib/main.dart lib/services/remote_config_service.dart lib/services/ad_service.dart lib/services/voice_conversation_ad_gate.dart",
+      "flutter test --no-pub test/services/remote_config_service_test.dart test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/voice_conversation_ad_gate_test.dart",
+      "git diff --check",
+      "Guarded release build and Play Alpha upload only after code/tests pass"
+    ],
+    "runtimeGate": "Alpha device must show Remote Config unit source remote/cache, then load -> full-screen show -> onUserEarnedReward -> conversation opened. No runtime proof means PENDING_RUNTIME, not COMPLETE."
+  },
+  "unresolved": [
+    "Exact Remote Config fetch exception",
+    "Real ad display and reward callback after new build"
+  ],
+  "updatedAt": "2026-08-21T21:36:04.6693570+09:00"
+}
