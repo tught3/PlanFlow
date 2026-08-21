@@ -88,6 +88,35 @@ void main() {
       expect(cached, isNotNull);
       expect(cached!.first.id, 'event-3');
     });
+
+    test('warmUp preserves a fresh cache after a suspiciously small response',
+        () async {
+      final base = DateTime.now().add(const Duration(days: 365));
+      EventPrefetchService().store(userId, [
+        EventModel(
+          id: 'event-3a',
+          userId: userId,
+          title: '기존 캐시 1',
+          startAt: DateTime(base.year, 5, 1, 10, 0),
+        ),
+        EventModel(
+          id: 'event-3b',
+          userId: userId,
+          title: '기존 캐시 2',
+          startAt: DateTime(base.year, 5, 1, 11, 0),
+        ),
+      ]);
+
+      final repository = _FakeEventRepository(
+        () async => const <EventModel>[],
+      );
+      await EventPrefetchService().warmUp(userId, repository: repository);
+
+      expect(
+        EventPrefetchService().getCached(userId)!.map((event) => event.id),
+        ['event-3a', 'event-3b'],
+      );
+    });
   });
 
   group('EventPrefetchService.invalidate', () {

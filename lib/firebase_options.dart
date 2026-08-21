@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBoy__DA0zyMHEDLhBcqBRhNFX8MSGJPCY',
-    appId: '1:375219078541:android:ee3bace8a839c8b84729c4',
+    appId: '1:375219078541:android:9d1f2d536e56a37e4729c4',
     messagingSenderId: '375219078541',
     projectId: 'planflow-27fd8',
     storageBucket: 'planflow-27fd8.firebasestorage.app',
@@ -85,5 +85,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'planflow-27fd8.firebasestorage.app',
     measurementId: 'G-507HFCW7HJ',
   );
-
 }

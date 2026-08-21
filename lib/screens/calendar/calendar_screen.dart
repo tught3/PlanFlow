@@ -17,6 +17,7 @@ import '../../features/groups/models/calendar_overlay_item.dart';
 import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/event_prefetch_service.dart';
 import '../../services/korean_holidays.dart';
 import '../../services/synced_public_holiday_visibility.dart';
 import '../../services/voice_conversation_launcher.dart';
@@ -498,7 +499,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _pendingOpenDaySheetDate = widget.initialDate;
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _searchController.addListener(_handleSearchChanged);
+    _seedPrefetchedEvents();
     _loadEvents(focusDate: widget.initialDate);
+  }
+
+  void _seedPrefetchedEvents() {
+    final userId = _resolveCalendarUserId();
+    if (userId == null || userId.isEmpty) return;
+    final cached = EventPrefetchService().getCached(userId);
+    if (cached == null) return;
+    _allEvents = cached;
+    _loadState = _CalendarLoadState.ready;
+    final projection = _projectionForMonth(_focusedMonth);
+    _visibleEventsCache = projection.visibleEvents;
+    _miniMonthCellsCache = projection.cells;
+    _selectedDateEventsCache =
+        projection.dayEvents[_selectedDate.day] ?? const <EventModel>[];
   }
 
   @override
@@ -812,11 +828,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final repository = repositoryOverride ?? EventRepository.supabase();
       final events = await repository.listEvents(userId: userId);
+      // Apply the same suspiciously-small-response protection used by the
+      // visible calendar before publishing a new prefetch snapshot. A
+      // transient empty/partial response must never poison the cache that a
+      // later CalendarScreen instance uses for its first frame.
+      final displayEvents = _eventsForDisplayAfterReload(events);
+      EventPrefetchService().store(userId, displayEvents);
       var shouldOpenDaySheet = false;
       var daySheetDate = focusDate;
       if (mounted) {
         setState(() {
-          _allEvents = _eventsForDisplayAfterReload(events);
+          _allEvents = displayEvents;
           _calendarInputRevision += 1;
           // Loaded data changes the projection inputs; never reuse a month
           // computed from the previous repository snapshot.
@@ -836,9 +858,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
       _refreshCalendarViewCache(includeOverlayEvents: false);
-      await _loadGroupOverlay(userId: userId);
+      // Personal events are the critical path. Group overlays and badges are
+      // independent decorations and must not delay the first useful calendar
+      // frame or each other.
+      final groupOverlayFuture = _loadGroupOverlay(userId: userId);
+      unawaited(groupOverlayFuture);
       unawaited(_loadGroupInstructionBadges(userId));
       if (shouldOpenDaySheet && daySheetDate != null && mounted) {
+        // The calendar frame is already visible. Only an explicitly opened
+        // day sheet waits for its group decoration so it never opens empty.
+        await groupOverlayFuture;
+        if (!mounted) return;
         final personalEvents = List<EventModel>.of(_selectedDateEventsCache);
         final groupEvents = List<CalendarOverlayItem>.of(
           _selectedDateGroupEventsCache,
@@ -988,6 +1018,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final explicitUserId = widget.userId?.trim();
     if (explicitUserId != null && explicitUserId.isNotEmpty) {
       return explicitUserId;
+    }
+    // CalendarScreen is also used in isolated widget tests and during the
+    // pre-auth shell. Supabase.instance asserts before initialization, so do
+    // not touch the singleton until the app environment says it is ready.
+    if (!AppEnv.isSupabaseReady) {
+      return null;
     }
     return Supabase.instance.client.auth.currentUser?.id;
   }

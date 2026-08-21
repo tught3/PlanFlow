@@ -17,11 +17,13 @@ import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/screens/calendar/calendar_projection.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
+import 'package:planflow/services/event_prefetch_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    EventPrefetchService().invalidate();
   });
 
   testWidgets('CalendarScreen does not show a loading panel while loading', (
@@ -93,6 +95,69 @@ void main() {
       expect(repository.listCalls, 2);
       expect(find.text('기존 일정'), findsWidgets);
       expect(find.text('새 일정'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'CalendarScreen renders a prefetched event before the reload completes',
+    (tester) async {
+      final selectedDay = DateTime(DateTime.now().year + 1, 5, 15, 9);
+      final prefetched = _event(
+        'prefetched-1',
+        '프리패치 일정',
+        selectedDay,
+      );
+      EventPrefetchService().store('prefetched-user', [prefetched]);
+      final reload = Completer<List<EventModel>>();
+      final repository = _AsyncEventRepository([reload.future]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'prefetched-user',
+            initialDate: selectedDay,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('프리패치 일정'), findsWidgets);
+      expect(repository.listCalls, 1);
+
+      reload.complete([prefetched]);
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'CalendarScreen stores the protected merged snapshot for the next first frame',
+    (tester) async {
+      final now = DateTime(DateTime.now().year + 1, 5, 15, 9);
+      final previous = [
+        _event('cached-1', '캐시 일정 1', now),
+        _event('cached-2', '캐시 일정 2', now.add(const Duration(hours: 1))),
+      ];
+      EventPrefetchService().store('protected-user', previous);
+      final repository = _AsyncEventRepository([
+        Future.value(const <EventModel>[]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'protected-user',
+            initialDate: now,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        EventPrefetchService().getCached('protected-user')!.map((e) => e.id),
+        ['cached-1', 'cached-2'],
+      );
     },
   );
 
