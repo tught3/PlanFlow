@@ -91,7 +91,10 @@ val releaseArtifactRequested = requestedTasks.any { taskName ->
     val isArtifactTask = taskName.contains("assemble") ||
         taskName.contains("bundle") ||
         taskName.contains("package")
-    isRelease && isArtifactTask
+    val isPublishLikeTask = taskName.contains("publish") ||
+        taskName.contains("upload") ||
+        taskName.contains("promote")
+    isRelease && isArtifactTask && !isPublishLikeTask
 }
 val releasePublishRequested = publishLikeTaskRequested
 

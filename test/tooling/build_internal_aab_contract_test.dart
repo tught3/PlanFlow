@@ -58,7 +58,8 @@ void main() {
       expect(source, contains('taskName.contains("assemble")'));
       expect(source, contains('taskName.contains("bundle")'));
       expect(source, contains('taskName.contains("package")'));
-      expect(source, isNot(contains('!publishLikeTaskRequested')));
+      expect(source, contains('val isPublishLikeTask = taskName.contains("publish")'));
+      expect(source, contains('isRelease && isArtifactTask && !isPublishLikeTask'));
       expect(source,
           contains('val publishLikeTaskRequested = requestedTasks.any'));
       expect(source, contains('taskName.contains("publish")'));
