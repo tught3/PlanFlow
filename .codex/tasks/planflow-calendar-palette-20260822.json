@@ -1,0 +1,48 @@
+{
+  "taskId": "planflow-calendar-palette-20260822",
+  "request": "Apply the approved pastel semantic palette to the calendar and Android widgets without deployment.",
+  "scope": {
+    "requirements": [
+      "Important events use lavender/violet and remain most prominent.",
+      "Normal events use cool powder blue.",
+      "Recurring events use teal without dotted/top-line decoration.",
+      "Continuous events use sage with no internal day-to-day vertical borders.",
+      "Team shared events use pastel amber/gold.",
+      "Holidays use red text/pale red background and render above user events.",
+      "Sunday and Saturday date-number colors remain red and blue respectively."
+    ],
+    "nonRequirements": [
+      "No deployment, version change, manifest/Gradle change, database/schema change, or global theme token change.",
+      "Preserve unrelated dirty worktree files and existing calendar performance changes."
+    ],
+    "allowedFiles": [
+      "lib/screens/calendar/calendar_screen.dart",
+      "lib/screens/calendar/calendar_widgets.dart",
+      "lib/services/home_widget_service.dart",
+      "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+      "android/app/src/main/res/drawable/widget_month_event*.xml",
+      "test/screens/calendar_screen_test.dart",
+      "test/screens/calendar_marker_test.dart",
+      "test/screens/calendar_day_events_sheet_test.dart",
+      "test/services/home_widget_service_test.dart"
+    ]
+  },
+  "routing": {
+    "explorer": {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoningEffort": "medium", "status": "completed"},
+    "planner": {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoningEffort": "high", "status": "completed"},
+    "implementer": {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoningEffort": "medium", "status": "in_progress"},
+    "testExecutor": {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoningEffort": "low", "status": "pending"},
+    "reviewer": {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoningEffort": "high", "status": "pending"},
+    "integrator": {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoningEffort": "medium", "status": "pending"}
+  },
+  "plan": [
+    {"step": "Inspect existing calendar/widget semantic renderers and preserve unrelated dirty hunks", "status": "completed"},
+    {"step": "Apply shared semantic palette and holiday-first ordering to Flutter and Android widget paths", "status": "in_progress"},
+    {"step": "Run focused tests, analyzer, and Android Kotlin compilation", "status": "pending"},
+    {"step": "Independent review of final diff and integration", "status": "pending"}
+  ],
+  "changedFiles": [],
+  "verification": [],
+  "review": {"status": "pending", "findings": []},
+  "finalVerdict": "PENDING"
+}
