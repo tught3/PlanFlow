@@ -504,6 +504,26 @@ void main() {
     ]);
   });
 
+  test('HomeWidget reserves the holiday row before four user events', () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.utc(2026, 8, 15),
+      events: [
+        for (var index = 1; index <= 4; index += 1)
+          EventModel(
+            id: 'holiday-event-$index',
+            userId: 'user-1',
+            title: '일정 $index',
+            startAt: DateTime.utc(2026, 8, 15, 8 + index),
+          ),
+      ],
+    );
+
+    final august15 = payload.monthCells.firstWhere((cell) => cell.day == 15);
+    expect(august15.holidayName, '광복절');
+    expect(august15.events.length, 3);
+    expect(august15.overflowCount, 1);
+  });
+
   test('HomeWidget raw payload preserves team and recurring semantic flags',
       () {
     final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(

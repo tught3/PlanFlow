@@ -30,17 +30,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import android.graphics.Typeface
 
-private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
+private const val DEFAULT_TEXT_COLOR = 0xFF435A70.toInt()
 private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
-private const val CRITICAL_TEXT_COLOR = 0xFF6B46C1.toInt()
-private const val CRITICAL_BACKGROUND_COLOR = 0xFFF3EEFF.toInt()
-private const val TEAM_BACKGROUND_COLOR = 0xFFFFF1C2.toInt()
-private const val RECURRING_TEXT_COLOR = 0xFF00838F.toInt()
-private const val TEAM_TEXT_COLOR = 0xFF9A5B00.toInt()
+private const val CRITICAL_TEXT_COLOR = 0xFF633B8E.toInt()
+private const val CRITICAL_BACKGROUND_COLOR = 0xFFE2D2F3.toInt()
+private const val TEAM_BACKGROUND_COLOR = 0xFFF4DEAA.toInt()
+private const val RECURRING_TEXT_COLOR = 0xFF126E68.toInt()
+private const val TEAM_TEXT_COLOR = 0xFF7B560B.toInt()
 // 공휴일/일요일 날짜와 공휴일 라벨 색상. 일정 자체의 색상과 분리한다.
 private const val HOLIDAY_TEXT_COLOR = 0xFFC62828.toInt()
 private const val SATURDAY_TEXT_COLOR = 0xFF1E64B7.toInt()
-private const val MULTI_DAY_TEXT_COLOR = 0xFF334E68.toInt()
+private const val MULTI_DAY_TEXT_COLOR = 0xFF4B6336.toInt()
 private const val PLANFLOW_SCHEME = "planflow"
 private const val PLANFLOW_CALENDAR_HOST = "calendar"
 private const val PLANFLOW_EVENT_HOST = "event"
@@ -113,6 +113,7 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(AbsoluteSizeSpan(17, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔")
+        if (isRecurring) appendMarker("↻")
         builder.append(value)
         return builder
     }
@@ -732,25 +733,46 @@ abstract class BasePlanFlowWidgetProvider(
         return segment == "start" || segment == "middle" || segment == "end"
     }
 
-    protected fun monthRangeBackground(segment: String?, isCritical: Boolean): Int {
+    protected fun monthRangeBackground(
+        segment: String?,
+        isCritical: Boolean,
+        isRecurring: Boolean = false,
+    ): Int {
         return when (segment) {
             "start" -> if (isCritical) {
                 R.drawable.widget_month_event_critical_start
+            } else if (isRecurring) {
+                R.drawable.widget_month_event_recurring_start
             } else {
                 R.drawable.widget_month_event_start
             }
             "middle" -> if (isCritical) {
                 R.drawable.widget_month_event_critical_middle
+            } else if (isRecurring) {
+                R.drawable.widget_month_event_recurring_middle
             } else {
                 R.drawable.widget_month_event_middle
             }
             "end" -> if (isCritical) {
                 R.drawable.widget_month_event_critical_end
+            } else if (isRecurring) {
+                R.drawable.widget_month_event_recurring_end
             } else {
                 R.drawable.widget_month_event_end
             }
             else -> android.R.color.transparent
         }
+    }
+
+    protected fun monthSingleBackground(
+        isCritical: Boolean,
+        isTeam: Boolean,
+        isRecurring: Boolean,
+    ): Int = when {
+        isCritical -> R.drawable.widget_month_event_critical_single
+        isTeam -> R.drawable.widget_month_event_team_single
+        isRecurring -> R.drawable.widget_month_event_recurring_single
+        else -> R.drawable.widget_month_event_single
     }
 
     protected fun monthTeamRangeBackground(segment: String?): Int {
@@ -1508,7 +1530,11 @@ class PlanFlowMonthlyWidgetProvider :
                     }
                     if (cellIndices.isEmpty()) continue
 
-                    for (slot in 0 until 4) {
+                    val firstAvailableSlot = if (cellIndices.any { index ->
+                        widgetData.getString("${cellPrefix}_${index + 1}_holiday_name", null)
+                            ?.isNotBlank() == true
+                    }) 1 else 0
+                    for (slot in firstAvailableSlot until 4) {
                         if (cellIndices.all { slotMap[it][slot] == null }) {
                             for (i in cellIndices) {
                                 slotMap[i][slot] = event
@@ -1520,6 +1546,10 @@ class PlanFlowMonthlyWidgetProvider :
 
                 for (index in 0 until 42) {
                     val day = cellDays[index]
+                    val holidayRowReserved = widgetData.getString(
+                        "${cellPrefix}_${index + 1}_holiday_name",
+                        null,
+                    )?.isNotBlank() == true
                     val singleEvents = sortedEvents.filter { event ->
                         val startAt = event.startAt ?: return@filter false
                         val firstDay = startAt.toLocalDate()
@@ -1527,7 +1557,7 @@ class PlanFlowMonthlyWidgetProvider :
                         !lastDay.isAfter(firstDay) && firstDay == day
                     }
                     for (event in singleEvents) {
-                        for (slot in 0 until 4) {
+                        for (slot in (if (holidayRowReserved) 1 else 0) until 4) {
                             if (slotMap[index][slot] == null) {
                                 slotMap[index][slot] = event
                                 break
@@ -1616,6 +1646,9 @@ class PlanFlowMonthlyWidgetProvider :
                     if (overflowId != null) {
                         val dayEvents = rawWidgetEventsForDay(rawEvents, day)
                         val visibleEventIds = slotMap[slot - 1]
+                            .let { mapped ->
+                                if (holidayNameFromPrefs != null) mapped.take(3) else mapped.toList()
+                            }
                             .filterNotNull()
                             .map { it.id }
                             .toSet()
@@ -1637,7 +1670,7 @@ class PlanFlowMonthlyWidgetProvider :
                         if (event == null) {
                             if (eventSlot == 1 && holidayNameFromPrefs != null) {
                                 views.setTextViewText(eventId, holidayNameFromPrefs)
-                                views.setInt(eventId, "setBackgroundResource", android.R.color.transparent)
+                                views.setInt(eventId, "setBackgroundResource", R.drawable.widget_month_event_holiday)
                                 views.setViewPadding(eventId, 0, 0, 0, 0)
                                 views.setTextColor(
                                     eventId,
@@ -1652,10 +1685,16 @@ class PlanFlowMonthlyWidgetProvider :
 
                         val segment = rawWidgetMonthSegment(event, day)
                         val showTitle = segment == "single" || segment == "start"
-                        val bgRes = when {
-                            event.isCritical -> monthRangeBackground(segment, true)
-                            event.isTeam && isMonthRangeSegment(segment) -> monthTeamRangeBackground(segment)
-                            else -> monthRangeBackground(segment, false)
+                        val bgRes = if (eventSlot == 1 && holidayNameFromPrefs != null) {
+                            R.drawable.widget_month_event_holiday
+                        } else if (isMonthRangeSegment(segment)) {
+                            when {
+                                event.isCritical -> monthRangeBackground(segment, true)
+                                event.isTeam -> monthTeamRangeBackground(segment)
+                                else -> monthRangeBackground(segment, false, event.isRecurring)
+                            }
+                        } else {
+                            monthSingleBackground(event.isCritical, event.isTeam, event.isRecurring)
                         }
                         views.setInt(eventId, "setBackgroundResource", bgRes)
                         views.setViewPadding(
@@ -1760,6 +1799,18 @@ class PlanFlowMonthlyWidgetProvider :
                 } else {
                     0
                 }
+                // Legacy payloads were written before the holiday row was
+                // reserved. If all four event slots are populated, one of
+                // them now has to move behind the visible three rows.
+                if (holidayNameFromPrefs != null && hasMonthCellPayload) {
+                    val payloadEventCount = (1..4).count { eventSlot ->
+                        widgetData.getString(
+                            "${prefix}_event_${eventSlot}_title",
+                            null,
+                        )?.isNotBlank() == true
+                    }
+                    overflow += (payloadEventCount - 3).coerceAtLeast(0)
+                }
                 val overflowLabel = formatOverflowLabel(overflow)
 
                 views.setTextViewText(dayId, dayText ?: "")
@@ -1825,33 +1876,47 @@ class PlanFlowMonthlyWidgetProvider :
                     val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
                         .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
 
-                    // overflow > 0이면 마지막 슬롯(event_4)은 overflow_count에 위임 → 강제 GONE
-                    if (eventSlot == 4 && overflow > 0) {
+                    val payloadSlot = if (holidayNameFromPrefs != null) eventSlot - 1 else eventSlot
+
+                    // overflow > 0이면 일반 셀의 마지막 슬롯은 overflow_count에
+                    // 위임한다. 공휴일 셀은 event_4가 payload 3번 일정이므로
+                    // 공휴일 행을 제외한 마지막 실제 일정을 계속 표시한다.
+                    if (eventSlot == 4 && overflow > 0 && holidayNameFromPrefs == null) {
                         if (eventId != 0) views.setViewVisibility(eventId, View.GONE)
                         continue
                     }
 
-                    val rawTitle = if (hasMonthCellPayload) {
-                        widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
+                    val rawTitle = if (hasMonthCellPayload && payloadSlot > 0) {
+                        widgetData.getString("${prefix}_event_${payloadSlot}_title", null)?.takeIf { it.isNotBlank() }
                     } else null
-                    val eventCritical = if (hasMonthCellPayload) {
-                        widgetData.getBoolean("${prefix}_event_${eventSlot}_is_critical", false)
+                    val eventCritical = if (hasMonthCellPayload && payloadSlot > 0) {
+                        widgetData.getBoolean("${prefix}_event_${payloadSlot}_is_critical", false)
                     } else false
-                    val eventRecurring = if (hasMonthCellPayload) {
-                        widgetData.getBoolean("${prefix}_event_${eventSlot}_is_recurring", false)
+                    val eventRecurring = if (hasMonthCellPayload && payloadSlot > 0) {
+                        widgetData.getBoolean("${prefix}_event_${payloadSlot}_is_recurring", false)
                     } else false
-                    val eventTeam = if (hasMonthCellPayload) {
-                        widgetData.getBoolean("${prefix}_event_${eventSlot}_is_team", false)
+                    val eventTeam = if (hasMonthCellPayload && payloadSlot > 0) {
+                        widgetData.getBoolean("${prefix}_event_${payloadSlot}_is_team", false)
                     } else false
-                    val segment = widgetData.getString("${prefix}_event_${eventSlot}_segment", null)
-                    val showTitle = widgetData.getBoolean("${prefix}_event_${eventSlot}_show_title", true)
+                    val segment = if (payloadSlot > 0) {
+                        widgetData.getString("${prefix}_event_${payloadSlot}_segment", null)
+                    } else null
+                    val showTitle = if (payloadSlot > 0) {
+                        widgetData.getBoolean("${prefix}_event_${payloadSlot}_show_title", true)
+                    } else false
 
                     if (eventId != 0) {
                         // segment 배경 적용 (single은 배경 없음)
-                        val bgRes = when {
-                            eventCritical -> monthRangeBackground(segment, true)
-                            eventTeam && isMonthRangeSegment(segment) -> monthTeamRangeBackground(segment)
-                            else -> monthRangeBackground(segment, false)
+                        val bgRes = if (eventSlot == 1 && holidayNameFromPrefs != null) {
+                            R.drawable.widget_month_event_holiday
+                        } else if (isMonthRangeSegment(segment)) {
+                            when {
+                                eventCritical -> monthRangeBackground(segment, true)
+                                eventTeam -> monthTeamRangeBackground(segment)
+                                else -> monthRangeBackground(segment, false, eventRecurring)
+                            }
+                        } else {
+                            monthSingleBackground(eventCritical, eventTeam, eventRecurring)
                         }
                         views.setInt(eventId, "setBackgroundResource", bgRes)
                         views.setViewPadding(
@@ -1867,7 +1932,7 @@ class PlanFlowMonthlyWidgetProvider :
                         if (isBarContinuation && rawTitle != null) {
                             views.setTextViewText(eventId, "")
                             views.setViewVisibility(eventId, View.VISIBLE)
-                        } else if (eventSlot == 1 && rawTitle == null && holidayNameFromPrefs != null) {
+                        } else if (eventSlot == 1 && holidayNameFromPrefs != null) {
                             views.setTextViewText(eventId, holidayNameFromPrefs)
                             views.setTextColor(
                                 eventId,
@@ -1877,9 +1942,14 @@ class PlanFlowMonthlyWidgetProvider :
                         } else {
                             // Keep the public-holiday label separate from the
                             // event row in legacy payloads as well.
-                            val eventStrongAlarm = widgetData.getBoolean(
-                                "${prefix}_event_${eventSlot}_use_strong_alarm", false,
-                            )
+                            val eventStrongAlarm = if (payloadSlot > 0) {
+                                widgetData.getBoolean(
+                                    "${prefix}_event_${payloadSlot}_use_strong_alarm",
+                                    false,
+                                )
+                            } else {
+                                false
+                            }
                             bindEventText(
                                 views,
                                 eventId,
@@ -1891,14 +1961,14 @@ class PlanFlowMonthlyWidgetProvider :
                                 isRecurring = eventRecurring,
                                 isTeam = eventTeam,
                             )
-                            if (isMonthRangeSegment(segment) && inMonth) {
-                                views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
-                            } else if (eventCritical && inMonth) {
+                            if (eventCritical && inMonth) {
                                 views.setTextColor(eventId, CRITICAL_TEXT_COLOR)
                             } else if (eventTeam && inMonth) {
                                 views.setTextColor(eventId, TEAM_TEXT_COLOR)
                             } else if (eventRecurring && inMonth) {
                                 views.setTextColor(eventId, RECURRING_TEXT_COLOR)
+                            } else if (isMonthRangeSegment(segment) && inMonth) {
+                                views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
                             }
                         }
                     }

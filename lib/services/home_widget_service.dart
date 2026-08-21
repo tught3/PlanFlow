@@ -376,7 +376,12 @@ class HomeWidgetSchedulePayloadBuilder {
       if (cellIndices.isEmpty) continue;
       // 이 기간 전체에서 비어있는 첫 번째 slot 예약
       var reserved = false;
-      for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
+      final spanContainsHoliday = cellIndices.any(
+        (index) => KoreanHolidays.holidayName(cellDays[index]) != null,
+      );
+      for (var slot = spanContainsHoliday ? 1 : 0;
+          slot < monthlyWidgetEventRows;
+          slot++) {
         if (cellIndices.every((i) => slotMap[i][slot] == null)) {
           for (final i in cellIndices) {
             slotMap[i][slot] = event;
@@ -414,7 +419,11 @@ class HomeWidgetSchedulePayloadBuilder {
         });
       for (final event in singleEvents) {
         var placed = false;
-        for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
+        final firstAvailableSlot =
+            KoreanHolidays.holidayName(day) != null ? 1 : 0;
+        for (var slot = firstAvailableSlot;
+            slot < monthlyWidgetEventRows;
+            slot++) {
           if (slotMap[i][slot] == null) {
             slotMap[i][slot] = event;
             placed = true;

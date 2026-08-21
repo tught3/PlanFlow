@@ -703,6 +703,8 @@ class _MiniCalendarGrid extends StatelessWidget {
                                     day: dayDate,
                                     holidayName: cell.holidayName,
                                     isHoliday: cell.isHoliday,
+                                    leadingEventRowCount:
+                                        cell.leadingEventRowCount,
                                   ),
                                 ),
                               ],
@@ -732,6 +734,7 @@ class _CalendarMiniEventList extends StatelessWidget {
     required this.day,
     this.holidayName,
     this.isHoliday = false,
+    this.leadingEventRowCount = 0,
   });
 
   final List<EventModel> events;
@@ -741,6 +744,7 @@ class _CalendarMiniEventList extends StatelessWidget {
   final DateTime day;
   final String? holidayName;
   final bool isHoliday;
+  final int leadingEventRowCount;
 
   @override
   Widget build(BuildContext context) {
@@ -764,9 +768,11 @@ class _CalendarMiniEventList extends StatelessWidget {
     // (_calendarMiniMonthEventRows)를 그대로 쓰고, 그 예산을 넘는 만큼만
     // hiddenCount로 표시한다.
 
-    // 공휴일 라벨이 차지할 행 수
+    // 공휴일 라벨과 span 정렬용 빈 행이 차지할 행 수
     final holidayRowCount = holidayName != null ? 1 : 0;
-    final maxEventRows = _calendarMiniMonthEventRows - holidayRowCount;
+    final leadingRows = holidayName == null ? leadingEventRowCount : 0;
+    final maxEventRows =
+        _calendarMiniMonthEventRows - holidayRowCount - leadingRows;
 
     final totalItems = events.length + overlayEvents.length;
     final displayEvents = events.length > maxEventRows
@@ -784,6 +790,51 @@ class _CalendarMiniEventList extends StatelessWidget {
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (holidayName != null)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final scale = (constraints.maxWidth / 44).clamp(1.0, 1.4);
+              final fontSize = 6.8 * scale;
+              final holidayForeground = isSelected
+                  ? Colors.white
+                  : isHoliday
+                      ? calendarHolidayColor
+                      : PlanFlowColors.textSecondary;
+              return SizedBox(
+                height: 9,
+                child: Container(
+                  margin: const EdgeInsets.only(top: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? calendarHolidayColor.withValues(alpha: 0.82)
+                        : calendarHolidayColor.withValues(alpha: 0.14),
+                    border: Border.all(
+                      color: isSelected
+                          ? calendarHolidayColor
+                          : calendarHolidayColor.withValues(alpha: 0.42),
+                      width: 0.35,
+                    ),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    holidayName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      height: 1.0,
+                      color: holidayForeground,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        for (var index = 0; index < leadingRows; index += 1)
+          const SizedBox(height: 9),
         for (final event in displayEvents)
           _CalendarMiniEventLabel(
             event: event,
@@ -795,36 +846,6 @@ class _CalendarMiniEventList extends StatelessWidget {
             event: event,
             isSelected: isSelected,
             day: day,
-          ),
-        // 공휴일 라벨은 이벤트 뒤에
-        // 배치해 연속 일정 밴드가 인접한 날짜 셀과 같은 행을 유지한다.
-        if (holidayName != null)
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final scale = (constraints.maxWidth / 44).clamp(1.0, 1.4);
-              final fontSize = 6.8 * scale;
-              return SizedBox(
-                height: 9,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Text(
-                    holidayName!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      height: 1.0,
-                      color: isSelected
-                          ? Colors.white
-                          : isHoliday
-                              ? calendarHolidayColor
-                              : PlanFlowColors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              );
-            },
           ),
         if (hiddenCount > 0)
           SizedBox(
@@ -890,7 +911,9 @@ class _CalendarMiniEventLabel extends StatelessWidget {
             ? calendarCriticalEventBackgroundColor
             : isTeam
                 ? calendarGroupEventBackgroundColor
-                : calendarNormalEventBackgroundColor)
+                : isRecurring
+                    ? calendarRecurringEventBackgroundColor
+                    : calendarMultiDayEventBackgroundColor)
         : event.isCritical
             ? calendarCriticalEventBackgroundColor
             : isTeam
@@ -904,7 +927,11 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final borderColor = isMultiDay
         ? (event.isCritical
             ? calendarCriticalEventTextColor
-            : calendarMultiDayEventBorderColor)
+            : isTeam
+                ? calendarGroupEventColor
+                : isRecurring
+                    ? calendarRecurringEventColor
+                    : calendarMultiDayEventBorderColor)
         : baseColor;
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = 2.0;
@@ -1035,6 +1062,16 @@ InlineSpan _calendarEventTitleSpan(
   if (isCritical && useStrongAlarm) {
     spans.add(TextSpan(
       text: '🔔 ',
+      style: TextStyle(
+        color: markerColor,
+        fontWeight: FontWeight.w900,
+        fontSize: markerFontSize,
+      ),
+    ));
+  }
+  if (isRecurring) {
+    spans.add(TextSpan(
+      text: '↻ ',
       style: TextStyle(
         color: markerColor,
         fontWeight: FontWeight.w900,

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 중간 셀: 상/하만 그려 날짜 칸 사이의 세로선을 제거한다. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item><shape android:shape="rectangle"><solid android:color="#DDEFE6" /></shape></item>
-    <item android:gravity="top"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#52706A" /></shape></item>
-    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#52706A" /></shape></item>
+    <item><shape android:shape="rectangle"><solid android:color="#DCE8C9" /></shape></item>
+    <item android:gravity="top"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#78935B" /></shape></item>
+    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#78935B" /></shape></item>
 </layer-list>

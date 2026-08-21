@@ -3,16 +3,16 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#F3EEFF" />
+            <solid android:color="#E2D2F3" />
             <corners android:radius="0dp" />
         </shape>
     </item>
     <item android:gravity="top">
         <shape android:shape="rectangle">
             <size android:height="1dp" />
-            <solid android:color="#7A5AC8" />
+            <solid android:color="#8051B2" />
             <corners android:radius="0dp" />
         </shape>
     </item>
-    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#7A5AC8" /></shape></item>
+    <item android:gravity="bottom"><shape android:shape="rectangle"><size android:height="1dp" /><solid android:color="#8051B2" /></shape></item>
 </layer-list>

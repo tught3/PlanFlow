@@ -484,7 +484,7 @@ void main() {
   );
 
   testWidgets(
-    'CalendarScreen aligns a Constitution Day range before its holiday label',
+    'CalendarScreen keeps a Constitution Day holiday label above user events',
     (tester) async {
       final repository = _AsyncEventRepository([
         Future.value(<EventModel>[
@@ -532,8 +532,8 @@ void main() {
         tester.getTopLeft(constitutionRangeEnd).dy,
       );
       expect(
-        tester.getTopLeft(constitutionRangeStart).dy,
-        lessThan(tester.getTopLeft(holidayLabel).dy),
+        tester.getTopLeft(holidayLabel).dy,
+        lessThan(tester.getTopLeft(constitutionRangeStart).dy),
       );
     },
   );
