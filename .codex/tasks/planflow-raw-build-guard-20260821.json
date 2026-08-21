@@ -232,7 +232,7 @@
     "why": "The guarded artifact was rebuilt through the supported path, marker-verified, and uploaded to Play Alpha.",
     "device_connection": "Wireless ADB connected.",
     "phone": "SM-S918N at 192.168.0.102:37791 (also visible through an ADB TLS endpoint).",
-    "installed_planflow": "versionCode 140, versionName 1.1.1 (device has not refreshed to Alpha 142 yet)",
+    "installed_planflow": "versionCode 141, versionName 1.1.1 (device updated from 140; Alpha 142 is uploaded but not yet surfaced by Play Store)",
     "runtime_proof": "missing",
     "not_attempted": [
       "Uninstalling the Play-signed app or clearing data to force-install a locally upload-key-signed APK",
@@ -245,5 +245,5 @@
     "review_status": "PASS; no BLOCKER or HIGH findings",
     "completion_gate": "Install Alpha 142 on the connected SM-S918N, record visible map rendering, and retain the separate rewarded-ad load -> show -> reward -> AI conversation proof required by planflow-map-ad-regression-20260821."
   },
-  "last_updated": "2026-08-21T17:49:00+09:00"
+  "last_updated": "2026-08-21T17:55:00+09:00"
 }
