@@ -152,5 +152,22 @@
       "Confirm the same flow after app restart; distinguish no-fill from code/configuration errors using the new diagnostics."
     ],
     "reasonNotComplete": "No new build was installed on a connected device during this task, so the requested actual rewarded-ad display cannot be truthfully claimed."
+  },
+  "runtimeAttempt": {
+    "build": {
+      "command": "guarded flutter build apk --release",
+      "exitCode": 0,
+      "result": "Release APK built successfully as version 1.1.1+142. The guarded build verified automatic dart-define injection from env/local.json, so the map configuration regression path caused by a raw Flutter release build is not used."
+    },
+    "install": {
+      "target": "S918N 192.168.0.102:37791",
+      "command": "adb -s 192.168.0.102:37791 install -r <guarded-release-apk>",
+      "result": "failed_before_install",
+      "reason": "The target switched to adb offline. Follow-up ping and mDNS discovery were unavailable, so no safe reconnect or install action was possible."
+    },
+    "adAcceptance": {
+      "result": "not_run",
+      "reason": "The corrected build could not be installed. There is no updated-device evidence for rewarded load, full-screen show, reward callback, or conversation opening."
+    }
   }
 }
