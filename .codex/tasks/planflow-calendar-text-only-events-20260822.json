@@ -1,0 +1,39 @@
+{
+  "taskId": "planflow-calendar-text-only-events-20260822",
+  "request": "달력과 달력형 위젯의 일정 배경을 제거하고 글자색만 유지하며 반복 일정 표식을 약 2배 크게 굵게 표시",
+  "classification": "Complex",
+  "scope": {
+    "allowed": [
+      "lib/screens/calendar/calendar_widgets.dart",
+      "lib/screens/calendar/calendar_screen.dart",
+      "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+      "android/app/src/main/res/drawable/widget_month_event_outline_*.xml",
+      "focused calendar/widget tests",
+      ".codex/tasks/planflow-calendar-text-only-events-20260822.json"
+    ],
+    "forbidden": [
+      "unrelated dirty files",
+      "event payload/sorting/data contracts",
+      "holiday synchronization, ads, onboarding, maps, login",
+      "deployment scripts and pubspec version"
+    ]
+  },
+  "routing": {
+    "workflow": "Explorer -> Planner -> Complex Implementer -> Test Executor -> Reviewer -> Integrator",
+    "pipelinePreflight": {
+      "result": "blocked_ownership_gate",
+      "note": "Shared checkout has pre-existing dirty files with unclear ownership; preserve them and use isolated scoped edits."
+    }
+  },
+  "roles": [],
+  "commands": [],
+  "changedFiles": [],
+  "failures": [],
+  "review": {},
+  "unresolved": [
+    "Implementation and verification pending"
+  ],
+  "nextStep": "Await scoped implementation, then run focused tests, independent review, and integration.",
+  "finalVerdict": "IN_PROGRESS",
+  "lastUpdated": "2026-08-22T21:30:00+09:00"
+}
