@@ -23,9 +23,113 @@
       "note": "공유 checkout의 기존 dirty 파일 소유가 명확하지 않아 자동 파이프라인이 실행되지 않음; 파일을 건드리지 않고 직접 delivery gate로 진행"
     }
   },
-  "roles": [],
-  "commands": [],
-  "changedFiles": [],
-  "unresolved": [],
-  "nextStep": "Explorer 결과 확인 후 배포 명령 확정"
+  "classification": "Complex / high-risk external deployment",
+  "source": {
+    "releaseCommit": "3a8e7ae031fc0207fadb59b9795bf46d0e98d94c",
+    "rootHeadAtEvidence": "a872ddc3947a40c1ba43e96cd72b943a95490dda",
+    "note": "Root received an unrelated auto-commit containing only this task-state file; no product source was included."
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "deployment_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "result": "Verified Play config, release scripts, map-define guards, signing inputs, root dirty baseline, and safe isolated release-worktree path."
+    },
+    {
+      "role": "Planner",
+      "agent": "deployment_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "result": "Classified as Complex/high-risk; required isolated release commit, map define preflight, AAB marker/hash, Alpha upload, and separate propagation/device proof."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "deployment_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "result": "Deployment preparation only; no product source changes required. Final report pending integration."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "deployment_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "result": "Preliminary report was stale before the successful upload; final upload transcript, build, hash, and marker were independently verified by Reviewer."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "deployment_failure_analyst",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "result": "Diagnosed missing .dart_tool in clean worktree and overlapping Gradle build artifacts; pub get, signing input, single-flight build, and recoverable generated-output isolation resolved the failures."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "deployment_reviewer",
+      "mappedModel": "gpt-5.6-sol",
+      "reasoningEffort": "high",
+      "result": "BLOCKER 0 / HIGH 0. Approved Alpha 145 upload evidence; confirmed manifest, map defines, marker/hash, and Play transcript."
+    },
+    {
+      "role": "Integrator",
+      "agent": "deployment_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "result": "Final reconciliation passed: root HEAD differs from the release commit only by this task-state auto-commit; no product source changes were made in root. Before cleanup, the isolated release worktree at 3a8e7ae0 had an AAB SHA-256 matching app-release.aab.map-marker, and Reviewer reported BLOCKER 0 / HIGH 0. The exact task-owned release worktree E:\\FluxStudio-worktrees\\planflow\\planflow-release-20260822 was subsequently removed; root and all other registered worktrees remain preserved. Play Alpha upload of versionCode 145 is accepted; propagation/device runtime proof remains explicitly pending."
+    }
+  ],
+  "deployment": {
+    "package": "com.fluxstudio.planflow",
+    "track": "alpha",
+    "versionName": "1.1.1",
+    "versionCode": 145,
+    "aabPath": "E:\\FluxStudio-worktrees\\planflow\\planflow-release-20260822\\build\\app\\outputs\\bundle\\release\\app-release.aab",
+    "aabSha256": "b3c5f776cd812dd4a07eb5ba83bf72646898a042ca9da11e7361f6ae20dd278d",
+    "markerSha256Matches": true,
+    "uploadTranscript": [
+      "App Bundle upload complete",
+      "Updating [completed] release (com.fluxstudio.planflow:[145]) in track 'alpha'",
+      "BUILD SUCCESSFUL in 1m 55s"
+    ],
+    "previousAttempt": "Version 144 was rejected because its version code was already used; the release worktree was bumped to 145 and uploaded successfully."
+  },
+  "commands": [
+    {
+      "command": "flutter pub get --offline (isolated release worktree)",
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/deploy-play-internal.ps1 -ProjectKey planflow -ConfigPath ./.deploy-play-config.json -SkipVersionBump",
+      "exitCode": 1,
+      "result": "Expected Play rejection: version 144 already used."
+    },
+    {
+      "command": "scripts/deploy-play-internal.ps1 -ProjectKey planflow -ConfigPath ./.deploy-play-config.json",
+      "exitCode": 0,
+      "result": "Analyze, focused tests, map preflight, release AAB build, marker check, and Alpha upload passed."
+    },
+    {
+      "command": "AAB SHA-256 compared with .map-marker",
+      "exitCode": 0
+    }
+  ],
+  "changedFiles": [
+    "release worktree only: pubspec.yaml versionCode 144 -> 145",
+    "release worktree only: generated Flutter registrants and deployment marker/config",
+    "root: task-state evidence only; unrelated dirty files preserved"
+  ],
+  "unresolved": [
+    "Play Alpha propagation, installation, and connected-device runtime verification are pending; upload success is not device proof.",
+    "Telegram notification was skipped because TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are absent; this does not affect Play upload."
+  ],
+  "cleanup": {
+    "releaseWorktree": "E:\\FluxStudio-worktrees\\planflow\\planflow-release-20260822",
+    "status": "removed",
+    "note": "Only the validated task-owned detached release worktree was removed after upload evidence was recorded; root dirty files and other worktrees were preserved."
+  },
+  "nextStep": "Wait for Play Alpha propagation, then install versionCode 145 on the connected device and perform runtime verification.",
+  "finalVerdict": "UPLOADED_PLAY_ALPHA_PROPAGATION_PENDING",
+  "lastUpdated": "2026-08-22T21:10:00+09:00"
 }
