@@ -1,0 +1,76 @@
+{
+  "task_id": "planflow-pending-dirty-cleanup-20260822",
+  "objective": "Finalize all remaining PlanFlow dirty files after explicit user request, without deployment or push.",
+  "status": "COMPLETE",
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "result": "Confirmed tracked dirty group is coherent; legacy screenshots/doc are unreferenced retired assets; six new images are valid PNG/JPEG assets."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "result": "Planned path-scoped cleanup: validate ad timeout and task state, commit retired files, preserve new assets, and do not deploy/push."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "result": "No source edit required; existing documentation already describes legacy screenshot retirement."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "result": "Ad consent/service tests, focused analyze, JSON parse, diff check, deleted-file checks, and asset dimensions/hashes all passed."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "result": "PASS; no BLOCKER/HIGH. Retired deletions authorized by explicit user request; new assets valid."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "result": "Final path-scoped commit is allowed; deployment and push remain out of scope."
+    }
+  ],
+  "changed_paths": [
+    ".codex/tasks/planflow-onboarding-performance-calendar-refinement-20260815.json",
+    "lib/services/ad_consent_service.dart",
+    "planflow_v2_group_home_structure.md",
+    "screenshots/01_home.png",
+    "screenshots/02_voice_input.png",
+    "screenshots/03_event_edit.png",
+    "screenshots/04_calendar.png",
+    "screenshots/05_settings.png",
+    "planflow logo(600) dark.png",
+    "planflow logo(600).png",
+    "planflow-1.jpg",
+    "planflow-2.jpg",
+    "planflow-3.jpg",
+    "planflow-garo.jpg"
+  ],
+  "verification": {
+    "ad_tests": 0,
+    "analyze": 0,
+    "json_parse": 0,
+    "diff_check": 0,
+    "assets": 0,
+    "deployment": "not_run",
+    "push": "not_run"
+  },
+  "review": "PASS",
+  "unrelated_dirty_preserved": true
+}

@@ -1,19 +1,27 @@
 {
   "task_id": "planflow-onboarding-performance-calendar-refinement-20260815",
-  "status": "reviewing",
+  "status": "complete",
   "objective": "Stabilize login/onboarding performance and order; refine continuous, critical-strong-alarm, recurring, and softened calendar/widget rendering.",
   "scope": [
     "lib/main.dart",
     "lib/app.dart",
     "lib/core/startup_route_gate.dart",
+    "lib/core/env.dart",
+    "lib/core/supabase_auth_options.dart",
+    "lib/screens/auth/login_screen.dart",
     "lib/services/onboarding_startup_gate.dart",
     "lib/services/app_permission_service.dart",
+    "lib/services/alarm_service.dart",
+    "lib/services/calendar_auto_sync_service.dart",
+    "lib/services/daily_backup_scheduler_service.dart",
+    "lib/services/departure_alarm_service.dart",
     "lib/screens/shell_screen.dart",
     "lib/screens/onboarding/permission_onboarding_screen.dart",
     "lib/screens/calendar/calendar_screen.dart",
     "lib/screens/calendar/calendar_widgets.dart",
     "lib/services/home_widget_service.dart",
     "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt",
     "android/app/src/main/res/drawable/widget_month_event_critical_start.xml",
     "android/app/src/main/res/drawable/widget_month_event_critical_middle.xml",
     "android/app/src/main/res/drawable/widget_month_event_critical_end.xml",
@@ -42,7 +50,7 @@
       "mapped_model": "gpt-5.6-luna",
       "reasoning_effort": "medium",
       "assignment": "Implement onboarding/startup gating and calendar/widget semantic refinements.",
-      "result": "Implemented onboarding changes and refined calendar/widget rendering."
+      "result": "Implemented onboarding changes and calendar/widget rendering, then reworked startup lifecycle work into keyed stable-idle jobs, restored a single-flight resume alarm recovery path, shared AndroidAlarmManager initialization, and fixed Android SharedPreferences pre-registration plus login error sanitization."
     },
     {
       "role": "Failure Analyst",
@@ -66,7 +74,7 @@
       "mapped_model": "gpt-5.4-mini",
       "reasoning_effort": "low",
       "assignment": "Run tests, analysis, build, APK update, and device launch.",
-      "result": "All targeted suites, analyze, diff check, debug build, adb install -r, and launch passed."
+      "result": "Latest verification passed: scoped flutter analyze exit 0; focused auth/login/onboarding/startup/alarm tests exit 0; git diff --check exit 0; debug APK contains arm64-v8a, armeabi-v7a, and x86_64 libdartjni.so; adb install -r preserved data. Fresh cold-launch plus background/resume log capture had Supabase init success and no SharedPreferencesApi.getAll, channel-error, MissingPluginException, or duplicate AlarmService isolate warning."
     },
     {
       "role": "Reviewer",
@@ -74,7 +82,7 @@
       "mapped_model": "gpt-5.6-luna",
       "reasoning_effort": "high",
       "assignment": "Independent final current-diff review.",
-      "result": "pending"
+      "result": "Independent current-diff PASS after rework. No BLOCKER/HIGH: keyed lifecycle jobs are gated by onboarding plus stable idle; resume/deferred startup share AlarmRecovery single-flight; daily scheduler retries after failure; raw platform exception is sanitized; current APK contains all required JNI ABIs. Non-blocking gap: no quantitative Perfetto/frame measurement for the prior 3-second tap delay."
     },
     {
       "role": "Integrator",
@@ -82,7 +90,7 @@
       "mapped_model": "gpt-5.6-terra",
       "reasoning_effort": "medium",
       "assignment": "Verify final evidence and completion gate.",
-      "result": "pending"
+      "result": "COMPLETE. Inspected the latest current diff and task evidence. Fresh login/onboarding focused tests, focused flutter analyze, and git diff --check all exited 0. The latest independent reviewer PASS supersedes the earlier rework review: current Shell defers work for one second plus a stable idle window, and releases the global gate in finally on onboarding exceptions. No current BLOCKER/HIGH remains. Device proof is kept separate from source/test proof."
     }
   ],
   "verification": [
@@ -92,13 +100,19 @@
     {"command": "flutter analyze --no-pub lib/app.dart lib/main.dart lib/core/startup_route_gate.dart lib/services/onboarding_startup_gate.dart lib/screens/shell_screen.dart lib/screens/onboarding/permission_onboarding_screen.dart lib/screens/calendar/calendar_screen.dart lib/screens/calendar/calendar_widgets.dart lib/services/home_widget_service.dart", "exit_code": 0},
     {"command": "flutter build apk --debug --no-pub", "exit_code": 0},
     {"command": "adb -s 192.168.0.103:44159 install -r build/app/outputs/flutter-apk/app-debug.apk", "exit_code": 0},
-    {"command": "adb -s 192.168.0.103:44159 shell monkey -p com.fluxstudio.planflow 1", "exit_code": 0}
+    {"command": "adb -s 192.168.0.103:44159 shell monkey -p com.fluxstudio.planflow 1", "exit_code": 0},
+    {"command": "flutter analyze --no-pub lib/app.dart", "exit_code": 0},
+    {"command": "flutter test --no-pub test/screens/shell_screen_onboarding_order_test.dart test/services/onboarding_startup_gate_test.dart", "exit_code": 0},
+    {"command": "adb -s 192.168.0.103:44159 shell am start -n com.fluxstudio.planflow/com.fluxstudio.planflow.MainActivity", "exit_code": 0},
+    {"command": "adb -s 192.168.0.103:44159 shell input tap 540 2150", "exit_code": 0}
+    ,{"command": "flutter test --no-pub test/screens/login_screen_test.dart test/screens/shell_screen_onboarding_order_test.dart test/services/onboarding_startup_gate_test.dart", "exit_code": 0}
+    ,{"command": "flutter analyze --no-pub lib/core/env.dart lib/core/supabase_auth_options.dart lib/screens/auth/login_screen.dart lib/screens/shell_screen.dart lib/services/interaction_idle_gate.dart", "exit_code": 0}
   ],
   "device_proof": {
     "device": "192.168.0.103:44159",
     "install": "Success; -r preserves app data",
-    "launch": "Events injected: 1",
-    "gap": "Fresh-user full visual flow and subjective frame pacing require manual device confirmation without clearing existing user data."
+    "launch": "Intent delivered to currently running instance on one pass; after reinstall the activity window was visible on relaunch.",
+    "gap": "Short logcat checks after the reinstall did not show immediate deferred-session CalDAV spam. A longer subjective tap-latency pass is still useful for absolute confirmation."
   },
   "unrelated_dirty_work_preserved": true
 }

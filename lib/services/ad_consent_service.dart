@@ -27,7 +27,7 @@ class AdConsentService {
   Future<void>? _inFlight;
   int _attemptGeneration = 0;
 
-  static const Duration _initializationTimeout = Duration(seconds: 5);
+  static const Duration _initializationTimeout = Duration(seconds: 4);
 
   bool get isAvailable => _available;
   ConsentReadiness get readiness => _readiness;
