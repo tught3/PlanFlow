@@ -1,0 +1,31 @@
+{
+  "taskId": "planflow-play-alpha-deploy-20260822",
+  "request": "사용자가 현재 PlanFlow 색상 적용 상태를 Play Alpha에 배포하라고 명시적으로 요청함.",
+  "scope": {
+    "inScope": [
+      "현재 HEAD 기준 release AAB 빌드",
+      "지도용 GOOGLE_MAPS_API_KEY, TMAP_API_KEY, NAVER_MAP_CLIENT_ID dart-define 보장",
+      "Play Alpha 트랙 업로드",
+      "업로드 결과와 버전 증거 기록"
+    ],
+    "forbidden": [
+      "무관한 dirty 파일 수정·삭제·정리",
+      "일반 Flutter 명령으로 지도 dart-define을 생략한 배포",
+      "광고·일정 데이터·Firebase 설정 변경",
+      "강제 reset, clean, stash, force push"
+    ]
+  },
+  "routing": {
+    "workflow": "Explorer -> Planner -> Complex Implementer (deployment preparation only) -> Test Executor -> Reviewer -> Integrator",
+    "pipelinePreflight": {
+      "command": "python E:/FluxStudio/.fluxos/pipeline/task_queue.py --input \"Play Alpha deploy current PlanFlow HEAD\" --project \"PlanFlow\" --source \"planflow\"",
+      "result": "blocked_ownership_gate",
+      "note": "공유 checkout의 기존 dirty 파일 소유가 명확하지 않아 자동 파이프라인이 실행되지 않음; 파일을 건드리지 않고 직접 delivery gate로 진행"
+    }
+  },
+  "roles": [],
+  "commands": [],
+  "changedFiles": [],
+  "unresolved": [],
+  "nextStep": "Explorer 결과 확인 후 배포 명령 확정"
+}
