@@ -1,0 +1,88 @@
+{
+  "taskId": "planflow-play-alpha-deploy-147-20260822",
+  "request": "PlanFlow version 1.1.1+147 Play Alpha 배포 및 origin/main push",
+  "classification": "Complex / external deployment",
+  "scope": {
+    "project": "PlanFlow",
+    "package": "com.fluxstudio.planflow",
+    "track": "alpha",
+    "preserved": [
+      "광고 정책 및 Remote Config",
+      "지도 키와 일정 데이터",
+      "기존 기능 소스 변경"
+    ]
+  },
+  "routing": {
+    "workflow": "Explorer -> Planner -> Complex Implementer -> Test Executor -> Reviewer -> Integrator",
+    "pipelinePreflight": "blocked_ownership_gate; direct delivery continued with clean root and explicit user authorization"
+  },
+  "roles": {
+    "explorer": {
+      "agent": "deploy_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "result": "Confirmed alpha config, release script, map-define preflight, signing inputs, and clean root baseline."
+    },
+    "planner": {
+      "agent": "deploy_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "result": "Classified deployment as Complex and required version bump, AAB marker/hash, alpha upload, push, and separate propagation proof."
+    },
+    "complexImplementer": {
+      "agent": "root delivery execution",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "result": "Used scripts/deploy-play-internal.ps1; no product source changes; version bumped to 147, AAB built, alpha uploaded, release commit created, push completed."
+    },
+    "testExecutor": {
+      "agent": "deploy_test_executor_147",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "result": "PASS: HEAD=origin/main, clean tree, AAB and marker exist, SHA-256 matches, git diff --check exit 0; Play propagation remains separate."
+    },
+    "reviewer": {
+      "agent": "deploy_reviewer_147",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "result": "PASS: BLOCKER 0 / HIGH 0; final diff is pubspec version bump only, alpha transcript and map marker/hash verified, map define preflight path confirmed."
+    },
+    "integrator": {
+      "agent": "deploy_integrator_147",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "result": "PASS: upload exit 0 and alpha [147] transcript, AAB/marker hash match, reviewer/test PASS, HEAD=origin/main, and release diff-check 0. Propagation/device install remains pending and is not conflated with upload."
+    }
+  },
+  "deployment": {
+    "versionName": "1.1.1",
+    "versionCode": 147,
+    "aabPath": "build/app/outputs/bundle/release/app-release.aab",
+    "aabSha256": "e633f3a59645f8a14e3fac90e91a74c9287a55c3e70b73ae608a9ffd9380b2fa",
+    "markerSha256Matches": true,
+    "uploadTranscript": [
+      "App Bundle upload complete",
+      "Updating [completed] release (com.fluxstudio.planflow:[147]) in track 'alpha'",
+      "BUILD SUCCESSFUL in 1m 40s"
+    ],
+    "uploadExitCode": 0
+  },
+  "git": {
+    "commit": "05908d9086cf579582691fe81bc32f3d33b9bd55",
+    "commitMessage": "chore(release): bump PlanFlow to 1.1.1+147",
+    "push": "origin/main",
+    "pushExitCode": 0,
+    "headEqualsOriginMain": true,
+    "workingTreeClean": true,
+    "changedFileForReleaseCommit": "pubspec.yaml"
+  },
+  "verification": {
+    "mapDefinePreflight": "passed; 3 required keys present without logging values",
+    "focusedTests": "passed in deploy script",
+    "analyze": "passed in deploy script",
+    "diffCheck": "exit 0",
+    "deviceRuntime": "not validated; Play propagation and installation remain separate"
+  },
+  "finalVerdict": "COMPLETE_UPLOAD_PUSH_PROPAGATION_PENDING",
+  "lastUpdated": "2026-08-22T17:55:00+09:00"
+}
