@@ -22,7 +22,7 @@
       "agent": "flux_simple_implementer",
       "mapped_model": "gpt-5.4-mini",
       "reasoning_effort": "medium",
-      "result": "No source edit required; existing documentation already describes legacy screenshot retirement."
+      "result": "Updated the Play Store listing section to mark store_final assets as external upload work and remove false in-checkout readiness claims."
     },
     {
       "role": "Test Executor",
@@ -49,6 +49,7 @@
   "changed_paths": [
     ".codex/tasks/planflow-onboarding-performance-calendar-refinement-20260815.json",
     "lib/services/ad_consent_service.dart",
+    "docs/play-store-listing.md",
     "planflow_v2_group_home_structure.md",
     "screenshots/01_home.png",
     "screenshots/02_voice_input.png",

@@ -98,15 +98,15 @@
 
 ## 스크린샷 목록
 
-> 신규 완성본 사용. 실기기(S23) `adb screencap` 원본 기반, 1,3,5,8번은 2026-07-12 브랜드 메시지 갱신 반영.
+> 신규 완성본은 실기기(S23) `adb screencap` 원본 기반으로 관리한다. 아래 `store_final` 경로는 Play Store 업로드용 외부 작업물이며 이 checkout에는 포함하지 않는다.
 
 | 파일 | 용도 | 해상도 | 상태 |
 |------|------|--------|------|
-| `screenshots/store_final/phone_1080x1920/PlanFlow_screenshot_1~8.png` | 폰 스크린샷 8장 | 1080×1920 | ✅ |
-| `screenshots/store_final/tablet_1200x1920/PlanFlow_tablet_1~8.png` | 태블릿 스크린샷 8장 | 1200×1920 | ✅ |
-| `../MarketingFlow/projects/planflow/campaign/store-assets/feature-graphic-{a,b,c}.png` | 피처 그래픽 3안(A 슬로건/B 말로수정/C 출발알림·추천) | 1024×500 | ✅ (C안 업로드 권장) |
+| `screenshots/store_final/phone_1080x1920/PlanFlow_screenshot_1~8.png` | 폰 스크린샷 8장 | 1080×1920 | 외부 업로드 작업물 |
+| `screenshots/store_final/tablet_1200x1920/PlanFlow_tablet_1~8.png` | 태블릿 스크린샷 8장 | 1200×1920 | 외부 업로드 작업물 |
+| `../MarketingFlow/projects/planflow/campaign/store-assets/feature-graphic-{a,b,c}.png` | 피처 그래픽 3안(A 슬로건/B 말로수정/C 출발알림·추천) | 1024×500 | 외부 업로드 작업물 |
 
-> 구 `screenshots/01_home.png` 등 개별 파일과 구 `feature_graphic_1024x500.png`는 store_final 세트로 대체됨(참고용으로만 보존).
+> 구 `screenshots/01_home.png` 등 개별 파일은 저장소에서 retired 처리했다. 업로드 원본은 외부 작업물에서 관리한다.
 
 ---
 
