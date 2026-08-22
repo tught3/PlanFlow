@@ -805,18 +805,6 @@ class _CalendarMiniEventList extends StatelessWidget {
                 child: Container(
                   margin: const EdgeInsets.only(top: 1),
                   padding: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? calendarHolidayColor.withValues(alpha: 0.82)
-                        : calendarHolidayColor.withValues(alpha: 0.14),
-                    border: Border.all(
-                      color: isSelected
-                          ? calendarHolidayColor
-                          : calendarHolidayColor.withValues(alpha: 0.42),
-                      width: 0.35,
-                    ),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
                   alignment: Alignment.centerLeft,
                   child: Text(
                     holidayName!,
@@ -906,23 +894,6 @@ class _CalendarMiniEventLabel extends StatelessWidget {
             : isRecurring
                 ? calendarRecurringEventColor
                 : calendarNormalEventTextColor;
-    final bg = isMultiDay
-        ? (event.isCritical
-            ? calendarCriticalEventBackgroundColor
-            : isTeam
-                ? calendarGroupEventBackgroundColor
-                : isRecurring
-                    ? calendarRecurringEventBackgroundColor
-                    : calendarMultiDayEventBackgroundColor)
-        : event.isCritical
-            ? calendarCriticalEventBackgroundColor
-            : isTeam
-                ? calendarGroupEventBackgroundColor
-                : isRecurring
-                    ? calendarRecurringEventBackgroundColor
-                    : isSelected
-                        ? Colors.white.withValues(alpha: 0.18)
-                        : calendarNormalEventBackgroundColor;
     final fg = baseColor;
     final borderColor = isMultiDay
         ? (event.isCritical
@@ -945,7 +916,6 @@ class _CalendarMiniEventLabel extends StatelessWidget {
           margin: const EdgeInsets.only(top: 1),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: bg,
             border: isMultiDay
                 ? Border(
                     top: BorderSide(
@@ -963,10 +933,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             width: 0.8)
                         : BorderSide.none,
                   )
-                : Border.all(
-                    color: borderColor.withValues(alpha: 0.35),
-                    width: 0.35,
-                  ),
+                : Border(),
             borderRadius: BorderRadius.horizontal(
               left: Radius.circular(segment.$1 ? 3 : 0),
               right: Radius.circular(segment.$2 ? 3 : 0),
@@ -1001,7 +968,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             semanticColor: fg,
                             leadingText:
                                 event.isAllDay && !isMultiDay ? '종일 ' : null,
-                            markerFontSize: 5.8,
+                            markerFontSize: 7.8,
                           ),
                           maxLines: 1,
                           softWrap: false,
@@ -1098,7 +1065,6 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final segment = _multiDaySegment(event, day);
     final isMultiDay = event.isMultiDay;
-    final bg = calendarGroupEventBackgroundColor;
     final fg = isSelected ? Colors.white : calendarGroupEventColor;
     final showTitle = !isMultiDay || segment.$1;
     const hPadding = 2.0;
@@ -1109,7 +1075,6 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
           margin: const EdgeInsets.only(top: 1),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: bg,
             borderRadius: BorderRadius.horizontal(
               left: Radius.circular(segment.$1 ? 3 : 0),
               right: Radius.circular(segment.$2 ? 3 : 0),
@@ -1137,7 +1102,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                           )
                         : BorderSide.none,
                   )
-                : Border.all(color: calendarGroupEventColor, width: 0.5),
+                : Border(),
           ),
           alignment: Alignment.centerLeft,
           child: Align(
@@ -1252,7 +1217,7 @@ class _EventAgendaCard extends StatelessWidget {
                               useStrongAlarm: event.useStrongAlarm,
                               isRecurring: isRecurring,
                               semanticColor: accentColor,
-                              markerFontSize: 12,
+                              markerFontSize: 14,
                             ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,

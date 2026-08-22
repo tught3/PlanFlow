@@ -17,6 +17,8 @@ void main() {
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
     expect(calendarSource, contains('_calendarEventTitleSpan'));
     expect(calendarSource, contains('FontWeight.w900'));
+    expect(calendarSource, contains('markerFontSize: 7.8'));
+    expect(calendarSource, contains('markerFontSize: 14'));
     expect(calendarSource, contains('semanticColor'));
     expect(calendarSource, contains('left: segment.\$1'));
     expect(calendarSource, contains('right: segment.\$2'));
@@ -30,6 +32,32 @@ void main() {
     expect(widgetSource, contains('displayWidgetTitleSpanned'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
     expect(widgetSource, contains('ForegroundColorSpan'));
+    expect(widgetSource, contains('AbsoluteSizeSpan(19, true)'));
+
+    for (final drawableName in <String>[
+      'widget_month_event_single.xml',
+      'widget_month_event_start.xml',
+      'widget_month_event_middle.xml',
+      'widget_month_event_end.xml',
+      'widget_month_event_critical_single.xml',
+      'widget_month_event_critical_start.xml',
+      'widget_month_event_critical_middle.xml',
+      'widget_month_event_critical_end.xml',
+      'widget_month_event_team_single.xml',
+      'widget_month_event_team_start.xml',
+      'widget_month_event_team_middle.xml',
+      'widget_month_event_team_end.xml',
+      'widget_month_event_recurring_single.xml',
+      'widget_month_event_recurring_start.xml',
+      'widget_month_event_recurring_middle.xml',
+      'widget_month_event_recurring_end.xml',
+      'widget_month_event_holiday.xml',
+    ]) {
+      final drawableSource = File(
+        'android/app/src/main/res/drawable/$drawableName',
+      ).readAsStringSync();
+      expect(drawableSource, contains('transparent'));
+    }
   });
 
   test('HomeWidgetService updates next-event widget payload', () async {

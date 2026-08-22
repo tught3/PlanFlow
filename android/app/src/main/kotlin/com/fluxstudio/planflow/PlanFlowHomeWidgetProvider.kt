@@ -110,7 +110,7 @@ abstract class BasePlanFlowWidgetProvider(
             builder.append(marker).append(' ')
             builder.setSpan(StyleSpan(Typeface.BOLD), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             builder.setSpan(ForegroundColorSpan(darkenColor(markerColor)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            builder.setSpan(AbsoluteSizeSpan(17, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            builder.setSpan(AbsoluteSizeSpan(19, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔")
         if (isRecurring) appendMarker("↻")
