@@ -969,6 +969,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             leadingText:
                                 event.isAllDay && !isMultiDay ? '종일 ' : null,
                             markerFontSize: 7.8,
+                            strongAlarmMarkerFontSize: 6.8,
                           ),
                           maxLines: 1,
                           softWrap: false,
@@ -1014,6 +1015,7 @@ InlineSpan _calendarEventTitleSpan(
   String? leadingText,
   Color? semanticColor,
   double? markerFontSize,
+  double? strongAlarmMarkerFontSize,
 }) {
   final titleColor = semanticColor ??
       (isCritical
@@ -1028,17 +1030,17 @@ InlineSpan _calendarEventTitleSpan(
   }
   if (isCritical && useStrongAlarm) {
     spans.add(TextSpan(
-      text: '🔔 ',
+      text: '🔔\u200A',
       style: TextStyle(
         color: markerColor,
         fontWeight: FontWeight.w900,
-        fontSize: markerFontSize,
+        fontSize: strongAlarmMarkerFontSize ?? markerFontSize,
       ),
     ));
   }
   if (isRecurring) {
     spans.add(TextSpan(
-      text: '↻ ',
+      text: '↻\u200A',
       style: TextStyle(
         color: markerColor,
         fontWeight: FontWeight.w900,
@@ -1203,6 +1205,7 @@ class _EventAgendaCard extends StatelessWidget {
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: PlanFlowColors.primaryMid,
                           fontSize: 10,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     if (timeLabel != null) const SizedBox(height: 4),
@@ -1218,13 +1221,12 @@ class _EventAgendaCard extends StatelessWidget {
                               isRecurring: isRecurring,
                               semanticColor: accentColor,
                               markerFontSize: 14,
+                              strongAlarmMarkerFontSize: 13,
                             ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,
                               fontSize: 13,
-                              fontWeight: event.isCritical
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
+                              fontWeight: FontWeight.w700,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1397,6 +1399,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                             style: theme.textTheme.labelLarge?.copyWith(
                               color: calendarGroupEventColor,
                               fontSize: 10,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                       ],
@@ -1408,6 +1411,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: calendarGroupEventColor,
                           fontSize: 10,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
@@ -1417,7 +1421,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: PlanFlowColors.primary,
                         fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     if (event.location != null) ...[

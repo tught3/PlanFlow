@@ -19,6 +19,11 @@ void main() {
     expect(calendarSource, contains('FontWeight.w900'));
     expect(calendarSource, contains('markerFontSize: 7.8'));
     expect(calendarSource, contains('markerFontSize: 14'));
+    expect(calendarSource, contains('strongAlarmMarkerFontSize: 6.8'));
+    expect(calendarSource, contains('strongAlarmMarkerFontSize: 13'));
+    expect(calendarSource, contains("text: '🔔\\u200A'"));
+    expect(calendarSource, contains("text: '↻\\u200A'"));
+    expect(calendarSource, contains('fontWeight: FontWeight.w700'));
     expect(calendarSource, contains('semanticColor'));
     expect(calendarSource, contains('left: segment.\$1'));
     expect(calendarSource, contains('right: segment.\$2'));
@@ -32,7 +37,34 @@ void main() {
     expect(widgetSource, contains('displayWidgetTitleSpanned'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
     expect(widgetSource, contains('ForegroundColorSpan'));
-    expect(widgetSource, contains('AbsoluteSizeSpan(19, true)'));
+    expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
+    expect(widgetSource, contains('appendMarker("🔔", 18)'));
+    expect(widgetSource, contains('appendMarker("↻", 19)'));
+    expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
+
+    final widgetStylesSource =
+        File('android/app/src/main/res/values/styles.xml').readAsStringSync();
+    final listStyleStart = widgetStylesSource.indexOf(
+      '<style name="PlanFlowWidgetListText">',
+    );
+    final listStyleEnd = widgetStylesSource.indexOf(
+      '</style>',
+      listStyleStart,
+    );
+    expect(listStyleStart, isNonNegative);
+    expect(listStyleEnd, greaterThan(listStyleStart));
+    final listStyle = widgetStylesSource.substring(listStyleStart, listStyleEnd);
+    expect(listStyle, contains('<item name="android:textStyle">bold</item>'));
+
+    final homeLayoutSource =
+        File('android/app/src/main/res/layout/planflow_home_widget.xml')
+            .readAsStringSync();
+    final timeStart = homeLayoutSource.indexOf('android:id="@+id/widget_time"');
+    final timeEnd = homeLayoutSource.indexOf('/>', timeStart);
+    expect(timeStart, isNonNegative);
+    expect(timeEnd, greaterThan(timeStart));
+    final timeView = homeLayoutSource.substring(timeStart, timeEnd);
+    expect(timeView, contains('android:textStyle="bold"'));
 
     for (final drawableName in <String>[
       'widget_month_event_single.xml',

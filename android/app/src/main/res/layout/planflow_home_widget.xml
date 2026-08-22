@@ -76,6 +76,7 @@
             android:id="@+id/widget_time"
             style="@style/PlanFlowWidgetMetaText"
             android:layout_marginTop="2dp"
+            android:textStyle="bold"
             tools:text="5/20 09:00" />
 
         <TextView

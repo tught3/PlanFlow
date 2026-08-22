@@ -105,16 +105,22 @@ abstract class BasePlanFlowWidgetProvider(
             else -> DEFAULT_TEXT_COLOR
         }
         val builder = SpannableStringBuilder()
-        fun appendMarker(marker: String) {
+        fun appendMarker(marker: String, sizeSp: Int) {
             val start = builder.length
-            builder.append(marker).append(' ')
+            builder.append(marker).append('\u200A')
             builder.setSpan(StyleSpan(Typeface.BOLD), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             builder.setSpan(ForegroundColorSpan(darkenColor(markerColor)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            builder.setSpan(AbsoluteSizeSpan(19, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            builder.setSpan(AbsoluteSizeSpan(sizeSp, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (isCritical && useStrongAlarm) appendMarker("🔔")
-        if (isRecurring) appendMarker("↻")
+        if (isCritical && useStrongAlarm) appendMarker("🔔", 18)
+        if (isRecurring) appendMarker("↻", 19)
         builder.append(value)
+        builder.setSpan(
+            StyleSpan(Typeface.BOLD),
+            0,
+            builder.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
         return builder
     }
 
@@ -475,7 +481,14 @@ abstract class BasePlanFlowWidgetProvider(
                 views.setViewVisibility(id, View.GONE)
                 return
             }
-            views.setTextViewText(id, emptyText)
+            val emptyContent = SpannableStringBuilder(emptyText)
+            emptyContent.setSpan(
+                StyleSpan(Typeface.BOLD),
+                0,
+                emptyContent.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            views.setTextViewText(id, emptyContent)
             views.setTextColor(id, MUTED_TEXT_COLOR)
             views.setViewVisibility(id, View.VISIBLE)
             return
@@ -486,9 +499,23 @@ abstract class BasePlanFlowWidgetProvider(
             text, isCritical, useStrongAlarm, isRecurring, isTeam,
         ) ?: text
         val content = if (formattedTime.isBlank()) {
-            displayTitle
+            SpannableStringBuilder(displayTitle).also { builder ->
+                builder.setSpan(
+                    StyleSpan(Typeface.BOLD),
+                    0,
+                    builder.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
         } else {
-            SpannableStringBuilder(formattedTime).append("  ").append(displayTitle)
+            SpannableStringBuilder(formattedTime).append(' ').append(displayTitle).also { builder ->
+                builder.setSpan(
+                    StyleSpan(Typeface.BOLD),
+                    0,
+                    builder.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
         }
         views.setTextViewText(id, content)
         views.setTextColor(
