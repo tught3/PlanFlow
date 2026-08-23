@@ -1,0 +1,46 @@
+{
+  "task_id": "planflow-alpha-deploy-149-20260823",
+  "objective": "Push the calendar text readability change and publish the verified release AAB to the PlanFlow Play Alpha track.",
+  "status": "COMPLETE_UPLOAD_PENDING_DEVICE_VERIFICATION",
+  "requirements": [
+    "Push the readability commit and version 1.1.1+149 to origin/main.",
+    "Build release AAB through the map-define-guarded path.",
+    "Upload the matching AAB to com.fluxstudio.planflow Alpha and commit the Play edit.",
+    "Separate Play acceptance from propagation and device-install verification."
+  ],
+  "non_requirements": [
+    "No calendar data, ad, map, onboarding, or color logic changes.",
+    "No claim of device runtime or Play propagation success without device evidence."
+  ],
+  "routing": [
+    {"role": "Explorer", "agent": "flux_explorer", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "medium"},
+    {"role": "Planner", "agent": "flux_planner", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "high"},
+    {"role": "Complex Implementer", "agent": "flux_complex_implementer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+    {"role": "Test Executor", "agent": "flux_test_executor", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "low"},
+    {"role": "Reviewer", "agent": "flux_reviewer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "high"},
+    {"role": "Integrator", "agent": "flux_integrator", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+  ],
+  "stages": [
+    {"role": "Explorer", "status": "COMPLETED", "result": "Confirmed main was ahead by readability commit, explicit deploy config path, map define guard, Alpha track, and required AAB marker."},
+    {"role": "Planner", "status": "COMPLETED", "result": "Scoped deployment as complex external delivery; required version 149, guarded build, matching hash, Alpha commit, and separate propagation status."},
+    {"role": "Complex Implementer", "status": "COMPLETED", "result": "Executed push/build/upload flow without source changes. Version 1.1.1+149; map preflight passed; AAB and marker matched; Play Alpha upload and commitEdit succeeded."},
+    {"role": "Test Executor", "status": "COMPLETED", "evidence": [
+      "flutter analyze lib/screens/calendar/calendar_widgets.dart lib/services/home_widget_service.dart: exit 0",
+      "flutter test test/services/home_widget_service_test.dart test/screens/calendar_screen_test.dart --no-pub: exit 0, All tests passed",
+      "git status --short --branch: main synchronized with origin/main",
+      "git log origin/main..HEAD: empty",
+      "AAB and map-marker SHA-256 match"
+    ]},
+    {"role": "Reviewer", "status": "COMPLETED", "host_final": true, "final_review_report": {"envelope": "FINAL_REVIEW_REPORT", "verdict": "PASS", "highest_severity": "NONE", "findings": "NONE", "retest_scope": "Source and upload gates passed; Play propagation and physical-device installation remain pending verification.", "lifecycle": {"runtime_started": "fact", "last_activity": "fact", "final_emitted": "fact"}}},
+    {"role": "Integrator", "status": "COMPLETED", "verdict": "COMPLETE", "result": "Alpha upload/commit gates complete. Play propagation and physical-device installation remain PENDING_DEVICE_VERIFICATION."}
+  ],
+  "evidence": {
+    "source_push": "9c50b0c1 and f39f0998 pushed; origin/main=f39f0998",
+    "release_version": "1.1.1+149",
+    "map_preflight": "GOOGLE_MAPS_API_KEY, TMAP_API_KEY, NAVER_MAP_CLIENT_ID present",
+    "aab_bytes": 83921504,
+    "aab_sha256": "f0bc4aa6aeef692c9bb74e2ab0479810403a9ab30810fa19624b6b4c796466de",
+    "play_publish": "publishReleaseBundle exit 0; upload 100%; Alpha release [149]; commitEdit succeeded",
+    "propagation": "PENDING_DEVICE_VERIFICATION"
+  }
+}
