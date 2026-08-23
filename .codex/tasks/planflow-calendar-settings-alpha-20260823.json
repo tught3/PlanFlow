@@ -5,7 +5,7 @@
   "routing": {
     "explorer": {"agent": "calendar_settings_changes_explorer_20260823", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "interrupted_after_findings_request"},
     "planner": {"agent": "calendar_settings_changes_planner_20260823", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed"},
-    "implementer": {"agent": "calendar_settings_changes_implementer_20260823", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed", "commits": ["7f2ccd45", "a5827b84"]},
+    "implementer": {"agent": "calendar_settings_changes_implementer_20260823", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed", "commits": ["7f2ccd45", "a5827b84", "885904ab"]},
     "test_executor": {"agent": "calendar_settings_test_executor_20260823", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed", "result": "focused analysis and targeted Flutter test suite passed"},
     "reviewer": {"agent": "calendar_settings_reviewer_20260823", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed_no_blocker_or_high", "result": "MEDIUM-only test/physical-layout evidence gaps; no BLOCKER/HIGH. A host-final FINAL_REVIEW_REPORT PASS envelope is not present in this task state, so it is not treated as an acceptance PASS."},
     "integrator": {"agent": "planflow_calendar_settings_integrator_20260823", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed_incomplete", "verdict": "INCOMPLETE_ALPHA_UPLOAD_NOT_CONFIRMED"}
@@ -35,7 +35,8 @@
     {"command": "flutter analyze lib/widgets/planflow_voice_fab.dart lib/screens/settings/settings_screen.dart", "exit_code": 0, "result": "No issues found"},
     {"command": "flutter test --no-pub test/data/models/user_settings_model_test.dart test/services/home_widget_service_test.dart test/supabase/voice_correction_learning_schema_test.dart test/screens/settings_screen_fab_test.dart test/screens/settings_deleted_groups_visibility_test.dart", "exit_code": 0, "result": "31 focused tests passed"},
     {"command": "git diff --check", "exit_code": 0, "result": "no whitespace errors"},
-    {"command": "flutter analyze", "exit_code": null, "result": "deployment-run analyzer stalled with no completion evidence; not accepted as a pass"},
+    {"command": "flutter analyze", "exit_code": 124, "timeout_seconds": 60, "result": "final guarded deployment retry timed out before AAB build; not accepted as a pass"},
+    {"command": "dart analyze", "exit_code": 124, "timeout_seconds": 300, "result": "fallback analyzer timed out before AAB build; not accepted as a pass"},
     {"command": "android\\gradlew.bat :app:compileReleaseKotlin --no-daemon --console=plain", "exit_code": null, "result": "environment/process stall; not accepted as a pass"}
   ],
   "changed_files": [
@@ -51,18 +52,21 @@
     "test/services/home_widget_service_test.dart",
     "test/supabase/voice_correction_learning_schema_test.dart",
     "test/screens/settings_screen_fab_test.dart",
-    "test/screens/settings_deleted_groups_visibility_test.dart"
+    "test/screens/settings_deleted_groups_visibility_test.dart",
+    "scripts/deploy-play-internal.ps1",
+    "pubspec.yaml"
   ],
   "integration_review": {
     "fab_overlap": "PASS_SOURCE_SCOPE: Settings ListView bottom padding is AppConstants.defaultPadding + 220, leaving scroll extent above the two global FABs. This directly addresses the clipped 12-hour toggle without changing the global FAB geometry. Physical-device visual confirmation remains pending.",
     "play_console_recommendations": "SAFE_CLASSIFICATION: no speculative edge-to-edge, deprecated-system-bar, BitmapFactory, or R8 changes were made. The portrait lock in MainActivity is real and UX-sensitive; resizeableActivity=true exists. Release minification is enabled and resource shrinking intentionally remains disabled for dynamic notification icon lookup.",
-    "deployment": "NOT_CONFIRMED: internal deployment script began, bumped pubspec to 1.1.1+154, then its full flutter analyze stage stalled. No AAB artifact, Play Alpha upload, release update, or commitEdit success log is available."
+    "deployment": "NOT_CONFIRMED: final guarded retry used 60s flutter analyze then 300s dart analyze fallback; both timed out before AAB build. The runner's default config-path resolution and timeout forwarding, plus intended version 1.1.1+154, were committed in 885904ab and pushed to origin/main. No AAB artifact, Play Alpha upload, release update, or commitEdit success log is available.",
+    "push": "885904ab pushed successfully to origin/main; this is source/config delivery evidence only, not Play Alpha delivery evidence.",
+    "process_cleanup": "The analyzer processes owned by the timed-out deployment retry were cleaned up by the deployment owner; no upload process was left running."
   },
   "unresolved": [
-    "Commit and push the scoped deployment-entrypoint default-path repair and intentional version bump only after the deployment flow is resumed.",
     "Obtain fresh full analyzer/build completion and actual Play Alpha upload evidence for versionCode 154.",
     "Run a host-final independent reviewer PASS envelope after the final deployment-related diff is committed.",
     "Capture a device visual check that the 12-hour toggle is fully reachable above the global FABs."
   ],
-  "last_update": "2026-08-23T19:20:00+09:00"
+  "last_update": "2026-08-23T20:00:00+09:00"
 }
