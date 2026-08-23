@@ -57,6 +57,25 @@ void main() {
     );
   });
 
+  test('hides provider generic holiday labels on canonical holiday dates', () {
+    expect(isSyncedPublicHolidayDuplicate(_event(title: '공휴일')), isTrue);
+    expect(isSyncedPublicHolidayDuplicate(_event(title: '휴일')), isTrue);
+    expect(
+      isSyncedPublicHolidayDuplicate(_event(title: '법정 공휴일')),
+      isTrue,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(_event(title: '공휴일 안내')),
+      isFalse,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '공휴일', startAt: DateTime(DateTime.now().year, 8, 14)),
+      ),
+      isFalse,
+    );
+  });
+
   test('filters only synced holiday duplicates from a mixed list', () {
     final visible = omitSyncedPublicHolidayDuplicates(<EventModel>[
       _event(),

@@ -1597,8 +1597,11 @@ class CalendarSyncService {
             targets: existing.targets,
             isCritical: existing.isCritical,
             recurrenceRule: existing.recurrenceRule,
-            isAllDay: existing.isAllDay,
-            isMultiDay: existing.isMultiDay,
+            // Google is the source of truth for these flags during import.
+            // In particular, an old row may retain isMultiDay=true after a
+            // provider fixes a birthday's exclusive date-only end.
+            isAllDay: model.isAllDay,
+            isMultiDay: model.isMultiDay,
             parentEventId: existing.parentEventId,
             category: existing.category,
             source: existing.source,
@@ -1712,12 +1715,18 @@ class CalendarSyncService {
     required String externalId,
     required String externalCalendarId,
   }) {
+    final startAt = _googleEventDateTime(event.start);
+    final endAt = _googleEventDateTime(event.end);
+    final isAllDay = event.start?.date != null;
+    final isMultiDay = startAt != null &&
+        endAt != null &&
+        planflowLocalDay(startAt) != _googleDisplayEndDay(startAt, endAt);
     return EventModel(
       id: '',
       userId: _currentUserId(),
       title: _googleEventTitle(event),
-      startAt: _googleEventDateTime(event.start),
-      endAt: _googleEventDateTime(event.end, isEnd: true),
+      startAt: startAt,
+      endAt: endAt,
       location: _googleStringValue(event.location),
       memo: _googleStringValue(event.description),
       supplies: const <String>[],
@@ -1730,6 +1739,8 @@ class CalendarSyncService {
         status: event.status,
       ),
       source: 'google',
+      isAllDay: isAllDay,
+      isMultiDay: isMultiDay,
       externalId: externalId,
       externalCalendarId: externalCalendarId,
       externalUpdatedAt: event.updated?.toUtc(),
@@ -1751,10 +1762,7 @@ class CalendarSyncService {
     return 'Google Calendar 일정';
   }
 
-  DateTime? _googleEventDateTime(
-    gcal.EventDateTime? value, {
-    bool isEnd = false,
-  }) {
+  DateTime? _googleEventDateTime(gcal.EventDateTime? value) {
     if (value == null) {
       return null;
     }
@@ -1769,11 +1777,28 @@ class CalendarSyncService {
       return null;
     }
 
-    final dateOnly = DateTime.utc(date.year, date.month, date.day);
-    if (isEnd) {
-      return dateOnly.add(const Duration(days: 1));
+    // Google supplies a calendar date without a time zone. Store it as
+    // PlanFlow's local-midnight UTC instant so the existing exclusive-end
+    // display helpers interpret Oct 3..Oct 4 as one local day.
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    // Google Calendar date-only DTEND is exclusive. Keep that boundary as
+    // midnight of the following day; display-day helpers subtract the
+    // exclusive boundary when deciding which dates are covered. Adding a
+    // second day here made one-day birthdays appear as two-day bands.
+    return planflowLocalDateTimeToUtc(dateOnly);
+  }
+
+  DateTime _googleDisplayEndDay(DateTime startAt, DateTime endAt) {
+    var localEnd = planflowLocal(endAt);
+    if (endAt.isAfter(startAt) &&
+        localEnd.hour == 0 &&
+        localEnd.minute == 0 &&
+        localEnd.second == 0 &&
+        localEnd.millisecond == 0 &&
+        localEnd.microsecond == 0) {
+      localEnd = localEnd.subtract(const Duration(microseconds: 1));
     }
-    return dateOnly;
+    return planflowLocalDay(localEnd);
   }
 
   String _googleStringValue(Object? value) {

@@ -621,6 +621,70 @@ void main() {
         'google:primary',
       );
     });
+
+    test('repairs a stale Google birthday multi-day flag from exclusive DTEND',
+        () async {
+      final existing = EventModel(
+        id: 'birthday-local',
+        userId: 'user-1',
+        title: '생일 축하합니다',
+        startAt: DateTime.utc(2026, 10, 3),
+        endAt: DateTime.utc(2026, 10, 5),
+        isAllDay: false,
+        isMultiDay: true,
+        source: 'google',
+        externalId: 'birthday-1',
+        externalCalendarId: 'google:primary',
+      );
+      final repository = _FakeEventRepository(events: <EventModel>[existing]);
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repository,
+        calendarConnectionRepository: _FakeCalendarConnectionRepository(
+          initial: const CalendarConnectionModel(
+            userId: 'user-1',
+            provider: 'google',
+            status: CalendarConnectionStatus.connected,
+          ),
+        ),
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) async =>
+            'google-token',
+        googleCalendarEventsFetcher: (_) async {
+          return <GoogleCalendarEventEntry>[
+            GoogleCalendarEventEntry(
+              calendarId: 'primary',
+              isPrimaryCalendar: true,
+              event: gcal.Event(
+                id: 'birthday-1',
+                summary: '생일 축하합니다',
+                updated: DateTime.utc(2026, 10, 3, 1),
+                start: gcal.EventDateTime(
+                  date: DateTime(
+                      2026, 10, 3), // banned-ok: fixed birthday fixture
+                ),
+                // Google date-only DTEND is exclusive (Oct 4).
+                end: gcal.EventDateTime(
+                  date: DateTime(
+                      2026, 10, 4), // banned-ok: fixed birthday fixture
+                ),
+              ),
+            ),
+          ];
+        },
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      final repaired = repository.updatedEvents.single;
+      expect(repaired.isAllDay, isTrue);
+      expect(repaired.isMultiDay, isFalse);
+      expect(repaired.startAt, DateTime.utc(2026, 10, 2, 15));
+      expect(repaired.endAt, DateTime.utc(2026, 10, 3, 15));
+    });
   });
 
   // ------------------------------------------------------------------ //

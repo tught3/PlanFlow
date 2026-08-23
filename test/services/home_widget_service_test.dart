@@ -17,10 +17,10 @@ void main() {
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
     expect(calendarSource, contains('_calendarEventTitleSpan'));
     expect(calendarSource, contains('FontWeight.w900'));
-    expect(calendarSource, contains('markerFontSize: 7.8'));
-    expect(calendarSource, contains('markerFontSize: 14'));
-    expect(calendarSource, contains('strongAlarmMarkerFontSize: 6.8'));
-    expect(calendarSource, contains('strongAlarmMarkerFontSize: 13'));
+    expect(calendarSource, contains('markerFontSize: 6.8'));
+    expect(calendarSource, contains('markerFontSize: 13'));
+    expect(calendarSource, contains('strongAlarmMarkerFontSize: 4.8'));
+    expect(calendarSource, contains('strongAlarmMarkerFontSize: 11'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
     expect(calendarSource, contains("text: '↻\\u200A'"));
     expect(calendarSource, contains('fontWeight: FontWeight.w700'));
@@ -38,8 +38,8 @@ void main() {
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
     expect(widgetSource, contains('ForegroundColorSpan'));
     expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
-    expect(widgetSource, contains('appendMarker("🔔", 18)'));
-    expect(widgetSource, contains('appendMarker("↻", 19)'));
+    expect(widgetSource, contains('appendMarker("🔔", 16)'));
+    expect(widgetSource, contains('appendMarker("↻", 18)'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
 
     final widgetStylesSource =
@@ -582,6 +582,33 @@ void main() {
     expect(august15.holidayName, '광복절');
     expect(august15.events.length, 3);
     expect(august15.overflowCount, 1);
+  });
+
+  test('HomeWidget keeps a multi-day event below the holiday row', () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.utc(2026, 9, 23),
+      events: <EventModel>[
+        EventModel(
+          id: 'birthday-range',
+          userId: 'user-1',
+          title: '생일 축하합니다',
+          startAt: DateTime.utc(2026, 9, 23),
+          endAt: DateTime.utc(2026, 9, 27),
+          isAllDay: true,
+          isMultiDay: true,
+        ),
+      ],
+    );
+
+    for (final day in <int>[23, 24, 25, 26]) {
+      final cell = payload.monthCells.firstWhere((item) => item.day == day);
+      expect(cell.events.map((event) => event.eventId),
+          contains('birthday-range'));
+    }
+    final holidayCell = payload.monthCells.firstWhere(
+      (item) => item.holidayName != null,
+    );
+    expect(holidayCell.holidayName, isNotNull);
   });
 
   test('HomeWidget raw payload preserves team and recurring semantic flags',

@@ -209,7 +209,8 @@ void main() {
       (index) => _event(
         'projection-$index',
         '일정 $index',
-        DateTime(2026, 8, (index % 28) + 1, 9), // banned-ok: 고정 월 fixture(위와 동일 사유)
+        DateTime(
+            2026, 8, (index % 28) + 1, 9), // banned-ok: 고정 월 fixture(위와 동일 사유)
       ),
     );
     final index = buildCalendarDayEventIndex(
@@ -237,7 +238,8 @@ void main() {
           home: CalendarScreen(
             eventRepository: repository,
             userId: 'user-1',
-            initialDate: DateTime(2026, 5, 12), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
+            initialDate: DateTime(
+                2026, 5, 12), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
           ),
         ),
       );
@@ -401,6 +403,35 @@ void main() {
     expect(day15.events.map((event) => event.id), <String>[
       'manual-holiday-note',
     ]);
+  });
+
+  test('calendar keeps a continuous band in the holiday-following row', () {
+    final cells = buildCalendarMiniMonthCells(
+      focusedMonth: DateTime(2026, 9), // banned-ok: fixed 2026 Chuseok fixture
+      events: <EventModel>[
+        EventModel(
+          id: 'birthday-range',
+          userId: 'user-1',
+          title: '생일 축하합니다',
+          startAt:
+              DateTime(2026, 9, 23), // banned-ok: fixed 2026 Chuseok fixture
+          // Google date-only DTEND is exclusive: Sep 27 covers Sep 23-26.
+          endAt: DateTime(2026, 9, 27), // banned-ok: fixed 2026 Chuseok fixture
+          isAllDay: true,
+          isMultiDay: true,
+        ),
+      ],
+    );
+
+    for (final day in <int>[23, 24, 25, 26]) {
+      final cell = cells.firstWhere((item) => item.dayNumber == day);
+      expect(cell.events.map((event) => event.id), contains('birthday-range'));
+    }
+    final holidayCell = cells.firstWhere(
+      (item) => item.dayNumber != null && item.holidayName != null,
+    );
+    expect(holidayCell.holidayName, isNotNull);
+    expect(holidayCell.leadingEventRowCount, 0);
   });
 
   testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {

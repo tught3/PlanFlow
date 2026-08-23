@@ -881,8 +881,10 @@ class _CalendarMiniEventLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final segment = _multiDaySegment(event, day);
-    final isMultiDay =
-        event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
+    // The persisted flag can be stale after an external calendar changes its
+    // exclusive end date. The actual local date span is authoritative for
+    // rendering so a one-day birthday cannot become a phantom band.
+    final isMultiDay = calendarEventSpansMultipleLocalDays(event);
     final isCriticalMultiDay = isMultiDay && event.isCritical;
     final isRecurring = (event.recurrenceRule?.trim().isNotEmpty ?? false) ||
         event.parentEventId != null;
@@ -968,8 +970,8 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             semanticColor: fg,
                             leadingText:
                                 event.isAllDay && !isMultiDay ? '종일 ' : null,
-                            markerFontSize: 7.8,
-                            strongAlarmMarkerFontSize: 6.8,
+                            markerFontSize: 6.8,
+                            strongAlarmMarkerFontSize: 4.8,
                           ),
                           maxLines: 1,
                           softWrap: false,
@@ -992,7 +994,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
   }
 
   (bool, bool) _multiDaySegment(EventModel event, DateTime day) {
-    if ((!event.isMultiDay && !calendarEventSpansMultipleLocalDays(event)) ||
+    if (!calendarEventSpansMultipleLocalDays(event) ||
         event.startAt == null ||
         event.endAt == null) {
       return (true, true);
@@ -1220,8 +1222,8 @@ class _EventAgendaCard extends StatelessWidget {
                               useStrongAlarm: event.useStrongAlarm,
                               isRecurring: isRecurring,
                               semanticColor: accentColor,
-                              markerFontSize: 14,
-                              strongAlarmMarkerFontSize: 13,
+                              markerFontSize: 13,
+                              strongAlarmMarkerFontSize: 11,
                             ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,
