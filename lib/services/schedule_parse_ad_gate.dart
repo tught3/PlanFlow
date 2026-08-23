@@ -195,20 +195,9 @@ class ScheduleParseAdGate {
       return;
     }
 
-    // 광고 실패는 원칙적으로 진입 거부다. 단, 운영 설정
-    // (RemoteConfigService.rewardAdFailurePolicy)이 명시적으로 'free_pass'로
-    // 설정된 경우에만 예외적으로 무료 진입을 허용한다. 이 경우 consume()은
-    // 호출하지 않는다 — 광고도 무료횟수도 소진된 상태에서의 예외 통과이지
-    // 정상적인 무료소진이 아니다(호출자가 consume을 호출하지 않도록
-    // 화면 쪽에서 grant.source로 분기해야 한다).
-    final freePassGrant = maybeFreePassGrant(
-      dailyRemainingAtGate: peek.dailyRemaining,
-    );
-    if (freePassGrant != null) {
-      onEnterAllowed(freePassGrant);
-      return;
-    }
-
+    // 무료 횟수가 소진된 뒤에는 실제 보상 콜백이 없으면 절대 통과시키지
+    // 않는다. 전역 reward_ad_failure_policy의 free_pass 설정도 이 기능에는
+    // 적용하지 않는다.
     _deny(ScheduleParseGateDenialReason.adFailed, onDenied);
   }
 
@@ -222,22 +211,10 @@ class ScheduleParseAdGate {
   ScheduleParseEntryGrant? maybeFreePassGrant({
     required int dailyRemainingAtGate,
   }) {
-    if (!_isFreePassPolicy()) {
-      return null;
-    }
-    lastFreePassApplied = true;
-    return _grant(
-      ScheduleParseEntitlementSource.adFailedFreePass,
-      dailyRemainingAtGate: dailyRemainingAtGate,
-    );
-  }
-
-  /// RemoteConfigService.rewardAdFailurePolicy가 명시적으로 'free_pass'로
-  /// 설정됐는지 확인한다(대소문자 무관). 기본값('retry') 또는 그 외 값은
-  /// false — fail-closed 유지.
-  bool _isFreePassPolicy() {
-    return RemoteConfigService.rewardAdFailurePolicy.trim().toLowerCase() ==
-        'free_pass';
+    // schedule_parse는 광고 보상 없이는 진입할 수 없다. 이 메서드는
+    // 기존 호출자/테스트 호환을 위해 남겨두되 항상 차단한다.
+    lastFreePassApplied = false;
+    return null;
   }
 
   void _deny(

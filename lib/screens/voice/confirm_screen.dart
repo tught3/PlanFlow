@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' as ui;
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -272,10 +274,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   bool _isApplyingHydration = false;
   bool _adGateHandled = false;
   bool _parseAuthorized = false;
+  bool _parseConsumptionPending = false;
+  late final String _parseAttemptId;
   // ScheduleParseAdGate가 승인한 진입 스냅샷. 승인 시점의 sessionId를
   // 실제 파싱 시작 시점(_hydrateParsedSchedule)의 consume() 멱등 키로
-  // 재사용한다. 게이트를 거치지 않은 경로(manual_text_confirmed 등)에서는
-  // null로 남고, 그때는 새 sessionId를 즉석에서 생성한다.
+  // 재사용한다. 모든 GPT 자동 정리 진입은 게이트 승인을 거치므로
+  // manual_text_confirmed 경로도 예외 없이 이 grant를 사용한다.
   ScheduleParseEntryGrant? _scheduleParseGrant;
   bool _titleEditedByUser = false;
   bool _locationEditedByUser = false;
@@ -298,9 +302,16 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
+  String _scheduleParseBinding(String rawText) => sha256
+      .convert(utf8.encode('$_parseAttemptId\n${rawText.trim()}'))
+      .toString();
+
   @override
   void initState() {
     super.initState();
+    _parseAttemptId = _stringValue(widget.parsedSchedule['parse_attempt_id']) ??
+        '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(widget.parsedSchedule)}';
+    widget.parsedSchedule['parse_attempt_id'] = _parseAttemptId;
     WidgetsBinding.instance.addObserver(this);
     _initialParsedForLearning = Map<String, dynamic>.from(
       widget.parsedSchedule,
@@ -1173,18 +1184,63 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    // The user explicitly confirmed the transcript in the manual editor.
-    // Do not put an ad gate in front of that editing flow; the final AI parse
-    // still runs behind the blocking loader below.
-    if (widget.parsedSchedule['manual_text_confirmed'] == true) {
-      _maybeHydrateParsedSchedule();
+    // 이전 parse 성공 후 entitlement RPC가 실패한 경우에는 앱 재시작 뒤에도
+    // 새 GPT 호출보다 먼저 같은 sessionId 소비를 재시도한다.
+    final parseBinding = _scheduleParseBinding(rawText);
+    final pendingBinding = await AdRewardState.instance.pendingConsumeBinding(
+      feature: 'schedule_parse',
+    );
+    if (pendingBinding != null && pendingBinding != parseBinding) {
+      // The original draft is no longer available in this route. Discard the
+      // orphaned local state and continue through a fresh gate instead of
+      // permanently blocking all future schedules after an app restart.
+      await AdRewardState.instance.clearPendingConsume(
+        feature: 'schedule_parse',
+      );
+      await AdService.instance.clearReward(feature: 'schedule_parse');
+    }
+    final pendingConsume = pendingBinding == null || pendingBinding != parseBinding
+        ? null
+        : await AdRewardState.instance.pendingConsumeRequestId(
+            binding: parseBinding,
+            feature: 'schedule_parse',
+          );
+    if (pendingConsume != null) {
+      _scheduleParseGrant = ScheduleParseEntryGrant(
+        sessionId: pendingConsume,
+        source: ScheduleParseEntitlementSource.dailyFree,
+        dailyRemainingAtGate: 0,
+      );
+      _parseConsumptionPending = true;
+      await _retryPendingParseConsumption();
       return;
     }
 
-    // 보상 잔여 상태가 있으면 (앱 재시작 후 또는 이전 시도 잔여) 그냥 hydrate.
-    final reentry = await AdRewardState.instance.consumeActiveRequestId();
+    // 보상 잔여 상태가 있으면 (앱 재시작 후 또는 이전 시도 잔여) hydrate.
+    var reentry = await AdRewardState.instance.consumeActiveRequestId(
+      feature: 'schedule_parse',
+    );
     if (reentry != null) {
-      await AdService.instance.clearReward();
+      final activeBinding = await AdRewardState.instance.activeGrantBinding(
+        feature: 'schedule_parse',
+      );
+      if (activeBinding == null || activeBinding != parseBinding) {
+        await AdRewardState.instance.clear(
+          feature: 'schedule_parse',
+        );
+        reentry = null;
+      }
+    }
+    if (reentry != null) {
+      // Recover the persisted reward as the grant for this parse attempt. It
+      // must remain available until a successful parse clears it; otherwise a
+      // process death/retry path could run GPT without consuming the granted
+      // entitlement.
+      _scheduleParseGrant = ScheduleParseEntryGrant(
+        sessionId: reentry,
+        source: ScheduleParseEntitlementSource.adRewarded,
+        dailyRemainingAtGate: 0,
+      );
       _maybeHydrateParsedSchedule();
       return;
     }
@@ -1242,6 +1298,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       if (_scheduleParseGrant != null) {
+        await AdRewardState.instance.bindActiveGrant(
+          binding: parseBinding,
+          feature: 'schedule_parse',
+        );
         // 진입 승인됨. GPT 파싱 실행(실제 소비는 파싱 시작 시점에 처리).
         _maybeHydrateParsedSchedule();
       }
@@ -1265,10 +1325,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   void _retryAiHydration() {
+    if (_parseConsumptionPending) {
+      unawaited(_retryPendingParseConsumption());
+      return;
+    }
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
-    final canRetryWithoutReward =
-        widget.parsedSchedule['manual_text_confirmed'] == true;
-    if ((!_parseAuthorized && !canRetryWithoutReward) ||
+    if (!_parseAuthorized ||
         rawText == null ||
         rawText.trim().isEmpty) {
       return;
@@ -1283,6 +1345,50 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     unawaited(_hydrateParsedSchedule(rawText.trim()));
   }
 
+  Future<void> _retryPendingParseConsumption() async {
+    if (_isHydratingParsedSchedule || _scheduleParseGrant == null) {
+      return;
+    }
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+    if (rawText == null || rawText.trim().isEmpty) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _isHydratingParsedSchedule = true;
+        _showInitialHydrationLoader = false;
+        _hydrateMessage = null;
+      });
+    }
+    final grant = _scheduleParseGrant!;
+    final consumed = await ScheduleParseEntitlementService.instance
+        .consume(grant.sessionId);
+    if (consumed == null) {
+      if (mounted) {
+        setState(() {
+          _isHydratingParsedSchedule = false;
+          _hydrateMessage =
+              'AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.';
+        });
+      }
+      return;
+    }
+    await AdRewardState.instance.clearPendingConsume(
+      feature: 'schedule_parse',
+    );
+    await AdService.instance.clearReward(feature: 'schedule_parse');
+    _parseConsumptionPending = false;
+    if (mounted) {
+      setState(() {
+        widget.parsedSchedule['parse_pending'] = true;
+        widget.parsedSchedule['parse_failed'] = false;
+        _isHydratingParsedSchedule = false;
+        _showInitialHydrationLoader = true;
+      });
+    }
+    _hydrateParsedSchedule(rawText.trim());
+  }
+
   Future<void> _hydrateParsedSchedule(String rawText) async {
     if (_isHydratingParsedSchedule) {
       return;
@@ -1290,21 +1396,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
     _parseAuthorized = true;
 
-    // 실제 GPT 파싱이 시작되는 이 시점에 정확히 1회 무료/광고 카운터를
-    // 소비한다. ScheduleParseAdGate가 실제로 승인한 진입(grant가 있는
-    // 경우)에서만 그 grant.sessionId로 consume()을 호출한다(서버가 같은
-    // sessionId 재호출을 멱등 처리). 게이트를 아예 거치지 않은 경로
-    // (manual_text_confirmed, 재시도 버튼)에는 grant가 없으므로 소비하지
-    // 않는다 — 그 경로들은 무료 잔여와 무관하게 진행되도록 의도됐다.
-    // consume()은 fail-open(null 반환)이라 실패해도 파싱 자체를 막지 않는다.
+    // 소비는 GPT 파싱이 성공한 뒤에만 수행한다. 시작 직후 소비하면
+    // 취소·네트워크 오류·parse_failed 결과도 무료 횟수를 차감하게 된다.
+    // ScheduleParseAdGate가 승인한 진입(grant가 있는 경우)에서만 그
+    // grant.sessionId로 consume()을 호출한다(서버가 같은 sessionId 재호출을
+    // 멱등 처리). 재시도 버튼은 같은 승인 grant를 재사용하므로, 새 광고나
+    // 무료 횟수 차감 없이 성공한 한 번만 consume한다.
     final grant = _scheduleParseGrant;
-    _scheduleParseGrant = null;
-    if (grant != null &&
-        grant.source != ScheduleParseEntitlementSource.adFailedFreePass) {
-      unawaited(
-        ScheduleParseEntitlementService.instance.consume(grant.sessionId),
-      );
-    }
 
     setState(() {
       _isHydratingParsedSchedule = true;
@@ -1321,6 +1419,45 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       if (parsed['parse_failed'] == true) {
         unawaited(AnalyticsService.logScheduleParseFailed(reason: 'fallback'));
         _hydrateMessage = '일정을 바로 정리하지 못했어요. 입력 내용을 확인하고 다시 시도해 주세요.';
+      }
+
+      // 무료 횟수는 실제 AI 정리가 성공한 경우에만 차감한다. 실패한
+      // 결과에서는 grant를 유지해 사용자가 재시도할 수 있고, 광고 보상
+      // grant도 같은 시도에서 중복 소비되지 않는다.
+      if (parsed['parse_failed'] != true &&
+          grant != null &&
+          grant.source != ScheduleParseEntitlementSource.adFailedFreePass) {
+        // Persist the server-side idempotent consume before clearing the
+        // local reward. If the RPC is temporarily unavailable, retain the
+        // reward so a later re-entry can retry the same session instead of
+        // silently losing the grant or opening an unbounded free path.
+        final consumed = await ScheduleParseEntitlementService.instance
+            .consume(grant.sessionId);
+        if (consumed != null) {
+          await AdRewardState.instance.clearPendingConsume(
+            feature: 'schedule_parse',
+          );
+          _scheduleParseGrant = null;
+          await AdService.instance.clearReward(feature: 'schedule_parse');
+        } else {
+          await AdRewardState.instance.markPendingConsume(
+            requestId: grant.sessionId,
+            binding: _scheduleParseBinding(rawText),
+            feature: 'schedule_parse',
+          );
+          _parseConsumptionPending = true;
+          if (mounted) {
+            setState(() {
+              widget.parsedSchedule['parse_pending'] = true;
+              widget.parsedSchedule['parse_failed'] = true;
+              _isHydratingParsedSchedule = false;
+              _showInitialHydrationLoader = false;
+              _hydrateMessage =
+                  'AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.';
+            });
+          }
+          return;
+        }
       }
 
       if (parsed['parse_failed'] != true) {
@@ -2805,7 +2942,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilledButton.icon(
-              onPressed: (_isSaving || showParsePendingLoader) ? null : _save,
+              onPressed: (_isSaving ||
+                      showParsePendingLoader ||
+                      _parseConsumptionPending)
+                  ? null
+                  : _save,
               icon: _isSaving
                   ? const SizedBox.square(
                       dimension: 16,
@@ -3023,7 +3164,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                       ),
                       const SizedBox(height: 24),
                       FilledButton.icon(
-                        onPressed: (_isSaving || showParsePendingLoader)
+                        onPressed: (_isSaving ||
+                                showParsePendingLoader ||
+                                _parseConsumptionPending)
                             ? null
                             : _save,
                         icon: _isSaving

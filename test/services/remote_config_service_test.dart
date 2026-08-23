@@ -100,6 +100,28 @@ void main() {
     });
   });
 
+  group('RemoteConfigService.resolveScheduleParseDailyFreeCount', () {
+    test('AI 일정 정리는 콘솔 미설정 시 하루 2회 무료다', () {
+      expect(
+        RemoteConfigService.resolveScheduleParseDailyFreeCount(
+          newKeySet: false,
+          newKeyValue: 0,
+        ),
+        2,
+      );
+    });
+
+    test('콘솔에서 명시한 AI 일정 정리 무료 횟수는 그대로 사용한다', () {
+      expect(
+        RemoteConfigService.resolveScheduleParseDailyFreeCount(
+          newKeySet: true,
+          newKeyValue: 4,
+        ),
+        4,
+      );
+    });
+  });
+
   group('RemoteConfigService.retryFetchIfFailed', () {
     tearDown(() {
       // 다른 테스트가 Firebase mock과 무관하게 동작하도록 매 테스트 후

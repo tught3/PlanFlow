@@ -9,7 +9,7 @@ import 'remote_config_service.dart';
 /// [ScheduleParseEntitlementService._peek]가 RPC
 /// `schedule_parse_entitlement_peek`에 넘길 파라미터를 구성하는 순수 함수.
 ///
-/// 정책: 하루 [dailyLimit]회(기본 3회, KST 기준 매일 리셋) 무료로 AI
+/// 정책: 하루 [dailyLimit]회(기본 2회, KST 기준 매일 리셋) 무료로 AI
 /// 일정분석(GPT 파싱)을 사용할 수 있고, 그마저 소진되면 광고가 필요하다.
 /// 이 기능은 최초 누적 무료(voice_conversation의 `initial_free`)가 없으므로
 /// [initialLimit]은 항상 0으로 호출한다(RPC 시그니처 대칭을 위해 파라미터

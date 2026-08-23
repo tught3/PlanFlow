@@ -17,6 +17,7 @@ import 'package:planflow/features/groups/repositories/group_event_repository.dar
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
 import 'package:planflow/services/gpt_service.dart';
+import 'package:planflow/services/ad_reward_state.dart';
 import 'package:planflow/services/schedule_parse_ad_gate.dart';
 import 'package:planflow/services/schedule_parse_entitlement.dart';
 import 'package:planflow/services/home_widget_service.dart';
@@ -36,7 +37,11 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
   });
 
-  tearDown(() {
+  tearDown(() async {
+    await AdRewardState.instance.clear(feature: 'schedule_parse');
+    await AdRewardState.instance.clearPendingConsume(
+      feature: 'schedule_parse',
+    );
     SharedPreferencesAsyncPlatform.instance = null;
     ScheduleParseAdGate.instance.delegateForTest = null;
     ScheduleParseEntitlementService.instance.delegateForTest = null;
@@ -498,6 +503,9 @@ void main() {
   testWidgets(
       'ConfirmScreen blocks the editor with a full-screen loader while hydrating',
       (tester) async {
+    ScheduleParseAdGate.instance.delegateForTest = _DailyFreeAdGateDelegate();
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        _CountingEntitlementDelegate();
     final parseCompleter = Completer<Map<String, dynamic>>();
     await tester.pumpWidget(
       _testApp(
@@ -572,6 +580,9 @@ void main() {
   testWidgets(
       'ConfirmScreen retries a resolved AI parse failure without re-consuming reward',
       (tester) async {
+    ScheduleParseAdGate.instance.delegateForTest = _DailyFreeAdGateDelegate();
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        _CountingEntitlementDelegate();
     final gpt = _SequenceGptService();
     await tester.pumpWidget(
       _testApp(
@@ -1479,6 +1490,148 @@ void main() {
 
     expect(entitlementDelegate.consumeCallCount, 0);
   });
+
+  testWidgets(
+      'ConfirmScreen consumes a granted entitlement only after AI parse succeeds',
+      (tester) async {
+    ScheduleParseAdGate.instance.delegateForTest = _DailyFreeAdGateDelegate();
+    final entitlementDelegate = _CountingEntitlementDelegate();
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        entitlementDelegate;
+    await AdRewardState.instance.grant(
+      requestId: 'schedule-parse-reward',
+      feature: 'schedule_parse',
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '초기 제목',
+            rawText: '내일 오전 9시에 대전출발',
+          )..['parse_pending'] = true,
+          gptService: _DeferredGptService(
+            Future.value(<String, dynamic>{
+              'title': 'AI 제목',
+              'location': 'AI 장소',
+              'memo': 'AI 메모',
+              'start_at':
+                  DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+              'end_at': null,
+              'supplies': <String>[],
+              'is_critical': false,
+              'pre_actions': <Map<String, dynamic>>[],
+              'parse_failed': false,
+            }),
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(entitlementDelegate.consumeCallCount, 1);
+    expect(
+      await AdRewardState.instance.consumeActiveRequestId(
+        feature: 'schedule_parse',
+      ),
+      isNull,
+    );
+  });
+
+  testWidgets(
+      'ConfirmScreen keeps the result pending when entitlement consume fails',
+      (tester) async {
+    ScheduleParseAdGate.instance.delegateForTest = _DailyFreeAdGateDelegate();
+    final entitlementDelegate = _CountingEntitlementDelegate(failConsume: true);
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        entitlementDelegate;
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '원본 제목',
+            rawText: '내일 오전 9시에 원본 제목',
+          )..['parse_pending'] = true,
+          gptService: _DeferredGptService(
+            Future.value(<String, dynamic>{
+              'title': 'AI 제목',
+              'location': 'AI 장소',
+              'memo': 'AI 메모',
+              'start_at': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+              'end_at': null,
+              'supplies': <String>[],
+              'is_critical': false,
+              'pre_actions': <Map<String, dynamic>>[],
+              'parse_failed': false,
+            }),
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(entitlementDelegate.consumeCallCount, 1);
+    expect(find.text('AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.'),
+        findsOneWidget);
+    expect(find.text('AI 제목'), findsNothing);
+    expect(find.byKey(const ValueKey('retry-ai-parse')), findsOneWidget);
+  });
+
+  testWidgets(
+      'ConfirmScreen discards an unbound schedule reward before a new gate',
+      (tester) async {
+    final gate = _DailyFreeAdGateDelegate();
+    ScheduleParseAdGate.instance.delegateForTest = gate;
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        _CountingEntitlementDelegate();
+    await AdRewardState.instance.grant(
+      requestId: 'orphan-reward',
+      feature: 'schedule_parse',
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '원본 제목',
+            rawText: '내일 오전 9시에 원본 제목',
+          )..['parse_pending'] = true,
+          gptService: _DeferredGptService(
+            Future.value(<String, dynamic>{
+              'title': 'AI 제목',
+              'location': '',
+              'memo': null,
+              'start_at': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+              'end_at': null,
+              'supplies': <String>[],
+              'is_critical': false,
+              'pre_actions': <Map<String, dynamic>>[],
+              'parse_failed': false,
+            }),
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(gate.calls, 1);
+  });
 }
 
 Widget _testApp(Widget child) {
@@ -2057,8 +2210,32 @@ class _FreePassAdGateDelegate implements ScheduleParseAdGateDelegate {
   }
 }
 
+class _DailyFreeAdGateDelegate implements ScheduleParseAdGateDelegate {
+  int calls = 0;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required void Function(ScheduleParseEntryGrant grant) onEnterAllowed,
+    void Function(ScheduleParseGateDenialReason reason)? onDenied,
+    required ScheduleParseAdGate gate,
+  }) async {
+    calls += 1;
+    onEnterAllowed(
+      ScheduleParseEntryGrant(
+        sessionId: ScheduleParseSessionIdGenerator.next(),
+        source: ScheduleParseEntitlementSource.dailyFree,
+        dailyRemainingAtGate: 1,
+      ),
+    );
+  }
+}
+
 /// [ScheduleParseEntitlementService]의 consume() 호출 횟수를 세는 fake.
 class _CountingEntitlementDelegate implements ScheduleParseEntitlementDelegate {
+  _CountingEntitlementDelegate({this.failConsume = false});
+
+  final bool failConsume;
   int consumeCallCount = 0;
 
   @override
@@ -2068,6 +2245,9 @@ class _CountingEntitlementDelegate implements ScheduleParseEntitlementDelegate {
   @override
   Future<ScheduleParseConsumeResult?> consume(String sessionId) async {
     consumeCallCount += 1;
+    if (failConsume) {
+      return null;
+    }
     return const ScheduleParseConsumeResult(
       source: 'daily_free',
       dailyRemaining: 0,

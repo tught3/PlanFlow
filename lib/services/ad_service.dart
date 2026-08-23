@@ -581,7 +581,10 @@ class AdService {
       await AnalyticsService.logAdCompleted(requestId: requestId);
 
       // 보상 부여
-      await _rewardState.grant(requestId: requestId);
+      await _rewardState.grant(
+        requestId: requestId,
+        feature: 'schedule_parse',
+      );
       await AnalyticsService.logAdRewardGranted(requestId: requestId);
       _optIn += 1;
       await AnalyticsService.logAdConversionRate(
@@ -807,8 +810,8 @@ class AdService {
   }
 
   /// 보상 소비 (성공 후 또는 폐기 후).
-  Future<void> clearReward() async {
-    await _rewardState.clear();
+  Future<void> clearReward({String feature = 'voice_conversation'}) async {
+    await _rewardState.clear(feature: feature);
   }
 
   // ── Private ──────────────────────────────────────────────────

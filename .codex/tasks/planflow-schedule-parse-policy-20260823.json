@@ -1,0 +1,50 @@
+{
+  "task_id": "planflow-schedule-parse-policy-20260823",
+  "objective": "Apply the approved AI voice schedule parsing entitlement policy and deploy through the map-safe Play pipeline.",
+  "policy": {
+    "daily_free_successful_parses": 2,
+    "after_free_entitlement": "one completed rewarded ad grants one additional successful AI parse",
+    "free_paths": ["voice capture", "local date/time extraction", "manual editing", "manual save"],
+    "non_consuming_outcomes": ["AI parse failure", "cancellation", "screen exit", "no reward"],
+    "team_management": "no new ad gate",
+    "ai_conversation": "unchanged"
+  },
+  "routing": [
+    {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "completed"},
+    {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed"},
+    {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed"},
+    {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed"},
+    {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed_pass"},
+    {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed", "verdict": "COMPLETE_CODE_AND_PLAY_UPLOAD_DEVICE_PROOF_PENDING", "report": "Final integration PASS; code and Play Alpha upload verified; connected-device rewarded-ad proof remains pending."}
+  ],
+  "changed_files": [
+    "lib/screens/voice/confirm_screen.dart",
+    "lib/services/ad_reward_state.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/remote_config_service.dart",
+    "lib/services/schedule_parse_ad_gate.dart",
+    "lib/services/schedule_parse_entitlement.dart",
+    "lib/widgets/rewarded_ad_dialog.dart",
+    "test/screens/confirm_screen_test.dart",
+    "test/services/remote_config_service_test.dart",
+    "test/services/schedule_parse_ad_gate_test.dart",
+    "pubspec.yaml"
+  ],
+  "non_changes": ["supabase/migrations/20260818000000_schedule_parse_entitlement.sql", "calendar and widget rendering", "existing AI conversation policy"],
+  "verification": {
+    "focused_flutter_tests": {"command": "flutter test test/services/remote_config_service_test.dart test/services/ad_service_test.dart test/services/schedule_parse_ad_gate_test.dart test/screens/confirm_screen_test.dart --no-pub -r compact", "exit_code": 0, "tests_passed": 91},
+    "targeted_analyze": {"exit_code": 0},
+    "git_diff_check": {"exit_code": 0},
+    "final_targeted_tests": {"command": "flutter test test/services/remote_config_service_test.dart test/services/ad_service_test.dart test/services/schedule_parse_ad_gate_test.dart test/screens/confirm_screen_test.dart --no-pub -r compact", "exit_code": 0, "tests_passed": 91},
+    "targeted_analyze_after_binding_guard": {"exit_code": 0},
+    "remote_config": {"project": "planflow-27fd8", "published_version": 5, "schedule_parse_daily_free_count": 2},
+    "play_alpha_upload": {"version": "1.1.1+152", "track": "alpha", "package": "com.fluxstudio.planflow", "exit_code": 0},
+    "device_and_rewarded_ad_proof": "pending"
+  },
+  "status": "COMPLETE_CODE_AND_PLAY_ALPHA_152_UPLOADED_DEVICE_PROOF_PENDING",
+  "integration": {
+    "verdict": "PASS",
+    "reviewer_findings": "none",
+    "device_rewarded_ad_evidence": "not collected in this turn"
+  }
+}

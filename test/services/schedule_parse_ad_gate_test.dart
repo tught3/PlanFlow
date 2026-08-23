@@ -221,10 +221,9 @@ void main() {
     });
   });
 
-  group('free_pass 정책 (RemoteConfigService.rewardAdFailurePolicy)', () {
+  group('schedule_parse 광고 보상 정책', () {
     test(
-      "rewardAdFailurePolicy == 'free_pass'면 광고 실패 시에도 무료 진입 "
-      'grant를 반환하고, consume()은 호출하지 않는다',
+      "전역 rewardAdFailurePolicy가 'free_pass'여도 보상 없는 진입은 차단한다",
       () async {
         RemoteConfigService.rewardAdFailurePolicyForTest = 'free_pass';
 
@@ -240,16 +239,8 @@ void main() {
           dailyRemainingAtGate: 0,
         );
 
-        expect(grant, isNotNull);
-        expect(
-          grant!.source,
-          ScheduleParseEntitlementSource.adFailedFreePass,
-        );
-        expect(grant.dailyRemainingAtGate, 0);
-        expect(ScheduleParseAdGate.instance.lastFreePassApplied, isTrue);
-        // maybeFreePassGrant()는 entitlement 서비스를 전혀 건드리지 않는다
-        // (peek/consume 어느 쪽도 호출하지 않음) — 광고도 무료횟수도 소진된
-        // 상태의 예외 통과이지 정상 무료소진이 아니므로 소비가 없어야 한다.
+        expect(grant, isNull);
+        expect(ScheduleParseAdGate.instance.lastFreePassApplied, isFalse);
         expect(fake.consumeCallCount, 0);
       },
     );

@@ -19,10 +19,17 @@ class AdRewardState {
 
   static AdRewardState? _instance;
 
-  /// 'rewarded_ads' 네임스페이스의 SharedPreferences 키.
+  /// 기존 음성 대화 보상 키는 호환성을 위해 유지한다. 일정 정리 보상은
+  /// 별도 네임스페이스를 사용해 서로의 보상을 소비하지 않도록 한다.
   static const String _kRequestId = 'rewarded.active_request_id';
   static const String _kGrantedAtMs = 'rewarded.granted_at_ms';
   static const String _kTtlMs = 'rewarded.ttl_ms';
+  static const String _kGrantBinding = 'rewarded.grant_binding';
+  static const String _kPendingConsume = 'rewarded.pending_consume';
+  static const String _kPendingConsumeBinding = 'rewarded.pending_consume_binding';
+
+  String _key(String base, String feature) =>
+      feature == 'voice_conversation' ? base : '$base.$feature';
 
   /// 보상 인정 유효 시간. 1시간(충분히 길고, 늘어나지 않도록 보수적으로).
   static const Duration defaultTtl = Duration(hours: 1);
@@ -51,21 +58,25 @@ class AdRewardState {
   Future<void> grant({
     required String requestId,
     Duration ttl = defaultTtl,
+    String feature = 'voice_conversation',
   }) async {
     if (requestId.trim().isEmpty) {
       return;
     }
     final prefs = await _prefs();
-    final existing = prefs.getString(_kRequestId);
+    final requestKey = _key(_kRequestId, feature);
+    final grantedKey = _key(_kGrantedAtMs, feature);
+    final ttlKey = _key(_kTtlMs, feature);
+    final existing = prefs.getString(requestKey);
     if (existing != null && existing.isNotEmpty) {
       // 이미 다른 requestId가 살아있다면 grant하지 않는다 (가장 최근 시도 우선).
       if (existing != requestId) {
         // 새 요청이면 만료 체크 후 덮어쓰기 (이전 만료 시)
-        final existingGrantedAt = prefs.getInt(_kGrantedAtMs);
+        final existingGrantedAt = prefs.getInt(grantedKey);
         if (existingGrantedAt != null) {
           final expiredAt =
               DateTime.fromMillisecondsSinceEpoch(existingGrantedAt)
-                  .add(Duration(milliseconds: prefs.getInt(_kTtlMs) ?? 0));
+                  .add(Duration(milliseconds: prefs.getInt(ttlKey) ?? 0));
           if (DateTime.now().isBefore(expiredAt)) {
             // 유효한 기존 보상이 살아있어 새로 덮어쓰지 않는다.
             return;
@@ -74,30 +85,56 @@ class AdRewardState {
       } else {
         // 같은 requestId: 시간만 연장 (멱등).
         await prefs.setInt(
-          _kGrantedAtMs,
+          grantedKey,
           DateTime.now().millisecondsSinceEpoch,
         );
-        await prefs.setInt(_kTtlMs, ttl.inMilliseconds);
+        await prefs.setInt(ttlKey, ttl.inMilliseconds);
         return;
       }
     }
-    await prefs.setString(_kRequestId, requestId);
+    await prefs.setString(requestKey, requestId);
     await prefs.setInt(
-      _kGrantedAtMs,
+      grantedKey,
       DateTime.now().millisecondsSinceEpoch,
     );
-    await prefs.setInt(_kTtlMs, ttl.inMilliseconds);
+    await prefs.setInt(ttlKey, ttl.inMilliseconds);
+  }
+
+  Future<void> bindActiveGrant({
+    required String binding,
+    String feature = 'voice_conversation',
+  }) async {
+    if (binding.trim().isEmpty) {
+      return;
+    }
+    final prefs = await _prefs();
+    final requestId = prefs.getString(_key(_kRequestId, feature));
+    if (requestId != null && requestId.isNotEmpty) {
+      await prefs.setString(_key(_kGrantBinding, feature), binding);
+    }
+  }
+
+  Future<String?> activeGrantBinding({
+    String feature = 'voice_conversation',
+  }) async {
+    final prefs = await _prefs();
+    return prefs.getString(_key(_kGrantBinding, feature));
   }
 
   /// 현재 유효한 보상 requestId가 있으면 반환, 없거나 만료 시 null.
-  Future<String?> consumeActiveRequestId() async {
+  Future<String?> consumeActiveRequestId({
+    String feature = 'voice_conversation',
+  }) async {
     final prefs = await _prefs();
-    final requestId = prefs.getString(_kRequestId);
+    final requestKey = _key(_kRequestId, feature);
+    final grantedKey = _key(_kGrantedAtMs, feature);
+    final ttlKey = _key(_kTtlMs, feature);
+    final requestId = prefs.getString(requestKey);
     if (requestId == null || requestId.isEmpty) {
       return null;
     }
-    final grantedAt = prefs.getInt(_kGrantedAtMs);
-    final ttlMs = prefs.getInt(_kTtlMs) ?? defaultTtl.inMilliseconds;
+    final grantedAt = prefs.getInt(grantedKey);
+    final ttlMs = prefs.getInt(ttlKey) ?? defaultTtl.inMilliseconds;
     if (grantedAt == null) {
       return null;
     }
@@ -106,20 +143,63 @@ class AdRewardState {
             .add(Duration(milliseconds: ttlMs));
     if (DateTime.now().isAfter(expiresAt)) {
       // 만료 → 정리
-      await prefs.remove(_kRequestId);
-      await prefs.remove(_kGrantedAtMs);
-      await prefs.remove(_kTtlMs);
+      await prefs.remove(requestKey);
+      await prefs.remove(grantedKey);
+      await prefs.remove(ttlKey);
       return null;
     }
     return requestId;
   }
 
   /// 보상 사용 완료(또는 만료/포기) 후 상태 정리.
-  Future<void> clear() async {
+  Future<void> clear({String feature = 'voice_conversation'}) async {
     final prefs = await _prefs();
-    await prefs.remove(_kRequestId);
-    await prefs.remove(_kGrantedAtMs);
-    await prefs.remove(_kTtlMs);
+    await prefs.remove(_key(_kRequestId, feature));
+    await prefs.remove(_key(_kGrantedAtMs, feature));
+    await prefs.remove(_key(_kTtlMs, feature));
+    await prefs.remove(_key(_kGrantBinding, feature));
+  }
+
+  /// Persist a server entitlement consume that must be retried before a new
+  /// parse is allowed. This closes the gap where GPT succeeds but the RPC is
+  /// temporarily unavailable (including process restart).
+  Future<void> markPendingConsume({
+    required String requestId,
+    required String binding,
+    String feature = 'voice_conversation',
+  }) async {
+    if (requestId.trim().isEmpty || binding.trim().isEmpty) {
+      return;
+    }
+    final prefs = await _prefs();
+    await prefs.setString(_key(_kPendingConsume, feature), requestId);
+    await prefs.setString(_key(_kPendingConsumeBinding, feature), binding);
+  }
+
+  Future<String?> pendingConsumeRequestId({
+    required String binding,
+    String feature = 'voice_conversation',
+  }) async {
+    final prefs = await _prefs();
+    if (prefs.getString(_key(_kPendingConsumeBinding, feature)) != binding) {
+      return null;
+    }
+    return prefs.getString(_key(_kPendingConsume, feature));
+  }
+
+  Future<String?> pendingConsumeBinding({
+    String feature = 'voice_conversation',
+  }) async {
+    final prefs = await _prefs();
+    return prefs.getString(_key(_kPendingConsumeBinding, feature));
+  }
+
+  Future<void> clearPendingConsume({
+    String feature = 'voice_conversation',
+  }) async {
+    final prefs = await _prefs();
+    await prefs.remove(_key(_kPendingConsume, feature));
+    await prefs.remove(_key(_kPendingConsumeBinding, feature));
   }
 
   /// 진단/테스트용. 만료 여부만 파악.
@@ -137,8 +217,11 @@ class AdRewardState {
   }
 
   /// 동일 requestId가 이미 활성 보상으로 등록돼 있는지 (중복 grant 방지).
-  Future<bool> isActiveGrantFor(String requestId) async {
-    final active = await consumeActiveRequestId();
+  Future<bool> isActiveGrantFor(
+    String requestId, {
+    String feature = 'voice_conversation',
+  }) async {
+    final active = await consumeActiveRequestId(feature: feature);
     return active == requestId;
   }
 

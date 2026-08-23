@@ -149,8 +149,9 @@ class RemoteConfigService {
   static const int kVoiceConversationDailyFreeCountDefault = 1;
 
   /// [scheduleParseDailyFreeCount]의 코드 기본값(콘솔 미설정 시 최종 폴백).
-  /// AI 일정분석(GPT 파싱)은 하루 3회까지 광고 없이 무료로 사용할 수 있다.
-  static const int kScheduleParseDailyFreeCountDefault = 3;
+  /// AI 일정분석(GPT 파싱)은 하루 2회까지 광고 없이 무료로 사용할 수 있다.
+  /// 세 번째 사용부터는 보상형 광고 1회 시청당 1회가 허용된다.
+  static const int kScheduleParseDailyFreeCountDefault = 2;
 
   static Future<void> initialize() {
     if (_initialized || _readiness == RemoteConfigReadiness.notEligible) {
