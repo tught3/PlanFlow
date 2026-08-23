@@ -200,7 +200,7 @@
         <item name="android:maxLines">1</item>
         <item name="android:textColor">#17181C</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:textSize">9.5sp</item>
+        <item name="android:textSize">10.5sp</item>
     </style>
 
     <style name="PlanFlowWidgetMonthCellOverflow">
@@ -255,7 +255,7 @@
         <item name="android:gravity">center</item>
         <item name="android:textColor">#17181C</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:textSize">8.5sp</item>
+        <item name="android:textSize">9.5sp</item>
     </style>
 
 </resources>

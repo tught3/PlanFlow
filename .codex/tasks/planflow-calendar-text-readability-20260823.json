@@ -1,0 +1,41 @@
+{
+  "task_id": "planflow-calendar-text-readability-20260823",
+  "objective": "Increase calendar and widget schedule title text by one point and make it heavier for readability.",
+  "status": "COMPLETE",
+  "scope": {
+    "allowed_files": [
+      "lib/screens/calendar/calendar_widgets.dart",
+      "android/app/src/main/res/values/styles.xml",
+      "android/app/src/main/res/layout/planflow_group_calendar_widget.xml",
+      "test/services/home_widget_service_test.dart"
+    ],
+    "forbidden_changes": [
+      "holiday/date colors",
+      "calendar data or ordering",
+      "marker/icon sizes",
+      "pubspec/version",
+      "deployment configuration"
+    ]
+  },
+  "routing": [
+    {"role": "Explorer", "agent": "flux_explorer", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "medium"},
+    {"role": "Planner", "agent": "flux_planner", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "high"},
+    {"role": "Simple Implementer", "agent": "flux_simple_implementer", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "medium"},
+    {"role": "Test Executor", "agent": "flux_test_executor", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "low"},
+    {"role": "Reviewer", "agent": "flux_reviewer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "high"},
+    {"role": "Integrator", "agent": "flux_integrator", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+  ],
+  "stages": [
+    {"role": "Explorer", "status": "COMPLETED", "result": "Located Flutter mini/overlay labels, Android month style, and group widget inline event text."},
+    {"role": "Planner", "status": "COMPLETED", "result": "Simple scoped rendering-only change; preserve markers, colors, data, and layout behavior."},
+    {"role": "Simple Implementer", "status": "INTERRUPTED", "result": "Applied Flutter title and Android style edits before interruption; root completed group XML and focused source-contract test edits."},
+    {"role": "Test Executor", "status": "COMPLETED", "evidence": [
+      "flutter test test/services/home_widget_service_test.dart test/screens/calendar_screen_test.dart --no-pub: exit 0, All tests passed",
+      "flutter analyze lib/screens/calendar/calendar_widgets.dart lib/services/home_widget_service.dart: exit 0, No issues found",
+      "android/.\\gradlew.bat :app:compileDebugKotlin --no-daemon: exit 0, BUILD SUCCESSFUL",
+      "git diff --check: exit 0"
+    ]},
+    {"role": "Reviewer", "status": "COMPLETED", "host_final": true, "final_review_report": {"envelope": "FINAL_REVIEW_REPORT", "verdict": "PASS", "highest_severity": "NONE", "findings": "NONE", "evidence_summary": "Final diff is limited to the four allowed files. Flutter titles changed 6.8 to 7.8 and w700 to w800; Android monthly text changed 9.5sp to 10.5sp; group widget text changed 8.5sp to 9.5sp; bold remains. Icons/markers, colors, holiday/week/day behavior, data, ordering, rows, version, and deployment are unchanged. Tests, analyze, Android compile, and diff check all exited 0.", "retest_scope": "NONE", "lifecycle": {"runtime_started": "fact", "last_activity": "fact", "final_emitted": "fact"}}},
+    {"role": "Integrator", "status": "COMPLETED", "verdict": "COMPLETE", "result": "Requirements, allowed-file scope, test evidence, and the independent reviewer PASS envelope were reconciled. Rechecked styles: PlanFlowWidgetMonthCellEvent is 10.5sp bold, PlanFlowWidgetPreviewCount is 9.5sp bold, and all 42 group event labels are 9.5sp with no 8.5sp remnants. git diff --check exited 0."}
+  ]
+}

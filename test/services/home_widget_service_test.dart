@@ -21,6 +21,8 @@ void main() {
     expect(calendarSource, contains('markerFontSize: 13'));
     expect(calendarSource, contains('strongAlarmMarkerFontSize: 4.8'));
     expect(calendarSource, contains('strongAlarmMarkerFontSize: 11'));
+    expect(calendarSource, contains('fontSize: 7.8'));
+    expect(calendarSource, contains('fontWeight: FontWeight.w800'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
     expect(calendarSource, contains("text: '↻\\u200A'"));
     expect(calendarSource, contains('fontWeight: FontWeight.w700'));
@@ -44,6 +46,32 @@ void main() {
 
     final widgetStylesSource =
         File('android/app/src/main/res/values/styles.xml').readAsStringSync();
+    final monthEventStyleStart = widgetStylesSource.indexOf(
+      '<style name="PlanFlowWidgetMonthCellEvent">',
+    );
+    final monthEventStyleEnd = widgetStylesSource.indexOf(
+      '</style>',
+      monthEventStyleStart,
+    );
+    expect(monthEventStyleStart, isNonNegative);
+    expect(monthEventStyleEnd, greaterThan(monthEventStyleStart));
+    final monthEventStyle = widgetStylesSource.substring(
+      monthEventStyleStart,
+      monthEventStyleEnd,
+    );
+    expect(
+      monthEventStyle,
+      contains('<item name="android:textSize">10.5sp</item>'),
+    );
+    expect(
+      monthEventStyle,
+      contains('<item name="android:textStyle">bold</item>'),
+    );
+    final groupWidgetSource = File(
+      'android/app/src/main/res/layout/planflow_group_calendar_widget.xml',
+    ).readAsStringSync();
+    expect(groupWidgetSource, isNot(contains('android:textSize="8.5sp"')));
+    expect(groupWidgetSource, contains('android:textSize="9.5sp"'));
     final listStyleStart = widgetStylesSource.indexOf(
       '<style name="PlanFlowWidgetListText">',
     );
@@ -53,7 +81,8 @@ void main() {
     );
     expect(listStyleStart, isNonNegative);
     expect(listStyleEnd, greaterThan(listStyleStart));
-    final listStyle = widgetStylesSource.substring(listStyleStart, listStyleEnd);
+    final listStyle =
+        widgetStylesSource.substring(listStyleStart, listStyleEnd);
     expect(listStyle, contains('<item name="android:textStyle">bold</item>'));
 
     final homeLayoutSource =

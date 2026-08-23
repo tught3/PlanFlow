@@ -977,10 +977,10 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 6.8,
+                            fontSize: 7.8,
                             height: 1.0,
                             color: fg,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -1119,10 +1119,10 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 6.8,
+                  fontSize: 7.8,
                   height: 1.0,
                   color: fg,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
