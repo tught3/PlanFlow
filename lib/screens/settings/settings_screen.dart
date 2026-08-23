@@ -22,6 +22,7 @@ import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/calendar_connection_repository.dart';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../features/groups/models/group_backup_model.dart';
 import '../../features/groups/providers/group_context_provider.dart';
 import '../../features/groups/repositories/group_backup_repository.dart';
 import '../../providers/auth_provider.dart';

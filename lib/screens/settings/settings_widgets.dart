@@ -412,7 +412,7 @@ class _DeletedGroupsButtonState extends State<_DeletedGroupsButton> {
       final backups = await GroupBackupRepository.supabase().listMyBackups(
         backupType: 'delete',
       );
-      return backups.any((backup) => !backup.isRestored);
+      return shouldShowDeletedGroupsButton(backups);
     } catch (_) {
       // Fail closed: a transient/error state must not expose a dead button.
       return false;
@@ -444,6 +444,11 @@ class _DeletedGroupsButtonState extends State<_DeletedGroupsButton> {
       },
     );
   }
+}
+
+@visibleForTesting
+bool shouldShowDeletedGroupsButton(Iterable<GroupBackupModel> backups) {
+  return backups.any((backup) => backup.isDelete && !backup.isRestored);
 }
 
 /// 그룹 리더로 인해 회원 탈퇴가 차단됐을 때 차단 사유 그룹 목록을 표시한다.

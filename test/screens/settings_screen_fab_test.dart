@@ -2,6 +2,7 @@
 // "음성으로 일정 관리"와 "AI일정대화" 버튼을 각각 1개씩 렌더하는지 확인한다.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:io';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
@@ -78,6 +79,12 @@ void main() {
       expect(find.text('AI일정대화'), findsOneWidget);
     },
   );
+
+  test('settings list reserves scroll space below the two global FABs', () {
+    final source =
+        File('lib/screens/settings/settings_screen.dart').readAsStringSync();
+    expect(source, contains('AppConstants.defaultPadding + 220'));
+  });
 }
 
 GroupContextProvider _fakeEmptyGroupContextProvider() =>
@@ -140,11 +147,15 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   }) async {
     return BriefingDailyScheduleResult(
       morning: BriefingScheduleEntry(
-        scheduledAt: DateTime(2026, 5, 7, 7, 30), // banned-ok: FAB 렌더링만 검증, 미단언 더미 fake 반환값(클램프/만료 로직 미경유)
+        // banned-ok: FAB 렌더링만 검증하는 더미 fake 반환값(클램프/만료 로직 미경유)
+        scheduledAt: DateTime(2026, 5, 7, 7,
+            30), // banned-ok: FAB 렌더링만 검증, 미단언 더미 fake 반환값(클램프/만료 로직 미경유)
         scheduled: true,
       ),
       evening: BriefingScheduleEntry(
-        scheduledAt: DateTime(2026, 5, 7, 21), // banned-ok: 위와 동일 사유(더미 fake 반환값, 미단언)
+        // banned-ok: FAB 렌더링만 검증하는 더미 fake 반환값(클램프/만료 로직 미경유)
+        scheduledAt:
+            DateTime(2026, 5, 7, 21), // banned-ok: 위와 동일 사유(더미 fake 반환값, 미단언)
         scheduled: true,
       ),
     );
