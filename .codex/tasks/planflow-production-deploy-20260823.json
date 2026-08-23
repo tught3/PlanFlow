@@ -1,0 +1,31 @@
+{
+  "task_id": "planflow-production-deploy-20260823",
+  "request": "Upload the current PlanFlow release to the Google Play production track.",
+  "status": "BLOCKED_SHARED_GRADLE_CACHE",
+  "version": "1.1.1+156",
+  "package": "com.fluxstudio.planflow",
+  "track": "production",
+  "preflight": {
+    "config": "PASS: local production config enabled, package and production track validated",
+    "aab": "PASS: existing 80.1MB AAB and SHA-256 marker validated",
+    "source": "e5c90924 pushed to origin/main"
+  },
+  "attempts": [
+    {
+      "mode": "build_and_upload",
+      "result": "FAILED_BEFORE_UPLOAD_EVIDENCE",
+      "reason": "Gradle Publisher waited in class/JAR cache transformation and exited 1; other project Gradle builds were concurrently using the shared E:\\.gradle cache"
+    },
+    {
+      "mode": "reuse_existing_aab",
+      "result": "BLOCKED_BEFORE_UPLOAD_EVIDENCE",
+      "reason": "Repeated Gradle daemon/cache transformation stall; no Play upload or commitEdit evidence"
+    }
+  ],
+  "changes": [
+    "scripts/deploy-play-production.ps1: add validated AAB reuse, SHA-256 marker verification, isolated/shared cache selection, plain stacktrace output",
+    "pubspec.yaml: version 1.1.1+156"
+  ],
+  "next_step": "Pause concurrent ValueFlow/other Gradle builds, then run deploy-play-production.ps1 -ConfirmProductionRollout -ReuseExistingAab -UseSharedGradleCache and require Play production upload plus commitEdit evidence.",
+  "last_update": "2026-08-23T22:30:00+09:00"
+}
