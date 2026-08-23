@@ -2,14 +2,22 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ProjectKey,
 
-  [string]$ConfigPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\tools')).Path 'deploy-play-config.json'),
+  [string]$ConfigPath = '',
 
   [switch]$SkipVersionBump,
 
-  [switch]$SkipUpload
+  [switch]$SkipUpload,
+
+  [int]$AnalyzeTimeoutSeconds = 900,
+
+  [int]$AnalyzeFallbackTimeoutSeconds = 700
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+  $ConfigPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\tools')).Path 'deploy-play-config.json'
+}
 
 function Write-Stage {
   param([Parameter(Mandatory = $true)][string]$Message)
@@ -335,6 +343,8 @@ try {
       $buildArgs = @{
         StatusPath = $statusPath
         SkipFluxOsSession = $true
+        AnalyzeTimeoutSeconds = $AnalyzeTimeoutSeconds
+        AnalyzeFallbackTimeoutSeconds = $AnalyzeFallbackTimeoutSeconds
       }
       if ($SkipVersionBump) {
         $buildArgs.SkipVersionBump = $true
