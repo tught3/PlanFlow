@@ -152,7 +152,7 @@ if (releasePublishRequested && planflowPlayTrack == "production") {
     if (receiptValues["token"] != productionRolloutToken ||
         receiptValues["track"] != "production" ||
         receiptValues["workspace"] != workspaceRoot.path ||
-        issuedAt <= 0L || kotlin.math.abs(now - issuedAt) > 5 * 60 * 1000L
+        issuedAt <= 0L || Math.abs(now - issuedAt) > 5 * 60 * 1000L
     ) {
         throw GradleException("Production publish blocked: rollout receipt is invalid, stale, or not issued by the wrapper.")
     }
