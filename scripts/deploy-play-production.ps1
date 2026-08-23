@@ -2,6 +2,8 @@ param(
   [string]$ConfigPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path 'config\play-production.json'),
   [switch]$ConfirmProductionRollout,
   [switch]$BuildDraft,
+  [switch]$ReuseExistingAab,
+  [switch]$UseSharedGradleCache,
   [switch]$SkipVersionBump,
   [switch]$SkipTests
 )
@@ -59,6 +61,40 @@ function Read-PubspecVersion {
   return $m.Groups[1].Value
 }
 
+function Assert-ExistingAabMarker([string]$AabPath) {
+  $markerPath = "$AabPath.map-marker"
+  Assert-File -Path $AabPath -Label 'production AAB'
+  Assert-File -Path $markerPath -Label 'production AAB map marker'
+
+  $values = @{}
+  foreach ($line in [System.IO.File]::ReadAllLines($markerPath, [System.Text.UTF8Encoding]::new($false))) {
+    $separator = $line.IndexOf('=')
+    if ($separator -gt 0) {
+      $values[$line.Substring(0, $separator)] = $line.Substring($separator + 1)
+    }
+  }
+  $resolvedAab = (Resolve-Path -LiteralPath $AabPath).Path
+  $markerAab = if ($values.ContainsKey('aabPath')) { [string]$values['aabPath'] } else { '' }
+  if ([string]::IsNullOrWhiteSpace($markerAab) -or
+      (Resolve-Path -LiteralPath $markerAab -ErrorAction SilentlyContinue).Path -ine $resolvedAab -or
+      ([string]$values['sha256'] -notmatch '^[0-9a-fA-F]{64}$')) {
+    throw 'Existing production AAB map marker is invalid or points to a different AAB.'
+  }
+
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $actualHash = [System.BitConverter]::ToString(
+      $sha256.ComputeHash([System.IO.File]::ReadAllBytes($resolvedAab))
+    ).Replace('-', '')
+  } finally {
+    $sha256.Dispose()
+  }
+  if ($actualHash -ine [string]$values['sha256']) {
+    throw 'Existing production AAB map marker SHA-256 does not match the AAB.'
+  }
+  return $markerPath
+}
+
 if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
   throw "Production config not found: $ConfigPath`nCopy config\play-production.example.json to config\play-production.json and fill the local service account path."
 }
@@ -79,17 +115,25 @@ if (-not $ConfirmProductionRollout -and -not $BuildDraft) {
   exit 0
 }
 
-$buildArgs = @{ SkipFluxOsSession = $true }
-if ($SkipVersionBump -or -not $ConfirmProductionRollout) { $buildArgs.SkipVersionBump = $true }
-if ($SkipTests) { $buildArgs.SkipTests = $true }
-Write-Host 'Building through scripts/build-internal-aab.ps1 (map-safe dart-define preflight included).'
-$buildResult = & $BuildScript @buildArgs
-if ($LASTEXITCODE -ne 0) { throw "Map-safe production AAB build failed with exit code $LASTEXITCODE." }
-
 $aabPath = [System.IO.Path]::GetFullPath((Join-Path ([string]$config.path) ([string]$config.aabPath)))
-$markerPath = "$aabPath.map-marker"
-Assert-File -Path $aabPath -Label 'production AAB'
-Assert-File -Path $markerPath -Label 'map artifact marker'
+$buildResult = $null
+if ($ReuseExistingAab) {
+  if (-not $ConfirmProductionRollout) {
+    throw '-ReuseExistingAab requires -ConfirmProductionRollout.'
+  }
+  Write-Host 'Reusing existing validated AAB; build and version bump are skipped.'
+  $markerPath = Assert-ExistingAabMarker -AabPath $aabPath
+} else {
+  $buildArgs = @{ SkipFluxOsSession = $true }
+  if ($SkipVersionBump -or -not $ConfirmProductionRollout) { $buildArgs.SkipVersionBump = $true }
+  if ($SkipTests) { $buildArgs.SkipTests = $true }
+  Write-Host 'Building through scripts/build-internal-aab.ps1 (map-safe dart-define preflight included).'
+  $buildResult = & $BuildScript @buildArgs
+  if ($LASTEXITCODE -ne 0) { throw "Map-safe production AAB build failed with exit code $LASTEXITCODE." }
+  $markerPath = "$aabPath.map-marker"
+  Assert-File -Path $aabPath -Label 'production AAB'
+  Assert-File -Path $markerPath -Label 'map artifact marker'
+}
 if (-not $ConfirmProductionRollout) {
   Write-Host "Draft AAB ready: $aabPath"
   Write-Host 'No Play upload performed.'
@@ -100,6 +144,7 @@ $serviceAccount = [System.IO.Path]::GetFullPath([string]$config.serviceAccountJs
 $artifactDir = Split-Path -Parent $aabPath
 $rolloutToken = [guid]::NewGuid().ToString('N')
 $receiptPath = Join-Path $WorkspaceRoot ("build\.planflow-production-rollout-{0}.receipt" -f $rolloutToken)
+$planflowGradleUserHome = Join-Path $WorkspaceRoot '.gradle-local\gradle-home'
 $receiptLines = @(
   "token=$rolloutToken",
   "track=production",
@@ -107,15 +152,26 @@ $receiptLines = @(
   "issuedAtEpochMillis=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
 )
 [System.IO.File]::WriteAllLines($receiptPath, $receiptLines, [System.Text.UTF8Encoding]::new($false))
+$previousGradleUserHome = $env:GRADLE_USER_HOME
+if ($UseSharedGradleCache -and -not [string]::IsNullOrWhiteSpace($previousGradleUserHome)) {
+  $planflowGradleUserHome = $previousGradleUserHome
+}
+$env:GRADLE_USER_HOME = $planflowGradleUserHome
 Push-Location (Join-Path $WorkspaceRoot 'android')
 try {
   & $GradlePath ':app:publishReleaseBundle' '--track' 'production' '--artifact-dir' $artifactDir `
+    '--console=plain' '--stacktrace' '--no-daemon' `
     "-PplanflowPlayServiceAccountJson=$serviceAccount" "-PplanflowMapArtifactMarker=$markerPath" `
     '-PplanflowPlayTrack=production' "-PplanflowProductionRolloutToken=$rolloutToken" `
     "-PplanflowProductionRolloutReceipt=$receiptPath"
   if ($LASTEXITCODE -ne 0) { throw "Production Play upload failed with exit code $LASTEXITCODE." }
 } finally {
   Pop-Location
+  if ($null -eq $previousGradleUserHome) {
+    Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue
+  } else {
+    $env:GRADLE_USER_HOME = $previousGradleUserHome
+  }
   Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
 }
 
