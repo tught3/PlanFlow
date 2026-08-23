@@ -1,14 +1,14 @@
 {
   "task_id": "planflow-calendar-settings-alpha-20260823",
   "request": "Apply calendar/settings readability and visibility changes, fix settings FAB overlap, classify Play Console recommendations, verify, and deploy to the private alpha track.",
-  "status": "INCOMPLETE_ALPHA_UPLOAD_NOT_CONFIRMED",
+  "status": "DEPLOYED_ALPHA_DEVICE_CHECK_PENDING",
   "routing": {
     "explorer": {"agent": "calendar_settings_changes_explorer_20260823", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "interrupted_after_findings_request"},
     "planner": {"agent": "calendar_settings_changes_planner_20260823", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed"},
     "implementer": {"agent": "calendar_settings_changes_implementer_20260823", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed", "commits": ["7f2ccd45", "a5827b84", "885904ab"]},
     "test_executor": {"agent": "calendar_settings_test_executor_20260823", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed", "result": "focused analysis and targeted Flutter test suite passed"},
     "reviewer": {"agent": "calendar_settings_reviewer_20260823", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed_no_blocker_or_high", "result": "MEDIUM-only test/physical-layout evidence gaps; no BLOCKER/HIGH. A host-final FINAL_REVIEW_REPORT PASS envelope is not present in this task state, so it is not treated as an acceptance PASS."},
-    "integrator": {"agent": "planflow_calendar_settings_integrator_20260823", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed_incomplete", "verdict": "INCOMPLETE_ALPHA_UPLOAD_NOT_CONFIRMED"}
+    "integrator": {"agent": "planflow_calendar_settings_integrator_20260823", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed_device_check_pending", "verdict": "DEPLOYED_ALPHA_DEVICE_CHECK_PENDING"}
   },
   "play_console_recommendations": {
     "edge_to_edge": "investigate_only",
@@ -37,6 +37,8 @@
     {"command": "git diff --check", "exit_code": 0, "result": "no whitespace errors"},
     {"command": "flutter analyze", "exit_code": 124, "timeout_seconds": 60, "result": "final guarded deployment retry timed out before AAB build; not accepted as a pass"},
     {"command": "dart analyze", "exit_code": 124, "timeout_seconds": 300, "result": "fallback analyzer timed out before AAB build; not accepted as a pass"},
+    {"command": "scripts/deploy-play-internal.ps1 -ProjectKey planflow -SkipVersionBump", "exit_code": 0, "result": "version 1.1.1+155 AAB built and Play Alpha upload completed"},
+    {"command": "android/gradlew.bat :app:publishReleaseBundle", "exit_code": 0, "result": "App Bundle upload complete; release [155] updated in alpha; commitEdit BUILD SUCCESSFUL"},
     {"command": "android\\gradlew.bat :app:compileReleaseKotlin --no-daemon --console=plain", "exit_code": null, "result": "environment/process stall; not accepted as a pass"}
   ],
   "changed_files": [
@@ -54,19 +56,19 @@
     "test/screens/settings_screen_fab_test.dart",
     "test/screens/settings_deleted_groups_visibility_test.dart",
     "scripts/deploy-play-internal.ps1",
+    "scripts/build-internal-aab.ps1",
     "pubspec.yaml"
   ],
   "integration_review": {
     "fab_overlap": "PASS_SOURCE_SCOPE: Settings ListView bottom padding is AppConstants.defaultPadding + 220, leaving scroll extent above the two global FABs. This directly addresses the clipped 12-hour toggle without changing the global FAB geometry. Physical-device visual confirmation remains pending.",
     "play_console_recommendations": "SAFE_CLASSIFICATION: no speculative edge-to-edge, deprecated-system-bar, BitmapFactory, or R8 changes were made. The portrait lock in MainActivity is real and UX-sensitive; resizeableActivity=true exists. Release minification is enabled and resource shrinking intentionally remains disabled for dynamic notification icon lookup.",
-    "deployment": "NOT_CONFIRMED: final guarded retry used 60s flutter analyze then 300s dart analyze fallback; both timed out before AAB build. The runner's default config-path resolution and timeout forwarding, plus intended version 1.1.1+154, were committed in 885904ab and pushed to origin/main. No AAB artifact, Play Alpha upload, release update, or commitEdit success log is available.",
-    "push": "885904ab pushed successfully to origin/main; this is source/config delivery evidence only, not Play Alpha delivery evidence.",
-    "process_cleanup": "The analyzer processes owned by the timed-out deployment retry were cleaned up by the deployment owner; no upload process was left running."
+    "deployment": "CONFIRMED_ALPHA_UPLOAD: .deploy-logs/deploy-alpha-20260823-205741.log records version 1.1.1+155, App Bundle upload complete, alpha release [155] update, commitEdit, and BUILD SUCCESSFUL. .deploy-logs/build-20260823-205808-db7c9a60e08045b6856ce1f3dcb73918.log records the 80.1MB AAB build.",
+    "push": "885904ab, 81d95a2a, and 3b812529 were pushed successfully to origin/main. The deployment-runner hardening and version 1.1.1+155 source changes are synchronized.",
+    "process_cleanup": "The analyzer processes owned by the timed-out deployment retry were cleaned up by the deployment owner; the final Alpha upload completed without a residual deployment process."
   },
   "unresolved": [
-    "Obtain fresh full analyzer/build completion and actual Play Alpha upload evidence for versionCode 154.",
-    "Run a host-final independent reviewer PASS envelope after the final deployment-related diff is committed.",
-    "Capture a device visual check that the 12-hour toggle is fully reachable above the global FABs."
+    "Install or update the connected test device to Play Alpha 155 and capture a visual check that the 12-hour toggle is fully reachable above the global FABs.",
+    "Run a host-final independent reviewer PASS envelope against the final committed diff if a complete delivery verdict is required."
   ],
-  "last_update": "2026-08-23T20:00:00+09:00"
+  "last_update": "2026-08-23T21:01:00+09:00"
 }
