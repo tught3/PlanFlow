@@ -167,6 +167,7 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
 }
 
 const _calendarMiniMonthEventRows = 4;
+const _calendarMiniEventRowHeight = 10.0;
 
 const _holidayTitleKeywords = <String>[
   '공휴일',

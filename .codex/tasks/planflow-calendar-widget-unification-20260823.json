@@ -1,0 +1,51 @@
+{
+  "task_id": "planflow-calendar-widget-unification-20260823",
+  "objective": "Unify the in-app calendar tab and Android calendar widgets, apply repeating-only backgrounds, and adjust marker/text sizing.",
+  "status": "COMPLETE_SOURCE_VERIFIED_DEVICE_PREVIEW_PENDING",
+  "scope": {
+    "requirements": [
+      "Repeating events use teal background; critical repeating events use purple background.",
+      "Calendar tab and monthly widgets share the same rendering semantics and sizing.",
+      "Increase event text and repeat/alarm marker sizes by one step while preserving connected multi-day geometry."
+    ],
+    "non_requirements": [
+      "Ad changes are explicitly on hold.",
+      "No schedule data deletion or holiday policy change.",
+      "No Play deployment or version bump."
+    ]
+  },
+  "routing": [
+    {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "completed"},
+    {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed"},
+    {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed"},
+    {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed"},
+    {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed"},
+    {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed"}
+  ],
+  "evidence": [
+    {"command": "flutter test test/screens/calendar_screen_test.dart test/services/home_widget_service_test.dart test/features/groups/services/group_calendar_widget_service_test.dart --no-pub -r compact", "exit_code": 0, "result": "All tests passed"},
+    {"command": "flutter analyze lib/screens/calendar/calendar_screen.dart lib/screens/calendar/calendar_widgets.dart lib/services/home_widget_service.dart --no-pub", "exit_code": 0, "result": "No issues found"},
+    {"command": ".\\gradlew.bat :app:clean", "cwd": "android", "exit_code": 0},
+    {"command": ".\\gradlew.bat :app:compileDebugKotlin --no-daemon --console=plain", "cwd": "android", "exit_code": 0, "result": "BUILD SUCCESSFUL"},
+    {"command": "git diff --check", "exit_code": 0, "result": "No formatting errors; CRLF warnings only"},
+    {"source": "Independent Reviewer", "result": "PASS / NONE"},
+    {"source": "Integrator", "result": "COMPLETE"}
+  ],
+  "changed_files": [
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_end.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_middle.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_single.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_start.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_critical_end.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_critical_middle.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_critical_single.xml",
+    "android/app/src/main/res/drawable/widget_month_event_recurring_critical_start.xml",
+    "android/app/src/main/res/layout/planflow_group_calendar_widget.xml",
+    "android/app/src/main/res/values/styles.xml",
+    "lib/screens/calendar/calendar_screen.dart",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "test/services/home_widget_service_test.dart"
+  ],
+  "remaining_risk": "Device visual comparison of the app calendar tab and home-screen widgets is recommended; no device proof is claimed here."
+}

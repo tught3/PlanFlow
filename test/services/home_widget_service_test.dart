@@ -17,16 +17,18 @@ void main() {
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
     expect(calendarSource, contains('_calendarEventTitleSpan'));
     expect(calendarSource, contains('FontWeight.w900'));
-    expect(calendarSource, contains('markerFontSize: 6.8'));
-    expect(calendarSource, contains('markerFontSize: 13'));
-    expect(calendarSource, contains('strongAlarmMarkerFontSize: 4.8'));
-    expect(calendarSource, contains('strongAlarmMarkerFontSize: 11'));
-    expect(calendarSource, contains('fontSize: 7.8'));
+    expect(calendarSource, contains('markerFontSize: 7.8'));
+    expect(calendarSource, contains('markerFontSize: 14'));
+    expect(calendarSource, contains('strongAlarmMarkerFontSize: 5.8'));
+    expect(calendarSource, contains('strongAlarmMarkerFontSize: 12'));
+    expect(calendarSource, contains('fontSize: 8.8'));
     expect(calendarSource, contains('fontWeight: FontWeight.w800'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
     expect(calendarSource, contains("text: '↻\\u200A'"));
     expect(calendarSource, contains('fontWeight: FontWeight.w700'));
     expect(calendarSource, contains('semanticColor'));
+    expect(calendarSource, contains('final recurringBackground'));
+    expect(calendarSource, contains('color: recurringBackground'));
     expect(calendarSource, contains('left: segment.\$1'));
     expect(calendarSource, contains('right: segment.\$2'));
     final homeSource =
@@ -40,8 +42,8 @@ void main() {
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
     expect(widgetSource, contains('ForegroundColorSpan'));
     expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
-    expect(widgetSource, contains('appendMarker("🔔", 16)'));
-    expect(widgetSource, contains('appendMarker("↻", 18)'));
+    expect(widgetSource, contains('appendMarker("🔔", 17)'));
+    expect(widgetSource, contains('appendMarker("↻", 19)'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
 
     final widgetStylesSource =
@@ -61,7 +63,7 @@ void main() {
     );
     expect(
       monthEventStyle,
-      contains('<item name="android:textSize">10.5sp</item>'),
+      contains('<item name="android:textSize">11.5sp</item>'),
     );
     expect(
       monthEventStyle,
@@ -71,7 +73,19 @@ void main() {
       'android/app/src/main/res/layout/planflow_group_calendar_widget.xml',
     ).readAsStringSync();
     expect(groupWidgetSource, isNot(contains('android:textSize="8.5sp"')));
-    expect(groupWidgetSource, contains('android:textSize="9.5sp"'));
+    expect(groupWidgetSource, contains('android:textSize="10.5sp"'));
+    expect(
+      File(
+        'android/app/src/main/res/drawable/widget_month_event_recurring_single.xml',
+      ).readAsStringSync(),
+      contains('#D2ECE8'),
+    );
+    expect(
+      File(
+        'android/app/src/main/res/drawable/widget_month_event_recurring_critical_single.xml',
+      ).readAsStringSync(),
+      contains('#E2D2F3'),
+    );
     final listStyleStart = widgetStylesSource.indexOf(
       '<style name="PlanFlowWidgetListText">',
     );
@@ -108,16 +122,27 @@ void main() {
       'widget_month_event_team_start.xml',
       'widget_month_event_team_middle.xml',
       'widget_month_event_team_end.xml',
-      'widget_month_event_recurring_single.xml',
-      'widget_month_event_recurring_start.xml',
-      'widget_month_event_recurring_middle.xml',
-      'widget_month_event_recurring_end.xml',
       'widget_month_event_holiday.xml',
     ]) {
       final drawableSource = File(
         'android/app/src/main/res/drawable/$drawableName',
       ).readAsStringSync();
       expect(drawableSource, contains('transparent'));
+    }
+    for (final drawableName in <String>[
+      'widget_month_event_recurring_single.xml',
+      'widget_month_event_recurring_start.xml',
+      'widget_month_event_recurring_middle.xml',
+      'widget_month_event_recurring_end.xml',
+      'widget_month_event_recurring_critical_single.xml',
+      'widget_month_event_recurring_critical_start.xml',
+      'widget_month_event_recurring_critical_middle.xml',
+      'widget_month_event_recurring_critical_end.xml',
+    ]) {
+      final drawableSource = File(
+        'android/app/src/main/res/drawable/$drawableName',
+      ).readAsStringSync();
+      expect(drawableSource, isNot(contains('transparent')));
     }
   });
 

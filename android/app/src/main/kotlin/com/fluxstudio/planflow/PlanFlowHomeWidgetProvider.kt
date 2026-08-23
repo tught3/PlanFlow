@@ -112,8 +112,8 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(ForegroundColorSpan(darkenColor(markerColor)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             builder.setSpan(AbsoluteSizeSpan(sizeSp, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (isCritical && useStrongAlarm) appendMarker("🔔", 16)
-        if (isRecurring) appendMarker("↻", 18)
+        if (isCritical && useStrongAlarm) appendMarker("🔔", 17)
+        if (isRecurring) appendMarker("↻", 19)
         builder.append(value)
         builder.setSpan(
             StyleSpan(Typeface.BOLD),
@@ -766,21 +766,27 @@ abstract class BasePlanFlowWidgetProvider(
         isRecurring: Boolean = false,
     ): Int {
         return when (segment) {
-            "start" -> if (isCritical) {
+            "start" -> if (isCritical && isRecurring) {
+                R.drawable.widget_month_event_recurring_critical_start
+            } else if (isCritical) {
                 R.drawable.widget_month_event_critical_start
             } else if (isRecurring) {
                 R.drawable.widget_month_event_recurring_start
             } else {
                 R.drawable.widget_month_event_start
             }
-            "middle" -> if (isCritical) {
+            "middle" -> if (isCritical && isRecurring) {
+                R.drawable.widget_month_event_recurring_critical_middle
+            } else if (isCritical) {
                 R.drawable.widget_month_event_critical_middle
             } else if (isRecurring) {
                 R.drawable.widget_month_event_recurring_middle
             } else {
                 R.drawable.widget_month_event_middle
             }
-            "end" -> if (isCritical) {
+            "end" -> if (isCritical && isRecurring) {
+                R.drawable.widget_month_event_recurring_critical_end
+            } else if (isCritical) {
                 R.drawable.widget_month_event_critical_end
             } else if (isRecurring) {
                 R.drawable.widget_month_event_recurring_end
@@ -796,6 +802,7 @@ abstract class BasePlanFlowWidgetProvider(
         isTeam: Boolean,
         isRecurring: Boolean,
     ): Int = when {
+        isCritical && isRecurring -> R.drawable.widget_month_event_recurring_critical_single
         isCritical -> R.drawable.widget_month_event_critical_single
         isTeam -> R.drawable.widget_month_event_team_single
         isRecurring -> R.drawable.widget_month_event_recurring_single
@@ -1716,7 +1723,7 @@ class PlanFlowMonthlyWidgetProvider :
                             R.drawable.widget_month_event_holiday
                         } else if (isMonthRangeSegment(segment)) {
                             when {
-                                event.isCritical -> monthRangeBackground(segment, true)
+                                event.isCritical -> monthRangeBackground(segment, true, event.isRecurring)
                                 event.isTeam -> monthTeamRangeBackground(segment)
                                 else -> monthRangeBackground(segment, false, event.isRecurring)
                             }
@@ -1938,7 +1945,7 @@ class PlanFlowMonthlyWidgetProvider :
                             R.drawable.widget_month_event_holiday
                         } else if (isMonthRangeSegment(segment)) {
                             when {
-                                eventCritical -> monthRangeBackground(segment, true)
+                                eventCritical -> monthRangeBackground(segment, true, eventRecurring)
                                 eventTeam -> monthTeamRangeBackground(segment)
                                 else -> monthRangeBackground(segment, false, eventRecurring)
                             }

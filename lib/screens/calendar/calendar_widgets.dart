@@ -801,7 +801,7 @@ class _CalendarMiniEventList extends StatelessWidget {
                       ? calendarHolidayColor
                       : PlanFlowColors.textSecondary;
               return SizedBox(
-                height: 9,
+                height: _calendarMiniEventRowHeight,
                 child: Container(
                   margin: const EdgeInsets.only(top: 1),
                   padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -822,7 +822,7 @@ class _CalendarMiniEventList extends StatelessWidget {
             },
           ),
         for (var index = 0; index < leadingRows; index += 1)
-          const SizedBox(height: 9),
+          const SizedBox(height: _calendarMiniEventRowHeight),
         for (final event in displayEvents)
           _CalendarMiniEventLabel(
             event: event,
@@ -837,7 +837,7 @@ class _CalendarMiniEventList extends StatelessWidget {
           ),
         if (hiddenCount > 0)
           SizedBox(
-            height: 9,
+            height: _calendarMiniEventRowHeight,
             child: Align(
               alignment: Alignment.centerRight,
               child: Padding(
@@ -897,6 +897,13 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                 ? calendarRecurringEventColor
                 : calendarNormalEventTextColor;
     final fg = baseColor;
+    final recurringBackground = isRecurring
+        ? (event.isCritical
+            ? calendarCriticalEventBackgroundColor
+            : isTeam
+                ? null
+                : calendarRecurringEventBackgroundColor)
+        : null;
     final borderColor = isMultiDay
         ? (event.isCritical
             ? calendarCriticalEventTextColor
@@ -912,12 +919,13 @@ class _CalendarMiniEventLabel extends StatelessWidget {
       key: ValueKey(
         'calendar-mini-event-${event.id}-${day.year}-${day.month}-${day.day}',
       ),
-      height: 9,
+      height: _calendarMiniEventRowHeight,
       child: ClipRect(
         child: Container(
           margin: const EdgeInsets.only(top: 1),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
+            color: recurringBackground,
             border: isMultiDay
                 ? Border(
                     top: BorderSide(
@@ -970,14 +978,14 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             semanticColor: fg,
                             leadingText:
                                 event.isAllDay && !isMultiDay ? '종일 ' : null,
-                            markerFontSize: 6.8,
-                            strongAlarmMarkerFontSize: 4.8,
+                            markerFontSize: 7.8,
+                            strongAlarmMarkerFontSize: 5.8,
                           ),
                           maxLines: 1,
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 7.8,
+                            fontSize: 8.8,
                             height: 1.0,
                             color: fg,
                             fontWeight: FontWeight.w800,
@@ -1073,7 +1081,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
     final showTitle = !isMultiDay || segment.$1;
     const hPadding = 2.0;
     return SizedBox(
-      height: 9,
+      height: _calendarMiniEventRowHeight,
       child: ClipRect(
         child: Container(
           margin: const EdgeInsets.only(top: 1),
@@ -1119,7 +1127,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 7.8,
+                  fontSize: 8.8,
                   height: 1.0,
                   color: fg,
                   fontWeight: FontWeight.w800,
@@ -1222,12 +1230,12 @@ class _EventAgendaCard extends StatelessWidget {
                               useStrongAlarm: event.useStrongAlarm,
                               isRecurring: isRecurring,
                               semanticColor: accentColor,
-                              markerFontSize: 13,
-                              strongAlarmMarkerFontSize: 11,
+                              markerFontSize: 14,
+                              strongAlarmMarkerFontSize: 12,
                             ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,
-                              fontSize: 13,
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
                             maxLines: 1,
@@ -1422,7 +1430,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                       event.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: PlanFlowColors.primary,
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
