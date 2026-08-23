@@ -1,7 +1,7 @@
 name: planflow
 description: PlanFlow Flutter app scaffold.
 publish_to: "none"
-version: 1.1.1+147
+version: 1.1.1+148
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
