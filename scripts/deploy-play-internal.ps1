@@ -131,7 +131,14 @@ function Assert-MapArtifactMarker {
     throw 'Map artifact marker is invalid or points to a different AAB. Rebuild through scripts/build-internal-aab.ps1.'
   }
 
-  $actualHash = (Get-FileHash -LiteralPath $resolvedExpected -Algorithm SHA256).Hash
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $actualHash = [System.BitConverter]::ToString(
+      $sha256.ComputeHash([System.IO.File]::ReadAllBytes($resolvedExpected))
+    ).Replace('-', '')
+  } finally {
+    $sha256.Dispose()
+  }
   if ($actualHash -ine $markerHash) {
     throw 'Map artifact marker SHA-256 does not match the AAB. Rebuild through scripts/build-internal-aab.ps1.'
   }

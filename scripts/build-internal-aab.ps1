@@ -11,6 +11,10 @@
   [switch]$SkipVersionBump,
   [switch]$SkipTests,
   [switch]$SkipFluxOsSession,
+  # Analyze production code directly. The default Flutter package-wide scan
+  # also walks the large test tree and can exceed the bounded release window;
+  # the release gate runs the focused test targets separately below.
+  [string[]]$AnalyzeTargets = @('lib'),
   [ValidateRange(60, 900)]
   [int]$AnalyzeTimeoutSeconds = 900,
   [ValidateRange(60, 900)]
@@ -419,7 +423,8 @@ function Invoke-BoundedAnalyze {
   $previousSkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION
   try {
     $env:PLANFLOW_SKIP_FLUXOS_SESSION = '1'
-    $flutterResult = Invoke-OwnedProcess -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FlutterLocal, 'analyze', '--no-pub') -OutputPath $PrimaryLogPath -TimeoutSeconds $AnalyzeTimeoutSeconds -Stage 'flutter'
+    $flutterAnalyzeArgs = @('analyze') + $AnalyzeTargets + @('--no-pub')
+    $flutterResult = Invoke-OwnedProcess -FilePath 'powershell.exe' -ArgumentList (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FlutterLocal) + $flutterAnalyzeArgs) -OutputPath $PrimaryLogPath -TimeoutSeconds $AnalyzeTimeoutSeconds -Stage 'flutter'
   } finally {
     if ($null -eq $previousSkipFluxOsSession) {
       Remove-Item Env:PLANFLOW_SKIP_FLUXOS_SESSION -ErrorAction SilentlyContinue
@@ -441,7 +446,8 @@ function Invoke-BoundedAnalyze {
     Write-AnalyzeAudit -Event 'fallback_unavailable' -Details @{ dart_path = $dart }
     throw "Flutter SDK Dart analyzer not found: $dart"
   }
-  $dartResult = Invoke-OwnedProcess -FilePath $dart -ArgumentList @('analyze') -OutputPath $fallbackLogPath -TimeoutSeconds $AnalyzeFallbackTimeoutSeconds -Stage 'dart-fallback'
+  $dartAnalyzeArgs = @('analyze') + $AnalyzeTargets
+  $dartResult = Invoke-OwnedProcess -FilePath $dart -ArgumentList $dartAnalyzeArgs -OutputPath $fallbackLogPath -TimeoutSeconds $AnalyzeFallbackTimeoutSeconds -Stage 'dart-fallback'
 
   if (Test-Path -LiteralPath $fallbackLogPath) {
     Add-Content -LiteralPath $PrimaryLogPath -Value ("`n[direct-dart-analyze]`n" + (Get-Content -LiteralPath $fallbackLogPath -Raw)) -Encoding utf8
@@ -596,7 +602,14 @@ try {
   }
 
   $resolvedAabPath = (Resolve-Path -LiteralPath $AabPath).Path
-  $aabHash = (Get-FileHash -LiteralPath $resolvedAabPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $aabHash = [System.BitConverter]::ToString(
+      $sha256.ComputeHash([System.IO.File]::ReadAllBytes($resolvedAabPath))
+    ).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $sha256.Dispose()
+  }
   $markerContent = @(
     "aabPath=$resolvedAabPath"
     "sha256=$aabHash"
