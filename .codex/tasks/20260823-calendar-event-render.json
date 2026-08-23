@@ -1,0 +1,87 @@
+{
+  "taskId": "20260823-calendar-event-render",
+  "status": "COMPLETE",
+  "originalRequest": "달력과 위젯의 반복·강한알람 아이콘 크기 조정, 공휴일 중복 제거와 연속 일정 행 정렬, Google 종일 생일의 잘못된 연속 표시 수정",
+  "requirements": [
+    "반복 아이콘과 강한알람 아이콘을 앱·위젯에서 축소한다.",
+    "외부 동기화 공휴일 중복 라벨은 숨기고 원본 데이터와 개인 일정은 보존한다.",
+    "공휴일을 포함하는 연속 일정은 기간 전체에서 두 번째 행을 유지한다.",
+    "Google 종일 일정의 배타적 종료일을 정확히 처리하고 기존 오염 메타데이터를 재동기화로 교정한다.",
+    "달력·위젯·동기화 회귀 테스트와 분석 및 Kotlin 컴파일을 통과한다."
+  ],
+  "allowedFiles": [
+    "lib/screens/calendar/calendar_screen.dart",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "lib/services/home_widget_service.dart",
+    "lib/services/synced_public_holiday_visibility.dart",
+    "lib/services/calendar_sync_service.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "test/screens/calendar_screen_test.dart",
+    "test/services/home_widget_service_test.dart",
+    "test/services/synced_public_holiday_visibility_test.dart",
+    "test/services/calendar_sync_service_test.dart"
+  ],
+  "forbiddenFiles": [
+    "pubspec.yaml",
+    "android/app/src/main/AndroidManifest.xml",
+    "android/app/google-services.json",
+    "lib/services/rewarded_ad_service.dart",
+    "lib/services/calendar_sync_service.dart: unrelated provider flows"
+  ],
+  "routing": {
+    "explorer": {"agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoning": "medium"},
+    "planner": {"agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning": "high"},
+    "simpleImplementer": {"agent": "flux_simple_implementer", "model": "gpt-5.4-mini", "reasoning": "medium"},
+    "complexImplementer": {"agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning": "medium"},
+    "testExecutor": {"agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoning": "low"},
+    "reviewer": {"agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning": "high"},
+    "integrator": {"agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning": "medium"}
+  },
+  "stages": {
+    "explorer": {"status": "completed", "agent": "/root/calendar_event_render_explorer_final", "report": "Read-only final exploration confirmed the requested call paths, scope, Google date-only correction, stale flag guard, holiday row reservation, and remaining lack of live device capture."},
+    "planner": {"status": "completed", "report": "allowed files, complexity split, tests, and gates provided by /root/calendar_event_render_planner"},
+    "simpleImplementer": {"status": "completed", "agent": "/root/calendar_marker_simple", "report": "Reduced calendar marker sizes in Flutter and Android widget renderers only; no other logic or tests touched."},
+    "complexImplementer": {"status": "completed", "agent": "/root/calendar_holiday_birthday_complex", "report": "공휴일 중복, Google DTEND/메타데이터, 공휴일 포함 연속 일정 회귀 수정"},
+    "testExecutor": {
+      "status": "completed",
+      "agent": "/root/calendar_event_render_tests",
+      "report": "Focused Flutter tests exit 0 (all passed); targeted flutter analyze exit 0 (No issues found); initial Gradle invocation from repo root failed only because no Gradle build exists there; corrected android\u0027s working-directory command .\\gradlew.bat :app:compileDebugKotlin --no-daemon exit 0 (BUILD SUCCESSFUL, 401 actionable tasks); git diff --check exit 0. Gradle emitted existing Kotlin nullability warnings at widget provider lines 676-685 and deprecated-feature notice, no errors."
+    },
+    "reviewer": {
+      "status": "completed",
+      "agent": "/root/calendar_event_render_reviewer",
+      "report": "PASS; highest severity NONE; independent final diff review found no findings, no out-of-scope changes, no data deletion, and confirmed focused Flutter tests, Android Kotlin compile, and git diff --check exit 0. Retest scope NONE."
+    },
+    "integrator": {
+      "status": "completed",
+      "agent": "/root/calendar_event_render_integrator",
+      "report": "COMPLETE/PASS. Final diff/status scoped to requested Flutter/Kotlin sources, tests, and task JSON; no forbidden config, ad, map, manifest, migration, or data deletion. Focused Flutter tests, targeted analyze, correct Android cwd Kotlin compile (BUILD SUCCESSFUL, 401 actionable tasks), and git diff --check all exit 0. Residual risk is only no fresh physical-device visual capture."
+    }
+  },
+  "changedFiles": [
+    "lib/screens/calendar/calendar_widgets.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "lib/services/calendar_sync_service.dart",
+    "lib/services/synced_public_holiday_visibility.dart",
+    "test/screens/calendar_screen_test.dart",
+    "test/services/home_widget_service_test.dart",
+    "test/services/synced_public_holiday_visibility_test.dart",
+    "test/services/calendar_sync_service_test.dart",
+    ".codex/tasks/20260823-calendar-event-render.json"
+  ],
+  "verification": [
+    "simple implementer diff reviewed",
+    "complex implementer report received",
+    "stale isMultiDay rendering guard added in calendar_widgets.dart",
+    "focused Flutter tests exit 0",
+    "targeted flutter analyze exit 0",
+    "correct Android Gradle Kotlin compile from android directory exit 0",
+    "git diff --check exit 0"
+  ],
+  "review": {
+    "verdict": "PASS",
+    "highestSeverity": "NONE",
+    "liveDeviceCapture": "not_run"
+  },
+  "nextStep": "Optional physical-device visual confirmation; no deployment or push performed."
+}
