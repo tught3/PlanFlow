@@ -73,6 +73,15 @@ Copy-Item config\play-production.example.json config\play-production.json
 .\scripts\deploy-play-production.ps1
 ```
 
+한 번에 production 업로드까지 진행하려면 루트의 배치 진입점을 사용합니다.
+
+```powershell
+.\deploy-planflow-production.bat
+```
+
+이 배치는 내부 스크립트 `scripts\deploy-play-production.ps1 -ConfirmProductionRollout`를
+호출합니다. 내부 배치 `deploy-planflow.bat`는 그대로 내부 AAB 빌드용으로 유지합니다.
+
 후보 AAB만 만들 때는 `-BuildDraft`, 실제 공개 트랙 업로드는 Play Console 검토 후
 명시적으로 `-ConfirmProductionRollout`을 추가합니다.
 

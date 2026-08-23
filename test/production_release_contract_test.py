@@ -48,3 +48,14 @@ def test_wrapper_validates_service_account_for_rollout():
     assert "planflowProductionRolloutToken" in SCRIPT
     assert "planflowProductionRolloutReceipt" in SCRIPT
     assert "issuedAtEpochMillis" in SCRIPT
+
+
+def test_production_batch_entrypoint_calls_explicit_rollout_and_preserves_internal_batch():
+    production_bat = (ROOT / "deploy-planflow-production.bat").read_text(encoding="utf-8")
+    internal_bat = (ROOT / "deploy-planflow.bat").read_text(encoding="utf-8")
+
+    assert "%~dp0scripts\\deploy-play-production.ps1" in production_bat
+    assert "-ConfirmProductionRollout" in production_bat
+    assert "%*" not in production_bat
+    assert "deploy-play-production.ps1" not in internal_bat
+    assert "-ConfirmProductionRollout" not in internal_bat
