@@ -1,0 +1,97 @@
+{
+  "task_id": "planflow-production-auto-deploy-20260823",
+  "objective": "Make a single production deployment entry point for a user-requested deploy: bump version, build the map-safe release AAB, upload to Play production, and rely on the existing Play in-app update flow for eligible users.",
+  "requirements": [
+    "Preserve the existing internal/alpha deployment entry point.",
+    "Use the existing fail-closed production wrapper and explicit confirmation.",
+    "Provide a tracked one-click production batch entry point.",
+    "Do not forward caller arguments that can bypass production tests or version bump defaults.",
+    "Do not change app, calendar/widget, Supabase, signing, or secret files."
+  ],
+  "routing": [
+    {
+      "role": "Explorer",
+      "agent": "production_auto_deploy_explorer_20260823",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "summary": "Existing production wrapper and UpdateService already cover the core flow; no CI workflow exists."
+    },
+    {
+      "role": "Planner",
+      "agent": "production_auto_deploy_planner_20260823",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "summary": "Classified the one-click batch/docs/contract change as Simple; preserve internal batch and existing in-app update behavior."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "production_one_click_batch_simple_20260823",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "changed_files": [
+        "deploy-planflow-production.bat",
+        "docs/release-console-checklist.md",
+        "test/production_release_contract_test.py"
+      ],
+      "summary": "Added production-only batch entry point and contract coverage; internal batch unchanged."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "production_auto_deploy_test_executor_20260823",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "status": "completed_by_root_evidence",
+      "evidence": [
+        "python -m pytest test/production_release_contract_test.py -q: exit 0, 6 passed",
+        "production example preflight: exit 0, no upload performed",
+        "targeted git diff --check: exit 0"
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "production_auto_deploy_reviewer_20260823",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "completed_pass",
+      "summary": "PASS at HEAD 5928e921; no findings. Runtime Play update proof remains external."
+    },
+    {
+      "role": "Integrator",
+      "agent": "production_auto_deploy_integrator_20260823",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "summary": "Final diff and HEAD reviewed; PASS/COMPLETE with Play propagation as external caveat."
+    }
+  ],
+  "allowed_paths": [
+    "deploy-planflow-production.bat",
+    "docs/release-console-checklist.md",
+    "test/production_release_contract_test.py",
+    ".codex/tasks/planflow-production-auto-deploy-20260823.json"
+  ],
+  "forbidden_paths": [
+    "deploy-planflow.bat",
+    "scripts/deploy-play-internal.ps1",
+    "scripts/deploy-play-production.ps1",
+    "android/key.properties",
+    "android/app/planflow-release.jks",
+    "supabase/migrations",
+    "calendar and widget feature files"
+  ],
+  "verification": {
+    "contract_tests": {"command": "python -m pytest test/production_release_contract_test.py -q", "exit_code": 0, "tests_passed": 6},
+    "production_preflight": {"exit_code": 0, "upload_performed": false},
+    "targeted_diff_check": {"exit_code": 0},
+    "commit": "5928e921",
+    "push": "origin/main synchronized"
+  },
+  "external_runtime_caveats": [
+    "Play review/propagation must complete before users receive the production version.",
+    "In-app updates work for Play-installed eligible versions; Alpha installs with a higher versionCode are not downgraded."
+  ],
+  "status": "COMPLETE"
+}
