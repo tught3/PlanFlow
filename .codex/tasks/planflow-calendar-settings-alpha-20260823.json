@@ -1,0 +1,38 @@
+{
+  "task_id": "planflow-calendar-settings-alpha-20260823",
+  "request": "Apply calendar/settings readability and visibility changes, fix settings FAB overlap, classify Play Console recommendations, verify, and deploy to the private alpha track.",
+  "status": "implementation",
+  "routing": {
+    "explorer": {"agent": "calendar_settings_changes_explorer_20260823", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "interrupted_after_findings_request"},
+    "planner": {"agent": "calendar_settings_changes_planner_20260823", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed"},
+    "implementer": {"agent": "calendar_settings_changes_implementer_20260823", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "in_progress"},
+    "test_executor": {"agent": null, "model": null, "reasoning_effort": null, "status": "pending"},
+    "reviewer": {"agent": null, "model": null, "reasoning_effort": null, "status": "pending"},
+    "integrator": {"agent": null, "model": null, "reasoning_effort": null, "status": "pending"}
+  },
+  "play_console_recommendations": {
+    "edge_to_edge": "investigate_only",
+    "deprecated_system_bars": "no_app_owned_callsite_found",
+    "large_screen": "orientation_lock_found; UX-sensitive",
+    "bitmap_downsampling": "likely_library_or_generated_stack",
+    "r8": "release_minify_already_enabled; verify_mapping"
+  },
+  "allowed_scope": [
+    "lib/screens/calendar/calendar_widgets.dart",
+    "lib/screens/settings/settings_screen.dart",
+    "lib/screens/settings/settings_widgets.dart",
+    "lib/data/models/user_settings_model.dart",
+    "lib/features/groups/repositories/group_backup_repository.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "android/app/src/main/res/values/styles.xml",
+    "supabase/schema.sql",
+    "supabase/migrations",
+    "test",
+    ".codex/tasks/planflow-calendar-settings-alpha-20260823.json"
+  ],
+  "forbidden_scope": ["ad policy", "map credentials", "production deploy config", "existing user data migration"],
+  "tests": [],
+  "changed_files": [],
+  "unresolved": ["implementation and verification pending"],
+  "last_update": "2026-08-23T17:30:00+09:00"
+}

@@ -120,7 +120,8 @@ class _AccountSection extends StatelessWidget {
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn ? authProvider.accountDisplayWithMethod : '로그아웃됨',
+                value:
+                    signedIn ? authProvider.accountDisplayWithMethod : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),
@@ -197,19 +198,7 @@ class _AccountSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.push(AppRoutes.deletedGroups),
-                    icon: const Icon(Icons.history_outlined),
-                    label: const Text('삭제된 그룹'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: PlanFlowColors.primaryMid,
-                      side: const BorderSide(color: PlanFlowColors.primaryFaint),
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                  ),
-                ),
+                const _DeletedGroupsButton(),
                 const SizedBox(height: 8),
                 FutureBuilder<bool>(
                   future: AdConsentService.instance.privacyOptionsRequired,
@@ -221,9 +210,8 @@ class _AccountSection extends StatelessWidget {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () async {
-                          final ok =
-                              await AdConsentService.instance
-                                  .showPrivacyOptionsForm();
+                          final ok = await AdConsentService.instance
+                              .showPrivacyOptionsForm();
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -397,6 +385,64 @@ class _AccountSection extends StatelessWidget {
 
     await performDelete();
     controller.dispose();
+  }
+}
+
+/// Shows the restore entry point only when there is an actual, un-restored
+/// delete backup. Archive-only rows belong to the same restore screen but do
+/// not make this "deleted groups" affordance appear.
+class _DeletedGroupsButton extends StatefulWidget {
+  const _DeletedGroupsButton();
+
+  @override
+  State<_DeletedGroupsButton> createState() => _DeletedGroupsButtonState();
+}
+
+class _DeletedGroupsButtonState extends State<_DeletedGroupsButton> {
+  late Future<bool> _hasDeletedGroups;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasDeletedGroups = _loadVisibility();
+  }
+
+  Future<bool> _loadVisibility() async {
+    try {
+      final backups = await GroupBackupRepository.supabase().listMyBackups(
+        backupType: 'delete',
+      );
+      return backups.any((backup) => !backup.isRestored);
+    } catch (_) {
+      // Fail closed: a transient/error state must not expose a dead button.
+      return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _hasDeletedGroups,
+      builder: (context, snapshot) {
+        if (snapshot.data != true) {
+          return const SizedBox.shrink();
+        }
+        return SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            key: const ValueKey('settings-deleted-groups-button'),
+            onPressed: () => context.push(AppRoutes.deletedGroups),
+            icon: const Icon(Icons.history_outlined),
+            label: const Text('삭제된 그룹'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: PlanFlowColors.primaryMid,
+              side: const BorderSide(color: PlanFlowColors.primaryFaint),
+              minimumSize: const Size.fromHeight(44),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

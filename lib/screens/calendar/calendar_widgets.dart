@@ -794,7 +794,7 @@ class _CalendarMiniEventList extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final scale = (constraints.maxWidth / 44).clamp(1.0, 1.4);
-              final fontSize = 6.8 * scale;
+              final fontSize = 7.3 * scale;
               final holidayForeground = isSelected
                   ? Colors.white
                   : isHoliday
@@ -851,12 +851,12 @@ class _CalendarMiniEventList extends StatelessWidget {
                   textAlign: TextAlign.right,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 7,
+                    fontSize: 6.5,
                     height: 1,
                     color: isSelected
                         ? Colors.white
                         : PlanFlowColors.textSecondary,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.normal,
                   ),
                 ),
               ),
@@ -985,10 +985,10 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 8.8,
+                            fontSize: 8.3,
                             height: 1.0,
                             color: fg,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.normal,
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -1127,10 +1127,10 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 8.8,
+                  fontSize: 8.3,
                   height: 1.0,
                   color: fg,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.normal,
                 ),
               ),
             ),

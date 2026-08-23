@@ -2545,7 +2545,7 @@ create table if not exists public.user_settings (
   travel_mode text not null default 'car',
   voice_auto_start boolean not null default false,
   voice_correction_learning_enabled boolean not null default true,
-  voice_common_learning_opt_in boolean not null default false,
+  voice_common_learning_opt_in boolean not null default true,
   preferred_map_provider text not null default 'naver'
     check (preferred_map_provider in ('naver', 'google', 'tmap')),
   country_code text not null default 'KR',
@@ -2572,7 +2572,7 @@ create table if not exists public.user_settings (
   add column if not exists voice_correction_learning_enabled boolean not null default true;
 
   alter table public.user_settings
-  add column if not exists voice_common_learning_opt_in boolean not null default false;
+  add column if not exists voice_common_learning_opt_in boolean not null default true;
 
   alter table public.user_settings
   add column if not exists preferred_map_provider text not null default 'naver';

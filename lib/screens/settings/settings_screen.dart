@@ -23,6 +23,7 @@ import '../../data/repositories/calendar_connection_repository.dart';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/repositories/group_backup_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/analytics_service.dart';
@@ -141,7 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _use24HourFormat = false;
   bool _voiceAutoStart = false;
   bool _voiceCorrectionLearningEnabled = true;
-  bool _voiceCommonLearningOptIn = false;
+  bool _voiceCommonLearningOptIn = true;
   bool _hideWidgetWeekends = false;
   String _preferredMapProvider = 'naver';
   String _countryCode = PlanFlowRegions.korea.countryCode;
@@ -709,7 +710,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     // 실패해도 사용자에게 노출하지 않는다. 정식 동기화 때 다시 정상 호출된다.
     if (hasCalDavCredentials) {
       unawaited(
-        _naverCalDavService.getCalendars().catchError((_) => <NaverCalDavCalendar>[]),
+        _naverCalDavService
+            .getCalendars()
+            .catchError((_) => <NaverCalDavCalendar>[]),
       );
     }
   }
@@ -2552,7 +2555,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _travelMode = 'car';
       _voiceAutoStart = false;
       _voiceCorrectionLearningEnabled = true;
-      _voiceCommonLearningOptIn = false;
+      _voiceCommonLearningOptIn = true;
       _hideWidgetWeekends = false;
       _preferredMapProvider = 'naver';
       _countryCode = PlanFlowRegions.korea.countryCode;
@@ -3057,7 +3060,10 @@ class _SettingsScreenState extends State<SettingsScreen>
               AppConstants.defaultPadding,
               AppConstants.defaultPadding,
               AppConstants.defaultPadding,
-              AppConstants.defaultPadding + 80,
+              // Keep the last settings controls above the two global FABs.
+              // Without this extra scroll extent the 12-hour toggle is
+              // partially covered when the list reaches its end.
+              AppConstants.defaultPadding + 220,
             ),
             children: [
               _AccountSection(

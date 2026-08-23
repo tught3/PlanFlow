@@ -12,7 +12,7 @@ class UserSettingsModel {
     this.travelMode = 'car',
     this.voiceAutoStart = false,
     this.voiceCorrectionLearningEnabled = true,
-    this.voiceCommonLearningOptIn = false,
+    this.voiceCommonLearningOptIn = true,
     this.preferredMapProvider = 'naver',
     this.countryCode = 'KR',
     this.localeCode = 'ko-KR',
@@ -41,7 +41,7 @@ class UserSettingsModel {
       departureSafetyMarginMin: 20,
       voiceAutoStart: false,
       voiceCorrectionLearningEnabled: true,
-      voiceCommonLearningOptIn: false,
+      voiceCommonLearningOptIn: true,
       preferredMapProvider: 'naver',
       countryCode: 'KR',
       localeCode: 'ko-KR',
@@ -66,8 +66,10 @@ class UserSettingsModel {
       voiceAutoStart: _boolValue(json['voice_auto_start'], false),
       voiceCorrectionLearningEnabled:
           _boolValue(json['voice_correction_learning_enabled'], true),
+      // A missing value is a new-settings record and opts in by default.
+      // An explicitly persisted false remains false.
       voiceCommonLearningOptIn:
-          _boolValue(json['voice_common_learning_opt_in'], false),
+          _boolValue(json['voice_common_learning_opt_in'], true),
       preferredMapProvider:
           _preferredMapProviderValue(json['preferred_map_provider']),
       countryCode: _countryCodeValue(json['country_code']),

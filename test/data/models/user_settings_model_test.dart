@@ -68,7 +68,7 @@ void main() {
     expect(restored.travelMode, 'car');
     expect(restored.voiceAutoStart, isFalse);
     expect(restored.voiceCorrectionLearningEnabled, isTrue);
-    expect(restored.voiceCommonLearningOptIn, isFalse);
+    expect(restored.voiceCommonLearningOptIn, isTrue);
     expect(restored.prepTimeMin, 30);
     expect(restored.prepPreAlarmOffset, 30);
     expect(restored.departPreAlarmOffset, 30);
