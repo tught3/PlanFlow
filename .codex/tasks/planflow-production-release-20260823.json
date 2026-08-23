@@ -1,0 +1,35 @@
+{
+  "task_id": "planflow-production-release-20260823",
+  "objective": "Prepare and execute the PlanFlow Google Play production release through a map-safe, fail-closed automation path.",
+  "requirements": [
+    "Keep alpha/internal deployment behavior unchanged.",
+    "Use the verified Flutter local dart-define injection and AAB map marker for production builds.",
+    "Separate production configuration from alpha configuration.",
+    "Require an explicit rollout confirmation for public production release.",
+    "Do not modify secrets, signing files, Supabase migrations/data, calendar/widget code, or unrelated dirty files."
+  ],
+  "routing": [
+    {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "completed", "summary": "Internal/alpha path exists; production wrapper/config and Play Console gates were missing."},
+    {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed", "summary": "Separate production draft/preflight from explicitly confirmed rollout; preserve map-safe build and secrets outside repository."},
+    {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed", "changed_files": ["scripts/deploy-play-production.ps1", "config/play-production.example.json", "android/app/build.gradle.kts", ".gitignore", "docs/release-console-checklist.md", "test/production_release_contract_test.py"]},
+    {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed", "evidence": ["pytest 5 passed exit 0", "production wrapper preflight exit 0", "example confirmed rollout rejected exit 1", "git diff --check exit 0", "Gradle direct smoke bounded timeout before guard" ]},
+    {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed_pass", "findings": "none after one-time receipt validation fix"},
+    {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed", "summary": "Final diff is scope-clean and fail-closed. Automation is ready; public production rollout remains a separate, explicit Console-confirmed action."}
+  ],
+  "forbidden_paths": ["android/key.properties", "android/app/planflow-release.jks", "env/local.json", "supabase/migrations", "calendar and widget feature files"],
+  "changed_files": [".gitignore", "android/app/build.gradle.kts", "config/play-production.example.json", "docs/release-console-checklist.md", "scripts/deploy-play-production.ps1", "test/production_release_contract_test.py"],
+  "verification": {
+    "contract_tests": {"command": "python -m pytest test/production_release_contract_test.py -q", "exit_code": 0, "tests_passed": 5},
+    "production_preflight": {"command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-play-production.ps1 -ConfigPath config/play-production.example.json", "exit_code": 0, "upload_performed": false},
+    "example_rollout_rejection": {"command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-play-production.ps1 -ConfigPath config/play-production.example.json -ConfirmProductionRollout", "exit_code": 1, "expected": true},
+    "git_diff_check": {"exit_code": 0},
+    "public_production_upload": "not performed; local production config and Play Console completion are required"
+  },
+  "scope_check": {
+    "calendar_widget_changed": false,
+    "supabase_changed": false,
+    "secrets_or_signing_changed": false,
+    "public_play_upload_performed": false
+  },
+  "status": "AUTOMATION_READY_PUBLIC_ROLLOUT_PENDING_CONSOLE_GATE"
+}

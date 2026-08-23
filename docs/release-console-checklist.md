@@ -60,3 +60,29 @@
 4. Data safety에는 이메일, 위치, 캘린더 이벤트 수집을 앱 기능 목적으로 표시합니다.
 5. 오디오 파일은 수집하지 않음으로 표시합니다.
 6. 스토어 설명, 데이터 보안, 릴리즈 노트는 `docs/play-console-submission.md` 초안을 기준으로 입력합니다.
+
+## 프로덕션 출시 자동화
+
+프로덕션 자동화는 내부 테스트 스크립트와 별도 진입점을 사용합니다. 기본 실행은
+사전검증만 수행하고 업로드하지 않습니다. 프로덕션 설정 파일에는 서비스 계정 경로를
+직접 입력해야 하며 저장소에 커밋하지 않습니다.
+
+```powershell
+Copy-Item config\play-production.example.json config\play-production.json
+# config\play-production.json의 enabled=true와 로컬 서비스 계정 경로를 확인
+.\scripts\deploy-play-production.ps1
+```
+
+후보 AAB만 만들 때는 `-BuildDraft`, 실제 공개 트랙 업로드는 Play Console 검토 후
+명시적으로 `-ConfirmProductionRollout`을 추가합니다.
+
+```powershell
+.\scripts\deploy-play-production.ps1 -BuildDraft
+.\scripts\deploy-play-production.ps1 -ConfirmProductionRollout
+```
+
+이 경로는 `scripts/build-internal-aab.ps1`의 지도용 define 사전검증과 map artifact
+marker를 그대로 사용합니다. 일반 `flutter build appbundle` 명령으로 프로덕션 AAB를
+만들지 않습니다. 트랙은 반드시 `production`이어야 하며, 예제 설정 파일·비활성 설정·없는
+서비스 계정·지도 marker가 있는 AAB가 아니면 업로드를 중단합니다. 실제 Play Console의
+국가, 심사, 스토어 등록 상태는 이 저장소에서 추정하지 않고 콘솔에서 확인합니다.

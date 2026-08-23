@@ -1,0 +1,8 @@
+{
+  "enabled": false,
+  "path": "E:\\FluxStudio\\PlanFlow",
+  "packageName": "com.fluxstudio.planflow",
+  "track": "production",
+  "serviceAccountJson": "E:\\FluxStudio\\secrets\\planflow-production-service-account.json",
+  "aabPath": "build\\app\\outputs\\bundle\\release\\app-release.aab"
+}

@@ -103,6 +103,63 @@ val releaseArtifactRequested = requestedTasks.any { taskName ->
     isRelease && isArtifactTask && !isPublishLikeTask
 }
 val releasePublishRequested = publishLikeTaskRequested
+val planflowPlayTrack = providers.gradleProperty("planflowPlayTrack")
+    .orNull
+    ?.trim()
+    ?.lowercase()
+    ?: "internal"
+
+if (releasePublishRequested && planflowPlayTrack !in setOf("internal", "alpha", "production")) {
+    throw GradleException(
+        "Release publish blocked: unsupported PlanFlow Play track '$planflowPlayTrack'. " +
+            "Use internal, alpha, or production through an explicit release wrapper.",
+    )
+}
+
+val productionRolloutToken = providers.gradleProperty("planflowProductionRolloutToken")
+    .orNull
+    ?.trim()
+    ?: ""
+val productionRolloutReceiptPath = providers.gradleProperty("planflowProductionRolloutReceipt")
+    .orNull
+    ?.trim()
+    ?: ""
+if (releasePublishRequested && planflowPlayTrack == "production") {
+    if (productionRolloutToken.isBlank() || productionRolloutReceiptPath.isBlank()) {
+        throw GradleException(
+            "Production publish blocked: use scripts/deploy-play-production.ps1 " +
+                "-ConfirmProductionRollout so the wrapper can issue a one-time rollout receipt.",
+        )
+    }
+
+    val receiptFile = file(productionRolloutReceiptPath)
+    val workspaceRoot = rootProject.projectDir.parentFile.canonicalFile
+    val receiptRoot = workspaceRoot.resolve("build").canonicalFile
+    val receiptCanonical = receiptFile.canonicalFile
+    if (!receiptFile.isFile || !receiptCanonical.toPath().startsWith(receiptRoot.toPath())) {
+        throw GradleException(
+            "Production publish blocked: rollout receipt is missing or outside the workspace build directory.",
+        )
+    }
+    val receiptValues = receiptFile.readLines(Charsets.UTF_8)
+        .mapNotNull { line ->
+            val separator = line.indexOf('=')
+            if (separator <= 0) null else line.substring(0, separator) to line.substring(separator + 1)
+        }
+        .toMap()
+    val issuedAt = receiptValues["issuedAtEpochMillis"]?.toLongOrNull() ?: 0L
+    val now = System.currentTimeMillis()
+    if (receiptValues["token"] != productionRolloutToken ||
+        receiptValues["track"] != "production" ||
+        receiptValues["workspace"] != workspaceRoot.path ||
+        issuedAt <= 0L || kotlin.math.abs(now - issuedAt) > 5 * 60 * 1000L
+    ) {
+        throw GradleException("Production publish blocked: rollout receipt is invalid, stale, or not issued by the wrapper.")
+    }
+    if (!receiptFile.delete()) {
+        throw GradleException("Production publish blocked: rollout receipt could not be consumed exactly once.")
+    }
+}
 
 if (releaseArtifactRequested) {
     val requiredMapDefines = listOf(
@@ -232,7 +289,7 @@ flutter {
 }
 
 play {
-    track.set("internal")
+    track.set(planflowPlayTrack)
     artifactDir.set(file("../../build/app/outputs/bundle/release"))
     if (playServiceAccountPath.isNotBlank()) {
         serviceAccountCredentials.set(file(playServiceAccountPath))

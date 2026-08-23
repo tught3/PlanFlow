@@ -8,6 +8,7 @@ chat.txt
 .env
 .env.local
 env/local.json
+config/play-production.json
 env/db-backup.local.json
 database-backups/
 supabase/.temp/
@@ -55,6 +56,7 @@ deploy.log
 /scripts/_verify/
 /scripts/_verify_*.log
 /scripts/__pycache__/
+/test/__pycache__/
 /scripts/widget-coldstart-logs/
 /docs/screenshots/store_final_v3/
 
