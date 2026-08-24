@@ -1,0 +1,128 @@
+{
+  "taskId": "planflow-play-recommendations-20260824",
+  "status": "BLOCKED_PENDING_RELEASE_AND_DEVICE_VERIFICATION",
+  "lastUpdated": "2026-08-24T10:53:09+09:00",
+  "originalRequest": "Fix all current Google Play Console recommendations: edge-to-edge and deprecated APIs, keep phones portrait-only while permitting tablet landscape, enable safe R8/resource shrinking, and address Bitmap warning.",
+  "requirements": [
+    "Use supported Android edge-to-edge behavior and remove the app-owned legacy orientation policy.",
+    "Keep phones portrait-only and allow normal portrait/landscape rotation on tablets at smallestScreenWidthDp >= 600.",
+    "Keep code minification and enable release resource shrinking without removing the dynamically resolved notification icon.",
+    "Investigate Bitmap warning without speculative app-source changes; verify its owning module after a new Play analysis."
+  ],
+  "nonRequirements": [
+    "Do not change app features, calendar behavior, notification behavior, data, Remote Config, or deployment configuration.",
+    "Do not change third-party dependencies only to silence an unattributed Play Console warning.",
+    "Do not declare Play Console recommendations resolved before a newly processed release is inspected."
+  ],
+  "classification": "Complex: Android lifecycle/window-inset, device-form-factor orientation, and release shrinker behavior cross module boundaries.",
+  "allowedFiles": [
+    "lib/main.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt",
+    "android/app/build.gradle.kts",
+    "android/app/src/main/res/raw/keep.xml",
+    "test/android_play_recommendations_contract_test.dart",
+    ".codex/tasks/planflow-play-recommendations-20260824.json"
+  ],
+  "changedFiles": [
+    "lib/main.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt",
+    "android/app/build.gradle.kts",
+    "test/android_play_recommendations_contract_test.dart"
+  ],
+  "roleReports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "result": "Confirmed phone portrait lock in MainActivity, no direct app-owned edge-to-edge styling, release resource shrinking disabled, no direct BitmapFactory/inSampleSize usage, and bitmap assets only. Recommended Gradle lint/release verification and no speculative external changes."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "result": "Specified edge-to-edge, smallest-width orientation, safe resource shrinking, and conditional Bitmap attribution; excluded unverified third-party changes and required release/device/Play verification."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "result": "Applied WindowCompat edge-to-edge, phone/tablet orientation boundary, and release resource shrinking while retaining keep.xml for ic_stat_planflow. Verified :app:compileDebugKotlin exit 0, XML parsing, static checks, and git diff --check. Bitmap app-source change intentionally omitted because no direct source owner was found."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "result": "Added source-contract coverage for edge-to-edge, smallest-width orientation boundary, shrinkResources=true, and keep.xml notification icon preservation."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "hostFinal": true,
+      "finalReviewEnvelope": "FINAL_REVIEW_REPORT",
+      "verdict": "FINDINGS",
+      "highestSeverity": "MEDIUM",
+      "result": "No blocker/high finding. Required follow-ups: real phone/tablet orientation smoke, release AAB install with notification/widget resource smoke, and Play Console Bitmap warning attribution after a new processed release."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "result": "Current final diff is within the allowed source/test scope. Focused contract test and git diff --check were rerun by integration. Acceptance is fail-closed pending release/device/Play evidence."
+    }
+  ],
+  "verification": [
+    {
+      "command": ":app:compileDebugKotlin",
+      "exitCode": 0,
+      "source": "Complex Implementer final report"
+    },
+    {
+      "command": "flutter test test/android_play_recommendations_contract_test.dart",
+      "exitCode": 0,
+      "source": "Integrator rerun",
+      "result": "4 tests passed"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "source": "Integrator rerun"
+    },
+    {
+      "command": "focused build-script tests",
+      "exitCode": 0,
+      "source": "Parent verification report"
+    },
+    {
+      "command": "test/services/notification_service_test.dart",
+      "exitCode": 1,
+      "source": "Parent verification report",
+      "classification": "Baseline/unrelated expected-string failure; not caused by the Play recommendation diff."
+    }
+  ],
+  "failureAnalysis": {
+    "role": "Failure analysis by integration evidence review",
+    "finding": "flutter analyze and dart analyze stalled during analyzer startup with no CPU/progress and were safely interrupted. Direct Gradle wrapper and direct Gradle compile attempts also stalled before any Gradle task execution. These are tool-initialization failures, not source-test failures; no release AAB evidence exists."
+  },
+  "reviewerGate": {
+    "hostFinalCount": 1,
+    "finalReviewEnvelopeCount": 1,
+    "accepting": false,
+    "reason": "Valid reviewer final report has MEDIUM verification findings; no BLOCKER/HIGH remains, but required runtime/release proof is absent."
+  },
+  "unresolvedVerificationGaps": [
+    "flutter analyze and dart analyze stalled during analyzer startup with no CPU/progress and were safely interrupted; fresh static-analysis evidence is unavailable.",
+    "Direct Gradle wrapper/direct Gradle compile attempts stalled before any task execution, so a release AAB build has not been freshly completed.",
+    "No release install on a phone and a tablet has verified phone portrait lock and tablet landscape rotation.",
+    "No release smoke has verified notification icon lookup and all widget updates with resource shrinking enabled.",
+    "No newly processed Play Console analysis has identified whether the Bitmap warning is an app, Flutter, or dependency-owned finding."
+  ],
+  "nextStep": "After Gradle initialization is available, run a fresh release AAB build, install that exact artifact on phone and tablet, verify notification and widget refresh, then inspect the new Play Console analysis for edge-to-edge/deprecated/R8/Bitmap status and attribute any remaining Bitmap finding before a scoped fix/review rerun.",
+  "integrationVerdict": "BLOCKED_PENDING_RELEASE_AND_DEVICE_VERIFICATION"
+}
