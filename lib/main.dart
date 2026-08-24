@@ -32,11 +32,10 @@ Future<void> main() async {
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
-  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  // Use Flutter's supported edge-to-edge mode instead of legacy system-bar
+  // color/visibility APIs. SafeArea widgets keep interactive content clear of
+  // the system insets while Android 15+ enforces edge-to-edge by default.
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   FlutterError.onError = FlutterError.presentError;
 
   runApp(const ProviderScope(child: PlanFlowApp()));

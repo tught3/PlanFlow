@@ -26,6 +26,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -35,8 +36,16 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 화면 회전을 세로 고정 (시스템 설정과 무관하게 강제)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        // Flutter SafeArea가 시스템 인셋을 직접 처리하도록 edge-to-edge를 사용한다.
+        // WindowCompat API는 deprecated status/navigation bar API를 사용하지 않는다.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // 휴대폰은 세로 고정하되, 태블릿은 사용자가 가로/세로를 선택할 수 있게 한다.
+        requestedOrientation = if (resources.configuration.smallestScreenWidthDp >= 600) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         logWidgetIntentDiagnostics(
             source = "onCreate",
             targetIntent = intent,
