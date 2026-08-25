@@ -27,7 +27,6 @@ import '../../features/groups/providers/group_context_provider.dart';
 import '../../features/groups/repositories/group_backup_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
-import '../../core/analytics_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/ad_consent_service.dart';
 import '../../services/auth_service.dart';
@@ -172,8 +171,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _settingsSaveQueued = false;
   String? _queuedSettingsSuccessMessage;
   int _settingsSaveVersion = 0;
-  bool _isTestingMorningBriefing = false;
-  bool _isTestingEveningBriefing = false;
+  final bool _isTestingMorningBriefing = false;
+  final bool _isTestingEveningBriefing = false;
   bool _isBackupActionRunning = false;
   bool _ownsNaverCalDavService = false;
   bool _ownsNaverImportService = false;
@@ -2240,7 +2239,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _testBriefing({required bool isMorning}) async {
+  void _testBriefing({required bool isMorning}) {
     if (!RemoteConfigService.briefingEnabled) {
       _showSnack('브리핑 기능이 현재 비활성화되어 있습니다.');
       return;
@@ -2251,42 +2250,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       _showSnack('로그인 후 브리핑을 테스트할 수 있습니다.');
       return;
     }
-    if (_isTestingMorningBriefing || _isTestingEveningBriefing) {
-      return;
-    }
-
-    setState(() {
-      if (isMorning) {
-        _isTestingMorningBriefing = true;
-      } else {
-        _isTestingEveningBriefing = true;
-      }
-    });
-
-    try {
-      unawaited(
-        AnalyticsService.logBriefingTestPlayed(isMorning: isMorning),
-      );
-      final result = await _briefingSchedulerService.executeBriefing(
-        isMorning: isMorning,
-        userId: userId,
-      );
-      _showSnack(result.message);
-    } catch (error, stackTrace) {
-      debugPrint('Briefing test failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      _showSnack('브리핑 테스트 재생에 실패했습니다. 알림/TTS 설정을 확인해 주세요.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          if (isMorning) {
-            _isTestingMorningBriefing = false;
-          } else {
-            _isTestingEveningBriefing = false;
-          }
-        });
-      }
-    }
+    final type = isMorning ? 'morning' : 'evening';
+    // 브리핑 실행과 로딩 표시는 일정 탭 상세 바텀시트에서 통합 처리한다.
+    context.go('${AppRoutes.briefing}?type=$type');
   }
 
   Future<UserSettingsModel> _settingsForSave(String userId) async {

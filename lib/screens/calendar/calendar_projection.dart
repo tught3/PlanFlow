@@ -2,6 +2,38 @@ import '../../data/models/event_model.dart';
 import '../../services/synced_public_holiday_visibility.dart';
 import '../../core/local_time.dart';
 
+/// Canonical ordering for every calendar projection, including the Android
+/// widget payload. Same-time events use semantic priority before title so the
+/// important/team/recurring ordering is deterministic across renderers.
+int compareCalendarEventsForDisplay(EventModel a, EventModel b) {
+  final aStart = a.startAt;
+  final bStart = b.startAt;
+  if (aStart == null && bStart == null) {
+    return _compareEventSemanticsThenTitle(a, b);
+  }
+  if (aStart == null) return 1;
+  if (bStart == null) return -1;
+  final byTime = aStart.compareTo(bStart);
+  return byTime == 0 ? _compareEventSemanticsThenTitle(a, b) : byTime;
+}
+
+int _compareEventSemanticsThenTitle(EventModel a, EventModel b) {
+  int rank(EventModel event) {
+    if (event.isCritical) return 0;
+    if (event.groupEventId?.trim().isNotEmpty == true) return 1;
+    if (event.recurrenceRule?.trim().isNotEmpty == true ||
+        event.parentEventId != null) {
+      return 2;
+    }
+    return 3;
+  }
+
+  final bySemanticRank = rank(a).compareTo(rank(b));
+  if (bySemanticRank != 0) return bySemanticRank;
+  final byTitle = a.title.compareTo(b.title);
+  return byTitle == 0 ? a.id.compareTo(b.id) : byTitle;
+}
+
 /// Builds a day index once for a projected month.  Date taps must not scan the
 /// complete event list (which is especially costly after recurrence expansion).
 Map<int, List<EventModel>> buildCalendarDayEventIndex({
@@ -39,15 +71,7 @@ Map<int, List<EventModel>> buildCalendarDayEventIndex({
     }
   }
   for (final eventsForDay in index.values) {
-    eventsForDay.sort((a, b) {
-      final aStart = a.startAt;
-      final bStart = b.startAt;
-      if (aStart == null && bStart == null) return a.title.compareTo(b.title);
-      if (aStart == null) return 1;
-      if (bStart == null) return -1;
-      final result = aStart.compareTo(bStart);
-      return result == 0 ? a.title.compareTo(b.title) : result;
-    });
+    eventsForDay.sort(compareCalendarEventsForDisplay);
   }
   return index.map((key, value) => MapEntry(key, List.unmodifiable(value)));
 }

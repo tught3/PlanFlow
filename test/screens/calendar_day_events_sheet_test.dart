@@ -121,8 +121,7 @@ void main() {
     expect(find.text('5월 13일 수요일'), findsOneWidget);
     expect(find.text('직접 추가'), findsOneWidget);
     expect(find.text('음성 추가'), findsOneWidget);
-    expect(
-        find.byKey(const ValueKey('calendar-day-events-empty-scroll')),
+    expect(find.byKey(const ValueKey('calendar-day-events-empty-scroll')),
         findsOneWidget);
   });
 

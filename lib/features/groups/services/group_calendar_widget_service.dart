@@ -11,6 +11,7 @@ import '../models/group_member_model.dart';
 import '../repositories/group_event_repository.dart';
 import '../repositories/group_repository.dart';
 import '../../../services/home_widget_platform.dart';
+import '../../../screens/calendar/calendar_style_contract.dart';
 
 /// 홈 위젯 'PlanFlowGroupCalendarWidgetProvider'에 그룹 월간 캘린더 데이터를
 /// 기록하고 위젯을 갱신하는 서비스.
@@ -114,6 +115,11 @@ class GroupCalendarWidgetService {
   Future<void> doRefreshForTesting(String userId) => _doRefresh(userId);
 
   Future<void> _doRefresh(String userId) async {
+    // Group calendar shares the same date/weekday/semantic style contract as
+    // the personal calendar. Its member-count rows remain group-specific.
+    for (final entry in calendarStyleContractPayload().entries) {
+      await _platform.saveWidgetData(entry.key, entry.value);
+    }
     // 1) 사용자의 그룹 목록 로드
     final groups = await _groupRepository.listGroups();
     if (groups.isEmpty) {
@@ -199,7 +205,8 @@ class GroupCalendarWidgetService {
     for (final occ in occurrences) {
       final localStart = planflowLocal(occ.startAt);
       final localEnd = planflowLocal(occ.endAt);
-      final startDay = DateTime(localStart.year, localStart.month, localStart.day);
+      final startDay =
+          DateTime(localStart.year, localStart.month, localStart.day);
       final endDay = DateTime(localEnd.year, localEnd.month, localEnd.day);
       // 작성자가 탈퇴한 경우(occ.createdBy == null)는 '?' 대신 '탈퇴한 사용자'를
       // 사용해 위젯 셀에서 어떤 일정이 누구 작성인지 알아볼 수 있게 한다.

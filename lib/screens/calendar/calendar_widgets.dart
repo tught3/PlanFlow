@@ -154,6 +154,11 @@ class DayEventsSheet extends StatelessWidget {
     this.scrollController,
     this.holidayName,
     this.isDayOff = false,
+    this.briefingIsMorning,
+    this.briefingRunning,
+    this.dataRevision,
+    this.personalEventsBuilder,
+    this.groupEventsBuilder,
   });
 
   final DateTime day;
@@ -170,9 +175,33 @@ class DayEventsSheet extends StatelessWidget {
   /// false. [_CalendarSelectedDateHeader]의 isHoliday와 동일한 의미로,
   /// 휴무색(calendarHolidayColor) 강조 여부를 가른다.
   final bool isDayOff;
+  final bool? briefingIsMorning;
+  final ValueListenable<bool>? briefingRunning;
+  final ValueListenable<int>? dataRevision;
+  final List<EventModel> Function()? personalEventsBuilder;
+  final List<CalendarOverlayItem> Function()? groupEventsBuilder;
 
   @override
   Widget build(BuildContext context) {
+    final revision = dataRevision;
+    if (revision == null) {
+      return _buildContent(context, personalEvents, groupEvents);
+    }
+    return ValueListenableBuilder<int>(
+      valueListenable: revision,
+      builder: (context, _, __) => _buildContent(
+        context,
+        personalEventsBuilder?.call() ?? personalEvents,
+        groupEventsBuilder?.call() ?? groupEvents,
+      ),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    List<EventModel> personalEvents,
+    List<CalendarOverlayItem> groupEvents,
+  ) {
     final theme = Theme.of(context);
     final title = _koreanDateLabel(day);
     final totalCount = personalEvents.length + groupEvents.length;
@@ -215,12 +244,54 @@ class DayEventsSheet extends StatelessWidget {
                   color: isDayOff
                       ? calendarHolidayColor
                       : PlanFlowColors.textSecondary,
-                  fontSize: 13,
+                  fontSize: calendarHolidayFontSize,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ],
             const SizedBox(height: 4),
+            if (briefingIsMorning != null) ...[
+              const SizedBox(height: 2),
+              Center(
+                child: briefingRunning == null
+                    ? const SizedBox.shrink()
+                    : ValueListenableBuilder<bool>(
+                        valueListenable: briefingRunning!,
+                        builder: (context, running, _) => AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: running
+                              ? Row(
+                                  key: const ValueKey(
+                                      'calendar-briefing-running'),
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      briefingIsMorning!
+                                          ? '오전 브리핑 중입니다.'
+                                          : '오후 브리핑 중입니다.',
+                                      style: const TextStyle(
+                                        color: PlanFlowColors.textSecondary,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : const SizedBox.shrink(
+                                  key: ValueKey('calendar-briefing-complete'),
+                                ),
+                        ),
+                      ),
+              ),
+            ],
             const Text(
               '위로 끌어올려 더 많은 일정을 볼 수 있어요.',
               style: TextStyle(
@@ -627,21 +698,27 @@ class _MiniCalendarGrid extends StatelessWidget {
                             height: 74,
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             decoration: BoxDecoration(
-                              color: isSelected
-                                  ? PlanFlowColors.primaryMid
-                                  : isToday
-                                      ? PlanFlowColors.calendarTodayCellBg
-                                      : PlanFlowColors.surface,
-                              border: Border(
-                                right: BorderSide(
-                                  color: PlanFlowColors.calendarGridLine,
-                                  width: 1,
-                                ),
-                                bottom: BorderSide(
-                                  color: PlanFlowColors.calendarGridLine,
-                                  width: 1,
-                                ),
-                              ),
+                              // Selection is an outline only. Keeping the
+                              // cell surface intact preserves important
+                              // purple/holiday/event text contrast.
+                              color: isToday
+                                  ? PlanFlowColors.calendarTodayCellBg
+                                  : PlanFlowColors.surface,
+                              border: isSelected
+                                  ? Border.all(
+                                      color: PlanFlowColors.primaryMid,
+                                      width: 2,
+                                    )
+                                  : const Border(
+                                      right: BorderSide(
+                                        color: PlanFlowColors.calendarGridLine,
+                                        width: 1,
+                                      ),
+                                      bottom: BorderSide(
+                                        color: PlanFlowColors.calendarGridLine,
+                                        width: 1,
+                                      ),
+                                    ),
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.start,
@@ -656,12 +733,9 @@ class _MiniCalendarGrid extends StatelessWidget {
                                       height: 20,
                                       alignment: Alignment.center,
                                       decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? PlanFlowColors.primaryMid
-                                            : isToday
-                                                ? PlanFlowColors
-                                                    .calendarTodayCircle
-                                                : Colors.transparent,
+                                        color: isToday
+                                            ? PlanFlowColors.calendarTodayCircle
+                                            : Colors.transparent,
                                         shape: BoxShape.circle,
                                       ),
                                       child: Text(
@@ -674,7 +748,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                           fontWeight: isToday || isSelected
                                               ? FontWeight.w700
                                               : FontWeight.w400,
-                                          color: isSelected || isToday
+                                          color: isToday
                                               ? Colors.white
                                               : cell.isHoliday ||
                                                       dayDate.weekday ==
@@ -683,8 +757,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                                   : dayDate.weekday ==
                                                           DateTime.saturday
                                                       ? calendarSaturdayColor
-                                                      : PlanFlowColors
-                                                          .textPrimary,
+                                                      : calendarNormalEventTextColor,
                                         ),
                                       ),
                                     ),
@@ -793,13 +866,12 @@ class _CalendarMiniEventList extends StatelessWidget {
         if (holidayName != null)
           LayoutBuilder(
             builder: (context, constraints) {
-              final scale = (constraints.maxWidth / 44).clamp(1.0, 1.4);
-              final fontSize = 7.3 * scale;
-              final holidayForeground = isSelected
-                  ? Colors.white
-                  : isHoliday
-                      ? calendarHolidayColor
-                      : PlanFlowColors.textSecondary;
+              // Monthly holiday labels are 0.5sp larger than normal events;
+              // the native widget consumes the same contract value.
+              final fontSize = calendarMonthlyHolidayFontSize;
+              final holidayForeground = isHoliday
+                  ? calendarHolidayColor
+                  : PlanFlowColors.textSecondary;
               return SizedBox(
                 height: _calendarMiniEventRowHeight,
                 child: Container(
@@ -853,9 +925,7 @@ class _CalendarMiniEventList extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 6.5,
                     height: 1,
-                    color: isSelected
-                        ? Colors.white
-                        : PlanFlowColors.textSecondary,
+                    color: PlanFlowColors.textSecondary,
                     fontWeight: FontWeight.normal,
                   ),
                 ),
@@ -978,14 +1048,15 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             semanticColor: fg,
                             leadingText:
                                 event.isAllDay && !isMultiDay ? '종일 ' : null,
-                            markerFontSize: 7.8,
-                            strongAlarmMarkerFontSize: 5.8,
+                            markerFontSize: calendarRecurringMarkerFontSize,
+                            strongAlarmMarkerFontSize:
+                                calendarStrongAlarmMarkerFontSize,
                           ),
                           maxLines: 1,
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 8.3,
+                            fontSize: calendarEventFontSize,
                             height: 1.0,
                             color: fg,
                             fontWeight: FontWeight.normal,
@@ -1077,7 +1148,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final segment = _multiDaySegment(event, day);
     final isMultiDay = event.isMultiDay;
-    final fg = isSelected ? Colors.white : calendarGroupEventColor;
+    final fg = calendarGroupEventColor;
     final showTitle = !isMultiDay || segment.$1;
     const hPadding = 2.0;
     return SizedBox(
@@ -1127,7 +1198,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 8.3,
+                  fontSize: calendarEventFontSize,
                   height: 1.0,
                   color: fg,
                   fontWeight: FontWeight.normal,

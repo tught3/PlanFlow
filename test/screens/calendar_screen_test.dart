@@ -200,6 +200,38 @@ void main() {
     );
   });
 
+  testWidgets(
+    'briefing opens the selected-day sheet before a delayed event load completes',
+    (tester) async {
+      // banned-ok: 고정 날짜 fixture로 선택 시트 로딩 순서를 검증합니다.
+      final selectedDay = DateTime(2026, 5, 15, 9);
+      final delayedLoad = Completer<List<EventModel>>();
+      final repository = _AsyncEventRepository([delayedLoad.future]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'briefing-user',
+            initialDate: selectedDay,
+            briefingIsMorning: true,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
+        findsOneWidget,
+      );
+      expect(find.text('오전 브리핑 중입니다.'), findsOneWidget);
+
+      delayedLoad.complete(const <EventModel>[]);
+      await tester.pump();
+    },
+  );
+
   test('calendar day projection indexes many events without a scan per tap',
       () {
     // banned-ok: 고정 월 fixture, now() 상대 클램프/만료 없음(시한폭탄 아님)
@@ -257,7 +289,7 @@ void main() {
       final selectedDayLabel = tester.widget<Text>(
         find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
       );
-      expect(selectedDayLabel.style?.color, Colors.white);
+      expect(selectedDayLabel.style?.color, calendarNormalEventTextColor);
       expect(selectedDayLabel.style?.fontWeight, FontWeight.w700);
     },
   );

@@ -310,8 +310,9 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                               // 반드시 동일하게 planflowLocal을 거쳐야 음성과 시각이
                               // 일치한다. (과거 raw startAt.hour(UTC)를 그대로 써서
                               // 목록만 시각이 어긋나던 신뢰성 버그 수정)
-                              final localStart =
-                                  startAt != null ? planflowLocal(startAt) : null;
+                              final localStart = startAt != null
+                                  ? planflowLocal(startAt)
+                                  : null;
                               final timeStr = localStart != null
                                   ? planflowFormatTime(
                                       localStart.hour, localStart.minute)
@@ -330,8 +331,7 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                                 ),
                                 padding: const EdgeInsets.all(12),
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
                                       children: [
@@ -364,8 +364,7 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                                             overflow: TextOverflow.ellipsis,
                                             style: theme.textTheme.bodyMedium
                                                 ?.copyWith(
-                                              color:
-                                                  PlanFlowColors.textPrimary,
+                                              color: PlanFlowColors.textPrimary,
                                               fontWeight: event.isCritical
                                                   ? FontWeight.w700
                                                   : FontWeight.w500,

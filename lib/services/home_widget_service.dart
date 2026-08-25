@@ -11,6 +11,8 @@ import 'home_widget_platform.dart';
 import 'kasi_holiday_service.dart';
 import 'korean_holidays.dart';
 import 'synced_public_holiday_visibility.dart';
+import '../screens/calendar/calendar_style_contract.dart';
+import '../screens/calendar/calendar_projection.dart';
 import 'travel_time_buffer_service.dart';
 
 class HomeWidgetNextEventData {
@@ -110,6 +112,7 @@ class HomeWidgetMonthCellData {
     this.overflowPreviewTitle,
     this.holidayName,
     this.isDayOff = false,
+    this.leadingEventRowCount = 0,
   });
 
   final int cellIndex;
@@ -125,6 +128,10 @@ class HomeWidgetMonthCellData {
 
   /// 실제 "쉬는 날"(휴무)이면 true. 제헌절처럼 이름은 있어도 평일이면 false.
   final bool isDayOff;
+
+  /// Empty rows reserved before a multi-day band. This preserves the exact
+  /// slot chosen by the app calendar when a span crosses a holiday cell.
+  final int leadingEventRowCount;
 }
 
 class HomeWidgetSchedulePayload {
@@ -192,7 +199,7 @@ class HomeWidgetSchedulePayloadBuilder {
         .where((event) => event.startAt != null)
         .where((event) => includeWeekends || !_startsOnWeekend(event))
         .toList(growable: false)
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      ..sort(compareCalendarEventsForDisplay);
     final futureEvents = sortedEvents
         .where((event) => !event.startAt!.isBefore(now))
         .toList(growable: false);
@@ -363,7 +370,7 @@ class HomeWidgetSchedulePayloadBuilder {
       final ld = _displayEndDay(e);
       return ld.isAfter(fd);
     }).toList()
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      ..sort(compareCalendarEventsForDisplay);
 
     for (final event in multiDayEvents) {
       final fd = planflowLocalDay(event.startAt!);
@@ -407,16 +414,7 @@ class HomeWidgetSchedulePayloadBuilder {
         final ld = _displayEndDay(e);
         return !ld.isAfter(fd) && fd == day;
       }).toList()
-        ..sort((a, b) {
-          final aStart = a.startAt;
-          final bStart = b.startAt;
-          if (aStart == null && bStart == null) {
-            return a.title.compareTo(b.title);
-          }
-          if (aStart == null) return 1;
-          if (bStart == null) return -1;
-          return aStart.compareTo(bStart);
-        });
+        ..sort(compareCalendarEventsForDisplay);
       for (final event in singleEvents) {
         var placed = false;
         final firstAvailableSlot =
@@ -462,6 +460,9 @@ class HomeWidgetSchedulePayloadBuilder {
                 : hiddenEvents.first.title.trim(),
         holidayName: KoreanHolidays.holidayName(day),
         isDayOff: KoreanHolidays.isDayOff(day),
+        leadingEventRowCount: slotMap[i]
+            .indexWhere((event) => event != null)
+            .clamp(0, monthlyWidgetEventRows),
       );
     });
   }
@@ -1154,6 +1155,20 @@ class HomeWidgetService {
     }
 
     var success = true;
+    // A pending/completed pair prevents a stale complete month projection
+    // from winning while a newer schedule payload is being written.
+    final payloadGeneration = DateTime.now().microsecondsSinceEpoch.toString();
+    success = await _saveValue(
+          'widget_payload_generation_pending',
+          payloadGeneration,
+        ) &&
+        success;
+    // The native monthly/weekly/daily renderers read this versioned contract.
+    // Persist it alongside every complete schedule payload so widgets never
+    // retain an older palette after an app update or refresh.
+    for (final entry in calendarStyleContractPayload().entries) {
+      success = await _saveValue(entry.key, entry.value) && success;
+    }
     success =
         await _saveValue('next_event_title', nextEvent.title.trim()) && success;
     success =
@@ -1252,6 +1267,14 @@ class HomeWidgetService {
         ) &&
         success;
     success = await _saveDayOffsetEvents(1, tomorrowEvents) && success;
+
+    if (success) {
+      success = await _saveValue(
+            'widget_payload_generation_complete',
+            payloadGeneration,
+          ) &&
+          success;
+    }
 
     final refreshed = await _refreshWidgets(
       widgetName: widgetName,
@@ -1461,6 +1484,33 @@ class HomeWidgetService {
     String keyPrefix = 'month_cell',
   }) async {
     var success = true;
+    final lastInMonthIndex = cells.lastIndexWhere((cell) => cell.inMonth);
+    final rowCount = lastInMonthIndex < 0
+        ? 6
+        : ((lastInMonthIndex + 1 + 6) ~/ 7).clamp(1, 6);
+    success = await _saveValue('${keyPrefix}_row_count', rowCount) && success;
+    // Keep a compact, schedule-free holiday map so the native fallback can
+    // preserve the app's KASI/klc holiday rules even when a legacy month-cell
+    // payload is incomplete. This is intentionally limited to date/name and
+    // never contains event or user data.
+    final holidayMap = <String, Map<String, Object>>{};
+    for (final cell in cells) {
+      final date = cell.date;
+      if (date == null || (!cell.isDayOff && cell.holidayName == null)) {
+        continue;
+      }
+      holidayMap[_localDateKey(planflowLocal(date))] = {
+        'name': cell.holidayName?.trim().isNotEmpty == true
+            ? cell.holidayName!.trim()
+            : '공휴일',
+        'isDayOff': cell.isDayOff,
+      };
+    }
+    success = await _saveValue(
+          '${keyPrefix}_holiday_calendar_json',
+          jsonEncode(holidayMap),
+        ) &&
+        success;
     final byCell = <int, HomeWidgetMonthCellData>{
       for (final cell in cells)
         if (cell.cellIndex >= 1 && cell.cellIndex <= 42) cell.cellIndex: cell,
@@ -1502,6 +1552,11 @@ class HomeWidgetService {
       success = await _saveValue(
             '${keyPrefix}_${cellIndex}_is_day_off',
             cell?.isDayOff ?? false,
+          ) &&
+          success;
+      success = await _saveValue(
+            '${keyPrefix}_${cellIndex}_leading_event_row_count',
+            cell?.leadingEventRowCount ?? 0,
           ) &&
           success;
       final events = cell?.events

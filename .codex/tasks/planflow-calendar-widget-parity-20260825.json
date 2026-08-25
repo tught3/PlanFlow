@@ -1,0 +1,135 @@
+{
+  "task_id": "planflow-calendar-widget-parity-20260825",
+  "objective": "Make the Android monthly calendar widget render from the in-app calendar contract: matching semantic colors, typography, marker treatment, holiday placement, and continuous-event row placement.",
+  "status": "COMPLETE",
+  "classification": "Complex",
+  "requirements": [
+    "The in-app calendar tab is the styling source of truth for the home-screen monthly widget.",
+    "Monthly normal events remain 8.3sp and monthly holiday labels remain normal-event size plus 0.5sp (8.8sp) in both renderers.",
+    "Holiday-first placement and continuous spans crossing holidays must retain the same event row in the widget as in the app calendar.",
+    "Do not deploy, commit, or alter schedule data as part of this parity task."
+  ],
+  "scope_decision": {
+    "included": [
+      "Personal home-screen monthly calendar widget",
+      "Shared Flutter-to-Android style and month-cell payload contract",
+      "Continuous-event rows that cross holiday cells"
+    ],
+    "excluded_pending_explicit_scope": [
+      "Group calendar widget visual parity; it uses a separate provider/layout and was not demonstrated in the supplied screenshots"
+    ]
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Trace app-calendar and Android monthly-widget style, ordering, and row-placement paths.",
+      "status": "reported_to_parent_not_persisted_in_child_context"
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define a shared calendar style/payload contract and parity verification gates.",
+      "status": "reported_to_parent_not_persisted_in_child_context"
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement style contract transfer, native widget rendering, and holiday-crossing continuous-event row preservation.",
+      "status": "completed",
+      "changed_files": [
+        "lib/screens/calendar/calendar_style_contract.dart",
+        "lib/screens/calendar/calendar_widgets.dart",
+        "lib/screens/calendar/calendar_screen.dart",
+        "lib/services/home_widget_service.dart",
+        "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+        "android/app/src/main/res/layout/planflow_monthly_widget.xml",
+        "android/app/src/main/res/values/styles.xml",
+        "test/services/home_widget_service_test.dart",
+        "test/screens/calendar_screen_test.dart"
+      ],
+      "result": "Completed the shared contract and rework: normal 8.3sp / monthly holiday 8.8sp; semantic comparator parity; dynamic month row count; generation markers for incomplete payloads; API-first structured holiday {name,isDayOff} fallback; and leadingEventRowCount for a Chuseok-crossing span. API values override native fallback values when present."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "assignment": "Run focused Flutter tests, analysis, Android Kotlin compilation, and diff check after rework.",
+      "status": "completed",
+      "evidence": [
+        {
+          "command": "flutter test --no-pub test/screens/calendar_screen_test.dart test/services/home_widget_service_test.dart test/features/groups/group_month_calendar_test.dart",
+          "exit_code": 0,
+          "result": "All tests passed"
+        },
+        {
+          "command": "dart analyze lib/screens/calendar/calendar_screen.dart lib/screens/calendar/calendar_widgets.dart lib/screens/calendar/calendar_style_contract.dart lib/services/home_widget_service.dart lib/features/groups/services/group_calendar_widget_service.dart lib/features/groups/widgets/group_month_calendar.dart android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowGroupCalendarWidgetProvider.kt",
+          "exit_code": 0,
+          "result": "No issues found"
+        },
+        {
+          "command": ".\\gradlew :app:compileDebugKotlin",
+          "cwd": "android",
+          "exit_code": 0,
+          "result": "BUILD SUCCESSFUL"
+        },
+        {
+          "command": "git diff --check -- ...",
+          "exit_code": 0,
+          "result": "No whitespace errors; CRLF warnings only"
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently validate final app/widget parity and rework evidence.",
+      "status": "completed_accepting",
+      "host_final": true,
+      "review_history": [
+        {
+          "envelope": "FINAL_REVIEW_REPORT",
+          "verdict": "UNAVAILABLE",
+          "highest_severity": "UNKNOWN",
+          "finding": "Pre-rework review did not find comparator, dynamic-row, or stale-payload completion evidence."
+        },
+        {
+          "envelope": "FINAL_REVIEW_REPORT",
+          "verdict": "PASS",
+          "highest_severity": "NONE",
+          "finding": "Post-structured-payload review passed before the API-first precedence correction."
+        }
+      ],
+      "final_review_report": {
+        "envelope": "FINAL_REVIEW_REPORT",
+        "verdict": "PASS",
+        "highest_severity": "NONE",
+        "findings": "NONE",
+        "evidence_summary": "Final API-first diff reviewed. Structured holiday payload is consulted before native fallback, preserving server/API names and isDayOff values. 2025-07-17 제헌절 stays labeled but muted/non-day-off; API-provided 2026-07-17 is day-off/red. Semantic ordering, holiday precedence, generation safeguards, dynamic row count, multi-day alignment, typography contract, duplicate-holiday filtering, and personal monthly widget scope are consistent.",
+        "retest_scope": "Connected-device app/personal monthly widget screenshot is recommended before release; no code-level blocker remains."
+      }
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile current diff, requirement conflict, test evidence, and independent review.",
+      "status": "completed",
+      "verdict": "COMPLETE",
+      "result": "Final API-first current diff, fresh focused tests, Kotlin compilation, diff check, and accepting reviewer PASS were reconciled. The personal monthly widget treats the in-app calendar contract and API-derived payload as its source of truth, using native holiday tables only when that payload is unavailable."
+    }
+  ],
+  "verification_gap": "A connected-device screenshot comparing the app calendar tab and the personal monthly launcher widget after refresh is recommended before release. It was not claimed as executed.",
+  "final_verdict": "COMPLETE",
+  "last_updated": "2026-08-25T15:35:00+09:00"
+}

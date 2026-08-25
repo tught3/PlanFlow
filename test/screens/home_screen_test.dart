@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +25,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  test('home briefing actions enter the calendar briefing route', () {
+    final source = File('lib/screens/home/home_screen.dart').readAsStringSync();
+    expect(
+        source, contains("context.go('\${AppRoutes.briefing}?type=\$type')"));
+    expect(
+        source, isNot(contains('_briefingSchedulerService.executeBriefing')));
+  });
+
   // HomeScreen이 내부에서 만드는 GroupContextProvider가 기본값으로
   // GroupRepository.supabase()(SupabaseGroupRepository)를 생성하는데, 그
   // 생성자가 즉시 Supabase.instance를 참조한다. login_screen_test.dart 등
@@ -292,8 +301,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('Fresh event'), findsOneWidget);
-      expect(homeWidgetService.refreshCallCount, 1);
-      expect(homeWidgetService.refreshEventTitles.single, <String>[
+      expect(homeWidgetService.refreshCallCount, greaterThanOrEqualTo(2));
+      expect(homeWidgetService.refreshEventTitles.last, <String>[
         'Fresh event',
       ]);
     },

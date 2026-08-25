@@ -70,13 +70,13 @@
         android:orientation="horizontal"
         android:weightSum="7"
         tools:ignore="HardcodedText">
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="일" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="월" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="화" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="수" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="목" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="금" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="토" />
+        <TextView android:id="@+id/widget_month_dow_sun" style="@style/PlanFlowWidgetMonthHeader" android:text="일" />
+        <TextView android:id="@+id/widget_month_dow_mon" style="@style/PlanFlowWidgetMonthHeader" android:text="월" />
+        <TextView android:id="@+id/widget_month_dow_tue" style="@style/PlanFlowWidgetMonthHeader" android:text="화" />
+        <TextView android:id="@+id/widget_month_dow_wed" style="@style/PlanFlowWidgetMonthHeader" android:text="수" />
+        <TextView android:id="@+id/widget_month_dow_thu" style="@style/PlanFlowWidgetMonthHeader" android:text="목" />
+        <TextView android:id="@+id/widget_month_dow_fri" style="@style/PlanFlowWidgetMonthHeader" android:text="금" />
+        <TextView android:id="@+id/widget_month_dow_sat" style="@style/PlanFlowWidgetMonthHeader" android:text="토" />
     </LinearLayout>
 
     <GridLayout

@@ -70,11 +70,16 @@ class ShellScreen extends StatefulWidget {
     this.initialIndex = 0,
     this.initialCalendarDate,
     this.initialSettingsAction,
+    this.briefingIsMorning,
   });
 
   final int initialIndex;
   final DateTime? initialCalendarDate;
   final SettingsInitialAction? initialSettingsAction;
+
+  /// When set, the calendar tab runs the briefing inline instead of opening a
+  /// separate result page. Null keeps the normal shell behavior.
+  final bool? briefingIsMorning;
 
   @override
   State<ShellScreen> createState() => _ShellScreenState();
@@ -393,12 +398,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     // be recreated when navigation changes, so starting it here caused each
     // recreation to compete for the UI isolate and CalDAV parser.
     Future<bool> runWhenIdle(Future<void> Function() work) async {
-      final token = _interactionIdleGate.generation; // banned-ok: 시크릿 아님, idle-gate 세대 카운터(int)
+      final idleGeneration = _interactionIdleGate.generation;
       await _interactionIdleGate.waitForIdle();
       if (!mounted ||
           generation != _startupWorkGeneration ||
           authProvider.userId != userId ||
-          token != _interactionIdleGate.generation) {
+          idleGeneration != _interactionIdleGate.generation) {
         DiagLogger.log('Onboarding', 'deferred startup task cancelled');
         throw StateError('deferred startup cancelled by interaction');
       }
@@ -760,7 +765,16 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       case 0:
         return HomeScreen(scrollController: _homeScrollController);
       case 1:
-        return CalendarScreen(initialDate: widget.initialCalendarDate);
+        final briefingIsMorning = widget.briefingIsMorning;
+        final calendar = CalendarScreen(
+          initialDate: widget.initialCalendarDate,
+          // The briefing route opens the selected-day agenda sheet itself;
+          // the loader lives inside that sheet rather than over the month
+          // grid. Normal CalendarScreen callers may still use
+          // suppressInitialDaySheet for non-briefing flows.
+          briefingIsMorning: briefingIsMorning,
+        );
+        return calendar;
       case 2:
         return SettingsScreen(
           key: ValueKey<String?>(

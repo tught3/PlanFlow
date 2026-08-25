@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
+import '../../../screens/calendar/calendar_style_contract.dart';
 import '../models/group_event_model.dart';
 import '../models/group_event_recurrence.dart';
 import 'group_event_tile.dart';
@@ -50,7 +51,7 @@ class GroupMonthCalendar extends StatefulWidget {
 
 class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
   late DateTime _focusedMonth; // year+month
-  late DateTime _selectedDay;  // 선택된 날
+  late DateTime _selectedDay; // 선택된 날
 
   // 현재 focusedMonth 범위의 확장된 발생 목록 캐시
   List<GroupEventModel> _expandedOccurrences = const [];
@@ -104,7 +105,8 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
       // 이 발생이 속하는 로컬 날짜들을 구한다 (다중일 일정 포함)
       final localStart = planflowLocal(occ.startAt);
       final localEnd = planflowLocal(occ.endAt);
-      final startDay = DateTime(localStart.year, localStart.month, localStart.day);
+      final startDay =
+          DateTime(localStart.year, localStart.month, localStart.day);
       final endDay = DateTime(localEnd.year, localEnd.month, localEnd.day);
 
       for (var d = startDay;
@@ -181,8 +183,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
   // ─── 헤더 (이전/다음 + 오늘) ────────────────────────────────────────────────
 
   Widget _buildHeader(BuildContext context) {
-    final label =
-        '${_focusedMonth.year}년 ${_focusedMonth.month}월';
+    final label = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -293,32 +294,38 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     final isToday = day == todayDay;
     final isSelected = day == _selectedDay;
     final memberLines = _buildMemberCountLines(day);
+    final dayKey = '${day.year}-${day.month}-${day.day}';
 
     Color circleColor = Colors.transparent;
     Color textColor;
     FontWeight fontWeight = FontWeight.w500;
 
-    if (isSelected) {
-      circleColor = PlanFlowColors.primary;
-      textColor = Colors.white;
-      fontWeight = FontWeight.w700;
-    } else if (isToday) {
+    if (isToday) {
       circleColor = PlanFlowColors.calendarTodayCircle;
       textColor = Colors.white;
       fontWeight = FontWeight.w700;
     } else if (isCurrentMonth) {
       textColor = day.weekday == DateTime.sunday
-          ? const Color(0xFFB42318)
-          : PlanFlowColors.textPrimary;
+          ? calendarHolidayColor
+          : day.weekday == DateTime.saturday
+              ? calendarSaturdayColor
+              : calendarNormalEventTextColor;
     } else {
       // 인접 달 날짜는 흐리게
       textColor = PlanFlowColors.textDisabled;
+    }
+
+    if (isSelected) {
+      // Match the personal calendar: selected days stay outline-only so the
+      // semantic colors remain readable. Today keeps its own filled circle.
+      fontWeight = FontWeight.w700;
     }
 
     return Expanded(
       child: GestureDetector(
         onTap: () => _selectDay(day),
         child: Container(
+          key: ValueKey('group-calendar-day-cell-$dayKey'),
           constraints: const BoxConstraints(minHeight: 52),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -330,22 +337,25 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                 : isToday
                     ? PlanFlowColors.calendarTodayCellBg
                     : Colors.transparent,
-            border: const Border(
-              right: BorderSide(
-                color: PlanFlowColors.calendarGridLine,
-                width: 1,
-              ),
-              bottom: BorderSide(
-                color: PlanFlowColors.calendarGridLine,
-                width: 1,
-              ),
-            ),
+            border: isSelected
+                ? Border.all(color: PlanFlowColors.primary, width: 2)
+                : const Border(
+                    right: BorderSide(
+                      color: PlanFlowColors.calendarGridLine,
+                      width: 1,
+                    ),
+                    bottom: BorderSide(
+                      color: PlanFlowColors.calendarGridLine,
+                      width: 1,
+                    ),
+                  ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               AnimatedContainer(
+                key: ValueKey('group-calendar-day-circle-$dayKey'),
                 duration: const Duration(milliseconds: 150),
                 width: 32,
                 height: 32,
@@ -357,7 +367,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                 child: Text(
                   '${day.day}',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: calendarDateFontSize,
                     fontWeight: fontWeight,
                     color: textColor,
                     height: 1,
@@ -375,11 +385,11 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: calendarGroupMemberFontSize,
                       height: 1.3,
                       fontWeight: FontWeight.w700,
                       color: isCurrentMonth
-                          ? PlanFlowColors.primary
+                          ? calendarGroupEventColor
                           : PlanFlowColors.textDisabled,
                     ),
                   ),
@@ -422,7 +432,8 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     final visible = entries.take(maxVisibleMembers - 1);
     final hiddenMemberCount = entries.length - (maxVisibleMembers - 1);
     return [
-      ...visible.map((e) => '${widget.ownerNameOf?.call(e.key) ?? '멤버'} ${e.value}건'),
+      ...visible
+          .map((e) => '${widget.ownerNameOf?.call(e.key) ?? '멤버'} ${e.value}건'),
       '+$hiddenMemberCount명',
     ];
   }
@@ -430,8 +441,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
   // ─── 선택된 날짜의 일정 목록 ────────────────────────────────────────────────
 
   Widget _buildDayEventList(BuildContext context) {
-    final dayLabel =
-        '${_selectedDay.month}월 ${_selectedDay.day}일';
+    final dayLabel = '${_selectedDay.month}월 ${_selectedDay.day}일';
     final dayEvents = _dayIndex[_selectedDay] ?? const [];
 
     return Column(
@@ -490,8 +500,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
   }
 
   /// year+month만 유지한 DateTime.
-  static DateTime _monthOnly(DateTime dt) =>
-      DateTime(dt.year, dt.month);
+  static DateTime _monthOnly(DateTime dt) => DateTime(dt.year, dt.month);
 
   /// 해당 달에서 기본 선택 날짜:
   /// 오늘이 그 달에 있으면 오늘, 없으면 1일.

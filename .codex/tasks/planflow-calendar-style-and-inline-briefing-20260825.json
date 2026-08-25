@@ -1,0 +1,41 @@
+{
+  "task_id": "planflow-calendar-style-and-inline-briefing-20260825",
+  "status": "BLOCKED",
+  "updated_at": "2026-08-25T10:13:00+09:00",
+  "request": "Unify every calendar and Android widget with the Schedule tab style contract; replace the separate briefing page with inline calendar briefing; change selected dates to an outline-only selection.",
+  "classification": "complex",
+  "scope": {
+    "allowed": ["lib/screens/calendar/**", "lib/screens/shell_screen.dart", "lib/core/router.dart", "lib/features/groups/**", "lib/services/home_widget_service.dart", "android/app/src/main/**", "test/**", ".codex/tasks/planflow-calendar-style-and-inline-briefing-20260825.json"],
+    "forbidden": ["deployment", "unrelated user changes", "production data"]
+  },
+  "plan": [
+    {"item": "Canonical calendar style contract shared by app and widgets", "classification": "complex", "status": "implemented_pending_android_and_visual_verification", "decision": "Native month-widget range resources are the versioned canonical geometry. The provider uses setBackgroundResource so start/middle/end seams and caps remain intact; only the single-layer recurring pill is safely runtime-tinted on Android 12+. Any fill or border token change that needs a range shape requires matching checked-in drawable XML before bumping the contract version."},
+    {"item": "Inline morning/evening briefing in Schedule tab", "classification": "complex", "status": "implemented_pending_runtime_verification", "details": "The /briefing route opens ShellScreen's calendar tab for today (morning) or tomorrow (evening), suppresses the initial bottom sheet, keeps the existing list visible, and displays a compact top loader while one manual briefing runs. Dispose/mounted cancellation guards prevent stale UI updates."},
+    {"item": "Outline-only selected dates including group calendar", "classification": "simple", "status": "implemented_pending_visual_verification", "details": "Selected cells use a primary outline without overriding semantic event text colors. A selected today keeps its today circle in the group calendar."},
+    {"item": "Focused tests, full Android build, and device visual verification", "classification": "complex", "status": "blocked"}
+  ],
+  "roles": [
+    {"role": "Explorer", "agent": "flux_explorer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "medium", "assignment": "Locate briefing route, selected-date rendering, and calendar/widget style flows.", "result": "Found the /briefing route, personal/group selected-fill behavior, and scheduler callback timing."},
+    {"role": "Planner", "agent": "flux_planner", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "high", "assignment": "Plan canonical style, inline briefing, and outline selection.", "result": "Classified the multi-module change as complex and specified morning=today, evening=tomorrow, and bottom-sheet suppression."},
+    {"role": "Complex Implementer", "agent": "flux_complex_implementer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "medium", "assignment": "Implement style contract, widget rendering, /briefing-to-calendar routing, inline loader, and review rework.", "changed_files": ["lib/screens/calendar/calendar_style_contract.dart", "lib/screens/calendar/calendar_widgets.dart", "lib/screens/calendar/calendar_screen.dart", "lib/screens/shell_screen.dart", "lib/core/router.dart", "lib/services/home_widget_service.dart", "lib/features/groups/services/group_calendar_widget_service.dart", "lib/features/groups/widgets/group_month_calendar.dart", "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt", "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowGroupCalendarWidgetProvider.kt", "android/app/src/main/res/layout/planflow_monthly_widget.xml", "android/app/src/main/res/layout/planflow_group_calendar_widget.xml", "android/app/src/main/res/drawable/widget_month_event_*.xml", "android/app/src/main/res/values/styles.xml"], "result": "Implemented the shared payload, consistent date/event/marker typography, canonical drawable geometry rule, inline briefing host, and outline-only selection."},
+    {"role": "Test Executor", "agent": "flux_test_executor", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "low", "assignment": "Run focused Flutter verification.", "result": "Focused Flutter suite passed after the latest rework."},
+    {"role": "Reviewer", "agent": "flux_reviewer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "high", "assignment": "Independent review of the combined diff.", "result": "Exactly one host-final FINAL_REVIEW_REPORT was recorded before the last rework, with one HIGH (widget fill/border contract) and two behavior MEDIUM findings. The rework addresses those source findings, but a fresh independent final review of the current diff has not yet been recorded; acceptance remains fail-closed."},
+    {"role": "Integrator", "agent": "flux_integrator", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "medium", "assignment": "Reconcile final diff, review fixes, and verification evidence.", "result": "Rechecked the canonical drawable decision, selected-today behavior, and inline briefing mounted/dispose guards. Did not declare COMPLETE because the final reviewer evidence is stale and Android/device verification is absent."}
+  ],
+  "verification": [
+    {"command": "flutter test test/services/home_widget_service_test.dart test/screens/calendar_screen_test.dart test/features/groups/group_month_calendar_test.dart test/screens/briefing_launch_screen_test.dart test/services/briefing_scheduler_service_test.dart test/screens/shell_screen_briefing_resume_test.dart --no-pub", "exit_code": 0, "result": "71 tests passed after latest rework"},
+    {"command": "dart format --set-exit-if-changed <12 touched Dart files>", "exit_code": 0, "result": "12 files formatted; 0 changes"},
+    {"command": "dart analyze lib/core/router.dart lib/screens/shell_screen.dart lib/screens/calendar/calendar_screen.dart lib/screens/calendar/calendar_style_contract.dart lib/screens/calendar/calendar_widgets.dart lib/features/groups/widgets/group_month_calendar.dart lib/services/home_widget_service.dart lib/features/groups/services/group_calendar_widget_service.dart", "exit_code": 0, "result": "No issues found"},
+    {"command": "git diff --check", "exit_code": 0, "result": "passed"},
+    {"command": "flutter analyze --no-pub", "exit_code": 1, "result": "Previously stalled and was interrupted; not accepted as a full-project analysis pass"},
+    {"command": ".\\gradlew.bat :app:compileDebugKotlin --no-daemon --console=plain", "exit_code": 1, "result": "Previously stalled and was interrupted; native Kotlin/resource compilation is not verified"}
+  ],
+  "review_findings": [
+    {"severity": "HIGH", "status": "source_rework_complete_pending_fresh_independent_review", "summary": "Native month-widget fill/border contract handling now preserves canonical resource geometry; no flat setBackgroundColor is used. Contract evolution requires matching drawable XML for range geometries."},
+    {"severity": "MEDIUM", "status": "source_rework_complete_pending_visual_verification", "summary": "Group selected-today retains the today circle and uses outline selection."},
+    {"severity": "MEDIUM", "status": "source_rework_complete_pending_runtime_verification", "summary": "Inline briefing has started/cancelled/mounted guards and avoids stale UI work after disposal."}
+  ],
+  "blocking_verification": ["No fresh independent reviewer host-final FINAL_REVIEW_REPORT exists for the current post-rework diff.", "Full Flutter analysis previously stalled; only targeted analysis passed.", "Android :app:compileDebugKotlin previously stalled; Kotlin/resources have no current successful build evidence.", "No connected-device visual verification confirms inline briefing placement, outline selection legibility, and all Android widget variants."],
+  "next_step": "Obtain one fresh independent reviewer final report for the current diff, then a successful Android build and connected-device visual verification before any deployment or release acceptance.",
+  "final_verdict": "BLOCKED"
+}

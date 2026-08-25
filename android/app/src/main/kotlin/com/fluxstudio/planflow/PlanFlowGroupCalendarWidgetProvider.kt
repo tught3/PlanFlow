@@ -52,8 +52,13 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         private val OCCURRENCE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
         private val PLANFLOW_ZONE = ZoneId.of("Asia/Seoul")
 
-        // planflow_group_calendar_widget.xml의 cell_N_count textSize(8.5sp bold)와 반드시 일치시킬 것.
-        private const val CELL_COUNT_TEXT_SIZE_SP = 8.5f
+        // 앱 그룹 달력의 멤버 요약 텍스트와 동일한 기준값.
+        private const val CELL_COUNT_TEXT_SIZE_SP = 10f
+        private const val DEFAULT_TEXT_COLOR = 0xFF435A70.toInt()
+        private const val TEAM_TEXT_COLOR = 0xFF7B560B.toInt()
+        private const val HOLIDAY_TEXT_COLOR = 0xFFC62828.toInt()
+        private const val SATURDAY_TEXT_COLOR = 0xFF1E64B7.toInt()
+        private const val DATE_TEXT_SIZE_SP = 13f
         // cell_N_container의 paddingLeft(1dp) + paddingRight(1dp) 합.
         private const val CELL_CONTAINER_HORIZONTAL_PADDING_DP = 2f
         // 위젯 옵션 조회 실패 시 폴백으로 쓸 셀 텍스트 폭(dp 상당).
@@ -65,8 +70,8 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
             ACTION_GROUP_MONTH_PREVIOUS, ACTION_GROUP_MONTH_NEXT, ACTION_GROUP_MONTH_TODAY -> {
                 val prefs = HomeWidgetPlugin.getData(context)
                 val nextOffset = when (intent.action) {
-                    ACTION_GROUP_MONTH_PREVIOUS -> prefs.getInt(GROUP_MONTH_WIDGET_OFFSET_KEY, 0) - 1
-                    ACTION_GROUP_MONTH_NEXT -> prefs.getInt(GROUP_MONTH_WIDGET_OFFSET_KEY, 0) + 1
+                    ACTION_GROUP_MONTH_PREVIOUS -> readInt(prefs, GROUP_MONTH_WIDGET_OFFSET_KEY, 0) - 1
+                    ACTION_GROUP_MONTH_NEXT -> readInt(prefs, GROUP_MONTH_WIDGET_OFFSET_KEY, 0) + 1
                     else -> 0
                 }
                 prefs.edit().putInt(GROUP_MONTH_WIDGET_OFFSET_KEY, nextOffset).apply()
@@ -146,7 +151,13 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         views.setViewVisibility(R.id.group_cal_dow_header, View.VISIBLE)
         views.setViewVisibility(R.id.group_cal_grid, View.VISIBLE)
 
-        val monthOffset = prefs.getInt(GROUP_MONTH_WIDGET_OFFSET_KEY, 0)
+        val monthOffset = readInt(prefs, GROUP_MONTH_WIDGET_OFFSET_KEY, 0)
+        val normalTextColor = readInt(prefs, "calendar_style_normal_text", DEFAULT_TEXT_COLOR)
+        val teamTextColor = readInt(prefs, "calendar_style_team_text", TEAM_TEXT_COLOR)
+        val holidayTextColor = readInt(prefs, "calendar_style_holiday_text", HOLIDAY_TEXT_COLOR)
+        val saturdayTextColor = readInt(prefs, "calendar_style_saturday_text", SATURDAY_TEXT_COLOR)
+        val dateTextSizeSp = readInt(prefs, "calendar_style_date_font_sp10", 130) / 10f
+        val memberTextSizeSp = readInt(prefs, "calendar_style_group_member_font_sp10", 100) / 10f
         val today = LocalDate.now(PLANFLOW_ZONE)
         val monthStart = today.plusMonths(monthOffset.toLong()).withDayOfMonth(1)
 
@@ -159,6 +170,18 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         }
         views.setTextViewText(R.id.header_group, groupName)
         views.setTextViewText(R.id.header_month, monthTitle)
+        listOf(
+            R.id.group_cal_dow_sun to holidayTextColor,
+            R.id.group_cal_dow_mon to normalTextColor,
+            R.id.group_cal_dow_tue to normalTextColor,
+            R.id.group_cal_dow_wed to normalTextColor,
+            R.id.group_cal_dow_thu to normalTextColor,
+            R.id.group_cal_dow_fri to normalTextColor,
+            R.id.group_cal_dow_sat to saturdayTextColor,
+        ).forEach { (id, color) ->
+            views.setTextColor(id, color)
+            views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, dateTextSizeSp)
+        }
 
         // "그룹 변경" 버튼 → 설정 액티비티
         val configIntent = buildConfigIntent(context, appWidgetId)
@@ -205,11 +228,14 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
 
             // 날짜 숫자
             views.setTextViewText(dayViewId, day.dayOfMonth.toString())
+            views.setTextViewTextSize(dayViewId, TypedValue.COMPLEX_UNIT_SP, dateTextSizeSp)
 
             // 오늘 강조(개인 위젯과 동일하게 날짜 숫자에 원 배경 + 흰 글자) vs 다른 달 흐리게
             val dayColor = when {
                 isToday -> 0xFFFFFFFF.toInt()           // 흰색 (오늘 원 배경 위)
-                inMonth -> 0xFF203A57.toInt()           // 진한 파랑 (현재 달)
+                day.dayOfWeek == java.time.DayOfWeek.SUNDAY -> holidayTextColor
+                day.dayOfWeek == java.time.DayOfWeek.SATURDAY -> saturdayTextColor
+                inMonth -> normalTextColor
                 else -> 0xFF9AADC0.toInt()             // 흐린 색 (전/다음 달)
             }
             views.setTextColor(dayViewId, dayColor)
@@ -255,7 +281,8 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
 
             if (summaryText != null) {
                 views.setTextViewText(countViewId, summaryText)
-                views.setTextColor(countViewId, 0xFF17181C.toInt())
+                views.setTextColor(countViewId, teamTextColor)
+                views.setTextViewTextSize(countViewId, TypedValue.COMPLEX_UNIT_SP, memberTextSizeSp)
                 views.setViewVisibility(countViewId, View.VISIBLE)
             } else {
                 views.setTextViewText(countViewId, "")
@@ -270,6 +297,14 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
             if (cellContainerId != 0) {
                 views.setOnClickPendingIntent(cellContainerId, dayDeepLink)
             }
+        }
+    }
+
+    private fun readInt(prefs: SharedPreferences, key: String, fallback: Int): Int {
+        return when (val value = prefs.all[key]) {
+            is Number -> value.toInt()
+            is String -> value.toIntOrNull() ?: fallback
+            else -> fallback
         }
     }
 

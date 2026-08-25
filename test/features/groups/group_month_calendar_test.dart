@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
 import 'package:planflow/features/groups/widgets/group_month_calendar.dart';
+import 'package:planflow/core/theme.dart';
+import 'package:planflow/screens/calendar/calendar_style_contract.dart';
 
 void main() {
   testWidgets(
@@ -46,4 +48,113 @@ void main() {
       expect(find.text('이 날에 등록된 일정이 없어요.'), findsNothing);
     },
   );
+
+  testWidgets(
+    'GroupMonthCalendar keeps today circle on selected today and outline-only on other selected days',
+    (tester) async {
+      final now = planflowNow();
+      final focusedMonth = DateTime(now.year, now.month);
+      final today = DateTime(now.year, now.month, now.day);
+      final otherDay = _findSelectableWeekday(focusedMonth, today);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: GroupMonthCalendar(
+                events: const [],
+                focusedMonth: focusedMonth,
+                onMonthChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final todayCellKey = ValueKey(
+        'group-calendar-day-cell-${today.year}-${today.month}-${today.day}',
+      );
+      final todayCircleKey = ValueKey(
+        'group-calendar-day-circle-${today.year}-${today.month}-${today.day}',
+      );
+      final todayText = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(todayCellKey),
+          matching: find.byType(Text),
+        ),
+      );
+      final todayCircle = tester.widget<AnimatedContainer>(
+        find.byKey(todayCircleKey),
+      );
+      final todayCell = tester.widget<Container>(find.byKey(todayCellKey));
+
+      expect(todayText.style?.color, Colors.white);
+      expect(
+        (todayCircle.decoration! as BoxDecoration).color,
+        PlanFlowColors.calendarTodayCircle,
+      );
+      expect(
+        (todayCell.decoration! as BoxDecoration).border,
+        isA<Border>().having(
+          (border) => border.top.color,
+          'top color',
+          PlanFlowColors.primary,
+        ),
+      );
+
+      final otherCellKey = ValueKey(
+        'group-calendar-day-cell-${otherDay.year}-${otherDay.month}-${otherDay.day}',
+      );
+      final otherCircleKey = ValueKey(
+        'group-calendar-day-circle-${otherDay.year}-${otherDay.month}-${otherDay.day}',
+      );
+      await tester.tap(find.byKey(otherCellKey));
+      await tester.pumpAndSettle();
+
+      final otherText = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(otherCellKey),
+          matching: find.byType(Text),
+        ),
+      );
+      final otherCircle = tester.widget<AnimatedContainer>(
+        find.byKey(otherCircleKey),
+      );
+      final otherCell = tester.widget<Container>(find.byKey(otherCellKey));
+
+      expect(otherText.style?.color, calendarNormalEventTextColor);
+      expect(
+        (otherCircle.decoration! as BoxDecoration).color,
+        Colors.transparent,
+      );
+      expect(
+        (otherCell.decoration! as BoxDecoration).border,
+        isA<Border>().having(
+          (border) => border.top.color,
+          'top color',
+          PlanFlowColors.primary,
+        ),
+      );
+    },
+  );
+}
+
+DateTime _findSelectableWeekday(DateTime focusedMonth, DateTime today) {
+  for (var day = 1; day <= 31; day++) {
+    final candidate = DateTime(focusedMonth.year, focusedMonth.month, day);
+    if (candidate.month != focusedMonth.month) {
+      break;
+    }
+    if (candidate.year == today.year &&
+        candidate.month == today.month &&
+        candidate.day == today.day) {
+      continue;
+    }
+    if (candidate.weekday != DateTime.saturday &&
+        candidate.weekday != DateTime.sunday) {
+      return candidate;
+    }
+  }
+  throw StateError('No selectable weekday found in the focused month');
 }

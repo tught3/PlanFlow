@@ -33,7 +33,7 @@ import '../../services/voice_command_router.dart';
 import '../../services/voice_date_range_parser.dart';
 import '../../services/voice_text_cleanup_service.dart';
 import '../../widgets/planflow_action_buttons.dart';
-import '../calendar/calendar_screen.dart'
+import '../calendar/calendar_style_contract.dart'
     show
         calendarCriticalEventTextColor,
         calendarGroupEventColor,
@@ -1784,9 +1784,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       parts.add(edited.isCritical ? '중요 일정' : '중요 표시 해제');
     }
 
-    if (edited.isMultiDay &&
-        !original.isMultiDay &&
-        edited.endAt != null) {
+    if (edited.isMultiDay && !original.isMultiDay && edited.endAt != null) {
       final newEnd = planflowLocal(edited.endAt!);
       const weekdays = ['', '월', '화', '수', '목', '금', '토', '일'];
       parts.add(
@@ -2808,4 +2806,3 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     );
   }
 }
-

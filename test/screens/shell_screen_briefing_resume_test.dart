@@ -3,6 +3,43 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('브리핑 딥링크는 선택 날짜 일정 상세 바텀시트로 연결된다', () {
+    final routerSource = File('lib/core/router.dart').readAsStringSync();
+    final shellSource =
+        File('lib/screens/shell_screen.dart').readAsStringSync();
+    final calendarSource =
+        File('lib/screens/calendar/calendar_screen.dart').readAsStringSync();
+    final widgetsSource = File(
+      'lib/screens/calendar/calendar_widgets.dart',
+    ).readAsStringSync();
+
+    expect(routerSource, contains('ShellScreen('));
+    expect(routerSource, contains('briefingIsMorning: isMorning'));
+    expect(routerSource, contains('initialCalendarDate: briefingDate'));
+    expect(shellSource, contains('briefingIsMorning: briefingIsMorning'));
+    expect(calendarSource, contains('_showDayEventsSheet'));
+    expect(calendarSource,
+        contains('briefingIsMorning: widget.briefingIsMorning'));
+    expect(widgetsSource, contains('오전 브리핑 중입니다.'));
+    expect(widgetsSource, contains('오후 브리핑 중입니다.'));
+    expect(shellSource, isNot(contains('_InlineCalendarBriefing')));
+  });
+
+  test('foreground 브리핑 재생은 모달을 닫은 다음 일정 탭으로 이동한다', () {
+    final appSource = File('lib/app.dart').readAsStringSync();
+    final popIndex = appSource.indexOf("Navigator.of(ctx).pop();");
+    final frameIndex = appSource.indexOf(
+      'WidgetsBinding.instance.addPostFrameCallback',
+      popIndex,
+    );
+    final goIndex =
+        appSource.indexOf("appRouter.go('\${AppRoutes.briefing}", frameIndex);
+
+    expect(popIndex, greaterThan(-1));
+    expect(frameIndex, greaterThan(popIndex));
+    expect(goIndex, greaterThan(frameIndex));
+  });
+
   // 회귀: 브리핑 알람은 "알람 콜백이 스스로 다음 날 것을 재예약"하는 체인
   // 하나에만 의존했다 — 그 체인이 조용히 끊기면(스케줄 실패·예외) 콜드
   // 스타트나 설정 재저장 전까지 영구히 재예약이 안 됐다(같은 증상 5회

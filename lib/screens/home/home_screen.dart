@@ -19,7 +19,6 @@ import '../../features/groups/models/group_model.dart';
 import '../../features/groups/providers/group_context_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/api_usage_guard.dart';
-import '../../services/briefing_scheduler_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -72,8 +71,7 @@ class HomeScreen extends StatefulWidget {
     this.nowProvider,
     this.locationLookupService,
     this.settingsRepository,
-    BriefingSchedulerService? briefingSchedulerService,
-  }) : _briefingSchedulerService = briefingSchedulerService;
+  });
 
   final ScrollController? scrollController;
   final String? userIdOverride;
@@ -90,7 +88,6 @@ class HomeScreen extends StatefulWidget {
   /// 음성대화 진입 시 '자동 시작' 설정 조회에 쓰는 저장소. 테스트에서 fake를
   /// 주입하기 위한 진입점(미주입 시 기본 SettingsRepository.supabase() 사용).
   final SettingsRepository? settingsRepository;
-  final BriefingSchedulerService? _briefingSchedulerService;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -100,7 +97,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final HomeHeaderSummaryService _headerSummaryService =
       HomeHeaderSummaryService();
   final GroupContextProvider _groupContextProvider = GroupContextProvider();
-  late final BriefingSchedulerService _briefingSchedulerService;
   late final HomeWidgetService _homeWidgetService;
   List<EventModel> _pastTodayEvents = const <EventModel>[];
   List<EventModel> _recentPastEvents = const <EventModel>[];
@@ -114,8 +110,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _retryTimer;
   bool _hasRenderedContent = false;
   bool _headerSummaryLoading = true;
-  bool _isPlayingMorningBriefing = false;
-  bool _isPlayingEveningBriefing = false;
+  final bool _isPlayingMorningBriefing = false;
+  final bool _isPlayingEveningBriefing = false;
   int _homeWidgetRefreshGeneration = 0;
   Future<void> _homeWidgetRefreshQueue = Future<void>.value();
 
@@ -143,8 +139,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _briefingSchedulerService =
-        widget._briefingSchedulerService ?? BriefingSchedulerService();
     _homeWidgetService = widget.homeWidgetService ?? HomeWidgetService();
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
@@ -328,7 +322,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _applyHomeEvents(
         resolvedUserId,
         cachedEvents,
-        refreshHomeWidget: false,
+        // The launcher may have just restored an initial widget layout after
+        // an app update. Render the cached snapshot immediately so the widget
+        // never remains a blank grid while the authoritative refresh runs.
+        refreshHomeWidget: true,
       );
       unawaited(
         _refreshHomeEvents(
@@ -607,46 +604,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Supabase.instance.client.auth.currentSession?.user.id;
   }
 
-  Future<void> _playBriefing({required bool isMorning}) async {
+  void _playBriefing({required bool isMorning}) {
     final user = Supabase.instance.client.auth.currentSession?.user;
     if (user == null) {
       _showSnack('일정을 확인하려면 로그인 세션을 다시 확인해 주세요.');
       return;
     }
-    if (_isPlayingMorningBriefing || _isPlayingEveningBriefing) {
-      return;
-    }
-
-    setState(() {
-      if (isMorning) {
-        _isPlayingMorningBriefing = true;
-      } else {
-        _isPlayingEveningBriefing = true;
-      }
-    });
-
-    try {
-      final result = await _briefingSchedulerService.executeBriefing(
-        isMorning: isMorning,
-        userId: user.id,
-        isManualTrigger: true,
-      );
-      _showSnack(result.message);
-    } catch (error, stackTrace) {
-      debugPrint('Home briefing play failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      _showSnack('브리핑 재생에 실패했습니다. 알림/TTS 설정을 확인해 주세요.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          if (isMorning) {
-            _isPlayingMorningBriefing = false;
-          } else {
-            _isPlayingEveningBriefing = false;
-          }
-        });
-      }
-    }
+    final type = isMorning ? 'morning' : 'evening';
+    // 실제 브리핑 실행과 로더는 일정 탭의 선택 날짜 바텀시트가 담당한다.
+    context.go('${AppRoutes.briefing}?type=$type');
   }
 
   void _showSnack(String message) {
@@ -727,7 +693,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     if (_groupContextProvider.hasGroups) ...[
                       _HomeGroupsRow(
                         groups: _groupContextProvider.groups,
-                        selectedGroupId: _groupContextProvider.selectedGroup?.id,
+                        selectedGroupId:
+                            _groupContextProvider.selectedGroup?.id,
                         onTap: (group) =>
                             context.push(AppRoutes.groupDetailForId(group.id)),
                       ),

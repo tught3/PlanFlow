@@ -162,8 +162,7 @@ void main() {
     );
   });
 
-  testWidgets(
-      '음성 재생이 끝나기 전에도(로딩 문구만 있는 게 아니라) 읽어줄 일정 목록을 바로 보여준다',
+  testWidgets('음성 재생이 끝나기 전에도(로딩 문구만 있는 게 아니라) 읽어줄 일정 목록을 바로 보여준다',
       (tester) async {
     // 회귀: executeBriefing이 TTS 재생 완료까지 반환되지 않아, 재생되는
     // 동안 화면에 "브리핑을 준비하고 있어요" 로딩 문구만 뜨고 실제 읽어줄
@@ -217,8 +216,7 @@ void main() {
     expect(find.text('아침 회의'), findsOneWidget);
   });
 
-  testWidgets(
-      '브리핑 목록의 시각은 raw UTC가 아니라 KST(planflowLocal)로 표시된다',
+  testWidgets('브리핑 목록의 시각은 raw UTC가 아니라 KST(planflowLocal)로 표시된다',
       (tester) async {
     // 신뢰성 회귀: 음성 브리핑은 planflowLocal(KST)로 시각을 말하는데 목록은
     // raw startAt.hour(UTC)를 그대로 써서, 예컨대 UTC 00:00(=KST 09:00) 일정이
@@ -259,8 +257,7 @@ void main() {
     expect(find.textContaining('12:00'), findsNothing);
   });
 
-  testWidgets('일정 조회가 실패하면 목록 섹션이 통째로 사라지지 않고 실패 안내를 보여준다',
-      (tester) async {
+  testWidgets('일정 조회가 실패하면 목록 섹션이 통째로 사라지지 않고 실패 안내를 보여준다', (tester) async {
     // 회귀: 조회 예외로 onEventsResolved가 한 번도 호출되지 않으면
     // resolvedEvents==null && result.delivered==false가 되어, 예전엔 목록
     // 섹션(빈 상태 안내 포함)이 통째로 렌더되지 않았다. 사용자는 이걸
@@ -283,8 +280,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('브리핑 실행에 실패했습니다. 로그인 상태와 일정 조회를 확인해 주세요.'),
-        findsOneWidget);
+    expect(
+        find.text('브리핑 실행에 실패했습니다. 로그인 상태와 일정 조회를 확인해 주세요.'), findsOneWidget);
     expect(find.text('오늘 일정을 불러오지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
     // 실패인데 "없어요"라고 오해시키면 안 된다.
     expect(find.text('오늘 일정이 없어요'), findsNothing);

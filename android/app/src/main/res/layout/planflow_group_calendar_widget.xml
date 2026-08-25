@@ -104,13 +104,13 @@
         android:weightSum="7"
         android:visibility="gone"
         tools:ignore="HardcodedText">
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="일" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="월" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="화" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="수" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="목" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="금" />
-        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="토" />
+        <TextView android:id="@+id/group_cal_dow_sun" style="@style/PlanFlowWidgetMonthHeader" android:text="일" />
+        <TextView android:id="@+id/group_cal_dow_mon" style="@style/PlanFlowWidgetMonthHeader" android:text="월" />
+        <TextView android:id="@+id/group_cal_dow_tue" style="@style/PlanFlowWidgetMonthHeader" android:text="화" />
+        <TextView android:id="@+id/group_cal_dow_wed" style="@style/PlanFlowWidgetMonthHeader" android:text="수" />
+        <TextView android:id="@+id/group_cal_dow_thu" style="@style/PlanFlowWidgetMonthHeader" android:text="목" />
+        <TextView android:id="@+id/group_cal_dow_fri" style="@style/PlanFlowWidgetMonthHeader" android:text="금" />
+        <TextView android:id="@+id/group_cal_dow_sat" style="@style/PlanFlowWidgetMonthHeader" android:text="토" />
     </LinearLayout>
 
     <!-- 6x7 달력 그리드 -->

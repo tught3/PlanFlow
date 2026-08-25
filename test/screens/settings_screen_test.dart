@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +34,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  test('settings briefing tests enter the calendar briefing route', () {
+    final source =
+        File('lib/screens/settings/settings_screen.dart').readAsStringSync();
+    expect(
+        source, contains("context.go('\${AppRoutes.briefing}?type=\$type')"));
+    expect(
+        source, isNot(contains('_briefingSchedulerService.executeBriefing')));
+  });
+
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
@@ -292,7 +303,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -356,7 +367,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -467,7 +478,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: settingsRepository,
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -528,7 +539,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: settingsRepository,
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -626,7 +637,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: settingsRepository,
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -677,7 +688,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
@@ -978,7 +989,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -1179,7 +1190,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -1281,7 +1292,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -1315,7 +1326,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
-            groupContextProvider: _fakeEmptyGroupContextProvider(),
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
