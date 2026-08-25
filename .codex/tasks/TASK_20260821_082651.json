@@ -1,0 +1,102 @@
+{
+  "task_id": "TASK_20260821_082651",
+  "objective": "Upload a PlanFlow Alpha AAB only through the guarded supported deploy path.",
+  "classification": "ADVANCED",
+  "required_model": "gpt-5.6-terra",
+  "allowed_files": [
+    "scripts/build-internal-aab.ps1",
+    "scripts/deploy-play-internal.ps1",
+    "android/app/build.gradle.kts",
+    "test/tooling/build_internal_aab_contract_test.dart",
+    "pubspec.yaml",
+    ".codex/tasks/TASK_20260821_082651.json"
+  ],
+  "forbidden_files": [
+    "env/local.json",
+    "android/key.properties",
+    "android/app/planflow-release.jks",
+    "unrelated source-tree changes"
+  ],
+  "plan": [
+    {
+      "item": "Use a clean worktree and guarded supported deploy path for an Alpha AAB.",
+      "classification": "Complex",
+      "status": "blocked",
+      "blocker": "The worktree lacks its ignored local map/signing inputs, while the only global deploy config targets a different dirty checkout."
+    },
+    {
+      "item": "Run the scoped contract check.",
+      "classification": "Simple verification",
+      "status": "completed"
+    },
+    {
+      "item": "Independent review of the current diff, release target, and evidence.",
+      "classification": "Review",
+      "status": "blocked",
+      "blocker": "The Reviewer found release BLOCKERs; its terminal envelope was malformed and therefore cannot be accepted as a PASS decision."
+    }
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "result": "The guarded worktree cannot build without ignored local map/signing files; the global deployment config targets a different dirty checkout, so it must not be used."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "result": "Classified this as ADVANCED external deployment and required a clean worktree-specific config, guard test, dry validation, and independent review before upload."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "result": "The guarded-release contract test passed. No AAB, marker, or Play receipt exists because the clean worktree has no local release inputs and deployment was not run.",
+      "verification": [
+        {
+          "command": "$env:PLANFLOW_SKIP_FLUXOS_SESSION='1'; .\\scripts\\flutter-local.ps1 test test\\tooling\\build_internal_aab_contract_test.dart",
+          "exit_code": 0,
+          "evidence": "3 tests passed: builder map preflight/wrapper, Gradle release fail-closed/no secret logging, and Play deploy marker-only handoff."
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "result": "BLOCKED/UNACCEPTED. The reviewer found that the global config targets a separate dirty checkout, worktree-local ignored release inputs are absent, version 1.1.1+141 is stale relative to newer source releases, and no AAB, marker, or Play receipt exists. Its final response omitted required terminal-envelope fields, so it cannot be accepted as a valid review PASS.",
+      "findings": [
+        "BLOCKER: global deployment config targets a different dirty checkout.",
+        "BLOCKER: ignored map and signing inputs are absent from this worktree.",
+        "HIGH: release version alignment is unverified and task version is stale.",
+        "BLOCKER: no guarded AAB, marker, or Play upload receipt exists."
+      ]
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "result": "BLOCKED. The contract test passed but no guarded worktree artifact or upload receipt exists. Global config points outside the worktree, local ignored release inputs are absent, release version is stale/unverified, and the reviewer response cannot be accepted as a valid PASS."
+    }
+  ],
+  "verification": [
+    {
+      "command": "$env:PLANFLOW_SKIP_FLUXOS_SESSION='1'; .\\scripts\\flutter-local.ps1 test test\\tooling\\build_internal_aab_contract_test.dart",
+      "exit_code": 0,
+      "evidence": "3 tests passed."
+    }
+  ],
+  "review": {
+    "verdict": "UNAVAILABLE",
+    "reason": "Reviewer response was not a syntactically valid FINAL_REVIEW_REPORT and reported unresolved BLOCKER/HIGH findings."
+  },
+  "final_verdict": "BLOCKED",
+  "last_updated": "2026-08-25T12:42:00+09:00"
+}
