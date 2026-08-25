@@ -553,6 +553,29 @@ class AdService {
         onProgress?.call('failed');
         return false;
       }
+      // 음성 대화 경로와 동일한 보강: 시작 시 Remote Config fetch가 실패하면
+      // rewarded_ad_enabled는 fail-safe 기본값(true)로 남지만 단위 ID 기본값은
+      // 빈 문자열이라, 이 경로는 load를 시도조차 못 하고 empty_unit_id로
+      // 끝난다(2026-08-21 실기기 Alpha 141 진단의 unit_id_invalid와 동일 원인).
+      // 사용자가 명시적으로 요청한 이 시점에만 1회 강제 재fetch 한다.
+      // 운영 단위 ID를 코드에서 임의로 만들어 폴백하지는 않는다.
+      if (_resolveAdUnitId().isEmpty &&
+          shouldRetryRemoteConfigForRewardedUnit(
+            useTestUnit: kDebugMode || kProfileMode,
+            fetchSucceeded: RemoteConfigService.lastFetchSucceeded,
+            configured: RemoteConfigService.rewardedAdUnitIdAndroid,
+          )) {
+        await RemoteConfigService.retryFetchIfFailed();
+        if (!RemoteConfigService.rewardedAdEnabled) {
+          // 재fetch 결과 콘솔이 진짜 OFF였다면 즉시 중단한다.
+          await AnalyticsService.logAdLoadFailed(
+            reason: 'disabled_after_rc_retry',
+            requestId: requestId,
+          );
+          onProgress?.call('failed');
+          return false;
+        }
+      }
       final loaded = await _loadRewardedAd(requestId: requestId);
       if (!loaded) {
         await AnalyticsService.logAdLoadFailed(

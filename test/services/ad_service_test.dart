@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -204,6 +205,63 @@ void main() {
       // 'shown' 단계는 _loadRewardedAd 성공 이후에만 발화한다. 초기화
       // 재시도가 실패하면 'loading' -> 'failed'로 바로 끝나야 한다.
       expect(stages, <String>['loading', 'failed']);
+    });
+  });
+
+  group('rewarded 단위 ID 보강 재시도 경로 동등성(구조 가드)', () {
+    // 실기기(Alpha 141) 진단에서 확인된 실패 단계는 "RC fetch 실패 ->
+    // rewarded_ad_unit_id_android 기본값('') -> unit_id_invalid"였다.
+    // 음성 대화 경로에는 사용자 요청 시점 1회 강제 재fetch 보강이 있었지만
+    // AI 일정분석(showForParseSchedule) 경로에는 없어 같은 원인으로 계속
+    // 죽었다. kDebugMode 테스트 환경에서는 항상 테스트 단위 ID가 해석되어
+    // 이 release 전용 분기에 런타임으로 도달할 수 없으므로, 두 경로가 같은
+    // 보강을 갖고 있는지 소스 구조로 고정한다.
+    String bodyOf(String source, String signature) {
+      final start = source.indexOf(signature);
+      expect(start, isNot(-1), reason: '$signature 를 찾지 못했다');
+      // 이름있는 파라미터 목록도 중괄호를 쓰므로, 괄호 깊이가 0으로 돌아온
+      // 뒤(=시그니처가 닫힌 뒤)의 첫 '{'부터를 본문으로 본다.
+      var parenDepth = 0;
+      var braceDepth = 0;
+      var inBody = false;
+      for (var i = start; i < source.length; i++) {
+        final ch = source[i];
+        if (!inBody) {
+          if (ch == '(') parenDepth++;
+          if (ch == ')') parenDepth--;
+          if (ch == '{' && parenDepth == 0) {
+            inBody = true;
+            braceDepth = 1;
+          }
+          continue;
+        }
+        if (ch == '{') {
+          braceDepth++;
+        } else if (ch == '}') {
+          braceDepth--;
+          if (braceDepth == 0) {
+            return source.substring(start, i + 1);
+          }
+        }
+      }
+      fail('$signature 본문의 끝을 찾지 못했다');
+    }
+
+    test('showForParseSchedule도 RC 재fetch 보강을 수행한다', () {
+      final source = File('lib/services/ad_service.dart').readAsStringSync();
+      final parseBody = bodyOf(source, 'Future<bool> showForParseSchedule(');
+      final voiceBody = bodyOf(
+        source,
+        'Future<VoiceConversationAdOutcome> showForVoiceConversationWithOutcome(',
+      );
+
+      for (final body in <String>[parseBody, voiceBody]) {
+        expect(body.contains('shouldRetryRemoteConfigForRewardedUnit('), isTrue);
+        expect(
+          body.contains('RemoteConfigService.retryFetchIfFailed()'),
+          isTrue,
+        );
+      }
     });
   });
 
