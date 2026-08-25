@@ -1,0 +1,168 @@
+{
+  "task_id": "TASK_20260821_092805",
+  "request": "PlanFlow 광고 수정본 실기기 검증 및 실패 단계 재수정",
+  "status": "BLOCKED_DEVICE_RUNTIME",
+  "classification": "ADVANCED",
+  "risk": "high",
+  "required_model": "gpt-5.6-terra",
+  "worktree": "E:\\FluxStudio-worktrees\\planflow\\planflow-task-20260821-092805",
+  "baseline": {
+    "head": "ffb82a3a",
+    "branch": "task/TASK_20260821_092805",
+    "git_status": "clean",
+    "adb_devices": "no Android device attached; Flutter lists Chrome and Edge only"
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only investigation of rewarded-ad implementation, prior failure, verification history, and device availability.",
+      "result": "The ad fix is already committed. Prior failure was consent ready -> rcFetch=false -> empty rewarded unit -> unit_id_invalid. Existing code fix and independent code review passed; physical device acceptance remains blocked because ADB has no Android device.",
+      "changed_files": [],
+      "evidence": [
+        "HEAD ffb82a3a and clean worktree",
+        ".codex/tasks/planflow-ad-calendar-warmup-20260821.json",
+        "adb devices -l: no devices",
+        "flutter devices: Chrome and Edge only"
+      ]
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Decide whether a code rework is justified and define bounded acceptance gates for the ad fix.",
+      "result": "No code fix is justified: ADB currently exposes zero Android devices, and the live owner gate must remain fail-closed. Current status is BLOCKED_DEVICE_RUNTIME, not COMPLETE.",
+      "changed_files": [],
+      "allowed_files": [],
+      "required_runtime_evidence": [
+        "Visible map rendering on an ADB-accessible physical device.",
+        "Rewarded-ad lifecycle evidence: load -> show -> onUserEarnedReward -> AI conversation opened."
+      ]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "assignment": "Run only safe current verification; do not interfere with the live owner or repeat historical builds/tests.",
+      "result": "No new Flutter tests or builds were run because the relevant runtime is OWNER_LIVE. Current `adb devices -l` exited 0 and reported zero Android devices. Historical automated evidence remains passing but is not physical-device proof.",
+      "changed_files": [],
+      "verification": [
+        {
+          "command": "adb devices -l",
+          "exit_code": 0,
+          "result": "No Android device attached."
+        },
+        {
+          "command": "flutter analyze (scoped rewarded-ad lifecycle files)",
+          "exit_code": 0,
+          "result": "Historical evidence: passed."
+        },
+        {
+          "command": "flutter test --no-pub (focused rewarded-ad lifecycle suite)",
+          "exit_code": 0,
+          "result": "Historical evidence: 83 tests passed."
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "Historical evidence: passed."
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review the current final state and prevent an unsupported completion claim.",
+      "result": "PASS only for the honest blocked record: no BLOCKER or HIGH finding in the integration decision. Do not claim COMPLETE without device-runtime evidence. Source textual diff is empty; generated registrant modification status is unrelated noise and must not be staged or reverted by this task.",
+      "changed_files": [],
+      "decision": "PASS",
+      "findings": []
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Integrate named reports without modifying source/app files or bypassing the physical-device gate.",
+      "result": "All named reports are recorded. No source or app file was changed, no build was run, and generated registrant noise was neither staged nor reverted. Final verdict is BLOCKED_DEVICE_RUNTIME pending physical-device acceptance evidence.",
+      "changed_files": [
+        ".codex/tasks/TASK_20260821_092805.json"
+      ],
+      "decision": "BLOCKED_DEVICE_RUNTIME"
+    }
+  ],
+  "rework_2026_08_25": {
+    "trigger": "Re-run of this task found a real code-path gap that the earlier pass ('no code fix justified') missed.",
+    "root_cause": "The 2026-08-21 fix added a user-initiated Remote Config re-fetch guard only to showForVoiceConversationWithOutcome. showForParseSchedule (AI schedule-parse rewarded flow) had no such guard, so the exact failing step observed on device (rcFetch=false -> rewarded_ad_unit_id_android default '' -> empty unit id) still dead-ended that entry point with empty_unit_id/load_failed and never retried the fetch.",
+    "change": "showForParseSchedule now performs the same bounded, user-initiated retry: if the resolved unit id is empty and shouldRetryRemoteConfigForRewardedUnit() holds, call RemoteConfigService.retryFetchIfFailed() once, then abort with 'disabled_after_rc_retry' if the console turns out to be genuinely OFF. No operational unit ID is ever synthesized as a fallback.",
+    "regression_guard": "Added a structural parity test: the release-only branch is unreachable under kDebugMode in flutter test, so the test extracts both method bodies from lib/services/ad_service.dart and asserts each contains shouldRetryRemoteConfigForRewardedUnit( and RemoteConfigService.retryFetchIfFailed().",
+    "changed_files": [
+      "lib/services/ad_service.dart",
+      "test/services/ad_service_test.dart",
+      ".codex/tasks/TASK_20260821_092805.json"
+    ],
+    "verification": [
+      {
+        "command": "flutter analyze lib/services/ad_service.dart test/services/ad_service_test.dart",
+        "exit_code": 0,
+        "result": "No issues found!"
+      },
+      {
+        "command": "flutter test --no-pub test/services/ad_service_test.dart test/services/ad_consent_service_test.dart test/services/voice_conversation_ad_gate_test.dart test/services/event_prefetch_service_test.dart test/screens/calendar_screen_test.dart",
+        "exit_code": 0,
+        "result": "All tests passed (84 tests; was 83, +1 new parity guard)."
+      },
+      {
+        "command": "adb devices -l",
+        "exit_code": 0,
+        "result": "No Android device attached; physical-device acceptance still not possible."
+      }
+    ],
+    "firebase_identity_recheck": "lib/firebase_options.dart android appId 1:375219078541:android:9d1f2d536e56a37e4729c4 matches the com.fluxstudio.planflow client in android/app/google-services.json (v2 client 2d02e149... is a different package). The 2026-08-21 identity fix is still in place.",
+    "still_blocked": "Runtime acceptance. No ADB device is attached and PlanFlow installs via the Play alpha track (Play App Signing blocks sideload), so load -> show -> onUserEarnedReward -> conversation-opened evidence cannot be captured from this session."
+  },
+  "allowed_files": [],
+  "forbidden_files": [
+    "Firebase/AdMob/Remote Config console state",
+    "Supabase schema and authentication",
+    "advertising entitlement policy bypasses",
+    "unrelated UI or calendar files",
+    "device data deletion or application uninstall"
+  ],
+  "verification": {
+    "current": {
+      "adb_devices": {
+        "command": "adb devices -l",
+        "exit_code": 0,
+        "result": "No Android device attached."
+      }
+    },
+    "historical": {
+      "flutter_analyze": "passed",
+      "focused_flutter_tests": "passed (83 tests)",
+      "git_diff_check": "passed"
+    }
+  },
+  "review": {
+    "decision": "PASS",
+    "scope": "Honest blocked integration record only; this is not runtime acceptance.",
+    "blocker_or_high_findings": []
+  },
+  "integration": {
+    "role": "Integrator",
+    "agent": "flux_integrator",
+    "mapped_model": "gpt-5.6-terra",
+    "reasoning_effort": "medium",
+    "decision": "BLOCKED_DEVICE_RUNTIME",
+    "changed_source_files": [],
+    "result": "All named reports are present. No source or app file was changed, no build was run, and no generated registrant noise was staged or reverted. The task cannot truthfully complete until physical-device acceptance is captured."
+  },
+  "next_step": "When an ADB-accessible device is available and no live owner conflict remains, verify visible map rendering and capture one rewarded-ad attempt proving load -> show -> onUserEarnedReward -> AI conversation opened. Keep no-fill distinct from code/configuration errors.",
+  "last_updated": "2026-08-25T00:00:00+09:00"
+}
