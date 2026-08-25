@@ -53,11 +53,28 @@ void main() {
     expect(gateSource, contains('waitForStableIdle'));
     final prefetchSource =
         File('lib/services/event_prefetch_service.dart').readAsStringSync();
-    expect(prefetchSource,
-        contains('startupRouteGate.startupWorkAllowedWhenIdle'));
+    expect(
+      prefetchSource,
+      isNot(contains('await startupRouteGate.startupWorkAllowedWhenIdle')),
+    );
     expect(prefetchSource, contains('_warmingUserIds.add(resolvedUserId)'));
     expect(appSource, contains('waitForStableIdle().then'));
     final mainSource = File('lib/main.dart').readAsStringSync();
+    final platformServicesStart =
+        mainSource.indexOf('Future<void> _initializePlatformServices() async');
+    final platformServicesEnd =
+        mainSource.indexOf('Future<void> _reconcileStaleGroupAlarms() async');
+    final platformServices =
+        mainSource.substring(platformServicesStart, platformServicesEnd);
+    expect(platformServices,
+        contains('final supabaseReady = _initializeSupabase();'));
+    expect(
+      platformServices,
+      isNot(contains('await _initializeSupabase();')),
+    );
+    expect(platformServices, contains('await Future.wait(['));
+    expect(platformServices, contains('supabaseReady,'));
+    expect(platformServices, contains('_primingAdService(firebaseReady)'));
     expect(mainSource, contains('_scheduleStaleGroupAlarmReconcile()'));
     expect(mainSource, contains('startupRouteGate.startupWorkAllowedWhenIdle'));
     expect(mainSource, contains('_staleGroupAlarmReconcile ??='));

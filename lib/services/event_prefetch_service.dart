@@ -2,9 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
-import '../core/startup_route_gate.dart';
+import '../data/models/event_model.dart';
 
 class EventPrefetchService {
   EventPrefetchService._();
@@ -28,9 +27,10 @@ class EventPrefetchService {
       return;
     }
     // Claim before the first await so auth listeners cannot enqueue duplicate
-    // warmups for the same user while onboarding is still deferred.
+    // warmups for the same user. This authenticated cache fill is deliberately
+    // independent of onboarding-idle work so CalendarScreen can render from it
+    // on its first frame.
     _warmingUserIds.add(resolvedUserId);
-    await startupRouteGate.startupWorkAllowedWhenIdle;
     try {
       final events = await (repository ?? EventRepository.supabase())
           .listEvents(userId: resolvedUserId);

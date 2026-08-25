@@ -20,6 +20,7 @@
     "calendar": "CalendarScreen waited for foreground repository data before it could show events, even though app-start warm-up could already have a usable snapshot. A transient small foreground or warm-up response also risked replacing that snapshot."
   },
   "ownedFiles": [
+    "lib/main.dart",
     "lib/firebase_options.dart",
     "lib/services/ad_service.dart",
     "lib/services/event_prefetch_service.dart",
@@ -27,6 +28,7 @@
     "test/services/ad_service_test.dart",
     "test/services/event_prefetch_service_test.dart",
     "test/screens/calendar_screen_test.dart",
+    "test/screens/shell_screen_onboarding_order_test.dart",
     ".codex/tasks/planflow-ad-calendar-warmup-20260821.json"
   ],
   "implementation": {
@@ -34,6 +36,12 @@
     "ads": "AdService now shares one in-flight initialize Future, preventing competing initialization paths from racing or duplicating work.",
     "calendar": "CalendarScreen synchronously seeds its first frame from EventPrefetchService, then performs the normal foreground reload. Personal-event rendering is the critical path; group overlays and instruction badges load independently. Both foreground reload and app-start warm-up preserve an existing usable snapshot when an implausibly small response arrives.",
     "safety": "The cache receives the same protected display snapshot that the foreground calendar renders, preventing a transient empty/partial response from poisoning the next first frame."
+  },
+  "followUpImplementation": {
+    "startupParallelism": "Supabase initialization is now started at the same time as Firebase, map, ad, and holiday initialization; the aggregate wait still propagates initialization completion.",
+    "adOrdering": "_primingAdService still awaits the original firebaseReady Future before it reads Remote Config-dependent ad state.",
+    "eventPrefetch": "Authenticated event warm-up no longer waits for the onboarding idle permit, while per-user de-duplication and protected cache writes remain unchanged.",
+    "verification": "Pending the separate Test Executor and independent Reviewer after this follow-up delta."
   },
   "roleReports": [
     {

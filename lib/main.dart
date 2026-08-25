@@ -96,8 +96,9 @@ Future<void> _initializePlatformServices() async {
   // 참조) — 그래서 RemoteConfig 값이 정착하기 전에 광고를 영구 비활성화하던
   // 원래 버그(f027c0a2가 고친 것)는 재발하지 않는다.
   final firebaseReady = _initializeFirebaseServices();
-  await _initializeSupabase();
+  final supabaseReady = _initializeSupabase();
   await Future.wait([
+    supabaseReady,
     firebaseReady,
     _initializeNaverMap(),
     _primingAdService(firebaseReady),
