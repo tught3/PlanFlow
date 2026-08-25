@@ -99,7 +99,7 @@
         "Scoped flutter analyze: exit 0",
         "git diff --check: exit 0"
       ],
-      "remaining_risk": "The debug APK build reached Gradle assembleDebug but the executor timed out before artifact generation; no updated-device rewarded-ad runtime acceptance was performed."
+      "remaining_risk": "The debug APK build reached Gradle assembleDebug but failed because this worktree lacks gitignored android/key.properties and the existing release keystore; debug is wired to release signing. No updated-device rewarded-ad runtime acceptance was performed."
     }
   ],
   "implementation_commit": "b92b05d4fbedd427d96e43075e58f58216a3677d",
