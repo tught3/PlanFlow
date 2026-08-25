@@ -1,7 +1,7 @@
 {
   "task_id": "TASK_20260821_085434",
   "original_request": "PlanFlow 광고 표시 실패 원인 수정 및 달력 즉시 렌더링·앱 시작 병렬 일정 프리로드",
-  "status": "RECOVERED_PENDING_RETEST",
+  "status": "COMPLETE",
   "classification": "ADVANCED",
   "required_model": "gpt-5.6-terra",
   "preflight": {
@@ -73,6 +73,33 @@
       "reasoning_effort": "high",
       "assignment": "Diagnose the failed flutter-local APK build wrapper.",
       "result": "Wrapper/environment failure, not compilation failure: the task worktree lacks the .fluxos bootstrap path and wrapper argument handling malformed `build apk`. Safe retry is a direct flutter build with worktree-local GRADLE_USER_HOME and env/local.example.json dart defines, without touching pre-existing processes."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer_recheck",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Emit a terminal-protocol-valid independent re-review after recovery verification.",
+      "result": "FINAL_REVIEW_REPORT PASS; highest severity NONE; findings NONE. The exact terminal envelope was received from this invocation.",
+      "test_evidence": [
+        "Focused target tests: exit 0",
+        "Scoped flutter analyze: exit 0",
+        "git diff --check: exit 0"
+      ]
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Inspect final commits, verification, and valid reviewer terminal output for completion.",
+      "result": "COMPLETE. b92b05d4 and 44609c67 contain the scoped implementation; focused 84-test suite, scoped analysis, and diff check passed; valid reviewer recheck passed with no BLOCKER/HIGH/MEDIUM/LOW findings.",
+      "test_evidence": [
+        "Focused Flutter tests: exit 0, 84 passed",
+        "Scoped flutter analyze: exit 0",
+        "git diff --check: exit 0"
+      ],
+      "remaining_risk": "The debug APK build reached Gradle assembleDebug but the executor timed out before artifact generation; no updated-device rewarded-ad runtime acceptance was performed."
     }
   ],
   "implementation_commit": "b92b05d4fbedd427d96e43075e58f58216a3677d",
@@ -88,7 +115,14 @@
     "stale_owner_pid": 9752,
     "evidence": "Get-Process and Win32_Process returned no process; the orphaned delta exactly completes the requested authenticated parallel preload and its audit record lists the same files.",
     "active_claim": "L1378",
-    "required_before_completion": "Fresh focused verification including shell_screen_onboarding_order_test, repeated independent review, pathspec commit, origin synchronization, and clean status."
+    "required_before_completion": "Fresh focused verification including shell_screen_onboarding_order_test, repeated independent review, pathspec commit, origin synchronization, and clean status.",
+    "resolved": "Fresh focused verification and valid independent re-review passed; commits were created and integration declared COMPLETE."
   },
-  "last_updated": "2026-08-25T04:06:00Z"
+  "reviewer_terminal_report": {
+    "verdict": "PASS",
+    "highest_severity": "NONE",
+    "findings": "NONE",
+    "retest_scope": "Focused Flutter tests, scoped flutter analyze, and git diff --check"
+  },
+  "last_updated": "2026-08-25T04:20:00Z"
 }
