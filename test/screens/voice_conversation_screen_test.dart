@@ -956,8 +956,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 뒤로가기 버튼을 누르면 확인 바텀시트가 뜬다
-    await tester.tap(find.byTooltip('뒤로가기'));
+    expect(find.byTooltip('대화 종료'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(find.byIcon(Icons.refresh), findsNothing);
+
+    // 우측 상단 닫기 버튼도 뒤로가기와 같은 확인 흐름을 연다.
+    await tester.tap(find.byTooltip('대화 종료'));
     await tester.pumpAndSettle();
 
     expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
@@ -967,6 +971,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI 일정 대화'), findsOneWidget);
+
+    // 뒤로가기 버튼을 누르면 확인 바텀시트가 뜬다
+    await tester.tap(find.byTooltip('뒤로가기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
+
+    // 한 번 더 취소한 뒤에는 다시 확인 시트를 띄우고 종료할 수 있어야 한다.
+    await tester.tap(find.text('계속 대화하기'));
+    await tester.pumpAndSettle();
 
     // 다시 뒤로가기 후 '나가기'를 누르면 홈 화면으로 이동한다
     await tester.tap(find.byTooltip('뒤로가기'));

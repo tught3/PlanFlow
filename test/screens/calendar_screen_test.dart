@@ -586,10 +586,12 @@ void main() {
         of: constitutionDayEvents,
         matching: find.text('제헌절'),
       );
+      final holidayText = tester.widget<Text>(holidayLabel);
 
       expect(constitutionRangeStart, findsOneWidget);
       expect(constitutionRangeEnd, findsOneWidget);
       expect(holidayLabel, findsOneWidget);
+      expect(holidayText.style?.fontWeight, FontWeight.normal);
       expect(
         tester.getTopLeft(constitutionRangeStart).dy,
         tester.getTopLeft(constitutionRangeEnd).dy,
@@ -883,6 +885,78 @@ void main() {
       // Supabase 미초기화 환경(테스트)에서는 _loadGroupInstructionBadges가
       // AppEnv.isSupabaseReady 가드로 스킵되므로 badge 없이 이벤트 카드만 보인다.
       expect(find.text('지시받은 일정'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'CalendarScreen renders normal and critical event titles with matching weight',
+    (tester) async {
+      // 다음 해의 고정 fixture로 normal/critical 제목 렌더링을
+      // 결정론적으로 검증한다.
+      final selectedDay = DateTime(DateTime.now().year + 1, 8, 17, 9);
+      final repository = _AsyncEventRepository([
+        Future.value([
+          _event('normal-1', '일반 일정', selectedDay),
+          EventModel(
+            id: 'critical-1',
+            userId: 'user-1',
+            title: '중요 일정',
+            startAt: selectedDay.add(const Duration(hours: 1)),
+            endAt: selectedDay.add(const Duration(hours: 2)),
+            isCritical: true,
+          ),
+        ]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: selectedDay,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final dayEventsList = find.byKey(
+        const ValueKey('calendar-day-events-list'),
+      );
+      final richTexts = tester.widgetList<RichText>(
+        find.descendant(
+          of: dayEventsList,
+          matching: find.byType(RichText),
+        ),
+      );
+      final normalRichText = richTexts.singleWhere(
+        (richText) => richText.text.toPlainText().contains('일반 일정'),
+      );
+      final criticalRichText = richTexts.singleWhere(
+        (richText) => richText.text.toPlainText().contains('중요 일정'),
+      );
+
+      TextSpan? findSpanWithText(InlineSpan span, String text) {
+        if (span is TextSpan) {
+          if (span.text == text) {
+            return span;
+          }
+          for (final child in span.children ?? const <InlineSpan>[]) {
+            final found = findSpanWithText(child, text);
+            if (found != null) {
+              return found;
+            }
+          }
+        }
+        return null;
+      }
+
+      final normalSpan = findSpanWithText(normalRichText.text, '일반 일정');
+      final criticalSpan = findSpanWithText(criticalRichText.text, '중요 일정');
+
+      expect(normalSpan, isNotNull);
+      expect(criticalSpan, isNotNull);
+      expect(normalSpan!.style?.fontWeight, FontWeight.normal);
+      expect(criticalSpan!.style?.fontWeight, FontWeight.bold);
     },
   );
 }

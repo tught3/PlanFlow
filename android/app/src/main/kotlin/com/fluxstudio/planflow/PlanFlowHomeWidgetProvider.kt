@@ -197,13 +197,11 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(AbsoluteSizeSpan(sizeSp, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔", strongAlarmMarkerFontSizeSp.roundToInt())
-        if (isRecurring) appendMarker("↻", recurringMarkerFontSizeSp.roundToInt())
         val titleStart = builder.length
         builder.append(value)
-        // Keep the title at normal weight even when a legacy widget layout
-        // supplies a bold TextView style. Marker spans above remain bold.
+        // Keep ordinary titles normal while critical titles remain emphasized.
         builder.setSpan(
-            StyleSpan(Typeface.NORMAL),
+            StyleSpan(if (isCritical) Typeface.BOLD else Typeface.NORMAL),
             titleStart,
             builder.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -667,7 +665,7 @@ abstract class BasePlanFlowWidgetProvider(
     ) {
         val content = SpannableStringBuilder(name).also { builder ->
             builder.setSpan(
-                StyleSpan(Typeface.BOLD),
+                StyleSpan(Typeface.NORMAL),
                 0,
                 builder.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,

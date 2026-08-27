@@ -1881,9 +1881,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           ),
           actions: [
             IconButton(
-              tooltip: '일정 새로고침',
-              onPressed: _isLoading ? null : _loadEvents,
-              icon: const Icon(Icons.refresh),
+              tooltip: '대화 종료',
+              onPressed: _handleConversationBack,
+              icon: const Icon(Icons.close),
             ),
           ],
         ),

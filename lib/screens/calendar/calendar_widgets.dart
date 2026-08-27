@@ -61,7 +61,7 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
                     color: isHoliday
                         ? calendarHolidayColor
                         : PlanFlowColors.textSecondary,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.normal,
                   ),
                 ),
               )
@@ -245,7 +245,7 @@ class DayEventsSheet extends StatelessWidget {
                       ? calendarHolidayColor
                       : PlanFlowColors.textSecondary,
                   fontSize: calendarHolidayFontSize,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.normal,
                 ),
               ),
             ],
@@ -886,7 +886,7 @@ class _CalendarMiniEventList extends StatelessWidget {
                       fontSize: fontSize,
                       height: 1.0,
                       color: holidayForeground,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.normal,
                     ),
                   ),
                 ),
@@ -1119,17 +1119,12 @@ InlineSpan _calendarEventTitleSpan(
       ),
     ));
   }
-  if (isRecurring) {
-    spans.add(TextSpan(
-      text: '↻\u200A',
-      style: TextStyle(
-        color: markerColor,
-        fontWeight: FontWeight.w900,
-        fontSize: markerFontSize,
-      ),
-    ));
-  }
-  spans.add(TextSpan(text: title));
+  spans.add(TextSpan(
+    text: title,
+    style: TextStyle(
+      fontWeight: isCritical ? FontWeight.bold : FontWeight.normal,
+    ),
+  ));
   return TextSpan(children: spans);
 }
 
@@ -1307,7 +1302,9 @@ class _EventAgendaCard extends StatelessWidget {
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,
                               fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: event.isCritical
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1502,7 +1499,7 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: PlanFlowColors.primary,
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.normal,
                       ),
                     ),
                     if (event.location != null) ...[

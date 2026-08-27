@@ -64,8 +64,11 @@ void main() {
     expect(calendarSource, contains('fontSize: calendarEventFontSize'));
     expect(calendarSource, contains('fontWeight: FontWeight.w800'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
-    expect(calendarSource, contains("text: '↻\\u200A'"));
-    expect(calendarSource, contains('fontWeight: FontWeight.w700'));
+    expect(calendarSource, isNot(contains("text: '↻\\u200A'")));
+    expect(
+      calendarSource,
+      contains('fontWeight: isCritical ? FontWeight.bold : FontWeight.normal'),
+    );
     expect(calendarSource, contains('semanticColor'));
     expect(calendarSource, contains('final recurringBackground'));
     expect(calendarSource, contains('color: recurringBackground'));
@@ -108,12 +111,12 @@ void main() {
     expect(applyBackground, isNot(contains('setBackgroundColor')));
     expect(widgetSource, contains('displayWidgetTitleSpanned'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
+    expect(widgetSource, contains('StyleSpan(Typeface.NORMAL)'));
     expect(widgetSource, contains('ForegroundColorSpan'));
     expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
     expect(widgetSource, contains('strongAlarmMarkerFontSizeSp.roundToInt()'));
-    expect(widgetSource, contains('recurringMarkerFontSizeSp.roundToInt()'));
+    expect(widgetSource, isNot(contains('appendMarker("↻"')));
     expect(widgetSource, contains('calendar_style_event_font_sp10'));
-    expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
 
     final widgetStylesSource =
         File('android/app/src/main/res/values/styles.xml').readAsStringSync();
