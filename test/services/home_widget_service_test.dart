@@ -51,7 +51,9 @@ void main() {
     expect(payload['calendar_style_strong_alarm_marker_sp10'], 58);
   });
 
-  test('marker styling keeps markers separate from semantic title color', () {
+  test(
+      'marker styling keeps only strong-alarm marker and critical title emphasis',
+      () {
     final calendarSource =
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
     expect(calendarSource, contains('_calendarEventTitleSpan'));
@@ -62,9 +64,8 @@ void main() {
     expect(calendarSource, contains('calendarStrongAlarmMarkerFontSize'));
     expect(calendarSource, contains('strongAlarmMarkerFontSize: 12'));
     expect(calendarSource, contains('fontSize: calendarEventFontSize'));
-    expect(calendarSource, contains('fontWeight: FontWeight.w800'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
-    expect(calendarSource, contains("text: '↻\\u200A'"));
+    expect(calendarSource, isNot(contains("text: '↻\\u200A'")));
     expect(calendarSource, contains('fontWeight: FontWeight.w700'));
     expect(calendarSource, contains('semanticColor'));
     expect(calendarSource, contains('final recurringBackground'));
@@ -111,7 +112,8 @@ void main() {
     expect(widgetSource, contains('ForegroundColorSpan'));
     expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
     expect(widgetSource, contains('strongAlarmMarkerFontSizeSp.roundToInt()'));
-    expect(widgetSource, contains('recurringMarkerFontSizeSp.roundToInt()'));
+    expect(widgetSource,
+        isNot(contains('recurringMarkerFontSizeSp.roundToInt()')));
     expect(widgetSource, contains('calendar_style_event_font_sp10'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
 

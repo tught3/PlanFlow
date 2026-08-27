@@ -956,6 +956,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('종료'), findsOneWidget);
+
     // 뒤로가기 버튼을 누르면 확인 바텀시트가 뜬다
     await tester.tap(find.byTooltip('뒤로가기'));
     await tester.pumpAndSettle();
@@ -979,6 +981,51 @@ void main() {
     expect(stt.cancelCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'AI 일정 대화 상단 종료 버튼도 동일한 확인 바텀시트를 띄운다',
+    (tester) async {
+      final stt = _FakeSttService();
+      final router = GoRouter(
+        initialLocation: AppRoutes.voiceConversation,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (context, state) => VoiceConversationScreen(
+              sttService: stt,
+              repository: _FakeEventRepository(const <EventModel>[]),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) => const Scaffold(
+              body: Text('홈 화면'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: buildPlanFlowTheme(),
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('종료'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
+
+      await tester.tap(find.text('계속 대화하기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI 일정 대화'), findsOneWidget);
+      expect(find.text('홈 화면'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'AI 일정 대화는 홈 버튼(push) 진입 경로에서도 취소-재시도 후 정상적으로 홈으로 돌아간다',

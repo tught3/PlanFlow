@@ -105,7 +105,6 @@ abstract class BasePlanFlowWidgetProvider(
     private var eventFontSizeSp = EVENT_FONT_SIZE_SP
     protected var dateFontSizeSp = 13f
     protected var holidayFontSizeSp = EVENT_FONT_SIZE_SP + 0.5f
-    private var recurringMarkerFontSizeSp = RECURRING_MARKER_FONT_SIZE_SP
     private var strongAlarmMarkerFontSizeSp = STRONG_ALARM_MARKER_FONT_SIZE_SP
 
     /**
@@ -140,7 +139,6 @@ abstract class BasePlanFlowWidgetProvider(
         eventFontSizeSp = readStyleNumber(widgetData, "calendar_style_event_font_sp10", EVENT_FONT_SIZE_SP)
         dateFontSizeSp = readStyleNumber(widgetData, "calendar_style_date_font_sp10", 13f)
         holidayFontSizeSp = readStyleNumber(widgetData, "calendar_style_holiday_font_sp10", EVENT_FONT_SIZE_SP + 0.5f)
-        recurringMarkerFontSizeSp = readStyleNumber(widgetData, "calendar_style_recurring_marker_sp10", RECURRING_MARKER_FONT_SIZE_SP)
         strongAlarmMarkerFontSizeSp = readStyleNumber(widgetData, "calendar_style_strong_alarm_marker_sp10", STRONG_ALARM_MARKER_FONT_SIZE_SP)
         fun color(key: String, fallback: Int): Int =
             readInt(widgetData, key, fallback)
@@ -197,13 +195,12 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(AbsoluteSizeSpan(sizeSp, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔", strongAlarmMarkerFontSizeSp.roundToInt())
-        if (isRecurring) appendMarker("↻", recurringMarkerFontSizeSp.roundToInt())
         val titleStart = builder.length
         builder.append(value)
-        // Keep the title at normal weight even when a legacy widget layout
-        // supplies a bold TextView style. Marker spans above remain bold.
+        // Recurrence is represented by the recurring background/color; do not
+        // add a glyph that consumes the narrow widget cell.
         builder.setSpan(
-            StyleSpan(Typeface.NORMAL),
+            StyleSpan(if (isCritical) Typeface.BOLD else Typeface.NORMAL),
             titleStart,
             builder.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -667,7 +664,7 @@ abstract class BasePlanFlowWidgetProvider(
     ) {
         val content = SpannableStringBuilder(name).also { builder ->
             builder.setSpan(
-                StyleSpan(Typeface.BOLD),
+                StyleSpan(Typeface.NORMAL),
                 0,
                 builder.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,

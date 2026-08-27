@@ -1880,10 +1880,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             onPressed: _handleConversationBack,
           ),
           actions: [
-            IconButton(
-              tooltip: '일정 새로고침',
-              onPressed: _isLoading ? null : _loadEvents,
-              icon: const Icon(Icons.refresh),
+            TextButton(
+              onPressed: _handleConversationBack,
+              style: TextButton.styleFrom(
+                foregroundColor: PlanFlowColors.primary,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+              child: const Text('종료'),
             ),
           ],
         ),

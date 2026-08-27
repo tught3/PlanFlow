@@ -1,0 +1,28 @@
+{
+  "task_id": "planflow-calendar-ad-ui-20260827",
+  "request": "공휴일 굵기 해제, 중요 일정만 굵게, 반복 일정 이모지 제거, AI 일정대화 종료 버튼, 무료 소진 안내, 광고 표시 지연 개선",
+  "status": "COMPLETE",
+  "classification": "Complex",
+  "plan": ["달력·위젯 타이포그래피/반복 마커", "AI 일정대화 종료 액션", "무료 소진 안내 및 광고 preload", "검증·독립 리뷰·통합"],
+  "reports": [
+    {"role":"Explorer","agent":"flux_explorer","model":"gpt-5.4-mini","reasoning_effort":"medium","assignment":"변경 지점과 광고 지연 원인 조사","result":"Flutter/위젯 렌더링 분산과 광고 확인 클릭 후 load가 시작되는 지연 경로를 확인했습니다.","evidence":"관련 calendar, voice, ad service/gate/dialog 경로 read-only 조사"},
+    {"role":"Planner","agent":"flux_planner","model":"gpt-5.6-terra","reasoning_effort":"high","assignment":"범위·역할·검증 계획","result":"달력/위젯, AppBar, 광고 preload을 분리하고 Remote Config, Manifest, 데이터, 배포는 제외했습니다.","evidence":"Complex 계획과 파일 소유권·검증 범위 확정"},
+    {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-5.6-luna","reasoning_effort":"medium","assignment":"달력/위젯 타이포그래피 및 반복 마커","changed_files":["lib/screens/calendar/calendar_widgets.dart","android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt","test/services/home_widget_service_test.dart"],"result":"공휴일 normal, 중요 일정만 bold, 반복 이모지 제거와 반복 배경/색상/payload 보존을 구현했습니다.","evidence":"focused calendar/widget Flutter tests 49 passed, exit 0"},
+    {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-5.6-luna","reasoning_effort":"medium","assignment":"광고 소진 안내와 명시적 광고 흐름 preload","changed_files":["lib/services/ad_service.dart","lib/services/voice_conversation_ad_gate.dart","lib/services/schedule_parse_ad_gate.dart","lib/widgets/voice_conversation_ad_dialog.dart","lib/widgets/rewarded_ad_dialog.dart","test/widgets/voice_conversation_ad_dialog_test.dart"],"result":"동의 후 사용자가 광고 흐름을 연 경우 preload를 시작하고 cache/in-flight load를 재사용합니다. 실제 정책 수를 안내하며 보상 조건은 변경하지 않았습니다.","evidence":"voice dialog test 3 passed, targeted Dart analyze exit 0"},
+    {"role":"Simple Implementer","agent":"flux_simple_implementer","model":"gpt-5.4-mini","reasoning_effort":"medium","assignment":"AI 일정대화 AppBar 종료 버튼","changed_files":["lib/screens/voice/voice_conversation_screen.dart","test/screens/voice_conversation_screen_test.dart"],"result":"새로고침을 기존 종료 확인 흐름을 호출하는 종료 버튼으로 교체했습니다.","evidence":"voice conversation screen test exit 0"},
+    {"role":"Test Executor","agent":"flux_test_executor","model":"gpt-5.4-mini","reasoning_effort":"low","assignment":"Flutter/Dart/Kotlin 검증","result":"초기 aggregate의 없는 테스트 경로는 Failure Analyst가 명령 오류로 분류했고, 올바른 최종 aggregate 및 빌드가 통과했습니다.","evidence":"focused aggregate 170 tests exit 0; Dart analyze exit 0; git diff --check exit 0; :app:compileDebugKotlin --no-daemon exit 0, BUILD SUCCESSFUL in 5m 1s"},
+    {"role":"Failure Analyst","agent":"flux_failure_analyst","model":"gpt-5.6-luna","reasoning_effort":"high","assignment":"테스트 실패 분류","result":"실패 원인은 존재하지 않는 rewarded_ad_dialog_test.dart 경로였고, 그룹 권한 실패 스택은 catch된 fixture 로그로 제품 회귀가 아니었습니다.","evidence":"권한 실패 단독 exit 0; voice suite 43 passed exit 0; corrected two-file suite 46 passed exit 0"},
+    {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-5.6-luna","reasoning_effort":"high","assignment":"최종 Git diff 독립 검토","result":"FINAL_REVIEW_REPORT verdict=FINDINGS, highest_severity=LOW. 요구사항과 금지 파일 무변경을 확인했습니다.","evidence":"host-final emitted; BLOCKER/HIGH 없음; LOW는 preload 전용 회귀 테스트 추가 권장"},
+    {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","reasoning_effort":"medium","assignment":"역할 보고와 최종 검증 통합","result":"필수 역할 증거, 최신 tests/analyze/diff/Kotlin build, reviewer host-final을 대조했습니다. BLOCKER/HIGH가 없어 COMPLETE로 판정합니다.","evidence":"최종 diff가 허용 범위 내이고 reviewer 최고 심각도 LOW"}
+  ],
+  "allowed_files": ["lib/screens/calendar/calendar_widgets.dart","android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt","lib/screens/voice/voice_conversation_screen.dart","lib/widgets/voice_conversation_ad_dialog.dart","lib/widgets/rewarded_ad_dialog.dart","lib/services/voice_conversation_ad_gate.dart","lib/services/schedule_parse_ad_gate.dart","lib/services/ad_service.dart","test/"],
+  "forbidden_files": ["lib/services/remote_config_service.dart","supabase/","android/app/src/main/AndroidManifest.xml","lib/screens/calendar/calendar_style_contract.dart"],
+  "tests": [
+    {"command":"flutter test --no-pub (focused aggregate)","exit_code":0,"result":"170 passed"},
+    {"command":"dart analyze (changed Dart scope)","exit_code":0,"result":"No issues"},
+    {"command":"git diff --check","exit_code":0,"result":"No whitespace errors"},
+    {"command":"android\\gradlew.bat :app:compileDebugKotlin --no-daemon","exit_code":0,"result":"BUILD SUCCESSFUL in 5m 1s"}
+  ],
+  "review": {"verdict":"FINDINGS","highest_severity":"LOW","accepting":true,"finding":"동의 후 preload와 cache/in-flight 재사용을 직접 검증하는 전용 테스트는 향후 추가 권장","host_final":true,"final_report_envelope":"FINAL_REVIEW_REPORT"},
+  "updated_at": "2026-08-28T00:00:00+09:00"
+}

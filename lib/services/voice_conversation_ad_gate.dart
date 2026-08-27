@@ -223,12 +223,22 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 4. 광고 다이얼로그.
+    // 4. 광고 다이얼로그. 동의 확인이 끝난 사용자 명시 흐름에서는
+    // 다이얼로그가 열리는 동안 광고를 미리 로드해 확인 직후 캐시/인플라이트
+    // 결과를 재사용한다. 보상은 showForVoiceConversation에서만 부여된다.
+    final requestId = _requestId();
+    unawaited(
+      AdService.instance
+          .preloadForUserInitiatedRewardedAd(requestId: requestId),
+    );
     if (!context.mounted) {
       _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
       return;
     }
-    final confirmed = await showVoiceConversationAdDialog(context);
+    final confirmed = await showVoiceConversationAdDialog(
+      context,
+      freeTrialCount: freeTrialLimit(),
+    );
     if (!confirmed) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
       _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
@@ -236,7 +246,6 @@ class VoiceConversationAdGate {
     }
 
     // 5. 광고 표시.
-    final requestId = _requestId();
     final outcome =
         await AdService.instance.showForVoiceConversationWithOutcome(
       requestId: requestId,

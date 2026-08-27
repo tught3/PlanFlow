@@ -622,6 +622,32 @@ class AdService {
       ))
           .isRewarded;
 
+  /// 동의가 확인된 사용자 명시 흐름에서만 호출하는 선행 로드.
+  /// 다이얼로그가 열린 동안 캐시 또는 기존 load Future를 준비하며, 보상이나
+  /// 진입 권한은 전혀 만들지 않는다.
+  Future<bool> preloadForUserInitiatedRewardedAd({String? requestId}) async {
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      return false;
+    }
+    if (!_initialized) {
+      await initialize();
+    }
+    DiagLogger.log(
+      'RewardedAd',
+      'phase=preload_start attempt=${_attemptFingerprint(requestId)}',
+    );
+    final loaded = await _loadRewardedAdInternal(
+      userInitiated: true,
+      requestId: requestId,
+    );
+    DiagLogger.log(
+      'RewardedAd',
+      'phase=preload_${loaded ? 'ready' : 'failed'} '
+          'attempt=${_attemptFingerprint(requestId)}',
+    );
+    return loaded;
+  }
+
   Future<VoiceConversationAdOutcome> showForVoiceConversationWithOutcome({
     required String requestId,
     void Function(String stage)? onProgress,
@@ -865,6 +891,10 @@ class AdService {
     }
     // 이미 캐시된 광고가 있으면 그대로 사용.
     if (_rewardedAd != null) {
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=load_cache_hit attempt=${_attemptFingerprint(requestId)}',
+      );
       return true;
     }
     // throttle: 30초 이내 재요청은 스킵 (없으면 false).
@@ -881,6 +911,10 @@ class AdService {
     }
     final inFlight = _loadFuture;
     if (inFlight != null) {
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=load_join_inflight attempt=${_attemptFingerprint(requestId)}',
+      );
       return await inFlight;
     }
     final future = _doLoad();
@@ -986,6 +1020,11 @@ class AdService {
       }
       if (generation == _loadGeneration) _loadingAd = false;
     }
+  }
+
+  String _attemptFingerprint(String? requestId) {
+    if (requestId == null || requestId.isEmpty) return 'none';
+    return requestId.hashCode.toRadixString(16);
   }
 
   String? _readAdResponseId(RewardedAd ad) {

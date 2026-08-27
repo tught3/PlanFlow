@@ -6,14 +6,17 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/widgets/voice_conversation_ad_dialog.dart';
 
 void main() {
-  Future<void> openDialog(WidgetTester tester) async {
+  Future<void> openDialog(WidgetTester tester, {int? freeTrialCount}) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: buildPlanFlowTheme(),
         home: Builder(
           builder: (context) => FilledButton(
             onPressed: () {
-              unawaited(showVoiceConversationAdDialog(context));
+              unawaited(showVoiceConversationAdDialog(
+                context,
+                freeTrialCount: freeTrialCount,
+              ));
             },
             child: const Text('open'),
           ),
@@ -25,8 +28,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('예시 패널은 콘텐츠 폭을 채우고 지원 동작별 예시를 보인다',
-      (tester) async {
+  testWidgets('예시 패널은 콘텐츠 폭을 채우고 지원 동작별 예시를 보인다', (tester) async {
     await openDialog(tester);
 
     final panel = tester.getRect(find.byKey(voiceConversationExamplesPanelKey));
@@ -43,6 +45,18 @@ void main() {
     ]) {
       expect(find.text('• $example'), findsOneWidget);
     }
+  });
+
+  testWidgets('무료 소진 안내가 광고 설명보다 먼저 표시된다', (tester) async {
+    await openDialog(tester, freeTrialCount: 1);
+
+    final notice = find.text('무료 횟수(1회)를 모두 소진하였습니다.');
+    final intro = find.byKey(voiceConversationIntroTextKey);
+    expect(notice, findsOneWidget);
+    expect(
+      tester.getTopLeft(notice).dy,
+      lessThan(tester.getTopLeft(intro).dy),
+    );
   });
 
   testWidgets('취소와 광고 시작 버튼은 각각 기존 결과를 반환한다', (tester) async {

@@ -154,6 +154,7 @@ class ScheduleParseAdGate {
     }
 
     // 3. 광고 요청 가능 여부(동의/네트워크 등) 확인.
+    await AdConsentService.instance.ensureReady(userInitiated: true);
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
       _deny(ScheduleParseGateDenialReason.adsUnavailable, onDenied);
@@ -165,7 +166,14 @@ class ScheduleParseAdGate {
       return;
     }
 
-    // 4. 광고 다이얼로그. ConfirmScreen이 아직 push 전환 애니메이션 중일 때
+    // 4. 광고 다이얼로그. 동의 확인이 끝난 명시적 요청에서 미리 로드를
+    // 시작해 다이얼로그 확인 직후 캐시/인플라이트 결과를 재사용한다.
+    final requestId = _requestId();
+    unawaited(
+      AdService.instance
+          .preloadForUserInitiatedRewardedAd(requestId: requestId),
+    );
+    // ConfirmScreen이 아직 push 전환 애니메이션 중일 때
     // 다이얼로그를 띄우면 배경(barrier)이 슬라이드 중인 페이지 위에 겹쳐
     // 그려지는 렌더 결함이 있어(P6), 전환이 끝날 때까지 기다린 뒤 띄운다.
     await waitForRouteTransitionToComplete(context);
@@ -173,14 +181,16 @@ class ScheduleParseAdGate {
       _deny(ScheduleParseGateDenialReason.userCanceled, onDenied);
       return;
     }
-    final confirmed = await RewardedAdDialog.show(context);
+    final confirmed = await RewardedAdDialog.show(
+      context,
+      freeTrialCount: RemoteConfigService.scheduleParseDailyFreeCount,
+    );
     if (confirmed != true) {
       _deny(ScheduleParseGateDenialReason.userCanceled, onDenied);
       return;
     }
 
     // 5. 광고 표시.
-    final requestId = _requestId();
     final watched = await AdService.instance.showForParseSchedule(
       requestId: requestId,
       onProgress: onAdProgress,
