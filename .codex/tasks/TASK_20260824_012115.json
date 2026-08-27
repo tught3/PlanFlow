@@ -1,0 +1,176 @@
+{
+  "task_id": "TASK_20260824_012115",
+  "status": "BLOCKED",
+  "original_request": "Play Console 권장 조치 수정: edge-to-edge 및 deprecated API, 태블릿 가로 허용(기본 세로 유지), R8/resource shrinking 및 Bitmap downsampling 경고 수정",
+  "classification": "ADVANCED / Complex",
+  "model_requirement": "gpt-5.6-terra",
+  "requirements": [
+    "Explicitly retain edge-to-edge behavior without adding a platform opt-out.",
+    "Keep compact devices portrait while allowing sw600dp-and-larger devices to follow the system orientation.",
+    "Remove the concrete deprecated location single-update API use while preserving a 10-second fallback.",
+    "Enable release resource shrinking while preserving dynamically resolved notification resources.",
+    "Do not resize native bitmap resources without release-artifact or Play warning evidence identifying them."
+  ],
+  "non_requirements": [
+    "No Play publishing, Supabase, authentication, payment, iOS, or web changes.",
+    "No Android manifest orientation or Android 16 compatibility opt-out.",
+    "No adb monkey or unverified raster deletion/downsampling."
+  ],
+  "allowed_files": [
+    "lib/main.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt",
+    "android/app/build.gradle.kts",
+    "test/platform/play_console_android_contract_test.dart"
+  ],
+  "forbidden_files": [
+    "android/app/src/main/AndroidManifest.xml",
+    "Supabase, authentication, payment, iOS, web, and deployment configuration files"
+  ],
+  "plan": [
+    {
+      "id": "P1",
+      "classification": "Complex",
+      "assignment": "flux_complex_implementer",
+      "scope": "Explicit Flutter edge-to-edge mode; compact-only native orientation; AndroidX compatible current-location callback; release resource shrinking; static contract test."
+    },
+    {
+      "id": "P2",
+      "classification": "Complex",
+      "assignment": "flux_test_executor",
+      "scope": "Focused contract test, existing Android regression tests, Flutter analysis, guarded release appbundle, and resource preservation inspection."
+    }
+  ],
+  "preflight": {
+    "command": "utils.safety.preflight_payload(project='PlanFlow', root_path=current worktree, include_processes=True, include_secrets=True)",
+    "result": "WARN / VERIFY_AND_CONTINUE; the task worktree is clean. The original checkout's unrelated production publish completed before claims.",
+    "timestamp": "2026-08-24T02:10:00Z"
+  },
+  "locks": [
+    {"id": "L1340", "path": "android/app/build.gradle.kts", "status": "released"},
+    {"id": "L1341", "path": "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt", "status": "released"},
+    {"id": "L1342", "path": "lib/main.dart", "status": "released"},
+    {"id": "L1343", "path": "test/platform/play_console_android_contract_test.dart", "status": "released"},
+    {"id": "L1344", "path": "lib/main.dart", "status": "released", "note": "review rework: native-only orientation ownership"},
+    {"id": "L1345", "path": "test/platform/play_console_android_contract_test.dart", "status": "released", "note": "review rework: assert single Android orientation owner"}
+  ],
+  "role_reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only scope and code investigation.",
+      "result": "MainActivity unconditionally locks portrait; main.dart already permits landscape; release minifies but does not shrink resources; keep.xml protects ic_stat_planflow; requestSingleUpdate is deprecated; manifest is already resizable; bitmap sources need artifact evidence before edits.",
+      "changed_files": [],
+      "tests": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Read-only requirements, scope, verification, and completion gates.",
+      "result": "Classified ADVANCED/Complex; allowed files and no-manifest/no-unverified-bitmap constraints recorded. Native deprecated location use requires a compatibility-safe replacement rather than deprecated requestLocationUpdates overloads.",
+      "changed_files": [],
+      "tests": []
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Release resource shrinking and native orientation/location compatibility changes.",
+      "result": "Enabled isShrinkResources while retaining the keep rule; changed MainActivity to compact-only portrait, configuration-aware orientation updates, and LocationManagerCompat cancellable current-location callbacks with a request-specific 10-second fallback.",
+      "changed_files": [
+        "android/app/build.gradle.kts",
+        "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt"
+      ],
+      "tests": ["git diff --check (exit 0 before later aggregate check)"]
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Explicit Flutter edge-to-edge startup and static regression contract.",
+      "result": "Added the explicit SystemUiMode.edgeToEdge startup call and the narrow Play Console Android static contract test.",
+      "changed_files": [
+        "lib/main.dart",
+        "test/platform/play_console_android_contract_test.dart"
+      ],
+      "tests": []
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "assignment": "Focused Flutter checks and non-publishing release verification.",
+      "result": "The pre-rework focused tests and analysis passed. Post-rework focused Flutter attempts timed out after 124 seconds with no output and low CPU; the executor terminated only its owned task Dart processes. Release checks were blocked before compilation by absent local release configuration/signing files; no credentials were copied or exposed.",
+      "changed_files": [],
+      "tests": [
+        "scripts\\flutter-local.ps1 test test/platform/play_console_android_contract_test.dart test/android_crash_regression_guard_test.dart test/android_deep_link_guard_test.dart (exit 0; 14 passed)",
+        "scripts\\flutter-local.ps1 analyze (exit 0; No issues found)",
+        "flutter-build-guarded appbundle --release (exit 1; missing env/local.json or unrelated ValueFlow candidate)",
+        "android\\gradlew.bat :app:compileReleaseKotlin :app:mergeReleaseResources (exit 1 before tasks; missing android/key.properties)",
+        "post-rework focused Flutter test attempts (exit 124; no test output, environmental stall; owned Dart children terminated)"
+      ]
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Classify the release build verification failure and define a safe retest.",
+      "result": "Tooling/precondition failure, not a code regression. PlanFlow's worktree has no trusted local env/local.json, android/key.properties, or release keystore. Release AAB verification remains blocked until those PlanFlow-specific local files are restored without using placeholders or unrelated project config.",
+      "changed_files": [],
+      "tests": []
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent final-diff review after orientation rework.",
+      "result": "No remaining source-level defect. Flutter no longer overrides orientation; MainActivity is the sole compact-versus-tablet orientation owner. Completion record required correction. Current Flutter and release evidence remains unavailable.",
+      "changed_files": [],
+      "tests": ["independent current Git diff inspection", "git diff --check exit 0", "root static contract 10 assertions pass"]
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Final current-diff integration decision.",
+      "result": "BLOCKED. Preserve code uncommitted: current Flutter/analyze and release AAB gates are unmet; no COMPLETE, commit, or push decision is valid.",
+      "changed_files": [],
+      "tests": ["independent current Git diff and evidence integration"]
+    }
+  ],
+  "verification": [
+    {"command": "focused Flutter tests", "exit_code": 0, "result": "14 passed"},
+    {"command": "Flutter analysis", "exit_code": 0, "result": "No issues found"},
+    {"command": "guarded release appbundle", "exit_code": 1, "result": "blocked before Flutter/Gradle by absent local release define file"},
+    {"command": "release Kotlin/resource Gradle tasks", "exit_code": 1, "result": "blocked in Gradle configuration by absent android/key.properties"},
+    {"command": "post-rework Flutter focused test attempts", "exit_code": 124, "result": "no output/low CPU environmental stall; owned task Dart processes terminated"},
+    {"command": "post-rework PowerShell static Play Console contract", "exit_code": 0, "result": "10 assertions passed"},
+    {"command": "git diff --check", "exit_code": 0, "result": "passed"}
+  ],
+  "review": {
+    "verdict": "FINDINGS",
+    "recommendation": "Update completion record; keep final release approval blocked until final-revision Flutter and release-AAB evidence is available.",
+    "high_findings_resolved": ["Flutter/native orientation ownership conflict"],
+    "remaining_source_findings": []
+  },
+  "integrator": {
+    "verdict": "BLOCKED",
+    "reason": "Post-rework Flutter test/analyze evidence and release AAB validation are unavailable; exact Bitmap downsampling target is also unproven.",
+    "commit_push": "not permitted"
+  },
+  "unresolved_items": [
+    "Post-rework Flutter focused test and analyze evidence is NOT VALIDATED because Flutter test startup stalled without output; retry in a healthy Flutter runner state.",
+    "Release AAB/R8 resource packaging, AndroidX dependency compilation, and dynamic notification-icon preservation are NOT VALIDATED because trusted PlanFlow local release define/signing files are absent from this worktree.",
+    "Bitmap downsampling requires evidence from the release artifact or the exact Play Console warning source."
+  ],
+  "last_updated": "2026-08-24T02:41:00Z"
+}

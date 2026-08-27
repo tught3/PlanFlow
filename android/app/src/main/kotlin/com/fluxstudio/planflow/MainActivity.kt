@@ -7,8 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
 import android.net.Uri
@@ -26,6 +26,9 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import androidx.core.os.CancellationSignal
+import androidx.core.util.Consumer
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -35,13 +38,25 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 화면 회전을 세로 고정 (시스템 설정과 무관하게 강제)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        updateRequestedOrientation()
         logWidgetIntentDiagnostics(
             source = "onCreate",
             targetIntent = intent,
             savedInstanceStateIsNull = savedInstanceState == null,
         )
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateRequestedOrientation(newConfig)
+    }
+
+    private fun updateRequestedOrientation(configuration: Configuration = resources.configuration) {
+        requestedOrientation = if (configuration.smallestScreenWidthDp < 600) {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -89,7 +104,8 @@ class MainActivity : FlutterActivity() {
     private var locationPermissionResult: MethodChannel.Result? = null
     private var calendarPermissionResult: MethodChannel.Result? = null
     private var currentLocationResult: MethodChannel.Result? = null
-    private var currentLocationListener: LocationListener? = null
+    private var currentLocationCancellationSignal: CancellationSignal? = null
+    private var currentLocationTimeout: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun getInitialRoute(): String {
@@ -524,46 +540,58 @@ class MainActivity : FlutterActivity() {
         }
 
         currentLocationResult = result
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                finishCurrentLocationRequest(
-                    mapOf(
-                        "latitude" to location.latitude,
-                        "longitude" to location.longitude,
-                    ),
-                )
-            }
-
-            @Deprecated("Deprecated in Java")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
-            override fun onProviderEnabled(provider: String) = Unit
-            override fun onProviderDisabled(provider: String) = Unit
+        val cancellationSignal = CancellationSignal()
+        currentLocationCancellationSignal = cancellationSignal
+        val timeout = Runnable {
+            finishCurrentLocationRequest(
+                value = getLastKnownLocationMap(),
+                requestCancellationSignal = cancellationSignal,
+            )
         }
-        currentLocationListener = listener
-        mainHandler.postDelayed({
-            finishCurrentLocationRequest(getLastKnownLocationMap())
-        }, 10000L)
+        currentLocationTimeout = timeout
+        mainHandler.postDelayed(timeout, 10000L)
 
         try {
-            manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+            LocationManagerCompat.getCurrentLocation(
+                manager,
+                provider,
+                cancellationSignal,
+                ContextCompat.getMainExecutor(this),
+                Consumer { location ->
+                    finishCurrentLocationRequest(
+                        value = location?.let {
+                            mapOf(
+                                "latitude" to it.latitude,
+                                "longitude" to it.longitude,
+                            )
+                        } ?: getLastKnownLocationMap(),
+                        requestCancellationSignal = cancellationSignal,
+                    )
+                },
+            )
         } catch (_: Exception) {
-            finishCurrentLocationRequest(getLastKnownLocationMap())
+            finishCurrentLocationRequest(
+                value = getLastKnownLocationMap(),
+                requestCancellationSignal = cancellationSignal,
+            )
         }
     }
 
-    private fun finishCurrentLocationRequest(value: Map<String, Double>?) {
-        val result = currentLocationResult ?: return
-        val listener = currentLocationListener
-        currentLocationResult = null
-        currentLocationListener = null
-        if (listener != null) {
-            try {
-                val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                manager.removeUpdates(listener)
-            } catch (_: Exception) {
-                // Best-effort cleanup only.
-            }
+    private fun finishCurrentLocationRequest(
+        value: Map<String, Double>?,
+        requestCancellationSignal: CancellationSignal? = currentLocationCancellationSignal,
+    ) {
+        val cancellationSignal = currentLocationCancellationSignal
+        if (cancellationSignal == null || cancellationSignal !== requestCancellationSignal) {
+            return
         }
+        val result = currentLocationResult ?: return
+        val timeout = currentLocationTimeout
+        currentLocationResult = null
+        currentLocationCancellationSignal = null
+        currentLocationTimeout = null
+        if (timeout != null) mainHandler.removeCallbacks(timeout)
+        cancellationSignal.cancel()
         result.success(value)
     }
 
