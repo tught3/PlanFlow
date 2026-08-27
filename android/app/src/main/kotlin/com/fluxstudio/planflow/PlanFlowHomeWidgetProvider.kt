@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.text.SpannableStringBuilder
@@ -114,10 +115,13 @@ abstract class BasePlanFlowWidgetProvider(
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔", 17)
         if (isRecurring) appendMarker("↻", 19)
+        val titleStart = builder.length
         builder.append(value)
+        // Keep the title at normal weight even when a legacy widget layout
+        // supplies a bold TextView style. Marker spans above remain bold.
         builder.setSpan(
-            StyleSpan(Typeface.BOLD),
-            0,
+            StyleSpan(Typeface.NORMAL),
+            titleStart,
             builder.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
@@ -481,13 +485,14 @@ abstract class BasePlanFlowWidgetProvider(
                 views.setViewVisibility(id, View.GONE)
                 return
             }
-            val emptyContent = SpannableStringBuilder(emptyText)
-            emptyContent.setSpan(
-                StyleSpan(Typeface.BOLD),
-                0,
-                emptyContent.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
+            val emptyContent = SpannableStringBuilder(emptyText).also { content ->
+                content.setSpan(
+                    StyleSpan(Typeface.NORMAL),
+                    0,
+                    content.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
             views.setTextViewText(id, emptyContent)
             views.setTextColor(id, MUTED_TEXT_COLOR)
             views.setViewVisibility(id, View.VISIBLE)
@@ -499,25 +504,21 @@ abstract class BasePlanFlowWidgetProvider(
             text, isCritical, useStrongAlarm, isRecurring, isTeam,
         ) ?: text
         val content = if (formattedTime.isBlank()) {
-            SpannableStringBuilder(displayTitle).also { builder ->
-                builder.setSpan(
-                    StyleSpan(Typeface.BOLD),
-                    0,
-                    builder.length,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                )
-            }
+            SpannableStringBuilder(displayTitle)
         } else {
             SpannableStringBuilder(formattedTime).append(' ').append(displayTitle).also { builder ->
                 builder.setSpan(
-                    StyleSpan(Typeface.BOLD),
+                    StyleSpan(Typeface.NORMAL),
                     0,
-                    builder.length,
+                    formattedTime.length + 1,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
                 )
             }
         }
         views.setTextViewText(id, content)
+        // Match the in-app calendar's normal-weight, 0.5sp-smaller schedule
+        // text. Marker spans retain their own bold emphasis.
+        views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, 11.0f)
         views.setTextColor(
             id,
             when {
@@ -1704,6 +1705,11 @@ class PlanFlowMonthlyWidgetProvider :
                         if (event == null) {
                             if (eventSlot == 1 && holidayNameFromPrefs != null) {
                                 views.setTextViewText(eventId, holidayNameFromPrefs)
+                                views.setTextViewTextSize(
+                                    eventId,
+                                    TypedValue.COMPLEX_UNIT_SP,
+                                    11.5f,
+                                )
                                 views.setInt(eventId, "setBackgroundResource", R.drawable.widget_month_event_holiday)
                                 views.setViewPadding(eventId, 0, 0, 0, 0)
                                 views.setTextColor(
@@ -1968,6 +1974,11 @@ class PlanFlowMonthlyWidgetProvider :
                             views.setViewVisibility(eventId, View.VISIBLE)
                         } else if (eventSlot == 1 && holidayNameFromPrefs != null) {
                             views.setTextViewText(eventId, holidayNameFromPrefs)
+                            views.setTextViewTextSize(
+                                eventId,
+                                TypedValue.COMPLEX_UNIT_SP,
+                                11.5f,
+                            )
                             views.setTextColor(
                                 eventId,
                                 if (isDayOffFromPrefs) HOLIDAY_TEXT_COLOR else MUTED_TEXT_COLOR,

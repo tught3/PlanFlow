@@ -794,7 +794,7 @@ class _CalendarMiniEventList extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final scale = (constraints.maxWidth / 44).clamp(1.0, 1.4);
-              final fontSize = 6.8 * scale;
+              final fontSize = 7.3 * scale;
               final holidayForeground = isSelected
                   ? Colors.white
                   : isHoliday
@@ -851,12 +851,12 @@ class _CalendarMiniEventList extends StatelessWidget {
                   textAlign: TextAlign.right,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 7,
+                    fontSize: 6.5,
                     height: 1,
                     color: isSelected
                         ? Colors.white
                         : PlanFlowColors.textSecondary,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.normal,
                   ),
                 ),
               ),
@@ -929,18 +929,24 @@ class _CalendarMiniEventLabel extends StatelessWidget {
             border: isMultiDay
                 ? Border(
                     top: BorderSide(
-                        color: borderColor.withValues(alpha: 0.9), width: 0.8),
+                      color: borderColor.withValues(alpha: 0.9),
+                      width: 0.8,
+                    ),
                     bottom: BorderSide(
-                        color: borderColor.withValues(alpha: 0.9), width: 0.8),
+                      color: borderColor.withValues(alpha: 0.9),
+                      width: 0.8,
+                    ),
                     left: segment.$1
                         ? BorderSide(
                             color: borderColor.withValues(alpha: 0.9),
-                            width: 0.8)
+                            width: 0.8,
+                          )
                         : BorderSide.none,
                     right: segment.$2
                         ? BorderSide(
                             color: borderColor.withValues(alpha: 0.9),
-                            width: 0.8)
+                            width: 0.8,
+                          )
                         : BorderSide.none,
                   )
                 : Border(),
@@ -958,16 +964,14 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                   top: 0,
                   right: 0,
                   height: 1.4,
-                  child: ColoredBox(
-                    color: calendarCriticalMultiDayAccentColor,
-                  ),
+                  child: ColoredBox(color: calendarCriticalMultiDayAccentColor),
                 ),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hPadding).copyWith(
-                    top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
-                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: hPadding,
+                  ).copyWith(top: isCriticalMultiDay && showTitle ? 1.0 : 0.0),
                   child: showTitle
                       ? Text.rich(
                           _calendarEventTitleSpan(
@@ -985,10 +989,10 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 8.8,
+                            fontSize: 8.3,
                             height: 1.0,
                             color: fg,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.normal,
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -1039,24 +1043,28 @@ InlineSpan _calendarEventTitleSpan(
     spans.add(TextSpan(text: leadingText));
   }
   if (isCritical && useStrongAlarm) {
-    spans.add(TextSpan(
-      text: '🔔\u200A',
-      style: TextStyle(
-        color: markerColor,
-        fontWeight: FontWeight.w900,
-        fontSize: strongAlarmMarkerFontSize ?? markerFontSize,
+    spans.add(
+      TextSpan(
+        text: '🔔\u200A',
+        style: TextStyle(
+          color: markerColor,
+          fontWeight: FontWeight.w900,
+          fontSize: strongAlarmMarkerFontSize ?? markerFontSize,
+        ),
       ),
-    ));
+    );
   }
   if (isRecurring) {
-    spans.add(TextSpan(
-      text: '↻\u200A',
-      style: TextStyle(
-        color: markerColor,
-        fontWeight: FontWeight.w900,
-        fontSize: markerFontSize,
+    spans.add(
+      TextSpan(
+        text: '↻\u200A',
+        style: TextStyle(
+          color: markerColor,
+          fontWeight: FontWeight.w900,
+          fontSize: markerFontSize,
+        ),
       ),
-    ));
+    );
   }
   spans.add(TextSpan(text: title));
   return TextSpan(children: spans);
@@ -1093,10 +1101,7 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
             ),
             border: isMultiDay
                 ? Border(
-                    top: BorderSide(
-                      color: calendarGroupEventColor,
-                      width: 0.5,
-                    ),
+                    top: BorderSide(color: calendarGroupEventColor, width: 0.5),
                     bottom: BorderSide(
                       color: calendarGroupEventColor,
                       width: 0.5,
@@ -1127,10 +1132,10 @@ class _CalendarMiniOverlayLabel extends StatelessWidget {
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 8.8,
+                  fontSize: 8.3,
                   height: 1.0,
                   color: fg,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.normal,
                 ),
               ),
             ),

@@ -1,5 +1,7 @@
 // SettingsScreen이 공용 FAB 묶음(PlanFlowGlobalFabs)을 사용해
 // "음성으로 일정 관리"와 "AI일정대화" 버튼을 각각 1개씩 렌더하는지 확인한다.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
@@ -78,6 +80,12 @@ void main() {
       expect(find.text('AI일정대화'), findsOneWidget);
     },
   );
+
+  test('settings list reserves scroll space below the two global FABs', () {
+    final source =
+        File('lib/screens/settings/settings_screen.dart').readAsStringSync();
+    expect(source, contains('AppConstants.defaultPadding + 220'));
+  });
 }
 
 GroupContextProvider _fakeEmptyGroupContextProvider() =>
@@ -144,7 +152,8 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
         scheduled: true,
       ),
       evening: BriefingScheduleEntry(
-        scheduledAt: DateTime(2026, 5, 7, 21), // banned-ok: 위와 동일 사유(더미 fake 반환값, 미단언)
+        scheduledAt:
+            DateTime(2026, 5, 7, 21), // banned-ok: 위와 동일 사유(더미 fake 반환값, 미단언)
         scheduled: true,
       ),
     );

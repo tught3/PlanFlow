@@ -21,7 +21,7 @@ void main() {
     expect(calendarSource, contains('markerFontSize: 14'));
     expect(calendarSource, contains('strongAlarmMarkerFontSize: 5.8'));
     expect(calendarSource, contains('strongAlarmMarkerFontSize: 12'));
-    expect(calendarSource, contains('fontSize: 8.8'));
+    expect(calendarSource, contains('fontSize: 8.3'));
     expect(calendarSource, contains('fontWeight: FontWeight.w800'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
     expect(calendarSource, contains("text: '↻\\u200A'"));
@@ -63,11 +63,11 @@ void main() {
     );
     expect(
       monthEventStyle,
-      contains('<item name="android:textSize">11.5sp</item>'),
+      contains('<item name="android:textSize">11sp</item>'),
     );
     expect(
       monthEventStyle,
-      contains('<item name="android:textStyle">bold</item>'),
+      contains('<item name="android:textStyle">normal</item>'),
     );
     final groupWidgetSource = File(
       'android/app/src/main/res/layout/planflow_group_calendar_widget.xml',

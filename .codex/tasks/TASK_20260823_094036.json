@@ -1,0 +1,149 @@
+{
+  "task_id": "TASK_20260823_094036",
+  "status": "IMPLEMENTED_VERIFICATION_BLOCKED",
+  "original_request": "PlanFlow settings floating buttons not obscuring 12-hour toggle; calendar typography/settings defaults/conditional deleted groups; classify and safely address Play Console production recommendations; run tests and internal alpha deployment",
+  "routing": {
+    "tier": "ADVANCED",
+    "required_model": "gpt-5.6-terra",
+    "preflight": "FluxOS pipeline-adopt TASK_20260823_094036 exit 0",
+    "claim": "FluxOS task worktree adoption confirmed"
+  },
+  "requirements": [
+    "Ensure Settings can scroll the 12-hour toggle fully above the global FAB stack.",
+    "Show the deleted-groups entry only for an active, un-restored delete backup.",
+    "Improve the calendar and home-widget event typography without changing event behavior.",
+    "Classify Play Console production recommendations without speculative code changes."
+  ],
+  "non_requirements": [
+    "Do not change common voice-correction defaults because doing so consistently requires an unapproved Supabase migration.",
+    "Do not change Android system-bar, orientation, bitmap, R8, map, signing, production, or Play Console configuration.",
+    "Do not redeploy Alpha from the stale version-153 branch."
+  ],
+  "allowed_files": [
+    "lib/screens/settings/settings_screen.dart",
+    "lib/screens/settings/settings_widgets.dart",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "android/app/src/main/res/values/styles.xml",
+    "test/screens/settings_screen_fab_test.dart",
+    "test/screens/settings_deleted_groups_visibility_test.dart",
+    "test/services/home_widget_service_test.dart",
+    ".codex/tasks/TASK_20260823_094036.json"
+  ],
+  "forbidden_files": [
+    "supabase/schema.sql",
+    "supabase/migrations/**",
+    "lib/data/models/user_settings_model.dart",
+    "test/supabase/**",
+    "pubspec.yaml",
+    "scripts/build-internal-aab.ps1",
+    "scripts/deploy-play-internal.ps1",
+    "scripts/deploy-play-production.ps1",
+    "android/app/src/main/AndroidManifest.xml",
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt",
+    "android/app/build.gradle.kts"
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "status": "UNAVAILABLE",
+      "assignment": "Read-only request and source investigation.",
+      "result": "Invoked in-app and interrupted after no host report; root separately recorded direct source evidence."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "COMPLETED",
+      "assignment": "Define minimum safe scope and deployment gates.",
+      "result": "Prohibited main fast-forward/cherry-pick because prior commits include an unapproved Supabase migration; approved UI-only implementation and classified Alpha redeploy as blocked."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "UNAVAILABLE",
+      "assignment": "Implement the simple settings UI adjustments.",
+      "result": "Invoked in-app but interrupted after no host report; root performed the scoped recovery implementation."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "UNAVAILABLE",
+      "assignment": "Implement calendar and Android home-widget typography changes.",
+      "result": "Invoked in-app but interrupted after no host report; root performed the scoped recovery implementation."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "status": "COMPLETED_WITH_GAPS",
+      "assignment": "Run focused analysis, regression tests, diff check, and release Kotlin compile.",
+      "result": "Analyzer exit 0, focused tests 26 passed, and diff check exit 0. Release Kotlin compile had no completion exit code after 184 seconds and remains NOT VALIDATED."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "BLOCKED",
+      "assignment": "Independently review the final current diff and acceptance conditions.",
+      "result": "Found and drove fixes for two HIGH route-refresh defects and one MEDIUM stale FutureBuilder snapshot defect. Final direct readback timed out, so no PASS decision was issued."
+    },
+    {
+      "role": "Final Independent Reviewer",
+      "agent": "flux_final_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "BLOCKED",
+      "assignment": "Verify the remediation and final current diff independently.",
+      "result": "Confirmed both route refreshes and the done-and-true fail-closed gate; found no code-level finding. Could not issue PASS because final Git scope/diff and post-remediation Flutter test evidence timed out."
+    }
+  ],
+  "verification": [
+    {
+      "command": "scripts/flutter-local.ps1 test --no-pub test/screens/settings_screen_fab_test.dart test/screens/settings_deleted_groups_visibility_test.dart test/services/home_widget_service_test.dart",
+      "result": "PASS: 27 tests passed after the route-refresh fixes; the later stale-snapshot gate and its unit cases could not be re-run because a shared Flutter tool invocation stalled without output."
+    },
+    {
+      "command": "scripts/flutter-local.ps1 analyze lib/screens/settings/settings_screen.dart lib/screens/settings/settings_widgets.dart lib/screens/calendar/calendar_widgets.dart --no-pub",
+      "result": "PASS: exit 0, No issues found after the route-refresh fixes; the later stale-snapshot gate could not be re-run because a shared Flutter tool invocation stalled without output."
+    },
+    {
+      "command": "android/gradlew.bat :app:compileReleaseKotlin --no-daemon --console=plain",
+      "result": "NOT VALIDATED: no output or completion exit code within 60 seconds; the task-owned wrapper was stopped after it stalled."
+    },
+    {
+      "command": "git diff --check -- <allowed scope paths>",
+      "result": "PASS before the final stale-snapshot gate; the final re-run timed out while shared Git activity was active."
+    }
+  ],
+  "review": {
+    "status": "BLOCKED",
+    "reason": "Final independent reviewer readback timed out after the stale-snapshot remediation; no PASS decision exists."
+  },
+  "integration": {
+    "status": "NOT_STARTED",
+    "reason": "Integration is forbidden until an independent reviewer records PASS."
+  },
+  "play_console_classification": {
+    "edge_to_edge": "INVESTIGATE_ONLY",
+    "deprecated_system_bars": "NO_APP_OWNED_CALLSITE_FOUND",
+    "large_screen": "PORTRAIT_LOCK_UX_DECISION_REQUIRED",
+    "bitmap_downsampling": "LIKELY_LIBRARY_OR_GENERATED_STACK",
+    "r8": "MINIFY_ENABLED_RESOURCE_SHRINK_DISABLED_BY_EXISTING_DYNAMIC_ICON_USE"
+  },
+  "alpha_deployment": {
+    "status": "NOT_REDEPLOYED",
+    "reason": "Upstream Alpha 155 evidence is not a fresh task-branch verification; branch version 153 conflicts with recorded Alpha 155 and production 156; authoritative current Play version and device visual evidence are absent."
+  },
+  "last_updated": "2026-08-24T09:10:00+09:00"
+}

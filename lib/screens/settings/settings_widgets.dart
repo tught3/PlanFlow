@@ -120,7 +120,8 @@ class _AccountSection extends StatelessWidget {
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn ? authProvider.accountDisplayWithMethod : '로그아웃됨',
+                value:
+                    signedIn ? authProvider.accountDisplayWithMethod : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),
@@ -188,28 +189,7 @@ class _AccountSection extends StatelessWidget {
               ],
               if (signedIn) ...[
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => context.push(AppRoutes.groups),
-                    icon: const Icon(Icons.groups_outlined),
-                    label: const Text('그룹 관리'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.push(AppRoutes.deletedGroups),
-                    icon: const Icon(Icons.history_outlined),
-                    label: const Text('삭제된 그룹'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: PlanFlowColors.primaryMid,
-                      side: const BorderSide(color: PlanFlowColors.primaryFaint),
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                  ),
-                ),
+                const _GroupsManagementButtons(),
                 const SizedBox(height: 8),
                 FutureBuilder<bool>(
                   future: AdConsentService.instance.privacyOptionsRequired,
@@ -221,9 +201,8 @@ class _AccountSection extends StatelessWidget {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () async {
-                          final ok =
-                              await AdConsentService.instance
-                                  .showPrivacyOptionsForm();
+                          final ok = await AdConsentService.instance
+                              .showPrivacyOptionsForm();
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -398,6 +377,103 @@ class _AccountSection extends StatelessWidget {
     await performDelete();
     controller.dispose();
   }
+}
+
+/// Shows the restore entry point only when there is an actual, un-restored
+/// delete backup. Archive-only rows belong to the same restore screen but do
+/// not make this "deleted groups" affordance appear.
+class _GroupsManagementButtons extends StatefulWidget {
+  const _GroupsManagementButtons();
+
+  @override
+  State<_GroupsManagementButtons> createState() =>
+      _GroupsManagementButtonsState();
+}
+
+class _GroupsManagementButtonsState extends State<_GroupsManagementButtons> {
+  late Future<bool> _hasDeletedGroups;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasDeletedGroups = _loadVisibility();
+  }
+
+  Future<bool> _loadVisibility() async {
+    try {
+      final backups = await GroupBackupRepository.supabase().listMyBackups(
+        backupType: 'delete',
+      );
+      return shouldShowDeletedGroupsButton(backups);
+    } catch (_) {
+      // Fail closed: a transient/error state must not expose a dead button.
+      return false;
+    }
+  }
+
+  Future<void> _openAndRefresh(String route) async {
+    await context.push(route);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _hasDeletedGroups = _loadVisibility();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _hasDeletedGroups,
+      builder: (context, snapshot) {
+        return Column(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _openAndRefresh(AppRoutes.groups),
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('그룹 관리'),
+              ),
+            ),
+            if (shouldRenderDeletedGroupsButton(
+              connectionState: snapshot.connectionState,
+              hasDeletedGroups: snapshot.data,
+            )) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('settings-deleted-groups-button'),
+                  onPressed: () => _openAndRefresh(AppRoutes.deletedGroups),
+                  icon: const Icon(Icons.history_outlined),
+                  label: const Text('삭제된 그룹'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: PlanFlowColors.primaryMid,
+                    side: const BorderSide(color: PlanFlowColors.primaryFaint),
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+@visibleForTesting
+bool shouldShowDeletedGroupsButton(Iterable<GroupBackupModel> backups) {
+  return backups.any((backup) => backup.isDelete && !backup.isRestored);
+}
+
+@visibleForTesting
+bool shouldRenderDeletedGroupsButton({
+  required ConnectionState connectionState,
+  required bool? hasDeletedGroups,
+}) {
+  return connectionState == ConnectionState.done && hasDeletedGroups == true;
 }
 
 /// 그룹 리더로 인해 회원 탈퇴가 차단됐을 때 차단 사유 그룹 목록을 표시한다.
