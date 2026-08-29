@@ -1,0 +1,240 @@
+{
+  "task_id": "TASK_20260829_063707",
+  "project": "PlanFlow",
+  "request": "PlanFlow iOS Phase 2: finish Windows-safe preparation, classify account/cloud-macOS/device boundaries, preserve Android",
+  "status": "integration",
+  "acceptance_scope": "Windows-safe iOS preparation only",
+  "implementation_needed": false,
+  "current_head": "782f8982d824de390c450dafdf22f4ff02f9b1b2",
+  "allowed_files": [
+    "ios/**",
+    "lib/services/**",
+    "lib/platform/**",
+    "lib/core/**",
+    "lib/app.dart",
+    "lib/main.dart",
+    "pubspec.yaml",
+    "pubspec.lock",
+    ".github/workflows/**",
+    "codemagic.yaml",
+    "test/**",
+    "docs/ios/**",
+    ".planning/ios-parity/**",
+    ".codex/tasks/TASK_20260829_063707.json"
+  ],
+  "forbidden_files": [
+    "android/**",
+    "supabase/**",
+    ".env*",
+    "env/local.json",
+    "Play deployment scripts/config",
+    "signing/provisioning/Firebase plist/Apple credentials",
+    "WidgetKit/App Group implementation",
+    "unrelated calendar/color/ads behavior"
+  ],
+  "roles": {
+    "explorer": {
+      "agent": "flux_explorer",
+      "agent_id": "01a04c40-809e-7ab3-a8cb-b10942d409ea",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "assignment": "Read-only request interpretation, current diff and iOS/Android boundary inventory",
+      "result": "Confirmed Windows-safe iOS preparation already landed in 782f8982; Android/Supabase/auth/signing and unrelated files are unchanged; macOS/native target, account, and device gates remain external blockers."
+    },
+    "planner": {
+      "agent": "flux_planner",
+      "agent_id": "01a04c42-2c29-7462-b841-6ccffdedc724",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "assignment": "Requirements, non-requirements, file boundaries, verification gates and no-op implementation classification",
+      "result": "Classified this as report-only completion: implementation_needed=false, no writable product files, Windows-safe scope complete with external blockers."
+    },
+    "implementer": {
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a04c47-0fe6-70a2-8dfe-3dacaf4038f1",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "assignment": "Complex implementation audit; no file changes authorized unless a concrete in-scope blocker is found",
+      "result": "NO_CHANGE: no in-scope correctness blocker; current HEAD already contains the requested preparation and no product file was edited."
+    },
+    "failure_analyst": {
+      "agent": "flux_failure_analyst",
+      "agent_id": "01a04c44-b451-7962-b762-fb061b626f3c",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "assignment": "Classify missing Flutter dependency failure and define safe remediation/retest scope",
+      "result": "Initial test failure was an environment-only missing .dart_tool/Pub dependency state. Scoped flutter pub get restored dependencies; no pubspec or product change was needed."
+    },
+    "test_executor": {
+      "agent": "flux_test_executor",
+      "agent_id": "01a04c47-10a6-79e1-9b7c-caf33c167a9a",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "status": "completed",
+      "assignment": "Run focused tests, analyze and diff-check without regenerating files",
+      "result": "All four required verification commands exited 0; macOS/Xcode/device/deployment checks were not run and are not claimed."
+    },
+    "reviewer": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a04c50-d57a-7500-83b7-a2c605366b2d",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "assignment": "Independent final-current-diff review with caller finalization protocol",
+      "result": "FINAL_REVIEW_REPORT PASS; no findings; invocation completed after the single interrupt=true finalization request."
+    },
+    "integrator": {
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "assignment": "Final scope, verification, review, completion report and commit/push decision"
+      ,"result": "COMPLETE: implementation_needed=false; no product file changed in this run. HEAD 782f8982 is within the allowed scope. Fresh focused tests, dart analyze, and committed diff-check exited 0. The official reviewer invocation 01a04c50-d57a-7500-83b7-a2c605366b2d supplied exactly one host-final event and exactly one FINAL_REVIEW_REPORT envelope with PASS/NONE. macOS/Apple-account/device gates remain explicitly external and fail-closed."
+    }
+  },
+  "product_files_changed_this_run": [],
+  "task_state_files_changed_this_run": [
+    ".codex/tasks/TASK_20260829_063707.json"
+  ],
+  "effective_baseline_commit": {
+    "commit": "782f8982d824de390c450dafdf22f4ff02f9b1b2",
+    "files": [
+      ".codex/tasks/planflow-ios-parity-20260829.json",
+      ".github/workflows/ios-readiness.yml",
+      "docs/ios/parity-matrix.md",
+      "docs/ios/release-readiness.md",
+      "ios/Runner/Info.plist",
+      "lib/services/alarm_service.dart",
+      "test/ios_release_contract_test.dart"
+    ],
+    "description": "Existing implementation verified for this task; not modified by this completion run."
+  },
+  "verification": [
+    {
+      "command": "flutter pub get",
+      "exit_code": 0,
+      "result": "Restored missing local dependency metadata; generated registrants were reverted by exact pathspec and no tracked product change was retained."
+    },
+    {
+      "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+      "exit_code": 0,
+      "result": "4/4 passed"
+    },
+    {
+      "command": "flutter test test/services/briefing_scheduler_service_test.dart --no-pub",
+      "exit_code": 0,
+      "result": "15/15 passed"
+    },
+    {
+      "command": "dart analyze",
+      "exit_code": 0,
+      "result": "No issues found!"
+    },
+    {
+      "command": "git diff --check HEAD^ HEAD",
+      "exit_code": 0,
+      "result": "No whitespace errors"
+    },
+    {
+      "command": "git status --porcelain=v1",
+      "exit_code": 0,
+      "result": "Only the intentional task state file is untracked; generated registrant changes were not retained."
+    }
+  ],
+  "review_history": [
+    {
+      "agent": "flux_reviewer",
+      "agent_id": "01a04c48-d589-7c12-8faa-372159f1bfc5",
+      "verdict": "FINDINGS",
+      "highest_severity": "HIGH",
+      "result": "Intermediate review caught stale task-state evidence plus MEDIUM test/build evidence gaps. The stale task-state issue was reconciled; the latest reviewer re-audited the final state."
+    },
+    {
+      "agent": "flux_reviewer",
+      "agent_id": "01a04c49-c6a1-7f43-8326-37b392b13005",
+      "verdict": "PASS",
+      "highest_severity": "NONE",
+      "result": "Natural final review passed with no findings, but it lacked caller host-final correlation in the first integration attempt."
+    },
+    {
+      "agent": "flux_reviewer",
+      "agent_id": "01a04c4f-e27b-78e0-a647-853d4d06088c",
+      "verdict": "UNAVAILABLE",
+      "highest_severity": "UNKNOWN",
+      "result": "Caller finalization arrived before inspection was complete; not used as approval evidence."
+    },
+    {
+      "agent": "flux_reviewer",
+      "agent_id": "01a04c50-d57a-7500-83b7-a2c605366b2d",
+      "verdict": "PASS",
+      "highest_severity": "NONE",
+      "result": "Official caller-finalized review passed with no findings and final_emitted=true."
+    }
+  ],
+  "review": {
+    "verdict": "PASS",
+    "highest_severity": "NONE",
+    "reviewer": "flux_reviewer",
+    "reviewer_model": "gpt-5.6-luna",
+    "reviewer_reasoning_effort": "high",
+    "reviewer_agent_id": "01a04c50-d57a-7500-83b7-a2c605366b2d",
+    "final_review_report": "FINAL_REVIEW_REPORT",
+    "host_final_event_count": 1,
+    "final_review_report_count": 1,
+    "findings": [],
+    "result": "Official caller-finalized independent current-state review passed."
+  },
+  "reviewer_terminal_gate": {
+    "status": "PASS",
+    "required_reviewer_invocation": "01a04c50-d57a-7500-83b7-a2c605366b2d",
+    "host_final_event_count": 1,
+    "final_review_report_count": 1,
+    "reason": "Caller finalization request was sent once with interrupt=true and the reviewer emitted a terminal FINAL_REVIEW_REPORT PASS."
+  },
+  "unresolved": [
+    "Native iOS target (Runner.xcodeproj/workspace/Podfile), Apple signing/account, Firebase iOS plist, App Group/WidgetKit and physical-device/TestFlight evidence remain external blockers.",
+    "Android Gradle compile was not rerun in this completion pass; focused Android briefing regression tests passed and no Android files changed."
+  ],
+  "next_step": "Run Integrator final decision, commit task state by pathspec, then finalize done.md",
+  "integration": {
+    "requirements_tracked": true,
+    "all_required_plan_items_done": true,
+    "classification": "complex_no_op_completion",
+    "implementation_needed": false,
+    "head": "782f8982d824de390c450dafdf22f4ff02f9b1b2",
+    "scope_verdict": "PASS",
+    "product_files_changed_this_run": [],
+    "fresh_verification": [
+      {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "result": "4/4 passed"},
+      {"command": "flutter test test/services/briefing_scheduler_service_test.dart --no-pub", "exit_code": 0, "result": "15/15 passed"},
+      {"command": "dart analyze", "exit_code": 0, "result": "No issues found!"},
+      {"command": "git diff --check origin/main..HEAD", "exit_code": 0, "result": "No whitespace errors"}
+    ],
+    "failure_analyst_required_and_completed": true,
+    "reviewer_terminal_gate": {
+      "reviewer_invocation_id": "01a04c50-d57a-7500-83b7-a2c605366b2d",
+      "caller_finalization_requests": 1,
+      "caller_finalization_interrupt": true,
+      "host_final_event_count": 1,
+      "final_review_report_count": 1,
+      "final_review_report_envelope": "FINAL_REVIEW_REPORT",
+      "verdict": "PASS",
+      "highest_severity": "NONE",
+      "status": "PASS"
+    },
+    "unresolved_external_gates": [
+      "macOS/Xcode native-target, archive and CocoaPods validation",
+      "Apple account, signing, Firebase iOS configuration, App Group and WidgetKit configuration",
+      "physical iOS device, TestFlight and App Store validation"
+    ],
+    "result": "Windows-safe preparation acceptance is complete; external iOS release readiness is not claimed."
+  },
+  "next_step": "Terminal integration complete; external macOS/Apple-account/device gates require a separately authorized follow-up.",
+  "final_verdict": "COMPLETE",
+  "terminal_completion": true,
+  "last_update": "2026-08-29T16:05:00+09:00"
+}
