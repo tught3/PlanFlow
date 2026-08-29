@@ -1,0 +1,22 @@
+{
+  "task_id": "planflow-ios-phase3-20260829",
+  "request_source": "C:/Users/tught/.codex/attachments/e03d3523-c8e7-4186-9c95-ebb60388fd03/pasted-text.txt",
+  "status": "planning",
+  "base_commit": "d895052e",
+  "objective": "Push PlanFlow iOS from Phase 2 source readiness toward the maximum safe build-ready state without guessing Apple/Firebase identifiers, credentials, or claiming unavailable macOS/device evidence.",
+  "roles": {
+    "explorer": {"status": "running", "agent": "ios_phase3_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium"},
+    "planner": {"status": "running", "agent": "ios_phase3_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+    "implementer": {"status": "pending"},
+    "test_executor": {"status": "pending"},
+    "failure_analyst": {"status": "pending"},
+    "reviewer": {"status": "pending"},
+    "integrator": {"status": "pending"}
+  },
+  "allowed_files": [],
+  "forbidden_files": ["android/**", "supabase/**", ".env*", "signing keys/credentials", "config/play-*.json", "scripts/deploy-play-*.ps1", "version bump", "production data"],
+  "changes": [],
+  "tests": [],
+  "external_gates": [],
+  "blockers": []
+}
