@@ -1,0 +1,41 @@
+{
+  "task_id": "planflow-ios-parity-20260829",
+  "request": "Prepare PlanFlow for iOS parity and App Store release while preserving Android production behavior.",
+  "status": "complete_windows_scope_with_external_blockers",
+  "interpretation": "Implement Windows-safe iOS preparation, platform boundaries, release documentation and macOS CI; do not claim macOS/device validation without evidence.",
+  "plan": [
+    "Inventory Android-authoritative features and classify iOS parity work",
+    "Restore the iOS Flutter target and add source-controlled release/config contracts",
+    "Add explicit platform boundaries and iOS-safe adapters without changing Android behavior",
+    "Add App Store compliance/release documentation and protected macOS CI",
+    "Run Windows/static checks and Android regression checks",
+    "Independent review and integration; record macOS/device blockers"
+  ],
+  "allowed_files": ["ios/**", "lib/services/**", "lib/platform/**", "lib/core/**", "lib/app.dart", "lib/main.dart", "pubspec.yaml", "pubspec.lock", ".github/workflows/**", "codemagic.yaml", "test/**", "docs/ios/**", ".planning/ios-parity/**", ".codex/tasks/planflow-ios-parity-20260829.json"],
+  "forbidden_files": ["android/**", "supabase/**", "env/local.json", ".env*", "current Play deployment scripts/config", "unrelated calendar/color/ads behavior"],
+  "roles": {
+    "explorer": {"agent": "ios_parity_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "completed", "assignment": "Read-only iOS/Android runtime inventory and parity gaps", "report": "Existing iOS entry is partial; Runner.xcodeproj/xcworkspace/Podfile, Firebase iOS plist, App Group entitlement and WidgetKit extension are absent. Group calendar widget is Android-only."},
+    "planner": {"agent": "ios_parity_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed", "classification": "complex", "assignment": "P0-P7 iOS parity/release plan", "report": "P0 inventory/matrix, P1 target scaffold, P2 platform boundaries, P3 iOS config/adapters, P4 WidgetKit/App Group, P5 privacy/App Store/Sign in Apple, P6 macOS CI, P7 Android+macOS+device QA. Current Windows scope is P0/P2/P5/P6 contract preparation only; macOS and Apple-account gates remain external blockers."},
+    "implementer": {"agent": "ios_parity_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed", "classification": "complex", "assignment": "Windows-safe iOS contracts, CI, documentation and non-Android alarm guard", "changed_files": ["ios/Runner/Info.plist", "lib/services/alarm_service.dart", ".github/workflows/ios-readiness.yml", "docs/ios/parity-matrix.md", "docs/ios/release-readiness.md", "test/ios_release_contract_test.dart"], "report": "Added microphone/speech permission purpose strings, explicit non-Android AndroidAlarmManager guards, macOS CI readiness workflow, parity/release documentation and static iOS contract test. Did not fabricate a privacy manifest, native Xcode target, Firebase plist, signing, App Group or WidgetKit extension."},
+    "test_executor": {"agent": "ios_parity_test_executor", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed", "assignment": "Run project-defined/static verification without claiming macOS validation", "report": "dart analyze reported 'No issues found!' with exit 0. Android Gradle compile attempt produced no completion output before timeout; it is not a PASS and no Gradle process remained."},
+    "reviewer": {"agent": "ios_parity_final_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed", "assignment": "Independent final-current-diff review after portrait-only follow-up", "host_final_event": true, "final_report_count": 1, "final_report": {"envelope": "FINAL_REVIEW_REPORT", "verdict": "PASS", "highest_severity": "MEDIUM", "findings": ["External release blockers: missing macOS/Xcode native target, Podfile, signing/App Group, Firebase iOS settings and WidgetKit extension.", "No BLOCKER/HIGH: Android/Play configuration, secrets and unrelated files are unchanged."], "report": "Final diff reviewed. iPhone is portrait-only while iPad landscape support remains. AlarmService Android guards preserve Android behavior; iOS contract test (4/4) and git diff --check passed."}},
+    "integrator": {"agent": "ios_parity_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed", "assignment": "Final scope/diff/test integration and pathspec commit", "report": "Confirmed only task-owned iOS/docs/CI/test/alarm files changed; Android/Play/secret/unrelated files untouched. Windows preparation complete; iOS release and macOS/device validation remain blocked."}
+  },
+  "changes": [
+    "iOS microphone and speech-recognition permission purpose strings",
+    "Explicit non-Android guard for AndroidAlarmManager briefing schedule/init/cancel paths",
+    "macOS-only iOS readiness workflow with signed-release job disabled until secrets/configuration exist",
+    "iOS parity matrix and release-readiness boundary documents",
+    "Static iOS release-contract test"
+  ],
+  "tests": [
+    {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "result": "4/4 passed"},
+    {"command": "flutter test test/services/briefing_scheduler_service_test.dart --no-pub", "exit_code": 0, "result": "15/15 passed"},
+    {"command": "dart analyze", "exit_code": 0, "result": "No issues found (test-executor evidence)"},
+    {"command": "git diff --check", "exit_code": 0, "result": "no whitespace errors"},
+    {"command": "Android Gradle compile attempt", "exit_code": null, "result": "timed out/no completion output; explicitly not PASS"},
+    {"command": "flutter build ios --no-codesign", "exit_code": null, "result": "not runnable on Windows and native iOS target scaffold is absent; explicitly not PASS"}
+  ],
+  "review": {"verdict": "PASS", "highest_severity": "MEDIUM", "acceptance_scope": "Windows-safe iOS preparation only"},
+  "blockers": ["macOS/Xcode archive and signing unavailable on Windows", "physical iPhone widget/notification/OAuth/ads validation unavailable", "Apple account, signing assets, Firebase iOS plist and App Group identifiers require account-owned configuration", "Runner.xcodeproj, Runner.xcworkspace and Podfile are absent and cannot be safely generated/merged until bundle identifier decision is made", "WidgetKit extension and shared App Group storage are not implemented", "Android-only group calendar widget needs a separate WidgetKit implementation"]
+}

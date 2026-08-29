@@ -1,0 +1,48 @@
+name: iOS readiness (macOS)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'test/**'
+      - 'docs/ios/**'
+      - '.github/workflows/ios-readiness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-and-ios-build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Verify native iOS target contract
+        shell: bash
+        run: |
+          test -f ios/Runner.xcodeproj/project.pbxproj || {
+            echo "::error::iOS Xcode target is not committed yet. Configure the Apple bundle ID on macOS before enabling this build.";
+            exit 1;
+          }
+          test -f ios/Runner.xcworkspace/contents.xcworkspacedata || {
+            echo "::error::iOS workspace is missing. Run CocoaPods/Flutter target setup on macOS.";
+            exit 1;
+          }
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build ios --no-codesign
+
+  signed-release:
+    if: ${{ false }}
+    runs-on: macos-latest
+    steps:
+      - run: echo "Enable only after Apple signing and App Store Connect secrets are configured."

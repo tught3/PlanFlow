@@ -50,6 +50,13 @@ class AlarmService {
     String? userId,
     String? briefingText,
   }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      DiagLogger.log(
+        'AlarmService',
+        'scheduleBriefing skipped: Android alarm service unavailable',
+      );
+      return false;
+    }
     if (scheduledAt.isBefore(DateTime.now())) {
       DiagLogger.log(
         'AlarmService',
@@ -91,6 +98,9 @@ class AlarmService {
   }
 
   static Future<bool> ensureInitialized() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return Future<bool>.value(false);
+    }
     _initializeFuture ??= AndroidAlarmManager.initialize();
     return _initializeFuture!;
   }
@@ -115,6 +125,13 @@ class AlarmService {
   }
 
   Future<void> cancelBriefing({required String id}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      DiagLogger.log(
+        'AlarmService',
+        'briefing alarm cancel skipped: Android alarm service unavailable',
+      );
+      return;
+    }
     await AndroidAlarmManager.cancel(_alarmIdFrom(id));
     DiagLogger.log('AlarmService', 'briefing alarm cancelled id=$id');
   }
