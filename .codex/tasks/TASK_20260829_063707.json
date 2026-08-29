@@ -2,7 +2,7 @@
   "task_id": "TASK_20260829_063707",
   "project": "PlanFlow",
   "request": "PlanFlow iOS Phase 2: finish Windows-safe preparation, classify account/cloud-macOS/device boundaries, preserve Android",
-  "status": "integration",
+  "status": "complete",
   "acceptance_scope": "Windows-safe iOS preparation only",
   "implementation_needed": false,
   "current_head": "782f8982d824de390c450dafdf22f4ff02f9b1b2",
@@ -236,5 +236,13 @@
   "next_step": "Terminal integration complete; external macOS/Apple-account/device gates require a separately authorized follow-up.",
   "final_verdict": "COMPLETE",
   "terminal_completion": true,
-  "last_update": "2026-08-29T16:05:00+09:00"
+  "completion": {
+    "commit": "7645cb389ac401cf75de66d02b66c6ce1fb77078",
+    "push": {
+      "status": "success",
+      "remote": "origin",
+      "ref": "task/TASK_20260829_063707"
+    }
+  },
+  "last_update": "2026-08-29T16:12:00+09:00"
 }
