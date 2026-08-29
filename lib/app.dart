@@ -28,6 +28,7 @@ import 'services/activity_tracking_service.dart';
 import 'services/smart_preparation_payload_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
+import 'services/notification_route_contract.dart';
 import 'services/interaction_idle_gate.dart';
 import 'services/oauth_callback_handler.dart';
 import 'services/update_service.dart';
@@ -1238,6 +1239,15 @@ String? resolveHomeWidgetRoute(Uri? uri) {
 
   final query = uri.hasQuery ? '?${uri.query}' : '';
   switch (uri.host) {
+    case 'schedule':
+      final scheduleId = uri.pathSegments.isNotEmpty
+          ? uri.pathSegments.first.trim()
+          : '';
+      return scheduleId.isNotEmpty
+          ? '${AppRoutes.eventDetail}/$scheduleId'
+          : AppRoutes.calendar;
+    case 'day':
+      return NotificationRouteContract.canonicalPath(uri);
     case 'voice-launcher':
       return '${AppRoutes.voice}?autoStart=1';
     case 'voice':
@@ -1286,6 +1296,10 @@ String? resolveHomeWidgetRoute(Uri? uri) {
   }
   if (uri.path == '/calendar') {
     return '${AppRoutes.calendar}$query';
+  }
+  final canonicalPath = NotificationRouteContract.canonicalPath(uri);
+  if (canonicalPath != null) {
+    return canonicalPath;
   }
   return null;
 }

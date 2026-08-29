@@ -541,6 +541,12 @@ void main() {
     ) as List<dynamic>;
     expect(rawEvents.length, 6);
     expect(rawEvents.first['title'], 'Past event');
+    expect(platform.savedValues['widget_schedule_payload_v1'], isA<String>());
+    final canonicalPayload = jsonDecode(
+      platform.savedValues['widget_schedule_payload_v1'] as String,
+    ) as Map<String, dynamic>;
+    expect(canonicalPayload['schemaVersion'], 1);
+    expect(canonicalPayload['events'], isA<List<dynamic>>());
     expect(platform.savedValues['month_offset_-1_cell_6_day'], 30);
     expect(
       platform.savedValues['month_offset_-1_cell_6_event_1_title'],

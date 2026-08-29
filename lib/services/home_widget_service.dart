@@ -14,6 +14,7 @@ import 'synced_public_holiday_visibility.dart';
 import '../screens/calendar/calendar_style_contract.dart';
 import '../screens/calendar/calendar_projection.dart';
 import 'travel_time_buffer_service.dart';
+import 'widget_schedule_contract.dart';
 
 class HomeWidgetNextEventData {
   const HomeWidgetNextEventData({
@@ -1216,6 +1217,17 @@ class HomeWidgetService {
           jsonEncode(rawEvents),
         ) &&
         success;
+    final canonicalWidgetPayload = WidgetSchedulePayload.fromLegacyRawEvents(
+      rawEvents: rawEvents,
+      generatedAt: DateTime.now().toUtc(),
+      dayCounts: _dayCountsForWidget(monthCells),
+      holidays: _holidaysForWidget(monthCells),
+    );
+    success = await _saveValue(
+          'widget_schedule_payload_v1',
+          canonicalWidgetPayload.encode(),
+        ) &&
+        success;
     success = await _saveMonthData(month: month, days: monthDays) && success;
     success = await _saveMonthCalendarData(monthCells) && success;
     success = await _saveMonthCalendarData(
@@ -1285,6 +1297,27 @@ class HomeWidgetService {
 
     return success && refreshed;
   }
+
+  static Map<String, int> _dayCountsForWidget(
+    List<HomeWidgetMonthCellData> cells,
+  ) {
+    final counts = <String, int>{};
+    for (final cell in cells) {
+      final date = cell.date;
+      if (date == null || !cell.inMonth) continue;
+      counts['${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}'] = cell.events.length;
+    }
+    return counts;
+  }
+
+  static List<String> _holidaysForWidget(
+    List<HomeWidgetMonthCellData> cells,
+  ) => cells
+      .where((cell) => cell.inMonth && cell.holidayName != null)
+      .map((cell) => cell.holidayName!)
+      .toList(growable: false);
 
   Future<bool> updateSchedulePayload(
     HomeWidgetSchedulePayload payload, {

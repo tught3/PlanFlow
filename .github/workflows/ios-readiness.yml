@@ -25,6 +25,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: flutter pub get
       - name: Verify native iOS target contract
         shell: bash
         run: |
@@ -36,7 +37,12 @@ jobs:
             echo "::error::iOS workspace is missing. Run CocoaPods/Flutter target setup on macOS.";
             exit 1;
           }
-      - run: flutter pub get
+          test -f ios/Podfile || {
+            echo "::error::CLOUD_MACOS_REQUIRED: Podfile is missing; create it on macOS before CocoaPods/build.";
+            exit 1;
+          }
+      - name: Resolve CocoaPods dependencies
+        run: pod install --project-directory=ios
       - run: flutter analyze
       - run: flutter test
       - run: flutter build ios --no-codesign

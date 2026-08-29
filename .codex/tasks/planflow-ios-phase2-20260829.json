@@ -1,0 +1,63 @@
+{
+  "task_id": "planflow-ios-phase2-20260829",
+  "request_source": "C:/Users/tught/.codex/attachments/d2b88c19-1f8e-4eff-b316-05c8434dd809/pasted-text.txt",
+  "base_commit": "782f8982",
+  "status": "completed_windows_safe",
+  "objective": "Complete Windows/repository-safe PlanFlow iOS preparation while preserving Android production behavior and leaving account, cloud-macOS, and physical-device work explicitly unverified.",
+  "state": {
+    "iosProjectState": "B_PARTIAL_NATIVE_FILES_NO_XCODE_TARGET",
+    "bundleIdState": "PROVISIONAL_COM_PLANFLOW_APP_ACCOUNT_CONFIRMATION_REQUIRED",
+    "widgetKitState": "SOURCE_READY_UNWIRED_XCODE_TARGET",
+    "macOSBuildState": "UNVERIFIED_MACOS",
+    "physicalDeviceState": "UNVERIFIED_DEVICE",
+    "macPurchaseState": "MAC_OPTIONAL",
+    "androidRegressionState": "NOT_PASSED_HANG"
+  },
+  "roles": {
+    "explorer": {
+      "status": "completed", "agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium",
+      "assignment": "Read-only inventory of existing iOS state, Firebase/Auth use, notifications, widgets, and deep links.",
+      "result": "State B: partial iOS files exist, but Xcode project, workspace, Podfile, Firebase plist, entitlement, and WidgetKit target are absent. Android ID com.fluxstudio.planflow and provisional Firebase iOS ID com.planflow.app remain account-gated."
+    },
+    "planner": {
+      "status": "completed", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high",
+      "assignment": "Classify Phase 2 work, file scope, verification gates, and external boundaries.",
+      "result": "Planned additive widget JSON dual-write, canonical routes, WidgetKit/App Group templates, privacy/App Store docs, fail-closed CI, and no bundle-ID, credential, or native-project guesswork."
+    },
+    "implementer": {
+      "status": "completed", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium",
+      "assignment": "Implement repository-safe iOS Phase 2 contracts, scaffolds, docs, tests, and CI guardrails without Android native or credential changes.",
+      "changed_files": [".github/workflows/ios-readiness.yml", "docs/ios/parity-matrix.md", "docs/ios/release-readiness.md", "docs/ios/app-store-metadata.md", "ios/PlanFlowWidget/PlanFlowWidget.swift", "ios/Runner/PlanFlow.entitlements.template", "lib/app.dart", "lib/services/home_widget_service.dart", "lib/services/notification_route_contract.dart", "lib/services/widget_schedule_contract.dart", "test/app_home_widget_route_test.dart", "test/services/home_widget_service_test.dart", "test/services/notification_service_test.dart", "test/ios_phase2_contract_test.dart"],
+      "result": "Added additive widget payload v1 dual-write, schedule/day deep-link routing, source-only WidgetKit/App Group templates marked UNWIRED_XCODE_TARGET, App Store/Firebase/account boundary documentation, and macOS fail-closed CI sequencing."
+    },
+    "test_executor": {
+      "status": "completed", "agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoning_effort": "low",
+      "assignment": "Run focused Flutter/Dart validation and bounded Android regression attempt; do not claim macOS or physical-device evidence.",
+      "evidence": [
+        {"command": "flutter test test/services/notification_service_test.dart test/app_home_widget_route_test.dart test/ios_phase2_contract_test.dart --no-pub", "exit_code": 0, "result": "All tests passed"},
+        {"command": "dart analyze lib/services/widget_schedule_contract.dart lib/services/notification_route_contract.dart test/ios_phase2_contract_test.dart test/services/notification_service_test.dart test/app_home_widget_route_test.dart", "exit_code": 0, "result": "No issues found"},
+        {"command": "git diff --check", "exit_code": 0, "result": "No whitespace errors; only Windows LF/CRLF warnings"},
+        {"command": ".\\gradlew.bat :app:compileDebugKotlin --no-daemon --offline --console=plain --max-workers=1", "cwd": "E:\\FluxStudio\\PlanFlow\\android", "exit_code": "INTERRUPTED_AFTER_BOUNDED_HANG", "started_at": "2026-08-29 (local time; exact timestamp unavailable)", "pid": "unavailable", "last_output": "initial Gradle stage; no subsequent task progress", "result": "NOT_PASSED_HANG; only the executor-owned process was interrupted"}
+      ]
+    },
+    "reviewer": {
+      "status": "completed", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high",
+      "assignment": "Independent final current-diff review for scope, Android preservation, credentials, fake iOS readiness, and test claims.",
+      "host_final": true, "final_report_envelope": "FINAL_REVIEW_REPORT", "verdict": "PASS", "highest_severity": "NONE",
+      "result": "No findings. Legacy Android keys remain while canonical payload v1 is additive; canonical routes and invalid-date rejection are covered; WidgetKit remains explicitly unconnected; no Android, credential, or production changes; macOS and iPhone remain unverified."
+    },
+    "integrator": {
+      "status": "completed", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium",
+      "assignment": "Reinspect final diff, preserve external gates, record role evidence, and pathspec-commit task-owned files only.",
+      "result": "Final current diff inspected. No reviewer BLOCKER/HIGH remains. Windows-safe delivery is complete; full iOS release remains externally gated."
+    }
+  },
+  "allowed_files": [".github/workflows/ios-readiness.yml", "docs/ios/**", "ios/PlanFlowWidget/**", "ios/Runner/*.entitlements.template", "lib/app.dart", "lib/services/home_widget_service.dart", "lib/services/notification_route_contract.dart", "lib/services/widget_schedule_contract.dart", "test/app_home_widget_route_test.dart", "test/services/home_widget_service_test.dart", "test/services/notification_service_test.dart", "test/ios_phase2_contract_test.dart", ".codex/tasks/planflow-ios-phase2-20260829.json"],
+  "forbidden_files": ["android/**", "supabase/**", ".env*", "signing keys/credentials", "Play deployment scripts/config", "unrelated calendar/color/ads behavior"],
+  "external_gates": [
+    "ACCOUNT_ACTION_REQUIRED: confirm the final Apple Developer, Firebase, App Store Connect, OAuth, and App Group identifiers before canonicalizing com.planflow.app or adding GoogleService-Info.plist.",
+    "CLOUD_MACOS_REQUIRED: restore/create the Xcode target, workspace and Podfile; wire the WidgetKit extension/App Group; run pod install and flutter build ios --no-codesign.",
+    "PHYSICAL_IPHONE_REQUIRED: validate permissions, notification scheduling/taps, WidgetKit refresh/deep links, OAuth, maps, ads, TTS, and TestFlight behavior.",
+    "MAC_PURCHASE_REQUIRED: MAC_OPTIONAL; a cloud or rented macOS environment can perform the next build milestone."
+  ]
+}

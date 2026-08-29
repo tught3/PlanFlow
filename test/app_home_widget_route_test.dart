@@ -93,6 +93,18 @@ void main() {
     );
   });
 
+  test('resolveHomeWidgetRoute maps canonical schedule and day routes', () {
+    expect(
+      resolveHomeWidgetRoute(Uri.parse('planflow://schedule/e1')),
+      '${AppRoutes.eventDetail}/e1',
+    );
+    expect(
+      resolveHomeWidgetRoute(Uri.parse('planflow://day/2026-09-03')),
+      '${AppRoutes.calendar}?date=2026-09-03',
+    );
+    expect(resolveHomeWidgetRoute(Uri.parse('planflow://day/2026-99-99')), isNull);
+  });
+
   test(
       'resolveHomeWidgetRoute maps group calendar links, carrying date '
       'through so a widget day-cell tap opens that date (not always today)',

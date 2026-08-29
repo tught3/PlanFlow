@@ -467,8 +467,11 @@ void main() {
       );
 
       expect(source, contains("useStrongAlarm ? criticalAlarmChannelId"));
-      expect(source,
-          contains("useStrongAlarm ? RawResourceAndroidNotificationSound"));
+      expect(
+        RegExp(r'useStrongAlarm\s*\?\s*RawResourceAndroidNotificationSound')
+            .hasMatch(source),
+        isTrue,
+      );
       expect(source, contains('fullScreenIntent: false'));
       expect(source, contains('autoCancel: true'));
       expect(source, contains('category: AndroidNotificationCategory.event'));
