@@ -41,6 +41,25 @@
       "exit_code": 0
     }
   ],
+  "test_executor_evidence": {
+    "targeted_contract_tests": "Phase 2/3/4 contract suite passed (10 tests)",
+    "dart_analysis": "No issues found for test/ios_phase4_identity_contract_test.dart",
+    "macos_fixture_tests": "Defined and skips clearly outside macOS; not executed on Windows"
+  },
+  "reviewer_evidence": {
+    "resolved": [
+      "Protected secret-backed plist injection",
+      "Canonical validator constants without environment overrides",
+      "Strict iOS GOOGLE_APP_ID regex",
+      "Executable macOS fixture coverage",
+      "Exact plist ignore rule"
+    ],
+    "remaining_external_gates": [
+      "macOS/Xcode Runner and WidgetKit compilation",
+      "Firebase account artifact availability",
+      "Apple signing and physical device validation"
+    ]
+  },
   "external_gates": [
     "BLOCKED_FIREBASE_CONFIG until ios/Runner/GoogleService-Info.plist is supplied by Firebase account owner",
     "CLOUD_MACOS_REQUIRED for pod install, Runner compile and WidgetKit compile",
@@ -48,6 +67,8 @@
     "PHYSICAL_IPHONE_REQUIRED for device QA"
   ],
   "status": "implementation_complete_external_validation_pending",
-  "commit": "40fed399",
+  "implementation_commit": "40fed399",
+  "final_metadata_commit": "d8e9db1d",
+  "commit": "d8e9db1d (current HEAD before this metadata update)",
   "push": false
 }

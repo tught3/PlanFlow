@@ -16,6 +16,8 @@ android/key.properties
 android/app/planflow-release.jks
 android/signing/
 secrets/
+# Firebase iOS config is account-owned and must never be committed.
+/ios/Runner/GoogleService-Info.plist
 # Google OAuth client secret JSON (절대 커밋 금지)
 client_secret_*.json
 client_secret*.apps.googleusercontent.com.json
