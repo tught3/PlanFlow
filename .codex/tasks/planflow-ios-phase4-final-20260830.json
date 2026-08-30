@@ -1,0 +1,86 @@
+{
+  "task_id": "planflow-ios-phase4-final-20260830",
+  "request_source": "C:/Users/tught/.codex/attachments/c940fe6d-4406-49d8-93bf-a627adade69e/pasted-text.txt",
+  "status": "pending_independent_review_and_external_validation",
+  "classification": "complex",
+  "objective": "Apply the user-confirmed Apple/Firebase identity consistently to PlanFlow iOS source and its cloud macOS readiness workflow without committing secrets or claiming unavailable macOS/device proof.",
+  "canonical_identity": {
+    "runner_bundle_id": "com.fluxstudio.planflow",
+    "widget_bundle_id": "com.fluxstudio.planflow.PlanFlowWidget",
+    "app_group": "group.com.fluxstudio.planflow",
+    "firebase_project": "planflow-27fd8",
+    "url_scheme": "planflow://"
+  },
+  "scope": {
+    "allowed": [".github/workflows/ios-readiness.yml", "docs/ios/**", "ios/Flutter/PlanFlow-Identity.xcconfig", "lib/firebase_options.dart", "lib/services/home_widget_service.dart", "scripts/verify-ios-firebase-config.sh", "scripts/test-verify-ios-firebase-config.sh", "test/ios_phase*_contract_test.dart", "test/services/home_widget_service_test.dart", ".codex/tasks/planflow-ios-phase4-final-20260830.json"],
+    "forbidden": ["android/**", "supabase/**", ".env*", "ios/Runner/GoogleService-Info.plist", "Play configuration", "app version files"]
+  },
+  "roles": {
+    "explorer": {
+      "agent": "ios_phase4_final_explorer_retry",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "pending_final_report",
+      "assignment": "Read-only inventory of canonical identity drift and external iOS build gates."
+    },
+    "planner": {
+      "agent": "ios_phase4_final_planner",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "completed_with_stale_identity_rejected",
+      "result": "The returned plan retained provisional com.planflow.app values and was not used as authority. The user-supplied Final plan and current source inventory supplied the canonical com.fluxstudio.planflow identity."
+    },
+    "complex_implementer": {
+      "agent": "ios_phase4_final_implementer",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "commits": ["4030ecc3", "2f423e87"],
+      "result": "Migrated source, validator fixtures, contracts, CI/docs and widget App Group fallback to the user-confirmed iOS identity while keeping the local Firebase plist ignored."
+    },
+    "test_executor": {
+      "agent": "ios_phase4_final_test_executor",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "status": "completed_with_windows_external_gap",
+      "evidence": [
+        {"command": "dart format --set-exit-if-changed targeted iOS contract tests", "exit_code": 0},
+        {"command": "dart analyze targeted iOS contract tests", "exit_code": 0},
+        {"command": "flutter test targeted iOS phase2/phase3/phase4/release/widget tests --no-pub", "exit_code": 0},
+        {"command": "git diff --check", "exit_code": 0}
+      ],
+      "external_gap": "Windows has no functional bash, CocoaPods, xcodebuild or iOS build support; these outcomes are not counted as passes."
+    },
+    "reviewer": {
+      "agent": "ios_phase4_final_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "pending_host_final",
+      "assignment": "Independent final-current-diff review with a single FINAL_REVIEW_REPORT envelope."
+    },
+    "integrator": {
+      "agent": "ios_phase4_final_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "status": "commit_created_pending_reviewer",
+      "assignment": "Reconcile scope, evidence and review without treating source readiness as macOS/device validation."
+    }
+  },
+  "verification": {
+    "source_contracts": "PASS on Windows after latest contract alignment",
+    "targeted_dart_analysis": "PASS on Windows",
+    "diff_check": "PASS on Windows",
+    "android_scope": "UNCHANGED",
+    "supabase_scope": "UNCHANGED",
+    "local_plist": "present locally but ignored and never staged; metadata was checked without emitting contents"
+  },
+  "external_gates": [
+    "Run the secret-injected Firebase validator on macOS/GitHub Actions.",
+    "Run pod install, unsigned Runner build and explicit WidgetKit target build on macOS/Xcode.",
+    "Confirm Apple App IDs and App Group linkage/signing in the developer account.",
+    "Run physical iPhone validation for runner, WidgetKit, links, notifications, maps, OAuth and ads."
+  ],
+  "push": false,
+  "deploy": false,
+  "final_status": "pending_independent_review_and_external_validation"
+}

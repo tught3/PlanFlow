@@ -53,6 +53,14 @@ jobs:
             echo "::error::Canonical iOS identity config is missing.";
             exit 1;
           }
+          grep -q 'PLANFLOW_IOS_BUNDLE_ID = com.fluxstudio.planflow' ios/Flutter/PlanFlow-Identity.xcconfig || {
+            echo "::error::IOS_BUNDLE_ID_DRIFT: expected com.fluxstudio.planflow.";
+            exit 1;
+          }
+          grep -q 'PLANFLOW_IOS_APP_GROUP = group.com.fluxstudio.planflow' ios/Flutter/PlanFlow-Identity.xcconfig || {
+            echo "::error::APP_GROUP_DRIFT: expected group.com.fluxstudio.planflow.";
+            exit 1;
+          }
           grep -q 'PLANFLOW_IOS_APP_GROUP' ios/PlanFlowWidget/Info.plist || {
             echo "::error::Widget App Group config is missing.";
             exit 1;

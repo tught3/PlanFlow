@@ -60,7 +60,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBSo9j4CUdLPAbyGZRDBtNDA5MnrbH6k5E',
-    appId: '1:375219078541:ios:61e74d58dd9d6d884729c4',
+    appId: '1:375219078541:ios:002fcd7bbf256c9e4729c4',
     messagingSenderId: '375219078541',
     projectId: 'planflow-27fd8',
     storageBucket: 'planflow-27fd8.firebasestorage.app',
@@ -69,7 +69,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyBSo9j4CUdLPAbyGZRDBtNDA5MnrbH6k5E',
-    appId: '1:375219078541:ios:61e74d58dd9d6d884729c4',
+    appId: '1:375219078541:ios:002fcd7bbf256c9e4729c4',
     messagingSenderId: '375219078541',
     projectId: 'planflow-27fd8',
     storageBucket: 'planflow-27fd8.firebasestorage.app',

@@ -30,7 +30,7 @@ void main() {
     expect(docs, contains('macOS 및 Apple 계정이 필요한 게이트'));
     expect(docs, contains('LIVE VALIDATED'));
     expect(docs, contains('Runner.xcodeproj'));
-    expect(docs, contains('자동으로 합치거나 Firebase plist를 추정하지 않는다'));
+    expect(docs, contains('Firebase plist는 저장소에 포함하지 않고'));
   });
 
   test('macOS workflow fails closed when the native target is missing', () {
