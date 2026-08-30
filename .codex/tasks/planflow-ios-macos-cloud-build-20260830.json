@@ -1,0 +1,36 @@
+{
+  "task_id": "planflow-ios-macos-cloud-build-20260830",
+  "request_source": "user",
+  "status": "workflow_retry2_in_progress",
+  "classification": "complex",
+  "objective": "Push clean HEAD c3785f62 without force and execute the macOS iOS readiness workflow through Firebase validation, CocoaPods, Runner compile, WidgetKit compile and flutter build ios --no-codesign without changing Android production.",
+  "branch": "main",
+  "head_sha": "90589afb075824d7ee35d47eb79c1e5559246591",
+  "remote": "origin/main",
+  "push": {
+    "method": "non_force_fast_forward",
+    "status": "success",
+    "remote_sha": "90589afb075824d7ee35d47eb79c1e5559246591"
+  },
+  "workflow": {
+    "file": ".github/workflows/ios-readiness.yml",
+    "run_id": 33310404483,
+    "url": "https://github.com/tught3/PlanFlow/actions/runs/33310404483",
+    "head_sha": "90589afb075824d7ee35d47eb79c1e5559246591",
+    "status": "queued"
+  },
+  "firebase_secret": "present_by_name_only",
+  "roles": {
+    "explorer": {"agent": "ios_push_actions_explorer", "model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "completed", "result": "Current main was clean at c3785f62; origin/main was an ancestor; workflow is workflow_dispatch-only and requires the protected Firebase plist secret."},
+    "planner": {"agent": "ios_push_actions_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed", "result": "Defined non-force push, authenticated dispatch, macOS gate observation, safe remediation boundaries, and fail-closed PASS criteria."},
+    "implementer": {"agent": "ios_pod_target_fix", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "status": "completed", "commit": "90589afb", "result": "Raised iOS Podfile and Runner deployment targets to 15.0 for Flutter stable 3.47/Firebase/Maps compatibility; Widget target aligned to 15.0."},
+    "test_executor": {"agent": "ios_push_actions_test_executor", "model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "running"},
+    "reviewer": {"agent": "ios_push_actions_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "pending"},
+    "integrator": {"agent": "ios_push_actions_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "pending"}
+  },
+  "android_production": "preserve_unchanged",
+  "ios_unsigned_build": "pending",
+  "widget_extension_build": "pending",
+  "remediation_attempts": 2,
+  "completion_gate": "Only a successful run for this exact SHA with Firebase validation, pod install, Runner unsigned compile, flutter build ios --no-codesign and WidgetKit compile may set IOS_UNSIGNED_BUILD_PASS and WIDGET_EXTENSION_BUILD_PASS."
+}
