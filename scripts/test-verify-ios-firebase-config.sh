@@ -40,13 +40,13 @@ expect_exit() {
 expect_exit 12 "$tmp_dir/missing.plist"
 printf '%s\n' 'not a plist' > "$tmp_dir/malformed.plist"
 expect_exit 12 "$tmp_dir/malformed.plist"
-write_plist "$tmp_dir/project.plist" wrong-project com.planflow.app 1:375219078541:ios:abc123
+write_plist "$tmp_dir/project.plist" wrong-project com.fluxstudio.planflow 1:375219078541:ios:abc123
 expect_exit 12 "$tmp_dir/project.plist"
 write_plist "$tmp_dir/bundle.plist" planflow-27fd8 com.other.app 1:375219078541:ios:abc123
 expect_exit 12 "$tmp_dir/bundle.plist"
-write_plist "$tmp_dir/app-id.plist" planflow-27fd8 com.planflow.app 1:375219078541:android:abc123
+write_plist "$tmp_dir/app-id.plist" planflow-27fd8 com.fluxstudio.planflow 1:375219078541:android:abc123
 expect_exit 12 "$tmp_dir/app-id.plist"
-write_plist "$tmp_dir/valid.plist" planflow-27fd8 com.planflow.app 1:375219078541:ios:abc123
+write_plist "$tmp_dir/valid.plist" planflow-27fd8 com.fluxstudio.planflow 1:375219078541:ios:abc123
 expect_exit 0 "$tmp_dir/valid.plist"
 
 echo "Firebase plist fixture tests passed"

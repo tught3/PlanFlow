@@ -960,10 +960,10 @@ class HomeWidgetService {
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
 
   /// Provisional source default shared with the WidgetKit target. Override it
-  /// with --dart-define after Apple Developer confirms the App Group.
+  /// with --dart-define when a deployment uses a different App Group.
   static const String _provisionalIOSAppGroupId = String.fromEnvironment(
     'PLANFLOW_IOS_APP_GROUP',
-    defaultValue: 'group.com.planflow.app',
+    defaultValue: 'group.com.fluxstudio.planflow',
   );
   static const String hideWeekendsKey = 'widget_hide_weekends';
   static const String _localHideWeekendsKey =

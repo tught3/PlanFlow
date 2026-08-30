@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           test -f ios/Runner.xcodeproj/project.pbxproj || {
-            echo "::error::iOS Xcode target is not committed yet. Configure the Apple bundle ID on macOS before enabling this build.";
+            echo "::error::iOS Xcode target is not committed or cannot be validated on this runner.";
             exit 1;
           }
           test -f ios/Runner.xcworkspace/contents.xcworkspacedata || {
@@ -50,7 +50,7 @@ jobs:
             exit 1;
           }
           grep -q 'PLANFLOW_IOS_BUNDLE_ID' ios/Flutter/PlanFlow-Identity.xcconfig || {
-            echo "::error::Provisional iOS identity config is missing.";
+            echo "::error::Canonical iOS identity config is missing.";
             exit 1;
           }
           grep -q 'PLANFLOW_IOS_APP_GROUP' ios/PlanFlowWidget/Info.plist || {

@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '375219078541',
     projectId: 'planflow-27fd8',
     storageBucket: 'planflow-27fd8.firebasestorage.app',
-    iosBundleId: 'com.planflow.app',
+    iosBundleId: 'com.fluxstudio.planflow',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '375219078541',
     projectId: 'planflow-27fd8',
     storageBucket: 'planflow-27fd8.firebasestorage.app',
-    iosBundleId: 'com.planflow.app',
+    iosBundleId: 'com.fluxstudio.planflow',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

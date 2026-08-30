@@ -5,7 +5,7 @@ set -euo pipefail
 # Exit 12 is reserved for the actionable account/configuration blocker.
 plist_path="${FIREBASE_PLIST_PATH:-ios/Runner/GoogleService-Info.plist}"
 expected_project="planflow-27fd8"
-expected_bundle="com.planflow.app"
+expected_bundle="com.fluxstudio.planflow"
 
 blocked() {
   echo "::error::BLOCKED_FIREBASE_CONFIG: $1" >&2

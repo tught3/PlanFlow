@@ -8,9 +8,9 @@ void main() {
 
   test('canonical iOS identity is consistent across native and Dart config',
       () {
-    const runnerBundle = 'com.planflow.app';
+    const runnerBundle = 'com.fluxstudio.planflow';
     const widgetBundle = '$runnerBundle.PlanFlowWidget';
-    const appGroup = 'group.com.planflow.app';
+    const appGroup = 'group.com.fluxstudio.planflow';
 
     final identity =
         file('ios/Flutter/PlanFlow-Identity.xcconfig').readAsStringSync();
@@ -53,7 +53,7 @@ void main() {
     expect(script, contains('plutil -lint'));
     expect(script, contains(r'^1:[0-9]+:ios:[A-Za-z0-9_-]+$'));
     expect(script, contains('expected_project="planflow-27fd8"'));
-    expect(script, contains('expected_bundle="com.planflow.app"'));
+    expect(script, contains('expected_bundle="com.fluxstudio.planflow"'));
     expect(script, isNot(contains('PLANFLOW_FIREBASE_PROJECT_ID')));
     expect(script, isNot(contains('PLANFLOW_IOS_BUNDLE_ID')));
     expect(script, isNot(contains('AIza')));
