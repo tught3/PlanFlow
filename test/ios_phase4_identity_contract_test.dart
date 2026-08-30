@@ -51,7 +51,19 @@ void main() {
     expect(script, contains('BUNDLE_ID'));
     expect(script, contains('GOOGLE_APP_ID'));
     expect(script, contains('plutil -lint'));
+    expect(script, contains(r'^1:[0-9]+:ios:[A-Za-z0-9_-]+$'));
+    expect(script, contains('expected_project="planflow-27fd8"'));
+    expect(script, contains('expected_bundle="com.planflow.app"'));
+    expect(script, isNot(contains('PLANFLOW_FIREBASE_PROJECT_ID')));
+    expect(script, isNot(contains('PLANFLOW_IOS_BUNDLE_ID')));
     expect(script, isNot(contains('AIza')));
     expect(file('ios/Runner/GoogleService-Info.plist').existsSync(), isFalse);
+    final fixtures =
+        file('scripts/test-verify-ios-firebase-config.sh').readAsStringSync();
+    expect(fixtures,
+        contains('SKIP: Firebase plist fixture tests require macOS plutil'));
+    expect(fixtures, contains('missing.plist'));
+    expect(fixtures, contains('malformed.plist'));
+    expect(fixtures, contains('valid.plist'));
   });
 }

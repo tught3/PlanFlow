@@ -57,10 +57,22 @@ jobs:
             echo "::error::Widget App Group config is missing.";
             exit 1;
           }
+      - name: Inject Firebase iOS plist from protected secret
+        env:
+          PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [ -z "$PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+            echo "::error::BLOCKED_FIREBASE_CONFIG: configure PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 repository secret."
+            exit 12
+          fi
+          umask 077
+          printf '%s' "$PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
+      - name: Verify Firebase iOS artifact
+        run: |
+          bash scripts/test-verify-ios-firebase-config.sh
+          bash scripts/verify-ios-firebase-config.sh
       - name: Resolve CocoaPods dependencies
         run: pod install --project-directory=ios
-      - name: Verify Firebase iOS artifact
-        run: bash scripts/verify-ios-firebase-config.sh
       - run: flutter analyze
       - run: flutter test
       - name: Build Runner target (unsigned)

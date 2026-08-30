@@ -23,7 +23,8 @@
     },
     "firebase": "Added macOS plutil validation for presence, XML format, PROJECT_ID, BUNDLE_ID and iOS GOOGLE_APP_ID. Missing or mismatched artifacts fail closed with BLOCKED_FIREBASE_CONFIG (exit 12) and no secret values are printed.",
     "workflow": "Added Firebase artifact gate and unsigned Runner xcodebuild alongside existing WidgetKit and Flutter build gates.",
-    "account_actions": "Documented minimal Firebase and Apple Developer setup without adding credentials or capabilities by guesswork."
+    "account_actions": "Documented minimal Firebase and Apple Developer setup without adding credentials or capabilities by guesswork.",
+    "reviewer_resolution": "Added protected GitHub secret injection, fixed validator expectations to canonical constants, tightened iOS GOOGLE_APP_ID regex, and added macOS executable fixtures for missing/malformed/project/bundle/app-id/valid cases."
   },
   "tests": [
     {
@@ -47,6 +48,6 @@
     "PHYSICAL_IPHONE_REQUIRED for device QA"
   ],
   "status": "implementation_complete_external_validation_pending",
-  "commit": null,
+  "commit": "3844cc7d (baseline Phase4 commit; follow-up hardening commit recorded after implementation)",
   "push": false
 }

@@ -17,6 +17,11 @@
 3. `GoogleService-Info.plist`를 다운로드한다.
 4. 파일을 `ios/Runner/GoogleService-Info.plist`에 둔다. 기존 Android 설정이나 Dart 옵션을 덮어쓰지 않는다.
 
+CI를 사용할 때는 plist 내용을 직접 커밋하지 말고, 로컬에서 base64로 인코딩한 값을
+GitHub Actions repository secret `PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64`에
+저장한다. 워크플로가 실행 중 `ios/Runner/GoogleService-Info.plist`를 임시 생성하며,
+검증 오류와 빌드 로그에는 plist 내용이나 API 키를 출력하지 않는다.
+
 CI의 `scripts/verify-ios-firebase-config.sh`가 plist XML 형식, 프로젝트, Bundle ID,
 iOS App ID 형식을 검사한다. 불일치하거나 파일이 없으면 `BLOCKED_FIREBASE_CONFIG`로
 실패하며 키와 전체 plist 내용은 로그에 출력하지 않는다. 실제 plist는 Git에 커밋하지 않는다.
