@@ -69,6 +69,7 @@
   "status": "implementation_complete_external_validation_pending",
   "implementation_commit": "40fed399",
   "final_metadata_commit": "d8e9db1d",
-  "commit": "d8e9db1d (current HEAD before this metadata update)",
+  "current_head_after_ignore_rule": "8f4c4153",
+  "commit": "8f4c4153 (latest implementation state before this record-only update)",
   "push": false
 }
