@@ -1,7 +1,7 @@
 {
   "task_id": "planflow-ios-phase4-final-20260830",
   "request_source": "C:/Users/tught/.codex/attachments/c940fe6d-4406-49d8-93bf-a627adade69e/pasted-text.txt",
-  "status": "pending_independent_review_and_external_validation",
+  "status": "blocked_external_validation",
   "classification": "complex",
   "objective": "Apply the user-confirmed Apple/Firebase identity consistently to PlanFlow iOS source and its cloud macOS readiness workflow without committing secrets or claiming unavailable macOS/device proof.",
   "canonical_identity": {
@@ -17,11 +17,13 @@
   },
   "roles": {
     "explorer": {
-      "agent": "ios_phase4_final_explorer_retry",
+      "agent": "ios_phase4_final_explorer_minimal",
       "model": "gpt-5.4-mini",
       "reasoning_effort": "medium",
-      "status": "pending_final_report",
-      "assignment": "Read-only inventory of canonical identity drift and external iOS build gates."
+      "status": "completed_bounded_inventory",
+      "assignment": "Read-only final inventory of canonical identity, ignored plist protection, scope and macOS/device gates.",
+      "prior_invocations": ["ios_phase4_final_explorer (interrupted)", "ios_phase4_final_explorer_retry (interrupted)"],
+      "result": "Confirmed iOS validator, identity contract tests, release documents, plist ignore boundary and Android surface inventory. Root-level verification separately confirmed canonical IDs, ignored plist metadata match, and no Android/Supabase changes. macOS/Xcode/device proof remains external and unavailable on Windows."
     },
     "planner": {
       "agent": "ios_phase4_final_planner",
@@ -52,11 +54,33 @@
       "external_gap": "Windows has no functional bash, CocoaPods, xcodebuild or iOS build support; these outcomes are not counted as passes."
     },
     "reviewer": {
-      "agent": "ios_phase4_final_reviewer",
+      "agent": "ios_phase4_final_reviewer_final",
       "model": "gpt-5.6-luna",
       "reasoning_effort": "high",
-      "status": "pending_host_final",
-      "assignment": "Independent final-current-diff review with a single FINAL_REVIEW_REPORT envelope."
+      "status": "completed_non_accepting_blocker_external",
+      "assignment": "Independent final-current-diff review with a single FINAL_REVIEW_REPORT envelope.",
+      "prior_review": {
+        "agent": "ios_phase4_final_reviewer",
+        "host_final": true,
+        "final_review_report_count": 1,
+        "verdict": "FINDINGS",
+        "highest_severity": "BLOCKER",
+        "resolved_by_07595480": "The local plist iOS GOOGLE_APP_ID and iOS/macOS Firebase options were safely synchronized without exposing or tracking the plist."
+      },
+      "rework_review": {
+        "host_final": true,
+        "final_review_report_count": 1,
+        "verdict": "FINDINGS",
+        "highest_severity": "HIGH",
+        "finding": "Named Explorer final evidence is missing. The separate external blocker remains macOS/Xcode/CocoaPods and physical-iPhone validation."
+      },
+      "final_consistency_review": {
+        "host_final": true,
+        "final_review_report_count": 1,
+        "verdict": "FINDINGS",
+        "highest_severity": "BLOCKER",
+        "finding": "macOS/Xcode/CocoaPods, cloud build and physical iPhone validation are unavailable on Windows; no source blocker remains."
+      }
     },
     "integrator": {
       "agent": "ios_phase4_final_integrator",
@@ -82,5 +106,5 @@
   ],
   "push": false,
   "deploy": false,
-  "final_status": "pending_independent_review_and_external_validation"
+    "final_status": "blocked_external_validation"
 }
