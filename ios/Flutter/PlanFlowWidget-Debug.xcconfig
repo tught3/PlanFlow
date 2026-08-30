@@ -1,0 +1,3 @@
+// WidgetKit-only configuration. Do not include Generated.xcconfig or Flutter
+// framework linker flags: this target is a native extension.
+#include "PlanFlow-Identity.xcconfig"
