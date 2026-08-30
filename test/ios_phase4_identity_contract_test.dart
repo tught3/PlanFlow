@@ -38,7 +38,16 @@ void main() {
     expect(widgetInfo, contains(r'$(PLANFLOW_IOS_APP_GROUP)'));
     expect(runnerEntitlements, contains(r'$(PLANFLOW_IOS_APP_GROUP)'));
     expect(widgetEntitlements, contains(r'$(PLANFLOW_IOS_APP_GROUP)'));
-    expect(file('ios/Runner/GoogleService-Info.plist').existsSync(), isFalse);
+    final firebasePlist = file('ios/Runner/GoogleService-Info.plist');
+    if (firebasePlist.existsSync()) {
+      final ignored = Process.runSync(
+        'git',
+        ['check-ignore', '-q', firebasePlist.path],
+        workingDirectory: root.path,
+      );
+      expect(ignored.exitCode, 0,
+          reason: 'Firebase plist must remain ignored and untracked');
+    }
     expect(widgetBundle, endsWith('.PlanFlowWidget'));
   });
 
@@ -57,7 +66,16 @@ void main() {
     expect(script, isNot(contains('PLANFLOW_FIREBASE_PROJECT_ID')));
     expect(script, isNot(contains('PLANFLOW_IOS_BUNDLE_ID')));
     expect(script, isNot(contains('AIza')));
-    expect(file('ios/Runner/GoogleService-Info.plist').existsSync(), isFalse);
+    final firebasePlist = file('ios/Runner/GoogleService-Info.plist');
+    if (firebasePlist.existsSync()) {
+      final ignored = Process.runSync(
+        'git',
+        ['check-ignore', '-q', firebasePlist.path],
+        workingDirectory: root.path,
+      );
+      expect(ignored.exitCode, 0,
+          reason: 'Firebase plist must remain ignored and untracked');
+    }
     final fixtures =
         file('scripts/test-verify-ios-firebase-config.sh').readAsStringSync();
     expect(fixtures,

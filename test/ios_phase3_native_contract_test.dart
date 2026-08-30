@@ -19,7 +19,8 @@ void main() {
         text,
         contains(
             r'PLANFLOW_IOS_WIDGET_BUNDLE_ID = $(PLANFLOW_IOS_BUNDLE_ID).PlanFlowWidget'));
-    expect(text, contains('PLANFLOW_IOS_APP_GROUP = group.com.fluxstudio.planflow'));
+    expect(text,
+        contains('PLANFLOW_IOS_APP_GROUP = group.com.fluxstudio.planflow'));
     final homeWidget =
         file('lib/services/home_widget_service.dart').readAsStringSync();
     expect(homeWidget, contains('PLANFLOW_IOS_APP_GROUP'));
@@ -44,7 +45,16 @@ void main() {
         contains(
             'CODE_SIGN_ENTITLEMENTS = PlanFlowWidget/PlanFlowWidget.entitlements'));
     expect(project, contains('targetProxy = A31F00000000000000000061'));
-    expect(file('ios/Runner/GoogleService-Info.plist').existsSync(), isFalse);
+    final firebasePlist = file('ios/Runner/GoogleService-Info.plist');
+    if (firebasePlist.existsSync()) {
+      final ignored = Process.runSync(
+        'git',
+        ['check-ignore', '-q', firebasePlist.path],
+        workingDirectory: root.path,
+      );
+      expect(ignored.exitCode, 0,
+          reason: 'Firebase plist must remain ignored and untracked');
+    }
   });
 
   test('WidgetKit source supports canonical payload, fallback and routes', () {
