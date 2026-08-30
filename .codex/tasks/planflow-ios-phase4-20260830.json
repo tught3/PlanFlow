@@ -48,6 +48,6 @@
     "PHYSICAL_IPHONE_REQUIRED for device QA"
   ],
   "status": "implementation_complete_external_validation_pending",
-  "commit": "3844cc7d (baseline Phase4 commit; follow-up hardening commit recorded after implementation)",
+  "commit": "40fed399",
   "push": false
 }
