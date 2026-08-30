@@ -81,3 +81,5 @@ ios/Flutter/ephemeral/
 
 # Claude Code 개인 로컬 설정(권한 등) — 팀 공유 금지
 .claude/settings.local.json
+# Local Apple App Store Connect private keys must never be committed.
+AuthKey_*.p8

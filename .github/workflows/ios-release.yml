@@ -78,11 +78,6 @@ jobs:
           widget_profile="$RUNNER_TEMP/planflow-widget.mobileprovision"
           runner_plist=""
           widget_plist=""
-          cleanup() {
-            security delete-keychain "$keychain" >/dev/null 2>&1 || true
-            rm -f "$cert" "$runner_profile" "$widget_profile" "$runner_plist" "$widget_plist" "$RUNNER_TEMP/export-options.plist" "$RUNNER_TEMP/asc-api-key.p8"
-          }
-          trap cleanup EXIT
           umask 077
           printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$cert"
           printf '%s' "$RUNNER_PROFILE_BASE64" | base64 --decode > "$runner_profile"
@@ -134,6 +129,7 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             PLANFLOW_RUNNER_PROFILE_UUID="$PLANFLOW_RUNNER_PROFILE_UUID" \
             PLANFLOW_WIDGET_PROFILE_UUID="$PLANFLOW_WIDGET_PROFILE_UUID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             CODE_SIGN_STYLE=Manual \
             | tee "$RUNNER_TEMP/xcodebuild-archive.log"
           test -d "$RUNNER_TEMP/PlanFlow.xcarchive/Products/Applications/Runner.app"
@@ -161,7 +157,9 @@ jobs:
           api_key="$RUNNER_TEMP/asc-api-key.p8"
           umask 077
           printf '%s' "$ASC_API_KEY_P8" > "$api_key"
-          trap 'rm -f "$api_key"' EXIT
+          asc_key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$asc_key_dir"
+          cp "$api_key" "$asc_key_dir/AuthKey_${ASC_KEY_ID}.p8"
           xcrun altool --upload-app -f "$RUNNER_TEMP/exported/Runner.ipa" -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
           echo "TestFlight gate: upload accepted by App Store Connect."
@@ -173,6 +171,7 @@ jobs:
           set +e
           rm -f ios/Runner/GoogleService-Info.plist
           rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist
+          rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true
           echo "Secret cleanup gate executed."
