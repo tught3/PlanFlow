@@ -1,75 +1,25 @@
 {
   "task_id": "planflow-ios-phase4-20260830",
   "phase": "Phase 4",
-  "role": "complex_implementer",
-  "agent": "ios_phase4_implementer",
-  "mapped_model": "gpt-5.6-terra",
-  "reasoning_effort": "high",
-  "assignment": "Canonical iOS identity checks, Firebase plist fail-closed validation, Apple account-action documentation, and macOS Runner/WidgetKit build gates.",
-  "changed_files": [
-    ".github/workflows/ios-readiness.yml",
-    "docs/ios/apple-firebase-account-actions.md",
-    "docs/ios/release-readiness.md",
-    "scripts/verify-ios-firebase-config.sh",
-    "test/ios_phase4_identity_contract_test.dart"
-  ],
-  "implementation": {
-    "canonical_identity": {
-      "firebase_project": "planflow-27fd8",
-      "runner_bundle_id": "com.planflow.app",
-      "widget_bundle_id": "com.planflow.app.PlanFlowWidget",
-      "app_group": "group.com.planflow.app",
-      "url_scheme": "planflow"
-    },
-    "firebase": "Added macOS plutil validation for presence, XML format, PROJECT_ID, BUNDLE_ID and iOS GOOGLE_APP_ID. Missing or mismatched artifacts fail closed with BLOCKED_FIREBASE_CONFIG (exit 12) and no secret values are printed.",
-    "workflow": "Added Firebase artifact gate and unsigned Runner xcodebuild alongside existing WidgetKit and Flutter build gates.",
-    "account_actions": "Documented minimal Firebase and Apple Developer setup without adding credentials or capabilities by guesswork.",
-    "reviewer_resolution": "Added protected GitHub secret injection, fixed validator expectations to canonical constants, tightened iOS GOOGLE_APP_ID regex, and added macOS executable fixtures for missing/malformed/project/bundle/app-id/valid cases."
+  "objective": "Connect the iOS source build gates to canonical Apple/Firebase identity contracts and prepare a fail-closed cloud-macOS validation path without claiming account, signing, or device proof.",
+  "classification": "complex",
+  "scope": {
+    "allowed": [".github/workflows/ios-readiness.yml", "docs/ios/apple-firebase-account-actions.md", "docs/ios/release-readiness.md", "scripts/verify-ios-firebase-config.sh", "scripts/test-verify-ios-firebase-config.sh", "test/ios_phase4_identity_contract_test.dart", ".gitignore", ".codex/tasks/planflow-ios-phase4-20260830.json"],
+    "forbidden": ["android/**", "Supabase schema or data", "credentials and .env files", "ios/Runner/GoogleService-Info.plist", "Play deployment configuration"]
   },
-  "tests": [
-    {
-      "command": "dart analyze test/ios_phase4_identity_contract_test.dart",
-      "exit_code": 0
-    },
-    {
-      "command": "flutter test test/ios_phase4_identity_contract_test.dart test/ios_phase3_native_contract_test.dart test/ios_phase2_contract_test.dart --no-pub",
-      "exit_code": 0,
-      "result": "10 tests passed"
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0
-    }
+  "roles": [
+    {"role": "Explorer", "agent": "ios_phase4_explorer", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "medium", "status": "interrupted_then_bounded_inventory_completed_by_root", "result": "The original Explorer invocation was interrupted. Root completed a bounded read-only inventory of the Phase 3 source, identity constants, CI workflow, existing task evidence, and account-dependent gaps; no Explorer result is represented as a completed independent report."},
+    {"role": "Planner", "agent": "ios_phase4_planner", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed", "result": "Classified the work as Complex: source-only canonical identity and Firebase validation, guarded macOS build workflow, account-action documentation, focused contracts, and explicit external validation gates."},
+    {"role": "Complex Implementer", "agent": "ios_phase4_implementer", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "completed", "commits": ["3844cc7d feat(ios): add phase four account and build gates", "40fed399 fix(ios): harden firebase config validation", "8f4c4153 chore(ios): protect firebase plist artifact", "8585fb93 chore(ios): finalize phase four evidence"], "changed_files": [".github/workflows/ios-readiness.yml", "docs/ios/apple-firebase-account-actions.md", "docs/ios/release-readiness.md", "scripts/verify-ios-firebase-config.sh", "scripts/test-verify-ios-firebase-config.sh", "test/ios_phase4_identity_contract_test.dart", ".gitignore"], "result": "Added canonical identity checks, fail-closed Firebase plist validation, protected CI secret injection, unsigned Runner/WidgetKit macOS build gates, and no-secret account-action guidance."},
+    {"role": "Test Executor", "agent": "ios_phase4_test_executor", "mapped_model": "gpt-5.4-mini", "reasoning_effort": "low", "status": "completed_with_external_gap", "evidence": [{"command": "dart analyze test/ios_phase4_identity_contract_test.dart", "exit_code": 0, "result": "No issues found"}, {"command": "flutter test test/ios_phase4_identity_contract_test.dart test/ios_phase3_native_contract_test.dart test/ios_phase2_contract_test.dart --no-pub", "exit_code": 0, "result": "10 tests passed"}, {"command": "git diff --check", "exit_code": 0}], "gap": "macOS-only Firebase fixture script, pod install, Runner/WidgetKit xcodebuild, signing, and physical-iPhone validation cannot execute on this Windows host."},
+    {"role": "Reviewer", "agent": "ios_phase4_reviewer", "mapped_model": "gpt-5.6-luna", "reasoning_effort": "high", "status": "completed_non_accepting_external_validation", "host_final": true, "final_review_report": {"envelope": "FINAL_REVIEW_REPORT", "verdict": "FINDINGS", "highest_severity": "HIGH", "resolved_source_findings": ["Protected secret-backed plist injection", "Canonical validator constants without environment overrides", "Strict iOS GOOGLE_APP_ID regex", "Executable macOS fixture coverage", "Exact plist ignore rule"], "remaining_high": "No macOS/Xcode Runner and WidgetKit compilation, real Firebase plist, Apple signing, or physical-device proof exists. This is an external validation gap, not a source claim of success."}},
+    {"role": "Integrator", "agent": "ios_phase4_integrator", "mapped_model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "completed_blocked_external_validation", "result": "Reconciled the final current source diff, all scoped commits, targeted test evidence, reviewer resolution, and forbidden-scope checks. No push or deployment was performed."}
   ],
-  "test_executor_evidence": {
-    "targeted_contract_tests": "Phase 2/3/4 contract suite passed (10 tests)",
-    "dart_analysis": "No issues found for test/ios_phase4_identity_contract_test.dart",
-    "macos_fixture_tests": "Defined and skips clearly outside macOS; not executed on Windows"
-  },
-  "reviewer_evidence": {
-    "resolved": [
-      "Protected secret-backed plist injection",
-      "Canonical validator constants without environment overrides",
-      "Strict iOS GOOGLE_APP_ID regex",
-      "Executable macOS fixture coverage",
-      "Exact plist ignore rule"
-    ],
-    "remaining_external_gates": [
-      "macOS/Xcode Runner and WidgetKit compilation",
-      "Firebase account artifact availability",
-      "Apple signing and physical device validation"
-    ]
-  },
-  "external_gates": [
-    "BLOCKED_FIREBASE_CONFIG until ios/Runner/GoogleService-Info.plist is supplied by Firebase account owner",
-    "CLOUD_MACOS_REQUIRED for pod install, Runner compile and WidgetKit compile",
-    "ACCOUNT_ACTION_REQUIRED_APPLE for App IDs, App Group and signing",
-    "PHYSICAL_IPHONE_REQUIRED for device QA"
-  ],
-  "status": "implementation_complete_external_validation_pending",
-  "implementation_commit": "40fed399",
-  "final_metadata_commit": "d8e9db1d",
-  "current_head_after_ignore_rule": "8f4c4153",
-  "commit": "8f4c4153 (latest implementation state before this record-only update)",
-  "push": false
+  "canonical_identity": {"firebase_project": "planflow-27fd8", "runner_bundle_id": "com.planflow.app", "widget_bundle_id": "com.planflow.app.PlanFlowWidget", "app_group": "group.com.planflow.app", "url_scheme": "planflow"},
+  "implementation": {"firebase": "Validator requires a real plist with canonical PROJECT_ID, BUNDLE_ID and iOS GOOGLE_APP_ID and exits fail-closed with BLOCKED_FIREBASE_CONFIG on missing or mismatched artifacts. Secret contents are not printed.", "workflow": "CI injects the protected Firebase plist secret only for the macOS validation job, validates it, then runs pod install, Flutter unsigned iOS build, and explicit Runner/WidgetKit xcodebuild gates.", "account_actions": "Documentation specifies minimum Firebase and Apple Developer actions without inventing credentials or enabling capabilities by guesswork."},
+  "verification": {"git_diff_check": {"exit_code": 0}, "android_changes": "none", "supabase_changes": "none", "secret_artifacts_tracked": "none", "base_head_before_final_metadata": "8585fb93", "status": "blocked_external_validation"},
+  "external_gates": ["BLOCKED_FIREBASE_CONFIG until the Firebase account owner supplies ios/Runner/GoogleService-Info.plist through protected CI secret configuration", "CLOUD_MACOS_REQUIRED for pod install, Runner compile and WidgetKit compile", "ACCOUNT_ACTION_REQUIRED_APPLE for App IDs, App Group and signing", "PHYSICAL_IPHONE_REQUIRED for device QA"],
+  "push": false,
+  "deploy": false,
+  "final_status": "blocked_external_validation"
 }
