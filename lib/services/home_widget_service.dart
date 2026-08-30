@@ -952,12 +952,19 @@ class HomeWidgetService {
   HomeWidgetService({
     HomeWidgetPlatform? platform,
     TravelTimeBufferService? travelTimeBufferService,
-    this.iOSAppGroupId,
+    this.iOSAppGroupId = _provisionalIOSAppGroupId,
   })  : _platform = platform ?? createHomeWidgetPlatform(),
         _travelTimeBufferService =
             travelTimeBufferService ?? TravelTimeBufferService();
 
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
+
+  /// Provisional source default shared with the WidgetKit target. Override it
+  /// with --dart-define after Apple Developer confirms the App Group.
+  static const String _provisionalIOSAppGroupId = String.fromEnvironment(
+    'PLANFLOW_IOS_APP_GROUP',
+    defaultValue: 'group.com.planflow.app',
+  );
   static const String hideWeekendsKey = 'widget_hide_weekends';
   static const String _localHideWeekendsKey =
       'planflow.home_widget.hide_weekends';
@@ -1222,6 +1229,7 @@ class HomeWidgetService {
       generatedAt: DateTime.now().toUtc(),
       dayCounts: _dayCountsForWidget(monthCells),
       holidays: _holidaysForWidget(monthCells),
+      holidayDates: _holidayDatesForWidget(monthCells),
     );
     success = await _saveValue(
           'widget_schedule_payload_v1',
@@ -1314,10 +1322,28 @@ class HomeWidgetService {
 
   static List<String> _holidaysForWidget(
     List<HomeWidgetMonthCellData> cells,
-  ) => cells
-      .where((cell) => cell.inMonth && cell.holidayName != null)
-      .map((cell) => cell.holidayName!)
-      .toList(growable: false);
+  ) =>
+      cells
+          .where((cell) => cell.inMonth && cell.holidayName != null)
+          .map((cell) => cell.holidayName!)
+          .toList(growable: false);
+
+  static Map<String, String> _holidayDatesForWidget(
+    List<HomeWidgetMonthCellData> cells,
+  ) {
+    final result = <String, String>{};
+    for (final cell in cells) {
+      final date = cell.date;
+      final name = cell.holidayName;
+      if (!cell.inMonth || date == null || name == null || name.isEmpty) {
+        continue;
+      }
+      result['${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}'] = name;
+    }
+    return result;
+  }
 
   Future<bool> updateSchedulePayload(
     HomeWidgetSchedulePayload payload, {
@@ -1815,14 +1841,16 @@ class HomeWidgetService {
     String? iOSName,
     String? qualifiedAndroidName,
   }) async {
+    final resolvedIOSName = iOSName ??
+        (defaultTargetPlatform == TargetPlatform.iOS ? 'PlanFlowWidget' : null);
     if (widgetName != defaultWidgetName ||
         androidName != null ||
-        iOSName != null ||
+        resolvedIOSName != null ||
         qualifiedAndroidName != null) {
       return _platform.updateWidget(
         name: widgetName,
         androidName: androidName,
-        iOSName: iOSName,
+        iOSName: resolvedIOSName,
         qualifiedAndroidName: qualifiedAndroidName,
       );
     }

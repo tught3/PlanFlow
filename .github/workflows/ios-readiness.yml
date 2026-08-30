@@ -41,11 +41,35 @@ jobs:
             echo "::error::CLOUD_MACOS_REQUIRED: Podfile is missing; create it on macOS before CocoaPods/build.";
             exit 1;
           }
+          test -f ios/PlanFlowWidget/PlanFlowWidget.swift || {
+            echo "::error::WidgetKit source is missing.";
+            exit 1;
+          }
+          grep -q 'PlanFlowWidgetExtension' ios/Runner.xcodeproj/project.pbxproj || {
+            echo "::error::WIDGET_EXTENSION_TARGET_REQUIRED: WidgetKit target is not wired.";
+            exit 1;
+          }
+          grep -q 'PLANFLOW_IOS_BUNDLE_ID' ios/Flutter/PlanFlow-Identity.xcconfig || {
+            echo "::error::Provisional iOS identity config is missing.";
+            exit 1;
+          }
+          grep -q 'PLANFLOW_IOS_APP_GROUP' ios/PlanFlowWidget/Info.plist || {
+            echo "::error::Widget App Group config is missing.";
+            exit 1;
+          }
       - name: Resolve CocoaPods dependencies
         run: pod install --project-directory=ios
       - run: flutter analyze
       - run: flutter test
       - run: flutter build ios --no-codesign
+      - name: Build WidgetKit extension target (unsigned)
+        run: >-
+          xcodebuild -project ios/Runner.xcodeproj
+          -target PlanFlowWidgetExtension
+          -sdk iphonesimulator
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          build
 
   signed-release:
     if: ${{ false }}

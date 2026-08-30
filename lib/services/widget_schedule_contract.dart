@@ -13,6 +13,7 @@ class WidgetSchedulePayload {
     required this.events,
     required this.dayCounts,
     required this.holidays,
+    this.holidayDates = const <String, String>{},
   });
 
   static const int currentSchemaVersion = 1;
@@ -23,6 +24,10 @@ class WidgetSchedulePayload {
   final Map<String, int> dayCounts;
   final List<String> holidays;
 
+  /// Date-qualified holiday labels for native widgets. The legacy `holidays`
+  /// list remains for backward compatibility with existing consumers.
+  final Map<String, String> holidayDates;
+
   /// Projects the legacy Android raw-event shape into the additive v1
   /// contract. The legacy keys remain untouched; this is a dual-write helper
   /// for future WidgetKit consumers.
@@ -31,6 +36,7 @@ class WidgetSchedulePayload {
     required DateTime generatedAt,
     Map<String, int> dayCounts = const <String, int>{},
     List<String> holidays = const <String>[],
+    Map<String, String> holidayDates = const <String, String>{},
   }) {
     return WidgetSchedulePayload(
       schemaVersion: currentSchemaVersion,
@@ -38,6 +44,7 @@ class WidgetSchedulePayload {
       events: rawEvents.map(WidgetScheduleEvent.fromLegacyJson).toList(),
       dayCounts: dayCounts,
       holidays: holidays,
+      holidayDates: holidayDates,
     );
   }
 
@@ -47,6 +54,7 @@ class WidgetSchedulePayload {
         'events': events.map((event) => event.toJson()).toList(),
         'dayCounts': dayCounts,
         'holidays': holidays,
+        'holidayDates': holidayDates,
       };
 
   String encode() => jsonEncode(toJson());
@@ -77,6 +85,15 @@ class WidgetSchedulePayload {
     final holidays = rawHolidays is List
         ? rawHolidays.whereType<String>().toList(growable: false)
         : const <String>[];
+    final rawHolidayDates = json['holidayDates'];
+    final holidayDates = <String, String>{};
+    if (rawHolidayDates is Map) {
+      for (final entry in rawHolidayDates.entries) {
+        if (entry.key is String && entry.value is String) {
+          holidayDates[entry.key as String] = entry.value as String;
+        }
+      }
+    }
     return WidgetSchedulePayload(
       schemaVersion: version,
       generatedAt: generatedAt,
@@ -88,6 +105,7 @@ class WidgetSchedulePayload {
           .toList(growable: false),
       dayCounts: Map.unmodifiable(counts),
       holidays: List.unmodifiable(holidays),
+      holidayDates: Map.unmodifiable(holidayDates),
     );
   }
 

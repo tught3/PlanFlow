@@ -2,8 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- The value resolves from Flutter/PlanFlow-Identity.xcconfig. Apple account
-	     confirmation is still required before signing. -->
+	<!-- Provisional until Apple Developer confirms this App Group. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>$(PLANFLOW_IOS_APP_GROUP)</string>

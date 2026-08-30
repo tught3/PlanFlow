@@ -1,5 +1,16 @@
 # PlanFlow iOS 출시 준비 기준
 
+## Phase 3 판정 상태
+
+- `SOURCE_READY`: Flutter 공통 코드, iOS Runner 프로젝트/Podfile, WidgetKit 소스와 target wiring이 저장소에 있음
+- `ACCOUNT_ACTION_REQUIRED`: provisional Bundle ID/App Group 확인, Firebase plist, Apple 팀·서명
+- `CLOUD_MACOS_REQUIRED`: CocoaPods 해석과 unsigned Runner/WidgetKit 실제 컴파일
+- `PHYSICAL_IPHONE_REQUIRED`: 권한·알림·딥링크·위젯·지도·광고 실기기 확인
+- `MAC_PURCHASE_REQUIRED`: `MAC_OPTIONAL` (GitHub Actions macOS 또는 대여 Mac으로 진행 가능)
+
+이번 Phase는 Windows에서 생성·검증 가능한 소스/구조를 통합했다. macOS/Xcode가 없는
+환경에서 unsigned build나 WidgetKit compile을 성공으로 표시하지 않는다.
+
 ## Phase 2 판정 상태
 
 - `WINDOWS_DONE`: 계약·정적 테스트·CI 보호 게이트·WidgetKit 소스 스캐폴드
@@ -10,7 +21,17 @@
 
 현재 Flutter 공통 코드와 저장소에 존재하는 iOS 파일을 기준으로 작성한 준비 기준이다. Windows에서는 Xcode, CocoaPods, Apple 서명, TestFlight 및 실기기 검증을 수행할 수 없으므로 해당 항목은 성공으로 표시하지 않는다.
 
-현재 `ios/Runner.xcodeproj`, `ios/Runner.xcworkspace`, `ios/Podfile`이 저장소에 없다. 임시 Flutter 템플릿 생성은 성공했지만, 템플릿의 bundle identifier와 기존 Firebase iOS bundle identifier가 달라 자동 병합하지 않았다. Apple bundle ID 결정 후 macOS에서 `flutter create --platforms=ios` 산출물을 검토해 추가해야 한다. 따라서 CI의 `flutter build ios --no-codesign`은 이 blocker를 조기에 드러내는 보호 게이트다.
+현재 `ios/Runner.xcodeproj`, `ios/Runner.xcworkspace`, `ios/Podfile`과 WidgetKit extension
+타깃을 source-controlled 구조로 추가했다. 빌드 설정은 `ios/Flutter/PlanFlow-Identity.xcconfig`
+의 provisional 값에서만 읽으며, Apple/Firebase 계정 확인 전 최종 ID나 signing-ready로
+간주하지 않는다. CI는 CocoaPods 및 `flutter build ios --no-codesign`을 실행하고, 계정/구조가
+불완전하면 fail-closed한다.
+
+개인 위젯 저장소는 `HomeWidgetService`가 동일한 provisional App Group을 기본 주입하고,
+`--dart-define=PLANFLOW_IOS_APP_GROUP=...`로 계정 확정값을 교체할 수 있다. WidgetKit은
+versioned payload의 날짜별 공휴일(`holidayDates`)과 오늘 일정만 읽으며, 6개 초과 일정은
+`+N개 더보기`로 축약한다. 이 연결은 소스/계약 수준이며 macOS 빌드와 iPhone 갱신 확인 전
+운영 동작으로 판정하지 않는다.
 
 ## 현재 기능 상태
 
@@ -21,7 +42,7 @@
 | 일정·AI 대화 | Flutter 화면/서비스 | 공통 코드, iOS 네트워크 확인 필요 |
 | 지도·광고 | Google Maps/Ads 플러그인 등록 | iOS 키·AdMob ID·실기기 검증 필요 |
 | 알림 | `flutter_local_notifications` | iOS 권한·스케줄 검증 필요 |
-| 홈 위젯 | `home_widget_service.dart` | App Group/WidgetKit extension 미구성 |
+| 홈 위젯 | `home_widget_service.dart`, `ios/PlanFlowWidget` | 공통 JSON·legacy dual-write와 WidgetKit target wiring, App Group은 계정 확인 필요 |
 | 그룹 달력 위젯 | `group_calendar_widget_service.dart` | 현재 Android 전용, iOS 재구현 필요 |
 
 ## Windows에서 가능한 게이트
@@ -61,6 +82,6 @@
 ## 알림·위젯 제한
 
 현재 공통 Flutter 코드는 로컬 알림을 제공하지만 iOS 알림 권한, 시간대, 백그라운드 실행은
-실기기 검증이 필요하다. iOS WidgetKit은 별도 extension과 App Group이 필요하며, 이번
-단계의 `ios/PlanFlowWidget`은 source-only scaffold다. Xcode target에 연결하기 전에는
-동작하는 iOS 위젯으로 판정하지 않는다.
+실기기 검증이 필요하다. WidgetKit extension target과 App Group 설정은 저장소에 연결했지만,
+provisional App Group은 Apple Developer 확인 전에는 동작 보장으로 판정하지 않는다. iOS
+WidgetKit의 timeline 갱신 주기와 Android 즉시 갱신은 동일하지 않다.

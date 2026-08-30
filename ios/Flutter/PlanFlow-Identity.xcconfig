@@ -1,0 +1,7 @@
+// This is a source-only unsigned-build candidate, not Apple account proof.
+// Confirm the identifiers in Apple Developer, Firebase and App Store Connect
+// before enabling signing or TestFlight upload.
+PLANFLOW_IOS_IDENTITY_STATUS = PROVISIONAL_ACCOUNT_CONFIRMATION_REQUIRED
+PLANFLOW_IOS_BUNDLE_ID = com.planflow.app
+PLANFLOW_IOS_WIDGET_BUNDLE_ID = $(PLANFLOW_IOS_BUNDLE_ID).PlanFlowWidget
+PLANFLOW_IOS_APP_GROUP = group.com.planflow.app

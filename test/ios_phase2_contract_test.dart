@@ -22,11 +22,13 @@ void main() {
       events: [event],
       dayCounts: const {'2026-09-01': 1},
       holidays: const ['2026-09-03'],
+      holidayDates: const {'2026-09-03': '개천절'},
     );
     final restored = WidgetSchedulePayload.decode(payload.encode());
     expect(restored.schemaVersion, 1);
     expect(restored.events.single.toJson(), event.toJson());
     expect(restored.dayCounts['2026-09-01'], 1);
+    expect(restored.holidayDates['2026-09-03'], '개천절');
   });
 
   test('legacy widget events can be dual-written as canonical JSON', () {
