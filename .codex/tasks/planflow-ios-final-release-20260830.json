@@ -4,20 +4,20 @@
   "classification": "complex",
   "status": "blocked_account_action",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-  "current_commit": "00c291a01945884f9a1ac05f7009b1e155f329b4",
+  "current_commit": "563f37c98ff252d7a686718e5e7a4e40db4ab40e",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
     "planner": {"agent": "ios_final_release_planner", "model": "gpt-5.6-terra", "result": "manual certificate/profile restore strategy and iOS-only version override"},
     "implementer": {"agent": "ios_final_release_implementer", "model": "gpt-5.6-luna", "commit": "0401fc0f", "result": "fail-closed signed workflow, docs, and contract assertions"},
     "test_executor": {"agent": "ios_final_release_test_executor", "model": "gpt-5.4-mini", "result": "Dart analyze, Flutter contract tests, YAML parse, diff check passed; macOS tools unavailable on Windows"},
-    "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "found cleanup lifetime, ASC key path, signing identity issues; fixes applied"}
+    "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"}
   },
-  "commits": ["0401fc0f", "00c291a0"],
+  "commits": ["0401fc0f", "00c291a0", "563f37c9"],
   "workflow": {
     "path": ".github/workflows/ios-release.yml",
-    "run_id": 33316578857,
-    "url": "https://github.com/tught3/PlanFlow/actions/runs/33316578857",
+    "run_id": 33316857644,
+    "url": "https://github.com/tught3/PlanFlow/actions/runs/33316857644",
     "conclusion": "failure",
     "blocker": "BLOCKED_APPLE_SIGNING: missing protected release secrets: APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64"
   },
