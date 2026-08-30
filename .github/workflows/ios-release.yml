@@ -26,7 +26,7 @@ jobs:
       FIREBASE_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      ASC_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_BASE64; do
+          for name in APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
             if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
           done
           if (( ${#missing[@]} )); then
@@ -105,8 +105,8 @@ jobs:
           cp "$runner_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$runner_uuid.mobileprovision"
           cp "$widget_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$widget_uuid.mobileprovision"
           {
-            echo "RUNNER_PROFILE_UUID=$runner_uuid"
-            echo "WIDGET_PROFILE_UUID=$widget_uuid"
+            echo "PLANFLOW_RUNNER_PROFILE_UUID=$runner_uuid"
+            echo "PLANFLOW_WIDGET_PROFILE_UUID=$widget_uuid"
           } >> "$GITHUB_ENV"
           cat > "$RUNNER_TEMP/export-options.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -132,7 +132,8 @@ jobs:
             -archivePath "$RUNNER_TEMP/PlanFlow.xcarchive" \
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
+            PLANFLOW_RUNNER_PROFILE_UUID="$PLANFLOW_RUNNER_PROFILE_UUID" \
+            PLANFLOW_WIDGET_PROFILE_UUID="$PLANFLOW_WIDGET_PROFILE_UUID" \
             CODE_SIGN_STYLE=Manual \
             | tee "$RUNNER_TEMP/xcodebuild-archive.log"
           test -d "$RUNNER_TEMP/PlanFlow.xcarchive/Products/Applications/Runner.app"
@@ -159,7 +160,7 @@ jobs:
           set -euo pipefail
           api_key="$RUNNER_TEMP/asc-api-key.p8"
           umask 077
-          printf '%s' "$ASC_API_KEY_BASE64" | base64 --decode > "$api_key"
+          printf '%s' "$ASC_API_KEY_P8" > "$api_key"
           trap 'rm -f "$api_key"' EXIT
           xcrun altool --upload-app -f "$RUNNER_TEMP/exported/Runner.ipa" -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
@@ -172,6 +173,6 @@ jobs:
           set +e
           rm -f ios/Runner/GoogleService-Info.plist
           rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist
-          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${WIDGET_PROFILE_UUID:-}.mobileprovision"
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true
           echo "Secret cleanup gate executed."

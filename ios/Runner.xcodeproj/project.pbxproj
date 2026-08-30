@@ -463,6 +463,7 @@
 					"@executable_path/Frameworks",
 				);
 				CODE_SIGN_ENTITLEMENTS = Runner/PlanFlow.entitlements;
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANFLOW_RUNNER_PROFILE_UUID)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PLANFLOW_IOS_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -666,6 +667,7 @@
 					"@executable_path/Frameworks",
 				);
 				CODE_SIGN_ENTITLEMENTS = Runner/PlanFlow.entitlements;
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANFLOW_RUNNER_PROFILE_UUID)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PLANFLOW_IOS_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -701,6 +703,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = PlanFlowWidget/PlanFlowWidget.entitlements;
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANFLOW_WIDGET_PROFILE_UUID)";
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				INFOPLIST_FILE = PlanFlowWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
