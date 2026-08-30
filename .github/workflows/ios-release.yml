@@ -1,0 +1,177 @@
+name: iOS signed release (TestFlight)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The unsigned macOS contract remains in ios-readiness.yml. This workflow is
+# deliberately separate: a missing signing asset must fail, never downgrade
+# to an unsigned artifact or report a successful release.
+jobs:
+  signed-release:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      IOS_BUNDLE_ID: com.fluxstudio.planflow
+      IOS_WIDGET_BUNDLE_ID: com.fluxstudio.planflow.PlanFlowWidget
+      IOS_BUILD_NUMBER: ${{ github.run_number }}
+      IOS_BUILD_NAME: 1.0.0
+      APPLE_TEAM_ID: ${{ secrets.PLANFLOW_APPLE_TEAM_ID }}
+      DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      RUNNER_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64 }}
+      WIDGET_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
+      FIREBASE_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight protected release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_BASE64; do
+            if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error title=BLOCKED_APPLE_SIGNING::BLOCKED_APPLE_SIGNING: missing protected release secrets: ${missing[*]}"
+            echo "Unsigned readiness remains available through ios-readiness.yml; no signed artifact was produced."
+            exit 1
+          fi
+          if [[ "$IOS_BUNDLE_ID" != "com.fluxstudio.planflow" || "$IOS_WIDGET_BUNDLE_ID" != "com.fluxstudio.planflow.PlanFlowWidget" ]]; then
+            echo "::error::BLOCKED_IOS_IDENTITY: canonical bundle IDs changed unexpectedly."
+            exit 1
+          fi
+          echo "Release gates: Apple signing, Firebase config, and App Store Connect credentials are present."
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Prepare Flutter and protected Firebase plist
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f ios/Runner/GoogleService-Info.plist' EXIT
+          flutter pub get
+          umask 077
+          printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
+          bash scripts/verify-ios-firebase-config.sh
+          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER"
+          rm -f ios/Runner/GoogleService-Info.plist
+          trap - EXIT
+
+      - name: Install Apple signing assets without logging secrets
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/planflow-signing.keychain-db"
+          cert="$RUNNER_TEMP/planflow-distribution.p12"
+          runner_profile="$RUNNER_TEMP/planflow-runner.mobileprovision"
+          widget_profile="$RUNNER_TEMP/planflow-widget.mobileprovision"
+          runner_plist=""
+          widget_plist=""
+          cleanup() {
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -f "$cert" "$runner_profile" "$widget_profile" "$runner_plist" "$widget_plist" "$RUNNER_TEMP/export-options.plist" "$RUNNER_TEMP/asc-api-key.p8"
+          }
+          trap cleanup EXIT
+          umask 077
+          printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$cert"
+          printf '%s' "$RUNNER_PROFILE_BASE64" | base64 --decode > "$runner_profile"
+          printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$widget_profile"
+          keychain_password="$(uuidgen)"
+          security create-keychain -p "$keychain_password" "$keychain" >/dev/null
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          # Import uses the password only as an argument to security; shell tracing is disabled by default.
+          security import "$cert" -k "$keychain" -P "$DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          runner_plist="$RUNNER_TEMP/runner-profile.plist"
+          widget_plist="$RUNNER_TEMP/widget-profile.plist"
+          /usr/bin/security cms -D -i "$runner_profile" > "$runner_plist"
+          /usr/bin/security cms -D -i "$widget_profile" > "$widget_plist"
+          runner_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$runner_plist")
+          widget_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_plist")
+          cp "$runner_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$runner_uuid.mobileprovision"
+          cp "$widget_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$widget_uuid.mobileprovision"
+          {
+            echo "RUNNER_PROFILE_UUID=$runner_uuid"
+            echo "WIDGET_PROFILE_UUID=$widget_uuid"
+          } >> "$GITHUB_ENV"
+          cat > "$RUNNER_TEMP/export-options.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>provisioningProfiles</key><dict>
+              <!-- Explicit per-target mapping: Runner and WidgetKit never share a profile. -->
+              <key>$IOS_BUNDLE_ID</key><string>$runner_uuid</string>
+              <key>$IOS_WIDGET_BUNDLE_ID</key><string>$widget_uuid</string>
+            </dict>
+          </dict></plist>
+          PLIST
+          echo "Signing assets installed and export gate prepared (profile contents are not printed)."
+
+      - name: Archive Runner with embedded WidgetKit extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -archivePath "$RUNNER_TEMP/PlanFlow.xcarchive" \
+            -destination 'generic/platform=iOS' \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
+            CODE_SIGN_STYLE=Manual \
+            | tee "$RUNNER_TEMP/xcodebuild-archive.log"
+          test -d "$RUNNER_TEMP/PlanFlow.xcarchive/Products/Applications/Runner.app"
+          test -d "$RUNNER_TEMP/PlanFlow.xcarchive/Products/Applications/Runner.app/PlugIns/PlanFlowWidgetExtension.appex" || {
+            echo "::error::BLOCKED_WIDGET_ARCHIVE: Runner archive does not contain PlanFlowWidgetExtension.appex."
+            exit 1
+          }
+          echo "Archive gates: Runner and embedded WidgetKit extension present."
+
+      - name: Export signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/PlanFlow.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export-options.plist" \
+            -exportPath "$RUNNER_TEMP/exported" \
+            | tee "$RUNNER_TEMP/xcodebuild-export.log"
+          test -s "$RUNNER_TEMP/exported/Runner.ipa"
+          echo "IPA gate: signed Runner.ipa exported."
+
+      - name: Upload IPA to TestFlight with App Store Connect API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_key="$RUNNER_TEMP/asc-api-key.p8"
+          umask 077
+          printf '%s' "$ASC_API_KEY_BASE64" | base64 --decode > "$api_key"
+          trap 'rm -f "$api_key"' EXIT
+          xcrun altool --upload-app -f "$RUNNER_TEMP/exported/Runner.ipa" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          echo "TestFlight gate: upload accepted by App Store Connect."
+
+      - name: Cleanup protected artifacts
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          rm -f ios/Runner/GoogleService-Info.plist
+          rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${WIDGET_PROFILE_UUID:-}.mobileprovision"
+          security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true
+          echo "Secret cleanup gate executed."

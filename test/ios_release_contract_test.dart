@@ -40,4 +40,26 @@ void main() {
     expect(workflow, contains('Verify native iOS target contract'));
     expect(workflow, contains('ios/Runner.xcodeproj/project.pbxproj'));
   });
+
+  test('signed release workflow has explicit Apple signing and cleanup gates',
+      () {
+    final workflow =
+        file('.github/workflows/ios-release.yml').readAsStringSync();
+    expect(workflow, contains('runs-on: macos-latest'));
+    expect(workflow, contains('BLOCKED_APPLE_SIGNING'));
+    expect(workflow, contains('PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64'));
+    expect(
+        workflow, contains('PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64'));
+    expect(
+        workflow, contains('PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64'));
+    expect(workflow, contains('PlanFlowWidgetExtension.appex'));
+    expect(workflow, contains('xcodebuild -exportArchive'));
+    expect(workflow, contains('xcrun altool --upload-app'));
+    expect(workflow, contains('APP_STORE_CONNECT_KEY_ID'));
+    expect(workflow, contains('APP_STORE_CONNECT_ISSUER_ID'));
+    expect(workflow, contains('APP_STORE_CONNECT_API_KEY_P8'));
+    expect(workflow, contains('never share a profile'));
+    expect(workflow, contains(r'if: ${{ always() }}'));
+    expect(workflow, contains('rm -f ios/Runner/GoogleService-Info.plist'));
+  });
 }

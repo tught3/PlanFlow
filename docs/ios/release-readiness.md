@@ -79,6 +79,27 @@ versioned payload의 날짜별 공휴일(`holidayDates`)과 오늘 일정만 읽
 
 `IMPLEMENTED`와 `LIVE VALIDATED`를 구분한다. macOS/실기기 증거가 없으면 iOS 출시 PASS가 아니다.
 
+## GitHub Actions signed release
+
+`.github/workflows/ios-release.yml`은 `workflow_dispatch` 전용 TestFlight 경로다.
+`ios-readiness.yml`의 Firebase 주입·unsigned Runner/WidgetKit 경로는 계속 별도로
+실행할 수 있다. signed workflow는 다음 repository secrets가 모두 있어야 시작되며,
+하나라도 없으면 `BLOCKED_APPLE_SIGNING`으로 실패한다.
+
+- `PLANFLOW_APPLE_TEAM_ID`
+- `PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64` 및 `PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`
+- `PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64`, `PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64`
+- `PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64`
+- `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY_P8`
+
+App Store Connect API key는 업로드 인증만 제공하며, distribution certificate나
+provisioning profile을 생성하지 않는다. 인증서·두 프로파일을 별도로 발급해 secret으로
+등록해야 한다. workflow는 secret을 로그에 출력하지 않고 임시 keychain/profile/plist/
+API key를 `always()` cleanup 단계에서 제거한다. Runner archive 안에
+`PlanFlowWidgetExtension.appex`가 없으면 export/upload를 진행하지 않는다.
+빌드 이름과 번호는 해당 iOS workflow의 run number로만 주입하며 Android pubspec은
+변경하지 않는다. TestFlight 업로드 수락은 배포 완료나 실기기 `LIVE VALIDATED` 증거가 아니다.
+
 ## App Store 준비 초안
 
 세부 입력표와 코드 근거 인벤토리는 [`app-store-metadata.md`](app-store-metadata.md)에
