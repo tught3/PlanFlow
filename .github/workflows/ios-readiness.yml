@@ -59,8 +59,18 @@ jobs:
           }
       - name: Resolve CocoaPods dependencies
         run: pod install --project-directory=ios
+      - name: Verify Firebase iOS artifact
+        run: bash scripts/verify-ios-firebase-config.sh
       - run: flutter analyze
       - run: flutter test
+      - name: Build Runner target (unsigned)
+        run: >-
+          xcodebuild -workspace ios/Runner.xcworkspace
+          -scheme Runner
+          -sdk iphonesimulator
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          build
       - run: flutter build ios --no-codesign
       - name: Build WidgetKit extension target (unsigned)
         run: >-

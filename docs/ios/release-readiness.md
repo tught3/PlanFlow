@@ -1,5 +1,16 @@
 # PlanFlow iOS 출시 준비 기준
 
+## Phase 4 판정 상태
+
+- `BLOCKED_ACCOUNT_ACTION`: Firebase iOS plist와 Apple Developer identity/App Group가 외부 계정에서 확정되지 않음
+- `IOS_UNSIGNED_BUILD_PASS`: macOS에서 plist·Pods·Runner unsigned compile이 실제 성공한 경우에만 부여
+- `WIDGET_EXTENSION_BUILD_PASS`: macOS에서 WidgetKit target compile이 실제 성공한 경우에만 부여
+- `BLOCKED_APPLE_SIGNING`: unsigned build 이후 signing/Team/profile이 필요한 단계에서만 사용
+
+Phase 4의 저장소 통합은 canonical identity drift 검사, Firebase plist fail-closed 검사,
+Apple account action 문서, Runner·WidgetKit macOS build gate를 포함한다. 현재 Windows에서는
+실제 plist를 추가하거나 macOS/Xcode 결과를 PASS로 표시하지 않는다.
+
 ## Phase 3 판정 상태
 
 - `SOURCE_READY`: Flutter 공통 코드, iOS Runner 프로젝트/Podfile, WidgetKit 소스와 target wiring이 저장소에 있음

@@ -1,0 +1,52 @@
+{
+  "task_id": "planflow-ios-phase4-20260830",
+  "phase": "Phase 4",
+  "role": "complex_implementer",
+  "agent": "ios_phase4_implementer",
+  "mapped_model": "gpt-5.6-terra",
+  "reasoning_effort": "high",
+  "assignment": "Canonical iOS identity checks, Firebase plist fail-closed validation, Apple account-action documentation, and macOS Runner/WidgetKit build gates.",
+  "changed_files": [
+    ".github/workflows/ios-readiness.yml",
+    "docs/ios/apple-firebase-account-actions.md",
+    "docs/ios/release-readiness.md",
+    "scripts/verify-ios-firebase-config.sh",
+    "test/ios_phase4_identity_contract_test.dart"
+  ],
+  "implementation": {
+    "canonical_identity": {
+      "firebase_project": "planflow-27fd8",
+      "runner_bundle_id": "com.planflow.app",
+      "widget_bundle_id": "com.planflow.app.PlanFlowWidget",
+      "app_group": "group.com.planflow.app",
+      "url_scheme": "planflow"
+    },
+    "firebase": "Added macOS plutil validation for presence, XML format, PROJECT_ID, BUNDLE_ID and iOS GOOGLE_APP_ID. Missing or mismatched artifacts fail closed with BLOCKED_FIREBASE_CONFIG (exit 12) and no secret values are printed.",
+    "workflow": "Added Firebase artifact gate and unsigned Runner xcodebuild alongside existing WidgetKit and Flutter build gates.",
+    "account_actions": "Documented minimal Firebase and Apple Developer setup without adding credentials or capabilities by guesswork."
+  },
+  "tests": [
+    {
+      "command": "dart analyze test/ios_phase4_identity_contract_test.dart",
+      "exit_code": 0
+    },
+    {
+      "command": "flutter test test/ios_phase4_identity_contract_test.dart test/ios_phase3_native_contract_test.dart test/ios_phase2_contract_test.dart --no-pub",
+      "exit_code": 0,
+      "result": "10 tests passed"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "external_gates": [
+    "BLOCKED_FIREBASE_CONFIG until ios/Runner/GoogleService-Info.plist is supplied by Firebase account owner",
+    "CLOUD_MACOS_REQUIRED for pod install, Runner compile and WidgetKit compile",
+    "ACCOUNT_ACTION_REQUIRED_APPLE for App IDs, App Group and signing",
+    "PHYSICAL_IPHONE_REQUIRED for device QA"
+  ],
+  "status": "implementation_complete_external_validation_pending",
+  "commit": null,
+  "push": false
+}
