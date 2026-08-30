@@ -187,7 +187,7 @@ struct PlanFlowWidgetView: View {
 
   private func eventRow(_ event: WidgetScheduleEvent) -> some View {
     let destination = URL(string: event.route) ?? PlanFlowWidgetConfig.dayURL(entry.date)
-    Link(destination: destination) {
+    return Link(destination: destination) {
       HStack(spacing: 5) {
         if event.important { Text("!").fontWeight(.bold) }
         if event.continuous { Image(systemName: "arrow.left.and.right").font(.caption2) }
