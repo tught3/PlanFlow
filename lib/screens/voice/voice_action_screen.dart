@@ -2738,7 +2738,6 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         child: RefreshIndicator(
           onRefresh: () => _loadCandidates(),
           child: ListView(
-            cacheExtent: 1200,
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
               _CommandCard(

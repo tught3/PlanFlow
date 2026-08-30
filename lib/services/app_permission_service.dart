@@ -203,18 +203,18 @@ class AppPermissionService {
           .invokeMethod<Object?>('getCurrentLocation')
           .timeout(const Duration(seconds: 12));
       if (result is! Map) {
-        return getLastKnownLocation();
+        return await getLastKnownLocation();
       }
       final latitude = _doubleValue(result['latitude']);
       final longitude = _doubleValue(result['longitude']);
       if (latitude == null || longitude == null) {
-        return getLastKnownLocation();
+        return await getLastKnownLocation();
       }
       return GeoPoint(latitude: latitude, longitude: longitude);
     } catch (error, stackTrace) {
       debugPrint('Current location read failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      return getLastKnownLocation();
+      return await getLastKnownLocation();
     }
   }
 

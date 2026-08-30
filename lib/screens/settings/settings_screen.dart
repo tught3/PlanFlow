@@ -975,7 +975,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             });
           }
           // OAuth 화면을 열지 못했으면 CalDAV 앱 비밀번호 다이얼로그로 폴백
-          return _connectNaverCalDavFallbackAndImport();
+          return await _connectNaverCalDavFallbackAndImport();
         }
         if (mounted) {
           setState(() {

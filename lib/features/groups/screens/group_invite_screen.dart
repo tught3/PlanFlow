@@ -248,7 +248,6 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
             onRefresh: _load,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              cacheExtent: 5000,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
                 _buildInviteCodeCard(context, inviteState),

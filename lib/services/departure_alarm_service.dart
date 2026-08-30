@@ -523,7 +523,7 @@ class DepartureAlarmService {
       if (!initialized) {
         return false;
       }
-      return AndroidAlarmManager.oneShotAt(
+      return await AndroidAlarmManager.oneShotAt(
         preflightAt,
         _stableAlarmId('${event.id}:departure_preflight'),
         _departureAlarmPreflightCallback,
@@ -622,7 +622,7 @@ class DepartureAlarmService {
       if (!initialized) {
         return false;
       }
-      return AndroidAlarmManager.cancel(alarmId);
+      return await AndroidAlarmManager.cancel(alarmId);
     } catch (error, stackTrace) {
       debugPrint('Departure preflight cancel failed: $error');
       debugPrintStack(stackTrace: stackTrace);

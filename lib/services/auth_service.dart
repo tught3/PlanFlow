@@ -213,7 +213,7 @@ class AuthService implements AuthSessionClient {
         scopes: oauthScopesFor(provider, forCalendar: true),
         queryParams: queryParams,
       );
-      return _launchOAuthUrl(
+      return await _launchOAuthUrl(
         uri: Uri.parse(response.url),
         appProvider: provider,
         supabaseProvider: oauthProvider,
@@ -554,8 +554,7 @@ class DeleteAccountResult {
               )
               .toList()
           : const <LeaderGroupInfo>[],
-      errorMessage:
-          json['message']?.toString() ?? json['error']?.toString(),
+      errorMessage: json['message']?.toString() ?? json['error']?.toString(),
     );
   }
 }

@@ -1961,7 +1961,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       final now = DateTime.now();
       final events = await repository.listEvents(userId: user.id);
-      return widget.homeWidgetService.updateSchedulePayload(
+      return await widget.homeWidgetService.updateSchedulePayload(
         HomeWidgetSchedulePayloadBuilder.fromEvents(
           events: events,
           now: now,
