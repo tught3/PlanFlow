@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_external_workflow_dispatch",
+  "status": "blocked_apple_buildupload_failed",
   "privacy_90683": {
     "apple_code": "90683",
     "apple_description": "Missing purpose string in Info.plist.",
@@ -14,19 +14,32 @@
     "android_changed": false
   },
   "post_upload_verification": {
-    "run_id": 33365432620,
-    "transport_gate": "PASS",
-    "delivery_uuid": "b786deb7-1129-4e25-960a-4c2028320790",
+    "run_id": 33396177903,
+    "transport_gate": "PASS_INFERRED_BEFORE_VERIFIER_FAILURE",
+    "delivery_uuid": "NOT_VISIBLE_IN_PUBLIC_METADATA",
     "upload_command": "xcrun altool --upload-app -f $PLANFLOW_IPA_PATH -t ios --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER_ID",
     "target_bundle_id": "com.fluxstudio.planflow",
     "target_widget_bundle_id": "com.fluxstudio.planflow.PlanFlowWidget",
     "archive_derived_version": "1.0.0",
-    "archive_derived_build": "12",
-    "widget_cf_bundle_version_warning": true,
+    "archive_derived_build": "14",
+    "widget_cf_bundle_version_warning": false,
     "app_store_build_ingested": "NOT_VERIFIED",
     "testflight_visible_or_processing": "FAIL_OBSERVED_NO_BUILD",
     "testflight_build_available": "NOT_VERIFIED",
-    "processing_state": "NOT_QUERIED",
+    "processing_state": "FAILED",
+    "run_14": {
+      "run_id": 33396177903,
+      "run_number": 14,
+      "head_sha": "c3b787ebf1eae3b89943e0ac6c6a28cbef016375",
+      "conclusion": "failure",
+      "archive_privacy_preflight": "PASS",
+      "exported_ipa_privacy_preflight": "PASS",
+      "build_upload_state": "FAILED",
+      "annotation": "BLOCKED_APP_STORE_UPLOAD_FAILED: App Store Connect build upload state=FAILED.",
+      "apple_error_detail": "NOT_VISIBLE_PUBLICLY; GitHub logs require authenticated access",
+      "build_14_reused": false,
+      "next_action": "Obtain authenticated workflow log or ASC BuildUpload stateDetails/errors before changing keys or uploading build 15."
+    },
     "run_13": {
       "run_id": 33377449742,
       "run_number": 13,
@@ -46,7 +59,7 @@
     "api_query": "Read-only workflow run 33383931489 reached Apple and observed build upload state FAILED; public job annotations expose only BLOCKED_APP_STORE_UPLOAD_FAILED, while protected logs are unavailable in this session. StateDetail/error code/message not yet extracted.",
     "ui_observation": "App Store Connect PlanFlow TestFlight showed no builds",
     "processing_failure_or_email": "NOT_OBSERVED",
-    "same_build_reupload": "A new build number is required; next workflow dispatch uses github.run_number"
+    "same_build_reupload": "Build 14 is failed; do not reuse. Next retry requires a new build number after the exact Apple failure detail is identified."
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
     "current_commit": "128b947b",
@@ -290,12 +303,12 @@
     "IPA_EXPORT_PASS": "PASS",
     "TESTFLIGHT_UPLOAD_PASS": "TRANSPORT_ONLY_NOT_FINAL",
     "TESTFLIGHT_TRANSPORT_UPLOAD_PASS": "PASS",
-    "APP_STORE_BUILD_INGESTED": "NOT_VERIFIED",
-    "TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING": "FAIL_OBSERVED_NO_BUILD",
+    "APP_STORE_BUILD_INGESTED": "NOT_VERIFIED_BUILDUPLOAD_FAILED",
+    "TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING": "BLOCKED_BUILDUPLOAD_FAILED",
     "TESTFLIGHT_BUILD_AVAILABLE": "NOT_VERIFIED",
-    "RUNNER_PRIVACY_SOURCE_PASS": "PASS_STATIC_CONTRACT",
-    "ARCHIVE_PRIVACY_PREFLIGHT_PASS": "PENDING_MACOS_RUN",
-    "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS": "PENDING_MACOS_RUN",
+    "RUNNER_PRIVACY_SOURCE_PASS": "PASS",
+    "ARCHIVE_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_14",
+    "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_14",
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
   "required_external_secrets": [
@@ -368,7 +381,7 @@
     "accepting": false
   },
   "integration": {
-    "status": "BLOCKED_EXTERNAL_WORKFLOW_DISPATCH",
+    "status": "BLOCKED_APPLE_BUILDUPLOAD_FAILED",
     "integrated_at": "2026-08-31",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
@@ -379,12 +392,13 @@
       "archive_ipa_testflight": "TRANSPORT_ONLY_PASS",
       "app_store_build_ingested": "NOT_VERIFIED",
       "testflight_build_visible_or_processing": "NOT_VERIFIED",
-      "runner_privacy_source": "PASS_STATIC_CONTRACT",
-      "archive_privacy_preflight": "PENDING_MACOS_RUN",
-      "exported_ipa_privacy_preflight": "PENDING_MACOS_RUN",
-      "build_14_uploaded": false
+      "runner_privacy_source": "PASS_RUN_14",
+      "archive_privacy_preflight": "PASS_RUN_14",
+      "exported_ipa_privacy_preflight": "PASS_RUN_14",
+      "build_14_uploaded": true,
+      "build_14_upload_state": "FAILED"
     },
-    "evidence": "Build 13 failed with Apple 90683. Commit 1fd8d3a0 adds Runner-only NSUserTrackingUsageDescription plus source/archive/export privacy preflights and is pushed to origin/main. Build 14 has not been dispatched because gh auth is unavailable in this Windows session; no new transport or App Store ingestion evidence exists."
+    "evidence": "GitHub Actions run 33396177903 (#14, HEAD c3b787eb) passed source/archive/export privacy gates and signed IPA creation, then failed authoritative App Store Connect verification with BuildUpload state=FAILED. Public metadata does not expose Apple's stateDetails/errors; authenticated workflow logs or ASC API access are required before another privacy change or build 15 upload."
   },
-  "next_gate": "Dispatch .github/workflows/ios-release.yml from GitHub with protected signing/ASC secrets after confirming Build 14 is the intended workflow run number. Accept only if source/archive/export privacy gates, transport upload, and ASC BuildUpload/build ingestion/visibility gates all pass."
+  "next_gate": "Open authenticated run 33396177903 logs or run the read-only ASC verifier with protected credentials to capture BuildUpload stateDetails/errors. Preserve the exact Apple code/description, then make only evidence-backed fixes and use build 15 or later."
 }
