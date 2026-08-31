@@ -5,7 +5,7 @@
   "status": "complete",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
   "current_commit": "f991b0d790ab3f81ab1324fbb0947133e13addae",
-  "repository_head": "f991b0d790ab3f81ab1324fbb0947133e13addae",
+  "repository_head": "3d1331bdbfbe58728828aae39bed4dea5892c4b8",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -80,7 +80,8 @@
     "d3faf518",
     "08c0f94b",
     "2c379f86",
-    "f991b0d7"
+    "f991b0d7",
+    "3d1331bd"
   ],
   "workflow": {
     "path": ".github/workflows/ios-release.yml",
