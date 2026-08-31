@@ -233,7 +233,6 @@ def main() -> int:
             if upload_state in {"PROCESSING", "COMPLETE"}:
                 print("BUILD_UPLOAD_ACCEPTED_OR_PROCESSING: PASS")
             if upload_state == "FAILED":
-                print_state_details(upload_attributes)
                 detail_path = (
                     f"/buildUploads/{urllib.parse.quote(upload_id, safe='')}"
                     "?include=build&fields[buildUploads]=cfBundleShortVersionString,cfBundleVersion,createdDate,state,platform,uploadedDate,build"
@@ -244,6 +243,8 @@ def main() -> int:
                 if not detail_document.get("__http_status") and not detail_document.get("errors"):
                     detail_resource = (detail_document.get("data") or {})
                     print_state_details(detail_resource.get("attributes", {}))
+                else:
+                    print_state_details(upload_attributes)
                 print("::error title=BLOCKED_APP_STORE_UPLOAD_FAILED::App Store Connect build upload state=FAILED.")
                 return 1
             if upload_state == "AWAITING_UPLOAD":
@@ -260,13 +261,28 @@ def main() -> int:
             print(f"::error title=BLOCKED_ASC_BUILD_LOOKUP::{error_summary(builds)}")
             return 1
         resources = builds.get("data") or []
+        relationship_document = builds
         if not resources and upload_included_build is not None:
-            resources = [upload_included_build]
+            linked_build_id = upload_included_build.get("id")
+            print(f"Build upload relationship includes build resource: id={linked_build_id}")
+            direct_build_path = (
+                f"/builds/{urllib.parse.quote(linked_build_id, safe='')}"
+                "?include=preReleaseVersion,app,buildUpload"
+                "&fields[builds]=version,processingState,uploadedDate,usesNonExemptEncryption,preReleaseVersion,app,buildUpload,buildBetaDetail,appStoreVersion"
+                "&fields[preReleaseVersions]=version,platform&fields[apps]=name,bundleId"
+            )
+            direct_build, direct_request_id = request_json(token, direct_build_path)
+            if direct_request_id:
+                print(f"Associated build detail request ID: {direct_request_id}")
+            if not direct_build.get("__http_status") and not direct_build.get("errors"):
+                direct_resource = direct_build.get("data")
+                resources = [direct_resource] if isinstance(direct_resource, dict) else []
+                relationship_document = direct_build
         if resources:
             build = resources[0]
             attributes = build.get("attributes", {})
             state = attributes.get("processingState", "UNKNOWN")
-            included = {item.get("id"): item for item in builds.get("included", [])}
+            included = {item.get("id"): item for item in relationship_document.get("included", [])}
             pre_release = included.get(relationship_id(build, "preReleaseVersion"), {})
             pre_attributes = pre_release.get("attributes", {})
             app_resource = included.get(relationship_id(build, "app"), {})
