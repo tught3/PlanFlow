@@ -11,19 +11,23 @@
     "planner": {"agent": "ios_final_release_planner", "model": "gpt-5.6-terra", "result": "manual certificate/profile restore strategy and iOS-only version override"},
     "implementer": {"agent": "ios_final_release_implementer", "model": "gpt-5.6-luna", "commit": "0401fc0f", "result": "fail-closed signed workflow, docs, and contract assertions"},
     "test_executor": {"agent": "ios_final_release_test_executor", "model": "gpt-5.4-mini", "result": "Dart analyze, Flutter contract tests, YAML parse, diff check passed; macOS tools unavailable on Windows"},
-    "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"}
+    "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"},
+    "failure_analyst": {"agent": "ios_signed_release_failure_analyst", "model": "gpt-5.6-luna", "result": "run 33353040531 preflight blocker resolved; current run signing import fails with PKCS12 MAC verification error, indicating certificate/password mismatch"},
+    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "pending final review of current signing failure"}
   },
   "commits": ["0401fc0f", "00c291a0", "563f37c9"],
   "workflow": {
     "path": ".github/workflows/ios-release.yml",
     "runs": [
       {"run_id": 33316578857, "commit": "00c291a0", "conclusion": "failure", "duration_seconds": 11, "job_exit_code": 1, "artifacts": "none", "blocker": "BLOCKED_APPLE_SIGNING: missing protected release secrets: APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64"},
-      {"run_id": 33316857644, "commit": "563f37c9", "conclusion": "failure", "duration_seconds": 12, "job_exit_code": 1, "artifacts": "none", "blocker": "BLOCKED_APPLE_SIGNING: missing protected release secrets: APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64"}
+      {"run_id": 33316857644, "commit": "563f37c9", "conclusion": "failure", "duration_seconds": 12, "job_exit_code": 1, "artifacts": "none", "blocker": "BLOCKED_APPLE_SIGNING: missing protected release secrets: APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64"},
+      {"run_id": 33353040531, "commit": "722be968", "conclusion": "cancelled", "duration_seconds": 365, "job_exit_code": null, "artifacts": "none", "blocker": "stalled in Prepare Flutter and protected Firebase plist; cancelled after prolonged no-progress"},
+      {"run_id": 33353962514, "commit": "aa758538", "conclusion": "failure", "duration_seconds": 500, "job_exit_code": 1, "artifacts": "none", "blocker": "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)"}
     ],
     "evidence_source": "Public GitHub Actions run summaries inspected 2026-08-30; both dispatches stopped in preflight before archive, IPA export, or TestFlight upload."
   },
   "gates": {
-    "APPLE_SIGNING_READY": "BLOCKED",
+    "APPLE_SIGNING_READY": "BLOCKED_CERTIFICATE_IMPORT",
     "RUNNER_SIGNED": "NOT_RUN",
     "WIDGET_SIGNED": "NOT_RUN",
     "SIGNED_ARCHIVE_PASS": "NOT_RUN",
@@ -49,9 +53,10 @@
       {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "run_at": "2026-08-30"},
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
     ],
-    "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"]
+    "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"],
+    "latest_run": {"run_id": 33353962514, "failure_stage": "certificate_import", "evidence": "SecKeychainItemImport MAC verification failed", "safe_code_fix_available": false}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
   "integration": {"status": "BLOCKED", "integrated_at": "2026-08-30", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Repository Actions secrets for the five Apple signing inputs are absent.", "user_action": "Configure PLANFLOW_APPLE_TEAM_ID, PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64, PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD, PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64, and PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 as protected GitHub Actions secrets. Then authorize one new workflow_dispatch; require fresh successful archive, IPA export, and TestFlight upload evidence, plus a valid host-final reviewer report, before release acceptance."},
-  "next_gate": "No upload is authorized now. After the five Apple signing secrets are configured, run one new workflow_dispatch and require archive, IPA export, and TestFlight upload evidence before PASS."
+  "next_gate": "Re-export the Apple Distribution .p12 with the exact password used for PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD, update the two protected secrets without exposing values, then rerun workflow_dispatch. Require archive, IPA export, and TestFlight upload evidence before PASS."
 }
