@@ -5,6 +5,10 @@
 추가하지 않고, 실제 Runner에 링크·사용되는 API와 최종 산출물의 plist를 함께
 검사한다.
 
+`PRIVACY_API_DEPENDENCY_MAP: PARTIAL / NO_ROOT_CAUSE_CONFIRMED` — Windows에서는
+실제 Apple binary와 BuildUpload 진단을 확인할 수 없으므로, 아래 matrix는 저장소와
+패키지 evidence에 기반한 현재 감사 결과이며 Build15 원인을 확정하지 않는다.
+
 ## Evidence matrix
 
 | dependency/API | production evidence | sensitive surface | Runner key | current status | PlanFlow use |
@@ -15,6 +19,17 @@
 | `google_mobile_ads` 5.3.1 | registered plugin and ad service; Google-Mobile-Ads-SDK pod | AdSupport/AppTrackingTransparency (IDFA/ATT) | `NSUserTrackingUsageDescription` | present | 관련 광고·측정 동의 |
 | `file_picker` 11.0.2 | `NaverIcsImportScreen` calls `FileType.custom` for `.ics` | no media picker evidence | Photos key not added | no key required | ICS import |
 | `webview_flutter_wkwebview` | no production camera/media capture call found | camera candidate only | camera key not added | no evidence | no direct production use |
+| `NSCameraUsageDescription` / `AVCaptureDevice` | not found in PlanFlow production or linked-framework evidence | camera | `NSCameraUsageDescription` | absent | no |
+| `NSPhotoLibraryUsageDescription` / `PHPhotoLibrary` | not found in PlanFlow production or linked-framework evidence | photos | `NSPhotoLibraryUsageDescription` | absent | no |
+| `NSContactsUsageDescription` / `CNContactStore` | not found in PlanFlow production or linked-framework evidence | contacts | `NSContactsUsageDescription` | absent | no |
+| `NSCalendarsUsageDescription` / `EKEventStore` | not found in PlanFlow production or linked-framework evidence | calendars | `NSCalendarsUsageDescription` | absent | no |
+| `NSRemindersUsageDescription` / `EKEventStore` | not found in PlanFlow production or linked-framework evidence | reminders | `NSRemindersUsageDescription` | absent | no |
+| `NSLocationAlwaysAndWhenInUseUsageDescription` | not found in PlanFlow production or linked-framework evidence | always location | `NSLocationAlwaysAndWhenInUseUsageDescription` | absent | no |
+| `NSBluetoothAlwaysUsageDescription` / `CBCentralManager` | not found in PlanFlow production or linked-framework evidence | Bluetooth | `NSBluetoothAlwaysUsageDescription` | absent | no |
+| `NSLocalNetworkUsageDescription` / `NWPathMonitor` | not found in PlanFlow production or linked-framework evidence | local network | `NSLocalNetworkUsageDescription` | absent | no |
+| `NSMotionUsageDescription` / `CMMotionManager` | not found in PlanFlow production or linked-framework evidence | motion | `NSMotionUsageDescription` | absent | no |
+| `NSFaceIDUsageDescription` / `LAContext` | not found in PlanFlow production or linked-framework evidence | Face ID | `NSFaceIDUsageDescription` | absent | no |
+| `NSAppleMusicUsageDescription` / `MPMediaLibrary` | not found in PlanFlow production or linked-framework evidence | Apple Music | `NSAppleMusicUsageDescription` | absent | no |
 | `AVCaptureDevice` / camera APIs | no PlanFlow camera call or linked-framework proof found | camera | `NSCameraUsageDescription` | not added; no evidence | not used; dependency-only candidate |
 | `PHPhotoLibrary` / photo APIs | no photo picker, asset library, or linked-framework proof found | photo read | `NSPhotoLibraryUsageDescription` | not added; no evidence | not used |
 | photo write APIs | no photo export/save feature or linked-framework proof found | photo write | `NSPhotoLibraryAddUsageDescription` | not added; no evidence | not used |

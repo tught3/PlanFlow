@@ -221,6 +221,21 @@
       "model": "gpt-5.6-luna",
       "result": "The redaction fixture failure was Windows test-tool discovery, not privacy filtering: malformed PATH splitting left otool empty and no binaries scanned. The minimal `--tool-dir` fixture override resolves .cmd/.exe tools deterministically; subsequent Flutter contract execution exited 0 with 13 tests."
     },
+    "privacy_audit_only_implementer": {
+      "agent": "ios_privacy_root_implementer",
+      "model": "gpt-5.6-luna",
+      "result": "Added ios-privacy-audit.yml: audit_only=true, fixed build 99990001, signed archive/export metadata and privacy-binary audit, fail-closed Firebase/signing gates, and audit logs/reports only. It has no App Store Connect upload path and excludes raw IPA from artifacts."
+    },
+    "privacy_audit_only_test_executor": {
+      "agent": "ios_privacy_root_test_executor",
+      "model": "gpt-5.4-mini",
+      "result": "Audit-only contract verification passed: Flutter 14/14, Dart analysis, Python compilation, and diff check exit 0; Android unchanged."
+    },
+    "privacy_audit_only_reviewer": {
+      "agent": "ios_privacy_root_reviewer",
+      "model": "gpt-5.6-luna",
+      "result": "Fresh FINAL_REVIEW_REPORT PASS/NONE for the audit-only workflow; no upload/ASC path and no Android scope change."
+    },
     "privacy_root_test_executor": {
       "agent": "ios_privacy_root_test_executor",
       "model": "gpt-5.4-mini",
@@ -392,6 +407,8 @@
     "BUILD_15_IPA_EXPORT": "PASS_PUBLIC_METADATA",
     "BUILD_15_BINARY_SCAN_EVIDENCE": "NOT_AVAILABLE_PROTECTED_LOGS_ARTIFACTS",
     "BUILD_16_DISPATCHED": "NO",
+    "IOS_PRIVACY_AUDIT_ONLY_WORKFLOW": "IMPLEMENTED_NOT_DISPATCHED",
+    "IOS_PRIVACY_AUDIT_ONLY_ASC_UPLOAD": "FORBIDDEN_BY_WORKFLOW",
     "PRIVACY_API_DEPENDENCY_MAP": "PARTIAL_UNTIL_MACOS_ARTIFACT",
     "ROOT_CAUSE_IDENTIFIED": "NO",
     "REQUIRED_USAGE_KEYS_RESOLVED": "NO",
@@ -480,7 +497,7 @@
   },
   "reviewer_terminal_gate": {
     "status": "PASS_WITH_PROVIDER_GATE",
-    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE after artifact redaction and latest-run fixes. Apple/macOS evidence remains an external release gate, so this is not completion.",
+    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE for the audit-only workflow. Apple/macOS artifact evidence remains an external release gate, so this is not completion.",
     "accepting": false
   },
   "integration": {
@@ -510,8 +527,10 @@
       "privacy_api_dependency_map": "PARTIAL_UNTIL_MACOS_ARTIFACT",
       "root_cause_identified": false,
       "required_usage_keys_resolved": false
+      ,"audit_only_workflow": "IMPLEMENTED_NOT_DISPATCHED"
+      ,"audit_only_asc_upload": "FORBIDDEN"
     },
-    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 14 retained mic/speech/tracking keys, so the ATT-only explanation is rejected. Build 15 public metadata shows archive/export success but a subsequent combined upload/verifier failure; no protected logs/artifacts expose actual binary scan output or Apple stateDetails. New instrumentation will preserve filtered non-secret scan evidence for a future authorized run, but root cause and required usage-key set are still unresolved. Build 16 is not dispatched."
+    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 15 public metadata is incomplete. A separate audit-only signed archive/export workflow now preserves non-secret privacy reports while forbidding ASC upload and raw IPA artifacts. It is not dispatched; root cause and required usage-key set remain unresolved, and Build 16 is not dispatched."
   },
   "next_gate": "Obtain authenticated Build 15 workflow/ASC diagnostics (stateDetails/errors and, if retained, binary report). Do not dispatch Build 16 until an exact Apple failure cause is available and an evidence-backed remediation passes review."
 }

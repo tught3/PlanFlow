@@ -1,0 +1,205 @@
+name: iOS privacy binary audit (audit-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      audit_only:
+        description: Run the non-uploading privacy audit only
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-audit:
+    if: ${{ inputs.audit_only == true }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      IOS_BUILD_NAME: 1.0.0
+      IOS_BUILD_NUMBER: 99990001
+      IOS_BUNDLE_ID: com.fluxstudio.planflow
+      IOS_WIDGET_BUNDLE_ID: com.fluxstudio.planflow.PlanFlowWidget
+      DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      RUNNER_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64 }}
+      WIDGET_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.PLANFLOW_APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Prepare Flutter, CocoaPods, and Firebase input
+        shell: bash
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p ios-audit
+          flutter pub get
+          pod install --project-directory=ios
+          if [[ -z "${FIREBASE_PLIST_BASE64:-}" ]]; then
+            echo "::error title=BLOCKED_AUDIT_CONFIG::Missing protected Firebase plist secret."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
+          bash scripts/verify-ios-firebase-config.sh
+          rm -f ios/Runner/GoogleService-Info.plist
+          python3 scripts/verify-ios-privacy-surface.py \
+            --runner-plist ios/Runner/Info.plist \
+            --widget-plist ios/PlanFlowWidget/Info.plist \
+            --report-json ios-audit/source-privacy-report.json
+
+      - name: Build fixed-number signed archive (no upload)
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 APPLE_TEAM_ID; do
+            [[ -n "${!name:-}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error title=BLOCKED_AUDIT_SIGNING::Missing protected signing secrets: ${missing[*]}"
+            exit 1
+          fi
+          flutter build ios --release --no-codesign \
+            --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER"
+          keychain="$RUNNER_TEMP/planflow-audit.keychain-db"
+          cert="$RUNNER_TEMP/planflow-audit.p12"
+          runner_profile="$RUNNER_TEMP/planflow-audit-runner.mobileprovision"
+          widget_profile="$RUNNER_TEMP/planflow-audit-widget.mobileprovision"
+          umask 077
+          printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$cert"
+          printf '%s' "$RUNNER_PROFILE_BASE64" | base64 --decode > "$runner_profile"
+          printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$widget_profile"
+          keychain_password="$(uuidgen)"
+          security create-keychain -p "$keychain_password" "$keychain" >/dev/null
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$cert" -k "$keychain" -P "$DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          runner_plist="$RUNNER_TEMP/audit-runner-profile.plist"
+          widget_plist="$RUNNER_TEMP/audit-widget-profile.plist"
+          security cms -D -i "$runner_profile" > "$runner_plist"
+          security cms -D -i "$widget_profile" > "$widget_plist"
+          runner_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$runner_plist")
+          widget_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_plist")
+          cp "$runner_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$runner_uuid.mobileprovision"
+          cp "$widget_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$widget_uuid.mobileprovision"
+          cat > "$RUNNER_TEMP/privacy-audit-export-options.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict><key>method</key><string>app-store</string><key>signingStyle</key><string>manual</string><key>teamID</key><string>$APPLE_TEAM_ID</string><key>provisioningProfiles</key><dict><key>$IOS_BUNDLE_ID</key><string>$runner_uuid</string><key>$IOS_WIDGET_BUNDLE_ID</key><string>$widget_uuid</string></dict></dict></plist>
+          PLIST
+          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner \
+            -configuration Release -archivePath "$RUNNER_TEMP/PlanFlowPrivacy.xcarchive" \
+            -destination 'generic/platform=iOS' \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            FLUTTER_BUILD_NAME="$IOS_BUILD_NAME" FLUTTER_BUILD_NUMBER="$IOS_BUILD_NUMBER" \
+            MARKETING_VERSION="$IOS_BUILD_NAME" CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
+            CODE_SIGN_IDENTITY="Apple Distribution" CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$runner_uuid" \
+            PLANFLOW_RUNNER_PROFILE_UUID="$runner_uuid" PLANFLOW_WIDGET_PROFILE_UUID="$widget_uuid" \
+            | tee ios-audit/archive.log
+
+      - name: Audit archive and attempt local export (never uploads)
+        shell: bash
+        run: |
+          set +e
+          audit_status=0
+          export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"
+          unpack_dir="$RUNNER_TEMP/PlanFlowPrivacyExportUnpacked"
+          rm -rf "$export_dir" "$unpack_dir"
+          mkdir -p "$export_dir" "$unpack_dir"
+          archive_runner="$RUNNER_TEMP/PlanFlowPrivacy.xcarchive/Products/Applications/Runner.app"
+          archive_widget="$archive_runner/PlugIns/PlanFlowWidgetExtension.appex"
+          if [[ -f "$archive_runner/Info.plist" && -f "$archive_widget/Info.plist" ]]; then
+            check_metadata() {
+              local plist="$1" expected_id="$2" label="$3"
+              local bundle_id version build
+              bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null || true)
+              version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)
+              build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist" 2>/dev/null || true)
+              if [[ "$bundle_id" != "$expected_id" || "$version" != "$IOS_BUILD_NAME" || "$build" != "$IOS_BUILD_NUMBER" ]]; then
+                echo "BLOCKED_AUDIT_METADATA: $label metadata mismatch" >&2
+                return 1
+              fi
+              echo "AUDIT_METADATA_PASS: $label bundleId=$bundle_id version=$version build=$build"
+            }
+            check_metadata "$archive_runner/Info.plist" "$IOS_BUNDLE_ID" Runner || audit_status=1
+            check_metadata "$archive_widget/Info.plist" "$IOS_WIDGET_BUNDLE_ID" Widget || audit_status=1
+            python3 scripts/verify-ios-privacy-surface.py \
+              --runner-plist "$archive_runner/Info.plist" \
+              --widget-plist "$archive_widget/Info.plist" \
+              --runner-bundle "$archive_runner" \
+              --require-binary-scan \
+              --report-json ios-audit/archive-privacy-report.json
+            archive_privacy_exit=$?
+            echo "archive_privacy_exit=$archive_privacy_exit" >> ios-audit/summary.txt
+            (( archive_privacy_exit == 0 )) || audit_status=1
+          else
+            echo "archive privacy plist/bundle missing" > ios-audit/archive-privacy-report.json
+            echo "archive_privacy_exit=missing" >> ios-audit/summary.txt
+            audit_status=1
+          fi
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/PlanFlowPrivacy.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/privacy-audit-export-options.plist" \
+            -exportPath "$export_dir" > ios-audit/export.log 2>&1
+          export_exit=$?
+          echo "export_exit=$export_exit" >> ios-audit/summary.txt
+          (( export_exit == 0 )) || audit_status=1
+          ipa_path="$(find "$export_dir" -maxdepth 1 -name '*.ipa' -type f | head -n 1)"
+          if [[ -n "$ipa_path" ]]; then
+            unzip -q "$ipa_path" -d "$unpack_dir"
+            unzip_exit=$?
+            echo "unzip_exit=$unzip_exit" >> ios-audit/summary.txt
+            (( unzip_exit == 0 )) || audit_status=1
+            exported_runner="$unpack_dir/Payload/Runner.app"
+            exported_widget="$exported_runner/PlugIns/PlanFlowWidgetExtension.appex"
+            if [[ -f "$exported_runner/Info.plist" && -f "$exported_widget/Info.plist" ]]; then
+              check_metadata "$exported_runner/Info.plist" "$IOS_BUNDLE_ID" ExportedRunner || audit_status=1
+              check_metadata "$exported_widget/Info.plist" "$IOS_WIDGET_BUNDLE_ID" ExportedWidget || audit_status=1
+              python3 scripts/verify-ios-privacy-surface.py \
+                --runner-plist "$exported_runner/Info.plist" \
+                --widget-plist "$exported_widget/Info.plist" \
+                --runner-bundle "$exported_runner" \
+                --require-binary-scan \
+                --report-json ios-audit/export-privacy-report.json
+              export_privacy_exit=$?
+              echo "export_privacy_exit=$export_privacy_exit" >> ios-audit/summary.txt
+              (( export_privacy_exit == 0 )) || audit_status=1
+            else
+              echo "export metadata missing Runner or Widget plist" > ios-audit/export-privacy-report.json
+              audit_status=1
+            fi
+          else
+            echo "exported IPA missing" > ios-audit/export-privacy-report.json
+            audit_status=1
+          fi
+          find ios-audit -type f -maxdepth 2 -print | sort >> ios-audit/summary.txt
+          exit "$audit_status"
+
+      - name: Preserve privacy audit artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-privacy-audit-only-${{ github.run_number }}
+          path: ios-audit
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup protected input
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          rm -f ios/Runner/GoogleService-Info.plist
+          rm -f "$RUNNER_TEMP/planflow-audit.p12" "$RUNNER_TEMP/planflow-audit-runner.mobileprovision" "$RUNNER_TEMP/planflow-audit-widget.mobileprovision"
+          security delete-keychain "$RUNNER_TEMP/planflow-audit.keychain-db" >/dev/null 2>&1 || true

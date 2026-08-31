@@ -23,17 +23,44 @@ REQUIRED = {
     "NSUserTrackingUsageDescription",
     "NSLocationWhenInUseUsageDescription",
 }
-WIDGET_FORBIDDEN = REQUIRED
 FRAMEWORK_KEYS = {
     "AVFoundation": "NSMicrophoneUsageDescription",
     "Speech": "NSSpeechRecognitionUsageDescription",
     "AppTrackingTransparency": "NSUserTrackingUsageDescription",
     "AdSupport": "NSUserTrackingUsageDescription",
     "CoreLocation": "NSLocationWhenInUseUsageDescription",
+    "Photos": "NSPhotoLibraryUsageDescription / NSPhotoLibraryAddUsageDescription",
+    "Contacts": "NSContactsUsageDescription",
+    "EventKit": "NSCalendarsUsageDescription / NSRemindersUsageDescription",
+    "CoreBluetooth": "NSBluetoothAlwaysUsageDescription",
+    "Network": "NSLocalNetworkUsageDescription",
+    "CoreMotion": "NSMotionUsageDescription",
+    "LocalAuthentication": "NSFaceIDUsageDescription",
+    "MediaPlayer": "NSAppleMusicUsageDescription",
 }
+PRIVACY_CATEGORIES = {
+    "microphone": ("NSMicrophoneUsageDescription", "AVFoundation"),
+    "speechRecognition": ("NSSpeechRecognitionUsageDescription", "Speech"),
+    "tracking": ("NSUserTrackingUsageDescription", "AppTrackingTransparency"),
+    "locationWhenInUse": ("NSLocationWhenInUseUsageDescription", "CoreLocation"),
+    "contacts": ("NSContactsUsageDescription", "CNContactStore"),
+    "calendars": ("NSCalendarsUsageDescription", "EKEventStore"),
+    "reminders": ("NSRemindersUsageDescription", "EKReminder"),
+    "photos": ("NSPhotoLibraryUsageDescription", "PHPhotoLibrary"),
+    "photoLibraryAdd": ("NSPhotoLibraryAddUsageDescription", "PHPhotoLibrary"),
+    "camera": ("NSCameraUsageDescription", "AVCaptureDevice"),
+    "bluetooth": ("NSBluetoothAlwaysUsageDescription", "CBCentralManager"),
+    "localNetwork": ("NSLocalNetworkUsageDescription", "NWPathMonitor"),
+    "locationAlways": ("NSLocationAlwaysAndWhenInUseUsageDescription", "CLLocationManager"),
+    "motion": ("NSMotionUsageDescription", "CMMotionManager"),
+    "faceId": ("NSFaceIDUsageDescription", "LAContext"),
+    "appleMusic": ("NSAppleMusicUsageDescription", "MPMediaLibrary"),
+}
+WIDGET_FORBIDDEN = {value[0] for value in PRIVACY_CATEGORIES.values()}
 SCAN_REPORT: list[dict] = []
+SCAN_EVIDENCE: set[str] = set()
 EVIDENCE_PATTERN = re.compile(
-    r"(?:AVFoundation|Speech|AppTrackingTransparency|AdSupport|CoreLocation|"
+    r"(?:AVFoundation|Speech|AppTrackingTransparency|AdSupport|CoreLocation|Photos|Contacts|EventKit|CoreBluetooth|Network|CoreMotion|LocalAuthentication|MediaPlayer|"
     r"NS(?:Microphone|SpeechRecognition|UserTracking|Location).*UsageDescription|"
     r"CNContactStore|EKEventStore|PHPhotoLibrary|AVCaptureDevice|CBCentralManager|"
     r"NWPathMonitor|CMMotionManager|LAContext|MPMediaLibrary)",
@@ -143,6 +170,7 @@ def scan_frameworks(bundle: Path, require: bool, tool_dir: Path | None = None) -
         for framework in FRAMEWORK_KEYS:
             if f"{framework}.framework" in output:
                 found.add(framework)
+                SCAN_EVIDENCE.add(framework)
         try:
             nm_tool = _which_tool("nm", tool_dir)
             strings_tool = _which_tool("strings", tool_dir)
@@ -168,6 +196,10 @@ def scan_frameworks(bundle: Path, require: bool, tool_dir: Path | None = None) -
         for framework in FRAMEWORK_KEYS:
             if framework in symbol_text:
                 found.add(framework)
+                SCAN_EVIDENCE.add(framework)
+        for item in PRIVACY_CATEGORIES.values():
+            if item[1] in symbol_text:
+                SCAN_EVIDENCE.add(item[1])
     if require and scanned == 0:
         raise SystemExit("BLOCKED_PRIVACY_BINARY_SCAN: no binaries were successfully scanned")
     return found
@@ -192,6 +224,17 @@ def main() -> int:
         widget = read_plist(args.widget_plist)
         report["runnerKeys"] = {key: bool(str(runner.get(key, "")).strip()) for key in sorted(REQUIRED)}
         report["widgetForbiddenKeys"] = sorted(key for key in WIDGET_FORBIDDEN if key in widget)
+        report["privacyMatrix"] = [
+            {
+                "category": category,
+                "requiredKey": key,
+                "runnerKeyPresent": bool(str(runner.get(key, "")).strip()),
+                "evidence": evidence,
+                "evidenceStrength": "direct-plist-required-key" if key in REQUIRED else "candidate-only",
+                "falsePositivePotential": key not in REQUIRED,
+            }
+            for category, (key, evidence) in PRIVACY_CATEGORIES.items()
+        ]
         missing = sorted(key for key in REQUIRED if not str(runner.get(key, "")).strip())
         if missing:
             raise SystemExit("BLOCKED_RUNNER_PRIVACY: missing required usage descriptions: " + ", ".join(missing))
@@ -201,6 +244,11 @@ def main() -> int:
         if args.runner_bundle:
             frameworks = scan_frameworks(args.runner_bundle, args.require_binary_scan, args.tool_dir)
             report["linkedFrameworks"] = {framework: FRAMEWORK_KEYS[framework] for framework in sorted(frameworks)}
+            report["binaryEvidence"] = sorted(SCAN_EVIDENCE)
+            for item in report["privacyMatrix"]:
+                if item["evidence"] in SCAN_EVIDENCE:
+                    item["evidenceStrength"] = "linked-framework-or-symbol"
+                    item["falsePositivePotential"] = False
             print("IOS_PRIVACY_BINARY_SCAN: " + ("PASS" if frameworks else "PASS_NO_MAPPED_FRAMEWORKS"))
         report["status"] = "PASS"
         return 0

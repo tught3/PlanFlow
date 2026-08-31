@@ -80,6 +80,7 @@ void main() {
     expect(helper, contains('CMMotionManager'));
     expect(helper, contains('LAContext'));
     expect(helper, contains('MPMediaLibrary'));
+    expect(helper, contains('privacyMatrix'));
   });
 
   test('privacy helper rejects missing Runner keys and Widget leakage', () {
@@ -173,8 +174,29 @@ void main() {
     }
   });
 
-  test('privacy helper requires a bundle for required scans and writes pass reports', () {
-    final temp = Directory.systemTemp.createTempSync('planflow-privacy-report-');
+  test('audit-only workflow is non-uploading and preserves reports', () {
+    final workflow =
+        file('.github/workflows/ios-privacy-audit.yml').readAsStringSync();
+    expect(workflow, contains('audit_only'));
+    expect(workflow, contains('actions/upload-artifact@v4'));
+    expect(workflow, contains('ios-audit'));
+    expect(workflow, contains('Build fixed-number signed archive'));
+    expect(workflow, contains('CODE_SIGN_IDENTITY="Apple Distribution"'));
+    expect(workflow, contains('PROVISIONING_PROFILE_SPECIFIER'));
+    expect(workflow, contains('security import'));
+    expect(workflow, contains('AUDIT_METADATA_PASS'));
+    expect(workflow, contains('BLOCKED_AUDIT_METADATA'));
+    expect(workflow, contains('CFBundleShortVersionString'));
+    expect(workflow, contains('CFBundleVersion'));
+    expect(workflow, isNot(contains('altool')));
+    expect(workflow, isNot(contains('upload-app')));
+  });
+
+  test(
+      'privacy helper requires a bundle for required scans and writes pass reports',
+      () {
+    final temp =
+        Directory.systemTemp.createTempSync('planflow-privacy-report-');
     try {
       final runner = File('${temp.path}${Platform.pathSeparator}runner.plist');
       final widget = File('${temp.path}${Platform.pathSeparator}widget.plist');
@@ -228,28 +250,28 @@ void main() {
     final temp =
         Directory.systemTemp.createTempSync('planflow-privacy-filtered-');
     try {
-      final bundle = Directory(
-          '${temp.path}${Platform.pathSeparator}Runner.app');
+      final bundle =
+          Directory('${temp.path}${Platform.pathSeparator}Runner.app');
       bundle.createSync(recursive: true);
-      final runnerPlist = File(
-          '${bundle.path}${Platform.pathSeparator}Info.plist');
+      final runnerPlist =
+          File('${bundle.path}${Platform.pathSeparator}Info.plist');
       runnerPlist.writeAsStringSync(
         '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Runner</string><key>NSMicrophoneUsageDescription</key><string>mic</string><key>NSSpeechRecognitionUsageDescription</key><string>speech</string><key>NSUserTrackingUsageDescription</key><string>tracking</string><key>NSLocationWhenInUseUsageDescription</key><string>location</string></dict></plist>''',
       );
-      final widgetPlist = File(
-          '${temp.path}${Platform.pathSeparator}widget.plist');
+      final widgetPlist =
+          File('${temp.path}${Platform.pathSeparator}widget.plist');
       widgetPlist.writeAsStringSync(
         '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict></dict></plist>''',
       );
-      final runnerBinary = File('${bundle.path}${Platform.pathSeparator}Runner');
+      final runnerBinary =
+          File('${bundle.path}${Platform.pathSeparator}Runner');
       runnerBinary.writeAsStringSync('fake runner binary');
-      final toolDir =
-          Directory('${temp.path}${Platform.pathSeparator}tools')
-            ..createSync(recursive: true);
+      final toolDir = Directory('${temp.path}${Platform.pathSeparator}tools')
+        ..createSync(recursive: true);
       final otool = File('${toolDir.path}${Platform.pathSeparator}otool.cmd');
       final nm = File('${toolDir.path}${Platform.pathSeparator}nm.cmd');
-      final strings = File(
-          '${toolDir.path}${Platform.pathSeparator}strings.cmd');
+      final strings =
+          File('${toolDir.path}${Platform.pathSeparator}strings.cmd');
       otool.writeAsStringSync('''@echo off
 echo SENTINEL_RAW_OTOOL
 echo /System/Library/Frameworks/CoreLocation.framework/CoreLocation
@@ -267,8 +289,7 @@ echo AVFoundation.framework
           '${root.path}${Platform.pathSeparator}scripts${Platform.pathSeparator}verify-ios-privacy-surface.py';
       final env = Map<String, String>.from(Platform.environment);
       final existingPath = env['PATH'] ?? env['Path'] ?? '';
-      final toolPath =
-          '${toolDir.path}${Platform.pathSeparator}$existingPath';
+      final toolPath = '${toolDir.path}${Platform.pathSeparator}$existingPath';
       env['PATH'] = toolPath;
       env['Path'] = toolPath;
       final result = Process.runSync(
