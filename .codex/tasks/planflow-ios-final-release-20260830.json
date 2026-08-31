@@ -5,7 +5,7 @@
   "status": "blocked_account_action",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
   "current_commit": "0da5b7feef22dbfcbf8bbfb7b3d9c7ed68a01208",
-  "repository_head": "28734616cae84729bf13ab517dd9f5a03d469321",
+  "repository_head": "e9b8842f4e1db82f0b52c49f5e0283221983b9dd",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
@@ -54,7 +54,7 @@
     "secrets_committed": false
   },
   "verification": {
-    "final_diff": {"range": "41906f9aef8706184171fd2456c241aa92977064..28734616cae84729bf13ab517dd9f5a03d469321", "files": [".github/workflows/ios-release.yml", ".gitignore", ".codex/tasks/planflow-ios-final-release-20260830.json", "docs/ios/release-readiness.md", "ios/Runner.xcodeproj/project.pbxproj", "test/ios_release_contract_test.dart"], "diff_check_exit_code": 0, "android_production_files_changed": false},
+    "final_diff": {"range": "41906f9aef8706184171fd2456c241aa92977064..e9b8842f4e1db82f0b52c49f5e0283221983b9dd", "files": [".github/workflows/ios-release.yml", ".gitignore", ".codex/tasks/planflow-ios-final-release-20260830.json", "docs/ios/release-readiness.md", "ios/Runner.xcodeproj/project.pbxproj", "test/ios_release_contract_test.dart"], "diff_check_exit_code": 0, "android_production_files_changed": false},
     "commands": [
       {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "run_at": "2026-08-30"},
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
