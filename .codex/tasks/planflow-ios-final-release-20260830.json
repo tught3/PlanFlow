@@ -49,8 +49,8 @@
     "same_build_reupload": "A new build number is required; next workflow dispatch uses github.run_number"
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-    "current_commit": "1fd8d3a0",
-    "repository_head": "1fd8d3a0",
+    "current_commit": "128b947b",
+    "repository_head": "128b947b",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -163,7 +163,8 @@
     "2c379f86",
     "f991b0d7",
     "3d1331bd",
-    "1fd8d3a0"
+    "1fd8d3a0",
+    "128b947b"
   ],
   "workflow": {
     "path": ".github/workflows/ios-release.yml",
