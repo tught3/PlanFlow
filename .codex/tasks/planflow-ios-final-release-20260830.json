@@ -2,13 +2,13 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_apple_buildupload_failed",
+  "status": "blocked_privacy_root_cause_pending_macos_binary_and_apple_diagnostics",
   "privacy_90683": {
     "apple_code": "90683",
     "apple_description": "Missing purpose string in Info.plist.",
     "affected_bundle": "Runner.app",
-    "required_key_identified": "NSUserTrackingUsageDescription",
-    "evidence": "Runner registers google_mobile_ads and its resolved iOS pod depends on Google-Mobile-Ads-SDK ~11.13.0; official Google Mobile Ads IDFA guidance requires this key for ATT/IDFA messaging. Existing microphone and speech keys remain unchanged.",
+    "required_key_identified": "NSLocationWhenInUseUsageDescription (evidence-backed candidate; Apple key not yet confirmed)",
+    "evidence": "Build 13 and Build 14 both failed with generic 90683 despite NSUserTrackingUsageDescription being present in source/archive/export. flutter_naver_map 1.4.4 iOS source includes CoreLocation CLLocationManager and requestWhenInUseAuthorization, and PlanFlow uses its location picker. The location key is therefore added as a Runner-only evidence-backed candidate; exact Apple key remains unconfirmed until macOS binary evidence or authenticated Apple diagnostics.",
     "runner_only_scope": true,
     "widget_privacy_keys_added": false,
     "android_changed": false
@@ -164,6 +164,31 @@
       "model": "gpt-5.4-mini",
       "result": "flutter test, dart analyze, JSON validation, and git diff --check all exit 0; macOS/Xcode/ASC execution unavailable on Windows."
     },
+    "privacy_root_explorer": {
+      "agent": "ios_privacy_root_explorer",
+      "model": "gpt-5.4-mini",
+      "result": "Resolved production dependency/app-use evidence: speech_to_text proves microphone/speech; flutter_naver_map/CoreLocation plus PlanFlow's LocationPickerScreen proves the Runner location candidate. file_picker is custom .ics only and no evidence supports speculative camera/photos/contacts/calendar/reminders/Bluetooth/motion/Face ID keys. macOS binary and authenticated Apple diagnostics remain required."
+    },
+    "privacy_root_planner": {
+      "agent": "ios_privacy_root_planner",
+      "model": "gpt-5.6-terra",
+      "result": "Complex plan requires an evidence matrix, Runner-only key changes, archive/export binary scans, Widget leakage rejection, and no Build 15 dispatch until the macOS gate passes."
+    },
+    "privacy_root_implementer": {
+      "agent": "ios_privacy_root_implementer",
+      "model": "gpt-5.6-luna",
+      "result": "Added Runner-only NSLocationWhenInUseUsageDescription, privacy evidence matrix, and fail-closed source/archive/export binary preflight. Android and Widget privacy keys are unchanged; Build 15 was not dispatched."
+    },
+    "privacy_root_test_executor": {
+      "agent": "ios_privacy_root_test_executor",
+      "model": "gpt-5.4-mini",
+      "result": "2026-08-31 local verification: flutter contract test 10/10, Dart analysis, Python helper compilation, JSON validation, and diff check all exit 0. macOS/Xcode/ASC execution is unavailable on this Windows host."
+    },
+    "privacy_root_reviewer": {
+      "agent": "ios_privacy_root_reviewer",
+      "model": "gpt-5.6-luna",
+      "result": "FINAL_REVIEW_REPORT FINDINGS: HIGH task-state ATT-root-cause drift, MEDIUM workflow/helper key-set drift, LOW documentation wording drift. Fixes were applied locally; a fresh independent final review is still required before acceptance."
+    },
     "integrator_90683": {
       "agent": "ios_90683_integrator",
       "model": "gpt-5.6-terra",
@@ -309,6 +334,9 @@
     "RUNNER_PRIVACY_SOURCE_PASS": "PASS",
     "ARCHIVE_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_14",
     "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_14",
+    "PRIVACY_ROOT_CAUSE_AUDITED": "PARTIAL_LOCAL_EVIDENCE",
+    "MACOS_BINARY_PRIVACY_SCAN": "NOT_RUN_EXTERNAL_MACOS_REQUIRED",
+    "BUILD_15_UPLOADED": "NO",
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
   "required_external_secrets": [
@@ -346,6 +374,32 @@
         "command": "dart analyze test/ios_release_contract_test.dart",
         "exit_code": 0,
         "run_at": "2026-08-30"
+      },
+      {
+        "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+        "exit_code": 0,
+        "run_at": "2026-08-31",
+        "evidence": "10/10 passed, including privacy-key equality and fail-closed negative tests"
+      },
+      {
+        "command": "dart analyze test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "run_at": "2026-08-31"
+      },
+      {
+        "command": "python -m py_compile scripts/verify-ios-privacy-surface.py",
+        "exit_code": 0,
+        "run_at": "2026-08-31"
+      },
+      {
+        "command": "python -m json.tool .codex/tasks/planflow-ios-final-release-20260830.json",
+        "exit_code": 0,
+        "run_at": "2026-08-31"
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "run_at": "2026-08-31"
       }
     ],
     "not_run": [],
@@ -376,12 +430,12 @@
     }
   },
   "reviewer_terminal_gate": {
-    "status": "PASS_WITH_PROVIDER_GATE",
-    "reason": "Independent reviewer confirmed the current diff has no BLOCKER/HIGH findings. Provider ingestion remains unverified until a new signed workflow run reaches App Store Connect API/UI.",
+    "status": "NEEDS_FRESH_REVIEW_AFTER_FINDINGS_FIX",
+    "reason": "The sole host-final reviewer report found HIGH/MEDIUM/LOW contract drift. The scoped fixes are locally retested, but a new independent host-final review has not yet been authorized or run; acceptance remains fail-closed.",
     "accepting": false
   },
   "integration": {
-    "status": "BLOCKED_APPLE_BUILDUPLOAD_FAILED",
+    "status": "BLOCKED_EXTERNAL_MACOS_ASC_AUDIT",
     "integrated_at": "2026-08-31",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
@@ -392,13 +446,15 @@
       "archive_ipa_testflight": "TRANSPORT_ONLY_PASS",
       "app_store_build_ingested": "NOT_VERIFIED",
       "testflight_build_visible_or_processing": "NOT_VERIFIED",
-      "runner_privacy_source": "PASS_RUN_14",
-      "archive_privacy_preflight": "PASS_RUN_14",
-      "exported_ipa_privacy_preflight": "PASS_RUN_14",
+      "runner_privacy_source": "UPDATED_LOCATION_CANDIDATE_LOCAL_ONLY",
+      "archive_privacy_preflight": "PASS_RUN_14_PRE_LOCATION_FIX",
+      "exported_ipa_privacy_preflight": "PASS_RUN_14_PRE_LOCATION_FIX",
+      "macos_binary_privacy_scan": "NOT_RUN",
       "build_14_uploaded": true,
-      "build_14_upload_state": "FAILED"
+      "build_14_upload_state": "FAILED",
+      "build_15_uploaded": false
     },
-    "evidence": "GitHub Actions run 33396177903 (#14, HEAD c3b787eb) passed source/archive/export privacy gates and signed IPA creation, then failed authoritative App Store Connect verification with BuildUpload state=FAILED. Public metadata does not expose Apple's stateDetails/errors; authenticated workflow logs or ASC API access are required before another privacy change or build 15 upload."
+    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 14 retained mic/speech/tracking keys, so the ATT-only explanation is rejected. The location candidate is evidence-backed by flutter_naver_map/CoreLocation plus PlanFlow's location picker. Local matrix and fail-closed gates are complete, but macOS binary scan, authenticated Apple stateDetails, and a fresh independent reviewer final are required; Build 15 has not been uploaded."
   },
-  "next_gate": "Open authenticated run 33396177903 logs or run the read-only ASC verifier with protected credentials to capture BuildUpload stateDetails/errors. Preserve the exact Apple code/description, then make only evidence-backed fixes and use build 15 or later."
+  "next_gate": "Run a fresh independent review after the contract fixes. Then, on macOS, run archive/export binary scans and the authenticated ASC verifier. Only if those gates pass, dispatch Build 15 once; require authoritative BuildUpload COMPLETE and a PlanFlow build/TestFlight processing record before success."
 }

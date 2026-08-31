@@ -27,6 +27,8 @@
     <string>음성을 일정 내용으로 변환하려면 음성 인식 권한이 필요합니다.</string>
     <key>NSUserTrackingUsageDescription</key>
     <string>관련 광고를 제공하고 서비스 이용을 개선하기 위해 기기 식별자 사용 권한이 필요합니다.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>일정 장소를 지도에서 찾고 출발지와 목적지를 확인하려면 위치 권한이 필요합니다.</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

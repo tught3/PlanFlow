@@ -18,6 +18,7 @@ void main() {
     expect(plist, contains('NSMicrophoneUsageDescription'));
     expect(plist, contains('NSSpeechRecognitionUsageDescription'));
     expect(plist, contains('NSUserTrackingUsageDescription'));
+    expect(plist, contains('NSLocationWhenInUseUsageDescription'));
     final phoneOrientations =
         plist.split('<key>UISupportedInterfaceOrientations~ipad</key>').first;
     expect(phoneOrientations, contains('UIInterfaceOrientationPortrait'));
@@ -42,6 +43,96 @@ void main() {
     expect(workflow, contains('ios/Runner.xcodeproj/project.pbxproj'));
   });
 
+  test('iOS privacy audit and reusable privacy gate are source controlled', () {
+    final audit = file('docs/ios/privacy-surface-audit.md').readAsStringSync();
+    final helper =
+        file('scripts/verify-ios-privacy-surface.py').readAsStringSync();
+    expect(audit, contains('NSLocationWhenInUseUsageDescription'));
+    expect(audit, contains('실제 macOS binary'));
+    expect(audit, contains('archive/export release gates require'));
+    expect(helper, contains('BLOCKED_RUNNER_PRIVACY'));
+    expect(helper, contains('BLOCKED_WIDGET_PRIVACY'));
+    expect(helper, contains('NSLocationWhenInUseUsageDescription'));
+    expect(helper, contains('--require-binary-scan'));
+  });
+
+  test('privacy helper rejects missing Runner keys and Widget leakage', () {
+    final temp = Directory.systemTemp.createTempSync('planflow-privacy-test-');
+    try {
+      final runner = File('${temp.path}${Platform.pathSeparator}runner.plist');
+      final widget = File('${temp.path}${Platform.pathSeparator}widget.plist');
+      String plist(Map<String, String> values) =>
+          '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>${values.entries.map((entry) => '<key>${entry.key}</key><string>${entry.value}</string>').join()}</dict></plist>''';
+      final keys = <String, String>{
+        'NSMicrophoneUsageDescription': 'mic',
+        'NSSpeechRecognitionUsageDescription': 'speech',
+        'NSUserTrackingUsageDescription': 'tracking',
+        'NSLocationWhenInUseUsageDescription': 'location',
+      };
+      runner.writeAsStringSync(
+          plist({...keys}..remove('NSLocationWhenInUseUsageDescription')));
+      widget.writeAsStringSync(plist(const <String, String>{}));
+      final helper =
+          '${root.path}${Platform.pathSeparator}scripts${Platform.pathSeparator}verify-ios-privacy-surface.py';
+      ProcessResult run() => Process.runSync(
+            Platform.isWindows ? 'python' : 'python3',
+            [
+              helper,
+              '--runner-plist',
+              runner.path,
+              '--widget-plist',
+              widget.path
+            ],
+          );
+      expect(run().exitCode, isNot(0));
+      runner.writeAsStringSync(plist(keys));
+      widget.writeAsStringSync(plist(<String, String>{
+        'NSLocationWhenInUseUsageDescription': 'wrong target',
+      }));
+      expect(run().exitCode, isNot(0));
+    } finally {
+      temp.deleteSync(recursive: true);
+    }
+  });
+
+  test('privacy helper fails closed when required binary scan is unavailable',
+      () {
+    final temp =
+        Directory.systemTemp.createTempSync('planflow-privacy-binary-');
+    try {
+      final runner = File('${temp.path}${Platform.pathSeparator}runner.plist');
+      final widget = File('${temp.path}${Platform.pathSeparator}widget.plist');
+      String plist(Map<String, String> values) =>
+          '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>${values.entries.map((entry) => '<key>${entry.key}</key><string>${entry.value}</string>').join()}</dict></plist>''';
+      final keys = <String, String>{
+        'NSMicrophoneUsageDescription': 'mic',
+        'NSSpeechRecognitionUsageDescription': 'speech',
+        'NSUserTrackingUsageDescription': 'tracking',
+        'NSLocationWhenInUseUsageDescription': 'location',
+      };
+      runner.writeAsStringSync(plist(keys));
+      widget.writeAsStringSync(plist(const <String, String>{}));
+      final helper =
+          '${root.path}${Platform.pathSeparator}scripts${Platform.pathSeparator}verify-ios-privacy-surface.py';
+      final result = Process.runSync(
+        Platform.isWindows ? 'python' : 'python3',
+        [
+          helper,
+          '--runner-plist',
+          runner.path,
+          '--widget-plist',
+          widget.path,
+          '--runner-bundle',
+          temp.path,
+          '--require-binary-scan'
+        ],
+      );
+      expect(result.exitCode, isNot(0));
+    } finally {
+      temp.deleteSync(recursive: true);
+    }
+  });
+
   test('signed release workflow has explicit Apple signing and cleanup gates',
       () {
     final workflow =
@@ -50,6 +141,32 @@ void main() {
     expect(workflow, contains('BLOCKED_APPLE_SIGNING'));
     expect(workflow, contains('RUNNER_PRIVACY_SOURCE_PASS: PASS'));
     expect(workflow, contains('BLOCKED_RUNNER_PRIVACY_SOURCE'));
+    expect(workflow, contains('NSLocationWhenInUseUsageDescription'));
+    expect(workflow, contains('verify-ios-privacy-surface.py'));
+    final requiredPrivacyKeys = <String>{
+      'NSMicrophoneUsageDescription',
+      'NSSpeechRecognitionUsageDescription',
+      'NSUserTrackingUsageDescription',
+      'NSLocationWhenInUseUsageDescription',
+    };
+    final privacyLoops = RegExp(r'for privacy_key in ([^;]+); do')
+        .allMatches(workflow)
+        .map((match) => match.group(1)!.split(RegExp(r'\s+')).toSet())
+        .toList(growable: false);
+    expect(privacyLoops, isNotEmpty);
+    for (final loop in privacyLoops) {
+      expect(loop, requiredPrivacyKeys);
+    }
+    final helper =
+        file('scripts/verify-ios-privacy-surface.py').readAsStringSync();
+    final helperRequired = RegExp(r'REQUIRED = \{([\s\S]*?)\}')
+        .firstMatch(helper)!
+        .group(1)!;
+    final helperPrivacyKeys = RegExp(r'"([^"]+)"')
+        .allMatches(helperRequired)
+        .map((match) => match.group(1)!)
+        .toSet();
+    expect(helperPrivacyKeys, requiredPrivacyKeys);
     expect(workflow, contains('PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64'));
     expect(
         workflow, contains('PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64'));
