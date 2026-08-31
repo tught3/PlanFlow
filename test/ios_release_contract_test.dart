@@ -53,6 +53,7 @@ void main() {
     expect(
         workflow, contains('PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64'));
     expect(workflow, contains('PlanFlowWidgetExtension.appex'));
+    expect(workflow, contains('pod install --project-directory=ios'));
     expect(workflow, contains('xcodebuild -exportArchive'));
     expect(workflow, contains('xcrun altool --upload-app'));
     expect(workflow, contains('APP_STORE_CONNECT_KEY_ID'));

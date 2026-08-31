@@ -62,6 +62,7 @@ jobs:
           set -euo pipefail
           trap 'rm -f ios/Runner/GoogleService-Info.plist' EXIT
           flutter pub get
+          pod install --project-directory=ios
           umask 077
           printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
           bash scripts/verify-ios-firebase-config.sh
