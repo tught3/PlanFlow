@@ -15,7 +15,18 @@
 | `google_mobile_ads` 5.3.1 | registered plugin and ad service; Google-Mobile-Ads-SDK pod | AdSupport/AppTrackingTransparency (IDFA/ATT) | `NSUserTrackingUsageDescription` | present | 관련 광고·측정 동의 |
 | `file_picker` 11.0.2 | `NaverIcsImportScreen` calls `FileType.custom` for `.ics` | no media picker evidence | Photos key not added | no key required | ICS import |
 | `webview_flutter_wkwebview` | no production camera/media capture call found | camera candidate only | camera key not added | no evidence | no direct production use |
-| contacts/calendar/reminders/Bluetooth/motion/Face ID | no production call or linked-framework proof found | candidate | none | not added | not used |
+| `AVCaptureDevice` / camera APIs | no PlanFlow camera call or linked-framework proof found | camera | `NSCameraUsageDescription` | not added; no evidence | not used; dependency-only candidate |
+| `PHPhotoLibrary` / photo APIs | no photo picker, asset library, or linked-framework proof found | photo read | `NSPhotoLibraryUsageDescription` | not added; no evidence | not used |
+| photo write APIs | no photo export/save feature or linked-framework proof found | photo write | `NSPhotoLibraryAddUsageDescription` | not added; no evidence | not used |
+| `CNContactStore` / Contacts | no contacts API call or linked-framework proof found | contacts | `NSContactsUsageDescription` | not added; no evidence | not used |
+| `EKEventStore` / EventKit calendars | no EventKit call; app calendar is Supabase/local data | calendars | `NSCalendarsUsageDescription` | not added; no evidence | not used |
+| `EKEventStore` reminders | no reminders API call or linked-framework proof found | reminders | `NSRemindersUsageDescription` | not added; no evidence | not used |
+| CoreLocation always authorization | plugin evidence is when-in-use only; no always authorization call found | location always | `NSLocationAlwaysAndWhenInUseUsageDescription` | not added; no evidence | not used |
+| `CBCentralManager` / Bluetooth | no Bluetooth API call or linked-framework proof found | Bluetooth | `NSBluetoothAlwaysUsageDescription` | not added; no evidence | not used |
+| `NWPathMonitor` / local network | no local-network browsing/listener or linked-framework proof found | local network | `NSLocalNetworkUsageDescription` | not added; no evidence | not used |
+| `CMMotionManager` / motion | no motion API call or linked-framework proof found | motion | `NSMotionUsageDescription` | not added; no evidence | not used |
+| `LAContext` / LocalAuthentication | no Face ID/biometric API call or linked-framework proof found | Face ID | `NSFaceIDUsageDescription` | not added; no evidence | not used |
+| `MPMediaLibrary` / Apple Music | no media-library API call or linked-framework proof found | media library | `NSAppleMusicUsageDescription` | not added; no evidence | not used |
 
 The location key is Runner-only. The Widget has an App Group entitlement but no
 location, microphone, speech, tracking, camera, photos, contacts, calendar, or
@@ -27,8 +38,11 @@ other Runner usage descriptions.
 and Widget plists. The archive/export release gates require a macOS scan of the
 built Runner bundle and embedded binaries with `otool -L`, `nm`, and `strings`,
 and report mapped sensitive frameworks. Unknown symbols are not treated as
-proof of a missing key. A missing required key, failed binary scan, or a Runner
-key copied into Widget fails the build.
+proof of a missing key. The optional JSON report records each Runner,
+embedded-framework, appex, and dylib binary, each `otool`/`nm`/`strings`
+return code, and only filtered framework/candidate-symbol evidence; it never
+stores full binary output. A missing required key, failed binary scan, or a
+Runner key copied into Widget fails the build.
 
 Windows에서는 실제 macOS binary를 만들 수 없고 Xcode, `otool`, authoritative signed IPA를
 실행할 수 없다;

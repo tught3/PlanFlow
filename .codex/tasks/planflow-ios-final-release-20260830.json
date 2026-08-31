@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_privacy_root_cause_pending_macos_binary_and_apple_diagnostics",
+  "status": "blocked_build15_apple_diagnostics_and_artifact_evidence",
   "privacy_90683": {
     "apple_code": "90683",
     "apple_description": "Missing purpose string in Info.plist.",
@@ -39,6 +39,23 @@
       "apple_error_detail": "NOT_VISIBLE_PUBLICLY; GitHub logs require authenticated access",
       "build_14_reused": false,
       "next_action": "Obtain authenticated workflow log or ASC BuildUpload stateDetails/errors before changing keys or uploading build 15."
+    },
+    "run_15": {
+      "run_id": 33404539592,
+      "run_number": 15,
+      "job_id": 99528718676,
+      "head_sha": "8a3ded30",
+      "archive_step": "SUCCESS_OBSERVED_PUBLIC_METADATA",
+      "ipa_export_step": "SUCCESS_OBSERVED_PUBLIC_METADATA",
+      "upload_and_verifier_step": "FAILED_OBSERVED_PUBLIC_METADATA",
+      "transport_upload": "UNKNOWN_PROTECTED_LOGS_REQUIRED",
+      "build_upload_state": "UNKNOWN_PROTECTED_LOGS_REQUIRED",
+      "artifact_listing": "total_count=0",
+      "logs_endpoint": "HTTP_403_UNAUTHENTICATED",
+      "binary_scan_output": "NOT_AVAILABLE: pre-capture workflow did not retain it and the current run logs/artifacts are protected",
+      "apple_error_detail": "NOT_AVAILABLE: public metadata has no stateDetails/errors",
+      "build_16_dispatched": false,
+      "next_action": "Use the newly added audit-report artifact capture on a separately authorized future signed run only after authenticated Apple diagnostics identify an evidence-backed remediation."
     },
     "run_13": {
       "run_id": 33377449742,
@@ -179,6 +196,26 @@
       "model": "gpt-5.6-luna",
       "result": "Added Runner-only NSLocationWhenInUseUsageDescription, privacy evidence matrix, and fail-closed source/archive/export binary preflight. Android and Widget privacy keys are unchanged; Build 15 was not dispatched."
     },
+    "privacy_artifact_implementer": {
+      "agent": "ios_privacy_root_implementer",
+      "model": "gpt-5.6-luna",
+      "result": "Added non-secret JSON capture for archive/export privacy scans, preserving filtered otool/nm/strings candidate evidence and return codes only. The workflow uploads the reports for 14 days even when later steps fail. Build 16 was not dispatched."
+    },
+    "privacy_artifact_reviewer": {
+      "agent": "ios_privacy_root_reviewer",
+      "model": "gpt-5.6-luna",
+      "result": "FINAL_REVIEW_REPORT PASS/NONE: artifact capture is iOS-only, filtered/non-secret, fail-closed, and leaves Android/Widget scope intact. Build 15 metadata is accurately qualified and Build 16 remains undispatched. Local Flutter 11/11, Dart analysis, Python compilation, JSON validation, and diff check passed."
+    },
+    "privacy_artifact_reviewer_initial": {
+      "agent": "privacy_artifact_reviewer",
+      "model": "gpt-5.6-luna",
+      "result": "FINAL_REVIEW_REPORT FINDINGS: MEDIUM redaction-test and latest-run consistency gaps. Both were corrected before the final independent PASS/NONE review."
+    },
+    "privacy_artifact_test_executor": {
+      "agent": "ios_privacy_root_test_executor",
+      "model": "gpt-5.4-mini",
+      "result": "2026-09-01 local verification passed: Flutter contract tests 11/11, Dart analysis, Python helper compilation, task JSON validation, and diff check all exit 0. The deterministic report fixture proves raw sentinel tool output is not retained. macOS binary artifact and authenticated ASC diagnostics remain external gates."
+    },
     "privacy_root_test_executor": {
       "agent": "ios_privacy_root_test_executor",
       "model": "gpt-5.4-mini",
@@ -317,6 +354,14 @@
         "artifacts": "none",
         "blocker": null,
         "evidence": "certificate SHA 6f8bc3...bbcb4 and Widget SHA 1884e707...1923ed matched; security import, signing identity, canonical App Group validation, signed archive, IPA export, and App Store Connect upload all succeeded"
+      },
+      {
+        "run_id": 33404539592,
+        "commit": "8a3ded30",
+        "conclusion": "failure",
+        "job_id": 99528718676,
+        "artifacts": "total_count=0",
+        "blocker": "Public GitHub metadata shows archive and IPA export succeeded, then the combined upload/verifier step failed. Protected logs return 403 and no artifact is listed, so actual otool/nm/strings output and Apple BuildUpload stateDetails are unavailable."
       }
     ],
     "evidence_source": "Public GitHub Actions run 33365432620 log inspected 2026-08-31; expected Distribution p12 and Widget profile SHA-256 values matched, Widget App Group validation passed, archive/export completed, and altool reported UPLOAD SUCCEEDED with no errors."
@@ -337,7 +382,14 @@
     "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_14",
     "PRIVACY_ROOT_CAUSE_AUDITED": "PARTIAL_LOCAL_EVIDENCE",
     "MACOS_BINARY_PRIVACY_SCAN": "NOT_RUN_EXTERNAL_MACOS_REQUIRED",
-    "BUILD_15_UPLOADED": "NO",
+    "BUILD_15_UPLOADED": "UNKNOWN_UPLOAD_OR_VERIFIER_STEP_FAILED",
+    "BUILD_15_ARCHIVE": "PASS_PUBLIC_METADATA",
+    "BUILD_15_IPA_EXPORT": "PASS_PUBLIC_METADATA",
+    "BUILD_15_BINARY_SCAN_EVIDENCE": "NOT_AVAILABLE_PROTECTED_LOGS_ARTIFACTS",
+    "BUILD_16_DISPATCHED": "NO",
+    "PRIVACY_API_DEPENDENCY_MAP": "PARTIAL_UNTIL_MACOS_ARTIFACT",
+    "ROOT_CAUSE_IDENTIFIED": "NO",
+    "REQUIRED_USAGE_KEYS_RESOLVED": "NO",
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
   "required_external_secrets": [
@@ -405,34 +457,25 @@
     ],
     "not_run": [],
     "latest_run": {
-      "run_id": 33365432620,
-      "head_commit": "f991b0d790ab3f81ab1324fbb0947133e13addae",
-      "failure_stage": null,
-      "evidence": "expected certificate and Widget profile SHA values matched; security import, Widget App Group validation, signing, signed archive, IPA export, and TestFlight upload all succeeded",
+      "run_id": 33404539592,
+      "head_commit": "8a3ded30",
+      "failure_stage": "upload_or_verifier_stage_after_archive_and_export",
+      "evidence": "Public GitHub metadata shows archive and IPA export passed for build 15, but the protected upload/verifier step failed. The workflow logs endpoint returned HTTP 403 and artifacts were empty, so the authoritative Apple BuildUpload stateDetails/errors and any retained binary scan report were not available in this session.",
       "safe_code_fix_available": false,
       "diagnostics": {
-        "certificate_secret_present": true,
-        "decode": "success",
-        "decoded_size_bytes": 3236,
-        "decoded_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4",
-        "expected_certificate_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4",
-        "password_secret_present": true,
-        "password_length": 9,
-        "security_import": "success",
-        "signing_identity_exists": true,
-        "signing_identity_count": 1,
-        "widget_profile_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed",
-        "expected_widget_profile_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed",
-        "widget_application_group_validation": "pass",
-        "archive_gate": "pass",
-        "ipa_export_gate": "pass",
-        "testflight_upload_gate": "pass"
+        "archive_step": "success_public_metadata",
+        "ipa_export_step": "success_public_metadata",
+        "upload_and_verifier_step": "failed_public_metadata",
+        "artifact_listing": "total_count=0",
+        "logs_endpoint": "HTTP_403_UNAUTHENTICATED",
+        "apple_error_detail": "not_available_publicly",
+        "build_upload_state": "unknown_protected_logs_required"
       }
     }
   },
   "reviewer_terminal_gate": {
     "status": "PASS_WITH_PROVIDER_GATE",
-    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE after the scoped fixes and local retest. Provider/macOS/Apple BuildUpload evidence remains an external release gate, so this is not completion.",
+    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE for the artifact-capture instrumentation. Apple/macOS evidence remains an external release gate, so this is not completion.",
     "accepting": false
   },
   "integration": {
@@ -453,9 +496,17 @@
       "macos_binary_privacy_scan": "NOT_RUN",
       "build_14_uploaded": true,
       "build_14_upload_state": "FAILED",
-      "build_15_uploaded": false
+      "build_15_archive": "PASS_PUBLIC_METADATA",
+      "build_15_ipa_export": "PASS_PUBLIC_METADATA",
+      "build_15_upload_or_verifier": "FAILED_PUBLIC_METADATA",
+      "build_15_binary_scan_output": "NOT_AVAILABLE",
+      "build_15_apple_state_details": "NOT_AVAILABLE",
+      "build_16_dispatched": false,
+      "privacy_api_dependency_map": "PARTIAL_UNTIL_MACOS_ARTIFACT",
+      "root_cause_identified": false,
+      "required_usage_keys_resolved": false
     },
-    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 14 retained mic/speech/tracking keys, so the ATT-only explanation is rejected. The location candidate is evidence-backed by flutter_naver_map/CoreLocation plus PlanFlow's location picker. Local matrix and fail-closed gates are complete, but macOS binary scan, authenticated Apple stateDetails, and a fresh independent reviewer final are required; Build 15 has not been uploaded."
+    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 14 retained mic/speech/tracking keys, so the ATT-only explanation is rejected. Build 15 public metadata shows archive/export success but a subsequent combined upload/verifier failure; no protected logs/artifacts expose actual binary scan output or Apple stateDetails. New instrumentation will preserve filtered non-secret scan evidence for a future authorized run, but root cause and required usage-key set are still unresolved. Build 16 is not dispatched."
   },
-  "next_gate": "Run a fresh independent review after the contract fixes. Then, on macOS, run archive/export binary scans and the authenticated ASC verifier. Only if those gates pass, dispatch Build 15 once; require authoritative BuildUpload COMPLETE and a PlanFlow build/TestFlight processing record before success."
+  "next_gate": "Obtain authenticated Build 15 workflow/ASC diagnostics (stateDetails/errors and, if retained, binary report). Do not dispatch Build 16 until an exact Apple failure cause is available and an evidence-backed remediation passes review."
 }

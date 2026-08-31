@@ -50,10 +50,36 @@ void main() {
     expect(audit, contains('NSLocationWhenInUseUsageDescription'));
     expect(audit, contains('실제 macOS binary'));
     expect(audit, contains('archive/export release gates require'));
+    for (final candidate in <String>[
+      'NSCameraUsageDescription',
+      'NSPhotoLibraryUsageDescription',
+      'NSPhotoLibraryAddUsageDescription',
+      'NSContactsUsageDescription',
+      'NSCalendarsUsageDescription',
+      'NSRemindersUsageDescription',
+      'NSLocationAlwaysAndWhenInUseUsageDescription',
+      'NSBluetoothAlwaysUsageDescription',
+      'NSLocalNetworkUsageDescription',
+      'NSMotionUsageDescription',
+      'NSFaceIDUsageDescription',
+      'NSAppleMusicUsageDescription',
+    ]) {
+      expect(audit, contains(candidate));
+    }
     expect(helper, contains('BLOCKED_RUNNER_PRIVACY'));
     expect(helper, contains('BLOCKED_WIDGET_PRIVACY'));
     expect(helper, contains('NSLocationWhenInUseUsageDescription'));
     expect(helper, contains('--require-binary-scan'));
+    expect(helper, contains('--report-json'));
+    expect(helper, contains('CNContactStore'));
+    expect(helper, contains('EKEventStore'));
+    expect(helper, contains('PHPhotoLibrary'));
+    expect(helper, contains('AVCaptureDevice'));
+    expect(helper, contains('CBCentralManager'));
+    expect(helper, contains('NWPathMonitor'));
+    expect(helper, contains('CMMotionManager'));
+    expect(helper, contains('LAContext'));
+    expect(helper, contains('MPMediaLibrary'));
   });
 
   test('privacy helper rejects missing Runner keys and Widget leakage', () {
@@ -89,7 +115,21 @@ void main() {
       widget.writeAsStringSync(plist(<String, String>{
         'NSLocationWhenInUseUsageDescription': 'wrong target',
       }));
-      expect(run().exitCode, isNot(0));
+      final report = File('${temp.path}${Platform.pathSeparator}report.json');
+      final leakage = Process.runSync(
+        Platform.isWindows ? 'python' : 'python3',
+        [
+          helper,
+          '--runner-plist',
+          runner.path,
+          '--widget-plist',
+          widget.path,
+          '--report-json',
+          report.path,
+        ],
+      );
+      expect(leakage.exitCode, isNot(0));
+      expect(report.readAsStringSync(), contains('widgetForbiddenKeys'));
     } finally {
       temp.deleteSync(recursive: true);
     }
@@ -133,6 +173,133 @@ void main() {
     }
   });
 
+  test('privacy helper requires a bundle for required scans and writes pass reports', () {
+    final temp = Directory.systemTemp.createTempSync('planflow-privacy-report-');
+    try {
+      final runner = File('${temp.path}${Platform.pathSeparator}runner.plist');
+      final widget = File('${temp.path}${Platform.pathSeparator}widget.plist');
+      String plist(Map<String, String> values) =>
+          '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>${values.entries.map((entry) => '<key>${entry.key}</key><string>${entry.value}</string>').join()}</dict></plist>''';
+      final keys = <String, String>{
+        'NSMicrophoneUsageDescription': 'mic',
+        'NSSpeechRecognitionUsageDescription': 'speech',
+        'NSUserTrackingUsageDescription': 'tracking',
+        'NSLocationWhenInUseUsageDescription': 'location',
+      };
+      runner.writeAsStringSync(plist(keys));
+      widget.writeAsStringSync(plist(const <String, String>{}));
+      final helper =
+          '${root.path}${Platform.pathSeparator}scripts${Platform.pathSeparator}verify-ios-privacy-surface.py';
+      final missingBundle = Process.runSync(
+        Platform.isWindows ? 'python' : 'python3',
+        [
+          helper,
+          '--runner-plist',
+          runner.path,
+          '--widget-plist',
+          widget.path,
+          '--require-binary-scan'
+        ],
+      );
+      expect(missingBundle.exitCode, isNot(0));
+      final report = File('${temp.path}${Platform.pathSeparator}pass.json');
+      final pass = Process.runSync(
+        Platform.isWindows ? 'python' : 'python3',
+        [
+          helper,
+          '--runner-plist',
+          runner.path,
+          '--widget-plist',
+          widget.path,
+          '--report-json',
+          report.path,
+        ],
+      );
+      expect(pass.exitCode, 0);
+      expect(report.readAsStringSync(), contains('"status": "PASS"'));
+      expect(report.readAsStringSync(), contains('runnerKeys'));
+    } finally {
+      temp.deleteSync(recursive: true);
+    }
+  });
+
+  test('privacy helper report stores only filtered evidence from binary tools',
+      () {
+    final temp =
+        Directory.systemTemp.createTempSync('planflow-privacy-filtered-');
+    try {
+      final bundle = Directory(
+          '${temp.path}${Platform.pathSeparator}Runner.app');
+      bundle.createSync(recursive: true);
+      final runnerPlist = File(
+          '${bundle.path}${Platform.pathSeparator}Info.plist');
+      runnerPlist.writeAsStringSync(
+        '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Runner</string><key>NSMicrophoneUsageDescription</key><string>mic</string><key>NSSpeechRecognitionUsageDescription</key><string>speech</string><key>NSUserTrackingUsageDescription</key><string>tracking</string><key>NSLocationWhenInUseUsageDescription</key><string>location</string></dict></plist>''',
+      );
+      final widgetPlist = File(
+          '${temp.path}${Platform.pathSeparator}widget.plist');
+      widgetPlist.writeAsStringSync(
+        '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict></dict></plist>''',
+      );
+      final runnerBinary = File('${bundle.path}${Platform.pathSeparator}Runner');
+      runnerBinary.writeAsStringSync('fake runner binary');
+      final toolDir =
+          Directory('${temp.path}${Platform.pathSeparator}tools')
+            ..createSync(recursive: true);
+      final otool = File('${toolDir.path}${Platform.pathSeparator}otool.cmd');
+      final nm = File('${toolDir.path}${Platform.pathSeparator}nm.cmd');
+      final strings = File(
+          '${toolDir.path}${Platform.pathSeparator}strings.cmd');
+      otool.writeAsStringSync('''@echo off
+echo SENTINEL_RAW_OTOOL
+echo /System/Library/Frameworks/CoreLocation.framework/CoreLocation
+''');
+      nm.writeAsStringSync('''@echo off
+echo SENTINEL_RAW_NM
+echo _CLLocationManager
+''');
+      strings.writeAsStringSync('''@echo off
+echo SENTINEL_RAW_STRINGS
+echo AVFoundation.framework
+''');
+      final report = File('${temp.path}${Platform.pathSeparator}report.json');
+      final helper =
+          '${root.path}${Platform.pathSeparator}scripts${Platform.pathSeparator}verify-ios-privacy-surface.py';
+      final env = Map<String, String>.from(Platform.environment);
+      final existingPath = env['PATH'] ?? env['Path'] ?? '';
+      final toolPath =
+          '${toolDir.path}${Platform.pathSeparator}$existingPath';
+      env['PATH'] = toolPath;
+      env['Path'] = toolPath;
+      final result = Process.runSync(
+        Platform.isWindows ? 'python' : 'python3',
+        [
+          helper,
+          '--runner-plist',
+          runnerPlist.path,
+          '--widget-plist',
+          widgetPlist.path,
+          '--runner-bundle',
+          bundle.path,
+          '--report-json',
+          report.path,
+        ],
+        environment: env,
+      );
+      expect(result.exitCode, 0);
+      final reportText = report.readAsStringSync();
+      expect(reportText, contains('"status": "PASS"'));
+      expect(reportText, contains('"filteredEvidence"'));
+      expect(reportText, isNot(contains('SENTINEL_RAW_OTOOL')));
+      expect(reportText, isNot(contains('SENTINEL_RAW_NM')));
+      expect(reportText, isNot(contains('SENTINEL_RAW_STRINGS')));
+      expect(reportText, contains('CoreLocation.framework'));
+      expect(reportText, contains('AVFoundation.framework'));
+    } finally {
+      temp.deleteSync(recursive: true);
+    }
+  });
+
   test('signed release workflow has explicit Apple signing and cleanup gates',
       () {
     final workflow =
@@ -143,6 +310,8 @@ void main() {
     expect(workflow, contains('BLOCKED_RUNNER_PRIVACY_SOURCE'));
     expect(workflow, contains('NSLocationWhenInUseUsageDescription'));
     expect(workflow, contains('verify-ios-privacy-surface.py'));
+    expect(workflow, contains('actions/upload-artifact@v4'));
+    expect(workflow, contains('planflow-ios-privacy-audit-'));
     final requiredPrivacyKeys = <String>{
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
@@ -159,9 +328,8 @@ void main() {
     }
     final helper =
         file('scripts/verify-ios-privacy-surface.py').readAsStringSync();
-    final helperRequired = RegExp(r'REQUIRED = \{([\s\S]*?)\}')
-        .firstMatch(helper)!
-        .group(1)!;
+    final helperRequired =
+        RegExp(r'REQUIRED = \{([\s\S]*?)\}').firstMatch(helper)!.group(1)!;
     final helperPrivacyKeys = RegExp(r'"([^"]+)"')
         .allMatches(helperRequired)
         .map((match) => match.group(1)!)

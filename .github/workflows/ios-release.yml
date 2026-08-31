@@ -224,7 +224,8 @@ jobs:
             --runner-plist "$archive_runner_plist" \
             --widget-plist "$archive_widget_plist" \
             --runner-bundle "$RUNNER_TEMP/PlanFlow.xcarchive/Products/Applications/Runner.app" \
-            --require-binary-scan
+            --require-binary-scan \
+            --report-json "$GITHUB_WORKSPACE/ios-audit/archive-privacy-report.json"
           echo "ARCHIVE_PRIVACY_PREFLIGHT_PASS: PASS"
           echo "Archive gates: Runner and embedded WidgetKit extension present."
 
@@ -277,7 +278,8 @@ jobs:
               --runner-plist "$app_plist" \
               --widget-plist "$widget_plist" \
               --runner-bundle "$ipa_inspect/Payload/Runner.app" \
-              --require-binary-scan
+              --require-binary-scan \
+              --report-json "$GITHUB_WORKSPACE/ios-audit/export-privacy-report.json"
             echo "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS: PASS"
             echo "IPA gate: signed IPA exported."
             echo "PLANFLOW_IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
@@ -317,6 +319,15 @@ jobs:
             --timeout-seconds 900 \
             --poll-interval-seconds 30
           echo "App Store build ingestion gate: build resource found for $IOS_BUNDLE_ID."
+
+      - name: Preserve iOS privacy audit reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-privacy-audit-${{ github.run_number }}
+          path: ios-audit/*.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Cleanup protected artifacts
         if: ${{ always() }}
