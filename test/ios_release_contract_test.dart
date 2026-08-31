@@ -184,6 +184,11 @@ void main() {
     expect(workflow, contains('CODE_SIGN_IDENTITY="Apple Distribution"'));
     expect(workflow, contains('PROVISIONING_PROFILE_SPECIFIER'));
     expect(workflow, contains('security import'));
+    expect(workflow, contains('BLOCKED_AUDIT_CONFIG'));
+    expect(workflow, contains(r'export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"'));
+    expect(workflow, contains(r'unpack_dir="$RUNNER_TEMP/PlanFlowPrivacyExportUnpacked"'));
+    expect(workflow, contains('export_privacy_exit='));
+    expect(workflow, contains('exported IPA missing'));
     expect(workflow, contains('AUDIT_METADATA_PASS'));
     expect(workflow, contains('BLOCKED_AUDIT_METADATA'));
     expect(workflow, contains('CFBundleShortVersionString'));
