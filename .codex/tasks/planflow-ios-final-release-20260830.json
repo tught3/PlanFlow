@@ -33,14 +33,14 @@
     },
     "read_only_inspection_workflow": ".github/workflows/ios-testflight-ingestion.yml",
     "build_upload_api": "GET /v1/apps/{appId}/buildUploads filtered by cfBundleShortVersionString, cfBundleVersion, platform=IOS; include=build",
-    "api_query": "NOT_RUN_LOCAL_SESSION_HAS_NO_ASC_SECRET_CONTEXT",
+    "api_query": "Read-only workflow run 33383931489 reached Apple and observed build upload state FAILED; public job annotations expose only BLOCKED_APP_STORE_UPLOAD_FAILED, while protected logs are unavailable in this session. StateDetail/error code/message not yet extracted.",
     "ui_observation": "App Store Connect PlanFlow TestFlight showed no builds",
     "processing_failure_or_email": "NOT_OBSERVED",
     "same_build_reupload": "A new build number is required; next workflow dispatch uses github.run_number"
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-    "current_commit": "f56c7210",
-    "repository_head": "f56c7210",
+    "current_commit": "41811679",
+    "repository_head": "41811679",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -351,5 +351,5 @@
     },
     "evidence": "Run 33365432620 matched both expected signing asset SHA-256 values, imported the certificate successfully, validated group.com.fluxstudio.planflow, created the signed archive with WidgetKit, exported PlanFlow.ipa, and altool reported UPLOAD SUCCEEDED with no errors. App Store Connect processing visibility was not queried from this Windows session; current workflow now polls the provider API and fails closed until a build resource is found."
   },
-  "next_gate": "Ingestion-verification workflow and verifier are pushed at f56c7210. Manually dispatch a read-only run for build 13/version 1.0.0 with the stored Delivery UUID; accept only after APP_STORE_BUILD_INGESTED and TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING are emitted and the PlanFlow build is visible or processing in App Store Connect."
+  "next_gate": "Ingestion-verification workflow and verifier are pushed at 41811679. Manually dispatch a read-only run for build 13/version 1.0.0 with the stored Delivery UUID; download the sanitized diagnostic artifact and accept only after the Apple FAILED StateDetail is identified or the upload/build gates pass. Do not upload build 14 before the failure cause is confirmed."
 }
