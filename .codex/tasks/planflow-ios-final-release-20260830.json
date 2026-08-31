@@ -17,8 +17,8 @@
     "diagnostics_implementer": {"agent": "ios_signed_release_diagnostics_impl", "model": "gpt-5.4-mini", "commit": "d3faf518", "result": "added non-secret certificate diagnostics plus Widget mobileprovision SHA-256 and canonical App Group preflight validation"},
     "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: Widget provisioning profile App Group entitlement mismatch at archive; canonical source is correct and external profile regeneration is required"},
     "integrator": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: latest run confirms external Secret mapping is still wrong; certificate import failed and archive/export/TestFlight were not run"},
-    "reviewer_followup_latest": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "PENDING latest run review"},
-    "integrator_followup_latest": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: latest run integration confirms external Secret mapping failure"}
+    "reviewer_followup_latest": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: run 33363307318 has mismatched signing Secret fingerprints and security import Unknown format; archive/export/TestFlight not reached. HIGH: App Group grep made whitespace-safe in follow-up commit."},
+    "integrator_followup_latest": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: run 33363307318 cert Secret is 12421-byte Widget SHA 1884e707... and Widget Secret is SHA 85de8e06...; security import failed; all release gates remain NOT_RUN; Android unchanged"}
   },
   "commits": ["0401fc0f", "00c291a0", "563f37c9", "6f235681", "aa758538", "78032c6b", "dede77e9", "0da5b7fe", "dbe8e5cd", "5e46d77c"],
   "workflow": {
