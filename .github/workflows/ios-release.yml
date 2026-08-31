@@ -205,8 +205,24 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/export-options.plist" \
             -exportPath "$RUNNER_TEMP/exported" \
             | tee "$RUNNER_TEMP/xcodebuild-export.log"
-          test -s "$RUNNER_TEMP/exported/Runner.ipa"
-          echo "IPA gate: signed Runner.ipa exported."
+          ipa_candidates=()
+          while IFS= read -r candidate; do
+            [[ -n "$candidate" ]] && ipa_candidates+=("$candidate")
+          done < <(find "$RUNNER_TEMP/exported" -maxdepth 1 -name '*.ipa' -type f | sort)
+          if (( ${#ipa_candidates[@]} == 1 )); then
+            ipa_path="${ipa_candidates[0]}"
+            echo "Exported IPA filename: $(basename "$ipa_path")"
+            echo "Exported IPA path: $ipa_path"
+            echo "IPA gate: signed IPA exported."
+            echo "PLANFLOW_IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
+          elif (( ${#ipa_candidates[@]} == 0 )); then
+            echo "::error title=BLOCKED_IPA_EXPORT::No .ipa file found under exported directory."
+            exit 1
+          else
+            echo "::error title=BLOCKED_IPA_EXPORT::Multiple .ipa files found under exported directory."
+            printf ' - %s\n' "${ipa_candidates[@]}"
+            exit 1
+          fi
 
       - name: Upload IPA to TestFlight with App Store Connect API key
         shell: bash
@@ -218,7 +234,7 @@ jobs:
           asc_key_dir="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$asc_key_dir"
           cp "$api_key" "$asc_key_dir/AuthKey_${ASC_KEY_ID}.p8"
-          xcrun altool --upload-app -f "$RUNNER_TEMP/exported/Runner.ipa" -t ios \
+          xcrun altool --upload-app -f "$PLANFLOW_IPA_PATH" -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
           echo "TestFlight gate: upload accepted by App Store Connect."
 
@@ -229,6 +245,7 @@ jobs:
           set +e
           rm -f ios/Runner/GoogleService-Info.plist
           rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist
+          rm -f "$PLANFLOW_IPA_PATH"
           rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true

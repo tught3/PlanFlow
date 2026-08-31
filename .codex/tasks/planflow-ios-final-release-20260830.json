@@ -33,15 +33,16 @@
       ,{"run_id": 33360988236, "commit": "8ac287fb", "conclusion": "failure", "duration_seconds": 430, "job_exit_code": 1, "artifacts": "none", "blocker": "security import failed with Unknown format in import after decoded distribution certificate payload; archive/export/upload not reached"}
       ,{"run_id": 33361911386, "commit": "5f4d7b05", "conclusion": "failure", "duration_seconds": 600, "job_exit_code": 1, "artifacts": "none", "blocker": "certificate import passed with expected v3 SHA-256, but Widget provisioning profile still mismatched com.apple.security.application-groups during archive; export/upload not reached"}
       ,{"run_id": 33363307318, "commit": "d3faf518", "conclusion": "failure", "duration_seconds": 356, "job_exit_code": 1, "artifacts": "none", "blocker": "Distribution certificate Secret decoded to 12421-byte Widget profile SHA 1884e707...1923ed instead of expected v3 p12; Widget profile Secret decoded to SHA 85de8e06...; security import failed Unknown format; archive/export/upload not reached"}
+      ,{"run_id": 33364359318, "commit": "2c379f86", "conclusion": "failure", "duration_seconds": 465, "job_exit_code": 1, "artifacts": "none", "blocker": "expected certificate SHA 6f8bc3...bbcb4 and Widget SHA 1884e707...1923ed matched; security import, App Group validation, signing, and archive passed; xcodebuild export reported EXPORT SUCCEEDED but hardcoded Runner.ipa existence check failed, so upload was not reached"}
     ],
     "evidence_source": "Public GitHub Actions run 33363307318 log inspected 2026-08-31; preflight shows Distribution certificate Secret is the 12421-byte Widget profile (SHA 1884e707...1923ed), Widget profile Secret is SHA 85de8e06..., security import returns Unknown format, and archive/export/upload are not reached."
   },
   "gates": {
-    "APPLE_SIGNING_READY": "BLOCKED_CERTIFICATE_SECRET_MAPPING",
-    "RUNNER_SIGNED": "NOT_RUN",
-    "WIDGET_SIGNED": "NOT_RUN",
-    "SIGNED_ARCHIVE_PASS": "NOT_RUN",
-    "IPA_EXPORT_PASS": "NOT_RUN",
+    "APPLE_SIGNING_READY": "PASS",
+    "RUNNER_SIGNED": "PASS",
+    "WIDGET_SIGNED": "PASS",
+    "SIGNED_ARCHIVE_PASS": "PASS",
+    "IPA_EXPORT_PASS": "BLOCKED_FILENAME_ASSERTION",
     "TESTFLIGHT_UPLOAD_PASS": "NOT_RUN",
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
@@ -63,7 +64,7 @@
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
     ],
     "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"],
-    "latest_run": {"run_id": 33363307318, "head_commit": "d3faf518e6ce8c3e143b628d4986d2a9a8a5aa88", "failure_stage": "certificate_import", "evidence": "certificate Secret decoded to the known 12421-byte Widget profile SHA instead of the expected v3 p12; Widget profile Secret decoded to SHA 85de8e06...; security import returned Unknown format; archive/export/upload not reached", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 12421, "decoded_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "expected_certificate_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "password_secret_present": true, "password_length": 9, "security_import": "failure: Unknown format in import", "signing_identity_exists": false, "widget_profile_sha256": "85de8e0663969cf36ca6c9b8b7be937577f6f42d3c201f52e3a253813896fa15", "expected_widget_profile_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "widget_application_group_validation": "NOT_REACHED"}}
+    "latest_run": {"run_id": 33364359318, "head_commit": "2c379f8625d64a5556312e977366626a2d746c5d", "failure_stage": "ipa_export_filename_assertion", "evidence": "expected certificate and Widget profile SHA values matched; security import, Widget App Group validation, signing, and archive passed; xcodebuild export reported EXPORT SUCCEEDED but hardcoded Runner.ipa existence assertion failed; upload not reached", "safe_code_fix_available": true, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 3236, "decoded_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "expected_certificate_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "password_secret_present": true, "password_length": 9, "security_import": "success", "signing_identity_exists": true, "signing_identity_count": 1, "widget_profile_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "expected_widget_profile_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "widget_application_group_validation": "pass"}}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
     "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "BLOCKED", "widget_entitlement_validation": "NOT_REACHED", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Run 33363307318 shows the Distribution certificate Secret contains the 12421-byte Widget profile SHA 1884e707...1923ed rather than the expected v3 p12 SHA 6f8bc3...bbcb4; the Widget profile Secret is SHA 85de8e06... and security import returns Unknown format. Archive/export/TestFlight were not reached.", "user_action": "Replace PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 with the exact private-key-containing v3 Apple Distribution .p12 (expected SHA 6f8bc3...bbcb4) and PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 with the exact Widget profile whose embedded application-groups includes group.com.fluxstudio.planflow (expected SHA 1884e707...1923ed). Do not swap the two values. Authorize one new workflow_dispatch after both Secret values are corrected."},
