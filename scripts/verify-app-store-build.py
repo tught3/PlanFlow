@@ -91,6 +91,12 @@ def request_json(token: str, path: str) -> tuple[dict, str | None]:
             decoded = {"errors": [{"status": str(error.code), "detail": "non-json response"}]}
         request_id = error.headers.get("x-request-id") or error.headers.get("x-apple-request-uuid")
         return {"__http_status": error.code, **decoded}, request_id
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        # Keep provider/network failures bounded and fail-closed instead of
+        # leaking a traceback that obscures which gate stopped the check.
+        reason = getattr(error, "reason", error)
+        detail = " ".join(str(reason).split())[:240]
+        return {"errors": [{"code": "ASC_REQUEST_FAILED", "detail": detail or "request failed"}]}, None
 
 
 def error_summary(document: dict) -> str:
