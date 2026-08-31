@@ -185,6 +185,10 @@ jobs:
             -archivePath "$RUNNER_TEMP/PlanFlow.xcarchive" \
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            FLUTTER_BUILD_NAME="$IOS_BUILD_NAME" \
+            FLUTTER_BUILD_NUMBER="$IOS_BUILD_NUMBER" \
+            MARKETING_VERSION="$IOS_BUILD_NAME" \
+            CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
             PLANFLOW_RUNNER_PROFILE_UUID="$PLANFLOW_RUNNER_PROFILE_UUID" \
             PLANFLOW_WIDGET_PROFILE_UUID="$PLANFLOW_WIDGET_PROFILE_UUID" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
@@ -213,6 +217,28 @@ jobs:
             ipa_path="${ipa_candidates[0]}"
             echo "Exported IPA filename: $(basename "$ipa_path")"
             echo "Exported IPA path: $ipa_path"
+            ipa_inspect="$RUNNER_TEMP/planflow-ipa-inspect"
+            mkdir -p "$ipa_inspect"
+            unzip -q "$ipa_path" -d "$ipa_inspect"
+            app_plist="$(find "$ipa_inspect/Payload" -maxdepth 2 -path '*/Info.plist' ! -path '*PlugIns*' -type f | head -n 1)"
+            widget_plist="$(find "$ipa_inspect/Payload" -path '*PlugIns/*.appex/Info.plist' -type f | head -n 1)"
+            if [[ -z "$app_plist" || -z "$widget_plist" ]]; then
+              echo "::error title=BLOCKED_IPA_METADATA::IPA is missing Runner or embedded Widget Info.plist."
+              exit 1
+            fi
+            ipa_bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_plist")
+            ipa_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_plist")
+            ipa_build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_plist")
+            widget_bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget_plist")
+            widget_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$widget_plist")
+            widget_build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$widget_plist")
+            echo "IPA metadata: bundleId=$ipa_bundle_id version=$ipa_version build=$ipa_build"
+            echo "IPA Widget metadata: bundleId=$widget_bundle_id version=$widget_version build=$widget_build"
+            if [[ "$ipa_bundle_id" != "$IOS_BUNDLE_ID" || "$ipa_version" != "$IOS_BUILD_NAME" || "$ipa_build" != "$IOS_BUILD_NUMBER" || \
+                  "$widget_bundle_id" != "$IOS_WIDGET_BUNDLE_ID" || "$widget_version" != "$IOS_BUILD_NAME" || "$widget_build" != "$IOS_BUILD_NUMBER" ]]; then
+              echo "::error title=BLOCKED_IPA_METADATA_MISMATCH::IPA metadata does not match the canonical app, Widget, version, or build values."
+              exit 1
+            fi
             echo "IPA gate: signed IPA exported."
             echo "PLANFLOW_IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
           elif (( ${#ipa_candidates[@]} == 0 )); then
@@ -234,9 +260,23 @@ jobs:
           asc_key_dir="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$asc_key_dir"
           cp "$api_key" "$asc_key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          upload_log="$RUNNER_TEMP/planflow-altool-upload.log"
           xcrun altool --upload-app -f "$PLANFLOW_IPA_PATH" -t ios \
-            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-          echo "TestFlight gate: upload accepted by App Store Connect."
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee "$upload_log"
+          delivery_uuid="$(sed -n 's/.*Delivery UUID: \([^[:space:]]*\).*/\1/p' "$upload_log" | tail -n 1)"
+          echo "TestFlight transport gate: upload accepted by App Store Connect."
+          echo "Transport delivery UUID: ${delivery_uuid:-not-reported}"
+          echo "TESTFLIGHT_TRANSPORT_UPLOAD_PASS: PASS"
+          python3 scripts/verify-app-store-build.py \
+            --key-path "$api_key" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --bundle-id "$IOS_BUNDLE_ID" \
+            --version "$IOS_BUILD_NAME" \
+            --build "$IOS_BUILD_NUMBER" \
+            --timeout-seconds 900 \
+            --poll-interval-seconds 30
+          echo "App Store build ingestion gate: build resource found for $IOS_BUNDLE_ID."
 
       - name: Cleanup protected artifacts
         if: ${{ always() }}
@@ -244,8 +284,8 @@ jobs:
         run: |
           set +e
           rm -f ios/Runner/GoogleService-Info.plist
-          rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist
-          rm -f "$PLANFLOW_IPA_PATH"
+          rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist "$RUNNER_TEMP"/planflow-altool-upload.log
+          rm -f "${PLANFLOW_IPA_PATH:-}"
           rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true

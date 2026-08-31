@@ -59,8 +59,56 @@ void main() {
     expect(workflow, contains('APP_STORE_CONNECT_KEY_ID'));
     expect(workflow, contains('APP_STORE_CONNECT_ISSUER_ID'));
     expect(workflow, contains('APP_STORE_CONNECT_API_KEY_P8'));
+    expect(workflow, contains(r'FLUTTER_BUILD_NAME="$IOS_BUILD_NAME"'));
+    expect(workflow, contains(r'FLUTTER_BUILD_NUMBER="$IOS_BUILD_NUMBER"'));
+    expect(workflow, contains(r'MARKETING_VERSION="$IOS_BUILD_NAME"'));
+    expect(workflow, contains(r'CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER"'));
+    expect(workflow, contains('Exported IPA filename:'));
+    expect(workflow, contains('Exported IPA path:'));
+    expect(workflow, contains('IPA metadata: bundleId='));
+    expect(workflow, contains('IPA Widget metadata: bundleId='));
+    expect(workflow, contains('IPA gate: signed IPA exported.'));
+    expect(workflow, contains('BLOCKED_IPA_METADATA'));
+    expect(workflow, contains('BLOCKED_IPA_METADATA_MISMATCH'));
+    expect(
+        workflow,
+        contains(
+            'TestFlight transport gate: upload accepted by App Store Connect.'));
+    expect(workflow, contains('TESTFLIGHT_TRANSPORT_UPLOAD_PASS: PASS'));
+    expect(workflow, contains('python3 scripts/verify-app-store-build.py'));
+    expect(workflow, contains('--timeout-seconds 900'));
+    expect(workflow, contains('--poll-interval-seconds 30'));
+    expect(workflow,
+        contains('App Store build ingestion gate: build resource found for'));
     expect(workflow, contains('never share a profile'));
     expect(workflow, contains(r'if: ${{ always() }}'));
     expect(workflow, contains('rm -f ios/Runner/GoogleService-Info.plist'));
+    expect(workflow, contains('Secret cleanup gate executed.'));
+  });
+
+  test(
+      'App Store Connect ingestion verifier keeps transport and processing separate',
+      () {
+    final verifier =
+        file('scripts/verify-app-store-build.py').readAsStringSync();
+    expect(verifier, contains('App Store Connect target verified:'));
+    expect(verifier, contains('Build lookup request ID'));
+    expect(verifier, contains('processingState'));
+    expect(verifier, contains('App Store Connect build resource found:'));
+    expect(verifier, contains('APP_STORE_BUILD_INGESTED: PASS'));
+    expect(verifier, contains('TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING: PASS'));
+    expect(verifier, contains('TESTFLIGHT_BUILD_AVAILABLE: PASS'));
+    expect(verifier, contains('TESTFLIGHT_BUILD_AVAILABLE: NOT_YET_AVAILABLE'));
+    expect(verifier, contains('BLOCKED_ASC_APP_LOOKUP'));
+    expect(verifier, contains('BLOCKED_ASC_APP_TARGET'));
+    expect(verifier, contains('BLOCKED_ASC_BUILD_LOOKUP'));
+    expect(verifier, contains('BLOCKED_APP_STORE_VERSION'));
+    expect(verifier, contains('BLOCKED_APP_STORE_BUILD_NUMBER'));
+    expect(verifier, contains('BLOCKED_APP_STORE_PROCESSING'));
+    expect(verifier, contains('BLOCKED_ASC_INGESTION'));
+    expect(verifier,
+        contains('App Store Connect build not visible yet; retrying'));
+    expect(verifier, contains('--timeout-seconds'));
+    expect(verifier, contains('--poll-interval-seconds'));
   });
 }

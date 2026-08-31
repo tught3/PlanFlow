@@ -2,10 +2,29 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "complete",
+  "status": "blocked_provider_verification",
+  "post_upload_verification": {
+    "run_id": 33365432620,
+    "transport_gate": "PASS",
+    "delivery_uuid": "b786deb7-1129-4e25-960a-4c2028320790",
+    "upload_command": "xcrun altool --upload-app -f $PLANFLOW_IPA_PATH -t ios --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER_ID",
+    "target_bundle_id": "com.fluxstudio.planflow",
+    "target_widget_bundle_id": "com.fluxstudio.planflow.PlanFlowWidget",
+    "archive_derived_version": "1.0.0",
+    "archive_derived_build": "12",
+    "widget_cf_bundle_version_warning": true,
+    "app_store_build_ingested": "NOT_VERIFIED",
+    "testflight_visible_or_processing": "FAIL_OBSERVED_NO_BUILD",
+    "testflight_build_available": "NOT_VERIFIED",
+    "processing_state": "NOT_QUERIED",
+    "api_query": "NOT_RUN_LOCAL_SESSION_HAS_NO_ASC_SECRET_CONTEXT",
+    "ui_observation": "App Store Connect PlanFlow TestFlight showed no builds",
+    "processing_failure_or_email": "NOT_OBSERVED",
+    "same_build_reupload": "A new build number is required; next workflow dispatch uses github.run_number"
+  },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-  "current_commit": "f991b0d790ab3f81ab1324fbb0947133e13addae",
-  "repository_head": "3d1331bdbfbe58728828aae39bed4dea5892c4b8",
+    "current_commit": "pending-ci-ingestion-verifier-commit",
+    "repository_head": "pending-ci-ingestion-verifier-commit",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -64,6 +83,31 @@
       "agent": "ios_signed_release_integrator2",
       "model": "gpt-5.6-terra",
       "result": "PASS: run 33365432620 completed certificate import, Widget validation, Runner/Widget signing, archive, IPA export, and TestFlight upload; Android unchanged."
+    },
+    "appstore_ingestion_explorer": {
+      "agent": "appstore_ingestion_explorer",
+      "model": "gpt-5.4-mini",
+      "result": "Run transport succeeded but App Store Connect UI showed no build; detailed GitHub logs and protected ASC API credentials unavailable locally. Widget CFBundleVersion warning identified as likely ingestion risk."
+    },
+    "appstore_api_planner": {
+      "agent": "appstore_api_planner",
+      "model": "gpt-5.6-terra",
+      "result": "Planned fail-closed App Store Connect app/build lookup with JWT, processing-state polling, metadata checks, and transport-versus-ingestion gates."
+    },
+    "appstore_ingestion_implementer": {
+      "agent": "appstore_ingestion_implementer",
+      "model": "gpt-5.6-luna",
+      "result": "Added IPA metadata gate, Widget build-number overrides, protected ASC build verifier, and transport-only upload marker; no Android changes."
+    },
+    "appstore_contract_test_updater": {
+      "agent": "appstore_contract_test_updater",
+      "model": "gpt-5.4-mini",
+      "result": "Extended iOS release contract tests for metadata, transport/ingestion separation, timeout polling, processing failure markers, and cleanup."
+    },
+    "appstore_ingestion_reviewer": {
+      "agent": "appstore_ingestion_reviewer",
+      "model": "gpt-5.6-luna",
+      "result": "Re-review PASS with no BLOCKER/HIGH after removing unsupported app platform filter and hardening IPA-path cleanup; MEDIUM gaps remain for detailed processing errors and functional API fixtures."
     }
   },
   "commits": [
@@ -195,7 +239,11 @@
     "WIDGET_SIGNED": "PASS",
     "SIGNED_ARCHIVE_PASS": "PASS",
     "IPA_EXPORT_PASS": "PASS",
-    "TESTFLIGHT_UPLOAD_PASS": "PASS",
+    "TESTFLIGHT_UPLOAD_PASS": "TRANSPORT_ONLY_NOT_FINAL",
+    "TESTFLIGHT_TRANSPORT_UPLOAD_PASS": "PASS",
+    "APP_STORE_BUILD_INGESTED": "NOT_VERIFIED",
+    "TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING": "FAIL_OBSERVED_NO_BUILD",
+    "TESTFLIGHT_BUILD_AVAILABLE": "NOT_VERIFIED",
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
   "required_external_secrets": [
@@ -263,12 +311,12 @@
     }
   },
   "reviewer_terminal_gate": {
-    "status": "PASS",
-    "reason": "Independent reviewer confirmed run 33365432620 and final workflow diff with no blockers.",
-    "accepting": true
+    "status": "PASS_WITH_PROVIDER_GATE",
+    "reason": "Independent reviewer confirmed the current diff has no BLOCKER/HIGH findings. Provider ingestion remains unverified until a new signed workflow run reaches App Store Connect API/UI.",
+    "accepting": false
   },
   "integration": {
-    "status": "PASS",
+    "status": "BLOCKED_PROVIDER_VERIFICATION",
     "integrated_at": "2026-08-31",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
@@ -276,9 +324,11 @@
       "android_unchanged": "PASS",
       "certificate_import_diagnostics": "PASS",
       "widget_entitlement_validation": "PASS",
-      "archive_ipa_testflight": "PASS"
+      "archive_ipa_testflight": "TRANSPORT_ONLY_PASS",
+      "app_store_build_ingested": "NOT_VERIFIED",
+      "testflight_build_visible_or_processing": "NOT_VERIFIED"
     },
-    "evidence": "Run 33365432620 matched both expected signing asset SHA-256 values, imported the certificate successfully, validated group.com.fluxstudio.planflow, created the signed archive with WidgetKit, exported PlanFlow.ipa, and altool reported UPLOAD SUCCEEDED with no errors. App Store Connect processing visibility was not queried from this Windows session."
+    "evidence": "Run 33365432620 matched both expected signing asset SHA-256 values, imported the certificate successfully, validated group.com.fluxstudio.planflow, created the signed archive with WidgetKit, exported PlanFlow.ipa, and altool reported UPLOAD SUCCEEDED with no errors. App Store Connect processing visibility was not queried from this Windows session; current workflow now polls the provider API and fails closed until a build resource is found."
   },
-  "next_gate": "No remaining workflow gate. App Store Connect processing visibility may be checked separately in the provider UI."
+  "next_gate": "Commit and push the ingestion-verification workflow, then manually dispatch a fresh signed run. Accept only after APP_STORE_BUILD_INGESTED and TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING are emitted and the PlanFlow build is visible or processing in App Store Connect."
 }
