@@ -108,6 +108,8 @@ jobs:
           echo "Certificate password length: $password_length"
           printf '%s' "$RUNNER_PROFILE_BASE64" | base64 --decode > "$runner_profile"
           printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$widget_profile"
+          widget_profile_sha256="$(shasum -a 256 "$widget_profile" | awk '{print $1}')"
+          echo "Decoded widget mobileprovision SHA-256: $widget_profile_sha256"
           keychain_password="$(uuidgen)"
           security create-keychain -p "$keychain_password" "$keychain" >/dev/null
           security set-keychain-settings -lut 21600 "$keychain"
@@ -134,6 +136,15 @@ jobs:
           widget_team_id=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$widget_plist")
           if [[ -z "$profile_team_id" || "$profile_team_id" != "$widget_team_id" ]]; then
             echo "::error title=BLOCKED_PROFILE_TEAM::Runner and Widget provisioning profiles do not share one TeamIdentifier."
+            exit 1
+          fi
+          widget_app_groups="$(
+            /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$widget_plist" 2>/dev/null || true
+          )"
+          if printf '%s\n' "$widget_app_groups" | grep -Fxq 'group.com.fluxstudio.planflow'; then
+            echo "Widget application-groups includes canonical group.com.fluxstudio.planflow: yes"
+          else
+            echo "::error title=BLOCKED_WIDGET_PROFILE_APP_GROUP::Widget provisioning profile missing canonical application group group.com.fluxstudio.planflow."
             exit 1
           fi
           if [[ -n "${APPLE_TEAM_ID:-}" && "$APPLE_TEAM_ID" != "$profile_team_id" ]]; then
