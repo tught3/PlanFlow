@@ -10,11 +10,12 @@
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
     "planner": {"agent": "ios_final_release_planner", "model": "gpt-5.6-terra", "result": "manual certificate/profile restore strategy and iOS-only version override"},
     "implementer": {"agent": "ios_final_release_implementer", "model": "gpt-5.6-luna", "commit": "0401fc0f", "result": "fail-closed signed workflow, docs, and contract assertions"},
-    "test_executor": {"agent": "ios_final_release_test_executor", "model": "gpt-5.4-mini", "result": "Dart analyze, Flutter contract tests, YAML parse, diff check passed; macOS tools unavailable on Windows"},
+    "test_executor": {"agent": "ios_signed_release_test_executor3", "model": "gpt-5.4-mini", "result": "flutter iOS release contract test passed, git diff check passed, Android paths unchanged; macOS archive evidence supplied by workflow run"},
     "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"},
     "failure_analyst": {"agent": "ios_signed_release_failure_analyst", "model": "gpt-5.6-luna", "result": "run 33358775456 certificate import and identity passed; archive failed because Widget provisioning profile App Group does not match canonical entitlement"},
     "diagnostics_implementer": {"agent": "ios_signed_release_diagnostics_impl", "model": "gpt-5.4-mini", "commit": "0da5b7fe", "result": "added non-secret certificate presence/decode/size/SHA-256/password-length/security-import/signing-identity diagnostics"},
-    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: Widget provisioning profile App Group entitlement mismatch at archive; canonical source is correct and external profile regeneration is required"}
+    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: Widget provisioning profile App Group entitlement mismatch at archive; canonical source is correct and external profile regeneration is required"},
+    "integrator": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: certificate/import diagnostics PASS, archive blocked by external Widget App Group profile mismatch; IPA/TestFlight not run"}
   },
   "commits": ["0401fc0f", "00c291a0", "563f37c9", "6f235681", "aa758538", "78032c6b", "dede77e9", "0da5b7fe", "dbe8e5cd", "5e46d77c"],
   "workflow": {
