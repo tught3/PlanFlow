@@ -187,7 +187,8 @@
     "privacy_root_reviewer": {
       "agent": "ios_privacy_root_reviewer",
       "model": "gpt-5.6-luna",
-      "result": "FINAL_REVIEW_REPORT FINDINGS: HIGH task-state ATT-root-cause drift, MEDIUM workflow/helper key-set drift, LOW documentation wording drift. Fixes were applied locally; a fresh independent final review is still required before acceptance."
+      "initial_result": "FINAL_REVIEW_REPORT FINDINGS: HIGH task-state ATT-root-cause drift, MEDIUM workflow/helper key-set drift, LOW documentation wording drift.",
+      "final_result": "FINAL_REVIEW_REPORT PASS/NONE after the task-state candidate wording, documentation requirement wording, and workflow/helper key-set consistency contract were corrected and retested. No BLOCKER or HIGH remains in the scoped iOS diff."
     },
     "integrator_90683": {
       "agent": "ios_90683_integrator",
@@ -430,8 +431,8 @@
     }
   },
   "reviewer_terminal_gate": {
-    "status": "NEEDS_FRESH_REVIEW_AFTER_FINDINGS_FIX",
-    "reason": "The sole host-final reviewer report found HIGH/MEDIUM/LOW contract drift. The scoped fixes are locally retested, but a new independent host-final review has not yet been authorized or run; acceptance remains fail-closed.",
+    "status": "PASS_WITH_PROVIDER_GATE",
+    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE after the scoped fixes and local retest. Provider/macOS/Apple BuildUpload evidence remains an external release gate, so this is not completion.",
     "accepting": false
   },
   "integration": {
