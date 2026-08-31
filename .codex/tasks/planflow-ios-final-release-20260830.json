@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_build15_apple_diagnostics_and_artifact_evidence",
+  "status": "blocked_github_actions_auth_for_privacy_audit",
   "privacy_90683": {
     "apple_code": "90683",
     "apple_description": "Missing purpose string in Info.plist.",
@@ -225,6 +225,16 @@
       "agent": "ios_privacy_root_implementer",
       "model": "gpt-5.6-luna",
       "result": "Added ios-privacy-audit.yml: audit_only=true, fixed build 99990001, signed archive/export metadata and privacy-binary audit, fail-closed Firebase/signing gates, and audit logs/reports only. It has no App Store Connect upload path and excludes raw IPA from artifacts."
+    },
+    "privacy_audit_only_explorer": {
+      "agent": "ios_privacy_root_explorer",
+      "model": "gpt-5.4-mini",
+      "result": "Confirmed the prior Build 15 public run has no accessible logs/artifacts and identified a separate signed audit workflow as the safe way to preserve macOS binary evidence without a new ASC upload."
+    },
+    "privacy_audit_only_planner": {
+      "agent": "ios_privacy_root_planner",
+      "model": "gpt-5.6-terra",
+      "result": "Planned audit_only=true, fixed non-release build number 99990001, fail-closed signing/Firebase validation, archive/export inspection, non-secret artifact retention, and no ASC upload path."
     },
     "privacy_audit_only_test_executor": {
       "agent": "ios_privacy_root_test_executor",
@@ -501,8 +511,8 @@
     "accepting": false
   },
   "integration": {
-    "status": "BLOCKED_EXTERNAL_MACOS_ASC_AUDIT",
-    "integrated_at": "2026-08-31",
+    "status": "BLOCKED_GITHUB_ACTIONS_AUTH",
+    "integrated_at": "2026-09-01",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
       "workflow_and_contract_test_evidence": "PASS",
@@ -530,7 +540,7 @@
       ,"audit_only_workflow": "IMPLEMENTED_NOT_DISPATCHED"
       ,"audit_only_asc_upload": "FORBIDDEN"
     },
-    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 15 public metadata is incomplete. A separate audit-only signed archive/export workflow now preserves non-secret privacy reports while forbidding ASC upload and raw IPA artifacts. It is not dispatched; root cause and required usage-key set remain unresolved, and Build 16 is not dispatched."
+    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 15 public metadata is incomplete. A separate audit-only signed archive/export workflow now preserves non-secret privacy reports while forbidding ASC upload and raw IPA artifacts. Local implementation/review/test evidence is complete, but this Windows session has no GitHub Actions authentication to dispatch or retrieve the macOS audit artifact. Root cause and required usage-key set remain unresolved, and Build 16 is not dispatched."
   },
-  "next_gate": "Obtain authenticated Build 15 workflow/ASC diagnostics (stateDetails/errors and, if retained, binary report). Do not dispatch Build 16 until an exact Apple failure cause is available and an evidence-backed remediation passes review."
+  "next_gate": "After GitHub Actions authentication is available, dispatch .github/workflows/ios-privacy-audit.yml with audit_only=true. Retrieve the non-secret archive/export report artifact and authenticated Apple diagnostics; do not dispatch Build 16 or use an ASC upload path."
 }
