@@ -35,7 +35,9 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
+          # Team ID is derived from the signed Runner profile below. An optional
+          # PLANFLOW_APPLE_TEAM_ID secret is still accepted and cross-checked.
+          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
             if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
           done
           if (( ${#missing[@]} )); then
@@ -95,6 +97,18 @@ jobs:
           widget_plist="$RUNNER_TEMP/widget-profile.plist"
           /usr/bin/security cms -D -i "$runner_profile" > "$runner_plist"
           /usr/bin/security cms -D -i "$widget_profile" > "$widget_plist"
+          profile_team_id=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$runner_plist")
+          widget_team_id=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$widget_plist")
+          if [[ -z "$profile_team_id" || "$profile_team_id" != "$widget_team_id" ]]; then
+            echo "::error title=BLOCKED_PROFILE_TEAM::Runner and Widget provisioning profiles do not share one TeamIdentifier."
+            exit 1
+          fi
+          if [[ -n "${APPLE_TEAM_ID:-}" && "$APPLE_TEAM_ID" != "$profile_team_id" ]]; then
+            echo "::error title=BLOCKED_TEAM_MISMATCH::PLANFLOW_APPLE_TEAM_ID does not match the provisioning profile TeamIdentifier."
+            exit 1
+          fi
+          APPLE_TEAM_ID="$profile_team_id"
+          echo "APPLE_TEAM_ID=$profile_team_id" >> "$GITHUB_ENV"
           runner_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$runner_plist")
           widget_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_plist")
           cp "$runner_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$runner_uuid.mobileprovision"
