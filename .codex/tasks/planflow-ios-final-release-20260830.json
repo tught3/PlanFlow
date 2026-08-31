@@ -50,7 +50,7 @@
     "secrets_committed": false
   },
   "verification": {
-    "final_diff": {"range": "41906f9aef8706184171fd2456c241aa92977064..563f37c98ff252d7a686718e5e7a4e40db4ab40e", "files": [".github/workflows/ios-release.yml", ".gitignore", "docs/ios/release-readiness.md", "ios/Runner.xcodeproj/project.pbxproj", "test/ios_release_contract_test.dart"], "diff_check_exit_code": 0, "android_production_files_changed": false},
+    "final_diff": {"range": "41906f9aef8706184171fd2456c241aa92977064..dbe8e5cd46f5b12a1a3d9504a25c78e3de974349", "files": [".github/workflows/ios-release.yml", ".gitignore", ".codex/tasks/planflow-ios-final-release-20260830.json", "docs/ios/release-readiness.md", "ios/Runner.xcodeproj/project.pbxproj", "test/ios_release_contract_test.dart"], "diff_check_exit_code": 0, "android_production_files_changed": false},
     "commands": [
       {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "run_at": "2026-08-30"},
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
