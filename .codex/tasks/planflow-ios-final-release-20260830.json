@@ -4,7 +4,7 @@
   "classification": "complex",
   "status": "blocked_account_action",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-  "current_commit": "563f37c98ff252d7a686718e5e7a4e40db4ab40e",
+  "current_commit": "aa758538159e773939fc2cf1ab2d2471e3490595",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
@@ -13,7 +13,7 @@
     "test_executor": {"agent": "ios_final_release_test_executor", "model": "gpt-5.4-mini", "result": "Dart analyze, Flutter contract tests, YAML parse, diff check passed; macOS tools unavailable on Windows"},
     "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"},
     "failure_analyst": {"agent": "ios_signed_release_failure_analyst", "model": "gpt-5.6-luna", "result": "run 33353040531 preflight blocker resolved; current run signing import fails with PKCS12 MAC verification error, indicating certificate/password mismatch"},
-    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "pending final review of current signing failure"}
+    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: PKCS12 certificate/password mismatch at security import; no safe code fix evidenced"}
   },
   "commits": ["0401fc0f", "00c291a0", "563f37c9"],
   "workflow": {
@@ -36,7 +36,6 @@
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
   "required_external_secrets": [
-    "PLANFLOW_APPLE_TEAM_ID",
     "PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64",
     "PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD",
     "PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64",
@@ -57,6 +56,6 @@
     "latest_run": {"run_id": 33353962514, "failure_stage": "certificate_import", "evidence": "SecKeychainItemImport MAC verification failed", "safe_code_fix_available": false}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
-  "integration": {"status": "BLOCKED", "integrated_at": "2026-08-30", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Repository Actions secrets for the five Apple signing inputs are absent.", "user_action": "Configure PLANFLOW_APPLE_TEAM_ID, PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64, PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD, PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64, and PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 as protected GitHub Actions secrets. Then authorize one new workflow_dispatch; require fresh successful archive, IPA export, and TestFlight upload evidence, plus a valid host-final reviewer report, before release acceptance."},
+    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "The protected Apple Distribution PKCS12 certificate and password do not match (SecKeychainItemImport MAC verification failed).", "user_action": "Re-export the Apple Distribution .p12 and set PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 plus PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD as the matching protected secrets. Then authorize one new workflow_dispatch; require fresh successful archive, IPA export, TestFlight upload, and App Store Connect processing evidence before release acceptance."},
   "next_gate": "Re-export the Apple Distribution .p12 with the exact password used for PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD, update the two protected secrets without exposing values, then rerun workflow_dispatch. Require archive, IPA export, and TestFlight upload evidence before PASS."
 }
