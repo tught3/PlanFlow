@@ -52,8 +52,13 @@ def _write_report(path: Path | None, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def _which_tool(name: str) -> str | None:
+def _which_tool(name: str, extra_dir: Path | None = None) -> str | None:
     """Resolve native tools, including deterministic .cmd fixtures on Windows."""
+    if extra_dir is not None:
+        for suffix in ("", ".cmd", ".exe"):
+            candidate = extra_dir / f"{name}{suffix}"
+            if candidate.is_file():
+                return str(candidate)
     resolved = shutil.which(name)
     if resolved:
         return resolved
@@ -93,8 +98,8 @@ def _binary_candidates(bundle: Path) -> list[Path]:
     return list(dict.fromkeys(candidates))
 
 
-def scan_frameworks(bundle: Path, require: bool) -> set[str]:
-    otool = _which_tool("otool")
+def scan_frameworks(bundle: Path, require: bool, tool_dir: Path | None = None) -> set[str]:
+    otool = _which_tool("otool", tool_dir)
     binary_report = {"bundle": str(bundle), "otool": otool or "", "binaries": []}
     SCAN_REPORT.append(binary_report)
     if not bundle.is_dir():
@@ -139,8 +144,8 @@ def scan_frameworks(bundle: Path, require: bool) -> set[str]:
             if f"{framework}.framework" in output:
                 found.add(framework)
         try:
-            nm_tool = _which_tool("nm")
-            strings_tool = _which_tool("strings")
+            nm_tool = _which_tool("nm", tool_dir)
+            strings_tool = _which_tool("strings", tool_dir)
             if not nm_tool or not strings_tool:
                 raise OSError("nm/strings unavailable")
             nm_result = subprocess.run([nm_tool, "-u", str(binary)], capture_output=True, text=True, check=False)
@@ -175,6 +180,7 @@ def main() -> int:
     parser.add_argument("--runner-bundle", type=Path)
     parser.add_argument("--require-binary-scan", action="store_true")
     parser.add_argument("--report-json", type=Path)
+    parser.add_argument("--tool-dir", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.require_binary_scan and args.runner_bundle is None:
         raise SystemExit(
@@ -193,7 +199,7 @@ def main() -> int:
             raise SystemExit("BLOCKED_WIDGET_PRIVACY: Widget contains Runner-only usage descriptions: " + ", ".join(report["widgetForbiddenKeys"]))
         print("IOS_PRIVACY_PLIST_GATE: PASS")
         if args.runner_bundle:
-            frameworks = scan_frameworks(args.runner_bundle, args.require_binary_scan)
+            frameworks = scan_frameworks(args.runner_bundle, args.require_binary_scan, args.tool_dir)
             report["linkedFrameworks"] = {framework: FRAMEWORK_KEYS[framework] for framework in sorted(frameworks)}
             print("IOS_PRIVACY_BINARY_SCAN: " + ("PASS" if frameworks else "PASS_NO_MAPPED_FRAMEWORKS"))
         report["status"] = "PASS"

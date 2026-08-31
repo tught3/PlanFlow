@@ -281,6 +281,8 @@ echo AVFoundation.framework
           widgetPlist.path,
           '--runner-bundle',
           bundle.path,
+          '--tool-dir',
+          toolDir.path,
           '--report-json',
           report.path,
         ],

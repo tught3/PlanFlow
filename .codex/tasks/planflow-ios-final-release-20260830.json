@@ -204,7 +204,7 @@
     "privacy_artifact_reviewer": {
       "agent": "ios_privacy_root_reviewer",
       "model": "gpt-5.6-luna",
-      "result": "FINAL_REVIEW_REPORT PASS/NONE: artifact capture is iOS-only, filtered/non-secret, fail-closed, and leaves Android/Widget scope intact. Build 15 metadata is accurately qualified and Build 16 remains undispatched. Local Flutter 11/11, Dart analysis, Python compilation, JSON validation, and diff check passed."
+      "result": "FINAL_REVIEW_REPORT PASS/NONE: helper enforces a bundle for required scans, records only filtered tool evidence, and preserves pass/failure JSON reports. Contract tests cover redaction, candidate filtering, report generation, workflow retention, and key consistency. Build 15 metadata is accurately qualified, Build 16 remains undispatched, and Android/unrelated dirty files are untouched. Local Flutter 12/12, Dart analysis, Python compilation, JSON validation, and diff check passed."
     },
     "privacy_artifact_reviewer_initial": {
       "agent": "privacy_artifact_reviewer",
@@ -215,6 +215,11 @@
       "agent": "ios_privacy_root_test_executor",
       "model": "gpt-5.4-mini",
       "result": "2026-09-01 local verification passed: Flutter contract tests 11/11, Dart analysis, Python helper compilation, task JSON validation, and diff check all exit 0. The deterministic report fixture proves raw sentinel tool output is not retained. macOS binary artifact and authenticated ASC diagnostics remain external gates."
+    },
+    "privacy_artifact_failure_analyst": {
+      "agent": "artifact_test_failure_analysis",
+      "model": "gpt-5.6-luna",
+      "result": "The redaction fixture failure was Windows test-tool discovery, not privacy filtering: malformed PATH splitting left otool empty and no binaries scanned. The minimal `--tool-dir` fixture override resolves .cmd/.exe tools deterministically; subsequent Flutter contract execution exited 0 with 13 tests."
     },
     "privacy_root_test_executor": {
       "agent": "ios_privacy_root_test_executor",
@@ -475,7 +480,7 @@
   },
   "reviewer_terminal_gate": {
     "status": "PASS_WITH_PROVIDER_GATE",
-    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE for the artifact-capture instrumentation. Apple/macOS evidence remains an external release gate, so this is not completion.",
+    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE after artifact redaction and latest-run fixes. Apple/macOS evidence remains an external release gate, so this is not completion.",
     "accepting": false
   },
   "integration": {
