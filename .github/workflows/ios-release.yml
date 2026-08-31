@@ -141,7 +141,7 @@ jobs:
           widget_app_groups="$(
             /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$widget_plist" 2>/dev/null || true
           )"
-          if printf '%s\n' "$widget_app_groups" | grep -Fxq 'group.com.fluxstudio.planflow'; then
+          if printf '%s\n' "$widget_app_groups" | grep -Eq '^[[:space:]]*group\.com\.fluxstudio\.planflow[[:space:]]*$'; then
             echo "Widget application-groups includes canonical group.com.fluxstudio.planflow: yes"
           else
             echo "::error title=BLOCKED_WIDGET_PROFILE_APP_GROUP::Widget provisioning profile missing canonical application group group.com.fluxstudio.planflow."

@@ -4,8 +4,8 @@
   "classification": "complex",
   "status": "blocked_account_action",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-  "current_commit": "0da5b7feef22dbfcbf8bbfb7b3d9c7ed68a01208",
-  "repository_head": "e9b8842f4e1db82f0b52c49f5e0283221983b9dd",
+  "current_commit": "d3faf518e6ce8c3e143b628d4986d2a9a8a5aa88",
+  "repository_head": "d3faf518e6ce8c3e143b628d4986d2a9a8a5aa88",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
@@ -14,9 +14,11 @@
     "test_executor": {"agent": "ios_signed_release_test_executor3", "model": "gpt-5.4-mini", "result": "flutter iOS release contract test passed, git diff check passed, Android paths unchanged; macOS archive evidence supplied by workflow run"},
     "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"},
     "failure_analyst": {"agent": "ios_signed_release_failure_analyst", "model": "gpt-5.6-luna", "result": "run 33358775456 certificate import and identity passed; archive failed because Widget provisioning profile App Group does not match canonical entitlement"},
-    "diagnostics_implementer": {"agent": "ios_signed_release_diagnostics_impl", "model": "gpt-5.4-mini", "commit": "0da5b7fe", "result": "added non-secret certificate presence/decode/size/SHA-256/password-length/security-import/signing-identity diagnostics"},
+    "diagnostics_implementer": {"agent": "ios_signed_release_diagnostics_impl", "model": "gpt-5.4-mini", "commit": "d3faf518", "result": "added non-secret certificate diagnostics plus Widget mobileprovision SHA-256 and canonical App Group preflight validation"},
     "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: Widget provisioning profile App Group entitlement mismatch at archive; canonical source is correct and external profile regeneration is required"},
-    "integrator": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: certificate/import diagnostics PASS, archive blocked by external Widget App Group profile mismatch; IPA/TestFlight not run"}
+    "integrator": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: latest run confirms external Secret mapping is still wrong; certificate import failed and archive/export/TestFlight were not run"},
+    "reviewer_followup_latest": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "PENDING latest run review"},
+    "integrator_followup_latest": {"agent": "ios_signed_release_integrator2", "model": "gpt-5.6-terra", "result": "BLOCKED: latest run integration confirms external Secret mapping failure"}
   },
   "commits": ["0401fc0f", "00c291a0", "563f37c9", "6f235681", "aa758538", "78032c6b", "dede77e9", "0da5b7fe", "dbe8e5cd", "5e46d77c"],
   "workflow": {
@@ -30,13 +32,14 @@
       {"run_id": 33358775456, "commit": "0da5b7fe", "conclusion": "failure", "duration_seconds": 309, "job_exit_code": 1, "artifacts": "none", "blocker": "Widget provisioning profile PlanFlow AppStore Widget does not match com.apple.security.application-groups entitlement; archive failed before export/upload"}
       ,{"run_id": 33360988236, "commit": "8ac287fb", "conclusion": "failure", "duration_seconds": 430, "job_exit_code": 1, "artifacts": "none", "blocker": "security import failed with Unknown format in import after decoded distribution certificate payload; archive/export/upload not reached"}
       ,{"run_id": 33361911386, "commit": "5f4d7b05", "conclusion": "failure", "duration_seconds": 600, "job_exit_code": 1, "artifacts": "none", "blocker": "certificate import passed with expected v3 SHA-256, but Widget provisioning profile still mismatched com.apple.security.application-groups during archive; export/upload not reached"}
+      ,{"run_id": 33363307318, "commit": "d3faf518", "conclusion": "failure", "duration_seconds": 356, "job_exit_code": 1, "artifacts": "none", "blocker": "Distribution certificate Secret decoded to 12421-byte Widget profile SHA 1884e707...1923ed instead of expected v3 p12; Widget profile Secret decoded to SHA 85de8e06...; security import failed Unknown format; archive/export/upload not reached"}
     ],
-    "evidence_source": "Public GitHub Actions runs 33358775456, 33360988236, and 33361911386 logs inspected 2026-08-31; v3 certificate import now passes, but regenerated Widget profile still fails App Group entitlement validation at archive."
+    "evidence_source": "Public GitHub Actions run 33363307318 log inspected 2026-08-31; preflight shows Distribution certificate Secret is the 12421-byte Widget profile (SHA 1884e707...1923ed), Widget profile Secret is SHA 85de8e06..., security import returns Unknown format, and archive/export/upload are not reached."
   },
   "gates": {
-    "APPLE_SIGNING_READY": "PASS",
-    "RUNNER_SIGNED": "NOT_RUN_WIDGET_PROFILE_BLOCKED",
-    "WIDGET_SIGNED": "NOT_RUN_WIDGET_PROFILE_BLOCKED",
+    "APPLE_SIGNING_READY": "BLOCKED_CERTIFICATE_SECRET_MAPPING",
+    "RUNNER_SIGNED": "NOT_RUN",
+    "WIDGET_SIGNED": "NOT_RUN",
     "SIGNED_ARCHIVE_PASS": "NOT_RUN",
     "IPA_EXPORT_PASS": "NOT_RUN",
     "TESTFLIGHT_UPLOAD_PASS": "NOT_RUN",
@@ -60,9 +63,9 @@
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
     ],
     "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"],
-    "latest_run": {"run_id": 33361911386, "head_commit": "5f4d7b05b6e04c171e2bc22544cfb67b02c48595", "failure_stage": "widget_entitlement_archive", "evidence": "expected v3 certificate decoded/imported and signing identity exists; Widget provisioning profile still does not match com.apple.security.application-groups entitlement; export/upload not reached", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 3236, "decoded_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "password_secret_present": true, "password_length": 9, "security_import": "success", "signing_identity_exists": true, "signing_identity_count": 1}}
+    "latest_run": {"run_id": 33363307318, "head_commit": "d3faf518e6ce8c3e143b628d4986d2a9a8a5aa88", "failure_stage": "certificate_import", "evidence": "certificate Secret decoded to the known 12421-byte Widget profile SHA instead of the expected v3 p12; Widget profile Secret decoded to SHA 85de8e06...; security import returned Unknown format; archive/export/upload not reached", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 12421, "decoded_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "expected_certificate_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "password_secret_present": true, "password_length": 9, "security_import": "failure: Unknown format in import", "signing_identity_exists": false, "widget_profile_sha256": "85de8e0663969cf36ca6c9b8b7be937577f6f42d3c201f52e3a253813896fa15", "expected_widget_profile_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "widget_application_group_validation": "NOT_REACHED"}}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
-    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "PASS", "widget_entitlement_validation": "BLOCKED", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Run 33361911386 used the expected v3 distribution certificate successfully, but xcodebuild archive still reports that Widget profile PlanFlow AppStore Widget does not match com.apple.security.application-groups entitlement. The profile secret is still stale or lacks group.com.fluxstudio.planflow even though it was reported as regenerated.", "user_action": "In Apple Developer, open the actual Widget provisioning profile details and confirm its embedded entitlements include group.com.fluxstudio.planflow, then download that exact profile and replace PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64. Do not change the canonical source entitlement. Authorize one new workflow_dispatch after the profile Secret is replaced."},
+    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "BLOCKED", "widget_entitlement_validation": "NOT_REACHED", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Run 33363307318 shows the Distribution certificate Secret contains the 12421-byte Widget profile SHA 1884e707...1923ed rather than the expected v3 p12 SHA 6f8bc3...bbcb4; the Widget profile Secret is SHA 85de8e06... and security import returns Unknown format. Archive/export/TestFlight were not reached.", "user_action": "Replace PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 with the exact private-key-containing v3 Apple Distribution .p12 (expected SHA 6f8bc3...bbcb4) and PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 with the exact Widget profile whose embedded application-groups includes group.com.fluxstudio.planflow (expected SHA 1884e707...1923ed). Do not swap the two values. Authorize one new workflow_dispatch after both Secret values are corrected."},
   "next_gate": "Provide a Widget provisioning profile whose embedded App Group entitlement is group.com.fluxstudio.planflow, then rerun workflow_dispatch. Require Widget validation, signed archive, IPA export, and TestFlight upload evidence before PASS."
 }
