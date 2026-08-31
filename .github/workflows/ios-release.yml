@@ -79,19 +79,51 @@ jobs:
           cert="$RUNNER_TEMP/planflow-distribution.p12"
           runner_profile="$RUNNER_TEMP/planflow-runner.mobileprovision"
           widget_profile="$RUNNER_TEMP/planflow-widget.mobileprovision"
+          import_log="$RUNNER_TEMP/planflow-security-import.log"
+          identities_log="$RUNNER_TEMP/planflow-codesigning-identities.log"
           runner_plist=""
           widget_plist=""
           umask 077
-          printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$cert"
+          if [[ -n "${DISTRIBUTION_CERTIFICATE_BASE64:-}" ]]; then
+            echo "Certificate base64 secret present: yes"
+          else
+            echo "Certificate base64 secret present: no"
+          fi
+          if printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$cert"; then
+            echo "Certificate base64 decode: success"
+          else
+            echo "::error title=BLOCKED_CERTIFICATE_DECODE::Distribution certificate decode failed."
+            exit 1
+          fi
+          cert_size="$(stat -f%z "$cert")"
+          cert_sha256="$(shasum -a 256 "$cert" | awk '{print $1}')"
+          echo "Decoded certificate size (bytes): $cert_size"
+          echo "Decoded certificate SHA-256: $cert_sha256"
+          if [[ -n "${DISTRIBUTION_CERTIFICATE_PASSWORD:-}" ]]; then
+            echo "Certificate password secret present: yes"
+          else
+            echo "Certificate password secret present: no"
+          fi
+          password_length="$(printf '%s' "$DISTRIBUTION_CERTIFICATE_PASSWORD" | wc -c | awk '{print $1}')"
+          echo "Certificate password length: $password_length"
           printf '%s' "$RUNNER_PROFILE_BASE64" | base64 --decode > "$runner_profile"
           printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$widget_profile"
           keychain_password="$(uuidgen)"
           security create-keychain -p "$keychain_password" "$keychain" >/dev/null
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
-          # Import uses the password only as an argument to security; shell tracing is disabled by default.
-          security import "$cert" -k "$keychain" -P "$DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null
+          if security import "$cert" -k "$keychain" -P "$DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >"$import_log" 2>&1; then
+            echo "security import result: success"
+          else
+            echo "security import result: failure"
+            tail -n 20 "$import_log"
+            exit 1
+          fi
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security find-identity -v -p codesigning "$keychain" > "$identities_log"
+          signing_identity_count="$(awk '/^[[:space:]]*[0-9]+\)/ {count++} END {print count+0}' "$identities_log")"
+          echo "Signing identity exists: $([[ "$signing_identity_count" -gt 0 ]] && echo yes || echo no)"
+          echo "Signing identity count: $signing_identity_count"
           security list-keychains -d user -s "$keychain" login.keychain-db
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           runner_plist="$RUNNER_TEMP/runner-profile.plist"
