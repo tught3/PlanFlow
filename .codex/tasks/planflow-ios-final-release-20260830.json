@@ -5,6 +5,7 @@
   "status": "blocked_account_action",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
   "current_commit": "0da5b7feef22dbfcbf8bbfb7b3d9c7ed68a01208",
+  "repository_head": "d182fd7ceb3c9c2987d0b6c0056026ada280fbf3",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
@@ -52,13 +53,13 @@
     "secrets_committed": false
   },
   "verification": {
-    "final_diff": {"range": "41906f9aef8706184171fd2456c241aa92977064..5e46d77cd0bf255b465a9ef6c36750f003dd3ee0", "files": [".github/workflows/ios-release.yml", ".gitignore", ".codex/tasks/planflow-ios-final-release-20260830.json", "docs/ios/release-readiness.md", "ios/Runner.xcodeproj/project.pbxproj", "test/ios_release_contract_test.dart"], "diff_check_exit_code": 0, "android_production_files_changed": false},
+    "final_diff": {"range": "41906f9aef8706184171fd2456c241aa92977064..d182fd7ceb3c9c2987d0b6c0056026ada280fbf3", "files": [".github/workflows/ios-release.yml", ".gitignore", ".codex/tasks/planflow-ios-final-release-20260830.json", "docs/ios/release-readiness.md", "ios/Runner.xcodeproj/project.pbxproj", "test/ios_release_contract_test.dart"], "diff_check_exit_code": 0, "android_production_files_changed": false},
     "commands": [
       {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "run_at": "2026-08-30"},
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
     ],
     "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"],
-    "latest_run": {"run_id": 33360988236, "failure_stage": "certificate_import_format", "evidence": "certificate base64 decode success; security import failed with Unknown format in import; no signing identity/archive/export/upload", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 12421, "decoded_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "password_secret_present": true, "password_length": 9, "security_import": "failure_unknown_format", "signing_identity_exists": false}}
+    "latest_run": {"run_id": 33360988236, "head_commit": "8ac287fb6d1962b5cdbb9fc2c56c1334e0578f86", "failure_stage": "certificate_import_format", "evidence": "certificate base64 decode success; security import failed with Unknown format in import; no signing identity/archive/export/upload", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 12421, "decoded_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "password_secret_present": true, "password_length": 9, "security_import": "failure_unknown_format", "signing_identity_exists": false}}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
     "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "BLOCKED_INVALID_FORMAT", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Run 33360988236 decoded the protected distribution certificate secret but macOS security import returned Unknown format in import; the payload is not a valid importable PKCS12 certificate. This occurred before the regenerated Widget profile could be tested.", "user_action": "Re-enter the exact Apple Distribution .p12 file (including private key) once, base64-encoded without transformation, in PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64. Keep the matching password in PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD. Do not place a .mobileprovision or text export in the certificate secret. Then authorize one new workflow_dispatch; the regenerated Widget profile will be tested after certificate import passes."},
