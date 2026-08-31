@@ -25,6 +25,8 @@
     <string>음성으로 일정을 입력하려면 마이크 권한이 필요합니다.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>음성을 일정 내용으로 변환하려면 음성 인식 권한이 필요합니다.</string>
+    <key>NSUserTrackingUsageDescription</key>
+    <string>관련 광고를 제공하고 서비스 이용을 개선하기 위해 기기 식별자 사용 권한이 필요합니다.</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -17,6 +17,7 @@ void main() {
     expect(plist, contains('<string>planflow</string>'));
     expect(plist, contains('NSMicrophoneUsageDescription'));
     expect(plist, contains('NSSpeechRecognitionUsageDescription'));
+    expect(plist, contains('NSUserTrackingUsageDescription'));
     final phoneOrientations =
         plist.split('<key>UISupportedInterfaceOrientations~ipad</key>').first;
     expect(phoneOrientations, contains('UIInterfaceOrientationPortrait'));
@@ -47,6 +48,8 @@ void main() {
         file('.github/workflows/ios-release.yml').readAsStringSync();
     expect(workflow, contains('runs-on: macos-latest'));
     expect(workflow, contains('BLOCKED_APPLE_SIGNING'));
+    expect(workflow, contains('RUNNER_PRIVACY_SOURCE_PASS: PASS'));
+    expect(workflow, contains('BLOCKED_RUNNER_PRIVACY_SOURCE'));
     expect(workflow, contains('PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64'));
     expect(
         workflow, contains('PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64'));
@@ -70,6 +73,11 @@ void main() {
     expect(workflow, contains('IPA gate: signed IPA exported.'));
     expect(workflow, contains('BLOCKED_IPA_METADATA'));
     expect(workflow, contains('BLOCKED_IPA_METADATA_MISMATCH'));
+    expect(workflow, contains('ARCHIVE_PRIVACY_PREFLIGHT_PASS: PASS'));
+    expect(workflow, contains('BLOCKED_ARCHIVE_PRIVACY'));
+    expect(workflow, contains('BLOCKED_WIDGET_PRIVACY'));
+    expect(workflow, contains('EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS: PASS'));
+    expect(workflow, contains('BLOCKED_IPA_PRIVACY'));
     expect(
         workflow,
         contains(
