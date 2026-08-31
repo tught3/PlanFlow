@@ -27,13 +27,14 @@
       {"run_id": 33353962514, "commit": "aa758538", "conclusion": "failure", "duration_seconds": 500, "job_exit_code": 1, "artifacts": "none", "blocker": "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)"},
       {"run_id": 33356945173, "commit": "78032c6b", "conclusion": "failure", "duration_seconds": 340, "job_exit_code": 1, "artifacts": "none", "blocker": "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)"},
       {"run_id": 33358775456, "commit": "0da5b7fe", "conclusion": "failure", "duration_seconds": 309, "job_exit_code": 1, "artifacts": "none", "blocker": "Widget provisioning profile PlanFlow AppStore Widget does not match com.apple.security.application-groups entitlement; archive failed before export/upload"}
+      ,{"run_id": 33360988236, "commit": "8ac287fb", "conclusion": "failure", "duration_seconds": 430, "job_exit_code": 1, "artifacts": "none", "blocker": "security import failed with Unknown format in import after decoded distribution certificate payload; archive/export/upload not reached"}
     ],
-    "evidence_source": "Public GitHub Actions run 33358775456 logs inspected 2026-08-31; certificate import and identity passed, archive stopped on Widget App Group entitlement mismatch before IPA export/TestFlight upload."
+    "evidence_source": "Public GitHub Actions runs 33358775456 and 33360988236 logs inspected 2026-08-31; Widget profile issue was superseded by a new invalid distribution certificate payload at import in 33360988236."
   },
   "gates": {
-    "APPLE_SIGNING_READY": "PASS",
-    "RUNNER_SIGNED": "NOT_RUN_ARCHIVE_BLOCKED",
-    "WIDGET_SIGNED": "NOT_RUN_ARCHIVE_BLOCKED",
+    "APPLE_SIGNING_READY": "BLOCKED_CERTIFICATE_IMPORT_FORMAT",
+    "RUNNER_SIGNED": "NOT_RUN_CERTIFICATE_BLOCKED",
+    "WIDGET_SIGNED": "NOT_RUN_CERTIFICATE_BLOCKED",
     "SIGNED_ARCHIVE_PASS": "NOT_RUN",
     "IPA_EXPORT_PASS": "NOT_RUN",
     "TESTFLIGHT_UPLOAD_PASS": "NOT_RUN",
@@ -57,9 +58,9 @@
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
     ],
     "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"],
-    "latest_run": {"run_id": 33358775456, "failure_stage": "widget_entitlement_archive", "evidence": "certificate import success; signing identity exists; provisioning profile does not match com.apple.security.application-groups entitlement", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 3236, "decoded_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "password_secret_present": true, "password_length": 9, "security_import": "success", "signing_identity_exists": true, "signing_identity_count": 1}}
+    "latest_run": {"run_id": 33360988236, "failure_stage": "certificate_import_format", "evidence": "certificate base64 decode success; security import failed with Unknown format in import; no signing identity/archive/export/upload", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 12421, "decoded_sha256": "1884e707cc0c034f9a649b5fe11f6cd23b6587f44ea80cbd913ab4f34f1923ed", "password_secret_present": true, "password_length": 9, "security_import": "failure_unknown_format", "signing_identity_exists": false}}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
-    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "PASS", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "The Widget provisioning profile named PlanFlow AppStore Widget does not contain the canonical App Group group.com.fluxstudio.planflow required by the Widget entitlement; archive failed in run 33358775456 after certificate import succeeded.", "user_action": "In Apple Developer, link App Group group.com.fluxstudio.planflow to both App IDs com.fluxstudio.planflow and com.fluxstudio.planflow.PlanFlowWidget, regenerate the Widget provisioning profile (and Runner profile if needed), replace the protected profile secret(s) without exposing values, then authorize one new workflow_dispatch. Require fresh successful archive, IPA export, TestFlight upload, and App Store Connect processing evidence before release acceptance."},
-  "next_gate": "Regenerate and replace the Widget provisioning profile with group.com.fluxstudio.planflow entitlement, then rerun workflow_dispatch. Require archive, IPA export, and TestFlight upload evidence before PASS."
+    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "BLOCKED_INVALID_FORMAT", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "Run 33360988236 decoded the protected distribution certificate secret but macOS security import returned Unknown format in import; the payload is not a valid importable PKCS12 certificate. This occurred before the regenerated Widget profile could be tested.", "user_action": "Re-enter the exact Apple Distribution .p12 file (including private key) once, base64-encoded without transformation, in PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64. Keep the matching password in PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD. Do not place a .mobileprovision or text export in the certificate secret. Then authorize one new workflow_dispatch; the regenerated Widget profile will be tested after certificate import passes."},
+  "next_gate": "Restore a valid Apple Distribution PKCS12 payload in the certificate secret, then rerun workflow_dispatch. Require certificate import, Widget entitlement validation, archive, IPA export, and TestFlight upload evidence before PASS."
 }
