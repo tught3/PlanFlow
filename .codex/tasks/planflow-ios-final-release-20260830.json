@@ -39,8 +39,8 @@
     "same_build_reupload": "A new build number is required; next workflow dispatch uses github.run_number"
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-    "current_commit": "1cc49aac",
-    "repository_head": "1cc49aac",
+    "current_commit": "f56c7210",
+    "repository_head": "f56c7210",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -128,7 +128,7 @@
     "appstore_ingestion_reviewer": {
       "agent": "appstore_ingestion_reviewer",
       "model": "gpt-5.6-luna",
-      "result": "Re-review PASS with no BLOCKER/HIGH after buildUploads workflow addition; MEDIUM gaps remain for fixture execution and nested provider diagnostic coverage, with nested state handling now added."
+      "result": "Final re-review PASS with no BLOCKER/HIGH after direct associated-build relationship validation and bounded ASC request-error handling; MEDIUM gap remains that live provider and fixture execution require protected ASC credentials."
     }
   },
   "commits": [
@@ -351,5 +351,5 @@
     },
     "evidence": "Run 33365432620 matched both expected signing asset SHA-256 values, imported the certificate successfully, validated group.com.fluxstudio.planflow, created the signed archive with WidgetKit, exported PlanFlow.ipa, and altool reported UPLOAD SUCCEEDED with no errors. App Store Connect processing visibility was not queried from this Windows session; current workflow now polls the provider API and fails closed until a build resource is found."
   },
-  "next_gate": "Commit and push the ingestion-verification workflow, then manually dispatch a fresh signed run. Accept only after APP_STORE_BUILD_INGESTED and TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING are emitted and the PlanFlow build is visible or processing in App Store Connect."
+  "next_gate": "Ingestion-verification workflow and verifier are pushed at f56c7210. Manually dispatch a read-only run for build 13/version 1.0.0 with the stored Delivery UUID; accept only after APP_STORE_BUILD_INGESTED and TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING are emitted and the PlanFlow build is visible or processing in App Store Connect."
 }
