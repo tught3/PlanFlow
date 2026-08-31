@@ -4,7 +4,7 @@
   "classification": "complex",
   "status": "blocked_account_action",
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-  "current_commit": "aa758538159e773939fc2cf1ab2d2471e3490595",
+  "current_commit": "0da5b7feef22dbfcbf8bbfb7b3d9c7ed68a01208",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {"agent": "ios_final_release_explorer", "model": "gpt-5.4-mini", "result": "signing workflow and Apple certificate/profile gaps identified"},
@@ -12,10 +12,11 @@
     "implementer": {"agent": "ios_final_release_implementer", "model": "gpt-5.6-luna", "commit": "0401fc0f", "result": "fail-closed signed workflow, docs, and contract assertions"},
     "test_executor": {"agent": "ios_final_release_test_executor", "model": "gpt-5.4-mini", "result": "Dart analyze, Flutter contract tests, YAML parse, diff check passed; macOS tools unavailable on Windows"},
     "reviewer": {"agent": "ios_final_release_reviewer", "model": "gpt-5.6-luna", "result": "current HEAD re-reviewed; workflow hardening accepted, external Apple signing secrets remain blocker"},
-    "failure_analyst": {"agent": "ios_signed_release_failure_analyst", "model": "gpt-5.6-luna", "result": "run 33353040531 preflight blocker resolved; current run signing import fails with PKCS12 MAC verification error, indicating certificate/password mismatch"},
-    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: PKCS12 certificate/password mismatch at security import; no safe code fix evidenced"}
+    "failure_analyst": {"agent": "ios_signed_release_failure_analyst", "model": "gpt-5.6-luna", "result": "run 33358775456 certificate import and identity passed; archive failed because Widget provisioning profile App Group does not match canonical entitlement"},
+    "diagnostics_implementer": {"agent": "ios_signed_release_diagnostics_impl", "model": "gpt-5.4-mini", "commit": "0da5b7fe", "result": "added non-secret certificate presence/decode/size/SHA-256/password-length/security-import/signing-identity diagnostics"},
+    "reviewer_followup": {"agent": "ios_signed_release_reviewer2", "model": "gpt-5.6-luna", "result": "BLOCKER: Widget provisioning profile App Group entitlement mismatch at archive; canonical source is correct and external profile regeneration is required"}
   },
-  "commits": ["0401fc0f", "00c291a0", "563f37c9"],
+  "commits": ["0401fc0f", "00c291a0", "563f37c9", "6f235681", "aa758538", "78032c6b", "dede77e9", "0da5b7fe"],
   "workflow": {
     "path": ".github/workflows/ios-release.yml",
     "runs": [
@@ -23,14 +24,15 @@
       {"run_id": 33316857644, "commit": "563f37c9", "conclusion": "failure", "duration_seconds": 12, "job_exit_code": 1, "artifacts": "none", "blocker": "BLOCKED_APPLE_SIGNING: missing protected release secrets: APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64"},
       {"run_id": 33353040531, "commit": "722be968", "conclusion": "cancelled", "duration_seconds": 365, "job_exit_code": null, "artifacts": "none", "blocker": "stalled in Prepare Flutter and protected Firebase plist; cancelled after prolonged no-progress"},
       {"run_id": 33353962514, "commit": "aa758538", "conclusion": "failure", "duration_seconds": 500, "job_exit_code": 1, "artifacts": "none", "blocker": "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)"},
-      {"run_id": 33356945173, "commit": "78032c6b", "conclusion": "failure", "duration_seconds": 340, "job_exit_code": 1, "artifacts": "none", "blocker": "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)"}
+      {"run_id": 33356945173, "commit": "78032c6b", "conclusion": "failure", "duration_seconds": 340, "job_exit_code": 1, "artifacts": "none", "blocker": "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)"},
+      {"run_id": 33358775456, "commit": "0da5b7fe", "conclusion": "failure", "duration_seconds": 309, "job_exit_code": 1, "artifacts": "none", "blocker": "Widget provisioning profile PlanFlow AppStore Widget does not match com.apple.security.application-groups entitlement; archive failed before export/upload"}
     ],
-    "evidence_source": "Public GitHub Actions run summaries inspected 2026-08-30; both dispatches stopped in preflight before archive, IPA export, or TestFlight upload."
+    "evidence_source": "Public GitHub Actions run 33358775456 logs inspected 2026-08-31; certificate import and identity passed, archive stopped on Widget App Group entitlement mismatch before IPA export/TestFlight upload."
   },
   "gates": {
-    "APPLE_SIGNING_READY": "BLOCKED_CERTIFICATE_IMPORT",
-    "RUNNER_SIGNED": "NOT_RUN",
-    "WIDGET_SIGNED": "NOT_RUN",
+    "APPLE_SIGNING_READY": "PASS",
+    "RUNNER_SIGNED": "NOT_RUN_ARCHIVE_BLOCKED",
+    "WIDGET_SIGNED": "NOT_RUN_ARCHIVE_BLOCKED",
     "SIGNED_ARCHIVE_PASS": "NOT_RUN",
     "IPA_EXPORT_PASS": "NOT_RUN",
     "TESTFLIGHT_UPLOAD_PASS": "NOT_RUN",
@@ -54,9 +56,9 @@
       {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "run_at": "2026-08-30"}
     ],
     "not_run": ["macOS Xcode archive", "signed IPA export", "TestFlight upload"],
-    "latest_run": {"run_id": 33356945173, "failure_stage": "certificate_import", "evidence": "SecKeychainItemImport MAC verification failed", "safe_code_fix_available": false}
+    "latest_run": {"run_id": 33358775456, "failure_stage": "widget_entitlement_archive", "evidence": "certificate import success; signing identity exists; provisioning profile does not match com.apple.security.application-groups entitlement", "safe_code_fix_available": false, "diagnostics": {"certificate_secret_present": true, "decode": "success", "decoded_size_bytes": 3236, "decoded_sha256": "6f8bc3cde5776421495b7bb429a0d8628b07eac9571fc2617cc8f87e393bbcb4", "password_secret_present": true, "password_length": 9, "security_import": "success", "signing_identity_exists": true, "signing_identity_count": 1}}
   },
   "reviewer_terminal_gate": {"status": "UNKNOWN_BLOCKED", "reason": "The recorded reviewer summary has no host-final event identity and no syntactically valid FINAL_REVIEW_REPORT envelope. It is non-accepting evidence and must not be inferred as PASS.", "accepting": false},
-    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "The updated protected Apple Distribution PKCS12 certificate and password still do not match (SecKeychainItemImport MAC verification failed in run 33356945173).", "user_action": "Verify the exported Apple Distribution .p12 locally with its exact password, then update PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 and PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD together without exposing values. Then authorize one new workflow_dispatch; require fresh successful archive, IPA export, TestFlight upload, and App Store Connect processing evidence before release acceptance."},
-  "next_gate": "Re-export the Apple Distribution .p12 with the exact password used for PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD, update the two protected secrets without exposing values, then rerun workflow_dispatch. Require archive, IPA export, and TestFlight upload evidence before PASS."
+    "integration": {"status": "BLOCKED", "integrated_at": "2026-08-31", "requirements": {"fail_closed_signed_workflow": "PASS", "workflow_and_contract_test_evidence": "PASS", "android_unchanged": "PASS", "certificate_import_diagnostics": "PASS", "archive_ipa_testflight": "BLOCKED_NOT_RUN"}, "external_blocker": "The Widget provisioning profile named PlanFlow AppStore Widget does not contain the canonical App Group group.com.fluxstudio.planflow required by the Widget entitlement; archive failed in run 33358775456 after certificate import succeeded.", "user_action": "In Apple Developer, link App Group group.com.fluxstudio.planflow to both App IDs com.fluxstudio.planflow and com.fluxstudio.planflow.PlanFlowWidget, regenerate the Widget provisioning profile (and Runner profile if needed), replace the protected profile secret(s) without exposing values, then authorize one new workflow_dispatch. Require fresh successful archive, IPA export, TestFlight upload, and App Store Connect processing evidence before release acceptance."},
+  "next_gate": "Regenerate and replace the Widget provisioning profile with group.com.fluxstudio.planflow entitlement, then rerun workflow_dispatch. Require archive, IPA export, and TestFlight upload evidence before PASS."
 }
