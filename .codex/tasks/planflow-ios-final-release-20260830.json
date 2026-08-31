@@ -17,6 +17,22 @@
     "testflight_visible_or_processing": "FAIL_OBSERVED_NO_BUILD",
     "testflight_build_available": "NOT_VERIFIED",
     "processing_state": "NOT_QUERIED",
+    "run_13": {
+      "run_id": 33377449742,
+      "run_number": 13,
+      "head_sha": "fa24063bce4f4823391121c8ecdd9dace8856d62",
+      "conclusion": "failure",
+      "failure_stage": "App Store Connect ingestion verification after transport",
+      "build_number": "13",
+      "build_upload_state": "NOT_QUERIED_LOCAL_NO_ASC_SECRET_CONTEXT",
+      "build_upload_operation": "NOT_QUERIED",
+      "processing_state": "NOT_QUERIED",
+      "transport_delivery_uuid": "b786deb7-1129-4e25-960a-4c2028320790",
+      "build_14_uploaded": false,
+      "notes": "Public run/job metadata confirms the final upload-verification step ran for about 16 minutes; detailed logs and ASC API access require protected credentials."
+    },
+    "read_only_inspection_workflow": ".github/workflows/ios-testflight-ingestion.yml",
+    "build_upload_api": "GET /v1/apps/{appId}/buildUploads filtered by cfBundleShortVersionString, cfBundleVersion, platform=IOS; include=build",
     "api_query": "NOT_RUN_LOCAL_SESSION_HAS_NO_ASC_SECRET_CONTEXT",
     "ui_observation": "App Store Connect PlanFlow TestFlight showed no builds",
     "processing_failure_or_email": "NOT_OBSERVED",
@@ -64,6 +80,11 @@
       "commit": "d3faf518",
       "result": "added non-secret certificate diagnostics plus Widget mobileprovision SHA-256 and canonical App Group preflight validation"
     },
+    "appstore_ingestion_followup_implementer": {
+      "agent": "appstore_ingestion_implementer",
+      "model": "gpt-5.6-luna",
+      "result": "Added authoritative buildUploads polling, PROCESSING/FAILED/COMPLETE separation, bounded state diagnostics, Delivery UUID correlation input, and read-only inspection workflow; build 14 upload path was not added."
+    },
     "reviewer_followup": {
       "agent": "ios_signed_release_reviewer2",
       "model": "gpt-5.6-luna",
@@ -107,7 +128,7 @@
     "appstore_ingestion_reviewer": {
       "agent": "appstore_ingestion_reviewer",
       "model": "gpt-5.6-luna",
-      "result": "Re-review PASS with no BLOCKER/HIGH after removing unsupported app platform filter and hardening IPA-path cleanup; MEDIUM gaps remain for detailed processing errors and functional API fixtures."
+      "result": "Re-review PASS with no BLOCKER/HIGH after buildUploads workflow addition; MEDIUM gaps remain for fixture execution and nested provider diagnostic coverage, with nested state handling now added."
     }
   },
   "commits": [

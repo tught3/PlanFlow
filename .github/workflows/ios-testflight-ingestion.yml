@@ -1,0 +1,72 @@
+name: Inspect existing TestFlight build ingestion
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: Existing App Store Connect build number to inspect (no upload is performed)
+        required: true
+        default: "13"
+      marketing_version:
+        description: Existing CFBundleShortVersionString to inspect
+        required: true
+        default: "1.0.0"
+      delivery_uuid:
+        description: Optional transport Delivery UUID from the original upload
+        required: false
+        default: "b786deb7-1129-4e25-960a-4c2028320790"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-existing-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IOS_BUNDLE_ID: com.fluxstudio.planflow
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      MARKETING_VERSION: ${{ inputs.marketing_version }}
+      DELIVERY_UUID: ${{ inputs.delivery_uuid }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare protected App Store Connect API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error title=BLOCKED_ASC_READ_AUTH::Missing App Store Connect read-only credential: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc-api-key.p8"
+
+      - name: Inspect existing build upload and processing state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-app-store-build.py \
+            --key-path "$RUNNER_TEMP/asc-api-key.p8" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --bundle-id "$IOS_BUNDLE_ID" \
+            --version "$MARKETING_VERSION" \
+            --build "$BUILD_NUMBER" \
+            --timeout-seconds 900 \
+            --poll-interval-seconds 30 \
+            --delivery-uuid "$DELIVERY_UUID" \
+            --pending-exit-zero
+
+      - name: Cleanup protected API key
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          rm -f "$RUNNER_TEMP/asc-api-key.p8"
+          echo "Protected App Store Connect key cleanup complete."

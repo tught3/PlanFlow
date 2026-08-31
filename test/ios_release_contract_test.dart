@@ -93,7 +93,14 @@ void main() {
         file('scripts/verify-app-store-build.py').readAsStringSync();
     expect(verifier, contains('App Store Connect target verified:'));
     expect(verifier, contains('Build lookup request ID'));
+    expect(verifier, contains('/buildUploads'));
+    expect(verifier, contains('BUILD_UPLOAD_ACCEPTED_OR_PROCESSING'));
+    expect(verifier, contains('PENDING_APPLE_PROCESSING'));
+    expect(verifier, contains('BLOCKED_APP_STORE_UPLOAD_FAILED'));
+    expect(verifier, contains('BLOCKED_BUILD_ASSOCIATION_PENDING'));
+    expect(verifier, contains('print_state_details'));
     expect(verifier, contains('processingState'));
+    expect(verifier, contains('BUILD_STATES = {"PROCESSING", "VALID"}'));
     expect(verifier, contains('App Store Connect build resource found:'));
     expect(verifier, contains('APP_STORE_BUILD_INGESTED: PASS'));
     expect(verifier, contains('TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING: PASS'));
@@ -105,10 +112,26 @@ void main() {
     expect(verifier, contains('BLOCKED_APP_STORE_VERSION'));
     expect(verifier, contains('BLOCKED_APP_STORE_BUILD_NUMBER'));
     expect(verifier, contains('BLOCKED_APP_STORE_PROCESSING'));
-    expect(verifier, contains('BLOCKED_ASC_INGESTION'));
+    expect(verifier, contains('BLOCKED_APP_STORE_INGESTION_TIMEOUT'));
     expect(verifier,
-        contains('App Store Connect build not visible yet; retrying'));
+        contains('App Store Connect build not visible yet; uploadState='));
     expect(verifier, contains('--timeout-seconds'));
     expect(verifier, contains('--poll-interval-seconds'));
+  });
+
+  test('existing TestFlight ingestion inspection never uploads a new build',
+      () {
+    final workflow = file('.github/workflows/ios-testflight-ingestion.yml')
+        .readAsStringSync();
+    expect(workflow,
+        contains('Existing App Store Connect build number to inspect'));
+    expect(workflow, contains('default: "13"'));
+    expect(workflow, contains('delivery_uuid:'));
+    expect(workflow, contains('--delivery-uuid'));
+    expect(workflow, contains('verify-app-store-build.py'));
+    expect(workflow, contains('--pending-exit-zero'));
+    expect(workflow, isNot(contains('xcrun altool')));
+    expect(workflow, isNot(contains('xcodebuild archive')));
+    expect(workflow, isNot(contains('build 14')));
   });
 }
