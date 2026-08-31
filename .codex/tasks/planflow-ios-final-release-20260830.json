@@ -2,7 +2,17 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_provider_verification",
+  "status": "blocked_external_workflow_dispatch",
+  "privacy_90683": {
+    "apple_code": "90683",
+    "apple_description": "Missing purpose string in Info.plist.",
+    "affected_bundle": "Runner.app",
+    "required_key_identified": "NSUserTrackingUsageDescription",
+    "evidence": "Runner registers google_mobile_ads and its resolved iOS pod depends on Google-Mobile-Ads-SDK ~11.13.0; official Google Mobile Ads IDFA guidance requires this key for ATT/IDFA messaging. Existing microphone and speech keys remain unchanged.",
+    "runner_only_scope": true,
+    "widget_privacy_keys_added": false,
+    "android_changed": false
+  },
   "post_upload_verification": {
     "run_id": 33365432620,
     "transport_gate": "PASS",
@@ -39,8 +49,8 @@
     "same_build_reupload": "A new build number is required; next workflow dispatch uses github.run_number"
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-    "current_commit": "41811679",
-    "repository_head": "41811679",
+    "current_commit": "1fd8d3a0",
+    "repository_head": "1fd8d3a0",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -129,6 +139,12 @@
       "agent": "appstore_ingestion_reviewer",
       "model": "gpt-5.6-luna",
       "result": "Final re-review PASS with no BLOCKER/HIGH after direct associated-build relationship validation and bounded ASC request-error handling; MEDIUM gap remains that live provider and fixture execution require protected ASC credentials."
+    },
+    "privacy_90683_implementer": {
+      "agent": "appstore_ingestion_implementer",
+      "model": "gpt-5.6-luna",
+      "commit": "1fd8d3a0",
+      "result": "Added Runner-only NSUserTrackingUsageDescription and source/archive/export privacy preflights; Widget privacy keys are explicitly rejected; Android unchanged."
     }
   },
   "commits": [
@@ -146,7 +162,8 @@
     "08c0f94b",
     "2c379f86",
     "f991b0d7",
-    "3d1331bd"
+    "3d1331bd",
+    "1fd8d3a0"
   ],
   "workflow": {
     "path": ".github/workflows/ios-release.yml",
@@ -265,6 +282,9 @@
     "APP_STORE_BUILD_INGESTED": "NOT_VERIFIED",
     "TESTFLIGHT_BUILD_VISIBLE_OR_PROCESSING": "FAIL_OBSERVED_NO_BUILD",
     "TESTFLIGHT_BUILD_AVAILABLE": "NOT_VERIFIED",
+    "RUNNER_PRIVACY_SOURCE_PASS": "PASS_STATIC_CONTRACT",
+    "ARCHIVE_PRIVACY_PREFLIGHT_PASS": "PENDING_MACOS_RUN",
+    "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS": "PENDING_MACOS_RUN",
     "ANDROID_PRODUCTION_UNCHANGED": "PASS"
   },
   "required_external_secrets": [
@@ -337,7 +357,7 @@
     "accepting": false
   },
   "integration": {
-    "status": "BLOCKED_PROVIDER_VERIFICATION",
+    "status": "BLOCKED_EXTERNAL_WORKFLOW_DISPATCH",
     "integrated_at": "2026-08-31",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
@@ -347,9 +367,13 @@
       "widget_entitlement_validation": "PASS",
       "archive_ipa_testflight": "TRANSPORT_ONLY_PASS",
       "app_store_build_ingested": "NOT_VERIFIED",
-      "testflight_build_visible_or_processing": "NOT_VERIFIED"
+      "testflight_build_visible_or_processing": "NOT_VERIFIED",
+      "runner_privacy_source": "PASS_STATIC_CONTRACT",
+      "archive_privacy_preflight": "PENDING_MACOS_RUN",
+      "exported_ipa_privacy_preflight": "PENDING_MACOS_RUN",
+      "build_14_uploaded": false
     },
-    "evidence": "Run 33365432620 matched both expected signing asset SHA-256 values, imported the certificate successfully, validated group.com.fluxstudio.planflow, created the signed archive with WidgetKit, exported PlanFlow.ipa, and altool reported UPLOAD SUCCEEDED with no errors. App Store Connect processing visibility was not queried from this Windows session; current workflow now polls the provider API and fails closed until a build resource is found."
+    "evidence": "Build 13 failed with Apple 90683. Commit 1fd8d3a0 adds Runner-only NSUserTrackingUsageDescription plus source/archive/export privacy preflights and is pushed to origin/main. Build 14 has not been dispatched because gh auth is unavailable in this Windows session; no new transport or App Store ingestion evidence exists."
   },
-  "next_gate": "Ingestion-verification workflow and verifier are pushed at 41811679. Manually dispatch a read-only run for build 13/version 1.0.0 with the stored Delivery UUID; download the sanitized diagnostic artifact and accept only after the Apple FAILED StateDetail is identified or the upload/build gates pass. Do not upload build 14 before the failure cause is confirmed."
+  "next_gate": "Dispatch .github/workflows/ios-release.yml from GitHub with protected signing/ASC secrets after confirming Build 14 is the intended workflow run number. Accept only if source/archive/export privacy gates, transport upload, and ASC BuildUpload/build ingestion/visibility gates all pass."
 }
