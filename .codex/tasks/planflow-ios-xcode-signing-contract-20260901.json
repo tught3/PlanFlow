@@ -86,7 +86,7 @@
     "integrator": {
       "agent": "Codex Integrator",
       "result": "COMPLETE_LOCAL_CODE_DELIVERY",
-      "scope": "Local source-contract delivery only; no production dispatch, upload, commit, or push."
+    "scope": "Local source-contract delivery only; production dispatch and upload not attempted."
     }
   },
   "changed_files": [
@@ -95,7 +95,14 @@
   ],
   "dispatch_attempted": false,
   "upload_attempted": false,
-  "current_head": "f152571cefd7ea780a9b0049d539e630b430961c",
+  "source_commit": "236affcbff08ef4698085460fed293827815dc53",
+  "push_result": {
+    "remote": "origin",
+    "branch": "main",
+    "remote_head": "236affcbff08ef4698085460fed293827815dc53",
+    "result": "PUSHED_AND_CONFIRMED"
+  },
+  "current_head": "236affcbff08ef4698085460fed293827815dc53",
   "final_verification": {
     "performed_at": "2026-09-01T16:14:08.7434673+09:00",
     "current_diff_files": [
