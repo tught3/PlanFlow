@@ -153,5 +153,12 @@
     "required_evidence": "A fresh macOS audit run using protected signing inputs that archives Runner.app and PlanFlowWidgetExtension.appex, then completes the audit-only local export and privacy checks."
   },
   "updated_at": "2026-09-01T00:00:00+09:00",
+  "source_commit": "012c00e819707105a7ae0d2a1dc0184ceffd601f",
+  "push_result": {
+    "remote": "origin",
+    "branch": "main",
+    "remote_head": "012c00e819707105a7ae0d2a1dc0184ceffd601f",
+    "result": "PUSHED_AND_CONFIRMED"
+  },
   "final_verdict": "COMPLETE_LOCAL_CODE_DELIVERY"
 }
