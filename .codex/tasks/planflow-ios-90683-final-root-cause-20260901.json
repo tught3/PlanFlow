@@ -5,6 +5,7 @@
   "classification": "complex",
   "status": "BLOCKED_EVIDENCE_NOT_AVAILABLE",
   "starting_head": "041df78296409100a85228d8858bc851b1da17cd",
+  "final_head": "bfae93fc2e42b4f4f1b0c0009b70bc1e87ed51b4",
   "starting_branch": "main",
   "starting_status": "clean",
   "scope": {
@@ -74,7 +75,7 @@
     "dart_analyze_test_ios_release_contract_test_dart": {"exit_code": 0},
     "python_compile_privacy_helper": {"exit_code": 0},
     "git_diff_check": {"exit_code": 0},
-    "git_status": "Final integration working tree contains only the allowed untracked task-state JSON; no tracked product diff and no Android entries."
+    "git_status": "clean after task-state commit bfae93fc; no tracked product diff and no Android entries."
   },
   "roles": {
     "explorer": {
@@ -145,14 +146,14 @@
     "Authenticated GitHub Actions dispatch",
     "macOS signed archive and exported IPA binary reports",
     "Authenticated Apple 90683 BuildUpload stateDetails/errors",
-    "Integrator acceptance for this task"
+    "Integrator acceptance is recorded as BLOCKED_EVIDENCE_NOT_AVAILABLE with Reviewer PASS/NONE."
   ],
   "next_step": "Obtain authorized GitHub Actions access, dispatch the audit-only workflow on main with audit_only=true, then inspect its filtered artifact before any key change or Build 16 dispatch.",
   "final_verdict": "BLOCKED_EVIDENCE_NOT_AVAILABLE",
   "final_integration": {
     "agent": "flux_integrator",
     "assignment": "Final read-only integration of current HEAD, current diff, task role reports, workflow/source evidence, and local verification. Product source, Android, Widget, secrets, Git history, dispatch, upload, and external state were not changed.",
-    "current_head": "041df78296409100a85228d8858bc851b1da17cd",
+    "current_head": "bfae93fc2e42b4f4f1b0c0009b70bc1e87ed51b4",
     "classification_and_assignments": {
       "classification": "complex",
       "explorer": "flux_explorer",
@@ -193,6 +194,13 @@
       ".codex/tasks/planflow-ios-90683-final-root-cause-20260901.json"
     ],
     "status": "BLOCKED_EVIDENCE_NOT_AVAILABLE"
+  },
+  "delivery": {
+    "commit": "bfae93fc2e42b4f4f1b0c0009b70bc1e87ed51b4",
+    "commit_scope": [".codex/tasks/planflow-ios-90683-final-root-cause-20260901.json"],
+    "push": "SUCCESS_NON_FORCE_ORIGIN_MAIN",
+    "remote_head": "bfae93fc2e42b4f4f1b0c0009b70bc1e87ed51b4",
+    "post_push_status": "clean"
   },
   "last_update": "2026-09-01"
 }
