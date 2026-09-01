@@ -234,11 +234,18 @@
     ],
     "prohibited_actions_confirmed": {
       "source_edited_during_final_reevaluation": false,
-      "commit_attempted": false,
-      "push_attempted": false,
+      "commit_attempted": true,
+      "push_attempted": true,
       "dispatch_attempted": false,
       "upload_attempted": false
     }
+  },
+  "delivery": {
+    "source_commit": "3461474bf0d0626d5c61f2ce42d8d4001626ca45",
+    "remote": "origin",
+    "branch": "main",
+    "remote_head": "3461474bf0d0626d5c61f2ce42d8d4001626ca45",
+    "result": "PUSHED_AND_CONFIRMED"
   },
   "final_verdict": "COMPLETE_LOCAL_DELIVERY_EXTERNAL_MACOS_RUNTIME_PENDING"
 }
