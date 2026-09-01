@@ -185,16 +185,69 @@ void main() {
     expect(workflow, contains('PROVISIONING_PROFILE_SPECIFIER'));
     expect(workflow, contains('security import'));
     expect(workflow, contains('BLOCKED_AUDIT_CONFIG'));
-    expect(workflow, contains(r'export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"'));
-    expect(workflow, contains(r'unpack_dir="$RUNNER_TEMP/PlanFlowPrivacyExportUnpacked"'));
+    expect(
+        workflow, contains(r'export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"'));
+    expect(workflow,
+        contains(r'unpack_dir="$RUNNER_TEMP/PlanFlowPrivacyExportUnpacked"'));
     expect(workflow, contains('export_privacy_exit='));
     expect(workflow, contains('exported IPA missing'));
     expect(workflow, contains('AUDIT_METADATA_PASS'));
     expect(workflow, contains('BLOCKED_AUDIT_METADATA'));
     expect(workflow, contains('CFBundleShortVersionString'));
     expect(workflow, contains('CFBundleVersion'));
+    expect(
+        workflow,
+        contains(
+            "profile_team_id=\$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' \"\$runner_plist\")"));
+    expect(
+        workflow,
+        contains(
+            "widget_team_id=\$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' \"\$widget_plist\")"));
+    expect(workflow,
+        contains('echo "APPLE_TEAM_ID=\$profile_team_id" >> "\$GITHUB_ENV"'));
     expect(workflow, isNot(contains('altool')));
     expect(workflow, isNot(contains('upload-app')));
+    expect(workflow, isNot(contains('App Store Connect')));
+    expect(workflow, isNot(contains('APP_STORE_CONNECT_')));
+  });
+
+  test('iOS signing workflows keep canonical secret mappings and audit gates',
+      () {
+    final release =
+        file('.github/workflows/ios-release.yml').readAsStringSync();
+    final audit =
+        file('.github/workflows/ios-privacy-audit.yml').readAsStringSync();
+    final canonicalMappings = <String>[
+      'APPLE_TEAM_ID: \${{ secrets.PLANFLOW_APPLE_TEAM_ID }}',
+      'DISTRIBUTION_CERTIFICATE_BASE64: \${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}',
+      'DISTRIBUTION_CERTIFICATE_PASSWORD: \${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}',
+      'RUNNER_PROFILE_BASE64: \${{ secrets.PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64 }}',
+      'WIDGET_PROFILE_BASE64: \${{ secrets.PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}',
+      'FIREBASE_PLIST_BASE64: \${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}',
+    ];
+    for (final mapping in canonicalMappings) {
+      expect(release, contains(mapping));
+      expect(audit, contains(mapping));
+    }
+    final firebaseMapping =
+        'FIREBASE_PLIST_BASE64: \${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}';
+    expect(audit.split(firebaseMapping).length - 1, 1);
+
+    final requiredNames = RegExp(r'for name in ([^;]+); do')
+        .firstMatch(audit)!
+        .group(1)!
+        .split(RegExp(r'\s+'))
+        .toSet();
+    expect(requiredNames, <String>{
+      'DISTRIBUTION_CERTIFICATE_BASE64',
+      'DISTRIBUTION_CERTIFICATE_PASSWORD',
+      'RUNNER_PROFILE_BASE64',
+      'WIDGET_PROFILE_BASE64',
+      'FIREBASE_PLIST_BASE64',
+    });
+    expect(requiredNames, isNot(contains('APPLE_TEAM_ID')));
+    expect(audit, contains('if [[ -n "\${APPLE_TEAM_ID:-}"'));
+    expect(audit, contains('APPLE_TEAM_ID="\$profile_team_id"'));
   });
 
   test(
