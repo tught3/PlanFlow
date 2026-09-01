@@ -1,0 +1,157 @@
+{
+  "task_id": "planflow-ios-production-signing-contract-reuse-20260901",
+  "status": "COMPLETE_LOCAL_CODE_DELIVERY",
+  "classification": "complex",
+  "starting_head": "a6147f772bac9562561b30b0f15316a828435c5b",
+  "starting_branch": "main",
+  "starting_status": "clean",
+  "runtime_evidence": {
+    "run": "GitHub Actions Run #2",
+    "commit": "f152571c",
+    "failure": "xcodebuild archive exit 65",
+    "root_cause": "Global Runner provisioning profile override contaminated Pods and Widget; production archive has no global PROVISIONING_PROFILE_SPECIFIER."
+  },
+  "requirements": [
+    "Reuse production signing preparation/archive contract in audit-only workflow.",
+    "Keep Runner and Widget target-specific profile UUID bindings.",
+    "Mirror keychain timeout, search list, identity preflight, and Widget app-group preflight.",
+    "Preserve fixed audit build 99990001 and forbid all upload paths.",
+    "Keep production workflow, native signing project, Pods configuration, and Android unchanged."
+  ],
+  "allowed_source_files": [
+    ".github/workflows/ios-privacy-audit.yml",
+    "test/ios_release_contract_test.dart"
+  ],
+  "forbidden_source_files": [
+    ".github/workflows/ios-release.yml",
+    "ios/Runner.xcodeproj/project.pbxproj",
+    "ios/Flutter",
+    "ios/Podfile",
+    "android"
+  ],
+  "roles": {
+    "explorer": {
+      "agent": "Parfit",
+      "agent_role": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only investigation of the Run #2 signing failure and audit/production signing-contract differences.",
+      "result": "COMPLETE",
+      "finding": "Global profile override was the remaining archive mismatch; production also has keychain/search-list and Widget app-group preflights missing from audit."
+    },
+    "planner": {
+      "agent": "Aquinas",
+      "agent_role": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define the scoped audit-workflow parity plan, prohibited production/native paths, and verification gates.",
+      "result": "COMPLETE",
+      "plan": "Add production-equivalent signing preflights to audit and strengthen parity/no-upload tests; do not extract helper or modify production."
+    },
+    "complex_implementer": {
+      "agent": "Hubble",
+      "agent_role": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement the planned audit-only signing-contract parity and its focused contract assertions.",
+      "result": "COMPLETE",
+      "changed_files": [
+        ".github/workflows/ios-privacy-audit.yml",
+        "test/ios_release_contract_test.dart"
+      ]
+    },
+    "initial_integrator": {
+      "agent": "Bernoulli",
+      "agent_role": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile the implementation against the plan before test execution.",
+      "result": "APPROVE_FOR_TESTING"
+    },
+    "test_executor": {
+      "agent": "Linnaeus",
+      "agent_role": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run focused Windows-host format, static-analysis, contract, YAML, and diff validation without claiming macOS execution.",
+      "result": "PASS",
+      "evidence": [
+        "dart format --output=none test/ios_release_contract_test.dart exit 0",
+        "flutter test test/ios_release_contract_test.dart --no-pub exit 0",
+        "flutter test test/ios_phase4_identity_contract_test.dart --no-pub exit 0",
+        "dart analyze test/ios_release_contract_test.dart exit 0",
+        "PyYAML parsed ios-release.yml and ios-privacy-audit.yml exit 0; actionlint unavailable",
+        "git diff --check exit 0",
+        "No forbidden workflow/native/Podfile/Android changes"
+      ]
+    },
+    "reviewer": {
+      "agent": "Dalton",
+      "agent_role": "flux_reviewer",
+      "reviewer_invocation_id": "01a05be8-32f3-7ac3-a1b2-7426444ca49f",
+      "result": "PASS",
+      "final_review_report": {
+        "envelope": "FINAL_REVIEW_REPORT",
+        "verdict": "PASS",
+        "highest_severity": "NONE",
+        "findings": "NONE",
+        "retest_scope": "NONE"
+      },
+      "terminal_gate": {
+        "host_final_event": "observed",
+        "host_final_invocation_id": "01a05be8-32f3-7ac3-a1b2-7426444ca49f",
+        "final_review_report_count": 1,
+        "validated": true
+      }
+    },
+    "integrator": {
+      "agent": "Codex",
+      "agent_role": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Final local source-diff, role-evidence, verification, and independent-review integration; no source edits, commit, push, dispatch, or upload.",
+      "result": "COMPLETE_LOCAL_CODE_DELIVERY"
+    }
+  },
+  "changed_files": [
+    ".github/workflows/ios-privacy-audit.yml",
+    "test/ios_release_contract_test.dart"
+  ],
+  "dispatch_attempted": false,
+  "upload_attempted": false,
+  "macos_runtime_recheck": "NOT_RUN_WINDOWS_HOST",
+  "current_source_diff": {
+    "files": [
+      ".github/workflows/ios-privacy-audit.yml",
+      "test/ios_release_contract_test.dart"
+    ],
+    "summary": "87 insertions only (19 workflow, 68 contract test); no changes in ios-release.yml, project.pbxproj, ios/Flutter, Podfile, or android.",
+    "contract_confirmed": [
+      "Audit keychain timeout is 21600 seconds and the user search list is the audit keychain plus login.keychain-db.",
+      "Imported signing identities are counted and zero identities fail closed before the search list is set.",
+      "Widget provisioning profile must include group.com.fluxstudio.planflow.",
+      "Runner and Widget profile UUIDs are separately bound through PLANFLOW_RUNNER_PROFILE_UUID and PLANFLOW_WIDGET_PROFILE_UUID; no global PROVISIONING_PROFILE_SPECIFIER is present.",
+      "Audit build number is fixed at 99990001 and the workflow contains no App Store Connect, TestFlight, Transporter, altool, or upload path."
+    ],
+    "diff_check_exit_code": 0
+  },
+  "final_test_evidence": [
+    {"command": "dart format --output=none test/ios_release_contract_test.dart", "exit_code": 0, "result": "Formatted 1 file (0 changed)."},
+    {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "result": "14 tests passed."},
+    {"command": "flutter test test/ios_phase4_identity_contract_test.dart --no-pub", "exit_code": 0, "result": "2 tests passed."},
+    {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "result": "No issues found."},
+    {"command": "git diff --check", "exit_code": 0, "result": "Passed; CRLF conversion warnings only."},
+    {"command": "static audit invariant check", "exit_code": 0, "result": "Confirmed timeout/search-list/identity/app-group/UUID/no-global-profile/no-upload invariants."}
+  ],
+  "failure_analyst": {
+    "required": false,
+    "reason": "All required local checks passed; the recorded Run #2 exit 65 root cause was addressed by this scoped contract reuse and no current verification failure occurred."
+  },
+  "external_runtime_gate": {
+    "status": "PENDING_MACOS_AUDIT",
+    "reason": "This Windows host cannot execute a protected macOS/Xcode signed archive audit. No workflow dispatch, upload, or TestFlight action was attempted.",
+    "required_evidence": "A fresh macOS audit run using protected signing inputs that archives Runner.app and PlanFlowWidgetExtension.appex, then completes the audit-only local export and privacy checks."
+  },
+  "updated_at": "2026-09-01T00:00:00+09:00",
+  "final_verdict": "COMPLETE_LOCAL_CODE_DELIVERY"
+}

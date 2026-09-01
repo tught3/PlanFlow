@@ -18,6 +18,54 @@ void main() {
     return match.group(0)!;
   }
 
+  void expectSigningParity(String workflow, {bool requireFailClosed = false}) {
+    final createKeychain = workflow.indexOf(
+      'security create-keychain -p "\$keychain_password" "\$keychain"',
+    );
+    final keychainSettings = workflow.indexOf(
+      'security set-keychain-settings -lut 21600 "\$keychain"',
+      createKeychain,
+    );
+    final import = workflow.indexOf(
+      'security import "\$cert" -k "\$keychain"',
+      keychainSettings,
+    );
+    final identity = workflow.indexOf(
+      'security find-identity -v -p codesigning "\$keychain" > "\$identities_log"',
+      import,
+    );
+    final identityCount = workflow.indexOf(
+      'signing_identity_count="\$(awk',
+      identity,
+    );
+    final identityFailClosed = workflow.indexOf(
+      'if (( signing_identity_count == 0 )); then',
+      identityCount,
+    );
+    final searchList = workflow.indexOf(
+      'security list-keychains -d user -s "\$keychain" login.keychain-db',
+      requireFailClosed ? identityFailClosed : identityCount,
+    );
+    expect(createKeychain, greaterThanOrEqualTo(0));
+    expect(keychainSettings, greaterThan(createKeychain));
+    expect(import, greaterThan(keychainSettings));
+    expect(identity, greaterThan(import));
+    expect(identityCount, greaterThan(identity));
+    if (requireFailClosed) {
+      expect(identityFailClosed, greaterThan(identityCount));
+      expect(searchList, greaterThan(identityFailClosed));
+    } else {
+      expect(searchList, greaterThan(identityCount));
+    }
+    expect(workflow, contains('BLOCKED_WIDGET_PROFILE_APP_GROUP'));
+    expect(workflow, contains('group.com.fluxstudio.planflow'));
+    expect(workflow, contains('com.apple.security.application-groups'));
+    expect(
+        workflow,
+        contains(
+            r"grep -Eq '^[[:space:]]*group\.com\.fluxstudio\.planflow[[:space:]]*$'"));
+  }
+
   String widgetReleaseConfiguration(String pbxproj) {
     final match = RegExp(
       r'^\s*A31F00000000000000000071 /\* Release \*/ = \{.*?^\s*\};',
@@ -221,6 +269,7 @@ void main() {
             .hasMatch(archive),
         isFalse);
     expect(workflow, contains('security import'));
+    expectSigningParity(workflow, requireFailClosed: true);
     expect(workflow, contains('BLOCKED_AUDIT_CONFIG'));
     expect(
         workflow, contains(r'export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"'));
@@ -262,6 +311,8 @@ void main() {
         file('.github/workflows/ios-privacy-audit.yml').readAsStringSync();
     final releaseArchive = archiveBlock(release);
     final auditArchive = archiveBlock(audit);
+    expectSigningParity(release);
+    expectSigningParity(audit);
     final canonicalMappings = <String>[
       'APPLE_TEAM_ID: \${{ secrets.PLANFLOW_APPLE_TEAM_ID }}',
       'DISTRIBUTION_CERTIFICATE_BASE64: \${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}',
@@ -304,6 +355,23 @@ void main() {
       expect(archive, contains(r'DEVELOPMENT_TEAM="$APPLE_TEAM_ID"'));
       expect(archive, contains(r'CODE_SIGN_IDENTITY="Apple Distribution"'));
       expect(archive, contains('CODE_SIGN_STYLE=Manual'));
+    }
+    expect(audit, contains('IOS_BUILD_NUMBER: 99990001'));
+    expect(audit, contains(r'PLANFLOW_RUNNER_PROFILE_UUID="$runner_uuid"'));
+    expect(audit, contains(r'PLANFLOW_WIDGET_PROFILE_UUID="$widget_uuid"'));
+    expect(audit, isNot(contains('PROVISIONING_PROFILE_SPECIFIER=')));
+    for (final forbidden in <String>[
+      'App Store Connect',
+      'TestFlight',
+      'altool',
+      'Transporter',
+      'ASC_KEY_ID',
+      'ASC_ISSUER_ID',
+      'ASC_API_KEY_P8',
+      'upload-app',
+      'upload-ipa',
+    ]) {
+      expect(audit, isNot(contains(forbidden)));
     }
 
     final pbxproj =

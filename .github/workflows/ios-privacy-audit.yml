@@ -74,20 +74,39 @@ jobs:
           cert="$RUNNER_TEMP/planflow-audit.p12"
           runner_profile="$RUNNER_TEMP/planflow-audit-runner.mobileprovision"
           widget_profile="$RUNNER_TEMP/planflow-audit-widget.mobileprovision"
+          identities_log="$RUNNER_TEMP/planflow-audit-codesigning-identities.log"
           umask 077
           printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$cert"
           printf '%s' "$RUNNER_PROFILE_BASE64" | base64 --decode > "$runner_profile"
           printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$widget_profile"
           keychain_password="$(uuidgen)"
           security create-keychain -p "$keychain_password" "$keychain" >/dev/null
+          security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$cert" -k "$keychain" -P "$DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security find-identity -v -p codesigning "$keychain" > "$identities_log"
+          signing_identity_count="$(awk '/^[[:space:]]*[0-9]+\)/ {count++} END {print count+0}' "$identities_log")"
+          echo "Signing identity count: $signing_identity_count"
+          if (( signing_identity_count == 0 )); then
+            echo "::error title=BLOCKED_AUDIT_SIGNING_IDENTITY::No Apple code-signing identity was imported."
+            exit 1
+          fi
+          security list-keychains -d user -s "$keychain" login.keychain-db
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           runner_plist="$RUNNER_TEMP/audit-runner-profile.plist"
           widget_plist="$RUNNER_TEMP/audit-widget-profile.plist"
           security cms -D -i "$runner_profile" > "$runner_plist"
           security cms -D -i "$widget_profile" > "$widget_plist"
+          widget_app_groups="$(
+            /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$widget_plist" 2>/dev/null || true
+          )"
+          if printf '%s\n' "$widget_app_groups" | grep -Eq '^[[:space:]]*group\.com\.fluxstudio\.planflow[[:space:]]*$'; then
+            echo "Widget application-groups includes canonical group.com.fluxstudio.planflow: yes"
+          else
+            echo "::error title=BLOCKED_WIDGET_PROFILE_APP_GROUP::Widget provisioning profile missing canonical application group group.com.fluxstudio.planflow."
+            exit 1
+          fi
           profile_team_id=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$runner_plist")
           widget_team_id=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$widget_plist")
           if [[ -z "$profile_team_id" || "$profile_team_id" != "$widget_team_id" ]]; then
