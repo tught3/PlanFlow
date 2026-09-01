@@ -1,0 +1,141 @@
+{
+  "task_id": "planflow-ios-xcode-signing-contract-20260901",
+  "status": "COMPLETE_LOCAL_CODE_DELIVERY",
+  "classification": "complex",
+  "starting_head": "f152571cefd7ea780a9b0049d539e630b430961c",
+  "starting_branch": "main",
+  "starting_status": "clean",
+  "runtime_evidence": {
+    "run": "GitHub Actions Run #2",
+    "commit": "f152571c",
+    "failure": "xcodebuild archive exit 65",
+    "root_cause": "Audit globally passed PROVISIONING_PROFILE_SPECIFIER=Runner UUID; macOS log showed Pods provisioning-profile rejection and Widget receiving Runner profile."
+  },
+  "requirements": [
+    "Reuse ios-release.yml archive/signing structure without changing production workflow.",
+    "Keep Runner and Widget target-specific profile UUID injection.",
+    "Prevent global Runner provisioning profile override from reaching Pods or Widget.",
+    "Preserve audit-only, fixed build 99990001, and no upload path.",
+    "Keep Android unchanged."
+  ],
+  "allowed_source_files": [
+    ".github/workflows/ios-privacy-audit.yml",
+    "test/ios_release_contract_test.dart"
+  ],
+  "forbidden_source_files": [
+    ".github/workflows/ios-release.yml",
+    "ios/Runner.xcodeproj/project.pbxproj",
+    "ios/Flutter",
+    "ios/Podfile",
+    "android"
+  ],
+  "roles": {
+    "explorer": {
+      "agent": "Bohr",
+      "result": "COMPLETE",
+      "finding": "Production archive omits global PROVISIONING_PROFILE_SPECIFIER; project.pbxproj already has separate Runner/Widget target settings."
+    },
+    "planner": {
+      "agent": "Franklin",
+      "result": "COMPLETE",
+      "plan": "Remove audit global profile override and strengthen target-specific signing contract tests."
+    },
+    "complex_implementer": {
+      "agent": "Raman",
+      "result": "COMPLETE",
+      "changed_files": [
+        ".github/workflows/ios-privacy-audit.yml",
+        "test/ios_release_contract_test.dart"
+      ]
+    },
+    "initial_integrator": {
+      "agent": "Godel",
+      "result": "APPROVE_FOR_TESTING"
+    },
+    "test_executor": {
+      "agent": "Newton",
+      "result": "PASS",
+      "evidence": [
+        "flutter test test/ios_release_contract_test.dart --no-pub exit 0",
+        "flutter test test/ios_phase4_identity_contract_test.dart --no-pub exit 0",
+        "dart analyze test/ios_release_contract_test.dart exit 0",
+        "PyYAML parsed audit workflow exit 0; actionlint unavailable",
+        "git diff --check exit 0",
+        "No ios-release.yml, project.pbxproj, or Android diff"
+      ]
+    },
+    "reviewer": {
+      "agent": "Herschel",
+      "agent_role": "flux_reviewer",
+      "reviewer_invocation_id": "01a05bcc-afea-7f90-8ab0-234d38277351",
+      "result": "PASS",
+      "final_review_report": {
+        "envelope": "FINAL_REVIEW_REPORT",
+        "verdict": "PASS",
+        "highest_severity": "NONE",
+        "findings": "NONE",
+        "retest_scope": "NONE"
+      },
+      "terminal_gate": {
+        "host_final_event": "observed",
+        "host_final_invocation_id": "01a05bcc-afea-7f90-8ab0-234d38277351",
+        "final_review_report_count": 1,
+        "validated": true
+      }
+    },
+    "integrator": {
+      "agent": "Codex Integrator",
+      "result": "COMPLETE_LOCAL_CODE_DELIVERY",
+      "scope": "Local source-contract delivery only; no production dispatch, upload, commit, or push."
+    }
+  },
+  "changed_files": [
+    ".github/workflows/ios-privacy-audit.yml",
+    "test/ios_release_contract_test.dart"
+  ],
+  "dispatch_attempted": false,
+  "upload_attempted": false,
+  "current_head": "f152571cefd7ea780a9b0049d539e630b430961c",
+  "final_verification": {
+    "performed_at": "2026-09-01T16:14:08.7434673+09:00",
+    "current_diff_files": [
+      ".github/workflows/ios-privacy-audit.yml",
+      "test/ios_release_contract_test.dart"
+    ],
+    "requirements_confirmed": [
+      "Audit archive command has no global PROVISIONING_PROFILE_SPECIFIER.",
+      "Target-specific Runner and Widget profile UUID bindings remain in project.pbxproj.",
+      "Audit workflow remains non-uploading and preserves build number 99990001.",
+      "Production ios-release.yml, project.pbxproj, xcconfig/Podfile, and Android have no current diff."
+    ],
+    "commands": [
+      {
+        "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+        "exit_code": 0
+      },
+      {
+        "command": "flutter test test/ios_phase4_identity_contract_test.dart --no-pub",
+        "exit_code": 0
+      },
+      {
+        "command": "dart analyze test/ios_release_contract_test.dart",
+        "exit_code": 0
+      },
+      {
+        "command": "PyYAML parse .github/workflows/ios-privacy-audit.yml",
+        "exit_code": 0
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0
+      }
+    ],
+    "verification_gap": "actionlint is unavailable on this host; PyYAML syntax parsing passed."
+  },
+  "external_runtime_gate": {
+    "status": "PENDING_MACOS_AUDIT",
+    "reason": "Windows host cannot execute the required macOS/Xcode signed archive audit. No dispatch, upload, or TestFlight action was attempted.",
+    "required_evidence": "A fresh macOS audit archive using protected signing inputs, including verification of both Runner.app and PlanFlowWidgetExtension.appex."
+  },
+  "final_verdict": "COMPLETE_LOCAL_CODE_DELIVERY"
+}

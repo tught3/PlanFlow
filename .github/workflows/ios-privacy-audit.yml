@@ -116,7 +116,6 @@ jobs:
             FLUTTER_BUILD_NAME="$IOS_BUILD_NAME" FLUTTER_BUILD_NUMBER="$IOS_BUILD_NUMBER" \
             MARKETING_VERSION="$IOS_BUILD_NAME" CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
             CODE_SIGN_IDENTITY="Apple Distribution" CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="$runner_uuid" \
             PLANFLOW_RUNNER_PROFILE_UUID="$runner_uuid" PLANFLOW_WIDGET_PROFILE_UUID="$widget_uuid" \
             | tee ios-audit/archive.log
 

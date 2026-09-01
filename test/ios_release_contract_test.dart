@@ -6,6 +6,30 @@ void main() {
   final root = Directory.current;
   File file(String path) => File('${root.path}${Platform.pathSeparator}$path');
 
+  String archiveBlock(String workflow) {
+    final match = RegExp(
+      r'^[ \t]*xcodebuild archive\b.*?^[ \t]*\|[ \t]*tee[^\r\n]*',
+      multiLine: true,
+      dotAll: true,
+    ).firstMatch(workflow);
+    if (match == null) {
+      throw StateError('xcodebuild archive block not found');
+    }
+    return match.group(0)!;
+  }
+
+  String widgetReleaseConfiguration(String pbxproj) {
+    final match = RegExp(
+      r'^\s*A31F00000000000000000071 /\* Release \*/ = \{.*?^\s*\};',
+      multiLine: true,
+      dotAll: true,
+    ).firstMatch(pbxproj);
+    if (match == null) {
+      throw StateError('Widget Release build configuration not found');
+    }
+    return match.group(0)!;
+  }
+
   test('iOS entry files are source controlled', () {
     expect(file('ios/Runner/AppDelegate.swift').existsSync(), isTrue);
     expect(file('ios/Runner/Info.plist').existsSync(), isTrue);
@@ -177,12 +201,25 @@ void main() {
   test('audit-only workflow is non-uploading and preserves reports', () {
     final workflow =
         file('.github/workflows/ios-privacy-audit.yml').readAsStringSync();
+    final archive = archiveBlock(workflow);
     expect(workflow, contains('audit_only'));
     expect(workflow, contains('actions/upload-artifact@v4'));
     expect(workflow, contains('ios-audit'));
     expect(workflow, contains('Build fixed-number signed archive'));
-    expect(workflow, contains('CODE_SIGN_IDENTITY="Apple Distribution"'));
-    expect(workflow, contains('PROVISIONING_PROFILE_SPECIFIER'));
+    expect(workflow, contains('IOS_BUILD_NUMBER: 99990001'));
+    expect(archive, contains(r'DEVELOPMENT_TEAM="$APPLE_TEAM_ID"'));
+    expect(archive, contains(r'CODE_SIGN_IDENTITY="Apple Distribution"'));
+    expect(archive, contains('CODE_SIGN_STYLE=Manual'));
+    expect(archive, contains(r'FLUTTER_BUILD_NAME="$IOS_BUILD_NAME"'));
+    expect(archive, contains(r'FLUTTER_BUILD_NUMBER="$IOS_BUILD_NUMBER"'));
+    expect(archive, contains(r'MARKETING_VERSION="$IOS_BUILD_NAME"'));
+    expect(archive, contains(r'CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER"'));
+    expect(archive, contains(r'PLANFLOW_RUNNER_PROFILE_UUID="$runner_uuid"'));
+    expect(archive, contains(r'PLANFLOW_WIDGET_PROFILE_UUID="$widget_uuid"'));
+    expect(
+        RegExp(r'^\s*PROVISIONING_PROFILE_SPECIFIER\s*=', multiLine: true)
+            .hasMatch(archive),
+        isFalse);
     expect(workflow, contains('security import'));
     expect(workflow, contains('BLOCKED_AUDIT_CONFIG'));
     expect(
@@ -205,10 +242,16 @@ void main() {
             "widget_team_id=\$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' \"\$widget_plist\")"));
     expect(workflow,
         contains('echo "APPLE_TEAM_ID=\$profile_team_id" >> "\$GITHUB_ENV"'));
-    expect(workflow, isNot(contains('altool')));
-    expect(workflow, isNot(contains('upload-app')));
-    expect(workflow, isNot(contains('App Store Connect')));
-    expect(workflow, isNot(contains('APP_STORE_CONNECT_')));
+    for (final forbidden in <String>[
+      'altool',
+      'upload-app',
+      'App Store Connect',
+      'TestFlight',
+      'Transporter',
+      'APP_STORE_CONNECT_',
+    ]) {
+      expect(workflow, isNot(contains(forbidden)));
+    }
   });
 
   test('iOS signing workflows keep canonical secret mappings and audit gates',
@@ -217,6 +260,8 @@ void main() {
         file('.github/workflows/ios-release.yml').readAsStringSync();
     final audit =
         file('.github/workflows/ios-privacy-audit.yml').readAsStringSync();
+    final releaseArchive = archiveBlock(release);
+    final auditArchive = archiveBlock(audit);
     final canonicalMappings = <String>[
       'APPLE_TEAM_ID: \${{ secrets.PLANFLOW_APPLE_TEAM_ID }}',
       'DISTRIBUTION_CERTIFICATE_BASE64: \${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}',
@@ -248,6 +293,38 @@ void main() {
     expect(requiredNames, isNot(contains('APPLE_TEAM_ID')));
     expect(audit, contains('if [[ -n "\${APPLE_TEAM_ID:-}"'));
     expect(audit, contains('APPLE_TEAM_ID="\$profile_team_id"'));
+
+    for (final archive in <String>[releaseArchive, auditArchive]) {
+      expect(
+          RegExp(r'^\s*PROVISIONING_PROFILE_SPECIFIER\s*=', multiLine: true)
+              .hasMatch(archive),
+          isFalse);
+      expect(archive, contains(r'PLANFLOW_RUNNER_PROFILE_UUID='));
+      expect(archive, contains(r'PLANFLOW_WIDGET_PROFILE_UUID='));
+      expect(archive, contains(r'DEVELOPMENT_TEAM="$APPLE_TEAM_ID"'));
+      expect(archive, contains(r'CODE_SIGN_IDENTITY="Apple Distribution"'));
+      expect(archive, contains('CODE_SIGN_STYLE=Manual'));
+    }
+
+    final pbxproj =
+        file('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    expect(
+        RegExp(r'PROVISIONING_PROFILE_SPECIFIER = "\$\(PLANFLOW_RUNNER_PROFILE_UUID\)";')
+            .allMatches(pbxproj)
+            .length,
+        2);
+    expect(
+        RegExp(r'PROVISIONING_PROFILE_SPECIFIER = "\$\(PLANFLOW_WIDGET_PROFILE_UUID\)";')
+            .allMatches(pbxproj)
+            .length,
+        1);
+    final widgetRelease = widgetReleaseConfiguration(pbxproj);
+    expect(
+        widgetRelease,
+        contains(
+            'PROVISIONING_PROFILE_SPECIFIER = "\$(PLANFLOW_WIDGET_PROFILE_UUID)";'));
+    expect(widgetRelease, isNot(contains('PLANFLOW_RUNNER_PROFILE_UUID')));
+    expect(pbxproj, isNot(contains('Pods-')));
   });
 
   test(
