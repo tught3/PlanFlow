@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-90683-final-release-20260902",
   "objective": "Analyze authenticated iOS privacy audit Run #4, finalize the privacy dependency map, evaluate the Build 16 release gate, and execute production TestFlight release only when the audited contract is satisfied.",
   "classification": "complex",
-  "status": "LOCAL_DELIVERY_COMPLETE_EXTERNAL_BUILD16_PENDING",
+  "status": "TESTFLIGHT_READY",
   "starting_head": "22364b0f83e934ccbf256d68236c7b7bb7815a3b",
   "starting_branch": "main",
   "starting_status": "clean",
@@ -84,13 +84,36 @@
     "root_cause_policy": "STRONGLY_NARROWED plus Run #4 audit evidence and resolved required keys permits Build 16 evaluation; do not promote to IDENTIFIED without Apple stateDetails."
   },
   "build_16": {
-    "status": "NOT_RUN",
+    "status": "SUCCESS",
     "workflow": ".github/workflows/ios-release.yml",
-    "expected_workflow_run_number": 16,
-    "transport": "NOT_RUN",
-    "build_upload": "NOT_RUN",
-    "ingestion": "NOT_RUN",
-    "testflight": "NOT_RUN"
+    "run_id": 33634034706,
+    "run_number": 16,
+    "head_sha": "503bba99ec5efe37195b2a516c0f923c9fd8b4c6",
+    "job_id": 100260270253,
+    "conclusion": "success",
+    "signed_archive": "PASS",
+    "archive_privacy_preflight": "PASS",
+    "ipa_export": "PASS",
+    "exported_ipa_privacy_preflight": "PASS",
+    "transport": "PASS",
+    "build_upload": "PASS: authoritative App Store Connect state COMPLETE",
+    "app_store_build": {
+      "bundle_id": "com.fluxstudio.planflow",
+      "version": "1.0.0",
+      "build": "16",
+      "platform": "IOS",
+      "state": "COMPLETE"
+    },
+    "ingestion": "PASS",
+    "testflight_visible_or_processing": "PASS",
+    "testflight_available": "PASS",
+    "warnings": [
+      "FirebaseRemoteConfig and SDK deprecation warnings",
+      "linker search-path warning",
+      "PrivacyInfo.xcprivacy processing warning",
+      "GitHub Actions runtime deprecation warnings"
+    ],
+    "apple_90683": "RESOLVED_BY_BUILD16"
   },
   "allowed_files": [
     "docs/ios/privacy-surface-audit.md",
@@ -132,6 +155,14 @@
       "assignment": "Update the single privacy dependency-map document with Run #4 evidence and release-gate status.",
       "result": "COMPLETE: docs/ios/privacy-surface-audit.md updated only; no source, signing, workflow, secret, or Android changes."
     },
+    "release_16_implementer": {
+      "agent": "flux_simple_implementer",
+      "agent_id": "01a0626d-3f4c-76b1-9364-c24b046cbf6f",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Update the existing privacy document with authenticated Build 16 evidence, final release readiness, warnings, and reusable template design material.",
+      "result": "COMPLETE: docs/ios/privacy-surface-audit.md only; no code, workflow, Android, secret, or signing changes; no commit or push."
+    },
     "test_executor": {
       "agent": "flux_test_executor",
       "agent_id": "01a06151-cd24-7040-a959-b7b018904652",
@@ -163,11 +194,11 @@
       "agent_id": "01a06157-e17d-7a53-9ed5-a9e370eac070",
       "mapped_model": "gpt-5.6-luna",
       "reasoning_effort": "high",
-      "assignment": "Final independent review of current diff, persisted Run #4 evidence, test executor records, scope, and Build 16 gate state.",
+      "assignment": "Final independent review of the current diff, persisted Run #4 and Build 16 evidence, test executor records, scope, and release gate state.",
       "report_type": "FINAL_REVIEW_REPORT",
       "verdict": "PASS",
       "highest_severity": "NONE",
-      "result": "PASS/NONE: reviewer_initial metadata finding reconciled; Run #4 gates and map are consistent; only allowed docs/task-state files changed; Build 16 and Apple/TestFlight actions remain NOT_RUN.",
+      "result": "PASS/NONE: reviewer_initial metadata finding reconciled; Run #4 and Build 16 gates and map are consistent; only allowed docs/task-state files changed; Apple/TestFlight authoritative evidence is COMPLETE/PASS.",
       "final_emitted": true,
       "findings": [],
       "retest_scope": "NONE",
@@ -178,6 +209,61 @@
         "verdict": "PASS",
         "highest_severity": "NONE"
       }
+    },
+    "reviewer_release": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a06270-82a3-75c1-9ceb-ef71a6216506",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent final review of the Build 16 release evidence, documentation diff, task state, upload boundaries, and cleanup state.",
+      "report_type": "FINAL_REVIEW_REPORT",
+      "verdict": "FINDINGS",
+      "highest_severity": "MEDIUM",
+      "result": "MEDIUM: task ledger still recorded artifact_temp_cleaned=false; exact owned path was then verified absent and state reconciliation is required.",
+      "findings": [
+        "MEDIUM: reconcile artifact_temp_cleaned after exact-path cleanup verification"
+      ],
+      "retest_scope": "exact cleanup path verification, task-state reconciliation, JSON validation, scoped diff/status"
+    },
+    "reviewer_release_final": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a06270-82a3-75c1-9ceb-ef71a6216506",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Re-review the reconciled Build 16 release state, exact cleanup evidence, final diff, and scope boundaries.",
+      "report_type": "FINAL_REVIEW_REPORT",
+      "verdict": "PASS",
+      "highest_severity": "NONE",
+      "result": "PASS/NONE: exact owned artifact temp path absent; state cleanup gate reconciled; two-file scope and Build 16 authoritative evidence consistent; final integration safe.",
+      "final_emitted": true,
+      "findings": [],
+      "retest_scope": "NONE",
+      "terminal_gate": {
+        "final_review_report_count": 1,
+        "host_final_received": true,
+        "invocation_id": "01a06270-82a3-75c1-9ceb-ef71a6216506",
+        "verdict": "PASS",
+        "highest_severity": "NONE"
+      }
+    },
+    "release_test_executor": {
+      "agent": "flux_test_executor",
+      "agent_id": "01a06274-f506-7e42-8dde-2631c5730be3",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Final verification of tests, analysis, plist gate, JSON/YAML parsing, diff scope, Android isolation, and exact artifact cleanup path.",
+      "result": "PASS",
+      "checks": [
+        {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "evidence": "All tests passed"},
+        {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "evidence": "No issues found"},
+        {"command": "python scripts/verify-ios-privacy-surface.py --runner-plist ios/Runner/Info.plist --widget-plist ios/PlanFlowWidget/Info.plist", "exit_code": 0, "evidence": "IOS_PRIVACY_PLIST_GATE: PASS"},
+        {"command": "python -m json.tool .codex/tasks/planflow-ios-90683-final-release-20260902.json", "exit_code": 0, "evidence": "valid task state"},
+        {"command": "PyYAML parse ios-release.yml and ios-privacy-audit.yml", "exit_code": 0, "evidence": "both YAML documents parsed"},
+        {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors"},
+        {"command": "git status --short -- android", "exit_code": 0, "evidence": "empty"},
+        {"command": "Test-Path exact Build 16 artifact temp path", "exit_code": 0, "evidence": "ABSENT"}
+      ],
+      "scope": "exactly two modified files; no source/workflow/Android/secret/signing changes"
     },
     "integrator_initial": {
       "agent": "flux_integrator",
@@ -195,31 +281,42 @@
       "assignment": "Final coordination review of all role evidence, current diff, Run #4 gates, and release safety boundaries.",
       "result": "COMPLETE_LOCAL_DELIVERY: all required evidence and scope gates are satisfied; ready for pathspec commit and non-force push.",
       "final_emitted": true
+    },
+    "integrator_release_final": {
+      "agent": "flux_integrator",
+      "agent_id": "01a06277-3426-7011-b32b-c9a948256a26",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Final integration after reviewer terminal-gate reconciliation for Build 16 release readiness.",
+      "result": "COMPLETE_LOCAL_DELIVERY: all release evidence, final checks, scope boundaries, cleanup, and reviewer terminal gates pass.",
+      "final_emitted": true
     }
   },
   "verification": {
     "artifact_download_and_filtered_read": "PASS",
     "run_4_sha_binding": "PASS",
-    "local_contract_tests": "PASS: current checks all exit 0",
-    "independent_review": "PASS/NONE",
-    "integrator": "PASS: final integrator approved local delivery",
+    "run_16_workflow_logs": "PASS: archive/export/privacy/transport/ingestion/TestFlight gates independently observed",
+    "run_16_artifact_filtered_read": "PASS: archive and exported IPA reports PASS; six Runner keys true; Widget forbidden keys empty",
+    "artifact_temp_cleanup": "PASS: exact owned temporary path absent and no matching sibling path remains",
+    "apple_authoritative_build_upload": "PASS: App Store Connect resource for com.fluxstudio.planflow 1.0.0 (16) state COMPLETE",
+    "90683_resolution": "PASS: RESOLVED_BY_BUILD16",
+    "release_readiness": "PASS: TESTFLIGHT_READY",
+    "local_contract_tests": "PASS: final release recheck all required checks exit 0",
+    "independent_review": "PASS/NONE: release re-review after cleanup reconciliation",
+    "integrator": "PASS: final integrator approved Build 16 release-readiness delivery",
     "android": "UNCHANGED"
   },
   "external_gate": {
-    "workflow_dispatch_tool": "UNAVAILABLE",
-    "required_operator_action": "Run ios-release.yml manually from main only when the next release workflow run number is 16.",
-    "do_not_claim": [
-      "Build 16 uploaded",
-      "Apple ingestion complete",
-      "TestFlight visible"
-    ]
+    "workflow_dispatch_tool": "NOT_NEEDED_RUN_ALREADY_COMPLETE",
+    "required_operator_action": null,
+    "do_not_claim": []
   },
   "delivery": {
-    "status": "LOCAL_DELIVERY_COMPLETE_EXTERNAL_BUILD16_PENDING",
-    "commit": "6feb33b4",
-    "push": "NON_FORCE_PUSH_PASS",
+    "status": "TESTFLIGHT_READY_PENDING_DOC_STATE_COMMIT",
+    "commit": null,
+    "push": "PENDING",
     "remote_branch": "origin/main",
-    "build_16_or_upload_attempted": false,
+    "build_16_or_upload_attempted": true,
     "artifact_temp_cleaned": true
   },
   "last_update": "2026-09-02"
