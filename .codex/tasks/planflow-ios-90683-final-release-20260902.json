@@ -4,6 +4,7 @@
   "classification": "complex",
   "status": "TESTFLIGHT_READY",
   "starting_head": "22364b0f83e934ccbf256d68236c7b7bb7815a3b",
+  "final_head": "37d4aa69fa0de7ec1d1eb19bbef3f1067a1f5569",
   "starting_branch": "main",
   "starting_status": "clean",
   "artifact_evidence": {
@@ -312,9 +313,9 @@
     "do_not_claim": []
   },
   "delivery": {
-    "status": "TESTFLIGHT_READY_PENDING_DOC_STATE_COMMIT",
-    "commit": null,
-    "push": "PENDING",
+    "status": "COMPLETE_TESTFLIGHT_READY",
+    "commit": "37d4aa69fa0de7ec1d1eb19bbef3f1067a1f5569",
+    "push": "NON_FORCE_PUSH_PASS",
     "remote_branch": "origin/main",
     "build_16_or_upload_attempted": true,
     "artifact_temp_cleaned": true
