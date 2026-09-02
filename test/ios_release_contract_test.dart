@@ -91,6 +91,8 @@ void main() {
     expect(plist, contains('NSSpeechRecognitionUsageDescription'));
     expect(plist, contains('NSUserTrackingUsageDescription'));
     expect(plist, contains('NSLocationWhenInUseUsageDescription'));
+    expect(plist, contains('NSPhotoLibraryUsageDescription'));
+    expect(plist, contains('NSPhotoLibraryAddUsageDescription'));
     final phoneOrientations =
         plist.split('<key>UISupportedInterfaceOrientations~ipad</key>').first;
     expect(phoneOrientations, contains('UIInterfaceOrientationPortrait'));
@@ -120,6 +122,11 @@ void main() {
     final helper =
         file('scripts/verify-ios-privacy-surface.py').readAsStringSync();
     expect(audit, contains('NSLocationWhenInUseUsageDescription'));
+    expect(audit, contains('33568134813'));
+    expect(audit, contains('ROOT_CAUSE_STRONGLY_NARROWED'));
+    expect(audit, contains('GMSMobileMapsPhotoService'));
+    expect(audit, contains('UIImageWriteToSavedPhotosAlbum'));
+    expect(audit, contains('stateDetails'));
     expect(audit, contains('실제 macOS binary'));
     expect(audit, contains('archive/export release gates require'));
     for (final candidate in <String>[
@@ -141,6 +148,8 @@ void main() {
     expect(helper, contains('BLOCKED_RUNNER_PRIVACY'));
     expect(helper, contains('BLOCKED_WIDGET_PRIVACY'));
     expect(helper, contains('NSLocationWhenInUseUsageDescription'));
+    expect(helper, contains('NSPhotoLibraryUsageDescription'));
+    expect(helper, contains('NSPhotoLibraryAddUsageDescription'));
     expect(helper, contains('--require-binary-scan'));
     expect(helper, contains('--report-json'));
     expect(helper, contains('CNContactStore'));
@@ -167,6 +176,8 @@ void main() {
         'NSSpeechRecognitionUsageDescription': 'speech',
         'NSUserTrackingUsageDescription': 'tracking',
         'NSLocationWhenInUseUsageDescription': 'location',
+        'NSPhotoLibraryUsageDescription': 'photos',
+        'NSPhotoLibraryAddUsageDescription': 'photo add',
       };
       runner.writeAsStringSync(
           plist({...keys}..remove('NSLocationWhenInUseUsageDescription')));
@@ -184,6 +195,14 @@ void main() {
             ],
           );
       expect(run().exitCode, isNot(0));
+      for (final photoKey in <String>[
+        'NSPhotoLibraryUsageDescription',
+        'NSPhotoLibraryAddUsageDescription',
+      ]) {
+        runner.writeAsStringSync(plist({...keys}..remove(photoKey)));
+        widget.writeAsStringSync(plist(const <String, String>{}));
+        expect(run().exitCode, isNot(0));
+      }
       runner.writeAsStringSync(plist(keys));
       widget.writeAsStringSync(plist(<String, String>{
         'NSLocationWhenInUseUsageDescription': 'wrong target',
@@ -222,6 +241,8 @@ void main() {
         'NSSpeechRecognitionUsageDescription': 'speech',
         'NSUserTrackingUsageDescription': 'tracking',
         'NSLocationWhenInUseUsageDescription': 'location',
+        'NSPhotoLibraryUsageDescription': 'photos',
+        'NSPhotoLibraryAddUsageDescription': 'photo add',
       };
       runner.writeAsStringSync(plist(keys));
       widget.writeAsStringSync(plist(const <String, String>{}));
@@ -410,6 +431,8 @@ void main() {
         'NSSpeechRecognitionUsageDescription': 'speech',
         'NSUserTrackingUsageDescription': 'tracking',
         'NSLocationWhenInUseUsageDescription': 'location',
+        'NSPhotoLibraryUsageDescription': 'photos',
+        'NSPhotoLibraryAddUsageDescription': 'photo add',
       };
       runner.writeAsStringSync(plist(keys));
       widget.writeAsStringSync(plist(const <String, String>{}));
@@ -459,7 +482,7 @@ void main() {
       final runnerPlist =
           File('${bundle.path}${Platform.pathSeparator}Info.plist');
       runnerPlist.writeAsStringSync(
-        '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Runner</string><key>NSMicrophoneUsageDescription</key><string>mic</string><key>NSSpeechRecognitionUsageDescription</key><string>speech</string><key>NSUserTrackingUsageDescription</key><string>tracking</string><key>NSLocationWhenInUseUsageDescription</key><string>location</string></dict></plist>''',
+        '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Runner</string><key>NSMicrophoneUsageDescription</key><string>mic</string><key>NSSpeechRecognitionUsageDescription</key><string>speech</string><key>NSUserTrackingUsageDescription</key><string>tracking</string><key>NSLocationWhenInUseUsageDescription</key><string>location</string><key>NSPhotoLibraryUsageDescription</key><string>photos</string><key>NSPhotoLibraryAddUsageDescription</key><string>photo add</string></dict></plist>''',
       );
       final widgetPlist =
           File('${temp.path}${Platform.pathSeparator}widget.plist');
@@ -543,6 +566,8 @@ echo AVFoundation.framework
       'NSSpeechRecognitionUsageDescription',
       'NSUserTrackingUsageDescription',
       'NSLocationWhenInUseUsageDescription',
+      'NSPhotoLibraryUsageDescription',
+      'NSPhotoLibraryAddUsageDescription',
     };
     final privacyLoops = RegExp(r'for privacy_key in ([^;]+); do')
         .allMatches(workflow)

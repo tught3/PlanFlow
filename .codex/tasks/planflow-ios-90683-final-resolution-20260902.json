@@ -1,0 +1,183 @@
+{
+  "task_id": "planflow-ios-90683-final-resolution-20260902",
+  "objective": "Analyze authenticated Run #3 iOS privacy artifact, apply only the evidence-backed minimum Runner privacy contract fix, verify locally, and stop before Build 16 or upload until Apple authoritative diagnostics and a new audit run confirm resolution.",
+  "classification": "complex",
+  "status": "READY_TO_COMMIT",
+  "starting_head": "a6469816f85075f51d2478c0e15499a56f1257c0",
+  "starting_branch": "main",
+  "starting_status": "clean",
+  "external_evidence": {
+    "repository": "tught3/PlanFlow",
+    "audit_run_id": 33568134813,
+    "audit_head": "a6469816f85075f51d2478c0e15499a56f1257c0",
+    "artifact_id": 9824161474,
+    "artifact_name": "planflow-ios-privacy-audit-only-3",
+    "artifact_digest": "sha256:d3477c890b9174c52bea5dda208d064dcbec3308e84ee72923cbc7e78fc23a70",
+    "summary": [
+      "archive_privacy_exit=0",
+      "export_exit=0",
+      "unzip_exit=0",
+      "export_privacy_exit=0"
+    ],
+    "reports": {
+      "source": "PASS",
+      "archive": "PASS",
+      "export": "PASS"
+    },
+    "binary_evidence": [
+      "Photos.framework and PhotosUI.framework linked",
+      "PHPhotoLibrary and PHChange/PHFetchResultChangeDetails symbols",
+      "UIImageWriteToSavedPhotosAlbum symbol",
+      "GMSMobileMapsPhotoService and GMS photo service strings",
+      "CoreMotion/CMMotionManager and LocalAuthentication/LAContext symbols also present as SDK candidates"
+    ],
+    "apple_state_details": "UNAVAILABLE"
+  },
+  "root_cause": {
+    "classification": "ROOT_CAUSE_STRONGLY_NARROWED",
+    "candidate": "Missing Runner Photos read/add purpose strings connected to the Google Maps SDK photo surface",
+    "not_identified_reason": "Apple BuildUpload stateDetails/error naming the exact missing key is not available; static binary evidence alone is not final Apple causality proof."
+  },
+  "allowed_source_files": [
+    "ios/Runner/Info.plist",
+    "scripts/verify-ios-privacy-surface.py",
+    ".github/workflows/ios-release.yml",
+    ".github/workflows/ios-privacy-audit.yml",
+    "test/ios_release_contract_test.dart",
+    "docs/ios/privacy-surface-audit.md",
+    ".codex/tasks/planflow-ios-90683-final-resolution-20260902.json"
+  ],
+  "forbidden_scope": [
+    "Android",
+    "ios/Runner.xcodeproj/project.pbxproj",
+    "ios/Flutter",
+    "ios/Podfile",
+    "ios/PlanFlowWidget/Info.plist",
+    "GitHub Secrets",
+    "signing material",
+    "Apple Developer settings",
+    "App Store Connect/TestFlight upload",
+    "altool",
+    "Transporter",
+    "Build 16"
+  ],
+  "changes": {
+    "ios/Runner/Info.plist": [
+      "Added NSPhotoLibraryUsageDescription",
+      "Added NSPhotoLibraryAddUsageDescription"
+    ],
+    "scripts/verify-ios-privacy-surface.py": [
+      "Added both Photos keys to REQUIRED fail-closed Runner set"
+    ],
+    ".github/workflows/ios-release.yml": [
+      "Added both Photos keys to existing source/archive/IPA privacy loops only"
+    ],
+    "test/ios_release_contract_test.dart": [
+      "Added Photos key assertions and missing-key regression fixtures"
+    ],
+    "docs/ios/privacy-surface-audit.md": [
+      "Recorded Run #3 filtered evidence and STRONGLY_NARROWED classification",
+      "Corrected linked-framework candidate descriptions"
+    ]
+  },
+  "roles": {
+    "explorer": {
+      "agent": "flux_explorer",
+      "agent_id": "01a05fa6-3b6b-7f22-9312-7257bcb869a6",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only inspection of user intent, project rules, signing/privacy workflow scope, and evidence requirements.",
+      "result": "PASS_READ_ONLY: initial source and workflow scope inspected; no speculative change before artifact evidence."
+    },
+    "planner": {
+      "agent": "flux_planner",
+      "agent_id": "01a05faa-ee8b-76b1-b53f-21e3a0667664",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Convert authenticated Run #3 evidence into the minimum allowed privacy-contract change and explicit release/audit gates.",
+      "result": "PASS_READ_ONLY: authenticated artifact evidence supports Photos read/add minimum; STRONGLY_NARROWED without Apple stateDetails; no unrelated keys."
+    },
+    "implementer": {
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a05fac-f93d-74f3-8d2b-d2834ace3c10",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement only the evidence-backed Runner Photos privacy contract, matching validation/tests/docs within the allowed file set.",
+      "result": "COMPLETE: five allowed source/docs/test files changed; no commit or push."
+    },
+    "test_executor": {
+      "agent": "flux_test_executor",
+      "agent_id": "01a05fb3-48e1-73e1-9c64-4da08c59be77",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run focused Flutter/Dart/Python/YAML/diff/scope verification and record macOS limitations.",
+      "result": "PASS_LOCAL_ONLY: focused tests, analyze, YAML parse, diff check and Android scope all exit 0; macOS archive cannot run on Windows.",
+      "checks": [
+        {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "evidence": "14 tests passed"},
+        {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "evidence": "No issues found"},
+        {"command": "dart format --output=none test/ios_release_contract_test.dart", "exit_code": 0, "evidence": "clean"},
+        {"command": "python -m py_compile scripts/verify-ios-privacy-surface.py", "exit_code": 0, "evidence": "clean"},
+        {"command": "PyYAML parse ios-release.yml and ios-privacy-audit.yml", "exit_code": 0, "evidence": "YAML_PARSE_PASS"},
+        {"command": "python scripts/verify-ios-privacy-surface.py --runner-plist ios/Runner/Info.plist --widget-plist ios/PlanFlowWidget/Info.plist", "exit_code": 0, "evidence": "IOS_PRIVACY_PLIST_GATE: PASS"},
+        {"command": "git diff --check", "exit_code": 0, "evidence": "only CRLF normalization warnings"},
+        {"command": "git status --short -- android", "exit_code": 0, "evidence": "ANDROID_DIFF_EMPTY"}
+      ]
+    },
+    "reviewer_initial": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a05fb3-49db-73c3-beff-a6649425d62d",
+      "result": "UNAVAILABLE: reviewer lacked the authenticated artifact path and saw stale prior task-state scope; re-review required after state reconciliation."
+    },
+    "reviewer_final": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a05fb6-8faf-79e2-9cab-ab2613a278fb",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent review of the authenticated filtered report, current diff, tests, scope, and release safety gates.",
+      "result": "PASS/NONE: Run #3 source/archive/export reports PASS; filtered binary evidence supports only the two Photos keys; root cause remains STRONGLY_NARROWED without Apple stateDetails; current diff is scoped and preserves audit-only, signing boundaries, fixed build number, and Android.",
+      "final_emitted": true,
+      "findings": [],
+      "terminal_gate": {
+        "final_review_report_count": 1,
+        "host_final_received": true,
+        "invocation_id": "01a05fb6-8faf-79e2-9cab-ab2613a278fb",
+        "verdict": "PASS",
+        "highest_severity": "NONE"
+      }
+    },
+    "integrator": {
+      "agent": "flux_integrator",
+      "agent_id": "01a05fbf-6620-76b2-bbe0-96efde878346",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Final coordination review of current diff, persisted role evidence, verification, scope, and delivery gates.",
+      "result": "COMPLETE_LOCAL_DELIVERY: current diff and task state satisfy the delivery gate; ready for pathspec commit and non-force push.",
+      "final_emitted": true
+    }
+  },
+  "verification": {
+    "flutter_test": "PASS: 14 tests",
+    "dart_analyze": "PASS",
+    "dart_format": "PASS",
+    "python_compile": "PASS",
+    "yaml_parse": "PASS",
+    "privacy_source_gate": "PASS",
+    "git_diff_check": "PASS",
+    "android_diff": "EMPTY",
+    "macos_reaudit": "PENDING_NEW_RUN",
+    "apple_90683": "PENDING_STATE_DETAILS"
+  },
+  "release_gates": {
+    "audit_signing_preflight": "PASS_ON_RUN_3",
+    "audit_archive": "PASS_ON_RUN_3",
+    "audit_ipa_export": "PASS_ON_RUN_3",
+    "privacy_binary_audit": "PASS_ON_RUN_3_HELPER",
+    "privacy_artifact_created": "PASS_ON_RUN_3",
+    "new_reaudit_after_fix": "NOT_RUN",
+    "build_16": "NOT_RUN",
+    "testflight": "NOT_RUN",
+    "android": "UNCHANGED"
+  },
+  "next_step": "Pathspec commit and non-force push. Then request one manual audit-only dispatch because no workflow-dispatch tool is available; do not upload Build 16.",
+  "last_update": "2026-09-02"
+}

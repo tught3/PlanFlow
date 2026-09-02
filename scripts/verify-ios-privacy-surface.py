@@ -22,6 +22,8 @@ REQUIRED = {
     "NSSpeechRecognitionUsageDescription",
     "NSUserTrackingUsageDescription",
     "NSLocationWhenInUseUsageDescription",
+    "NSPhotoLibraryUsageDescription",
+    "NSPhotoLibraryAddUsageDescription",
 }
 FRAMEWORK_KEYS = {
     "AVFoundation": "NSMicrophoneUsageDescription",
