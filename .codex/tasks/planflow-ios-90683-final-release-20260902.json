@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-90683-final-release-20260902",
   "objective": "Analyze authenticated iOS privacy audit Run #4, finalize the privacy dependency map, evaluate the Build 16 release gate, and execute production TestFlight release only when the audited contract is satisfied.",
   "classification": "complex",
-  "status": "READY_TO_COMMIT",
+  "status": "LOCAL_DELIVERY_COMPLETE_EXTERNAL_BUILD16_PENDING",
   "starting_head": "22364b0f83e934ccbf256d68236c7b7bb7815a3b",
   "starting_branch": "main",
   "starting_status": "clean",
@@ -213,6 +213,14 @@
       "Apple ingestion complete",
       "TestFlight visible"
     ]
+  },
+  "delivery": {
+    "status": "LOCAL_DELIVERY_COMPLETE_EXTERNAL_BUILD16_PENDING",
+    "commit": "6feb33b4",
+    "push": "NON_FORCE_PUSH_PASS",
+    "remote_branch": "origin/main",
+    "build_16_or_upload_attempted": false,
+    "artifact_temp_cleaned": true
   },
   "last_update": "2026-09-02"
 }
