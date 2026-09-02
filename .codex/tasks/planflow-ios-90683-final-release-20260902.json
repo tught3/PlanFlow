@@ -1,0 +1,218 @@
+{
+  "task_id": "planflow-ios-90683-final-release-20260902",
+  "objective": "Analyze authenticated iOS privacy audit Run #4, finalize the privacy dependency map, evaluate the Build 16 release gate, and execute production TestFlight release only when the audited contract is satisfied.",
+  "classification": "complex",
+  "status": "READY_TO_COMMIT",
+  "starting_head": "22364b0f83e934ccbf256d68236c7b7bb7815a3b",
+  "starting_branch": "main",
+  "starting_status": "clean",
+  "artifact_evidence": {
+    "repository": "tught3/PlanFlow",
+    "workflow": "iOS privacy binary audit (audit-only)",
+    "run_id": 33608563745,
+    "run_url": "https://github.com/tught3/PlanFlow/actions/runs/33608563745",
+    "head_sha": "22364b0f83e934ccbf256d68236c7b7bb7815a3b",
+    "artifact_id": 9838418791,
+    "artifact_name": "planflow-ios-privacy-audit-only-4",
+    "artifact_digest": "sha256:5d030ffc79c827c329655095ea9a8e98d1001d75bc2392804e86f6a5971d216a",
+    "reports": {
+      "source": "PASS",
+      "archive": "PASS",
+      "export": "PASS",
+      "summary_exit_codes": {
+        "archive_privacy_exit": 0,
+        "export_exit": 0,
+        "unzip_exit": 0,
+        "export_privacy_exit": 0
+      }
+    },
+    "archive_runner_plist": "present and six required keys true",
+    "export_runner_plist": "present and six required keys true",
+    "archive_widget_plist": "present; widgetForbiddenKeys empty",
+    "export_widget_plist": "present; widgetForbiddenKeys empty",
+    "required_runner_keys": [
+      "NSMicrophoneUsageDescription",
+      "NSSpeechRecognitionUsageDescription",
+      "NSUserTrackingUsageDescription",
+      "NSLocationWhenInUseUsageDescription",
+      "NSPhotoLibraryUsageDescription",
+      "NSPhotoLibraryAddUsageDescription"
+    ],
+    "binary_evidence": [
+      "Photos.framework",
+      "PHPhotoLibrary",
+      "UIImageWriteToSavedPhotosAlbum",
+      "AVFoundation",
+      "Speech",
+      "AdSupport",
+      "CoreLocation",
+      "GMSMobileMapsPhotoService and GMS photo-service strings"
+    ],
+    "candidate_only_or_non_direct": [
+      "DKPhotoGallery not present in filtered report",
+      "DKImagePickerController not present in filtered report",
+      "file_picker not present in filtered report",
+      "Contacts, local network, motion, Face ID, and Apple Music remain candidate-only or SDK-linked without direct PlanFlow calls"
+    ]
+  },
+  "prior_release_evidence": {
+    "run_id": 33404539592,
+    "head_sha": "8a3ded300fd954449cc223572edf5e9e7e3c6214",
+    "build": "15",
+    "archive": "PASS",
+    "ipa_export": "PASS",
+    "transport": "PASS",
+    "build_upload": "FAILED",
+    "error_code": "90683",
+    "state_details": "UNAVAILABLE_IN_RETRIEVED_LOG",
+    "testflight_visibility": "NOT_CONFIRMED"
+  },
+  "root_cause": {
+    "classification": "ROOT_CAUSE_STRONGLY_NARROWED",
+    "candidate": "Runner Photos read/add purpose strings were missing before the Run #3 fix; Run #4 confirms both keys in source, archive, and exported IPA.",
+    "final_apple_causality": "not claimed without Apple stateDetails"
+  },
+  "release_gate": {
+    "AUDIT_ARCHIVE_PASS": "PASS_RUN_4",
+    "AUDIT_IPA_EXPORT_PASS": "PASS_RUN_4",
+    "PRIVACY_BINARY_AUDIT_PASS": "PASS_RUN_4",
+    "PRIVACY_AUDIT_ARTIFACT_CREATED": "PASS_RUN_4",
+    "ARCHIVE_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_4",
+    "EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS": "PASS_RUN_4",
+    "WIDGET_PRIVACY_CONTAMINATION": "NONE_RUN_4",
+    "REQUIRED_USAGE_KEYS_RESOLVED": "YES_RUN_4",
+    "root_cause_policy": "STRONGLY_NARROWED plus Run #4 audit evidence and resolved required keys permits Build 16 evaluation; do not promote to IDENTIFIED without Apple stateDetails."
+  },
+  "build_16": {
+    "status": "NOT_RUN",
+    "workflow": ".github/workflows/ios-release.yml",
+    "expected_workflow_run_number": 16,
+    "transport": "NOT_RUN",
+    "build_upload": "NOT_RUN",
+    "ingestion": "NOT_RUN",
+    "testflight": "NOT_RUN"
+  },
+  "allowed_files": [
+    "docs/ios/privacy-surface-audit.md",
+    ".codex/tasks/planflow-ios-90683-final-release-20260902.json"
+  ],
+  "forbidden_scope": [
+    "Android",
+    "GitHub Secrets",
+    "Apple Developer settings",
+    "signing material",
+    "ios-release.yml signing or upload logic",
+    "new UsageDescription keys without direct evidence",
+    "Build 17",
+    "force push",
+    "local direct altool or Transporter execution"
+  ],
+  "roles": {
+    "explorer": {
+      "agent": "flux_explorer",
+      "agent_id": "01a06148-4231-79c1-a58b-0c593b585eb8",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only verification of Run #4 filtered artifact and release gate.",
+      "result": "PASS_READ_ONLY: all reports PASS, six Runner keys true, Widget forbidden-key list empty, no minimum code fix required."
+    },
+    "planner": {
+      "agent": "flux_planner",
+      "agent_id": "01a0614b-0215-7851-9464-4e50be4d860b",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define the single final-release phase gates, evidence binding, and external dispatch/Apple proof requirements.",
+      "result": "PASS_PLAN: keep STRONGLY_NARROWED; no extra keys; require Run #4 SHA binding, six-key/privacy gates, exact Build 16 verification, and post-upload ingestion/TestFlight evidence."
+    },
+    "implementer": {
+      "agent": "flux_simple_implementer",
+      "agent_id": "01a0614f-87f0-76f1-be3d-3b93adacc1b7",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Update the single privacy dependency-map document with Run #4 evidence and release-gate status.",
+      "result": "COMPLETE: docs/ios/privacy-surface-audit.md updated only; no source, signing, workflow, secret, or Android changes."
+    },
+    "test_executor": {
+      "agent": "flux_test_executor",
+      "agent_id": "01a06151-cd24-7040-a959-b7b018904652",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run current focused project checks, parse both workflows and task state, verify Android scope, and confirm Run #4 evidence is readable without exposing raw logs or secrets.",
+      "result": "PASS_LOCAL_ONLY",
+      "checks": [
+        {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "evidence": "All tests passed"},
+        {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0, "evidence": "No issues found"},
+        {"command": "python scripts/verify-ios-privacy-surface.py --runner-plist ios/Runner/Info.plist --widget-plist ios/PlanFlowWidget/Info.plist", "exit_code": 0, "evidence": "IOS_PRIVACY_PLIST_GATE: PASS"},
+        {"command": "python -m json.tool .codex/tasks/planflow-ios-90683-final-release-20260902.json", "exit_code": 0, "evidence": "valid task state"},
+        {"command": "PyYAML parse ios-release.yml and ios-privacy-audit.yml", "exit_code": 0, "evidence": "both YAML documents parsed"},
+        {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors; line-ending warning only"},
+        {"command": "git status --short -- android", "exit_code": 0, "evidence": "empty"}
+      ],
+      "artifact_read": "PASS: Run #4 source/archive/export filtered reports readable; no raw logs or secret values printed."
+    },
+    "reviewer_initial": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a06151-ce16-7f73-9fc5-3b68b0ee93a1",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent review of Run #4 evidence, current diff, task state, and release gates.",
+      "result": "FINDINGS_HIGH_TASK_STATE_METADATA: evidence and product scope were consistent, but Test Executor and Integrator results were not yet persisted; re-review required after state reconciliation."
+    },
+    "reviewer_final": {
+      "agent": "flux_reviewer",
+      "agent_id": "01a06157-e17d-7a53-9ed5-a9e370eac070",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Final independent review of current diff, persisted Run #4 evidence, test executor records, scope, and Build 16 gate state.",
+      "report_type": "FINAL_REVIEW_REPORT",
+      "verdict": "PASS",
+      "highest_severity": "NONE",
+      "result": "PASS/NONE: reviewer_initial metadata finding reconciled; Run #4 gates and map are consistent; only allowed docs/task-state files changed; Build 16 and Apple/TestFlight actions remain NOT_RUN.",
+      "final_emitted": true,
+      "findings": [],
+      "retest_scope": "NONE",
+      "terminal_gate": {
+        "final_review_report_count": 1,
+        "host_final_received": true,
+        "invocation_id": "01a06157-e17d-7a53-9ed5-a9e370eac070",
+        "verdict": "PASS",
+        "highest_severity": "NONE"
+      }
+    },
+    "integrator_initial": {
+      "agent": "flux_integrator",
+      "agent_id": "01a0615a-c237-7972-a30d-e1a006309c62",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Initial final coordination check of persisted delivery evidence and current diff.",
+      "result": "BLOCKED_TASK_STATE_METADATA: required Integrator result was not yet persisted; no product or scope issue found."
+    },
+    "integrator_final": {
+      "agent": "flux_integrator",
+      "agent_id": "01a0615f-725a-77a2-9526-8061e7bb4ef2",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Final coordination review of all role evidence, current diff, Run #4 gates, and release safety boundaries.",
+      "result": "COMPLETE_LOCAL_DELIVERY: all required evidence and scope gates are satisfied; ready for pathspec commit and non-force push.",
+      "final_emitted": true
+    }
+  },
+  "verification": {
+    "artifact_download_and_filtered_read": "PASS",
+    "run_4_sha_binding": "PASS",
+    "local_contract_tests": "PASS: current checks all exit 0",
+    "independent_review": "PASS/NONE",
+    "integrator": "PASS: final integrator approved local delivery",
+    "android": "UNCHANGED"
+  },
+  "external_gate": {
+    "workflow_dispatch_tool": "UNAVAILABLE",
+    "required_operator_action": "Run ios-release.yml manually from main only when the next release workflow run number is 16.",
+    "do_not_claim": [
+      "Build 16 uploaded",
+      "Apple ingestion complete",
+      "TestFlight visible"
+    ]
+  },
+  "last_update": "2026-09-02"
+}

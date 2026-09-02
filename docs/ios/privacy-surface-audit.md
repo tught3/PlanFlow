@@ -1,14 +1,28 @@
 # PlanFlow iOS privacy-surface audit
 
 기준: Build 13/14/15에서 Apple BuildUpload가 `90683 Missing purpose string`
-(affected bundle `Runner.app`)으로 실패했다. 따라서 패키지 이름만으로 권한을
-추가하지 않고, 실제 Runner에 링크·사용되는 API와 최종 산출물의 plist를 함께
-검사한다.
+(affected bundle `Runner.app`)으로 실패했다. production release #15 transport는
+PASS였지만 BuildUpload `90683`은 historical failure로 남아 있다. 따라서 패키지
+이름만으로 권한을 추가하지 않고, 실제 Runner에 링크·사용되는 API와 최종 산출물의
+plist를 함께 검사한다.
 
 `PRIVACY_API_DEPENDENCY_MAP: ROOT_CAUSE_STRONGLY_NARROWED` — Run #3의
 archive/export binary evidence가 Photos API와 Google Maps photo-service 문자열을
 확인했으며, Apple의 authoritative `stateDetails`가 제공되기 전까지 최종 원인은
 확정하지 않는다.
+
+Run #4 authenticated evidence (`33608563745` on head `22364b0f`, artifact
+`9838418791`, digest `sha256:5d030ffc79c827c329655095ea9a8e98d1001d75bc2392804e86f6a5971d216a`)
+confirms `source/archive/export` reports `PASS`, `archive_privacy_exit=0`,
+`export_exit=0`, `unzip_exit=0`, and `export_privacy_exit=0`. Six Runner keys are
+`true`, Widget forbidden keys are empty, and the filtered report captures
+`Photos.framework`, `PHPhotoLibrary`, `UIImageWriteToSavedPhotosAlbum`,
+`AVFoundation`, `Speech`, `AdSupport`, `CoreLocation`, and Google Maps
+photo-service evidence. `DKPhotoGallery`, `DKImagePickerController`, and
+`file_picker` are not found in the filtered report. Candidate-only keys remain
+unadded, and no additional `UsageDescription` key or source fix is required.
+`ROOT_CAUSE_STRONGLY_NARROWED` remains correct because Apple `stateDetails` is
+still unavailable.
 
 ## Run #3 archive/export evidence
 
@@ -61,6 +75,8 @@ The location key is Runner-only. The Widget has an App Group entitlement but no
 location, microphone, speech, tracking, camera, photos, contacts, calendar, or
 other Runner usage descriptions.
 
+Build 16 and TestFlight have not been run yet, and Android remains unchanged.
+
 ## Fail-closed gates
 
 `scripts/verify-ios-privacy-surface.py` validates source/archive/exported Runner
@@ -76,5 +92,10 @@ Runner key copied into Widget fails the build.
 Windows에서는 실제 macOS binary를 만들 수 없고 Xcode, `otool`, authoritative signed IPA를
 실행할 수 없다;
 the archive/export and binary gates must therefore run on the macOS GitHub
-runner. The Build 15 upload remains blocked until those gates and Apple’s
-authoritative BuildUpload state pass.
+runner. Run #4 satisfies those audit gates, but Build 16 remains pending the
+production release workflow run-number check and Apple transport, BuildUpload,
+ingestion, and TestFlight evidence.
+
+The Run #4 dependency map update does not change the signing/release workflow:
+the existing gates stay fail-closed, and the required source/archive/export
+evidence remains the source of truth.
