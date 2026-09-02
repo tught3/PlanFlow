@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-90683-final-resolution-20260902",
   "objective": "Analyze authenticated Run #3 iOS privacy artifact, apply only the evidence-backed minimum Runner privacy contract fix, verify locally, and stop before Build 16 or upload until Apple authoritative diagnostics and a new audit run confirm resolution.",
   "classification": "complex",
-  "status": "READY_TO_COMMIT",
+  "status": "LOCAL_DELIVERY_COMPLETE_EXTERNAL_REAUDIT_PENDING",
   "starting_head": "a6469816f85075f51d2478c0e15499a56f1257c0",
   "starting_branch": "main",
   "starting_status": "clean",
