@@ -178,6 +178,14 @@
     "testflight": "NOT_RUN",
     "android": "UNCHANGED"
   },
-  "next_step": "Pathspec commit and non-force push. Then request one manual audit-only dispatch because no workflow-dispatch tool is available; do not upload Build 16.",
+  "delivery": {
+    "status": "LOCAL_DELIVERY_COMPLETE_EXTERNAL_REAUDIT_PENDING",
+    "commit": "ec4dece5",
+    "push": "NON_FORCE_PUSH_PASS",
+    "remote_branch": "origin/main",
+    "remote_head_verified": "ec4dece5",
+    "build_16_or_upload_attempted": false
+  },
+  "next_step": "Request one manual audit-only dispatch because no workflow-dispatch tool is available; do not upload Build 16.",
   "last_update": "2026-09-02"
 }
