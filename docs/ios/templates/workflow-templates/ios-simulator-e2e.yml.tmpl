@@ -1,0 +1,277 @@
+# =============================================================================
+# TEMPLATE — NOT AN EXECUTABLE WORKFLOW
+# -----------------------------------------------------------------------------
+# 이 파일은 `docs/ios/templates/workflow-templates/` 아래에 있고 확장자가 `.yml.tmpl`
+# 이므로 GitHub Actions가 워크플로로 인식하지 않는다. 절대 이 상태로
+# `.github/workflows/` 에 복사하지 마라 — `{{...}}` 플레이스홀더가 남아 있어
+# YAML 파싱 단계에서 실패한다.
+#
+# 사용법:
+#   1) docs/ios/templates/PARAMETERS.md 의 모든 파라미터 값을 확정한다.
+#   2) 이 파일의 `{{...}}` 를 전부 치환한다.
+#   3) 기능 플래그가 false 인 블록은 주석 처리가 아니라 "삭제" 한다.
+#   4) `.github/workflows/ios-simulator-e2e.yml` 로 저장한다.
+#   5) `grep -n '{{' .github/workflows/ios-simulator-e2e.yml` 가 0건인지 확인한다.
+#
+# 설계 원칙(고칠 때도 유지):
+#   - fail-closed: 값 없음/아티팩트 부재/파싱 실패는 전부 exit 1.
+#   - 차단 사유는 `::error title=BLOCKED_*::` 라벨로 기계 판독 가능하게 낸다.
+#   - 통과도 `<GATE>_PASS: PASS` 로 명시한다("조용히 통과"와 구분하기 위해).
+#   - 비밀값은 존재여부/길이/SHA-256 만 출력한다. 원문은 절대 로그에 찍지 않는다.
+# =============================================================================
+
+name: iOS Simulator E2E ({{APP_NAME}})
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'integration_test/**'
+      - 'scripts/ios/**'
+      - '.github/workflows/ios-simulator-e2e.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-simulator-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-e2e:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      # canonical identity — 이 값들은 ios/Flutter/{{APP_NAME}}-Identity.xcconfig 의
+      # 단일 소스와 동일해야 하며, 아래 preflight 게이트가 그것을 대조한다.
+      IOS_BUNDLE_ID: '{{BUNDLE_ID}}'
+      IOS_WIDGET_BUNDLE_ID: '{{WIDGET_BUNDLE_ID}}'
+      IOS_APP_GROUP: '{{APP_GROUP}}'
+      IOS_URL_SCHEME: '{{URL_SCHEME}}'
+      IOS_MIN_VERSION: '{{MIN_IOS_VERSION}}'
+      IOS_DEVICE_FAMILY: '{{TARGETED_DEVICE_FAMILY}}'
+      E2E_FLOWS: '{{E2E_FLOWS}}'
+      BACKEND_KIND: '{{BACKEND_KIND}}'
+      # 시뮬레이터 E2E 는 서명하지 않으므로 배포용 인증서/프로파일 시크릿을 쓰지 않는다.
+      # 백엔드 설정 파일만 주입한다(HAS_* 및 BACKEND_KIND 에 따라 필요 여부가 갈린다).
+      FIREBASE_PLIST_BASE64: ${{ secrets.{{SECRET_PREFIX}}_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+      BACKEND_URL: ${{ secrets.{{SECRET_PREFIX}}_BACKEND_URL }}
+      BACKEND_ANON_KEY: ${{ secrets.{{SECRET_PREFIX}}_BACKEND_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight canonical identity gates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # --- 1) Podfile / Xcode deployment target 이 선언 최소 버전과 일치하는가 ---
+          podfile_target="$(sed -n "s/^platform :ios, '\([0-9.]*\)'.*/\1/p" ios/Podfile | head -n 1)"
+          if [[ "$podfile_target" != "$IOS_MIN_VERSION" ]]; then
+            echo "::error title=BLOCKED_MIN_IOS_MISMATCH::ios/Podfile declares '$podfile_target' but the canonical minimum is '$IOS_MIN_VERSION'."
+            exit 1
+          fi
+          if ! grep -q "IPHONEOS_DEPLOYMENT_TARGET = $IOS_MIN_VERSION;" ios/Runner.xcodeproj/project.pbxproj; then
+            echo "::error title=BLOCKED_MIN_IOS_MISMATCH::Xcode IPHONEOS_DEPLOYMENT_TARGET does not match '$IOS_MIN_VERSION'."
+            exit 1
+          fi
+
+          # --- 2) 디바이스 패밀리가 QA 매트릭스의 회전/레이아웃 범위와 일치하는가 ---
+          if ! grep -q "TARGETED_DEVICE_FAMILY = \"$IOS_DEVICE_FAMILY\";" ios/Runner.xcodeproj/project.pbxproj; then
+            echo "::error title=BLOCKED_DEVICE_FAMILY::Xcode TARGETED_DEVICE_FAMILY does not match '$IOS_DEVICE_FAMILY'."
+            exit 1
+          fi
+
+          # --- 3) URL scheme 이 Info.plist 에 실제로 선언돼 있는가 (딥링크 E2E 전제) ---
+          if ! grep -q "<string>$IOS_URL_SCHEME</string>" ios/Runner/Info.plist; then
+            echo "::error title=BLOCKED_URL_SCHEME::ios/Runner/Info.plist does not declare CFBundleURLSchemes entry '$IOS_URL_SCHEME'."
+            exit 1
+          fi
+
+          # --- 4) 개인정보 usage description 키: 기능 플래그가 켜진 것만 요구한다 ---
+          # HAS_MICROPHONE={{HAS_MICROPHONE}} / HAS_SPEECH={{HAS_SPEECH}}
+          # HAS_PHOTOS={{HAS_PHOTOS}} / HAS_LOCATION={{HAS_LOCATION}} / HAS_ADS={{HAS_ADS}}
+          # 아래 목록에서 해당 기능이 false 인 앱은 그 줄을 삭제한다(주석 처리 금지).
+          required_privacy_keys=(
+            NSMicrophoneUsageDescription           # HAS_MICROPHONE
+            NSSpeechRecognitionUsageDescription    # HAS_SPEECH
+            NSPhotoLibraryUsageDescription         # HAS_PHOTOS
+            NSPhotoLibraryAddUsageDescription      # HAS_PHOTOS
+            NSLocationWhenInUseUsageDescription    # HAS_LOCATION
+            NSUserTrackingUsageDescription         # HAS_ADS
+          )
+          for privacy_key in "${required_privacy_keys[@]}"; do
+            privacy_value="$(/usr/libexec/PlistBuddy -c "Print :$privacy_key" ios/Runner/Info.plist 2>/dev/null || true)"
+            if [[ -z "$privacy_value" ]]; then
+              echo "::error title=BLOCKED_RUNNER_PRIVACY_SOURCE::Runner Info.plist is missing $privacy_key."
+              exit 1
+            fi
+          done
+
+          # --- 5) 위젯이 있는 앱은 App Group 단일 소스가 존재해야 한다 ---
+          # HAS_WIDGET={{HAS_WIDGET}} — false 인 앱은 이 블록 전체를 삭제한다.
+          if ! grep -q "$IOS_APP_GROUP" ios/Runner/Runner.entitlements; then
+            echo "::error title=BLOCKED_APP_GROUP::Runner.entitlements does not declare the canonical app group '$IOS_APP_GROUP'."
+            exit 1
+          fi
+          if [[ "$IOS_WIDGET_BUNDLE_ID" == "$IOS_BUNDLE_ID" ]]; then
+            echo "::error title=BLOCKED_IOS_IDENTITY::Widget bundle id must differ from the Runner bundle id."
+            exit 1
+          fi
+
+          echo "IDENTITY_PREFLIGHT_PASS: PASS"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '{{FLUTTER_VERSION}}'
+          cache: true
+
+      - name: Resolve simulator target
+        id: sim
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 러너 이미지의 Xcode / runtime 버전은 시점에 따라 바뀐다.
+          # 특정 버전을 하드코딩하지 말고 실행 시점에 동적으로 조회한다.
+          xcrun simctl list runtimes
+          bash scripts/ios/simctl_discover.sh | tee "$RUNNER_TEMP/simctl-discovery.txt"
+          udid="$(awk -F= '/^SIMULATOR_UDID=/{print $2}' "$RUNNER_TEMP/simctl-discovery.txt" | tail -n 1)"
+          if [[ -z "$udid" ]]; then
+            echo "::error title=BLOCKED_SIMULATOR_DISCOVERY::No usable iOS Simulator matching minimum $IOS_MIN_VERSION was found on this runner."
+            exit 1
+          fi
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          echo "SIMULATOR_BOOT_PASS: PASS"
+
+      - name: Inject backend configuration without logging secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          # BACKEND_KIND={{BACKEND_KIND}}
+          # 'firebase-only' 인 앱은 BACKEND_URL/BACKEND_ANON_KEY 블록을 삭제하고,
+          # 'supabase-only' 인 앱은 Firebase plist 블록을 삭제한다.
+          # 'none' 인 앱은 이 스텝 전체를 삭제한다.
+          umask 077
+          missing=()
+          for name in FIREBASE_PLIST_BASE64 BACKEND_URL BACKEND_ANON_KEY; do
+            if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error title=BLOCKED_BACKEND_CONFIG::missing backend configuration secrets: ${missing[*]}"
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
+          plist_sha256="$(shasum -a 256 ios/Runner/GoogleService-Info.plist | awk '{print $1}')"
+          echo "Firebase plist present: yes"
+          echo "Firebase plist SHA-256: $plist_sha256"
+          echo "Backend URL secret present: yes (length ${#BACKEND_URL})"
+          echo "Backend anon key secret present: yes (length ${#BACKEND_ANON_KEY})"
+          echo "BACKEND_CONFIG_PASS: PASS"
+
+      - name: Build for simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          pod install --project-directory=ios
+          # HAS_MAP={{HAS_MAP}} — 지도 SDK 를 쓰는 앱은 이 빌드가 첫 실측 지점이다.
+          # 지도 SDK 가 iOS Simulator(arm64) 슬라이스를 제공하지 않으면 여기서 링크 에러가 난다.
+          # 그 경우 QA 매트릭스의 지도 항목 분류를 PHYSICAL_DEVICE_REQUIRED 로 1회 갱신한다.
+          flutter build ios --simulator --debug
+          test -d build/ios/iphonesimulator/Runner.app || {
+            echo "::error title=BLOCKED_SIMULATOR_BUILD::Simulator build did not produce Runner.app."
+            exit 1
+          }
+          echo "SIMULATOR_BUILD_PASS: PASS"
+
+      - name: Run integration_test E2E flows
+        shell: bash
+        env:
+          SIMULATOR_UDID: ${{ steps.sim.outputs.SIMULATOR_UDID }}
+        run: |
+          set -euo pipefail
+          failed_flows=()
+          for flow in $E2E_FLOWS; do
+            echo "::group::$flow"
+            if flutter test integration_test \
+                 --dart-define="E2E_FLOW=$flow" \
+                 -d "$SIMULATOR_UDID"; then
+              echo "${flow}_PASS: PASS"
+            else
+              echo "::error title=BLOCKED_E2E_FLOW::$flow failed on the simulator."
+              failed_flows+=("$flow")
+            fi
+            echo "::endgroup::"
+          done
+          if (( ${#failed_flows[@]} )); then
+            echo "::error title=BLOCKED_E2E_SUITE::failed flows: ${failed_flows[*]}"
+            exit 1
+          fi
+          echo "E2E_SUITE_PASS: PASS"
+
+      - name: Verify deep link handling on the booted simulator
+        shell: bash
+        env:
+          SIMULATOR_UDID: ${{ steps.sim.outputs.SIMULATOR_UDID }}
+        run: |
+          set -euo pipefail
+          xcrun simctl install "$SIMULATOR_UDID" build/ios/iphonesimulator/Runner.app
+          installed_path="$(xcrun simctl get_app_container "$SIMULATOR_UDID" "$IOS_BUNDLE_ID" app)"
+          if [[ -z "$installed_path" ]]; then
+            echo "::error title=BLOCKED_SIMULATOR_INSTALL::App container for $IOS_BUNDLE_ID was not found after install."
+            exit 1
+          fi
+          xcrun simctl launch "$SIMULATOR_UDID" "$IOS_BUNDLE_ID"
+          # URL scheme 자체가 실제로 열리는지 확인한다(라우팅 단언은 integration_test 가 담당).
+          xcrun simctl openurl "$SIMULATOR_UDID" "$IOS_URL_SCHEME://" || {
+            echo "::error title=BLOCKED_DEEP_LINK::simctl openurl failed for scheme '$IOS_URL_SCHEME'."
+            exit 1
+          }
+          echo "DEEP_LINK_OPEN_PASS: PASS"
+
+      - name: Verify permission-denied branches via simctl privacy
+        shell: bash
+        env:
+          SIMULATOR_UDID: ${{ steps.sim.outputs.SIMULATOR_UDID }}
+        run: |
+          set -euo pipefail
+          # 기능 플래그가 false 인 권한은 아래 목록에서 줄을 삭제한다.
+          # HAS_MICROPHONE={{HAS_MICROPHONE}} / HAS_PHOTOS={{HAS_PHOTOS}} / HAS_LOCATION={{HAS_LOCATION}}
+          for service in microphone photos location; do
+            xcrun simctl privacy "$SIMULATOR_UDID" revoke "$service" "$IOS_BUNDLE_ID" || {
+              echo "::error title=BLOCKED_PRIVACY_TOGGLE::simctl privacy revoke failed for '$service'."
+              exit 1
+            }
+            xcrun simctl privacy "$SIMULATOR_UDID" grant "$service" "$IOS_BUNDLE_ID" || {
+              echo "::error title=BLOCKED_PRIVACY_TOGGLE::simctl privacy grant failed for '$service'."
+              exit 1
+            }
+          done
+          echo "PRIVACY_TOGGLE_PASS: PASS"
+
+      - name: Preserve simulator E2E artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: {{APP_NAME}}-ios-simulator-e2e-${{ github.run_number }}
+          path: |
+            build/ios/iphonesimulator/**/*.log
+            integration_test/**/screenshots/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup injected configuration
+        if: ${{ always() }}
+        shell: bash
+        env:
+          SIMULATOR_UDID: ${{ steps.sim.outputs.SIMULATOR_UDID }}
+        run: |
+          set +e
+          rm -f ios/Runner/GoogleService-Info.plist
+          xcrun simctl uninstall "${SIMULATOR_UDID:-}" "$IOS_BUNDLE_ID" >/dev/null 2>&1
+          xcrun simctl shutdown "${SIMULATOR_UDID:-}" >/dev/null 2>&1
+          echo "Cleanup gate executed."
