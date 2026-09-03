@@ -19,11 +19,15 @@ name: iOS Simulator E2E (Simulator QA)
 # the production Supabase project even though `lib/core/env.dart` falls
 # back to it when a dart-define is *entirely absent*.
 #
-# FLOW5 (auth/backend, a real *non-production* Supabase project) is out of
-# scope for this ticket — `integration_test/flow05_auth_backend_test.dart`
-# does not exist yet (separate ticket P6 creates it). The `flow05-auth-backend`
-# job below is a structural stub gated on that file's existence so this
-# workflow never fails or references a file that is not there yet.
+# FLOW5 (auth/backend) is the only scenario in this workflow that ever
+# receives a real Supabase credential — a dedicated *non-production* project,
+# never PROD_SUPABASE_REF. It is gated two ways: (1) the `flow05-auth-backend`
+# job only runs once `integration_test/flow05_auth_backend_test.dart` exists
+# (P6), and (2) within that file, the real-backend scenario itself only runs
+# when the `PLANFLOW_E2E_REAL_BACKEND_TEST` secret is set to `1` — until the
+# dedicated test account and non-production Supabase secrets exist, that
+# secret is absent, `E2E_REAL_BACKEND_TEST` defaults to `'0'` below, and the
+# real-backend scenario reports as skipped rather than failing.
 on:
   workflow_dispatch:
     inputs:
@@ -230,6 +234,26 @@ jobs:
     if: ${{ needs.preflight.outputs.flow5_exists == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 30
+    env:
+      # Group A (fake-based, always runs) needs no secrets at all. Group B
+      # (real Supabase login) only runs when PLANFLOW_E2E_REAL_BACKEND_TEST
+      # is explicitly set to '1' — until the dedicated test account and
+      # non-production Supabase project exist, these secrets are unset, the
+      # flag below resolves to '0', and integration_test/flow05_auth_backend_test.dart
+      # skips group B cleanly (no failure).
+      E2E_REAL_BACKEND_TEST: ${{ secrets.PLANFLOW_E2E_REAL_BACKEND_TEST || '0' }}
+      E2E_TEST_ACCOUNT_EMAIL: ${{ secrets.PLANFLOW_E2E_TEST_ACCOUNT_EMAIL }}
+      E2E_TEST_ACCOUNT_PASSWORD: ${{ secrets.PLANFLOW_E2E_TEST_ACCOUNT_PASSWORD }}
+      # Reuses the "PLANFLOW_*" secret-naming convention already established
+      # by ios-release.yml (PLANFLOW_APPLE_TEAM_ID,
+      # PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64, etc.) — ios-release.yml
+      # itself does not define a SUPABASE_URL/SUPABASE_ANON_KEY secret pair
+      # (its release build relies on lib/core/env.dart's embedded production
+      # default), so there is no pre-existing name to literally reuse for a
+      # *non-production* project. These two secrets must point at a
+      # dedicated non-production Supabase project, never PROD_SUPABASE_REF.
+      FLOW5_SUPABASE_URL: ${{ secrets.PLANFLOW_SUPABASE_URL }}
+      FLOW5_SUPABASE_ANON_KEY: ${{ secrets.PLANFLOW_SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -242,7 +266,50 @@ jobs:
 
       - run: pod install --project-directory=ios
 
-      - name: FLOW5 stub (not yet wired to a real non-production backend)
+      - name: Select one simulator for FLOW5 (mainstream category, or first available)
+        id: pick
         shell: bash
         run: |
-          echo "::notice title=FLOW5_STUB::integration_test/flow05_auth_backend_test.dart exists but this job does not yet boot a simulator or wire real (non-production) Supabase credentials for it. A follow-up ticket must extend this job the same way simulator-e2e boots/tests/tears down its matrix, using a dedicated non-production Supabase project — never PROD_SUPABASE_REF."
+          set -euo pipefail
+          matrix_json='${{ needs.preflight.outputs.matrix }}'
+          selected="$(echo "$matrix_json" | jq -c '([.[] | select(.category == "mainstream")] + .) | first')"
+          if [[ -z "$selected" || "$selected" == "null" ]]; then
+            echo "::error title=BLOCKED_NO_SIMULATOR_RUNTIME::FLOW5 could not select a simulator from the preflight matrix."
+            exit 1
+          fi
+          echo "Selected simulator for FLOW5: $selected"
+          echo "runtime_id=$(echo "$selected" | jq -r '.runtime_id')" >> "$GITHUB_OUTPUT"
+          echo "devicetype_id=$(echo "$selected" | jq -r '.devicetype_id')" >> "$GITHUB_OUTPUT"
+
+      - name: Create and boot FLOW5 simulator
+        id: boot
+        shell: bash
+        run: |
+          set -euo pipefail
+          device_name="PlanFlow-E2E-FLOW5-${{ github.run_id }}"
+          udid="$(xcrun simctl create "$device_name" "${{ steps.pick.outputs.devicetype_id }}" "${{ steps.pick.outputs.runtime_id }}")"
+          echo "Created simulator $device_name -> $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+
+      - name: Run FLOW5 auth/backend integration test
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter test integration_test/flow05_auth_backend_test.dart \
+            -d "${{ steps.boot.outputs.udid }}" \
+            --dart-define=E2E_MODE=1 \
+            --dart-define=E2E_REAL_BACKEND_TEST="$E2E_REAL_BACKEND_TEST" \
+            --dart-define=E2E_TEST_ACCOUNT_EMAIL="$E2E_TEST_ACCOUNT_EMAIL" \
+            --dart-define=E2E_TEST_ACCOUNT_PASSWORD="$E2E_TEST_ACCOUNT_PASSWORD" \
+            --dart-define=SUPABASE_URL="$FLOW5_SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$FLOW5_SUPABASE_ANON_KEY"
+
+      - name: Shutdown and delete FLOW5 simulator
+        if: ${{ always() && steps.boot.outputs.udid != '' }}
+        shell: bash
+        run: |
+          set +e
+          xcrun simctl shutdown "${{ steps.boot.outputs.udid }}"
+          xcrun simctl delete "${{ steps.boot.outputs.udid }}"
