@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:planflow/core/env.dart' show AppEnv;
 import 'package:planflow/main.dart' show runPlanFlowApp;
 
 /// integration_test 스위트 전체가 공유하는 부트스트랩 헬퍼.
@@ -18,6 +19,18 @@ import 'package:planflow/main.dart' show runPlanFlowApp;
 /// 사용법: `flutter test integration_test/이름_test.dart
 /// --dart-define=E2E_MODE=1 --dart-define=SUPABASE_URL=...
 /// --dart-define=SUPABASE_ANON_KEY=...`
+///
+/// 2차 안전장치(리뷰 지적 반영): `E2E_MODE=1`이 있어도 dart-define으로 실제
+/// **프로덕션** Supabase 값이 통째로 주입되는 실수(예: CI job env 배선
+/// 오류로 실제 secret이 그대로 흘러들어오는 경우)까지는 위 1차 검사가
+/// 잡지 못한다. `--dart-define=E2E_REAL_BACKEND_TEST=1`로 명시적으로
+/// 실제 백엔드 시나리오임을 선언한 FLOW5 Group B(비프로덕션 전용 프로젝트를
+/// 의도적으로 쓰는 유일한 경로)는 이 검사에서 제외하고, 그 외 모든
+/// 시나리오는 `AppEnv.hasValidSupabaseConfig`가 true이면서 동시에 그
+/// URL/키가 실제 프로덕션 프로젝트 참조(`_prodSupabaseRefFragment`,
+/// `lib/core/env.dart`의 `AppEnv._defaultSupabaseUrl`/
+/// `_defaultSupabaseAnonKey`에 박혀 있는 것과 동일한 project ref 문자열)를
+/// 포함하면 즉시 fail한다.
 void ensureE2eModeEnabled() {
   const isE2eMode = String.fromEnvironment('E2E_MODE') == '1';
   if (!isE2eMode) {
@@ -28,7 +41,41 @@ void ensureE2eModeEnabled() {
       'row). Refusing to start to avoid touching production data.',
     );
   }
+
+  const isRealBackendTest =
+      String.fromEnvironment('E2E_REAL_BACKEND_TEST') == '1';
+  if (isRealBackendTest) {
+    // FLOW5 Group B (dedicated non-production project) is the one
+    // intentional exception — its own scenario code enforces that
+    // PLANFLOW_SUPABASE_URL never points at the production ref
+    // (`.github/workflows/ios-simulator-e2e.yml`'s "Resolve FLOW5 Supabase
+    // dart-defines" step already fails closed on that before this even
+    // runs), so no further check is needed here.
+    return;
+  }
+
+  if (AppEnv.hasValidSupabaseConfig &&
+      (AppEnv.supabaseUrl.contains(_prodSupabaseRefFragment) ||
+          AppEnv.supabaseAnonKey.contains(_prodSupabaseRefFragment))) {
+    throw StateError(
+      'integration_test harness detected a real production Supabase '
+      'credential (project ref "$_prodSupabaseRefFragment") wired into a '
+      'non-FLOW5-Group-B scenario. Refusing to start to avoid touching '
+      'production data. Pass placeholder dart-defines instead (see '
+      '.github/workflows/ios-simulator-e2e.yml, '
+      'E2E_SUPABASE_URL_PLACEHOLDER/E2E_SUPABASE_ANON_KEY_PLACEHOLDER), or '
+      'if this really is the intentional FLOW5 real-backend scenario, also '
+      'pass --dart-define=E2E_REAL_BACKEND_TEST=1.',
+    );
+  }
 }
+
+/// `lib/core/env.dart`의 `AppEnv._defaultSupabaseUrl`/
+/// `_defaultSupabaseAnonKey`에 박혀 있는 프로덕션 Supabase project ref와
+/// 동일한 문자열. `.github/workflows/ios-simulator-e2e.yml`의
+/// `PROD_SUPABASE_REF`와 값이 같아야 하며, 두 곳 모두 이 값이 정확히
+/// 한 번씩만 정의(리터럴)되도록 유지한다.
+const _prodSupabaseRefFragment = 'xqvvfnvmytjlblcngipn';
 
 /// 각 시나리오 `_test.dart`의 `main()` 최상단에서 1회 호출하는 바인딩
 /// 초기화 헬퍼. `flutter test integration_test/`와 `flutter drive` 양쪽
