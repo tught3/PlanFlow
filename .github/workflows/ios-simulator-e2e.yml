@@ -1,0 +1,248 @@
+name: iOS Simulator E2E (Simulator QA)
+
+# PlanFlow iOS Simulator E2E Phase P8.
+#
+# Runs the SIMULATOR_FULL/SIMULATOR_PARTIAL scenarios from
+# docs/ios/SIMULATOR_QA_MATRIX.md against a dynamically discovered iOS
+# simulator matrix (no iOS version numbers or device names are hardcoded
+# anywhere in this file — scripts/ios/simctl_discover.sh queries the live
+# `xcrun simctl` catalog on the runner and this workflow only consumes its
+# JSON output).
+#
+# Backend isolation (see "E2E_BACKEND_ISOLATION_PASS" step below): the FLOW1
+# through FLOW4, FLOW6, FLOW7, FLOW8 scenarios never receive a real Supabase
+# credential. They run with placeholder dart-defines that
+# `lib/core/env.dart`'s `AppEnv._looksLikePlaceholder` recognizes, which
+# keeps `AppEnv.hasValidSupabaseConfig` false, which means
+# `lib/main.dart`'s `_initializeSupabase()` never calls
+# `Supabase.initialize(...)` — so this workflow cannot accidentally touch
+# the production Supabase project even though `lib/core/env.dart` falls
+# back to it when a dart-define is *entirely absent*.
+#
+# FLOW5 (auth/backend, a real *non-production* Supabase project) is out of
+# scope for this ticket — `integration_test/flow05_auth_backend_test.dart`
+# does not exist yet (separate ticket P6 creates it). The `flow05-auth-backend`
+# job below is a structural stub gated on that file's existence so this
+# workflow never fails or references a file that is not there yet.
+on:
+  workflow_dispatch:
+    inputs:
+      download_min_os_runtime:
+        description: "최소 지원 iOS 런타임을 추가 다운로드할지(용량/시간 큼, 기본 false)"
+        required: false
+        default: "false"
+        type: boolean
+  pull_request:
+    paths:
+      - 'integration_test/**'
+      - 'scripts/ios/**'
+      - '.github/workflows/ios-simulator-e2e.yml'
+
+permissions:
+  contents: read
+
+env:
+  IOS_BUNDLE_ID: com.fluxstudio.planflow
+  # The production Supabase project ref. This literal string must appear
+  # exactly once in this entire file (this definition). The
+  # "Verify E2E backend isolation" step below fails closed if it appears a
+  # second time anywhere in this workflow (for example if a future edit
+  # wires a real secret into the FLOW1-4,6-8 job env).
+  PROD_SUPABASE_REF: xqvvfnvmytjlblcngipn
+  # Placeholder dart-define values recognized by
+  # `AppEnv._looksLikePlaceholder` in lib/core/env.dart. They are not
+  # secrets — they deliberately keep `AppEnv.hasValidSupabaseConfig` false
+  # for every FLOW1-4,6-8 test run so `Supabase.initialize(...)` is never
+  # invoked and no network call can reach any Supabase project, production
+  # or otherwise.
+  E2E_SUPABASE_URL_PLACEHOLDER: https://your-project.supabase.co
+  E2E_SUPABASE_ANON_KEY_PLACEHOLDER: your-supabase-anon-key
+
+jobs:
+  preflight:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      flow5_exists: ${{ steps.flow5.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify E2E backend isolation (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow_file=".github/workflows/ios-simulator-e2e.yml"
+
+          if [[ -f "$workflow_file" ]]; then
+            occurrences="$(grep -c "$PROD_SUPABASE_REF" "$workflow_file" || true)"
+            occurrences="${occurrences:-0}"
+            if (( occurrences > 1 )); then
+              echo "::error title=BLOCKED_E2E_BACKEND_ISOLATION::The production Supabase ref ($PROD_SUPABASE_REF) appears $occurrences times in $workflow_file; expected exactly 1 (its own definition). A second occurrence means a real production credential/URL was wired into an E2E job."
+              exit 1
+            fi
+          fi
+
+          for name in SUPABASE_URL SUPABASE_ANON_KEY; do
+            value="${!name:-}"
+            if [[ -n "$value" && "$value" == *"$PROD_SUPABASE_REF"* ]]; then
+              echo "::error title=BLOCKED_E2E_BACKEND_ISOLATION::$name resolves to the production Supabase project; FLOW1-4,6-8 must never receive a live production credential."
+              exit 1
+            fi
+          done
+
+          echo "E2E_BACKEND_ISOLATION_PASS: PASS (workflow file references the production Supabase ref exactly once; FLOW1-4,6-8 jobs use placeholder dart-defines that keep AppEnv.hasValidSupabaseConfig=false so lib/main.dart never calls Supabase.initialize)"
+
+      - name: Discover simulator matrix
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix_json="$(bash scripts/ios/simctl_discover.sh)"
+          echo "Discovered simulator matrix: $matrix_json"
+          echo "matrix=$matrix_json" >> "$GITHUB_OUTPUT"
+
+      - name: Optionally download additional iOS simulator runtime
+        if: ${{ inputs.download_min_os_runtime == true }}
+        shell: bash
+        run: |
+          set +e
+          xcodebuild -downloadPlatform iOS
+          echo "Additional simulator runtime download attempted (best-effort; the discovery step above already selected a usable runtime regardless of outcome)."
+
+      - name: Check FLOW5 auth/backend test file
+        id: flow5
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "integration_test/flow05_auth_backend_test.dart" ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=FLOW5_NOT_YET_IMPLEMENTED::integration_test/flow05_auth_backend_test.dart does not exist yet (separate ticket P6). The flow05-auth-backend job is skipped."
+          fi
+
+  simulator-e2e:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.matrix != '' && needs.preflight.outputs.matrix != '[]' }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.preflight.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - run: flutter pub get
+
+      - run: pod install --project-directory=ios
+
+      - name: Create and boot ${{ matrix.category }} simulator (${{ matrix.name }})
+        id: boot
+        shell: bash
+        run: |
+          set -euo pipefail
+          device_name="PlanFlow-E2E-${{ matrix.category }}-${{ github.run_id }}"
+          udid="$(xcrun simctl create "$device_name" "${{ matrix.devicetype_id }}" "${{ matrix.runtime_id }}")"
+          echo "Created simulator $device_name -> $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+
+      - name: Grant baseline privacy permissions before the flow suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in microphone photos location; do
+            bash scripts/ios/simctl_privacy.sh grant "$service" "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
+          done
+
+      - name: Run FLOW1-4,6-8 integration tests (backend-isolated)
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter test \
+            integration_test/flow01_cold_start_test.dart \
+            integration_test/flow02_schedule_crud_test.dart \
+            integration_test/flow03_navigation_routing_test.dart \
+            integration_test/flow04_notifications_test.dart \
+            integration_test/flow06_voice_permissions_test.dart \
+            integration_test/flow07_widget_appgroup_test.dart \
+            integration_test/flow08_resilience_a11y_test.dart \
+            -d "${{ steps.boot.outputs.udid }}" \
+            --dart-define=E2E_MODE=1 \
+            --dart-define=SUPABASE_URL="$E2E_SUPABASE_URL_PLACEHOLDER" \
+            --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER"
+
+      - name: Exercise microphone permission denial/recovery at the OS level
+        shell: bash
+        run: |
+          set -euo pipefail
+          # docs/ios/SIMULATOR_QA_MATRIX.md item 18 / flow06 test file header:
+          # the in-process test above only verifies app-level branching under
+          # an *assumed* permission state. Actually toggling the real
+          # simulator TCC permission is this workflow's responsibility.
+          bash scripts/ios/simctl_privacy.sh revoke microphone "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
+          bash scripts/ios/simctl_privacy.sh grant microphone "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
+
+      - name: Cold-start deep link relaunch (out-of-process)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ios/simctl_deeplink_relaunch.sh "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
+
+      - name: Capture screenshot and simulator diagnostics
+        if: ${{ always() && steps.boot.outputs.udid != '' }}
+        shell: bash
+        run: |
+          set +e
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          mkdir -p "$artifact_dir"
+          xcrun simctl io "${{ steps.boot.outputs.udid }}" screenshot "$artifact_dir/screenshot-${{ matrix.category }}.png"
+          xcrun simctl diagnose --no-archive -b -o "$artifact_dir/diagnose-${{ matrix.category }}" >/dev/null 2>&1
+          echo "Artifact capture step complete (best-effort; see if-no-files-found on the upload step for missing-file handling)."
+
+      - name: Upload E2E artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-simulator-e2e-${{ matrix.category }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Shutdown and delete simulator
+        if: ${{ always() && steps.boot.outputs.udid != '' }}
+        shell: bash
+        run: |
+          set +e
+          xcrun simctl shutdown "${{ steps.boot.outputs.udid }}"
+          xcrun simctl delete "${{ steps.boot.outputs.udid }}"
+
+  flow05-auth-backend:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.flow5_exists == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - run: flutter pub get
+
+      - run: pod install --project-directory=ios
+
+      - name: FLOW5 stub (not yet wired to a real non-production backend)
+        shell: bash
+        run: |
+          echo "::notice title=FLOW5_STUB::integration_test/flow05_auth_backend_test.dart exists but this job does not yet boot a simulator or wire real (non-production) Supabase credentials for it. A follow-up ticket must extend this job the same way simulator-e2e boots/tests/tears down its matrix, using a dedicated non-production Supabase project — never PROD_SUPABASE_REF."
