@@ -16,9 +16,9 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 /// 상태머신·화면분기 검증.
 ///
 /// docs/ios/SIMULATOR_QA_MATRIX.md 매트릭스 항목 18(microphone permission
-/// flow, SIMULATOR_PARTIAL, 담당 FLOW7 표기 — 사용자 원문 FLOW 번호와
-/// 매트릭스 유도 FLOW 번호가 다를 수 있다는 문서 상단 안내와 일치)이
-/// 다루는 두 부분 중, "앱 로직 분기" 부분만 이 파일이 검증한다:
+/// flow, SIMULATOR_PARTIAL, 담당 FLOW6 — 리뷰 수정으로 실제 구현 파일
+/// 기준 재정정됨)이 다루는 두 부분 중, "앱 로직 분기" 부분만 이 파일이
+/// 검증한다:
 ///
 /// - `simctl privacy grant/revoke microphone <UDID> com.fluxstudio.planflow`로
 ///   실제 iOS 시뮬레이터 OS 권한 상태를 전환하는 것은 `scripts/ios/*.sh`(P9,
