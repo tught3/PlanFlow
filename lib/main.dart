@@ -26,6 +26,13 @@ import 'services/ad_service.dart';
 import 'features/groups/services/group_cleanup_service.dart';
 
 Future<void> main() async {
+  await runPlanFlowApp();
+}
+
+/// integration_test 진입점. main()과 100% 동일 로직이며, 테스트에서
+/// Riverpod provider를 override할 수 있도록 overrides만 추가로 받는다.
+@visibleForTesting
+Future<void> runPlanFlowApp({List<Override> overrides = const []}) async {
   WidgetsFlutterBinding.ensureInitialized();
   startupRouteGate.beginStartupWorkDeferral();
   ensureTimeZonesInitialized();
@@ -38,7 +45,7 @@ Future<void> main() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   FlutterError.onError = FlutterError.presentError;
 
-  runApp(const ProviderScope(child: PlanFlowApp()));
+  runApp(ProviderScope(overrides: overrides, child: const PlanFlowApp()));
   unawaited(_initializePlatformServices());
   unawaited(_scheduleStaleGroupAlarmReconcile());
 }
