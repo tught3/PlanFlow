@@ -14,6 +14,7 @@
 - 기존 순수 Dart 계약 테스트 6종은 전부 설정/코드 정합성만 확인하며 런타임 UI 동작은 검증하지 않는다: `test/ios_phase2_contract_test.dart`, `test/ios_phase3_native_contract_test.dart`, `test/ios_phase4_identity_contract_test.dart`, `test/ios_release_contract_test.dart`, `test/android_deep_link_guard_test.dart`, `test/app_home_widget_route_test.dart`.
 - **`@visibleForTesting` seam 실측 개수** (2026-09-03 grep 재확인, 배경 서술과 일치): `lib/services/notification_service.dart` 12곳, `lib/services/stt_service.dart` 10곳, `lib/services/ad_service.dart` 3곳, `lib/services/auth_service.dart` 2곳.
 - `google_maps_flutter` + `flutter_naver_map` 둘 다 사용 중. 시뮬레이터(arm64) 슬라이스 실제 제공 여부는 **P3 실측 대기 — 미확정**. 결과가 나오면 이 표를 1회 갱신한다.
+- FLOW5의 실백엔드(Group B, 실제 Supabase 접속) 자동 실행은 POST_RELEASE_RECOMMENDED이며 release blocker가 아니다 — Group A(fake 기반, 항상 실행)가 인증 상태머신·OAuth 콜백 등 RELEASE_BLOCKER 항목을 이미 커버한다.
 
 ---
 
