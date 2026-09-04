@@ -200,6 +200,200 @@ assert_contains "regression_no_checkpoint" "$fixture_no_checkpoint_log" '채널 
 assert_contains "regression_no_checkpoint" "$fixture_no_checkpoint_log" '테스트가 해당 체크포인트에 미도달했다는 뜻과 구분할 수 없음'
 
 echo ""
+echo "=== e2e_watchdog.sh contract tests (verbose-overhead investigation) ==="
+echo ""
+
+watchdog_script="$script_dir/../e2e_watchdog.sh"
+
+if [ ! -f "$watchdog_script" ]; then
+  echo "e2e_script_contract.sh: cannot find e2e_watchdog.sh at $watchdog_script" >&2
+  exit 1
+fi
+
+# These cases run the real script as a subprocess (no mocks) against real
+# temp files and real child commands (bash -c '...', sleep), per this repo's
+# "a safety gate needs at least one test that passes real input through it"
+# convention. E2E_WATCHDOG_FORCE_BASH=1 pins every case to the bash-fallback
+# path so the suite is deterministic across dev boxes that do/don't have GNU
+# coreutils `timeout` installed; the GNU-timeout path shares the exact same
+# redirection/heartbeat/dump code paths (see e2e_watchdog.sh) and is exercised
+# manually against a real GNU `timeout` as part of this change's verification,
+# documented in the delivery report rather than duplicated here.
+
+# assert_rc <case_name> <expected_rc> <actual_rc>
+assert_rc() {
+  local case_name="$1"
+  local expected_rc="$2"
+  local actual_rc="$3"
+
+  if [ "$expected_rc" = "$actual_rc" ]; then
+    echo "PASS: $case_name (rc=$actual_rc)"
+    pass_count=$((pass_count + 1))
+  else
+    echo "FAIL: $case_name — expected rc=$expected_rc, got rc=$actual_rc"
+    fail_count=$((fail_count + 1))
+  fi
+}
+
+# assert_output_contains <case_name> <output> <expected_substring>
+assert_output_contains() {
+  local case_name="$1"
+  local output="$2"
+  local expected_substring="$3"
+
+  if printf '%s' "$output" | grep -qF -- "$expected_substring"; then
+    echo "PASS: $case_name (found: \"$expected_substring\")"
+    pass_count=$((pass_count + 1))
+  else
+    echo "FAIL: $case_name — expected substring not found: \"$expected_substring\""
+    echo "  --- actual output ---"
+    printf '%s\n' "$output" | sed 's/^/  /'
+    echo "  --- end output ---"
+    fail_count=$((fail_count + 1))
+  fi
+}
+
+# assert_output_not_contains <case_name> <output> <forbidden_substring>
+assert_output_not_contains() {
+  local case_name="$1"
+  local output="$2"
+  local forbidden_substring="$3"
+
+  if printf '%s' "$output" | grep -qF -- "$forbidden_substring"; then
+    echo "FAIL: $case_name — forbidden substring found: \"$forbidden_substring\""
+    echo "  --- actual output ---"
+    printf '%s\n' "$output" | sed 's/^/  /'
+    echo "  --- end output ---"
+    fail_count=$((fail_count + 1))
+  else
+    echo "PASS: $case_name (confirmed absent: \"$forbidden_substring\")"
+    pass_count=$((pass_count + 1))
+  fi
+}
+
+watchdog_tmp_dir="$(mktemp -d)"
+watchdog_cleanup() {
+  rm -rf -- "$watchdog_tmp_dir"
+}
+trap 'watchdog_cleanup; cleanup' EXIT
+
+# --- Regression: opt-in options unset must not change existing behavior ----
+regression_success_output="$(env -u E2E_WATCHDOG_LOG_FILE -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 bash "$watchdog_script" 5 bash -c 'exit 0' 2>&1)"
+regression_success_rc=$?
+assert_rc "watchdog_regression_success_no_opts" "0" "$regression_success_rc"
+assert_output_not_contains "watchdog_regression_success_no_opts_no_dump" "$regression_success_output" '::group::watchdog tail'
+
+regression_timeout_output="$(env -u E2E_WATCHDOG_LOG_FILE -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 bash "$watchdog_script" 2 sleep 30 2>&1)"
+regression_timeout_rc=$?
+assert_rc "watchdog_regression_timeout_no_opts" "124" "$regression_timeout_rc"
+assert_output_contains "watchdog_regression_timeout_no_opts_message" "$regression_timeout_output" 'E2E_WATCHDOG_TIMEOUT'
+
+# --- P2: opt-in redirection keeps child output out of the console ----------
+redirect_log="$watchdog_tmp_dir/p2_child.log"
+redirect_output="$(env -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$redirect_log" \
+  bash "$watchdog_script" 5 bash -c 'echo "should not appear on console"; exit 0' 2>&1)"
+redirect_rc=$?
+assert_rc "watchdog_p2_redirect_rc" "0" "$redirect_rc"
+assert_output_not_contains "watchdog_p2_redirect_console_silent" "$redirect_output" 'should not appear on console'
+if [ -f "$redirect_log" ] && grep -qF 'should not appear on console' "$redirect_log"; then
+  echo "PASS: watchdog_p2_redirect_log_file_has_child_output"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: watchdog_p2_redirect_log_file_has_child_output — expected line not found in $redirect_log"
+  fail_count=$((fail_count + 1))
+fi
+
+# --- P3: heartbeat reports growth (delta>0) while the child is producing ---
+heartbeat_growing_log="$watchdog_tmp_dir/p3_growing.log"
+heartbeat_growing_output="$(env -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$heartbeat_growing_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=1 \
+  bash "$watchdog_script" 4 bash -c 'for i in 1 2 3; do echo "growing line $i"; sleep 1; done; exit 0' 2>&1)"
+assert_output_contains "watchdog_p3_heartbeat_shows_positive_delta" "$heartbeat_growing_output" 'delta=+1'
+
+# --- P3: heartbeat reports delta=+0 while the child is silent (stuck) ------
+heartbeat_stuck_log="$watchdog_tmp_dir/p3_stuck.log"
+heartbeat_stuck_output="$(env -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$heartbeat_stuck_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=1 \
+  bash "$watchdog_script" 3 sleep 30 2>&1)"
+assert_output_contains "watchdog_p3_heartbeat_shows_zero_delta_when_stuck" "$heartbeat_stuck_output" 'delta=+0'
+
+# --- P3: heartbeat is a no-op (with a warning) when no log file is set -----
+heartbeat_no_log_output="$(env -u E2E_WATCHDOG_LOG_FILE -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_HEARTBEAT_INTERVAL=1 \
+  bash "$watchdog_script" 3 bash -c 'exit 0' 2>&1)"
+assert_output_contains "watchdog_p3_heartbeat_disabled_without_log_file" "$heartbeat_no_log_output" 'heartbeat disabled'
+assert_output_not_contains "watchdog_p3_no_heartbeat_lines_without_log_file" "$heartbeat_no_log_output" 'delta=+'
+
+# --- P3: heartbeat's last= field is masked, never raw secret text ----------
+heartbeat_secret_log="$watchdog_tmp_dir/p3_secret.log"
+heartbeat_secret_output="$(env -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$heartbeat_secret_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=1 \
+  bash "$watchdog_script" 3 bash -c 'echo "API_KEY=totallysecretvalue123"; sleep 5' 2>&1)"
+assert_output_not_contains "watchdog_p3_heartbeat_masks_secret" "$heartbeat_secret_output" 'totallysecretvalue123'
+assert_output_contains "watchdog_p3_heartbeat_masked_placeholder_present" "$heartbeat_secret_output" 'API_KEY=<MASKED>'
+
+# --- P4: on timeout with a redirected log, dump the tail + scan milestones -
+milestone_log="$watchdog_tmp_dir/p4_milestone.log"
+milestone_tail_out="$watchdog_tmp_dir/p4_milestone.tail.txt"
+milestone_output="$(env -u E2E_WATCHDOG_HEARTBEAT_INTERVAL \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$milestone_log" E2E_WATCHDOG_TAIL_FILE="$milestone_tail_out" \
+  bash "$watchdog_script" 2 bash -c '
+    echo "00:05 Installing PlanFlow.app..."
+    echo "00:40 Xcode build done."
+    echo "API_KEY=anothersecretvalue999 listening on port 1234"
+    sleep 30
+  ' 2>&1)"
+milestone_rc=$?
+assert_rc "watchdog_p4_timeout_dump_rc" "124" "$milestone_rc"
+assert_output_contains "watchdog_p4_timeout_dump_tail_group" "$milestone_output" '::group::watchdog tail'
+assert_output_contains "watchdog_p4_timeout_dump_milestone_installing" "$milestone_output" 'pattern: Installing'
+assert_output_contains "watchdog_p4_timeout_dump_milestone_build_done" "$milestone_output" 'pattern: Xcode build done'
+assert_output_contains "watchdog_p4_timeout_dump_milestone_listening" "$milestone_output" 'pattern: listening on'
+assert_output_not_contains "watchdog_p4_timeout_dump_masks_secret" "$milestone_output" 'anothersecretvalue999'
+if [ -f "$milestone_tail_out" ] && grep -qF 'Xcode build done' "$milestone_tail_out" && ! grep -qF 'anothersecretvalue999' "$milestone_tail_out"; then
+  echo "PASS: watchdog_p4_tail_file_saved_and_masked"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: watchdog_p4_tail_file_saved_and_masked — expected masked tail content in $milestone_tail_out"
+  fail_count=$((fail_count + 1))
+fi
+
+# --- P4: no matching milestones must say so honestly, not fabricate a match
+no_milestone_log="$watchdog_tmp_dir/p4_no_milestone.log"
+no_milestone_output="$(env -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$no_milestone_log" \
+  bash "$watchdog_script" 3 bash -c 'echo "hello world"; echo "nothing special here"; exit 5' 2>&1)"
+no_milestone_rc=$?
+assert_rc "watchdog_p4_failure_no_timeout_rc" "5" "$no_milestone_rc"
+assert_output_contains "watchdog_p4_no_milestone_honest_message" "$no_milestone_output" '마일스톤 매치 없음'
+
+# --- P4: fail-open — missing/empty redirected log never changes the exit
+#     code contract, and dump is skipped rather than erroring -------------
+empty_log="$watchdog_tmp_dir/p4_empty.log"
+empty_log_output="$(env -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$empty_log" \
+  bash "$watchdog_script" 2 sleep 30 2>&1)"
+empty_log_rc=$?
+assert_rc "watchdog_p4_empty_log_rc_unaffected" "124" "$empty_log_rc"
+assert_output_contains "watchdog_p4_empty_log_skip_message" "$empty_log_output" 'skipping timeout/failure tail dump'
+assert_output_not_contains "watchdog_p4_empty_log_no_dump_group" "$empty_log_output" '::group::watchdog tail'
+
+# --- Process hygiene: no orphaned heartbeat/child processes survive any of
+#     the above cases (each of them used a bounded timeout, so by the time
+#     control returns here every backgrounded process must be gone) --------
+leftover_sleep_pids="$(pgrep -f 'sleep 30' 2>/dev/null || true)"
+if [ -z "$leftover_sleep_pids" ]; then
+  echo "PASS: watchdog_no_orphan_processes"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: watchdog_no_orphan_processes — leftover 'sleep 30' PIDs: $leftover_sleep_pids"
+  fail_count=$((fail_count + 1))
+fi
+
+echo ""
 echo "=== Results: $pass_count passed, $fail_count failed ==="
 
 if [ "$fail_count" -gt 0 ]; then
