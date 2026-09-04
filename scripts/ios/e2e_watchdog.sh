@@ -59,6 +59,19 @@
 #   script's own stderr, which the workflow no longer pipes through
 #   `2>&1 | tee` as of Wave3.
 #
+#   (Review round-2 correction, LOW: only the SECOND line's append is
+#   guaranteed. It happens after `wait "$pid"` in run_with_bash_fallback has
+#   returned, i.e. the child is already confirmed dead and nothing else is
+#   writing to the log file. The FIRST line's append happens right after
+#   sending SIGTERM, while the child may still be alive and still writing to
+#   that same file — it is a best-effort append that can lose the race and
+#   be dropped entirely; a real reproduction with a continuously-writing
+#   child confirmed exactly this (first line missing, second line present).
+#   scripts/ios/e2e_summarize.sh's `watchdog_timeout_line()` only ever needs
+#   one of the two to match, so this asymmetry does not weaken detection —
+#   it is documented here so neither line's append is assumed reliable on
+#   its own.
+#
 #   E2E_WATCHDOG_LOG_FILE=<path>
 #       When set, the child command's stdout+stderr are redirected to this
 #       file instead of being streamed to the console live. The file is
@@ -489,14 +502,31 @@ fi
 
 stop_heartbeat
 
+# Review round-2 fix (LOW): the tail/milestone dump below reads log_file from
+# disk, and on a timeout the "::error title=E2E_WATCHDOG_TIMEOUT::..." status
+# line is appended into that same log_file by watchdog_status() just below.
+# This dump used to run AFTER that append, so on every timeout the freshly
+# appended "::error" line was itself inside the last TAIL_LINES of log_file
+# and got printed to the console a second time via the tail dump (GitHub
+# Actions parses `::error` as a workflow command wherever it appears in the
+# log, including inside a `::group::`, so this was a real duplicate
+# annotation, not just a cosmetic repeat — three annotations in production
+# once the workflow step's own separate `::error` echo is counted too).
+# Capturing the tail BEFORE the status-line append avoids this: the dump
+# below cannot contain a line that has not been written yet. This does not
+# change what ends up in log_file itself (watchdog_status still appends the
+# same line right after, so scripts/ios/e2e_summarize.sh's
+# `watchdog_timeout_line()` still finds it when reading the file from disk
+# after this process exits) — it only changes what shows up twice in this
+# process's own console output.
+if [ -n "$log_file" ] && [ "$rc" -ne 0 ]; then
+  dump_tail_and_milestones "$log_file" || true
+fi
+
 if [ "$rc" -eq "$EXIT_TIMEOUT" ]; then
   watchdog_status "::error title=E2E_WATCHDOG_TIMEOUT::Command exceeded the ${timeout_seconds}s watchdog bound and was terminated"
 else
   echo "[STEP] watchdog: command completed with exit code ${rc}"
-fi
-
-if [ -n "$log_file" ] && [ "$rc" -ne 0 ]; then
-  dump_tail_and_milestones "$log_file" || true
 fi
 
 exit "$rc"

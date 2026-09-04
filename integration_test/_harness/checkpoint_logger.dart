@@ -7,10 +7,15 @@
 //    stdout을 CI 로그로 전혀 forwarding하지 않는다 (버퍼링 문제가 아니라
 //    채널 자체가 없다)
 //
-// `.github/workflows/ios-simulator-e2e.yml`의 실행 스텝은
-// `flutter test ... 2>&1 | tee "$artifact_dir/flow-test-output.log"`로
-// **`flutter test` CLI 프로세스 자신의 stdout/stderr**만 캡처한다. 이
-// CLI가 시뮬레이터에서 실행 중인 앱 프로세스의 로그를 어떻게 회수하는지
+// `.github/workflows/ios-simulator-e2e.yml`의 실행 스텝은 (Wave3/P5 이후
+// 현재 배선 기준) `flutter test ...`를 `2>&1 | tee`로 파이프하지 않고,
+// `scripts/ios/e2e_watchdog.sh`의 `E2E_WATCHDOG_LOG_FILE` 리다이렉션으로
+// `$RUNNER_TEMP/e2e-verbose-<category>.log`에 직접 캡처한다(2차 리뷰
+// 정정, LOW — 이전 문구는 Wave3 커밋(365e3e2c)에서 이미 제거된 `tee`
+// 기반 배선을 그대로 서술하고 있었다). 어느 쪽 배선이든 캡처 대상은
+// **`flutter test` CLI 프로세스 자신의 stdout/stderr**뿐이라는 결론은
+// 동일하다 — 이 CLI가 시뮬레이터에서 실행 중인 앱 프로세스의 로그를
+// 어떻게 회수하는지
 // Flutter SDK 소스(`packages/flutter_tools/lib/src/test/
 // integration_test_device.dart`)를 확인한 결과:
 //

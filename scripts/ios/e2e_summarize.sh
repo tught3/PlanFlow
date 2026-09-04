@@ -117,14 +117,29 @@ last_checkpoint_marker() {
 # go straight to E2E_WATCHDOG_LOG_FILE (this is the `$log_file` this script
 # reads) via the watchdog's own redirection, and the watchdog's own status
 # lines print to its stderr as before. On timeout, `watchdog_status`
-# additionally appends the exact same two status lines into
-# E2E_WATCHDOG_LOG_FILE (see e2e_watchdog.sh's header comment,
-# "Timeout-detection exception"), which is what makes them visible to this
-# grep — without that append, a real timeout would be indistinguishable from
-# "no timeout" here, since nothing else about the timeout ever reaches this
-# file (review fix, H1; this comment previously described a stale `tee`-based
-# mechanism that Wave3 had already removed, so this detection had been
-# silently dead in production). (The workflow step's own post-run
+# appends status lines into E2E_WATCHDOG_LOG_FILE (see e2e_watchdog.sh's
+# header comment, "Timeout-detection exception"), which is what makes them
+# visible to this grep — without that append, a real timeout would be
+# indistinguishable from "no timeout" here, since nothing else about the
+# timeout ever reaches this file (review fix, H1; this comment previously
+# described a stale `tee`-based mechanism that Wave3 had already removed, so
+# this detection had been silently dead in production).
+#
+# (Review round-2 correction, LOW: this used to claim both status lines are
+# always appended. Only the second one — "::error title=E2E_WATCHDOG_TIMEOUT::"
+# — actually is: e2e_watchdog.sh's bash-fallback path appends it AFTER
+# `wait`-ing for the child to exit, so the child is confirmed dead and there
+# is no writer left to race against. The first — "watchdog: command exceeded
+# ...s, sending SIGTERM" — is appended WHILE the child may still be alive and
+# still writing to the same file (SIGTERM has just been sent, not yet
+# honored), so it is best-effort and can be lost to that write race; a real
+# reproduction with a continuously-writing 37MB child (documented in the
+# round-2 review of this change) found the first line missing from the log
+# entirely while the second line was present, matching the mechanism above.
+# `-m 1` above and the `-e`/`-e` alternation mean this function only ever
+# needs ONE of the two to match, so the guaranteed second line alone is
+# sufficient for this detector — the first line's best-effort nature does
+# not weaken it.) (The workflow step's own post-run
 # "WATCHDOG_TIMEOUT: ..." echo is a separate, later `echo` in the workflow
 # step itself and is not what this grep relies on — it is not guaranteed to
 # land in this log file either.) Matching on the substring WATCHDOG_TIMEOUT

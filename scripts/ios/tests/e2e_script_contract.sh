@@ -41,6 +41,7 @@ trap cleanup EXIT
 
 pass_count=0
 fail_count=0
+skip_count=0
 
 # assert_contains <case_name> <log_content> <expected_substring> [flow_files_arg]
 #
@@ -213,12 +214,16 @@ fi
 # These cases run the real script as a subprocess (no mocks) against real
 # temp files and real child commands (bash -c '...', sleep), per this repo's
 # "a safety gate needs at least one test that passes real input through it"
-# convention. E2E_WATCHDOG_FORCE_BASH=1 pins every case to the bash-fallback
+# convention. Most cases pin E2E_WATCHDOG_FORCE_BASH=1 to the bash-fallback
 # path so the suite is deterministic across dev boxes that do/don't have GNU
-# coreutils `timeout` installed; the GNU-timeout path shares the exact same
-# redirection/heartbeat/dump code paths (see e2e_watchdog.sh) and is exercised
-# manually against a real GNU `timeout` as part of this change's verification,
-# documented in the delivery report rather than duplicated here.
+# coreutils `timeout` installed. (Review round-2 fix, LOW4: one case —
+# "low4_gnu_timeout_path" below, near the H1 e2e case — deliberately leaves
+# E2E_WATCHDOG_FORCE_BASH unset instead, so the GNU-timeout-backed path
+# [resolve_gnu_timeout()] is actually exercised by this automated suite on
+# any machine that has GNU coreutils `timeout`/`gtimeout`, rather than only
+# ever being checked by hand and written up in a delivery report. On a
+# machine without GNU timeout it harmlessly falls back to the same bash path
+# every other case already covers.)
 
 # assert_rc <case_name> <expected_rc> <actual_rc>
 assert_rc() {
@@ -276,6 +281,211 @@ watchdog_cleanup() {
   rm -rf -- "$watchdog_tmp_dir"
 }
 trap 'watchdog_cleanup; cleanup' EXIT
+
+# --- Orphan-detection helpers (review round-2 fix, MEDIUM) ------------------
+#
+# Both orphan-leak checks further below (`watchdog_l4_no_orphan_heartbeat_sleep`
+# and `watchdog_no_orphan_processes`) used to be `pgrep -f '<pattern>'
+# 2>/dev/null || true`. On any machine without `pgrep` installed (this dev
+# box is one: `command -v pgrep` returns nothing), that invocation fails,
+# `2>/dev/null` swallows the "command not found" stderr, and `|| true` turns
+# the whole thing into an unconditional empty string — i.e. the check always
+# reports "no leftovers", not because it looked and found none, but because
+# it never looked at all. `pgrep -f 'sleep 30' 2>/dev/null || true` on a
+# `pgrep`-less machine is `<empty>` regardless of whether a `sleep 30` is
+# actually running. These helpers fix that by (a) falling back to a portable
+# `ps`-based scan when `pgrep` is unavailable, and (b) reporting which
+# mechanism actually ran so callers can tell a genuine "scanned and found
+# nothing" apart from "could not scan at all" (fail-closed: "none" must never
+# be silently treated as PASS — see assert_no_new_orphan_pids below, which
+# reports SKIP instead).
+#
+# NOTE: the scanning method is communicated via `_orphan_scan_method`'s own
+# stdout, not a side-effect global variable set inside `_orphan_scan_pids`.
+# Every call site below invokes these via `$(...)` command substitution,
+# which bash always runs in a subshell — an assignment made inside that
+# subshell (e.g. `ORPHAN_SCAN_METHOD="ps"`) never propagates back to the
+# calling shell. An earlier draft of this fix used exactly that pattern and
+# it silently always reported "none" even when `ps` scanning was actually
+# available and working correctly (caught by manually inspecting this
+# suite's own PASS/SKIP output before trusting it, the same self-check
+# discipline item 3 below applies to the detector itself).
+
+# _orphan_scan_method
+#
+# Prints "pgrep", "ps", or "none" depending on what is available on this
+# machine to scan process command lines with. Pure stdout, no side effects,
+# safe to call from inside a `$(...)` command substitution.
+_orphan_scan_method() {
+  if command -v pgrep >/dev/null 2>&1; then
+    echo "pgrep"
+  elif command -v ps >/dev/null 2>&1; then
+    echo "ps"
+  else
+    echo "none"
+  fi
+}
+
+# _orphan_scan_pids <pattern>
+#
+# Prints one PID per line for every process whose full command line matches
+# <pattern> (a basic ERE, per grep -E). Uses whichever scanner
+# `_orphan_scan_method` reports:
+#   - pgrep: `pgrep -f -- <pattern>`.
+#   - ps: `ps aux` + `ps -ef` combined. Neither flavor is trusted alone: on
+#     this dev box `ps aux`'s COMMAND column is truncated to the bare binary
+#     name with no arguments at all (so `sleep 30` shows up as plain
+#     `sleep`, never matching a pattern that includes the argument), while
+#     `ps -ef` here does carry the full command line; other platforms
+#     (macOS/Linux CI runners) have been observed with the opposite
+#     asymmetry. Both are scanned so whichever flavor happens to carry the
+#     arguments still produces a match. Trailing whitespace is stripped from
+#     each line first so a padded COMMAND column does not defeat a caller's
+#     `$`-anchored pattern (observed on this box: a `ps -ef` COMMAND column
+#     for a running `sleep 4` rendered as `sleep 4 ` with a trailing space).
+#   - none: prints nothing — callers MUST check `_orphan_scan_method`
+#     themselves and treat "none" as "could not check", not "checked, found
+#     none" (see assert_no_new_orphan_pids below).
+#
+# Self-match pitfall (found while verifying this very fix): `ps ... | grep -E
+# -- "$pattern"` as a single pipeline is WRONG when <pattern> can match the
+# scan's own invocation — every stage of a shell pipeline is forked up front
+# before any data flows, so `ps` captures a live snapshot that already
+# includes the `grep -E -- "$pattern"` process sitting downstream in that
+# same pipeline, and its own argv trivially contains <pattern>. This is not
+# hypothetical: it reproduced deterministically for the "sleep 30" pattern
+# used by the general hygiene check below (grep's own `grep -E sleep 30`
+# argv matched itself every single run). The fix is to let `ps` finish and
+# freeze its output into a variable FIRST (a command substitution blocks
+# until the `ps` subshell exits and its pipe is closed), and only THEN grep
+# that already-static text — by the time grep starts, `ps` and its snapshot
+# are already gone, so grep is scanning old text, not the live process table
+# it is itself a part of.
+_orphan_scan_pids() {
+  local pattern="$1"
+  local method
+  method="$(_orphan_scan_method)"
+
+  case "$method" in
+    pgrep)
+      pgrep -f -- "$pattern" 2>/dev/null || true
+      ;;
+    ps)
+      local snapshot
+      snapshot="$( { ps aux 2>/dev/null; ps -ef 2>/dev/null; } )"
+      printf '%s\n' "$snapshot" \
+        | sed -E 's/[[:space:]]+$//' \
+        | grep -E -- "$pattern" \
+        | awk '{print $2}' \
+        | sort -u
+      ;;
+    *)
+      : # nothing to print — no scanner available
+      ;;
+  esac
+}
+
+# _orphan_scan_new_pids <baseline_pids> <current_pids>
+#
+# Prints (space-separated) every PID present in <current_pids> but absent
+# from <baseline_pids>. Used to scope an orphan check to processes that
+# appeared DURING this test run, instead of matching a generic pattern like
+# "sleep 30" against the whole machine's process table — on this shared,
+# multi-session dev box, an unrelated concurrent session running its own
+# `sleep 30` for some other reason would otherwise be indistinguishable from
+# a genuine leak (review finding: "타 세션이 같은 패턴 쓰면 거짓 FAIL도
+# 가능"). A baseline captured immediately before the case under test spawns
+# anything is effectively an identifying marker for "created by this test
+# run", without needing to inject a literal marker string into
+# e2e_watchdog.sh's production heartbeat/child-spawn code paths.
+_orphan_scan_new_pids() {
+  local baseline="$1"
+  local current="$2"
+  local pid
+  local out=""
+
+  while IFS= read -r pid; do
+    [ -z "$pid" ] && continue
+    if ! printf '%s\n' "$baseline" | grep -qxF -- "$pid"; then
+      out="$out $pid"
+    fi
+  done <<EOF
+$current
+EOF
+
+  printf '%s' "${out# }"
+}
+
+# assert_no_new_orphan_pids <case_name> <pattern> <baseline_pids>
+#
+# PASS when no NEW PID (relative to <baseline_pids>) still matches <pattern>.
+# FAIL when at least one does. SKIP (never silently PASS) when neither pgrep
+# nor ps was available to scan with at all.
+assert_no_new_orphan_pids() {
+  local case_name="$1"
+  local pattern="$2"
+  local baseline_pids="$3"
+
+  local method
+  method="$(_orphan_scan_method)"
+
+  if [ "$method" = "none" ]; then
+    echo "SKIP: $case_name — no process scanner available on this machine (neither pgrep nor ps was found); orphan-leak detection could not run for this case"
+    skip_count=$((skip_count + 1))
+    return 0
+  fi
+
+  local current_pids leaked_pids
+  current_pids="$(_orphan_scan_pids "$pattern")"
+  leaked_pids="$(_orphan_scan_new_pids "$baseline_pids" "$current_pids")"
+
+  if [ -z "$leaked_pids" ]; then
+    echo "PASS: $case_name (scanner: $method)"
+    pass_count=$((pass_count + 1))
+  else
+    echo "FAIL: $case_name — new PID(s) matching '$pattern' appeared since baseline and are still alive (scanner: $method): $leaked_pids"
+    fail_count=$((fail_count + 1))
+  fi
+}
+
+# Session-start baseline for the general process-hygiene check further below
+# (`watchdog_no_orphan_processes`), captured before any of this suite's own
+# `sleep 30` watchdog children have been spawned.
+watchdog_hygiene_baseline_pids="$(_orphan_scan_pids 'sleep 30')"
+
+# --- Orphan detector self-check (review round-2 fix, MEDIUM) ----------------
+#
+# Before trusting _orphan_scan_pids/_orphan_scan_new_pids to police the real
+# scenarios below, prove they can actually detect a leak at all — the same
+# thing the round-2 reviewer did by hand (deliberately create an orphan and
+# confirm the detector catches it) before accepting the fix. Uses a duration
+# ("sleep 2") not used as a literal child command by any other case in this
+# file, so there is no risk of this self-check's own manufactured process
+# being confused with (or masked by) one of the real scenarios' baselines.
+self_check_method="$(_orphan_scan_method)"
+self_check_pattern='sleep 2$'
+self_check_baseline="$(_orphan_scan_pids "$self_check_pattern")"
+sleep 2 &
+self_check_pid=$!
+self_check_current="$(_orphan_scan_pids "$self_check_pattern")"
+self_check_leaked="$(_orphan_scan_new_pids "$self_check_baseline" "$self_check_current")"
+
+if [ "$self_check_method" = "none" ]; then
+  echo "SKIP: orphan_detector_self_check — no process scanner available on this machine; cannot verify the detector before relying on it below"
+  skip_count=$((skip_count + 1))
+elif [ -n "$self_check_leaked" ]; then
+  echo "PASS: orphan_detector_self_check (scanner: $self_check_method found the deliberately-leaked PID(s): $self_check_leaked)"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: orphan_detector_self_check — detector reported no match for a deliberately-leaked 'sleep 2' process; the real orphan checks below cannot be trusted (scanner attempted: $self_check_method)"
+  fail_count=$((fail_count + 1))
+fi
+
+# Let the manufactured process exit on its own — this repo's tooling blocks
+# unowned process termination (`kill`/`pkill`/etc. are denied by a Bash
+# PreToolUse hook regardless of ownership), so cleanup here is `wait`, not
+# `kill`. This bounds the self-check's added wall time to ~2s.
+wait "$self_check_pid" 2>/dev/null || true
 
 # --- Regression: opt-in options unset must not change existing behavior ----
 regression_success_output="$(env -u E2E_WATCHDOG_LOG_FILE -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
@@ -447,6 +657,52 @@ else
   fail_count=$((fail_count + 1))
 fi
 
+# --- LOW4 (review round-2 fix): h1_e2e above pins E2E_WATCHDOG_FORCE_BASH=1,
+#     so only the bash-fallback timeout path (run_with_bash_fallback) was
+#     ever exercised by this suite — the GNU-`timeout`-backed path
+#     (resolve_gnu_timeout(), used automatically whenever this machine has
+#     a GNU coreutils `timeout`/`gtimeout`, which several dev boxes and some
+#     CI runners do) had no equivalent case, even though it shares the same
+#     watchdog_status()/dump_tail_and_milestones() code paths this suite is
+#     meant to validate. This mirrors h1_e2e_log's real-watchdog,
+#     real-summarizer flow with E2E_WATCHDOG_FORCE_BASH left UNSET instead
+#     of forced. On a machine without GNU timeout, resolve_gnu_timeout()
+#     fails closed and this falls back to the exact same bash path h1_e2e
+#     already covers, so the case is harmless (if redundant) there too —
+#     it is asserted either way, never skipped, so this suite always proves
+#     at least one of the two timeout paths this machine can actually reach.
+low4_gnu_log="$watchdog_tmp_dir/low4_gnu_timeout_path.log"
+env -u E2E_WATCHDOG_FORCE_BASH -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_LOG_FILE="$low4_gnu_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=1 \
+  bash "$watchdog_script" 2 sleep 30 >/dev/null 2>&1
+low4_gnu_watchdog_rc=$?
+assert_rc "low4_gnu_timeout_path_rc" "124" "$low4_gnu_watchdog_rc"
+
+low4_gnu_summary="$tmp_dir/low4_gnu_timeout_path.summary.md"
+if [ -f "$low4_gnu_log" ]; then
+  bash "$summarize_script" "mainstream" "$low4_gnu_log" "$low4_gnu_summary" "" >/dev/null 2>&1
+fi
+
+if [ -f "$low4_gnu_summary" ] \
+  && grep -qF 'Watchdog: 타임아웃으로 종료됨' "$low4_gnu_summary" \
+  && ! grep -qF '타임아웃 신호 없음' "$low4_gnu_summary"; then
+  echo "PASS: low4_gnu_timeout_path_detected_by_summarizer"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: low4_gnu_timeout_path_detected_by_summarizer — expected 'Watchdog: 타임아웃으로 종료됨' (and NOT '타임아웃 신호 없음') in $low4_gnu_summary"
+  echo "  --- watchdog log ($low4_gnu_log) ---"
+  sed 's/^/  /' "$low4_gnu_log" 2>/dev/null || echo "  (missing)"
+  echo "  --- end log ---"
+  if [ -f "$low4_gnu_summary" ]; then
+    echo "  --- generated summary ($low4_gnu_summary) ---"
+    sed 's/^/  /' "$low4_gnu_summary"
+    echo "  --- end summary ---"
+  else
+    echo "  (summary file was not written: $low4_gnu_summary)"
+  fi
+  fail_count=$((fail_count + 1))
+fi
+
 # --- L4 regression (review fix): heartbeat's own `sleep <interval>` child
 #     must not survive as an orphan after the watchdog exits. Uses a
 #     heartbeat interval (5s) longer than the watchdog bound (2s) so the
@@ -457,35 +713,32 @@ fi
 #     fix, a lingering `sleep 5` process would still be alive right here (a
 #     plain `kill $heartbeat_pid` only ever reaped the heartbeat subshell,
 #     not the `sleep` grandchild it was blocked in).
+#
+#     (Review round-2 fix, MEDIUM: baseline is captured immediately before
+#     spawning, and the leak check below only counts PIDs that are NEW since
+#     that baseline — see _orphan_scan_new_pids above — instead of matching
+#     'sleep 5$' against the whole machine's process table.)
 heartbeat_orphan_log="$watchdog_tmp_dir/l4_heartbeat_orphan.log"
+l4_heartbeat_sleep_pattern='sleep 5$'
+l4_heartbeat_sleep_baseline="$(_orphan_scan_pids "$l4_heartbeat_sleep_pattern")"
 env -u E2E_WATCHDOG_TAIL_FILE \
   E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$heartbeat_orphan_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=5 \
   bash "$watchdog_script" 2 sleep 30 >/dev/null 2>&1
 heartbeat_orphan_rc=$?
 assert_rc "watchdog_l4_heartbeat_orphan_watchdog_rc" "124" "$heartbeat_orphan_rc"
-leftover_heartbeat_sleep_pids="$(pgrep -f 'sleep 5$' 2>/dev/null || true)"
-if [ -z "$leftover_heartbeat_sleep_pids" ]; then
-  echo "PASS: watchdog_l4_no_orphan_heartbeat_sleep"
-  pass_count=$((pass_count + 1))
-else
-  echo "FAIL: watchdog_l4_no_orphan_heartbeat_sleep — leftover heartbeat 'sleep 5' PIDs: $leftover_heartbeat_sleep_pids"
-  fail_count=$((fail_count + 1))
-fi
+assert_no_new_orphan_pids "watchdog_l4_no_orphan_heartbeat_sleep" "$l4_heartbeat_sleep_pattern" "$l4_heartbeat_sleep_baseline"
 
 # --- Process hygiene: no orphaned heartbeat/child processes survive any of
 #     the above cases (each of them used a bounded timeout, so by the time
 #     control returns here every backgrounded process must be gone) --------
-leftover_sleep_pids="$(pgrep -f 'sleep 30' 2>/dev/null || true)"
-if [ -z "$leftover_sleep_pids" ]; then
-  echo "PASS: watchdog_no_orphan_processes"
-  pass_count=$((pass_count + 1))
-else
-  echo "FAIL: watchdog_no_orphan_processes — leftover 'sleep 30' PIDs: $leftover_sleep_pids"
-  fail_count=$((fail_count + 1))
-fi
+#
+#     (Review round-2 fix, MEDIUM: uses the session-start baseline captured
+#     before the very first case in this file spawned a 'sleep 30', for the
+#     same reason as the L4 case above — see _orphan_scan_new_pids.)
+assert_no_new_orphan_pids "watchdog_no_orphan_processes" "sleep 30" "$watchdog_hygiene_baseline_pids"
 
 echo ""
-echo "=== Results: $pass_count passed, $fail_count failed ==="
+echo "=== Results: $pass_count passed, $fail_count failed, $skip_count skipped ==="
 
 if [ "$fail_count" -gt 0 ]; then
   exit 1
