@@ -16,6 +16,11 @@
 #     phrases against that error line (best-effort string match, not a real
 #     parser — an unmatched phrase is reported as UNKNOWN together with the
 #     original line rather than silently mis-classified)
+#   - a "hang signals" section for the E2E run-2 hang investigation: the last
+#     `[CHECKPOINT] <marker>` line reached (emitted by
+#     integration_test/_harness/checkpoint_logger.dart), whether the watchdog
+#     (scripts/ios/e2e_watchdog.sh) killed the run, and whether the log went
+#     silent right after "Xcode build done"
 #
 # This script is invoked from an `if: always()` workflow step and is
 # intentionally best-effort: a parsing problem here must never be confused
@@ -74,6 +79,85 @@ classify_error() {
   esac
 }
 
+# --- Hang signals (E2E run-2 hang investigation) -----------------------
+#
+# These three probes look at the log as a whole rather than at one flow
+# file's failure line, because the hang under investigation produces no
+# per-test failure marker at all: the run goes silent and is later killed.
+# Each probe is a pure text match and is allowed to find nothing — "not
+# observed" is reported as such rather than guessed at.
+
+# The marker of the last `[CHECKPOINT] <marker>` line in the log, or empty
+# when the log contains none.
+#
+# Empty is an expected outcome, not a bug: `flutter test -d <UDID>` does not
+# forward the app process's stdout to the CI log at all (see the long
+# investigation comment at the top of checkpoint_logger.dart), so on the
+# current workflow wiring these lines may legitimately never appear. The
+# summary says "no checkpoint lines" in that case instead of inventing a
+# position.
+last_checkpoint_marker() {
+  local line
+  line="$(grep -F -- '[CHECKPOINT] ' "$log_file" 2>/dev/null | tail -n 1 || true)"
+  if [ -z "$line" ]; then
+    return 0
+  fi
+  # Strip everything up to and including the first "[CHECKPOINT] " so the
+  # marker survives any timestamp/prefix the CI or the tool may have added
+  # in front of it.
+  printf '%s' "${line#*'[CHECKPOINT] '}"
+}
+
+# The first watchdog-timeout line in the log, or empty when the run was not
+# killed by the watchdog.
+#
+# Both matched phrases are written by scripts/ios/e2e_watchdog.sh to stderr,
+# and the workflow runs the watchdog under `2>&1 | tee flow-test-output.log`,
+# so they do land in the log this script reads. (The workflow step's own
+# post-run "WATCHDOG_TIMEOUT: ..." echo is outside that pipe and therefore
+# only in the console log, which is why it is not the phrase relied on here.)
+# Matching on the substring WATCHDOG_TIMEOUT covers the annotation form
+# `::error title=E2E_WATCHDOG_TIMEOUT::...` as well.
+watchdog_timeout_line() {
+  grep -F -m 1 -e "WATCHDOG_TIMEOUT" -e "watchdog: command exceeded" "$log_file" 2>/dev/null || true
+}
+
+# Non-empty, non-watchdog-noise lines that appear after the last
+# "Xcode build done" line. Prints the count (0 when the log went silent right
+# after the build finished, or when there is no build-done line at all).
+#
+# Watchdog output is excluded on purpose: those lines are emitted by the
+# supervisor *because* nothing else was happening, so counting them as
+# activity would mask exactly the signature being detected.
+lines_after_build_done() {
+  local total build_done_line_no
+  total="$(grep -c '' "$log_file" 2>/dev/null || echo 0)"
+  build_done_line_no="$(grep -nF -- 'Xcode build done' "$log_file" 2>/dev/null | tail -n 1 | cut -d: -f1 || true)"
+  if [ -z "$build_done_line_no" ]; then
+    echo 0
+    return 0
+  fi
+  if [ "$build_done_line_no" -ge "$total" ] 2>/dev/null; then
+    echo 0
+    return 0
+  fi
+  sed -n "$((build_done_line_no + 1)),\$p" "$log_file" 2>/dev/null \
+    | grep -v '^[[:space:]]*$' \
+    | grep -v -F -e '[STEP] watchdog:' -e 'WATCHDOG_TIMEOUT' \
+    | grep -c '' || true
+}
+
+# True when the log contains a completed Xcode build and nothing meaningful
+# after it — the exact shape of the observed run-2 hang.
+build_succeeded_then_silent() {
+  if ! grep -qF -- 'Xcode build done' "$log_file" 2>/dev/null; then
+    return 1
+  fi
+  local remaining
+  remaining="$(lines_after_build_done)"
+  [ "${remaining:-0}" -eq 0 ] 2>/dev/null
+}
+
 # First non-empty line found after `anchor_line`'s first occurrence in
 # `log_file`, scanning up to a small fixed window of following lines. Falls
 # back to the anchor line itself if nothing usable follows (or if `grep -A`
@@ -104,6 +188,33 @@ first_detail_after() {
     done
   else
     echo "- Flow files attempted: (not provided to this script)"
+  fi
+  echo ""
+
+  checkpoint_marker="$(last_checkpoint_marker)"
+  watchdog_line="$(watchdog_timeout_line)"
+  if build_succeeded_then_silent; then
+    silent_after_build="true"
+  else
+    silent_after_build="false"
+  fi
+
+  echo "## Hang signals"
+  echo ""
+  if [ -n "$checkpoint_marker" ]; then
+    echo "- 마지막 도달 체크포인트: \`$checkpoint_marker\`"
+  else
+    echo "- 마지막 도달 체크포인트: 체크포인트 로그 없음 (\`[CHECKPOINT]\` 라인이 캡처된 로그에 없음)"
+  fi
+  if [ -n "$watchdog_line" ]; then
+    echo "- Watchdog: 타임아웃으로 종료됨 — \`$watchdog_line\`"
+  else
+    echo "- Watchdog: 타임아웃 신호 없음"
+  fi
+  if [ "$silent_after_build" = "true" ]; then
+    echo "- Post-build 출력: \"Xcode build done\" 이후 유의미한 로그 라인 없음"
+  else
+    echo "- Post-build 출력: 정상 (빌드 완료 라인 없음 또는 그 이후 출력 있음)"
   fi
   echo ""
 
@@ -153,6 +264,27 @@ first_detail_after() {
       echo ""
       echo "- Category guess: \`$category_guess\`"
       echo "- First matching line: \`$whole_log_hit\`"
+      echo ""
+    elif [ -n "$watchdog_line" ]; then
+      # The run was killed by scripts/ios/e2e_watchdog.sh rather than failing
+      # on its own, so there is no error line to classify — the timeout IS
+      # the finding.
+      echo "## FAILED: (watchdog timeout, no specific flow file identified)"
+      echo ""
+      echo "- Category guess: \`WATCHDOG_TIMEOUT\`"
+      echo "- First matching line: \`$watchdog_line\`"
+      echo ""
+    elif [ "$silent_after_build" = "true" ]; then
+      # Previously this shape fell through to "no failure markers detected"
+      # (or, with an error line present, to UNKNOWN). It has its own name now
+      # because it is the signature of the run-2 hang: the Xcode build
+      # completed and the Flutter tool then produced nothing at all, which
+      # points at the install/launch/attach handshake rather than at any Dart
+      # test body.
+      echo "## FAILED: (no output after the Xcode build completed)"
+      echo ""
+      echo "- Category guess: \`BUILD_SUCCEEDED_THEN_SILENT\`"
+      echo "- Last log line: \`$(grep -v '^[[:space:]]*$' "$log_file" | tail -n 1 || true)\`"
       echo ""
     else
       echo "No failure markers detected in the captured log for this category."
