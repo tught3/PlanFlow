@@ -93,12 +93,29 @@ echo ""
 # directory, the Flutter tool starts waiting for the VM Service port, and
 # then nothing else is ever logged before the watchdog (exit 124) kills the
 # child. This is the exact regression this whole change exists to name.
+#
+# (Review round-2 fix, HIGH: this fixture used to contain
+# "[STEP] watchdog: elapsed=...s lines=... delta=+... last=..." heartbeat
+# lines interleaved with the flutter-tool output. Those lines never actually
+# appear inside E2E_WATCHDOG_LOG_FILE — scripts/ios/e2e_watchdog.sh's
+# start_heartbeat() prints them to this script's OWN stdout only (see its
+# header comment: "prints one progress line to THIS script's own stdout ...
+# even when the child's output is going to <log_file>"), never redirected
+# into the log file alongside the child's output. Conversely, the fixture was
+# MISSING the one line that IS guaranteed to land in the log file on a real
+# timeout: watchdog_status() (same script) appends a trailing
+# "::error title=E2E_WATCHDOG_TIMEOUT::..." line to E2E_WATCHDOG_LOG_FILE
+# right after the child is confirmed dead. This fixture now contains only
+# raw flutter-tool child output plus that guaranteed trailing watchdog line,
+# matching what the real file on disk actually looks like after a Run#4-shape
+# timeout.)
 case1_log="$tmp_dir/case1_mainstream_run4_hang.log"
 cat >"$case1_log" <<'EOF'
-[STEP] watchdog: elapsed=91s lines=59089 delta=+54376 last=[ +77 ms] Running pod install...
+00:00 Running pod install...
 00:40 Xcode build done.
-[STEP] watchdog: elapsed=761s lines=103996 delta=+44083 last=[ +14 ms] executing: rsync -8 -av --delete .../Runner.app /Users/runner/work/PlanFlow/PlanFlow/build/ios/iphonesimulator
-[STEP] watchdog: elapsed=793s lines=104820 delta=+824 last=[ ] Waiting for VM Service port to be available...
+00:41 executing: rsync -8 -av --delete .../Runner.app /Users/runner/work/PlanFlow/PlanFlow/build/ios/iphonesimulator
+00:42 Waiting for VM Service port to be available...
+::error title=E2E_WATCHDOG_TIMEOUT::Command exceeded the 1500s watchdog bound and was terminated
 EOF
 case1_output="$(bash "$markers_script" "$case1_log" "TEST-UDID-CASE1" "124" 2>&1)"
 case1_rc=$?

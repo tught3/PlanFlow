@@ -91,6 +91,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Run iOS E2E script contract/regression suites (review round 2, MEDIUM)
+        # These three suites (scripts/ios/tests/simctl_discover_contract.sh,
+        # scripts/ios/tests/e2e_stage_markers_contract.sh, and the pre-
+        # existing scripts/ios/tests/e2e_script_contract.sh) run the real
+        # scripts/ios/simctl_discover.sh, scripts/ios/e2e_stage_markers.sh,
+        # and scripts/ios/e2e_summarize.sh as subprocesses against fixture
+        # input — per this repo's safety-gate convention, not mocks of the
+        # gate's own logic. Before this step they were never wired into any
+        # workflow (grep confirmed zero callers), so the root-cause fix's own
+        # regression assertions never ran in CI. `set -euo pipefail` plus
+        # letting each suite's own non-zero exit propagate means a fixture
+        # regression here fails this `preflight` job outright, so the
+        # `simulator-e2e`/`flow05-auth-backend` jobs below (which both
+        # `needs: preflight`) never get dispatched against a
+        # discovery/marker script whose own contract tests are currently
+        # red. `jq` (required by simctl_discover_contract.sh) ships
+        # preinstalled on GitHub's macos-latest runner image, unlike the
+        # Windows dev machine this repo is otherwise developed on.
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ios/tests/e2e_script_contract.sh
+          bash scripts/ios/tests/e2e_stage_markers_contract.sh
+          bash scripts/ios/tests/simctl_discover_contract.sh
+
       - name: Verify E2E backend isolation (fail-closed)
         shell: bash
         run: |

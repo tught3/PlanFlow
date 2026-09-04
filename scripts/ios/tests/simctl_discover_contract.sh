@@ -40,7 +40,11 @@ if [ ! -f "$discover_script" ]; then
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "simctl_discover_contract.sh: jq is required to validate simctl_discover.sh's JSON output; skipping this suite" >&2
+  # (Review round-2 fix, LOW: this previously said "...; skipping this
+  # suite" while still exiting 1, which reads as though the missing-jq case
+  # is harmless/skipped when it is actually a hard failure of this suite —
+  # `exit 1` here is deliberate fail-closed behavior, not a skip.)
+  echo "simctl_discover_contract.sh: jq is required to validate simctl_discover.sh's JSON output; failing this suite (jq required)" >&2
   exit 1
 fi
 

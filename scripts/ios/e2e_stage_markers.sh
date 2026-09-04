@@ -224,7 +224,7 @@ else
 fi
 
 # --- 5. FLUTTER_ATTACH ------------------------------------------------------
-# This is the decisive check for the Run#4 shape: the run's last non-empty
+# This is the decisive check for the Run#4 shape: the run's last flutter-tool
 # log line was, verbatim in both the mainstream and flow05 excerpts,
 # "Waiting for VM Service port to be available..." followed by nothing else
 # until the watchdog (scripts/ios/e2e_watchdog.sh) killed the child with
@@ -238,18 +238,35 @@ fi
 # real "VM Service listening on http://127.0.0.1:<port>/..." line). No match
 # for either shape -> UNKNOWN (this script never guesses PASS from absence of
 # evidence).
-last_line="$(last_nonblank_line "$log_file")"
-if [ -n "$last_line" ] \
-  && printf '%s' "$last_line" | grep -qF -- "Waiting for VM Service port to be available" \
-  && [ "$watchdog_rc" = "124" ]; then
-  emit_marker "FLUTTER_ATTACH" "FAIL" "VM_SERVICE_WAIT_HANG: $(mask_or_placeholder "$last_line")"
+#
+# (Review round-2 fix, HIGH: this used to check `last_nonblank_line ==
+# "Waiting for VM Service..."`, i.e. it required that exact phrase to be the
+# very last line of the redirected log. In production that condition can
+# never be true on an actual timeout: e2e_watchdog.sh's own watchdog_status()
+# helper (see its header comment's "Timeout-detection exception") appends a
+# guaranteed trailing "::error title=E2E_WATCHDOG_TIMEOUT::..." line to this
+# same log file right after the child is confirmed dead — so the real last
+# line on every production timeout is that watchdog-injected line, never the
+# flutter-tool's own "Waiting for VM Service..." line. The fix drops the
+# "last line" requirement entirely and instead asks three independent
+# questions of the whole log: did the flutter tool ever print the VM Service
+# wait line (anywhere in the log, not just at the end), did it never also
+# print a successful "listening on" attach line, and did the watchdog
+# actually kill this run on a timeout (rc=124)? All three together name the
+# Run#4 hang shape regardless of what watchdog_status() appended afterward.
+# A successful "listening on" is intentionally checked FIRST and short-
+# circuits to PASS even if a "Waiting for VM Service..." line also appears
+# earlier in the same log — that combination just means the tool logged its
+# normal wait message before attaching, which is not the regression this
+# marker exists to catch.)
+attach_line="$(find_first_match "listening on" "$log_file")"
+wait_line="$(find_first_match "Waiting for VM Service port to be available" "$log_file")"
+if [ -n "$attach_line" ]; then
+  emit_marker "FLUTTER_ATTACH" "PASS" "$(mask_or_placeholder "$attach_line")"
+elif [ -n "$wait_line" ] && [ "$watchdog_rc" = "124" ]; then
+  emit_marker "FLUTTER_ATTACH" "FAIL" "VM_SERVICE_WAIT_HANG: $(mask_or_placeholder "$wait_line")"
 else
-  attach_line="$(find_first_match "listening on" "$log_file")"
-  if [ -n "$attach_line" ]; then
-    emit_marker "FLUTTER_ATTACH" "PASS" "$(mask_or_placeholder "$attach_line")"
-  else
-    emit_marker "FLUTTER_ATTACH" "UNKNOWN" "no VM Service connect signal ('listening on', e2e_watchdog.sh milestone anchor) found, and the Run#4 hang shape (last line = 'Waiting for VM Service port to be available...' + watchdog exit 124) was not observed either"
-  fi
+  emit_marker "FLUTTER_ATTACH" "UNKNOWN" "no VM Service connect signal ('listening on', e2e_watchdog.sh milestone anchor) found, and the Run#4 hang shape ('Waiting for VM Service port to be available...' anywhere in the log + watchdog exit 124) was not observed either"
 fi
 
 # --- 6. TEST_DISCOVERY ------------------------------------------------------
