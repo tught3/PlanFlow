@@ -33,7 +33,10 @@ const double calendarHolidayFontSize = 13;
 // event, and this value is shared with the Android widget contract.
 const double calendarMonthlyHolidayFontSize = calendarEventFontSize + 0.5;
 const double calendarGroupMemberFontSize = 10;
-const double calendarRecurringMarkerFontSize = 7.8;
+// Events render text-only (no background fill), so the repeat marker is the
+// only recurrence affordance. It is intentionally larger than the event text
+// and drawn bold in both renderers.
+const double calendarRecurringMarkerFontSize = 10.5;
 const double calendarStrongAlarmMarkerFontSize = 5.8;
 
 int _argb(Color color) => color.toARGB32();
@@ -65,6 +68,6 @@ Map<String, Object> calendarStyleContractPayload() => <String, Object>{
       'calendar_style_date_font_sp10': 130,
       'calendar_style_holiday_font_sp10': 88,
       'calendar_style_group_member_font_sp10': 100,
-      'calendar_style_recurring_marker_sp10': 78,
+      'calendar_style_recurring_marker_sp10': 105,
       'calendar_style_strong_alarm_marker_sp10': 58,
     };

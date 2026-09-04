@@ -967,13 +967,6 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                 ? calendarRecurringEventColor
                 : calendarNormalEventTextColor;
     final fg = baseColor;
-    final recurringBackground = isRecurring
-        ? (event.isCritical
-            ? calendarCriticalEventBackgroundColor
-            : isTeam
-                ? null
-                : calendarRecurringEventBackgroundColor)
-        : null;
     final borderColor = isMultiDay
         ? (event.isCritical
             ? calendarCriticalEventTextColor
@@ -995,7 +988,8 @@ class _CalendarMiniEventLabel extends StatelessWidget {
           margin: const EdgeInsets.only(top: 1),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: recurringBackground,
+            // Text-only rendering: no fill for any event kind. Recurrence is
+            // communicated by the repeat marker plus the semantic text color.
             border: isMultiDay
                 ? Border(
                     top: BorderSide(
@@ -1119,8 +1113,18 @@ InlineSpan _calendarEventTitleSpan(
       ),
     ));
   }
-  // Recurrence is communicated by the event's background/color. Do not add
-  // an extra glyph here; it consumes the narrow monthly cell unnecessarily.
+  // Events render text-only, so the repeat glyph is the recurrence affordance.
+  // It is enlarged and bold so it stays legible in the narrow monthly cell.
+  if (isRecurring) {
+    spans.add(TextSpan(
+      text: '↻\u200A',
+      style: TextStyle(
+        color: markerColor,
+        fontWeight: FontWeight.w900,
+        fontSize: markerFontSize,
+      ),
+    ));
+  }
   spans.add(TextSpan(
     text: title,
     style: isCritical ? const TextStyle(fontWeight: FontWeight.w700) : null,
@@ -1296,7 +1300,7 @@ class _EventAgendaCard extends StatelessWidget {
                               useStrongAlarm: event.useStrongAlarm,
                               isRecurring: isRecurring,
                               semanticColor: accentColor,
-                              markerFontSize: 14,
+                              markerFontSize: 16,
                               strongAlarmMarkerFontSize: 12,
                             ),
                             style: theme.textTheme.titleMedium?.copyWith(
