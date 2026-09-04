@@ -10,6 +10,7 @@ import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/korean_holidays.dart';
 
 import '_harness/app_harness.dart';
+import '_harness/checkpoint_logger.dart';
 import '_harness/seed/fixture_events.dart';
 
 /// PlanFlow iOS Simulator E2E Phase P4 — FLOW2: Schedule CRUD.
@@ -44,6 +45,7 @@ void main() {
       );
       await tester.pumpWidget(_wrap(router));
       await tester.pumpAndSettle();
+      logCheckpoint('DETAIL_VISIBLE');
 
       expect(find.text(event.title), findsOneWidget);
       expect(find.text('일반 일정'), findsOneWidget);
@@ -121,6 +123,7 @@ void main() {
       final router = _scheduleRouter(initialLocation: AppRoutes.eventEdit);
       await tester.pumpWidget(_wrap(router));
       await tester.pumpAndSettle();
+      logCheckpoint('CREATE_OPEN');
 
       expect(find.text('일정 만들기'), findsOneWidget);
       expect(find.text('저장'), findsOneWidget);
@@ -150,6 +153,7 @@ void main() {
       );
       await tester.pumpWidget(_wrap(router));
       await tester.pumpAndSettle();
+      logCheckpoint('DETAIL_VISIBLE');
 
       // 편집 화면 전용 위젯(저장 버튼)이 push 전에는 없어야 한다.
       expect(find.text('저장'), findsNothing);
@@ -205,6 +209,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('삭제'));
         await tester.pumpAndSettle();
+        logCheckpoint('DELETE_CONFIRMED');
 
         expect(find.text('일정을 삭제했습니다.'), findsOneWidget);
         expect(find.text('E2E calendar placeholder'), findsOneWidget);

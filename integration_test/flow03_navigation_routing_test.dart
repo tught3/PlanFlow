@@ -10,6 +10,7 @@ import 'package:planflow/screens/event/event_detail_screen.dart';
 import 'package:planflow/services/notification_route_contract.dart';
 
 import '_harness/app_harness.dart';
+import '_harness/checkpoint_logger.dart';
 import '_harness/seed/fixture_events.dart';
 
 /// PlanFlow iOS Simulator E2E Phase P4 — FLOW3: Navigation & Deep Links.
@@ -96,10 +97,12 @@ void main() {
       final router = _navigationRouter();
       await tester.pumpWidget(_wrap(router));
       await tester.pumpAndSettle();
+      logCheckpoint('ROUTER_MOUNTED');
       expect(find.text('E2E home placeholder'), findsOneWidget);
 
       router.go(computedRoute!, extra: event);
       await tester.pumpAndSettle();
+      logCheckpoint('NAV_TARGET_REACHED');
 
       expect(find.text(event.title), findsOneWidget);
     });
@@ -119,6 +122,7 @@ void main() {
 
       router.go(computedRoute!);
       await tester.pumpAndSettle();
+      logCheckpoint('NAV_TARGET_REACHED');
 
       expect(find.textContaining('calendar placeholder date='), findsOneWidget);
       final currentUri = router.routeInformationProvider.value.uri;
@@ -140,6 +144,7 @@ void main() {
 
       router.go(computedRoute!);
       await tester.pumpAndSettle();
+      logCheckpoint('NAV_TARGET_REACHED');
 
       expect(find.textContaining('group events placeholder groupId=g42'), findsOneWidget);
     });
@@ -151,13 +156,16 @@ void main() {
       final router = _navigationRouter();
       await tester.pumpWidget(_wrap(router));
       await tester.pumpAndSettle();
+      logCheckpoint('ROUTER_MOUNTED');
 
       router.push(AppRoutes.eventDetail, extra: event);
       await tester.pumpAndSettle();
+      logCheckpoint('NAV_TARGET_REACHED');
       expect(find.text(event.title), findsOneWidget);
 
       router.pop();
       await tester.pumpAndSettle();
+      logCheckpoint('ROUTER_MOUNTED');
       expect(find.text('E2E home placeholder'), findsOneWidget);
     });
   });

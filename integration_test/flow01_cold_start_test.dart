@@ -4,6 +4,7 @@ import 'package:planflow/screens/shell_screen.dart';
 import 'package:planflow/screens/splash/splash_screen.dart';
 
 import '_harness/app_harness.dart';
+import '_harness/checkpoint_logger.dart';
 import '_harness/network_guard.dart';
 
 /// PlanFlow iOS Simulator E2E Phase P4 — FLOW1: Cold Start.
@@ -24,7 +25,9 @@ void main() {
       (tester) async {
         final networkRecorder = BlockingNetworkCallRecorder();
 
+        logCheckpoint('APP_LAUNCH_START');
         await pumpPlanFlowApp(tester, overrides: const []);
+        logCheckpoint('APP_LAUNCHED');
 
         // startup gate 통과 + 실제 앱 부팅 성공의 증거: 알려진 초기 화면
         // 중 하나(스플래시/로그인/홈)에 도달했다. 정확히 어느 화면인지는
@@ -35,6 +38,7 @@ void main() {
         final reachedSplash = find.byType(SplashScreen).evaluate().isNotEmpty;
         final reachedLogin = find.byType(LoginScreen).evaluate().isNotEmpty;
         final reachedHome = find.byType(ShellScreen).evaluate().isNotEmpty;
+        logCheckpoint('INITIAL_SCREEN_SETTLED');
         expect(
           reachedSplash || reachedLogin || reachedHome,
           isTrue,
@@ -51,6 +55,7 @@ void main() {
         // 안 쳤다는 보장은 아니다. network_guard.dart가 제공하는 계약을
         // 그대로 재사용했다는 것과, 실질적인 무배선 상태를 완료 보고에
         // 남긴다.
+        logCheckpoint('NETWORK_GUARD_CHECKED');
         expectNoNetworkCalls(
           networkRecorder,
           reason: 'harness recorder is not wired to any production network '
