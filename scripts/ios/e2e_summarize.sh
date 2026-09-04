@@ -147,15 +147,40 @@ lines_after_build_done() {
     | grep -c '' || true
 }
 
-# True when the log contains a completed Xcode build and nothing meaningful
-# after it — the exact shape of the observed run-2 hang.
-build_succeeded_then_silent() {
+# Coarse 3-way classification of how the log ended relative to the Xcode
+# build step. Prints exactly one of:
+#   NEVER_COMPLETED — no "Xcode build done" line at all: the build itself
+#                      never finished within the captured log (this is NOT
+#                      the same as a silent-after-success hang, and must not
+#                      be reported as "normal" — a run that never reaches the
+#                      build-done line has made even less progress than one
+#                      that hangs right after it).
+#   SILENT           — "Xcode build done" is present and nothing meaningful
+#                       follows it — the exact shape of the observed run-2
+#                       hang.
+#   ACTIVE           — "Xcode build done" is present and further output
+#                       follows it (the normal/healthy shape).
+#
+# Previously a single boolean (`build_succeeded_then_silent`) conflated the
+# first two cases: it returned false both when the build never completed and
+# when it completed with real output after it, and the caller reported both
+# as "정상" (normal). A build that never even reaches "Xcode build done" is
+# never normal — it means the captured log stops mid-build (e.g. because the
+# whole leg was killed before the build finished), which is a distinct and
+# more severe failure shape than "build succeeded, then silence". Collapsing
+# it into "normal" is a fail-open misclassification.
+build_completion_status() {
   if ! grep -qF -- 'Xcode build done' "$log_file" 2>/dev/null; then
-    return 1
+    echo "NEVER_COMPLETED"
+    return 0
   fi
   local remaining
   remaining="$(lines_after_build_done)"
-  [ "${remaining:-0}" -eq 0 ] 2>/dev/null
+  if [ "${remaining:-0}" -eq 0 ] 2>/dev/null; then
+    echo "SILENT"
+  else
+    echo "ACTIVE"
+  fi
 }
 
 # First non-empty line found after `anchor_line`'s first occurrence in
@@ -193,29 +218,31 @@ first_detail_after() {
 
   checkpoint_marker="$(last_checkpoint_marker)"
   watchdog_line="$(watchdog_timeout_line)"
-  if build_succeeded_then_silent; then
-    silent_after_build="true"
-  else
-    silent_after_build="false"
-  fi
+  build_status="$(build_completion_status)"
 
   echo "## Hang signals"
   echo ""
   if [ -n "$checkpoint_marker" ]; then
     echo "- 마지막 도달 체크포인트: \`$checkpoint_marker\`"
   else
-    echo "- 마지막 도달 체크포인트: 체크포인트 로그 없음 (\`[CHECKPOINT]\` 라인이 캡처된 로그에 없음)"
+    echo "- 마지막 도달 체크포인트: 체크포인트 로그 없음 (\`[CHECKPOINT]\` 라인이 캡처된 로그에 없음 — \`flutter test -d <UDID>\` 경로는 앱 프로세스의 stdout을 CI 로그로 전혀 forwarding하지 않으므로(채널 자체가 부재, 상세는 integration_test/_harness/checkpoint_logger.dart 상단 주석 참고), 이 항목이 비어 있는 것은 현재 워크플로우 배선에서 항상 나타나는 알려진 한계이며 테스트가 해당 체크포인트에 미도달했다는 뜻과 구분할 수 없음)"
   fi
   if [ -n "$watchdog_line" ]; then
     echo "- Watchdog: 타임아웃으로 종료됨 — \`$watchdog_line\`"
   else
     echo "- Watchdog: 타임아웃 신호 없음"
   fi
-  if [ "$silent_after_build" = "true" ]; then
-    echo "- Post-build 출력: \"Xcode build done\" 이후 유의미한 로그 라인 없음"
-  else
-    echo "- Post-build 출력: 정상 (빌드 완료 라인 없음 또는 그 이후 출력 있음)"
-  fi
+  case "$build_status" in
+    NEVER_COMPLETED)
+      echo "- Post-build 출력: \"Xcode build done\" 라인 자체가 로그에 없음 — 빌드가 캡처된 로그 안에서 완료되지 못함"
+      ;;
+    SILENT)
+      echo "- Post-build 출력: \"Xcode build done\" 이후 유의미한 로그 라인 없음"
+      ;;
+    ACTIVE)
+      echo "- Post-build 출력: 정상 (빌드 완료 라인 이후 출력 있음)"
+      ;;
+  esac
   echo ""
 
   any_failure_found="false"
@@ -274,7 +301,7 @@ first_detail_after() {
       echo "- Category guess: \`WATCHDOG_TIMEOUT\`"
       echo "- First matching line: \`$watchdog_line\`"
       echo ""
-    elif [ "$silent_after_build" = "true" ]; then
+    elif [ "$build_status" = "SILENT" ]; then
       # Previously this shape fell through to "no failure markers detected"
       # (or, with an error line present, to UNKNOWN). It has its own name now
       # because it is the signature of the run-2 hang: the Xcode build
@@ -284,6 +311,20 @@ first_detail_after() {
       echo "## FAILED: (no output after the Xcode build completed)"
       echo ""
       echo "- Category guess: \`BUILD_SUCCEEDED_THEN_SILENT\`"
+      echo "- Last log line: \`$(grep -v '^[[:space:]]*$' "$log_file" | tail -n 1 || true)\`"
+      echo ""
+    elif [ "$build_status" = "NEVER_COMPLETED" ]; then
+      # The captured log does not even reach "Xcode build done". This is a
+      # distinct and more severe failure shape than BUILD_SUCCEEDED_THEN_SILENT
+      # above: the build itself did not finish within the captured window
+      # (e.g. the leg was killed, or the whole run timed out, before the
+      # Xcode build step completed). Previously this fell through to "no
+      # failure markers detected" and was reported by the Hang signals
+      # section as "정상" — a fail-open misclassification, since a build that
+      # never completes is never normal.
+      echo "## FAILED: (Xcode build never completed within the captured log)"
+      echo ""
+      echo "- Category guess: \`BUILD_NEVER_COMPLETED\`"
       echo "- Last log line: \`$(grep -v '^[[:space:]]*$' "$log_file" | tail -n 1 || true)\`"
       echo ""
     else
