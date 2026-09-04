@@ -451,7 +451,33 @@ jobs:
     needs: preflight
     if: ${{ needs.preflight.outputs.flow5_exists == 'true' }}
     runs-on: macos-latest
-    timeout-minutes: 30
+    # Review fix (MEDIUM): time budget was too tight at 30. This is NOT the
+    # same move as widening a hard timeout to paper over an actual hang (the
+    # 780s watchdog below still bounds the flutter test run itself and still
+    # fails the job on a real stall) - it is giving the *surrounding*
+    # steps (pod install, simulator boot, the worst-case diagnostics dump,
+    # artifact upload, teardown) enough headroom to run to completion
+    # *after* the watchdog fires, so a hang still gets fully diagnosed
+    # instead of the whole job being torn down mid-diagnosis by this cap.
+    #
+    # Worst-case sum of every step in this job when run_flow5 fails and the
+    # diagnostics step runs its full worst case (whole seconds):
+    #   checkout + flutter-action + pub get  ~130
+    #   pod install (no Podfile.lock cache, measured ~1m44s-1m46s)  ~105
+    #   simulator create+boot+bootstatus (cold)                    ~120
+    #   run_flow5 watchdog bound                                   780
+    #   diagnostics worst case (ps 30 + log show 120 + simctl
+    #     diagnose 180, see scripts/ios/e2e_diagnose_hang.sh)       330
+    #   upload-artifact + simulator shutdown/delete                ~50
+    #   ------------------------------------------------------------
+    #   total                                                     ~1515s (~25.25m)
+    # Against the previous 30-minute (1800s) cap that left only ~285s
+    # (~15%) of margin for runner variance (cold Flutter SDK cache, network
+    # jitter on pod install/pub get, macOS "Set up job" overhead). 35
+    # minutes (2100s) restores a ~585s (~28%) margin without touching the
+    # 780s watchdog bound that this job was already carefully sized around
+    # (see the "Bound sizing" comment on the FLOW5 test step below).
+    timeout-minutes: 35
     env:
       # Group A (fake-based, always runs) needs no secrets at all. Group B
       # (real Supabase login) only runs when PLANFLOW_E2E_REAL_BACKEND_TEST
@@ -625,25 +651,46 @@ jobs:
           echo "FLOW5 hang diagnostics step complete (best-effort; failures here do not change the job result)."
 
       - name: Upload FLOW5 hang diagnostics (placeholder-backend runs only)
-        # Fail-closed secret gate. scripts/ios/e2e_diagnose_hang.sh masks
-        # credential-shaped text out of the process listing and the
-        # simulator log, but its third capture - the `simctl diagnose`
-        # bundle - is a directory of raw Xcode/CoreSimulator logs that is
-        # NOT passed through that masking, and artifact contents are not
-        # covered by GitHub's secret masking either. So this upload only
-        # happens on runs where no real credential ever existed: when
-        # E2E_REAL_BACKEND_TEST is not '1', the "Resolve FLOW5 Supabase
-        # dart-defines" step above substitutes the same placeholder values
-        # FLOW1-4,6-8 use. That is the default state today (the secret is
-        # unset, so the flag resolves to '0'). Once a real non-production
-        # backend is provisioned, diagnosing a hang on that leg means
-        # reading the console log rather than downloading an artifact -
-        # a deliberate trade of convenience for containment.
+        # Fail-closed secret gate, with a review fix (MEDIUM) folded in.
+        #
+        # scripts/ios/e2e_diagnose_hang.sh masks credential-shaped text out
+        # of the process listing (processes.txt) and the simulator log
+        # (simulator_log.txt), but its third capture - the `simctl diagnose`
+        # bundle (the simctl_diagnose/ directory) - is raw Xcode/
+        # CoreSimulator logs that are NOT passed through that masking, and
+        # artifact contents are not covered by GitHub's secret masking
+        # either.
+        #
+        # The `if:` condition alone (E2E_REAL_BACKEND_TEST != '1') is not a
+        # complete gate for that risk: E2E_TEST_ACCOUNT_EMAIL/
+        # E2E_TEST_ACCOUNT_PASSWORD are read straight from secrets and get
+        # forwarded to `flutter test --dart-define=...` above regardless of
+        # this flag - a repo could have the test-account secrets configured
+        # (partial provisioning, e.g. while setting up the dedicated
+        # non-production project) while PLANFLOW_E2E_REAL_BACKEND_TEST is
+        # still unset/'0'. In that window this `if:` alone would still let
+        # the upload through even though a real account password was passed
+        # into the process that `simctl diagnose` snapshots.
+        #
+        # Fix: rather than trying to enumerate every credential-bearing
+        # secret in the `if:` condition (and having to keep that list in
+        # sync with every future FLOW5 secret), exclude the raw
+        # simctl_diagnose/ bundle from the uploaded path outright, via the
+        # `!`-prefixed negation pattern below. That closes the leak vector
+        # unconditionally - regardless of which secrets happen to be set -
+        # while keeping the already-masked processes.txt, simulator_log.txt
+        # and diagnose_manifest.txt (and simctl_diagnose.log, which is just
+        # the command's own stdout/stderr, not the raw bundle) available for
+        # download. The existing `if:` condition is kept as defense in depth
+        # for the masked files too, and the "Note withheld" step below still
+        # covers the real-backend-enabled case end to end.
         if: ${{ always() && env.E2E_REAL_BACKEND_TEST != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: planflow-ios-simulator-e2e-flow05-${{ github.run_number }}
-          path: ${{ runner.temp }}/e2e-artifacts
+          path: |
+            ${{ runner.temp }}/e2e-artifacts
+            !${{ runner.temp }}/e2e-artifacts/hang-diagnostics-flow05/simctl_diagnose/**
           if-no-files-found: ignore
           retention-days: 14
 
