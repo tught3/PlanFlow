@@ -31,6 +31,21 @@ import '_harness/checkpoint_logger.dart';
 /// 전환·시뮬레이터 실행은 Windows 환경에서 불가능하므로 `scripts/ios/*.sh`
 /// (P9)와 P8(macOS 러너) 몫이며, 여기서는 `dart analyze`로만 검증 가능한
 /// 순수 위젯 레벨 상태전이·레이아웃만 다룬다.
+// E2E run-2 행(hang) 조사(P8) 방지책: 인자 없는 pumpAndSettle()는
+// pump 간격만 기본 100ms로 남기고, 실제 타임아웃은 WidgetTester.
+// pumpAndSettle의 3번째 positional 인자(기본 10분, Flutter
+// 3.41.9/3.47.2 SDK 소스로 확인)에 그대로 걸린다. 이 파일의
+// _FailThenSucceedGptService/권한 fake들은 전부 지연 없이 즉시
+// 완료되고, 텍스트 배율·키보드·방향·화면 크기 테스트는 순수
+// 레이아웃 렌더링만 다룬다 — ConfirmScreen/VoiceInputScreen/
+// PermissionOnboardingScreen의 CircularProgressIndicator는
+// 스킵되는 네트워크 게이트 뒤에만 있고 무한 반복 애니메이션도 없다
+// (소스 확인). 그래서 10초면 충분히 여유롭다. 반드시 3-positional
+// 전체를 채워 호출한다 — pumpAndSettle(Duration(seconds: N))처럼
+// 1-positional로 바꾸면 그건 pump 간격만 늘릴 뿐 타임아웃은
+// 여전히 기본 10분으로 남아 오히려 역효과다.
+const Duration _kSettleTimeout = Duration(seconds: 10);
+
 void main() {
   logCheckpoint('FLOW8_START');
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -87,20 +102,27 @@ void main() {
         // addPostFrameCallback에서 시작되므로 최소 한 프레임을 더 pump해야
         // 발화한다.
         await tester.pump();
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         expect(gpt.calls, 1);
         expect(
           find.text('일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.'),
           findsOneWidget,
         );
-        final retryButton =
-            find.byKey(const ValueKey('retry-ai-parse'));
+        final retryButton = find.byKey(const ValueKey('retry-ai-parse'));
         expect(retryButton, findsOneWidget);
 
         await tester.tap(retryButton);
         await tester.pump();
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         expect(gpt.calls, 2);
         expect(
@@ -134,7 +156,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           final locationTile = find.ancestor(
             of: find.text('위치'),
@@ -145,7 +171,11 @@ void main() {
           await tester.tap(
             find.descendant(of: locationTile, matching: find.text('요청')),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(permissionService.locationRequestCalls, 1);
           expect(
@@ -159,7 +189,11 @@ void main() {
           await tester.tap(
             find.descendant(of: locationTile, matching: find.text('요청')),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(permissionService.locationRequestCalls, 2);
           expect(find.text('위치 권한이 허용되었습니다.'), findsOneWidget);
@@ -191,7 +225,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(
             tester.takeException(),
@@ -224,7 +262,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(
             tester.takeException(),
@@ -250,7 +292,11 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         // 원문 입력 TextField를 탭해 실제로 포커스·소프트 키보드 요청을
         // 발생시킨다(Scaffold.resizeToAvoidBottomInset=true 경로).
@@ -312,7 +358,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
           expect(tester.takeException(), isNull);
 
           SharedPreferencesAsyncPlatform.instance =
@@ -326,7 +376,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
           expect(tester.takeException(), isNull);
         },
       );
@@ -358,7 +412,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(
             tester.takeException(),
@@ -384,7 +442,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(
             tester.takeException(),
@@ -442,8 +504,7 @@ class _FailThenSucceedGptService extends GptService {
       'title': '팀 회의',
       'location': '',
       'memo': null,
-      'start_at':
-          DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+      'start_at': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
       'end_at': null,
       'supplies': <String>[],
       'is_critical': false,

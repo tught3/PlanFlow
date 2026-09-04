@@ -33,6 +33,21 @@ import '_harness/seed/fixture_events.dart';
 ///
 /// Windows 로컬 환경에는 iOS 시뮬레이터가 없어 이 파일은 `dart analyze`로만
 /// 검증됐다. 실제 실행·통과 여부는 CI(P8, macOS 러너)에서 확인한다.
+// E2E run-2 행(hang) 조사(P8) 방지책: 인자 없는 pumpAndSettle()는
+// pump 간격만 기본 100ms로 남기고, 실제 타임아웃은 WidgetTester.
+// pumpAndSettle의 3번째 positional 인자(기본 10분, Flutter
+// 3.41.9/3.47.2 SDK 소스로 확인)에 그대로 걸린다. 이 파일은
+// Supabase.initialize()를 호출하지 않아(파일 상단 주석 참고)
+// 네트워크 조회가 전부 조기 반환되고, 순수 로컬 GoRouter 위에서
+// 도는 렌더링·내비게이션만 검증하며 무한 반복 애니메이션도 없다
+// (EventDetailScreen/EventEditScreen의 CircularProgressIndicator는
+// 스킵되는 네트워크 게이트 뒤에만 있음 — 소스 확인). 그래서 10초면
+// 충분히 여유롭다. 반드시 3-positional 전체를 채워 호출한다 —
+// pumpAndSettle(Duration(seconds: N))처럼 1-positional로 바꾸면
+// 그건 pump 간격만 늘릴 뿐 타임아웃은 여전히 기본 10분으로 남아
+// 오히려 역효과다.
+const Duration _kSettleTimeout = Duration(seconds: 10);
+
 void main() {
   ensureIntegrationTestBinding();
 
@@ -44,7 +59,11 @@ void main() {
         initialExtra: event,
       );
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('DETAIL_VISIBLE');
 
       expect(find.text(event.title), findsOneWidget);
@@ -59,7 +78,11 @@ void main() {
         initialExtra: event,
       );
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
 
       expect(find.text('중요 일정'), findsOneWidget);
     });
@@ -78,7 +101,11 @@ void main() {
           initialExtra: event,
         );
         await tester.pumpWidget(_wrap(router));
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         // lib/screens/event/event_detail_screen.dart 전문을 확인한 결과
         // recurrenceRule을 화면에 표시하는 위젯이 없다(제목/시간/중요
@@ -105,7 +132,11 @@ void main() {
           initialExtra: event,
         );
         await tester.pumpWidget(_wrap(router));
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         // 공휴일 강조 표시는 lib/screens/calendar/calendar_screen.dart의
         // 월간 그리드 셀 렌더링에만 존재한다(grep 확인). 그 화면은
@@ -122,7 +153,11 @@ void main() {
     ) async {
       final router = _scheduleRouter(initialLocation: AppRoutes.eventEdit);
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('CREATE_OPEN');
 
       expect(find.text('일정 만들기'), findsOneWidget);
@@ -138,7 +173,11 @@ void main() {
         initialExtra: event,
       );
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
 
       expect(find.text('일정 편집'), findsOneWidget);
     });
@@ -152,14 +191,22 @@ void main() {
         initialExtra: event,
       );
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('DETAIL_VISIBLE');
 
       // 편집 화면 전용 위젯(저장 버튼)이 push 전에는 없어야 한다.
       expect(find.text('저장'), findsNothing);
 
       await tester.tap(find.text('일정 편집'));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       expect(find.text('저장'), findsOneWidget);
 
       // 뒤로가기는 GoRouter.pop()을 직접 호출한다 — push된 상태에서는
@@ -169,7 +216,11 @@ void main() {
       // EventEditScreen의 BackButton이 호출하는 것과 동일한
       // GoRouter.pop() 경로라 내비게이션 계약은 동일하게 검증된다.
       router.pop();
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       expect(find.text('저장'), findsNothing);
       expect(find.text(event.title), findsOneWidget);
     });
@@ -181,14 +232,26 @@ void main() {
         initialExtra: event,
       );
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
 
       await tester.tap(find.text('일정 삭제').first);
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       expect(find.textContaining('일정을 삭제할까요?'), findsOneWidget);
 
       await tester.tap(find.text('취소'));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       expect(find.textContaining('일정을 삭제할까요?'), findsNothing);
       expect(find.text(event.title), findsOneWidget);
     });
@@ -203,12 +266,24 @@ void main() {
           initialExtra: event,
         );
         await tester.pumpWidget(_wrap(router));
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         await tester.tap(find.text('일정 삭제').first);
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
         await tester.tap(find.text('삭제'));
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
         logCheckpoint('DELETE_CONFIRMED');
 
         expect(find.text('일정을 삭제했습니다.'), findsOneWidget);
@@ -224,7 +299,8 @@ void main() {
 /// 일치시킨다. `redirect`는 두지 않는다 — 인증 게이트를 재현하는 것이 이
 /// 스위트의 목적이 아니라, 인증과 무관하게 항상 도달 가능해야 하는 CRUD
 /// 화면 자체를 검증하는 것이 목적이다.
-GoRouter _scheduleRouter({required String initialLocation, Object? initialExtra}) {
+GoRouter _scheduleRouter(
+    {required String initialLocation, Object? initialExtra}) {
   return GoRouter(
     initialLocation: initialLocation,
     initialExtra: initialExtra,

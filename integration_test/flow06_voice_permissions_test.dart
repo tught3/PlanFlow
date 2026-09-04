@@ -53,6 +53,19 @@ import '_harness/checkpoint_logger.dart';
 /// message: _permissionMessage)` 형태가 반환된다. 이 파일의 fake는 그
 /// 정확한 반환 형태(같은 enum 값)를 재현해, 실제 iOS 권한 거부 시 화면이
 /// 타는 분기와 동일한 코드 경로를 검증한다.
+// E2E run-2 행(hang) 조사(P8) 방지책: 인자 없는 pumpAndSettle()는
+// pump 간격만 기본 100ms로 남기고, 실제 타임아웃은 WidgetTester.
+// pumpAndSettle의 3번째 positional 인자(기본 10분, Flutter
+// 3.41.9/3.47.2 SDK 소스로 확인)에 그대로 걸린다. 이 파일의
+// _PermissionGatedSttService/_MicPermissionOnboardingFake는
+// 전부 지연 없이 즉시 완료되는 fake이고 VoiceInputScreen에는
+// 무한 반복 애니메이션이 없다(소스 확인) — 스낵바/상태배너
+// 전환까지 감안해도 10초면 충분히 여유롭다. 반드시 3-positional
+// 전체를 채워 호출한다 — pumpAndSettle(Duration(seconds: N))처럼
+// 1-positional로 바꾸면 그건 pump 간격만 늘릴 뿐 타임아웃은
+// 여전히 기본 10분으로 남아 오히려 역효과다.
+const Duration _kSettleTimeout = Duration(seconds: 10);
+
 void main() {
   logCheckpoint('FLOW6_START');
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -71,7 +84,8 @@ void main() {
         logCheckpoint('FLOW6_VOICE_SCREEN_GROUP_START');
         const deniedMessage =
             '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
-        final fakeStt = _PermissionGatedSttService(denialMessage: deniedMessage);
+        final fakeStt =
+            _PermissionGatedSttService(denialMessage: deniedMessage);
 
         final router = GoRouter(
           initialLocation: AppRoutes.voice,
@@ -104,12 +118,20 @@ void main() {
         );
 
         await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         // 1차 시도: OS가 마이크 권한을 거부한 것으로 가정.
         await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
         await tester.pump();
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         expect(fakeStt.listenCalls, 1);
         expect(find.text(deniedMessage), findsOneWidget);
@@ -125,7 +147,11 @@ void main() {
         fakeStt.grantPermissionForNextAttempt();
         await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
         await tester.pump();
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         expect(fakeStt.listenCalls, 2);
         expect(find.text(deniedMessage), findsNothing);
@@ -141,7 +167,8 @@ void main() {
         logCheckpoint('FLOW6_VOICE_SCREEN_RETRY_TEST_START');
         const deniedMessage =
             '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
-        final fakeStt = _PermissionGatedSttService(denialMessage: deniedMessage);
+        final fakeStt =
+            _PermissionGatedSttService(denialMessage: deniedMessage);
 
         await tester.pumpWidget(
           MaterialApp(
@@ -151,11 +178,19 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
         await tester.pump();
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          _kSettleTimeout,
+        );
 
         expect(find.text(deniedMessage), findsOneWidget);
 
@@ -195,7 +230,11 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           final micTile = find.ancestor(
             of: find.text('마이크'),
@@ -206,7 +245,11 @@ void main() {
           await tester.tap(
             find.descendant(of: micTile, matching: find.text('요청')),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(permissionService.microphoneRequestCalls, 1);
           expect(
@@ -222,7 +265,11 @@ void main() {
           await tester.tap(
             find.descendant(of: micTile, matching: find.text('요청')),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            _kSettleTimeout,
+          );
 
           expect(permissionService.microphoneRequestCalls, 2);
           expect(find.text('마이크 권한이 허용되었습니다.'), findsOneWidget);

@@ -37,6 +37,18 @@ import '_harness/seed/fixture_events.dart';
 ///
 /// Windows 로컬 환경에는 iOS 시뮬레이터가 없어 이 파일은 `dart analyze`로만
 /// 검증됐다. 실제 실행·통과 여부는 CI(P8, macOS 러너)에서 확인한다.
+// E2E run-2 행(hang) 조사(P8) 방지책: 인자 없는 pumpAndSettle()는
+// pump 간격만 기본 100ms로 남기고, 실제 타임아웃은 WidgetTester.
+// pumpAndSettle의 3번째 positional 인자(기본 10분, Flutter
+// 3.41.9/3.47.2 SDK 소스로 확인)에 그대로 걸린다. 이 파일은 순수
+// 로컬 GoRouter 위에서 계산된 라우트 문자열로 이동하는 것만
+// 검증하고(네트워크·타이머·무한 애니메이션 없음), 10초면 충분히
+// 여유롭다. 반드시 3-positional 전체를 채워 호출한다 —
+// pumpAndSettle(Duration(seconds: N))처럼 1-positional로 바꾸면
+// 그건 pump 간격만 늘릴 뿐 타임아웃은 여전히 기본 10분으로 남아
+// 오히려 역효과다.
+const Duration _kSettleTimeout = Duration(seconds: 10);
+
 void main() {
   ensureIntegrationTestBinding();
 
@@ -96,12 +108,20 @@ void main() {
 
       final router = _navigationRouter();
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('ROUTER_MOUNTED');
       expect(find.text('E2E home placeholder'), findsOneWidget);
 
       router.go(computedRoute!, extra: event);
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('NAV_TARGET_REACHED');
 
       expect(find.text(event.title), findsOneWidget);
@@ -118,10 +138,18 @@ void main() {
 
       final router = _navigationRouter();
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
 
       router.go(computedRoute!);
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('NAV_TARGET_REACHED');
 
       expect(find.textContaining('calendar placeholder date='), findsOneWidget);
@@ -140,13 +168,22 @@ void main() {
 
       final router = _navigationRouter();
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
 
       router.go(computedRoute!);
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('NAV_TARGET_REACHED');
 
-      expect(find.textContaining('group events placeholder groupId=g42'), findsOneWidget);
+      expect(find.textContaining('group events placeholder groupId=g42'),
+          findsOneWidget);
     });
 
     testWidgets('상세 화면에서 "일정 편집"으로 push했다가 되돌아오는 화면 간 내비게이션이 동작한다', (
@@ -155,16 +192,28 @@ void main() {
       final event = FixtureEvents.simple();
       final router = _navigationRouter();
       await tester.pumpWidget(_wrap(router));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('ROUTER_MOUNTED');
 
       router.push(AppRoutes.eventDetail, extra: event);
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('NAV_TARGET_REACHED');
       expect(find.text(event.title), findsOneWidget);
 
       router.pop();
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        _kSettleTimeout,
+      );
       logCheckpoint('ROUTER_MOUNTED');
       expect(find.text('E2E home placeholder'), findsOneWidget);
     });
