@@ -3,3 +3,20 @@ PLANFLOW_IOS_IDENTITY_STATUS = ACCOUNT_CONFIRMED_EXTERNAL_BUILD_REQUIRED
 PLANFLOW_IOS_BUNDLE_ID = com.fluxstudio.planflow
 PLANFLOW_IOS_WIDGET_BUNDLE_ID = $(PLANFLOW_IOS_BUNDLE_ID).PlanFlowWidget
 PLANFLOW_IOS_APP_GROUP = group.com.fluxstudio.planflow
+
+// WidgetKit extension version literals.
+//
+// The widget target intentionally does NOT include Generated.xcconfig (see the
+// header comment in PlanFlowWidget-Debug/Release.xcconfig: it is a native
+// extension, not a Flutter target), so $(FLUTTER_BUILD_NAME) and
+// $(FLUTTER_BUILD_NUMBER) are undefined in its configuration chain. Referencing
+// them from PlanFlowWidget/Info.plist left CFBundleShortVersionString /
+// CFBundleVersion empty, and `xcrun simctl install` rejects the built .app with
+// "Failed to create app extension placeholder / Invalid placeholder attributes".
+//
+// These literals are the widget-target source of truth and must stay in sync
+// with `version:` in pubspec.yaml (currently 1.1.1+159). ios-release.yml passes
+// MARKETING_VERSION / CURRENT_PROJECT_VERSION on the xcodebuild command line,
+// which takes precedence over everything here for release archives.
+PLANFLOW_WIDGET_MARKETING_VERSION = 1.1.1
+PLANFLOW_WIDGET_BUILD_NUMBER = 159
