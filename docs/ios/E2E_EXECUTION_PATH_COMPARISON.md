@@ -89,18 +89,29 @@ grep -n "launchDeviceUnifiedLogging" -A 40 \
 ## 1. 현재 상태 요약
 
 ```bash
-# .github/workflows/ios-simulator-e2e.yml L325–333
+# .github/workflows/ios-simulator-e2e.yml L347–369 (Wave3 이후, 콘솔 tee 제거됨)
+verbose_log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
+verbose_tail_file="$artifact_dir/flow-test-verbose-tail-${{ matrix.category }}.log"
+
+E2E_WATCHDOG_LOG_FILE="$verbose_log_file" \
+E2E_WATCHDOG_HEARTBEAT_INTERVAL="$heartbeat_interval_seconds" \
+E2E_WATCHDOG_TAIL_FILE="$verbose_tail_file" \
 bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
   flutter test \
   --verbose \
   "${flow_files[@]}" \        # mainstream=7개, small/large/ipad=1개(flow08)
   -d "${{ steps.boot.outputs.udid }}" \
-  --dart-define=E2E_MODE=1 ... \
-  2>&1 | tee "$artifact_dir/flow-test-output.log"
+  --dart-define=E2E_MODE=1 ...
+test_status=$?
 ```
 
 - flow 파일 8개 (`flow01`~`flow08`), flow05는 별도 job
 - `--verbose` **이미 적용 중** — 그런데도 앱 로그가 안 보인다는 것이 이 조사의 출발점
+- Wave3부터 `2>&1 | tee "$artifact_dir/flow-test-output.log"`는 **제거**됐다. 자식 stdout/stderr는
+  `scripts/ios/e2e_watchdog.sh`의 `E2E_WATCHDOG_LOG_FILE` 리다이렉션을 거쳐
+  `$RUNNER_TEMP/e2e-verbose-<category>.log`(원본, 마스킹 없음, 아티팩트 업로드 대상 아님)에 기록되고,
+  `E2E_WATCHDOG_TAIL_FILE`로 지정한 `$artifact_dir/flow-test-verbose-tail-<category>.log`(마스킹된 tail,
+  아티팩트에 업로드됨)에 요약이 남는다(자세한 배경은 `docs/ios/E2E_RUN3_DECISION_TREE.md` 참조).
 - 실패/타임아웃 시에만 `e2e_diagnose_hang.sh`가 `log show --last 10m`으로 **사후** 회수
 
 ### 1.1 이미 확정된 근본 사실 (P5에서 확정, 이번에 재검증)

@@ -60,7 +60,8 @@ verbose 출력을 콘솔 tee 대신 **파일로만** 기록, 워치독이 **hear
 | 워치독 정상완료 콘솔 라인 | `[STEP] watchdog: command completed with exit code <rc>` | stdout |
 | 워치독 GH 어노테이션 | `::error title=E2E_WATCHDOG_TIMEOUT::` | |
 | 스텝 레벨 타임아웃 라인 | `WATCHDOG_TIMEOUT: the flutter test run for category ...` (simulator-e2e)<br>`WATCHDOG_TIMEOUT: the FLOW5 flutter test run exceeded ...` (flow05) | |
-| simulator-e2e 로그 파일 | `$RUNNER_TEMP/e2e-artifacts/flow-test-output.log` | `2>&1 \| tee` 로 생성 |
+| simulator-e2e 로그 파일 (원본, 미업로드) | `$RUNNER_TEMP/e2e-verbose-<category>.log` | Wave3 이후 `E2E_WATCHDOG_LOG_FILE` 리다이렉션으로 생성(`2>&1 \| tee`는 제거됨) |
+| simulator-e2e 로그 파일 (마스킹 tail, 아티팩트 업로드됨) | `$artifact_dir/flow-test-verbose-tail-<category>.log` (= `$RUNNER_TEMP/e2e-artifacts/flow-test-verbose-tail-<category>.log`) | `E2E_WATCHDOG_TAIL_FILE`로 생성, `scripts/ios/e2e_mask_secrets.sh` 적용 대상 |
 | 요약 스크립트 | `scripts/ios/e2e_summarize.sh` | 아래 마커들을 이미 인식 |
 | 빌드 완료 마커 | `Xcode build done` | 요약기가 `grep -nF` 로 위치 탐색 |
 | 테스트 체크포인트 마커 | `[CHECKPOINT] <marker>` | 요약기가 마지막 1건 추출 |
@@ -74,7 +75,7 @@ verbose 출력을 콘솔 tee 대신 **파일로만** 기록, 워치독이 **hear
 |------|------------------------|-----------------|
 | 타이밍 마커 | `E2E_TIMING category=<c> duration_seconds=<n> log_lines=<n> lines_per_second=<n> exit=<code>` | **분기 (i)/(ii) 판정의 1차 근거** |
 | heartbeat 콘솔 라인 | 경과시간 + 누적 로그줄수 + 증가분 | 진행 정체 구간 위치 파악 |
-| verbose 파일 전용 로그 | (파일명 미확정 — P2~P8이 확정) | 콘솔 tee 대체분. simulator-e2e는 기존 `flow-test-output.log`를 그대로 쓸 수도 있음 |
+| verbose 파일 전용 로그 | `$RUNNER_TEMP/e2e-verbose-<category>.log` (원본) / `$artifact_dir/flow-test-verbose-tail-<category>.log` (마스킹 tail, 확정) | 콘솔 tee 대체분. Wave3에서 실제로 이 경로들로 확정됨(구 `flow-test-output.log`는 제거됨) |
 | 실패 시 tail | 로그 tail **2000줄** 콘솔 노출 | **분기 (iii) 판정의 1차 근거** |
 | 마일스톤 grep | `Running Xcode build` / `Xcode build done` / `Installing` / `Launching` / `VM Service` 등 | 어느 단계까지 갔는지 |
 
@@ -125,7 +126,7 @@ verbose 출력을 콘솔 tee 대신 **파일로만** 기록, 워치독이 **hear
 | # | 무엇을 보는가 | 조건 |
 |---|---------------|------|
 | i-1 | **`E2E_TIMING` 라인의 `duration_seconds` 필드** [예정 · PLACEHOLDER] | 값이 **400~525초대**로 복귀 (= Run#3 이전 non-verbose 실측 399.2s / 525.2s 대역) |
-| i-2 | **verbose 로그 파일**(simulator-e2e는 `flow-test-output.log` [확정]) 안에서 테스트가 실제로 진행됨 | `Found <N> files which will be executed as Integration Tests` 문자열이 존재하고, **그 라인보다 뒤에** 실제 xcodebuild 컴파일/링크 단계 출력이 이어짐 |
+| i-2 | **verbose 로그 파일**(simulator-e2e는 `$RUNNER_TEMP/e2e-verbose-<category>.log`, 실패 시 마스킹 tail `$artifact_dir/flow-test-verbose-tail-<category>.log` [확정]) 안에서 테스트가 실제로 진행됨 | `Found <N> files which will be executed as Integration Tests` 문자열이 존재하고, **그 라인보다 뒤에** 실제 xcodebuild 컴파일/링크 단계 출력이 이어짐 |
 
 > i-2를 "로그가 길다"로 대체하지 말 것. Run#3은 143,388줄이나 쌓였지만 전부
 > `CreateBuildDirectory` 극초반이었다. **줄 수가 아니라 도달한 단계**로 판정한다.
