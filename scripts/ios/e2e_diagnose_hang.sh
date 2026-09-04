@@ -79,11 +79,23 @@ note() {
 # Run a command under the shared watchdog when it is available, so a wedged
 # capture is bounded too. Falls back to running it unbounded rather than
 # skipping the capture entirely.
+#
+# `env -u E2E_WATCHDOG_LOG_FILE -u E2E_WATCHDOG_HEARTBEAT_INTERVAL
+# -u E2E_WATCHDOG_TAIL_FILE` is a defensive guard (review fix, L3): if any of
+# these ever leaked into this script's environment (e.g. a future caller
+# exports them for its own watchdog invocation and then also calls this
+# diagnostic script), e2e_watchdog.sh would silently redirect this capture's
+# stdout+stderr into that inherited log file instead of letting `note`/the
+# caller above capture it directly — turning a real-time diagnostic capture
+# into a file write nobody here reads. No caller currently sets these before
+# invoking this script, so this is a no-op today; it exists to keep it that
+# way.
 run_bounded() {
   local seconds="$1"
   shift
   if [ -f "$watchdog" ]; then
-    bash "$watchdog" "$seconds" "$@"
+    env -u E2E_WATCHDOG_LOG_FILE -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
+      bash "$watchdog" "$seconds" "$@"
   else
     "$@"
   fi

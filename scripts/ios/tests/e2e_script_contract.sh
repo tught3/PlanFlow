@@ -372,14 +372,105 @@ assert_output_contains "watchdog_p4_no_milestone_honest_message" "$no_milestone_
 
 # --- P4: fail-open — missing/empty redirected log never changes the exit
 #     code contract, and dump is skipped rather than erroring -------------
+#
+# NOTE (review fix, H1 side-effect): this used to exercise a *timeout*
+# (`sleep 30` under a 2s bound) to reach an empty `log_file`, because before
+# the H1 fix a timeout with a silent child truly left the redirected log at
+# 0 bytes. After the H1 fix, watchdog_status() appends the watchdog's own
+# timeout status line into that same log file, so a genuine timeout can no
+# longer produce a 0-byte log — which is exactly the point of the fix (see
+# the h1_e2e_real_timeout_detected_by_summarizer case above). The still-valid
+# way to reach a genuinely empty log_file is a *non-timeout* failure whose
+# child produces no stdout at all: watchdog_status() is only ever invoked on
+# the timeout branches, so an ordinary nonzero exit with no output leaves
+# log_file exactly as the initial truncate left it — empty — and this is
+# still the fail-open path being asserted here.
 empty_log="$watchdog_tmp_dir/p4_empty.log"
 empty_log_output="$(env -u E2E_WATCHDOG_HEARTBEAT_INTERVAL -u E2E_WATCHDOG_TAIL_FILE \
   E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$empty_log" \
-  bash "$watchdog_script" 2 sleep 30 2>&1)"
+  bash "$watchdog_script" 5 bash -c 'exit 7' 2>&1)"
 empty_log_rc=$?
-assert_rc "watchdog_p4_empty_log_rc_unaffected" "124" "$empty_log_rc"
+assert_rc "watchdog_p4_empty_log_rc_unaffected" "7" "$empty_log_rc"
 assert_output_contains "watchdog_p4_empty_log_skip_message" "$empty_log_output" 'skipping timeout/failure tail dump'
 assert_output_not_contains "watchdog_p4_empty_log_no_dump_group" "$empty_log_output" '::group::watchdog tail'
+if [ -f "$empty_log" ] && [ ! -s "$empty_log" ]; then
+  echo "PASS: watchdog_p4_empty_log_actually_empty"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: watchdog_p4_empty_log_actually_empty — expected $empty_log to exist and be 0 bytes"
+  fail_count=$((fail_count + 1))
+fi
+
+# --- H1 regression (review fix): a REAL watchdog timeout, not a fixture that
+#     writes watchdog lines directly into the log, must be detected by
+#     e2e_summarize.sh's watchdog_timeout_line(). Before the H1 fix,
+#     e2e_watchdog.sh's timeout status lines only ever reached its own
+#     stderr/console (never E2E_WATCHDOG_LOG_FILE), so this exact scenario
+#     silently reported "Watchdog: 타임아웃 신호 없음" in production even though
+#     the run had, in fact, timed out — the "regression_watchdog_timeout"
+#     fixture above cannot catch this because it writes the watchdog's status
+#     lines into the log file by hand, which is an input production can never
+#     actually produce on its own (mocked-contract-hides-bug). This case
+#     instead runs the real watchdog end to end against a real hung child
+#     (no tee anywhere in the pipeline, matching current production wiring),
+#     feeds the log file it actually produced into the real summarizer, and
+#     asserts the summarizer's own generated output reflects the timeout.
+h1_e2e_log="$watchdog_tmp_dir/h1_e2e_real_timeout.log"
+env -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$h1_e2e_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=1 \
+  bash "$watchdog_script" 2 sleep 30 >/dev/null 2>&1
+h1_e2e_watchdog_rc=$?
+assert_rc "h1_e2e_real_watchdog_timeout_rc" "124" "$h1_e2e_watchdog_rc"
+
+h1_e2e_summary="$tmp_dir/h1_e2e_real_timeout.summary.md"
+if [ -f "$h1_e2e_log" ]; then
+  bash "$summarize_script" "mainstream" "$h1_e2e_log" "$h1_e2e_summary" "" >/dev/null 2>&1
+fi
+
+if [ -f "$h1_e2e_summary" ] \
+  && grep -qF 'Watchdog: 타임아웃으로 종료됨' "$h1_e2e_summary" \
+  && ! grep -qF '타임아웃 신호 없음' "$h1_e2e_summary"; then
+  echo "PASS: h1_e2e_real_timeout_detected_by_summarizer"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: h1_e2e_real_timeout_detected_by_summarizer — expected 'Watchdog: 타임아웃으로 종료됨' (and NOT '타임아웃 신호 없음') in $h1_e2e_summary"
+  echo "  --- real watchdog log produced by e2e_watchdog.sh ($h1_e2e_log) ---"
+  sed 's/^/  /' "$h1_e2e_log" 2>/dev/null || echo "  (missing)"
+  echo "  --- end log ---"
+  if [ -f "$h1_e2e_summary" ]; then
+    echo "  --- generated summary ($h1_e2e_summary) ---"
+    sed 's/^/  /' "$h1_e2e_summary"
+    echo "  --- end summary ---"
+  else
+    echo "  (summary file was not written: $h1_e2e_summary)"
+  fi
+  fail_count=$((fail_count + 1))
+fi
+
+# --- L4 regression (review fix): heartbeat's own `sleep <interval>` child
+#     must not survive as an orphan after the watchdog exits. Uses a
+#     heartbeat interval (5s) longer than the watchdog bound (2s) so the
+#     heartbeat's `sleep 5` is still in-flight in the exact moment the
+#     watchdog tears itself down — that overlap is the failure window the
+#     shared-process-group fix targets. Checked immediately after the
+#     watchdog process returns, with no grace sleep of our own: before the
+#     fix, a lingering `sleep 5` process would still be alive right here (a
+#     plain `kill $heartbeat_pid` only ever reaped the heartbeat subshell,
+#     not the `sleep` grandchild it was blocked in).
+heartbeat_orphan_log="$watchdog_tmp_dir/l4_heartbeat_orphan.log"
+env -u E2E_WATCHDOG_TAIL_FILE \
+  E2E_WATCHDOG_FORCE_BASH=1 E2E_WATCHDOG_LOG_FILE="$heartbeat_orphan_log" E2E_WATCHDOG_HEARTBEAT_INTERVAL=5 \
+  bash "$watchdog_script" 2 sleep 30 >/dev/null 2>&1
+heartbeat_orphan_rc=$?
+assert_rc "watchdog_l4_heartbeat_orphan_watchdog_rc" "124" "$heartbeat_orphan_rc"
+leftover_heartbeat_sleep_pids="$(pgrep -f 'sleep 5$' 2>/dev/null || true)"
+if [ -z "$leftover_heartbeat_sleep_pids" ]; then
+  echo "PASS: watchdog_l4_no_orphan_heartbeat_sleep"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: watchdog_l4_no_orphan_heartbeat_sleep — leftover heartbeat 'sleep 5' PIDs: $leftover_heartbeat_sleep_pids"
+  fail_count=$((fail_count + 1))
+fi
 
 # --- Process hygiene: no orphaned heartbeat/child processes survive any of
 #     the above cases (each of them used a bounded timeout, so by the time

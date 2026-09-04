@@ -45,6 +45,20 @@
 # ...") ALWAYS go to the console — only the *child command's* stdout/stderr is
 # ever redirected.
 #
+#   Timeout-detection exception (review fix, H1): the two status lines that
+#   mark an actual timeout — "[STEP] watchdog: command exceeded ...s, sending
+#   SIGTERM" (bash-fallback path) and "::error title=E2E_WATCHDOG_TIMEOUT::..."
+#   (both paths) — are, in addition to going to the console as always, ALSO
+#   appended to E2E_WATCHDOG_LOG_FILE when one is set (see the `watchdog_status`
+#   helper below). This is a tee, not a redirect: nothing is removed from the
+#   console stream. The reason is that E2E_WATCHDOG_LOG_FILE otherwise only
+#   ever captures the *child's* output, so a caller that reads that file after
+#   the fact (e.g. scripts/ios/e2e_summarize.sh's `watchdog_timeout_line()`)
+#   would have no way to tell "the child failed on its own" apart from "the
+#   watchdog killed it" — the timeout signal itself lived only on this
+#   script's own stderr, which the workflow no longer pipes through
+#   `2>&1 | tee` as of Wave3.
+#
 #   E2E_WATCHDOG_LOG_FILE=<path>
 #       When set, the child command's stdout+stderr are redirected to this
 #       file instead of being streamed to the console live. The file is
@@ -72,7 +86,9 @@
 #       data from the console stream, which this script deliberately does not
 #       capture. The heartbeat process is always reaped on every exit path
 #       (success, timeout, or error) via an EXIT trap; it never leaks as an
-#       orphan.
+#       orphan — including its own `sleep <interval>` grandchild, which is
+#       signalled together with the heartbeat subshell via a shared process
+#       group (review fix, L4; see stop_heartbeat/start_heartbeat below).
 #
 #   E2E_WATCHDOG_TAIL_FILE=<path>
 #       Optional. Only consulted when E2E_WATCHDOG_LOG_FILE is set AND the
@@ -160,6 +176,25 @@ if [ -n "$log_file" ]; then
   fi
 fi
 
+# watchdog_status <message>
+#
+# Prints a watchdog status line to this script's own stderr (unchanged —
+# always reaches the console, exactly as a plain `echo ... >&2` would) and,
+# ONLY when E2E_WATCHDOG_LOG_FILE is set, additionally appends the identical
+# line to that file (which has already been created/truncated above by this
+# point). This exists solely so a timeout status line survives into the
+# redirected log for a downstream reader (see the header comment's
+# "Timeout-detection exception" note) — it is a tee, never a substitute for
+# the console print, and the append is best-effort (a failure to write here
+# must never change this script's own exit code contract).
+watchdog_status() {
+  local message="$1"
+  echo "$message" >&2
+  if [ -n "$log_file" ]; then
+    printf '%s\n' "$message" >>"$log_file" 2>/dev/null || true
+  fi
+}
+
 # --- Opt-in heartbeat (P3) ---------------------------------------------------
 #
 # Only meaningful when log_file redirection (above) is also enabled, since
@@ -187,9 +222,19 @@ heartbeat_pid=""
 # Reaped on every exit path (normal return, `exit` from a timeout/error
 # branch below, or an unexpected early exit) so the heartbeat background
 # process never leaks as an orphan. Idempotent: safe to call more than once.
+#
+# Uses signal_tree (defined further below, but already loaded by the time
+# this is ever actually invoked via the EXIT trap) to signal the heartbeat
+# subshell's whole process group, not just the subshell itself: start_heartbeat
+# backgrounds it with job control enabled so it gets its own group (mirroring
+# run_with_bash_fallback's existing pattern for the main child below), and its
+# `sleep <interval>` grandchild inherits that same group. A plain `kill
+# $heartbeat_pid` only ever terminated the subshell; the `sleep` it was
+# blocked in kept running as an orphan for up to <interval> seconds (30s in
+# production) after every exit path, which is the bug signal_tree fixes here.
 stop_heartbeat() {
   if [ -n "$heartbeat_pid" ]; then
-    kill "$heartbeat_pid" 2>/dev/null || true
+    signal_tree TERM "$heartbeat_pid"
     wait "$heartbeat_pid" 2>/dev/null || true
     heartbeat_pid=""
   fi
@@ -201,10 +246,18 @@ trap stop_heartbeat EXIT
 # Backgrounds a loop that, every <interval_seconds>, prints one progress line
 # to THIS script's own stdout (never redirected, so it always reaches the
 # console even when the child's output is going to <log_file>).
+#
+# Job control (`set -m`) is enabled only for the instant this subshell is
+# backgrounded, so it becomes its own process group leader (pgid == its own
+# pid) instead of sharing this script's group — the same technique
+# run_with_bash_fallback uses for the main child, applied here so
+# stop_heartbeat's signal_tree call above can actually reach the `sleep`
+# grandchild too, not just the subshell.
 start_heartbeat() {
   local interval="$1"
   local logf="$2"
 
+  set -m
   (
     local last_count=0
     local start_ts
@@ -244,6 +297,7 @@ start_heartbeat() {
     done
   ) &
   heartbeat_pid=$!
+  set +m
 }
 
 # --- Opt-in on-failure tail + milestone dump (P4) ---------------------------
@@ -380,7 +434,7 @@ run_with_bash_fallback() {
   done
 
   if kill -0 "$pid" 2>/dev/null; then
-    echo "[STEP] watchdog: command exceeded ${timeout_seconds}s, sending SIGTERM" >&2
+    watchdog_status "[STEP] watchdog: command exceeded ${timeout_seconds}s, sending SIGTERM"
     signal_tree TERM "$pid"
 
     local waited=0
@@ -436,7 +490,7 @@ fi
 stop_heartbeat
 
 if [ "$rc" -eq "$EXIT_TIMEOUT" ]; then
-  echo "::error title=E2E_WATCHDOG_TIMEOUT::Command exceeded the ${timeout_seconds}s watchdog bound and was terminated" >&2
+  watchdog_status "::error title=E2E_WATCHDOG_TIMEOUT::Command exceeded the ${timeout_seconds}s watchdog bound and was terminated"
 else
   echo "[STEP] watchdog: command completed with exit code ${rc}"
 fi
