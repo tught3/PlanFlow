@@ -217,10 +217,13 @@ jobs:
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/e2e-artifacts"
           mkdir -p "$artifact_dir"
-          # `pipefail` (set above) is what makes this tee usage safe: without
-          # it, `flutter test ... | tee log` would report success from the
-          # trailing `tee` process even if `flutter test` itself failed, and
-          # this step would exit 0 on a real test failure.
+          # `pipefail` (set above) still applies to this step's other command
+          # substitutions (e.g. the `wc -l` line-count read further down).
+          # The flutter test invocation itself no longer flows through a
+          # shell pipe as of Wave3/P5 below: it is bounded and logged via
+          # scripts/ios/e2e_watchdog.sh's E2E_WATCHDOG_LOG_FILE redirection
+          # instead of `2>&1 | tee`, and its exit code is read directly from
+          # `$?` rather than `PIPESTATUS[0]`.
           # Cost/time optimization (review follow-up to the first live run):
           # only the "mainstream" category runs the full FLOW1-4,6-8 suite.
           # The other categories (small, large, ipad) run only
@@ -315,13 +318,52 @@ jobs:
           esac
           echo "Bounding the flutter test run at ${watchdog_seconds}s (category ${{ matrix.category }})"
 
-          # `set +e` around the pipeline is required: with `set -e` plus
-          # `pipefail` a failing run would abort this step before
-          # PIPESTATUS could be read, and the 124 timeout signal would be
-          # lost. PIPESTATUS[0] (a bash array, hence `shell: bash` above) is
-          # the watchdog's own exit code rather than tee's, so a real
-          # failure cannot be masked by the trailing tee succeeding.
+          # --- Wave3 instrumentation wiring (verbose-overhead investigation, P5) ---
+          # Route the child's stdout+stderr through
+          # scripts/ios/e2e_watchdog.sh's opt-in E2E_WATCHDOG_LOG_FILE
+          # redirection instead of `2>&1 | tee`, so a later run can tell
+          # apart "cost of generating --verbose output" from "cost of
+          # streaming it live to the GitHub Actions console" (see Run#3's
+          # finding in docs/ios/E2E_RUN3_DECISION_TREE.md: the 780s FLOW5
+          # watchdog bound elapsed while still in CocoaPods'
+          # CreateBuildDirectory step with console tee, versus 399-525s to a
+          # clean completion without --verbose at all).
+          #
+          # The redirected log is written OUTSIDE $artifact_dir on purpose:
+          # $artifact_dir is exactly what the "Upload E2E artifacts" step
+          # below uploads wholesale, and this raw log is NOT run through
+          # scripts/ios/e2e_mask_secrets.sh before being written (only the
+          # heartbeat's `last=` line and the on-timeout/failure tail dump
+          # are masked — see the header comment in
+          # scripts/ios/e2e_watchdog.sh). Placing it directly under
+          # $RUNNER_TEMP means it is never a candidate for that upload
+          # step's path and is discarded with the rest of the runner's
+          # filesystem when the job ends. This is a deliberate narrowing
+          # versus the previous behavior (the full raw flow-test-output.log
+          # used to be uploaded wholesale for this job, since these legs
+          # only ever use placeholder Supabase credentials) — the masked
+          # tail file below is the intended replacement diagnostic surface
+          # inside the uploaded artifact bundle.
+          verbose_log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
+          verbose_tail_file="$artifact_dir/flow-test-verbose-tail-${{ matrix.category }}.log"
+
+          # Heartbeat interval: 30s. Against the watchdog bounds sized above
+          # (1500s mainstream, 900s small/large/ipad) that yields roughly
+          # 30 to 50 heartbeat lines over a full timeout window — enough to
+          # localize where progress stalled without flooding the console.
+          heartbeat_interval_seconds=30
+
+          # `set +e` around the watchdog invocation is required: with
+          # `set -e` a non-zero watchdog exit (including 124 on timeout)
+          # would abort this step before `test_status` could be captured.
+          # The watchdog's own exit code is read directly via `$?` now — no
+          # `tee`/PIPESTATUS dance needed, since the child's output no
+          # longer flows through a shell pipeline in this step.
+          step_start_ts=$(date +%s)
           set +e
+          E2E_WATCHDOG_LOG_FILE="$verbose_log_file" \
+          E2E_WATCHDOG_HEARTBEAT_INTERVAL="$heartbeat_interval_seconds" \
+          E2E_WATCHDOG_TAIL_FILE="$verbose_tail_file" \
           bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
             flutter test \
             --verbose \
@@ -329,15 +371,37 @@ jobs:
             -d "${{ steps.boot.outputs.udid }}" \
             --dart-define=E2E_MODE=1 \
             --dart-define=SUPABASE_URL="$E2E_SUPABASE_URL_PLACEHOLDER" \
-            --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER" \
-            2>&1 | tee "$artifact_dir/flow-test-output.log"
-          test_status="${PIPESTATUS[0]}"
+            --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER"
+          test_status=$?
           set -e
+          step_end_ts=$(date +%s)
 
           if [[ "$test_status" -eq 124 ]]; then
-            echo "WATCHDOG_TIMEOUT: the flutter test run for category ${{ matrix.category }} exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. See the hang-diagnostics directory in this job's uploaded artifacts, and the tail of flow-test-output.log for the last Flutter tool step that reported progress."
+            echo "WATCHDOG_TIMEOUT: the flutter test run for category ${{ matrix.category }} exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. See the hang-diagnostics directory in this job's uploaded artifacts, and flow-test-verbose-tail-${{ matrix.category }}.log for the last Flutter tool step that reported progress."
             echo "::error title=E2E_WATCHDOG_TIMEOUT::category ${{ matrix.category }} exceeded the ${watchdog_seconds}s watchdog bound"
           fi
+
+          # --- E2E_TIMING marker (P8) --------------------------------------
+          # One grep-able line on every exit path this step can take
+          # (success, a real test failure, or a watchdog timeout —
+          # test_status can be 0, some other non-zero value, or 124 here,
+          # and this line runs unconditionally regardless of which). Whole
+          # seconds throughout: docs/ios/E2E_RUN3_DECISION_TREE.md's Run#4
+          # decision tree is written entirely in terms of integer
+          # duration_seconds, and the P13.2 regression guard in
+          # test/ios_simulator_e2e_contract_test.dart forbids dotted-decimal
+          # literals anywhere in this file outside the flutter-version line.
+          duration_seconds=$((step_end_ts - step_start_ts))
+          log_lines=0
+          if [[ -f "$verbose_log_file" ]]; then
+            log_lines="$(wc -l < "$verbose_log_file" | tr -d '[:space:]')"
+            log_lines="${log_lines:-0}"
+          fi
+          lines_per_second=0
+          if [[ "$duration_seconds" -gt 0 ]]; then
+            lines_per_second=$((log_lines / duration_seconds))
+          fi
+          echo "E2E_TIMING category=${{ matrix.category }} duration_seconds=${duration_seconds} log_lines=${log_lines} lines_per_second=${lines_per_second} exit=${test_status}"
 
           # Exit code preserved deliberately: the diagnostics step below is
           # guarded with `always()` so it still runs, and the job must not
@@ -400,7 +464,12 @@ jobs:
           set +e
           artifact_dir="$RUNNER_TEMP/e2e-artifacts"
           mkdir -p "$artifact_dir"
-          log_file="$artifact_dir/flow-test-output.log"
+          # Phase P5: the run_tests step above now redirects verbose output
+          # to $RUNNER_TEMP/e2e-verbose-<category>.log via
+          # E2E_WATCHDOG_LOG_FILE instead of teeing it into
+          # $artifact_dir/flow-test-output.log; this path must track that
+          # change or e2e_summarize.sh silently has nothing to summarize.
+          log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
           summary_file="$artifact_dir/summary.md"
           if [[ -f "$log_file" ]]; then
             bash scripts/ios/e2e_summarize.sh \
@@ -414,7 +483,7 @@ jobs:
                 | tee -a "$summary_file"
             fi
           else
-            echo "SUMMARY_GENERATION_SKIPPED: no flow-test-output.log found for category ${{ matrix.category }} (the test-run step may not have started)." \
+            echo "SUMMARY_GENERATION_SKIPPED: no e2e-verbose-${{ matrix.category }}.log found for category ${{ matrix.category }} (the test-run step may not have started, or scripts/ios/e2e_watchdog.sh could not create E2E_WATCHDOG_LOG_FILE)." \
               > "$summary_file"
           fi
           echo "Summary step complete (best-effort; failures here do not fail the job)."
@@ -607,16 +676,44 @@ jobs:
           watchdog_seconds=780
           echo "Bounding the FLOW5 flutter test run at ${watchdog_seconds}s"
 
-          # NOTE (secret safety): unlike the simulator-e2e job, this step
-          # deliberately does NOT tee its output to a file. When
+          # NOTE (secret safety, revised for Wave3/P6): when
           # E2E_REAL_BACKEND_TEST is '1' this command line carries a real
           # (non-production) Supabase anon key and a test-account password,
           # and `--verbose` makes the Flutter tool echo the full compiler
           # invocation. GitHub Actions masks registered secret values in the
           # console log, but it does NOT mask the contents of uploaded
-          # artifact files - so the safe place for this output is the console
-          # only.
+          # artifact files.
+          #
+          # This step now redirects the child's stdout+stderr to
+          # $RUNNER_TEMP/e2e-verbose-flow05.log via
+          # scripts/ios/e2e_watchdog.sh's E2E_WATCHDOG_LOG_FILE (the same
+          # mechanism as the simulator-e2e job's P5 wiring above), so the
+          # verbose-overhead investigation can also observe FLOW5's
+          # duration_seconds/log_lines. That file is deliberately:
+          #   (a) unmasked raw output — mask_secrets is only ever applied to
+          #       the heartbeat's `last=` line and to the on-failure tail
+          #       dump below, never to the full redirected stream, and
+          #   (b) written directly under $RUNNER_TEMP, NOT under
+          #       $RUNNER_TEMP/e2e-artifacts — the "Upload FLOW5 hang
+          #       diagnostics" step further down only ever uploads the
+          #       e2e-artifacts directory, so this path is never an upload
+          #       candidate and is discarded with the rest of the runner's
+          #       filesystem when the job ends.
+          # E2E_WATCHDOG_TAIL_FILE is deliberately left UNSET here, unlike
+          # the simulator-e2e job: the masked tail dump this produces on a
+          # non-zero exit is still printed to the console (which GitHub
+          # Actions secret-masks), but it is never written to a file, so
+          # Wave1's "never persist FLOW5 verbose output to anything that
+          # could be uploaded" principle
+          # (docs/ios/E2E_RUN3_DECISION_TREE.md §2-3) still holds for
+          # anything that leaves this runner.
+          verbose_log_file="$RUNNER_TEMP/e2e-verbose-flow05.log"
+          heartbeat_interval_seconds=30
+
+          step_start_ts=$(date +%s)
           set +e
+          E2E_WATCHDOG_LOG_FILE="$verbose_log_file" \
+          E2E_WATCHDOG_HEARTBEAT_INTERVAL="$heartbeat_interval_seconds" \
           bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
             flutter test \
             --verbose \
@@ -630,11 +727,31 @@ jobs:
             --dart-define=SUPABASE_ANON_KEY="${{ steps.backend.outputs.supabase_anon_key }}"
           test_status=$?
           set -e
+          step_end_ts=$(date +%s)
 
           if [[ "$test_status" -eq 124 ]]; then
             echo "WATCHDOG_TIMEOUT: the FLOW5 flutter test run exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. Check the console output above for the last Flutter tool step that reported progress."
             echo "::error title=E2E_WATCHDOG_TIMEOUT::FLOW5 exceeded the ${watchdog_seconds}s watchdog bound"
           fi
+
+          # --- E2E_TIMING marker (P8) --------------------------------------
+          # Same contract as the simulator-e2e job's marker above: one
+          # grep-able line on every exit path this step can take (0, some
+          # other non-zero value, or 124), whole-second integers throughout.
+          # log_lines is a line count (wc -l) of the unmasked
+          # verbose_log_file — its contents are never echoed here, only its
+          # length.
+          duration_seconds=$((step_end_ts - step_start_ts))
+          log_lines=0
+          if [[ -f "$verbose_log_file" ]]; then
+            log_lines="$(wc -l < "$verbose_log_file" | tr -d '[:space:]')"
+            log_lines="${log_lines:-0}"
+          fi
+          lines_per_second=0
+          if [[ "$duration_seconds" -gt 0 ]]; then
+            lines_per_second=$((log_lines / duration_seconds))
+          fi
+          echo "E2E_TIMING category=flow05 duration_seconds=${duration_seconds} log_lines=${log_lines} lines_per_second=${lines_per_second} exit=${test_status}"
 
           exit "$test_status"
 
