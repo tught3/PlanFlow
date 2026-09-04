@@ -403,6 +403,14 @@ jobs:
           fi
           echo "E2E_TIMING category=${{ matrix.category }} duration_seconds=${duration_seconds} log_lines=${log_lines} lines_per_second=${lines_per_second} exit=${test_status}"
 
+          # Exposed as a step output (additive; does not change this step's
+          # own exit behavior below) purely so the later "Report
+          # stage-progress markers" step can pass the real watchdog exit
+          # code into scripts/ios/e2e_stage_markers.sh — that script's
+          # FLUTTER_ATTACH marker specifically checks for exit code 124 to
+          # name the Run#4 VM-Service-wait hang shape.
+          echo "test_status=${test_status}" >> "$GITHUB_OUTPUT"
+
           # Exit code preserved deliberately: the diagnostics step below is
           # guarded with `always()` so it still runs, and the job must not
           # report success after a timeout.
@@ -487,6 +495,44 @@ jobs:
               > "$summary_file"
           fi
           echo "Summary step complete (best-effort; failures here do not fail the job)."
+
+      - name: Report stage-progress markers (best-effort, never changes job result)
+        # `always()` so this still runs after a watchdog timeout or a plain
+        # test failure — a stage-progress readout is most valuable exactly
+        # when the run did NOT complete cleanly. Placed after the summary
+        # step above so it can reuse the exact same redirected verbose log
+        # path that step already resolved, with the same
+        # E2E_WATCHDOG_LOG_FILE naming convention the run_tests step wrote to
+        # (scripts/ios/e2e_stage_markers.sh's header comment documents why
+        # each marker's anchor phrase is safe to reuse from
+        # scripts/ios/e2e_summarize.sh / scripts/ios/e2e_watchdog.sh rather
+        # than being invented here).
+        #
+        # This is a read-only diagnostic layer: `set +e` plus the script's
+        # own "always exits 0" contract (see e2e_stage_markers.sh) mean this
+        # step can never turn a passing run_tests outcome into a failing job,
+        # and can never mask a real failure either — the job's actual
+        # pass/fail result is decided solely by steps.run_tests.outcome
+        # above, unchanged by anything in this step.
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          mkdir -p "$artifact_dir"
+          log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
+          marker_file="$artifact_dir/stage-markers-${{ matrix.category }}.log"
+          # This job (small/mainstream/large/ipad) only ever uses placeholder
+          # Supabase dart-defines (see E2E_BACKEND_ISOLATION_PASS above), so
+          # persisting the marker output to an uploaded artifact file is
+          # safe — unlike the flow05-auth-backend job's equivalent step,
+          # which is deliberately console-only for that exact reason.
+          bash scripts/ios/e2e_stage_markers.sh \
+            "$log_file" \
+            "${{ steps.boot.outputs.udid }}" \
+            "${{ steps.run_tests.outputs.test_status }}" \
+            | tee "$marker_file"
+          echo "Stage-progress marker step complete (best-effort; failures here do not fail the job)."
 
       - name: Capture screenshot and simulator diagnostics
         if: ${{ always() && steps.boot.outputs.udid != '' }}
@@ -753,6 +799,13 @@ jobs:
           fi
           echo "E2E_TIMING category=flow05 duration_seconds=${duration_seconds} log_lines=${log_lines} lines_per_second=${lines_per_second} exit=${test_status}"
 
+          # Exposed as a step output (additive; does not change this step's
+          # own exit behavior below) purely so the later "Report FLOW5
+          # stage-progress markers" step can pass the real watchdog exit code
+          # into scripts/ios/e2e_stage_markers.sh — see the identical comment
+          # on the simulator-e2e job's run_tests step above.
+          echo "test_status=${test_status}" >> "$GITHUB_OUTPUT"
+
           exit "$test_status"
 
       - name: Capture FLOW5 hang diagnostics when the test run did not pass
@@ -766,6 +819,38 @@ jobs:
             "${{ steps.boot.outputs.udid }}" \
             "$artifact_dir/hang-diagnostics-flow05"
           echo "FLOW5 hang diagnostics step complete (best-effort; failures here do not change the job result)."
+
+      - name: Report FLOW5 stage-progress markers (console only, best-effort, never changes job result)
+        # `always()` for the same reason as the simulator-e2e job's
+        # equivalent step above: the readout matters most on a run that did
+        # NOT complete cleanly.
+        #
+        # Deliberately console-only (no artifact file, no
+        # `$artifact_dir/stage-markers-*.log` write): this job is the only
+        # one in this workflow that can carry a real (non-production)
+        # Supabase credential in E2E_TEST_ACCOUNT_EMAIL/
+        # E2E_TEST_ACCOUNT_PASSWORD, and the existing convention this job
+        # already follows for exactly that reason is "never persist FLOW5
+        # verbose output to anything that could be uploaded" (see the
+        # comment on `verbose_log_file`/E2E_WATCHDOG_TAIL_FILE in the
+        # "Run FLOW5 auth/backend integration test" step above, and the
+        # header comment in scripts/ios/e2e_summarize.sh explaining why that
+        # script is never wired into this job either). GitHub Actions'
+        # console log secret-masking still applies here; an uploaded log
+        # file would not be covered by it. scripts/ios/e2e_stage_markers.sh
+        # additionally masks anything it recognizes as credential-shaped via
+        # scripts/ios/e2e_mask_secrets.sh before printing, as defense in
+        # depth on top of not persisting the output at all.
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          log_file="$RUNNER_TEMP/e2e-verbose-flow05.log"
+          bash scripts/ios/e2e_stage_markers.sh \
+            "$log_file" \
+            "${{ steps.boot.outputs.udid }}" \
+            "${{ steps.run_flow5.outputs.test_status }}"
+          echo "FLOW5 stage-progress marker step complete (best-effort; failures here do not fail the job; console-only, never uploaded)."
 
       - name: Upload FLOW5 hang diagnostics (placeholder-backend runs only)
         # Fail-closed secret gate, with a review fix (MEDIUM) folded in.
