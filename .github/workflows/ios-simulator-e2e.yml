@@ -191,16 +191,25 @@ jobs:
           # this step would exit 0 on a real test failure.
           # Cost/time optimization (review follow-up to the first live run):
           # only the "mainstream" category runs the full FLOW1-4,6-8 suite.
-          # The other categories (small, large, ipad) exist specifically to
-          # exercise the layout/accessibility groups that live in
-          # flow08_resilience_a11y_test.dart (text scaling, keyboard inset,
-          # orientation, small/large screen size) — running the other flow
-          # files again on those devices would just repeat coverage that
-          # mainstream already provides for cold-start, CRUD, navigation,
-          # notifications, voice permissions, and the widget/app-group
-          # surface, without adding any category-specific signal. Full
-          # regression coverage across all flow files is therefore preserved
-          # by the mainstream leg of this matrix, not lost.
+          # The other categories (small, large, ipad) run only
+          # flow08_resilience_a11y_test.dart, and their primary purpose is to
+          # verify that the app installs and boots cleanly on that
+          # device-type's real simulator geometry — not to exercise
+          # device-specific layout differences. Review finding (independent
+          # review, MEDIUM): the layout/accessibility groups inside
+          # flow08_resilience_a11y_test.dart (FLOW8e/f — text scaling,
+          # keyboard inset, orientation, small/large screen size) call
+          # `tester.binding.setSurfaceSize(...)` to force their own logical
+          # screen size, so they exercise the same forced sizes regardless of
+          # which physical/simulated device they run on; they do not depend
+          # on the small/large/ipad simulator's actual geometry. Running the
+          # other flow files again on those devices would just repeat
+          # coverage that mainstream already provides for cold-start, CRUD,
+          # navigation, notifications, voice permissions, and the
+          # widget/app-group surface, without adding any category-specific
+          # signal. Full regression coverage across all flow files is
+          # therefore preserved by the mainstream leg of this matrix, not
+          # lost.
           case "${{ matrix.category }}" in
             mainstream)
               flow_files=(
