@@ -455,4 +455,68 @@ echo AVFoundation.framework
     expect(workflow, isNot(contains('xcodebuild archive')));
     expect(workflow, isNot(contains('build 14')));
   });
+
+  test('file_picker media surface stays compiled out of the iOS Runner', () {
+    // 90683 root cause: file_picker 11.0.2 defaults to PICKER_MEDIA=1, which
+    // links DKImagePickerController/PhotoGallery and PHPicker/UIImagePicker
+    // photo-library APIs into Runner.app while Runner/Info.plist declares no
+    // NSPhotoLibraryUsageDescription. PlanFlow never uses the media picker.
+    final podfile = file('ios/Podfile').readAsStringSync();
+    expect(
+      RegExp(r'^\s*Pod::PICKER_MEDIA\s*=\s*false\s*$', multiLine: true)
+          .hasMatch(podfile),
+      isTrue,
+      reason: 'ios/Podfile must set Pod::PICKER_MEDIA = false so the '
+          'file_picker photo-library surface is not linked into Runner.app.',
+    );
+
+    final runnerPlist = file('ios/Runner/Info.plist').readAsStringSync();
+    for (final photoKey in <String>[
+      'NSPhotoLibraryUsageDescription',
+      'NSPhotoLibraryAddUsageDescription',
+      'NSCameraUsageDescription',
+    ]) {
+      expect(
+        runnerPlist,
+        isNot(contains(photoKey)),
+        reason: 'PlanFlow has no photo/camera feature; the remediation removes '
+            'the surface instead of declaring $photoKey.',
+      );
+    }
+  });
+
+  test('production file_picker calls never request the media picker', () {
+    final dartSources =
+        Directory('${root.path}${Platform.pathSeparator}lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((entry) => entry.path.endsWith('.dart'))
+        .map((entry) => entry.readAsStringSync())
+        .join('\n');
+    for (final mediaType in <String>[
+      'FileType.media',
+      'FileType.image',
+      'FileType.video',
+      'FileType.audio',
+    ]) {
+      expect(
+        dartSources,
+        isNot(contains(mediaType)),
+        reason: '$mediaType requires PICKER_MEDIA, which is disabled in '
+            'ios/Podfile to keep the 90683 photo surface out of Runner.app.',
+      );
+    }
+  });
+
+  test('privacy audit records the 90683 root-cause classification', () {
+    final audit = file('docs/ios/privacy-surface-audit.md').readAsStringSync();
+    expect(
+      audit,
+      contains('ROOT_CAUSE_CLASS: LINKED_DEPENDENCY_SURFACE_WITHOUT_PURPOSE_STRING'),
+    );
+    expect(audit, contains('Pod::PICKER_MEDIA = false'));
+    expect(audit, contains('DKImagePickerController/PhotoGallery'));
+    expect(audit, contains('REMEDIATION_VERIFICATION: PENDING_MACOS_BINARY_GATE'));
+    expect(audit, contains('BUILD_16_TESTFLIGHT: BLOCKED'));
+  });
 }

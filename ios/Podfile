@@ -5,6 +5,21 @@ platform :ios, '15.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# 90683 root-cause remediation (evidence: file_picker 11.0.2 ios podspec).
+# By default file_picker defines PICKER_MEDIA=1, which (a) adds the
+# DKImagePickerController/PhotoGallery pod and (b) compiles PHPicker /
+# UIImagePickerController / <Photos/Photos.h> code paths into Runner.app.
+# PlanFlow only calls FilePicker.pickFiles(type: FileType.custom) for .ics
+# import (lib/screens/settings/naver_ics_import_screen.dart), so the media
+# picker is dead surface. Apple BuildUpload 90683 ("Missing purpose string",
+# affected bundle Runner.app) fires on that linked photo-library surface while
+# Runner/Info.plist declares no NSPhotoLibraryUsageDescription.
+# Removing the surface is preferred over declaring a purpose string for a
+# capability the app does not use. Every PH*/UIImagePicker*/DKImagePicker*
+# reference in file_picker 11.0.2 is inside `#ifdef PICKER_MEDIA`, so document
+# and audio picking are unaffected. iOS-only; no Android impact.
+Pod::PICKER_MEDIA = false
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,

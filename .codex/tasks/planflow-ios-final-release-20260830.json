@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_github_actions_auth_for_privacy_audit",
+  "status": "root_cause_candidate_identified_awaiting_macos_audit_rerun",
   "privacy_90683": {
     "apple_code": "90683",
     "apple_description": "Missing purpose string in Info.plist.",
@@ -11,7 +11,11 @@
     "evidence": "Build 13 and Build 14 both failed with generic 90683 despite NSUserTrackingUsageDescription being present in source/archive/export. flutter_naver_map 1.4.4 iOS source includes CoreLocation CLLocationManager and requestWhenInUseAuthorization, and PlanFlow uses its location picker. The location key is therefore added as a Runner-only evidence-backed candidate; exact Apple key remains unconfirmed until macOS binary evidence or authenticated Apple diagnostics.",
     "runner_only_scope": true,
     "widget_privacy_keys_added": false,
-    "android_changed": false
+    "android_changed": false,
+    "root_cause_class": "LINKED_DEPENDENCY_SURFACE_WITHOUT_PURPOSE_STRING",
+    "root_cause_evidence": "file_picker 11.0.2 ios/file_picker.podspec defaults to PICKER_MEDIA=1, adding DKImagePickerController/PhotoGallery and compiling PHPickerViewController, UIImagePickerController and <Photos/Photos.h> into Runner.app. lib/screens/settings/naver_ics_import_screen.dart:72 is the only production call site and uses FileType.custom (.ics), so the media picker is dead surface. ios/Runner/Info.plist declares no NSPhotoLibraryUsageDescription, which matches Apple BuildUpload 90683 'Missing purpose string' on bundle Runner.app.",
+    "applied_minimum_fix": "ios/Podfile: Pod::PICKER_MEDIA = false. Removes the unused photo-library surface instead of declaring a purpose string for an unused capability. A guard scan of file_picker 11.0.2 found no PH*/UIImagePicker*/DKImagePicker*/AVCaptureDevice reference outside #ifdef PICKER_MEDIA. iOS-only; no Android file touched.",
+    "remediation_verification": "PENDING_MACOS_BINARY_GATE"
   },
   "post_upload_verification": {
     "run_id": 33396177903,
@@ -79,8 +83,8 @@
     "same_build_reupload": "Build 14 is failed; do not reuse. Next retry requires a new build number after the exact Apple failure detail is identified."
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-    "current_commit": "128b947b",
-    "repository_head": "128b947b",
+  "current_commit": "128b947b",
+  "repository_head": "128b947b",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -512,7 +516,7 @@
   },
   "integration": {
     "status": "BLOCKED_GITHUB_ACTIONS_AUTH",
-    "integrated_at": "2026-09-01",
+    "integrated_at": "2026-09-04",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
       "workflow_and_contract_test_evidence": "PASS",
@@ -534,13 +538,18 @@
       "build_15_binary_scan_output": "NOT_AVAILABLE",
       "build_15_apple_state_details": "NOT_AVAILABLE",
       "build_16_dispatched": false,
-      "privacy_api_dependency_map": "PARTIAL_UNTIL_MACOS_ARTIFACT",
+      "privacy_api_dependency_map": "COMPLETE_FOR_REPO_EVIDENCE",
       "root_cause_identified": false,
-      "required_usage_keys_resolved": false
-      ,"audit_only_workflow": "IMPLEMENTED_NOT_DISPATCHED"
-      ,"audit_only_asc_upload": "FORBIDDEN"
+      "required_usage_keys_resolved": false,
+      "audit_only_workflow": "IMPLEMENTED_NOT_DISPATCHED",
+      "audit_only_asc_upload": "FORBIDDEN",
+      "root_cause_classification": "CANDIDATE_CONFIRMED_AT_SOURCE",
+      "macos_audit_rerun": "NOT_DISPATCHED_NO_ACTIONS_AUTH",
+      "signed_archive_ipa_analysis": "NOT_PERFORMED_NO_ARTIFACT",
+      "build16_testflight": "BLOCKED",
+      "android_untouched": "PASS"
     },
-    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 15 public metadata is incomplete. A separate audit-only signed archive/export workflow now preserves non-secret privacy reports while forbidding ASC upload and raw IPA artifacts. Local implementation/review/test evidence is complete, but this Windows session has no GitHub Actions authentication to dispatch or retrieve the macOS audit artifact. Root cause and required usage-key set remain unresolved, and Build 16 is not dispatched."
+    "evidence": "Builds 13/14 failed Apple BuildUpload 90683 for Runner.app; Build 15 metadata is incomplete. This phase completed the privacy API dependency map from repository and resolved-package evidence and identified file_picker's default PICKER_MEDIA=1 photo-library surface as the root-cause candidate, then applied the minimum surface-removing fix (Pod::PICKER_MEDIA = false) plus contract regression tests. The macOS audit-only workflow was NOT rerun and no signed archive/IPA was analysed: this Windows session has no GitHub Actions authentication and the Tool Gateway github tool exposes read-only actions (repo_status/pr_list/pr_view). Build 16 was not dispatched to TestFlight."
   },
-  "next_gate": "After GitHub Actions authentication is available, dispatch .github/workflows/ios-privacy-audit.yml with audit_only=true. Retrieve the non-secret archive/export report artifact and authenticated Apple diagnostics; do not dispatch Build 16 or use an ASC upload path."
+  "next_gate": "With GitHub Actions authentication, dispatch .github/workflows/ios-privacy-audit.yml (audit_only=true) on this commit, confirm archive-privacy-report.json and export-privacy-report.json return exit 0 and that Photos/PhotosUI and DKImagePickerController are absent from the otool -L evidence for Runner.app. Only then consider Build 16, and only after Apple's authoritative BuildUpload state is clean."
 }
