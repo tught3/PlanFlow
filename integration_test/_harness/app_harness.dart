@@ -99,5 +99,30 @@ Future<void> pumpPlanFlowApp(
 }) async {
   ensureE2eModeEnabled();
   await runPlanFlowApp(overrides: overrides);
-  await tester.pumpAndSettle();
+  // `pumpAndSettle`의 1번째 인자는 타임아웃이 아니라 pump 간격이다 —
+  // 기본 호출(인자 없음)은 3번째 인자(`timeout`)가 기본값 10분으로
+  // 남아있어 사실상 무제한 대기다(Flutter SDK `widget_tester.dart`
+  // `WidgetTester.pumpAndSettle` 실측 확인, 로컬 3.41.9와 CI가 쓰는
+  // 3.47.2 태그 양쪽 소스 대조 완료 — 시그니처 동일). E2E hang 조사
+  // 목적상, 이 하네스가 정말 멈췄다면 10분씩 기다리는 대신 훨씬 짧은
+  // 시간 안에 명확한 `FlutterError('pumpAndSettle timed out')`로
+  // 실패시켜야 원인 파악이 빨라진다.
+  //
+  // 60초로 잡은 근거(`lib/main.dart`의 실제 부팅 경로 실측):
+  // `runApp()`은 `_initializePlatformServices()`를 `unawaited`로
+  // 넘기므로 첫 프레임 자체는 네트워크를 기다리지 않지만, 백그라운드
+  // 초기화 체인의 최악 시나리오는 `_initializeSupabase()`가 최대 3회
+  // 재시도 x 10초 타임아웃(~30초, 재시도 사이 delay 별도)을 거친 뒤
+  // `Future.wait([...])`로 NaverMap(8초 타임아웃) 등이 뒤따르는 구조라
+  // 합계 최대 약 40초에 이른다. 이 백그라운드 체인이 상태 변경을 통해
+  // 위젯 재빌드를 계속 스케줄하면 `pumpAndSettle`이 그 시간만큼
+  // 버틸 수 있으므로, 정상적인 실제 기기 부팅(각 시나리오가 fake
+  // override로 이 네트워크 호출들을 대체하지 못한 예외 경로 포함)을
+  // 오탐으로 끊지 않으면서도 무제한 대기보다는 훨씬 짧게 끊기도록
+  // 여유를 두어 60초로 설정한다.
+  await tester.pumpAndSettle(
+    const Duration(milliseconds: 100),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 60),
+  );
 }
