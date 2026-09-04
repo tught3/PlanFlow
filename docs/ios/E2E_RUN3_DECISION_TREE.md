@@ -262,3 +262,78 @@ post-build 유의미라인: <n | 0>
 5. **job별 분기가 갈릴 경우의 종합 판정 규칙은 정하지 않았다.** §3-4는 "job 단위로 각각
    판정한다"까지만 고정한다. 실제로 갈렸을 때 전체 결론을 어떻게 낼지는 그 데이터를 보고
    결정하는 것이 맞다고 판단했다(여기서 미리 정하면 근거 없는 규칙이 된다).
+
+---
+
+## 7. Run#4 판정 기록 (실측 완료)
+
+### 7-1. 분기 판정 결과
+
+**분기 (i)(콘솔 스트리밍 오버헤드 확정)와 (ii)(verbose 생성/파일쓰기 비용) 둘 다 기각한다.**
+
+Run#4는 verbose 출력을 파일 리다이렉션으로만 기록하고 콘솔 tee를 제거한 상태로
+실행됐음에도 불구하고, mainstream/small/ipad/flow05 4개 job이 **정확히 같은 지점**에서
+정지했고, 정지 구간 내내 `delta=+0`(신규 로그 출력이 실제로 0줄)이었다. 즉 verbose
+로그의 생성량·스트리밍 비용이 원인이었다면 파일 리다이렉션만으로도 진행이 있었어야
+하는데, 로그 자체가 아예 늘지 않았다. 이는 로깅 방식과 무관한 **도구 레벨의 진짜 hang**
+이라는 뜻이며, 애초에 조사 대상이던 분기 (iii)(빌드 완료 후 침묵)과도 다른, 더 이른
+단계에서 발생하는 별도의 hang이다.
+
+### 7-2. 새로 확정된 근본원인
+
+**[확정]** 4개 job(mainstream/small/ipad/flow05) 전부 다음 지점에서 예외 없이 영구
+정지했다(watchdog 상한까지 `delta=+0` 지속):
+
+```
+[STEP] watchdog: elapsed=Ns ... last=[ ] Waiting for VM Service port to be available...
+```
+
+`PLANFLOW_E2E_REAL_BACKEND_TEST=0`(real backend 비활성)인 순수 fake 테스트 job인 flow05
+까지 동일 증상을 보였다는 것이 결정적이다 — 이는 테스트 코드나 백엔드 의존성이 원인이
+아니라는 뜻이다. 즉 `flutter test -d <UDID>`가 시뮬레이터에 attach해 VM Service를
+discovery하는 메커니즘 자체가 이 CI 환경에서 깨져 있는 것으로 확정한다.
+
+나머지 1개 job(large)은 이 지점에도 도달하지 못했다 — 그보다 더 앞 단계인 SPM 해석
+(`xcodebuild -clonedSourcePackagesDirPath`)에서 900초 워치독 상한 내내 벗어나지 못했다.
+이는 별개/파생 이슈로 분리하며(§7-4 참조), 이번 근본원인 판정의 대상이 아니다.
+
+### 7-3. 확정 사실 vs 가설 구분
+
+| 구분 | 내용 |
+|------|------|
+| **[확정]** | VM Service discovery 영구 hang. 4/5 job에서 100% 재현. 테스트 코드·백엔드 의존성과 무관(fake-only job인 flow05도 동일 증상). |
+| **[확정]** | `scripts/ios/simctl_discover.sh`가 `sort_by(.version) \| last`로 무조건 **최신 시뮬레이터 런타임**(iOS 26.5)을 선택한다. 워크플로 전체에 Xcode 버전을 고정하는 스텝은 존재하지 않는다(저장소 전수 grep 결과 0건). |
+| **[가설]** | "러너 기본(구버전) Xcode 툴체인 × 최신(iOS 26.5) 시뮬레이터 런타임의 세대 불일치가 VM Service discovery 프로토콜을 깨뜨린다"는 것은 **메커니즘 설명이며, 이 저장소에서 런타임을 낮췄을 때 hang이 실제로 사라지는 대조실험은 아직 수행되지 않았다.** 정황 증거만 있다: `actions/runner-images` 이슈 #12862 / #12777 / #12948 — 동일한 macos-15+구Xcode 조합에서 시뮬레이터 연결이 불안정하다는 독립 보고들. |
+
+이 가설을 (i)/(ii)/(iii)의 기존 분기 체계에 억지로 끼워 넣지 않는다 — §3-4의 원칙
+("어느 분기에도 안 맞으면 억지로 배정하지 않는다")에 따라 **신규 근본원인**으로 별도
+기록한다.
+
+### 7-4. 적용한 수정 (별도 작업, 이 문서에는 요약만)
+
+`scripts/ios/simctl_discover.sh`의 런타임 선택 로직을, 활성 Xcode가 실제로 지원하는
+iphonesimulator SDK 상한(major 버전 비교) 이내로 제한하도록 수정 중이다. 버전
+리터럴을 하드코딩하지 않고 `xcrun --sdk iphonesimulator --show-sdk-version` /
+`xcodebuild -showsdks`의 동적 조회 결과로 상한을 계산한다. 이 가설이 틀렸을 경우를
+대비해 대조실험용 우회 스위치 `SIMCTL_DISCOVER_ALLOW_ANY_RUNTIME=1`을 추가해, 다음
+CI 실행에서 이 변경 전/후를 직접 비교 검증할 수 있게 했다.
+
+### 7-5. 반증 시 다음 카드
+
+이 수정을 적용한 뒤에도 `FLUTTER_ATTACH` 마커가 여전히 FAIL(evidence=`VM_SERVICE_WAIT_HANG`)
+로 나오면, §7-3의 가설은 기각된 것으로 보고 다음 순서로 넘어간다:
+
+1. `maxim-lobanov/setup-xcode@v1` + `latest-stable`로 Xcode 버전을 명시적으로 고정한다.
+   단, 이것도 "움직이는 최신값"이라는 점에서 근본 해결이 아닐 수 있음을 인지한 채 진행한다.
+2. `docs/ios/E2E_EXECUTION_PATH_COMPARISON.md`가 이미 정리해둔 **후보5(사이드카
+   `simctl spawn log stream`)** 로 실행경로 자체 재검토를 승격한다.
+
+### 7-6. 이번 Phase 범위에서 명시 제외 (후속 승격 조건 충족 시에만 재검토)
+
+§5의 형식을 그대로 따라, 아래 3개 항목은 **이번 Phase 범위에서 손대지 않는다**:
+
+| 항목 | 후속 승격 조건 | 안 바꾸는 사유 |
+|------|----------------|----------------|
+| **matrix 비용 재최적화** | Run#5에서 최소 mainstream+flow05가 green이고 실제 `duration_seconds`가 확보된 이후 | 지금 matrix 구성을 같이 바꾸면 이번 수정의 효과와 matrix 변경의 효과가 뒤섞여 판정이 불가능해진다. |
+| **large job의 SPM 정체**(`-clonedSourcePackagesDirPath` 900초 초과) | 이번 수정 적용 후 재발 여부로 판단 | VM Service discovery hang과는 별개의 더 이른 단계 이슈일 가능성이 높다(네트워크/캐시 경합성 CI 변동성으로 추정 — 근거 약함, 확정 아님). 이번 근본원인 수정과 섞어서 판단하지 않는다. |
+| **워치독 초 값**(1500/900/780) 재산정 | Run#5 실측 이후에만 | 지금 조정하면 개선이 이번 수정 덕인지 상한 완화 덕인지 구분할 수 없게 된다(§5의 기존 원칙과 동일 논리). |
