@@ -69,6 +69,7 @@ readonly LOG_SHOW_WINDOW='10m'
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 watchdog="${script_dir}/e2e_watchdog.sh"
+mask_secrets_lib="${script_dir}/e2e_mask_secrets.sh"
 
 note() {
   echo "[STEP] $*"
@@ -88,18 +89,15 @@ run_bounded() {
   fi
 }
 
-# Redact credential-shaped text from stdin.
-#
-# Case variants are spelled out explicitly instead of using sed's `I` flag,
-# which is not portable across the GNU/BSD sed split (this runs on macOS).
-mask_secrets() {
-  sed -E \
-    -e 's/(--dart-define=)([A-Za-z0-9_.-]+)=[^[:space:]]*/\1\2=<MASKED>/g' \
-    -e 's/(--dart-define[[:space:]]+)([A-Za-z0-9_.-]+)=[^[:space:]]*/\1\2=<MASKED>/g' \
-    -e 's/eyJ[A-Za-z0-9._-]{10,}/<MASKED_JWT>/g' \
-    -e 's/([Bb]earer[[:space:]]+)[A-Za-z0-9._-]+/\1<MASKED>/g' \
-    -e 's/([A-Za-z0-9_.-]*([Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Aa][Nn][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll])[A-Za-z0-9_.-]*=)[^[:space:]]*/\1<MASKED>/g'
-}
+# mask_secrets() lives in e2e_mask_secrets.sh, shared with other iOS E2E
+# diagnostic scripts. Sourcing is REQUIRED, not best-effort: if the shared
+# module cannot be loaded, mask_secrets is undefined and every capture step
+# below must be skipped rather than silently writing unmasked output
+# (fail-closed - see mask_secrets_available guard used by each step).
+mask_secrets_available=0
+if [ -f "$mask_secrets_lib" ] && source "$mask_secrets_lib" 2>/dev/null; then
+  mask_secrets_available=1
+fi
 
 {
   echo "# iOS Simulator E2E hang diagnostics"
@@ -113,7 +111,9 @@ mask_secrets() {
 # is the one capture guaranteed to produce something even without Xcode).
 # ---------------------------------------------------------------------------
 ps_out="${output_dir}/processes.txt"
-if run_bounded "$PS_TIMEOUT_SECONDS" ps aux >"${ps_out}.raw" 2>/dev/null \
+if [ "$mask_secrets_available" -ne 1 ]; then
+  note "SKIP processes: mask_secrets unavailable (${mask_secrets_lib} missing or failed to source) - refusing to write unmasked process listing"
+elif run_bounded "$PS_TIMEOUT_SECONDS" ps aux >"${ps_out}.raw" 2>/dev/null \
   || run_bounded "$PS_TIMEOUT_SECONDS" ps -ef >"${ps_out}.raw" 2>/dev/null; then
   grep -E 'flutter|xcodebuild|dart|Simulator|simctl|CoreSimulator|launchd_sim' "${ps_out}.raw" \
     | mask_secrets >"$ps_out" 2>/dev/null || true
@@ -139,7 +139,9 @@ fi
 
 # Step 2: recent simulator system log.
 log_out="${output_dir}/simulator_log.txt"
-if run_bounded "$LOG_SHOW_TIMEOUT_SECONDS" \
+if [ "$mask_secrets_available" -ne 1 ]; then
+  note "SKIP simulator_log: mask_secrets unavailable (${mask_secrets_lib} missing or failed to source) - refusing to write unmasked simulator log"
+elif run_bounded "$LOG_SHOW_TIMEOUT_SECONDS" \
     xcrun simctl spawn "$udid" log show --last "$LOG_SHOW_WINDOW" --style compact \
     2>"${log_out}.err" \
     | mask_secrets >"$log_out"; then
