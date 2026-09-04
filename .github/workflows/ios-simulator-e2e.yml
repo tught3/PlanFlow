@@ -178,24 +178,67 @@ jobs:
             bash scripts/ios/simctl_privacy.sh grant "$service" "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
           done
 
-      - name: Run FLOW1-4,6-8 integration tests (backend-isolated)
+      - name: Run device-category-scoped integration tests (backend-isolated)
+        id: run_tests
         shell: bash
         run: |
           set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          mkdir -p "$artifact_dir"
+          # `pipefail` (set above) is what makes this tee usage safe: without
+          # it, `flutter test ... | tee log` would report success from the
+          # trailing `tee` process even if `flutter test` itself failed, and
+          # this step would exit 0 on a real test failure.
+          # Cost/time optimization (review follow-up to the first live run):
+          # only the "mainstream" category runs the full FLOW1-4,6-8 suite.
+          # The other categories (small, large, ipad) exist specifically to
+          # exercise the layout/accessibility groups that live in
+          # flow08_resilience_a11y_test.dart (text scaling, keyboard inset,
+          # orientation, small/large screen size) — running the other flow
+          # files again on those devices would just repeat coverage that
+          # mainstream already provides for cold-start, CRUD, navigation,
+          # notifications, voice permissions, and the widget/app-group
+          # surface, without adding any category-specific signal. Full
+          # regression coverage across all flow files is therefore preserved
+          # by the mainstream leg of this matrix, not lost.
+          case "${{ matrix.category }}" in
+            mainstream)
+              flow_files=(
+                integration_test/flow01_cold_start_test.dart
+                integration_test/flow02_schedule_crud_test.dart
+                integration_test/flow03_navigation_routing_test.dart
+                integration_test/flow04_notifications_test.dart
+                integration_test/flow06_voice_permissions_test.dart
+                integration_test/flow07_widget_appgroup_test.dart
+                integration_test/flow08_resilience_a11y_test.dart
+              )
+              ;;
+            small|large|ipad)
+              flow_files=(
+                integration_test/flow08_resilience_a11y_test.dart
+              )
+              ;;
+            *)
+              echo "::error title=BLOCKED_UNKNOWN_DEVICE_CATEGORY::Unrecognized matrix.category '${{ matrix.category }}'; scripts/ios/simctl_discover.sh only emits small/mainstream/large/ipad."
+              exit 1
+              ;;
+          esac
+          # Recorded before the test run itself (which may exit non-zero
+          # under `set -e`) so the "Summarize flow test failures" step below
+          # always knows which flow files this category actually attempted,
+          # without duplicating this category->files mapping in a second
+          # place.
+          echo "flow_files=${flow_files[*]}" >> "$GITHUB_OUTPUT"
           flutter test \
-            integration_test/flow01_cold_start_test.dart \
-            integration_test/flow02_schedule_crud_test.dart \
-            integration_test/flow03_navigation_routing_test.dart \
-            integration_test/flow04_notifications_test.dart \
-            integration_test/flow06_voice_permissions_test.dart \
-            integration_test/flow07_widget_appgroup_test.dart \
-            integration_test/flow08_resilience_a11y_test.dart \
+            "${flow_files[@]}" \
             -d "${{ steps.boot.outputs.udid }}" \
             --dart-define=E2E_MODE=1 \
             --dart-define=SUPABASE_URL="$E2E_SUPABASE_URL_PLACEHOLDER" \
-            --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER"
+            --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER" \
+            2>&1 | tee "$artifact_dir/flow-test-output.log"
 
       - name: Exercise microphone permission denial/recovery at the OS level
+        if: ${{ matrix.category == 'mainstream' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -203,14 +246,48 @@ jobs:
           # the in-process test above only verifies app-level branching under
           # an *assumed* permission state. Actually toggling the real
           # simulator TCC permission is this workflow's responsibility.
+          # Scoped to mainstream only (review follow-up): this OS-level TCC
+          # toggle is device-category-independent — it is not a layout
+          # concern — so running it once on mainstream is sufficient and the
+          # small/large/ipad legs skip it to save runner time.
           bash scripts/ios/simctl_privacy.sh revoke microphone "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
           bash scripts/ios/simctl_privacy.sh grant microphone "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
 
       - name: Cold-start deep link relaunch (out-of-process)
+        if: ${{ matrix.category == 'mainstream' }}
         shell: bash
         run: |
           set -euo pipefail
+          # Scoped to mainstream only (review follow-up): deep link relaunch
+          # exercises app routing/state restore, which is also
+          # device-category-independent, so one run on mainstream is enough.
           bash scripts/ios/simctl_deeplink_relaunch.sh "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
+
+      - name: Summarize flow test failures (best-effort)
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          mkdir -p "$artifact_dir"
+          log_file="$artifact_dir/flow-test-output.log"
+          summary_file="$artifact_dir/summary.md"
+          if [[ -f "$log_file" ]]; then
+            bash scripts/ios/e2e_summarize.sh \
+              "${{ matrix.category }}" \
+              "$log_file" \
+              "$summary_file" \
+              "${{ steps.run_tests.outputs.flow_files }}"
+            summarize_status=$?
+            if [[ $summarize_status -ne 0 ]]; then
+              echo "SUMMARY_GENERATION_FAILED: scripts/ios/e2e_summarize.sh exited $summarize_status (best-effort step; run does not fail because of this)." \
+                | tee -a "$summary_file"
+            fi
+          else
+            echo "SUMMARY_GENERATION_SKIPPED: no flow-test-output.log found for category ${{ matrix.category }} (the test-run step may not have started)." \
+              > "$summary_file"
+          fi
+          echo "Summary step complete (best-effort; failures here do not fail the job)."
 
       - name: Capture screenshot and simulator diagnostics
         if: ${{ always() && steps.boot.outputs.udid != '' }}
