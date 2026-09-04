@@ -156,6 +156,38 @@ jobs:
 
       - run: flutter pub get
 
+      # CocoaPods dependency caching was evaluated here as a runner-time /
+      # cost optimization (explicitly unrelated to the hang investigation
+      # instrumented further down in this job) and deliberately NOT adopted.
+      # Reasons, in order of weight:
+      #
+      #   1. There is no committed ios/Podfile.lock in this repository
+      #      (verified on disk). An `actions/cache@v4` key built with
+      #      `hashFiles('ios/Podfile.lock')` would therefore hash nothing and
+      #      collapse to a constant key, so a cache written when one set of
+      #      Flutter plugin pods was resolved would be restored verbatim
+      #      after those plugins change. CocoaPods detects that as a
+      #      sandbox/Manifest mismatch, and the failure surfaces at Xcode
+      #      build time as a confusing "out of sync" error rather than as a
+      #      cache problem. A cache whose key cannot express what it is
+      #      caching is a correctness hazard, not an optimization.
+      #   2. The expensive part of this job is the Xcode build and the
+      #      simulator run, not `pod install`. Caching pods would shave a
+      #      minority of the wall clock while adding a new cross-run state
+      #      carrier.
+      #   3. This job is currently the subject of an active hang
+      #      investigation. Introducing a new source of run-to-run variance
+      #      (restored vs cold pod tree) while trying to characterise a
+      #      non-deterministic stall would actively confound the signal.
+      #
+      # The Flutter SDK itself is already cached by
+      # `subosito/flutter-action@v2` via `cache: true` above, which covers
+      # the largest download in this job.
+      #
+      # Revisit condition: commit ios/Podfile.lock first, then key the cache
+      # on it together with the runner image and Xcode version (pods are
+      # source, but the resolved tree is tied to the toolchain that wrote
+      # it). Until that lock file exists, do not add this cache.
       - run: pod install --project-directory=ios
 
       - name: Create and boot ${{ matrix.category }} simulator (${{ matrix.name }})
@@ -238,13 +270,102 @@ jobs:
           # without duplicating this category->files mapping in a second
           # place.
           echo "flow_files=${flow_files[*]}" >> "$GITHUB_OUTPUT"
-          flutter test \
+
+          # --- Hang instrumentation (E2E run-2 investigation) -------------
+          # Observed on a live run: both this job and the flow05 job printed
+          # "Running Xcode build..." then "Xcode build done", and then went
+          # completely silent - zero further log lines - until the
+          # job-level hard timeout tore the runner down. The flow05 leg
+          # showed the same symptom while executing zero pumpAndSettle
+          # calls, so the stall is very likely happening inside the Flutter
+          # tool's own install/launch/attach handshake with the simulator,
+          # BEFORE any Dart test body starts running.
+          #
+          # `--verbose` below is the actual instrument: without it the
+          # Flutter tool prints nothing at all between "Xcode build done"
+          # and the first test result, so a stall in that window is
+          # indistinguishable from a slow test. With it, each device
+          # install/launch/observatory-attach step is streamed as it
+          # happens, which is what turns "silent for half an hour" into a
+          # named last-step.
+          #
+          # The watchdog is what makes the diagnostics reachable at all: the
+          # job-level timeout kills the runner outright, so nothing can run
+          # after it. Bounding the test command ourselves - well below the
+          # job limit - leaves room for the on-failure diagnostic dump step
+          # below to run while the simulator is still alive.
+          #
+          # Bound sizing (whole seconds; the job-level cap for this job is
+          # forty five minutes, i.e. 2700 seconds):
+          #   measured Xcode build cost on the live run ....... about 400
+          #   conservative per-flow-file allowance ........... about 150
+          #   mainstream runs 7 flow files: 400 + 7 x 150 = 1450 -> 1500
+          #   small/large/ipad run 1 flow file: 400 + 150 = 550 -> 900
+          # Both values leave the remaining job budget (after checkout, pub
+          # get, pod install and simulator boot) free for the diagnostics
+          # dump, artifact upload and simulator teardown, which the
+          # job-level timeout would otherwise pre-empt.
+          case "${{ matrix.category }}" in
+            mainstream)
+              watchdog_seconds=1500
+              ;;
+            *)
+              watchdog_seconds=900
+              ;;
+          esac
+          echo "Bounding the flutter test run at ${watchdog_seconds}s (category ${{ matrix.category }})"
+
+          # `set +e` around the pipeline is required: with `set -e` plus
+          # `pipefail` a failing run would abort this step before
+          # PIPESTATUS could be read, and the 124 timeout signal would be
+          # lost. PIPESTATUS[0] (a bash array, hence `shell: bash` above) is
+          # the watchdog's own exit code rather than tee's, so a real
+          # failure cannot be masked by the trailing tee succeeding.
+          set +e
+          bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
+            flutter test \
+            --verbose \
             "${flow_files[@]}" \
             -d "${{ steps.boot.outputs.udid }}" \
             --dart-define=E2E_MODE=1 \
             --dart-define=SUPABASE_URL="$E2E_SUPABASE_URL_PLACEHOLDER" \
             --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER" \
             2>&1 | tee "$artifact_dir/flow-test-output.log"
+          test_status="${PIPESTATUS[0]}"
+          set -e
+
+          if [[ "$test_status" -eq 124 ]]; then
+            echo "WATCHDOG_TIMEOUT: the flutter test run for category ${{ matrix.category }} exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. See the hang-diagnostics directory in this job's uploaded artifacts, and the tail of flow-test-output.log for the last Flutter tool step that reported progress."
+            echo "::error title=E2E_WATCHDOG_TIMEOUT::category ${{ matrix.category }} exceeded the ${watchdog_seconds}s watchdog bound"
+          fi
+
+          # Exit code preserved deliberately: the diagnostics step below is
+          # guarded with `always()` so it still runs, and the job must not
+          # report success after a timeout.
+          exit "$test_status"
+
+      - name: Capture hang diagnostics when the test run did not pass
+        # `always()` so this still runs after the watchdog timeout or a
+        # plain test failure aborts the step above (both leave `outcome`
+        # non-success). Skipped on a green run because the capture itself
+        # costs runner minutes and has nothing to explain. The udid guard
+        # matches the other post-run steps: without a booted simulator
+        # there is nothing to interrogate.
+        if: ${{ always() && steps.boot.outputs.udid != '' && steps.run_tests.outcome != 'success' }}
+        shell: bash
+        run: |
+          set +e
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          mkdir -p "$artifact_dir"
+          # e2e_diagnose_hang.sh is best-effort by contract and always
+          # exits zero; it masks credential-shaped text out of every
+          # capture before writing. This job only ever uses placeholder
+          # dart-defines anyway (see E2E_BACKEND_ISOLATION_PASS above), so
+          # there is no real credential here for it to leak.
+          bash scripts/ios/e2e_diagnose_hang.sh \
+            "${{ steps.boot.outputs.udid }}" \
+            "$artifact_dir/hang-diagnostics-${{ matrix.category }}"
+          echo "Hang diagnostics step complete (best-effort; failures here do not change the job result)."
 
       - name: Exercise microphone permission denial/recovery at the OS level
         if: ${{ matrix.category == 'mainstream' }}
@@ -361,6 +482,9 @@ jobs:
 
       - run: flutter pub get
 
+      # No CocoaPods cache here either - same reasoning as the comment above
+      # the equivalent step in the simulator-e2e job (no committed
+      # ios/Podfile.lock to key a cache on).
       - run: pod install --project-directory=ios
 
       - name: Select one simulator for FLOW5 (mainstream category, or first available)
@@ -435,10 +559,42 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Run FLOW5 auth/backend integration test
+        id: run_flow5
         shell: bash
         run: |
           set -euo pipefail
-          flutter test integration_test/flow05_auth_backend_test.dart \
+          # Same hang instrumentation as the simulator-e2e job above; see the
+          # long comment in its "Run device-category-scoped integration
+          # tests" step for the observed symptom and the reasoning. This leg
+          # is worth instrumenting separately because it reproduced the exact
+          # same post-build silence while running zero pumpAndSettle calls,
+          # which is the strongest evidence that the stall is not in test
+          # code.
+          #
+          # Bound sizing (whole seconds; this job's cap is thirty minutes,
+          # i.e. 1800 seconds): measured Xcode build cost about 400, plus a
+          # conservative allowance for the single flow file, plus buffer ->
+          # 780. Deliberately smaller than the simulator-e2e mainstream bound
+          # because this job runs exactly one flow file and has a tighter
+          # job-level cap, and the remaining budget must still cover the
+          # diagnostics dump and simulator teardown below.
+          watchdog_seconds=780
+          echo "Bounding the FLOW5 flutter test run at ${watchdog_seconds}s"
+
+          # NOTE (secret safety): unlike the simulator-e2e job, this step
+          # deliberately does NOT tee its output to a file. When
+          # E2E_REAL_BACKEND_TEST is '1' this command line carries a real
+          # (non-production) Supabase anon key and a test-account password,
+          # and `--verbose` makes the Flutter tool echo the full compiler
+          # invocation. GitHub Actions masks registered secret values in the
+          # console log, but it does NOT mask the contents of uploaded
+          # artifact files - so the safe place for this output is the console
+          # only.
+          set +e
+          bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
+            flutter test \
+            --verbose \
+            integration_test/flow05_auth_backend_test.dart \
             -d "${{ steps.boot.outputs.udid }}" \
             --dart-define=E2E_MODE=1 \
             --dart-define=E2E_REAL_BACKEND_TEST="$E2E_REAL_BACKEND_TEST" \
@@ -446,6 +602,56 @@ jobs:
             --dart-define=E2E_TEST_ACCOUNT_PASSWORD="$E2E_TEST_ACCOUNT_PASSWORD" \
             --dart-define=SUPABASE_URL="${{ steps.backend.outputs.supabase_url }}" \
             --dart-define=SUPABASE_ANON_KEY="${{ steps.backend.outputs.supabase_anon_key }}"
+          test_status=$?
+          set -e
+
+          if [[ "$test_status" -eq 124 ]]; then
+            echo "WATCHDOG_TIMEOUT: the FLOW5 flutter test run exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. Check the console output above for the last Flutter tool step that reported progress."
+            echo "::error title=E2E_WATCHDOG_TIMEOUT::FLOW5 exceeded the ${watchdog_seconds}s watchdog bound"
+          fi
+
+          exit "$test_status"
+
+      - name: Capture FLOW5 hang diagnostics when the test run did not pass
+        if: ${{ always() && steps.boot.outputs.udid != '' && steps.run_flow5.outcome != 'success' }}
+        shell: bash
+        run: |
+          set +e
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          mkdir -p "$artifact_dir"
+          bash scripts/ios/e2e_diagnose_hang.sh \
+            "${{ steps.boot.outputs.udid }}" \
+            "$artifact_dir/hang-diagnostics-flow05"
+          echo "FLOW5 hang diagnostics step complete (best-effort; failures here do not change the job result)."
+
+      - name: Upload FLOW5 hang diagnostics (placeholder-backend runs only)
+        # Fail-closed secret gate. scripts/ios/e2e_diagnose_hang.sh masks
+        # credential-shaped text out of the process listing and the
+        # simulator log, but its third capture - the `simctl diagnose`
+        # bundle - is a directory of raw Xcode/CoreSimulator logs that is
+        # NOT passed through that masking, and artifact contents are not
+        # covered by GitHub's secret masking either. So this upload only
+        # happens on runs where no real credential ever existed: when
+        # E2E_REAL_BACKEND_TEST is not '1', the "Resolve FLOW5 Supabase
+        # dart-defines" step above substitutes the same placeholder values
+        # FLOW1-4,6-8 use. That is the default state today (the secret is
+        # unset, so the flag resolves to '0'). Once a real non-production
+        # backend is provisioned, diagnosing a hang on that leg means
+        # reading the console log rather than downloading an artifact -
+        # a deliberate trade of convenience for containment.
+        if: ${{ always() && env.E2E_REAL_BACKEND_TEST != '1' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-simulator-e2e-flow05-${{ github.run_number }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Note withheld FLOW5 diagnostics (real-backend runs)
+        if: ${{ always() && env.E2E_REAL_BACKEND_TEST == '1' }}
+        shell: bash
+        run: |
+          echo "::notice title=FLOW5_DIAGNOSTICS_WITHHELD::E2E_REAL_BACKEND_TEST is enabled, so FLOW5 hang diagnostics were captured on the runner but deliberately not uploaded as an artifact (the simctl diagnose bundle is unmasked raw log data). Read this job's console log instead."
 
       - name: Shutdown and delete FLOW5 simulator
         if: ${{ always() && steps.boot.outputs.udid != '' }}
