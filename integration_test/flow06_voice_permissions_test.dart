@@ -12,6 +12,8 @@ import 'package:planflow/services/voice_conversation_ad_gate.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
+import '_harness/checkpoint_logger.dart';
+
 /// PlanFlow iOS Simulator E2E Phase P7 — FLOW6: 마이크 권한 거부/복구
 /// 상태머신·화면분기 검증.
 ///
@@ -52,6 +54,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 /// 정확한 반환 형태(같은 enum 값)를 재현해, 실제 iOS 권한 거부 시 화면이
 /// 타는 분기와 동일한 코드 경로를 검증한다.
 void main() {
+  logCheckpoint('FLOW6_START');
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   tearDown(() {
@@ -65,6 +68,7 @@ void main() {
       '마이크 권한이 거부되면 상태 배너를 보여주고 직접 입력으로 폴백하며, '
       '재시도해서 권한이 허용되면 정상 인식으로 이어진다',
       (tester) async {
+        logCheckpoint('FLOW6_VOICE_SCREEN_GROUP_START');
         const deniedMessage =
             '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
         final fakeStt = _PermissionGatedSttService(denialMessage: deniedMessage);
@@ -134,6 +138,7 @@ void main() {
     testWidgets(
       '거부된 상태에서도 사용자는 화면을 벗어나지 않고 키보드로 직접 입력할 수 있다',
       (tester) async {
+        logCheckpoint('FLOW6_VOICE_SCREEN_RETRY_TEST_START');
         const deniedMessage =
             '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
         final fakeStt = _PermissionGatedSttService(denialMessage: deniedMessage);
@@ -176,6 +181,7 @@ void main() {
         '마이크 권한 요청이 거부되면 안내 문구를 보여주고, 재요청해서 '
         '허용되면 허용 상태로 전환된다',
         (tester) async {
+          logCheckpoint('FLOW6_PERMISSION_ONBOARDING_TEST_START');
           SharedPreferencesAsyncPlatform.instance =
               InMemorySharedPreferencesAsync.empty();
           addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
@@ -220,6 +226,7 @@ void main() {
 
           expect(permissionService.microphoneRequestCalls, 2);
           expect(find.text('마이크 권한이 허용되었습니다.'), findsOneWidget);
+          logCheckpoint('FLOW6_DONE');
         },
       );
     },

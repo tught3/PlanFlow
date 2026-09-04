@@ -17,6 +17,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
+import '_harness/checkpoint_logger.dart';
+
 /// PlanFlow iOS Simulator E2E Phase P7 — FLOW8: 회복력(오프라인/권한)과
 /// 접근성(텍스트 배율·키보드·방향·화면 크기) 상태전이·레이아웃 검증.
 ///
@@ -30,6 +32,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 /// (P9)와 P8(macOS 러너) 몫이며, 여기서는 `dart analyze`로만 검증 가능한
 /// 순수 위젯 레벨 상태전이·레이아웃만 다룬다.
 void main() {
+  logCheckpoint('FLOW8_START');
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('FLOW8(a): 오프라인/네트워크 실패 — 에러 배너와 재시도', () {
@@ -46,6 +49,7 @@ void main() {
       'AI 일정 정리가 네트워크 오류로 실패하면 에러 배너와 재시도 버튼을 '
       '보여주고, 재시도하면 정상 결과로 복구된다',
       (tester) async {
+        logCheckpoint('FLOW8_OFFLINE_TEST_START');
         // ScheduleParseAdGate의 무료 진입 정책 계산(peek/consume RPC)은
         // Supabase가 필요하므로, 이 시나리오와 무관한 게이트 로직을
         // delegateForTest로 완전히 우회한다(어떤 실제 provider도 호출하지
@@ -116,6 +120,7 @@ void main() {
         '위치 권한 요청이 거부되면 안내 문구를 보여주고, 재요청해서 '
         '허용되면 허용 상태로 전환된다',
         (tester) async {
+          logCheckpoint('FLOW8_LOCATION_PERMISSION_TEST_START');
           SharedPreferencesAsyncPlatform.instance =
               InMemorySharedPreferencesAsync.empty();
           addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
@@ -168,6 +173,7 @@ void main() {
       testWidgets(
         '텍스트 배율 ${scale}x에서도 음성 입력 화면이 오버플로우 없이 렌더링된다',
         (tester) async {
+          logCheckpoint('FLOW8_TEXT_SCALE_GROUP_START');
           await tester.pumpWidget(
             MaterialApp(
               builder: (context, child) {
@@ -235,6 +241,7 @@ void main() {
       '키보드가 올라와 뷰포트가 줄어들어도 음성 입력 화면은 오버플로우 없이 '
       '스크롤/리사이즈로 대응한다',
       (tester) async {
+        logCheckpoint('FLOW8_KEYBOARD_TEST_START');
         await tester.pumpWidget(
           const MaterialApp(
             home: VoiceInputScreen(
@@ -291,6 +298,7 @@ void main() {
         '가로 방향(iPad landscape 비율)에서도 음성 입력·권한 온보딩 화면이 '
         '오버플로우 없이 렌더링된다',
         (tester) async {
+          logCheckpoint('FLOW8_ORIENTATION_TEST_START');
           addTearDown(() => tester.binding.setSurfaceSize(null));
 
           // iPad Pro 11형 landscape 논리 해상도에 준하는 비율.
@@ -338,6 +346,7 @@ void main() {
       testWidgets(
         '${entry.key} 화면에서도 음성 입력 화면이 오버플로우 없이 렌더링된다',
         (tester) async {
+          logCheckpoint('FLOW8_SCREEN_SIZE_GROUP_START');
           addTearDown(() => tester.binding.setSurfaceSize(null));
           await tester.binding.setSurfaceSize(entry.value);
 
@@ -382,6 +391,7 @@ void main() {
             isNull,
             reason: '${entry.key}(${entry.value})에서 렌더 오류 발생',
           );
+          logCheckpoint('FLOW8_DONE');
         },
       );
     }

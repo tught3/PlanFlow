@@ -8,6 +8,7 @@ import 'package:planflow/services/oauth_callback_handler.dart'
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
 import '_harness/app_harness.dart';
+import '_harness/checkpoint_logger.dart';
 import '_harness/fakes/fake_auth_service.dart';
 import '_harness/network_guard.dart';
 
@@ -56,6 +57,7 @@ import '_harness/network_guard.dart';
 /// 검증됐다. 실제 실행·통과 여부는 CI(macOS 러너, `flow05-auth-backend`
 /// job)에서 확인한다.
 void main() {
+  logCheckpoint('FLOW5_START');
   ensureIntegrationTestBinding();
 
   group('FLOW5 auth/backend — group A (fake, zero network)', () {
@@ -70,6 +72,7 @@ void main() {
     testWidgets(
       '저장된 세션이 있으면 부팅 즉시 active 상태로 복원된다',
       (tester) async {
+        logCheckpoint('FLOW5_GROUP_A_START');
         final networkRecorder = BlockingNetworkCallRecorder();
         final fake = FakeAuthService(
           initialSession: FixtureSession.build(
@@ -239,14 +242,28 @@ void main() {
 
         expect(kakaoMessage, contains('카카오'));
         expect(naverMessage, contains('네이버'));
+        logCheckpoint('FLOW5_GROUP_A_DONE');
       },
     );
   });
 
   group('FLOW5 auth/backend — group B (real non-production Supabase)', () {
+    // 이 체크는 실제 `skip:` 파라미터(아래, 원문 그대로 미수정)와 별개로
+    // 로깅 전용으로 동일한 환경변수를 다시 읽는다 — discovery 시점(그룹
+    // 콜백이 동기 실행되는 시점)에 곧바로 찍히므로, Group A가 실제로
+    // 실행을 마쳤는지와 무관하게 "이 파일이 Group B 등록까지 파싱됐다"만
+    // 알려준다. Group B가 실제로 실행을 "시작"했는지는 아래 testWidgets
+    // 본문 첫 줄의 체크포인트로 별도 확인한다.
+    final groupBWillRun =
+        const String.fromEnvironment('E2E_REAL_BACKEND_TEST') == '1';
+    logCheckpoint(
+      groupBWillRun ? 'FLOW5_GROUP_B_WILL_RUN' : 'FLOW5_GROUP_B_SKIPPED_OR_START',
+    );
+
     testWidgets(
       '전용 테스트 계정으로 실제 Supabase에 로그인 -> 세션 확인 -> 로그아웃',
       (tester) async {
+        logCheckpoint('FLOW5_GROUP_B_START');
         // 프로덕션 Supabase 프로젝트 ref
         // (lib/core/env.dart의 _defaultSupabaseUrl,
         // .github/workflows/ios-simulator-e2e.yml의 PROD_SUPABASE_REF와

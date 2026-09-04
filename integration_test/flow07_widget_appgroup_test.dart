@@ -87,6 +87,7 @@ import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
 
 import '_harness/app_harness.dart';
+import '_harness/checkpoint_logger.dart';
 
 /// 테스트 실행 시점 기준 항상 미래인 해(年). 절대 날짜 리터럴을 그대로
 /// 하드코딩하면 시간이 지나 과거가 되는 순간 테스트가 시한폭탄이 된다
@@ -152,6 +153,7 @@ class _WriteSiteContract {
 }
 
 void main() {
+  logCheckpoint('FLOW7_START');
   ensureIntegrationTestBinding();
 
   group(
@@ -172,6 +174,7 @@ void main() {
           '$path는 raw HomeWidget.saveWidgetData를 직접 호출하지 않고 '
           'HomeWidgetService(Contract A)를 통해서만 홈 위젯을 건드린다',
           () {
+            logCheckpoint('FLOW7_WRITE_SITE_CONTRACT_START');
             final source = _WriteSiteContract(path).read();
 
             expect(
@@ -196,6 +199,7 @@ void main() {
         'initiallyLaunchedFromHomeWidget()만 호출하는 읽기 전용 지점이며, '
         'HomeWidget.saveWidgetData 호출은 없다 (쓰기 스키마와 무관)',
         () {
+          logCheckpoint('FLOW7_APP_DART_READONLY_TEST_START');
           final source = _WriteSiteContract('lib/app.dart').read();
 
           expect(source.contains('HomeWidget.widgetClicked'), isTrue);
@@ -213,6 +217,7 @@ void main() {
         'Platform.isAndroid 하드 게이트로 iOS에서는 no-op이다 — 개인 위젯 '
         '(Contract A)과 물리적으로 다른 스키마임을 소스로 고정한다',
         () {
+          logCheckpoint('FLOW7_CONTRACT_B_TEST_START');
           final source = _WriteSiteContract(
             'lib/features/groups/services/group_calendar_widget_service.dart',
           ).read();
@@ -267,6 +272,7 @@ void main() {
         'fromEvents는 다가오는 이벤트를 nextEvent로, 지난 이벤트는 '
         'lastPastEvent 후보로 분리한다',
         () {
+          logCheckpoint('FLOW7_BUILDER_GROUP_START');
           final now = DateTime(_futureYear, 6, 15, 12);
           final events = <EventModel>[
             EventModel(
@@ -324,6 +330,7 @@ void main() {
         'iOSAppGroupId는 WidgetKit 타깃과 공유하는 '
         'group.com.fluxstudio.planflow로 기본 설정돼 있다',
         () {
+          logCheckpoint('FLOW7_SERVICE_GROUP_START');
           final service = HomeWidgetService();
           expect(service.iOSAppGroupId, 'group.com.fluxstudio.planflow');
         },
@@ -446,6 +453,7 @@ void main() {
 
           expect(success, isFalse);
           expect(platform.saveWidgetDataCallCount, 0);
+          logCheckpoint('FLOW7_DONE');
         },
       );
     },

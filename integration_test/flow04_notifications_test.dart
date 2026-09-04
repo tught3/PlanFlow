@@ -50,6 +50,7 @@ import 'package:planflow/services/notification_route_contract.dart';
 import 'package:planflow/services/notification_service.dart';
 
 import '_harness/app_harness.dart';
+import '_harness/checkpoint_logger.dart';
 import '_harness/fakes/fake_notification_service.dart';
 
 /// 테스트 실행 시점 기준 항상 미래인 해(年). 절대 날짜 리터럴을 그대로
@@ -61,6 +62,7 @@ import '_harness/fakes/fake_notification_service.dart';
 final int _futureYear = DateTime.now().year + 1;
 
 void main() {
+  logCheckpoint('FLOW4_START');
   // 위젯 트리를 pump하지 않지만(순수 서비스 seam 호출), 다른 시나리오와
   // 동일한 하네스 바인딩 초기화 관례를 따른다.
   ensureIntegrationTestBinding();
@@ -72,6 +74,7 @@ void main() {
       late FakeNotificationService notificationService;
 
       setUp(() {
+        logCheckpoint('FLOW4_SCHEDULING_SETUP');
         notificationService = FakeNotificationService();
       });
 
@@ -228,6 +231,7 @@ void main() {
     '(매트릭스 항목 14, SIMULATOR_FULL; 실제 OS 탭은 항목 16 '
     'PHYSICAL_DEVICE_REQUIRED)',
     () {
+      logCheckpoint('FLOW4_ROUTE_GROUP_START');
       test(
         'NotificationRouteContract.schedule(id) → canonicalPath는 '
         'AppRoutes.eventDetailWithId 라우트 패턴과 정확히 일치하는 '
@@ -320,6 +324,7 @@ void main() {
             ),
             '${AppRoutes.eventDetail}/evt-77',
           );
+          logCheckpoint('FLOW4_DONE');
         },
       );
     },
