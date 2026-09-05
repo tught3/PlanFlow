@@ -61,10 +61,19 @@ Run13~16은 고칠 것이 있었고 실제로 고쳤다. Run18에서 처음으�
 
 ## 2. 지금 실제로 통과 근거가 있는 것 vs 미실행
 
-이 저장소의 `.github/workflows/`에는 **iOS 전용 워크플로 6개만** 존재한다
-(`ios-90683-build15-artifact-audit.yml`, `ios-privacy-audit.yml`, `ios-readiness.yml`,
-`ios-release.yml`, `ios-simulator-e2e.yml`, `ios-testflight-ingestion.yml`).
-일반/Android CI 워크플로는 **없다**.
+이 저장소의 `.github/workflows/`에는 워크플로 8개가 존재하며, 그중
+`pull_request` / `push`로 **자동 실행**되는 것은 iOS 전용 워크플로들뿐이다.
+
+**중요 — 이 절은 작성 도중 갱신됐다.** 최초 조사 시점(기준 HEAD `cbf8f4b6`)에는
+iOS 전용 워크플로 6개만 존재했으나, 작성 중 커밋 `f29f9a24`가
+`flutter-test-baseline.yml`과 `ios-adsdk-launch-probe.yml` 2개를 추가했다.
+아래 서술은 `f29f9a24` 반영 기준이다.
+
+- `flutter-test-baseline.yml`은 **`workflow_dispatch` 전용**(자동 트리거 없음)이고
+  테스트 스텝이 `continue-on-error: true`인 **비차단 측정용** 워크플로다.
+- 따라서 "157개 테스트가 **자동으로** 실행되는 CI는 없다"는 진술은 **여전히 유효**하다.
+- 다만 "전체 스위트를 돌릴 수단이 저장소에 전혀 없다"는 진술은 **더 이상 사실이 아니다.**
+  수단은 생겼고, **아직 실행되지 않았을 뿐**이다(§4-1 참조).
 
 ### 2.1 통과 근거가 있는 것
 
@@ -84,7 +93,7 @@ unsigned `xcodebuild` Runner 빌드를 돌린다 — 즉 **컴파일 가능성**
 | 항목 | 상태 | 근거 |
 |---|---|---|
 | FLOW1 ~ FLOW8 (8개 전부) | **NOT_VERIFIED** | Run#18 `flows_1_to_8: "NOT_VERIFIED"` |
-| `test/` 아래 `_test.dart` **157개** | **어떤 CI에서도 자동 실행 안 됨** | `.github/workflows/`에 일반 테스트 워크플로 부재, `ios-readiness.yml:89-93`이 4개만 명시 실행 |
+| `test/` 아래 `_test.dart` **157개** | **어떤 CI에서도 자동 실행 안 됨** | `ios-readiness.yml:89-93`이 4개만 명시 실행. 전체 스위트를 돌리는 `flutter-test-baseline.yml`은 `workflow_dispatch` 전용 + `continue-on-error: true`라 자동 실행·차단 모두 하지 않는다 |
 | `integration_test/flow01` 세션 복원 시나리오 | **영구 skip** | `integration_test/flow01_cold_start_test.dart:90` `skip: true` |
 
 `integration_test/` 에는 flow01~flow08 파일 8개가 실재한다.
@@ -99,11 +108,14 @@ unsigned `xcodebuild` Runner 빌드를 돌린다 — 즉 **컴파일 가능성**
 > fixtures) that must not mask native iOS compilation.
 
 이 주석은 **두 가지를 주장하는데 둘 다 이 저장소에서 확인되지 않는다**:
-1. "Android/feature CI가 전체 스위트를 돌린다" → `.github/workflows/`에 그런 워크플로가 **없다**.
-2. "환경 민감 실패가 있다" → **이 판정 문서 작성 시점에 실측하지 않았다. `UNVERIFIED`.**
+1. "Android/feature CI가 전체 스위트를 돌린다" → 그런 **자동 실행** 워크플로가 **없다**.
+   (`flutter-test-baseline.yml`은 수동 dispatch 전용이며 이 주석보다 나중에 생겼다.)
+2. "환경 민감 실패가 있다" → **실측된 적이 없다. `UNVERIFIED`.**
 
-157개 테스트가 실제로 몇 개 통과하는지는 **아무도 모른다.** 이것이 §4의 첫 단계가
-"수정"이 아니라 "측정"인 이유다.
+157개 테스트가 실제로 몇 개 통과하는지는 **아직 아무도 모른다.**
+측정 수단(`flutter-test-baseline.yml`)은 `f29f9a24`로 생겼지만
+**실행 결과가 없다** — 수단의 존재는 측정이 아니다.
+이것이 §4의 첫 단계가 "수정"이 아니라 "측정"인 이유다.
 
 ### 2.4 `flow01` skip이 드러내는 별개 격차
 
@@ -144,20 +156,26 @@ App Group 실물 왕복, 권한 다이얼로그 분기)은 §4의 대체 QA로 *
 
 **순서를 지켜라. 1번은 수정이 아니라 측정이다.**
 
-1. **[측정] 157개 테스트의 실제 현황을 확정한다.**
-   `flutter test`를 전체 1회 실행해 pass/fail/skip 수를 기록한다.
+1. **[측정] 157개 테스트의 실제 현황을 확정한다. — 수단 있음, 실행 필요**
+   `flutter-test-baseline.yml`(커밋 `f29f9a24`로 추가됨)을 **`workflow_dispatch`로 1회 실행**하고
+   업로드되는 `flutter-full-suite-baseline` 아티팩트(`full-suite-output.log`)에서
+   pass/fail/skip 수를 기록한다.
    `ios-readiness.yml:85-88`의 "environment-sensitive failures" 주장이
    사실인지, 사실이면 몇 건인지를 먼저 숫자로 만든다.
-   이 측정 없이 다음 단계로 가지 마라 — 지금은 아무도 모른다.
+   **이 측정 없이 다음 단계로 가지 마라** — 워크플로가 존재한다는 사실은
+   측정 결과가 아니다. 실행 로그가 나오기 전까지 §2.2는 그대로 미확정이다.
 
 2. **[분류] 실패를 두 종류로 가른다.**
    - (a) 환경 의존 실패(네트워크·픽스처·로케일) → 격리하거나 명시 skip + 사유 기록
    - (b) 실제 제품 결함 → 릴리스 블로커 후보
 
-3. **[게이트] 통과 집합을 CI 워크플로로 고정한다.**
-   (a)를 제외한 나머지를 돌리는 워크플로를 신설한다.
+3. **[게이트] 통과 집합을 차단 게이트로 승격한다.**
+   현재 `flutter-test-baseline.yml`은 의도적으로 **비차단**(`continue-on-error: true`,
+   수동 트리거)이다 — 측정 전용이라 그렇게 설계된 것이 맞다.
+   1·2번으로 통과 집합이 확정된 뒤에야 (a)를 제외한 나머지를
+   **자동 트리거 + 차단** 게이트로 올린다. 이것은 별도의 의도적 변경이다.
    `ios-readiness.yml`은 **수정하지 않는다** — 그 파일의 역할(iOS 네이티브 계약)은
-   그대로 두고 별도 워크플로로 분리한다.
+   그대로 두고 별도 워크플로로 유지한다.
    fail-closed 원칙(`docs/ios/templates/README.md` "설계 원칙")을 따른다.
 
 4. **[유지] host-runnable E2E는 계속 쓴다.**
@@ -211,4 +229,7 @@ Run13~16에서 해결한 것들은 현재 소스에 남아 있고 재개 시 재
 
 - 이 문서는 **판정 기록**이다. 코드·워크플로를 변경하지 않았다.
 - §4의 대체 QA는 **아직 실행되지 않았다.** 별도 작업으로 진행해야 한다.
-- Run#18 이후의 새 실행 근거는 없다 — 이 문서의 모든 실행 사실은 Run#18까지다.
+  1번(측정)의 **수단**은 `f29f9a24`로 생겼으나 **실행 결과는 없다.**
+- Run#18 이후의 새 XCTest 실행 근거는 없다 — 이 문서의 모든 시뮬레이터 실행 사실은 Run#18까지다.
+- 기준 HEAD는 `cbf8f4b6`이나, 작성 중 병행 커밋 `f29f9a24`가 워크플로 2개를 추가해
+  §2·§4를 그에 맞춰 갱신했다. 그 이후의 저장소 변경은 반영돼 있지 않다.
