@@ -98,7 +98,12 @@ pass 'exit handler propagates cleanup failure without recursion'
 
 printf '%s' "$podfile" >/dev/null
 grep -qF -- "target 'RunnerTests' do" "$podfile" || fail 'Podfile does not embed RunnerTests'
-grep -qF -- 'inherit! :search_paths' "$podfile" || fail 'RunnerTests does not inherit pod search paths'
+runner_tests_block="$(awk "/target 'RunnerTests' do/,/end/ { print }" "$podfile")"
+printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :none' || fail 'RunnerTests does not opt out of inherited pod search paths'
+printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test', :path => File.expand_path(File.join('.symlinks', 'plugins', 'integration_test', 'ios'), __dir__)" || fail 'RunnerTests does not explicitly add the integration_test pod from the resolved Podfile-relative path'
+if printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :search_paths'; then
+  fail 'RunnerTests still inherits pod search paths'
+fi
 grep -qF -- 'INTEGRATION_TEST_IOS_RUNNER(RunnerTests)' "$objc_runner" || fail 'official integration_test XCTest macro missing'
 grep -qF -- '@import integration_test;' "$objc_runner" || fail 'integration_test module import missing'
 grep -qF -- 'RunnerTests.m' "$pbxproj" || fail 'pbxproj does not reference RunnerTests.m'

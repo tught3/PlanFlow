@@ -35,7 +35,8 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   target 'RunnerTests' do
-    inherit! :search_paths
+    inherit! :none
+    pod 'integration_test', :path => File.expand_path(File.join('.symlinks', 'plugins', 'integration_test', 'ios'), __dir__)
   end
 end
 
