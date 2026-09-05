@@ -151,6 +151,19 @@ assert_contains "fixture_c_normal" "$fixture_c_log" 'No failure markers detected
 assert_not_contains "fixture_c_normal" 'BUILD_NEVER_COMPLETED'
 assert_not_contains "fixture_c_normal" 'BUILD_SUCCEEDED_THEN_SILENT'
 
+# --- Fixture D: native XCTest crash after `Testing failed:` ----------------
+# xcodebuild may fail the XCTest host before the Flutter reporter emits an
+# "Xcode build done" line. This terminal marker must not be mislabeled as a
+# build that never completed.
+fixture_d_log='00:01 Booting simulator...
+00:40 Testing failed:
+00:40 Early unexpected exit, operation never finished bootstrapping - no restart will be attempted
+00:40 Crash: Runner (1234) GADApplicationVerifyPublisherInitializedCorrectly
+'
+assert_contains "fixture_d_native_xctest_failure" "$fixture_d_log" 'XCTEST_NATIVE_FAILURE'
+assert_contains "fixture_d_native_xctest_failure" "$fixture_d_log" 'native XCTest 실행 실패 또는 호스트 crash'
+assert_not_contains "fixture_d_native_xctest_failure" 'BUILD_NEVER_COMPLETED'
+
 echo ""
 echo "--- Existing scenario regression checks (must still work unchanged) ---"
 echo ""

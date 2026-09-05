@@ -53,6 +53,7 @@ jobs:
           bash scripts/ios/tests/e2e_stage_markers_contract.sh
           bash scripts/ios/tests/simctl_discover_contract.sh
           bash scripts/ios/tests/e2e_xctest_runner_contract.sh
+          bash scripts/ios/tests/e2e_admob_contract.sh
 
       - name: Verify backend isolation (fail-closed)
         shell: bash

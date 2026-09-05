@@ -197,6 +197,14 @@ lines_after_build_done() {
 # more severe failure shape than "build succeeded, then silence". Collapsing
 # it into "normal" is a fail-open misclassification.
 build_completion_status() {
+  # xcodebuild can report a native XCTest host crash as "Testing failed:",
+  # even when the captured Flutter log never reaches "Xcode build done".
+  # Check this terminal XCTest signal first so that a post-build native crash
+  # is not mislabeled as BUILD_NEVER_COMPLETED.
+  if grep -qF -- 'Testing failed:' "$log_file" 2>/dev/null; then
+    echo "XCTEST_NATIVE_FAILURE"
+    return 0
+  fi
   if ! grep -qF -- 'Xcode build done' "$log_file" 2>/dev/null; then
     echo "NEVER_COMPLETED"
     return 0
@@ -260,6 +268,9 @@ first_detail_after() {
     echo "- Watchdog: 타임아웃 신호 없음"
   fi
   case "$build_status" in
+    XCTEST_NATIVE_FAILURE)
+      echo "- Post-build 출력: \"Testing failed:\" 감지 — native XCTest 실행 실패 또는 호스트 crash"
+      ;;
     NEVER_COMPLETED)
       echo "- Post-build 출력: \"Xcode build done\" 라인 자체가 로그에 없음 — 빌드가 캡처된 로그 안에서 완료되지 못함"
       ;;
@@ -327,6 +338,12 @@ first_detail_after() {
       echo ""
       echo "- Category guess: \`WATCHDOG_TIMEOUT\`"
       echo "- First matching line: \`$watchdog_line\`"
+      echo ""
+    elif [ "$build_status" = "XCTEST_NATIVE_FAILURE" ]; then
+      echo "## FAILED: (native XCTest failure, no specific flow file identified)"
+      echo ""
+      echo "- Category guess: \`XCTEST_NATIVE_FAILURE\`"
+      echo "- First matching line: \`$(grep -F -m 1 -- 'Testing failed:' "$log_file" || true)\`"
       echo ""
     elif [ "$build_status" = "SILENT" ]; then
       # Previously this shape fell through to "no failure markers detected"

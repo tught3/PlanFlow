@@ -69,6 +69,7 @@ app_path="$derived_data/Build/Products/Debug-iphonesimulator/Runner.app"
 runner_plist="$script_dir/../../ios/Runner/Info.plist"
 runner_plist_backup="$artifact_dir/.Runner-Info.plist.$$.backup"
 runner_plist_backup_active=0
+cleanup_started=0
 
 emit_stage() {
   local name="$1"
@@ -152,10 +153,14 @@ cleanup() {
 }
 
 on_exit() {
-  local exit_status="$1"
+  local exit_status="${1:-0}"
   local cleanup_rc=0
 
-  trap - EXIT
+  if [ "$cleanup_started" -eq 1 ]; then
+    return 0
+  fi
+  cleanup_started=1
+  trap - EXIT INT TERM HUP
   cleanup || cleanup_rc=$?
 
   if ! restore_runner_plist; then
@@ -173,7 +178,14 @@ on_exit() {
 
   exit 0
 }
+
+on_signal() {
+  on_exit "$1"
+}
 trap 'on_exit "$?"' EXIT
+trap 'on_signal 143' TERM
+trap 'on_signal 130' INT
+trap 'on_signal 129' HUP
 
 if [ ! -f "$flow_file" ]; then
   emit_stage SIMULATOR_BOOT FAIL "flow file not found: $flow_file"
