@@ -24,31 +24,14 @@ unadded, and no additional `UsageDescription` key or source fix is required.
 `ROOT_CAUSE_STRONGLY_NARROWED` remains correct because Apple `stateDetails` is
 still unavailable.
 
-## Build 16 authenticated evidence
+## Build 16 and Apple evidence status
 
-Authenticated Build 16 evidence is now present and supersedes the prior pending
-state: GitHub Actions run `33634034706`, run_number `16`, head
-`503bba99ec5efe37195b2a516c0f923c9fd8b4c6`, artifact
-`planflow-ios-privacy-audit-16`, artifact id `9848730798`, digest
-`sha256:fcd91e583ac1b5dd53b445e9bd6adbdb2c8c2ab7baa54b47cfc46aa1dbc0fe37`.
-
-Archive and export privacy reports are `PASS`. Six Runner keys are `true`,
-including both photo keys. Widget forbidden keys are empty. The evidence set
-includes `Photos.framework`, `PHPhotoLibrary`, `UIImageWriteToSavedPhotosAlbum`,
-`AVFoundation`, `Speech`, `AdSupport`, and `CoreLocation`. Candidate-only
-categories remain unchanged.
-
-Release workflow gates are also `PASS`: archive, archive privacy preflight,
-export, exported IPA privacy preflight, transport, authoritative ASC
-BuildUpload state `COMPLETE` for bundle `com.fluxstudio.planflow` version
-`1.0.0` build `16`, ingestion, TestFlight visible/processing, and available.
-`90683_RESOLVED_BY_BUILD16=YES` is based on the authoritative `COMPLETE` state,
-not transport alone.
-
-PlanFlow status is `TESTFLIGHT_READY`. Android remains unchanged. Non-fatal
-FirebaseRemoteConfig, SDK deprecation, linker search-path, PrivacyInfo
-processing, and GitHub Actions runtime warnings are recorded as warnings only
-and are not treated as blockers.
+No authenticated Build 16 or App Store Connect `stateDetails` evidence is
+available in this integration. Build 16 remains undispatched, and no
+TestFlight readiness or `90683_RESOLVED_BY_BUILD16` claim is made. The
+historical Build 13/14/15 transport and BuildUpload observations above remain
+diagnostic only; they do not substitute for an authenticated macOS binary
+audit or Apple evidence.
 
 ## Run #3 archive/export evidence
 
@@ -116,13 +99,28 @@ Runner key copied into Widget fails the build.
 Windows에서는 실제 macOS binary를 만들 수 없고 Xcode, `otool`, authoritative signed IPA를
 실행할 수 없다;
 the archive/export and binary gates must therefore run on the macOS GitHub
-runner. Run #4 and the Build 16 production run satisfy those audit gates;
-authenticated workflow evidence records transport PASS, BuildUpload
-`COMPLETE`, ingestion PASS, and TestFlight availability PASS.
+runner. No authenticated macOS binary audit has been completed in this
+integration, so the source-level result remains fail-closed.
 
 The Run #4 dependency map update does not change the signing/release workflow:
 the existing gates stay fail-closed, and the required source/archive/export
 evidence remains the source of truth.
+
+## Exact Build 15 preserved-artifact audit
+
+`.github/workflows/ios-90683-build15-artifact-audit.yml` is a separate,
+audit-only route for the exact preserved Build 15 IPA. It requires one IPA,
+one `provenance.json`, the lowercase SHA-256, the full source commit, and
+matching Runner/Widget bundle metadata. It verifies the checked-out source
+commit and embedded `CFBundleVersion`, scans the preserved binary on macOS, and
+uploads only filtered audit reports. It never rebuilds, signs, uploads to
+App Store Connect, queries TestFlight, or dispatches Build 16.
+
+The existing `.github/workflows/ios-privacy-audit.yml` signed archive/export
+workflow remains intact as a separate non-uploading source/archive audit. The
+two workflows must not be conflated: the preserved-artifact route is blocked
+until an authorized Actions artifact supplies the exact Build 15 IPA and
+provenance manifest.
 
 ## Flux Studio iOS release template candidate
 
