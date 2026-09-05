@@ -678,4 +678,180 @@ echo AVFoundation.framework
     expect(workflow, isNot(contains('xcodebuild archive')));
     expect(workflow, isNot(contains('build 14')));
   });
+
+  test('macOS audit-only workflow never uploads and never dispatches Build 16',
+      () {
+    final workflow =
+        file('.github/workflows/ios-90683-build15-artifact-audit.yml')
+            .readAsStringSync();
+    expect(workflow, contains('runs-on: macos-latest'));
+    expect(workflow, contains('workflow_dispatch'));
+    expect(workflow, contains('audit_build_number'));
+    expect(workflow, contains('audit_artifact_run_id'));
+    expect(workflow, contains('audit_artifact_name'));
+    expect(workflow, contains('audit_artifact_sha256'));
+    expect(workflow, contains('audit_source_commit'));
+    expect(workflow, contains('AUDIT_ONLY_NO_UPLOAD: PASS'));
+    expect(workflow, contains('BUILD_16_DISPATCHED: NO'));
+    expect(workflow, contains('REBUILD_PERFORMED: NO'));
+    expect(workflow, contains('this 90683 workflow audits Build 15 only'));
+    expect(workflow, contains('APP_STORE_UPLOAD_PERFORMED: NO'));
+    expect(workflow, contains('verify-ios-privacy-surface.py'));
+    expect(workflow, contains('--audit-report'));
+    expect(workflow, contains('--require-binary-scan'));
+    expect(workflow, contains('audit-export-privacy-report.json'));
+    expect(workflow, contains('actions/upload-artifact@v4'));
+    expect(workflow, contains('planflow-ios-90683-audit-'));
+    expect(workflow, contains('BLOCKED_AUDIT_PROVENANCE'));
+    expect(workflow, contains('CFBundleIdentifier'));
+    expect(workflow, contains('PlanFlowWidgetExtension.appex/Info.plist'));
+    expect(workflow, contains('widget_bundle_id'));
+    expect(workflow, contains('com.fluxstudio.planflow.PlanFlowWidget'));
+    expect(workflow, contains('EXACT_BUILD15_ARTIFACT_PROVENANCE: PASS'));
+    expect(workflow,
+        contains('BLOCKED_AUDIT_METADATA: widget bundle identifier mismatch'));
+    expect(workflow,
+        contains('BLOCKED_AUDIT_METADATA: widget CFBundleVersion mismatch'));
+    expect(workflow, contains('EXACT_BUILD15_ARTIFACT_PROVENANCE: PASS'));
+    expect(workflow, contains('actions/download-artifact@v4'));
+    expect(workflow, contains('Secret cleanup gate executed.'));
+    // Audit-only: no Apple transport and no App Store Connect API surface.
+    expect(workflow, isNot(contains('altool')));
+    expect(workflow, isNot(contains('--upload-app')));
+    expect(workflow, isNot(contains('verify-app-store-build.py')));
+    expect(workflow, isNot(contains('APP_STORE_CONNECT_')));
+    expect(workflow, isNot(contains('flutter build ios')));
+    expect(workflow, isNot(contains('xcodebuild archive')));
+    // The release workflow keeps the upload path; the audit workflow must not.
+    final release =
+        file('.github/workflows/ios-release.yml').readAsStringSync();
+    expect(release, contains('xcrun altool --upload-app'));
+  });
+
+  // On Windows a bare `bash` resolves to WSL, which has no distro on this
+  // host; the Git for Windows shell is the POSIX interpreter that matches the
+  // GitHub runner semantics closely enough for this gate.
+  String? resolveBash() {
+    if (!Platform.isWindows) return 'bash';
+    for (final candidate in <String>[
+      r'C:\Program Files\Git\bin\bash.exe',
+      r'C:\Program Files\Git\usr\bin\bash.exe',
+    ]) {
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return null;
+  }
+
+  test('audit-only build-number gate accepts only Build 15', () {
+    final bash = resolveBash()!;
+    final workflow =
+        file('.github/workflows/ios-90683-build15-artifact-audit.yml')
+            .readAsStringSync();
+    // Extract the real gate script from the workflow and execute it, so a
+    // broken gate cannot pass on string matching alone.
+    final start =
+        workflow.indexOf('      - name: Validate immutable Build 15 audit inputs');
+    expect(start, isNot(-1));
+    final runMarker = workflow.indexOf('run: |', start);
+    expect(runMarker, isNot(-1));
+    final body = workflow.substring(workflow.indexOf('\n', runMarker) + 1);
+    final lines = <String>[];
+    for (final line in body.split('\n')) {
+      if (line.trim().isNotEmpty && !line.startsWith('          ')) break;
+      lines.add(line.length >= 10 ? line.substring(10) : line);
+    }
+    final script = File(
+        '${Directory.systemTemp.createTempSync('planflow-audit-gate-').path}${Platform.pathSeparator}gate.sh');
+    script.writeAsStringSync(lines.join('\n'));
+    expect(script.readAsStringSync(), contains('this 90683 workflow audits Build 15 only'));
+    int runGate(String value) => Process.runSync(
+          bash,
+          [script.path.replaceAll(r'\', '/')],
+          environment: <String, String>{
+            'IOS_AUDIT_BUILD_NUMBER': value,
+            'IOS_AUDIT_ARTIFACT_RUN_ID': '123',
+            'IOS_AUDIT_ARTIFACT_NAME': 'build15',
+            'IOS_AUDIT_ARTIFACT_SHA256':
+                '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+            'IOS_AUDIT_SOURCE_COMMIT':
+                '0123456789abcdef0123456789abcdef01234567',
+          },
+        ).exitCode;
+    expect(runGate('15'), 0);
+    for (final blocked in <String>['0', '16', '0016', '017', '99', 'abc', '', '1a']) {
+      expect(runGate(blocked), isNot(0), reason: 'must block "$blocked"');
+    }
+    script.parent.deleteSync(recursive: true);
+  }, skip: resolveBash() == null ? 'POSIX bash is unavailable on this host' : null);
+
+  test('privacy helper audit report records 90683 purpose-string gaps', () {
+    final temp = Directory.systemTemp.createTempSync('planflow-privacy-audit-');
+    try {
+      final bundle =
+          Directory('${temp.path}${Platform.pathSeparator}Runner.app');
+      bundle.createSync(recursive: true);
+      final runnerPlist =
+          File('${bundle.path}${Platform.pathSeparator}Info.plist');
+      runnerPlist.writeAsStringSync(
+        '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
+        '<key>CFBundleExecutable</key><string>Runner</string>'
+        '<key>NSMicrophoneUsageDescription</key><string>mic</string>'
+        '<key>NSSpeechRecognitionUsageDescription</key><string>speech</string>'
+        '<key>NSUserTrackingUsageDescription</key><string>tracking</string>'
+        '<key>NSLocationWhenInUseUsageDescription</key><string>location</string>'
+        '<key>NSPhotoLibraryUsageDescription</key><string>photos</string>'
+        '<key>NSPhotoLibraryAddUsageDescription</key><string>photo-add</string>'
+        '</dict></plist>',
+      );
+      final widgetPlist =
+          File('${temp.path}${Platform.pathSeparator}widget.plist');
+      widgetPlist.writeAsStringSync(
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<plist version="1.0"><dict></dict></plist>',
+      );
+      File('${bundle.path}${Platform.pathSeparator}Runner')
+          .writeAsStringSync('fake runner binary');
+      final toolDir = Directory('${temp.path}${Platform.pathSeparator}tools')
+        ..createSync(recursive: true);
+      File('${toolDir.path}${Platform.pathSeparator}otool.cmd')
+          .writeAsStringSync('@echo off\n'
+              'echo /System/Library/Frameworks/CoreLocation.framework/CoreLocation\n');
+      File('${toolDir.path}${Platform.pathSeparator}nm.cmd')
+          .writeAsStringSync('@echo off\necho _AVCaptureDevice\n');
+      File('${toolDir.path}${Platform.pathSeparator}strings.cmd')
+          .writeAsStringSync('@echo off\necho AVCaptureDevice\n');
+      final report = File('${temp.path}${Platform.pathSeparator}audit.json');
+      final helper =
+          '${root.path}${Platform.pathSeparator}scripts${Platform.pathSeparator}verify-ios-privacy-surface.py';
+      final result = Process.runSync(
+        Platform.isWindows ? 'python' : 'python3',
+        [
+          helper,
+          '--runner-plist',
+          runnerPlist.path,
+          '--widget-plist',
+          widgetPlist.path,
+          '--runner-bundle',
+          bundle.path,
+          '--tool-dir',
+          toolDir.path,
+          '--audit-report',
+          '--report-json',
+          report.path,
+        ],
+      );
+      expect(result.exitCode, 0);
+      final reportText = report.readAsStringSync();
+      expect(reportText, contains('"appleErrorCode": "90683"'));
+      expect(reportText, contains('"uploadPerformed": false'));
+      expect(reportText, contains('runnerUsageDescriptionKeys'));
+      expect(reportText, contains('AVCaptureDevice'));
+      expect(reportText, contains('NSCameraUsageDescription'));
+      // CoreLocation is linked and its key is present, so it is not a gap.
+      expect(reportText, contains('"frameworkKeyGaps": []'));
+      expect(result.stdout.toString(), contains('IOS_PRIVACY_KEY_GAP:'));
+    } finally {
+      temp.deleteSync(recursive: true);
+    }
+  });
 }
