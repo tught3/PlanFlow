@@ -309,6 +309,7 @@ if [ "$current_failure" -eq 0 ]; then
       -destination "id=$udid" \
       -derivedDataPath "$derived_data" \
       -resultBundlePath "$result_bundle" \
+      -parallel-testing-enabled NO \
       -only-testing:RunnerTests
   test_status=$?
   test_end="$(date +%s)"

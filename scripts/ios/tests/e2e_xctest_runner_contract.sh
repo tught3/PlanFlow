@@ -75,6 +75,7 @@ printf '%s' "$runner_text" | grep -qF -- 'derivedDataPath' || fail 'runner does 
 printf '%s' "$runner_text" | grep -qF -- '-resultBundlePath' || fail 'runner does not produce an xcresult bundle'
 printf '%s' "$runner_text" | grep -qF -- 'test-without-building' || fail 'runner does not use XCTest test-without-building'
 printf '%s' "$runner_text" | grep -qF -- 'only-testing:RunnerTests' || fail 'runner target is not scoped to RunnerTests'
+printf '%s' "$runner_text" | grep -qF -- '-parallel-testing-enabled NO' || fail 'XCTest runner does not disable parallel test clones'
 pass 'bounded xcodebuild and xcresult contract present'
 
 app_build_block="$(printf '%s\n' "$runner_text" | awk '/flutter build ios --config-only/,/xcodebuild build-for-testing/ { print }')"
