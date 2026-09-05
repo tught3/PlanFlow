@@ -1,0 +1,596 @@
+#!/usr/bin/env node
+/**
+ * scan-bundle.mjs
+ *
+ * Scans the built `dist/` output for leaked secrets before it ships to
+ * Apps in Toss. Fails the build (exit 1) if it finds:
+ *   - a JWT whose decoded payload has role === "service_role" (Supabase
+ *     service-role key — full DB bypass; see scanJwts() below)
+ *   - the literal string "service_role" (Supabase service-role key marker)
+ *   - "eval(" (also disallowed by the Apps in Toss review checklist)
+ *   - an unfolded "import.meta.env" reference (Vite statically replaces
+ *     every `import.meta.env.*` access — including
+ *     `import.meta.env.DEV`/`import.meta.env.VITE_DEV_PREVIEW`, the two
+ *     values that gate src/features/devPreview/'s dev-only preview mode —
+ *     with literal constants at build time; see the note below on why this
+ *     replaced the old PLANFLOW_DEV_PREVIEW_ENABLED marker check)
+ *   - long hex/base64-looking tokens (32+ chars) that look like raw secrets
+ *     and aren't part of a confirmed-safe JWT (e.g. a public Supabase
+ *     "anon" key, which Vite's VITE_ prefix intentionally bundles
+ *     client-side — RLS protects it, not secrecy)
+ *   - a test-mode ad group id (`ait-ad-test-*`, from `TEST_AD_GROUP_IDS` in
+ *     src/features/ads/adConfig.ts) found anywhere in dist/ — resolveAdGroupIds()
+ *     is only supposed to select these when `import.meta.env.DEV` is true, which
+ *     Vite folds to a literal `false` in a production build (same build-time
+ *     constant-folding mechanism as the devPreview gate above); their presence
+ *     in a real prod bundle means that folding didn't happen and production
+ *     traffic could end up requesting test ad inventory instead of real ads
+ *
+
+ * Usage: node scripts/scan-bundle.mjs
+ * Exit code 0 = clean, 1 = findings, 2 = dist/ missing.
+ */
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative, extname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const projectRoot = join(__dirname, "..");
+const distDir = join(projectRoot, "dist");
+
+const SCAN_EXTENSIONS = new Set([".js", ".html", ".mjs", ".cjs"]);
+
+/**
+ * Why the old "PLANFLOW_DEV_PREVIEW_ENABLED marker" rule was replaced
+ * (independent review finding, apps-in-toss round):
+ *
+ * `PLANFLOW_DEV_PREVIEW_MARKER` (value `"PLANFLOW_DEV_PREVIEW_ENABLED"`,
+ * exported from src/features/devPreview/devPreview.ts) is only ever
+ * imported by devPreview.test.ts and the devPreview/index.ts barrel — no
+ * production code path (router.tsx, useSession.ts, etc.) references it.
+ * Because nothing in the production import graph reaches it, ES module
+ * tree-shaking drops it from every `vite build` output unconditionally,
+ * regardless of whether the rest of devPreview's code actually leaked into
+ * the bundle or is safely gated. That made the old rule a vacuous
+ * check — it always passed, so it could never actually catch a real
+ * regression (confirmed by direct measurement: `dist/assets/*.js` was
+ * grepped after a real `vite build` and the marker was absent — 0
+ * occurrences — while the (harmless, expected-present, see below) banner
+ * text and mock user id literal from the same feature WERE present, 1
+ * occurrence each — the marker check gave zero signal either way).
+ *
+ * The two strings that *do* actually persist in every production
+ * bundle — the banner text ("개발 미리보기 모드 — 실제 데이터가 아닙니다",
+ * src/router.tsx) and the mock user id literal
+ * (`DEV_PREVIEW_USER_ID = 'dev-preview-user'`, devPreview.ts) — are NOT
+ * used as a new fail-closed marker here, because their presence is the
+ * *expected*, by-design outcome, not a leak: src/router.tsx statically
+ * imports `previewRepository` (so it can synchronously inject it as a
+ * prop when the runtime gate is on) regardless of the gate's value, so
+ * those literals are always bundled — see the comments on
+ * `previewRepository`/`DEV_PREVIEW_USER_ID` in devPreview.ts. Treating
+ * their presence as a build failure would make `secret-scan` fail on
+ * every single clean production build, which is not useful.
+ *
+ * What actually keeps devPreview's *behavior* (banner rendering, mock
+ * session) inert in production is the runtime gate
+ * (`isDevPreviewEnabled()`) evaluating `import.meta.env.DEV` — a value
+ * Vite always statically replaces with a literal boolean at build time
+ * ("production 비활성 보장 수단 1" in docs/review-checklist.md 9절). If that
+ * replacement ever failed to happen (e.g. a broken Vite config, or a
+ * `--mode` misconfiguration that leaves `import.meta.env.*` as a runtime
+ * property access instead of a compile-time constant), the literal string
+ * `"import.meta.env"` would survive into `dist/`, which is a real,
+ * non-vacuous signal that something about env-based gating (not just
+ * devPreview's gate — every `import.meta.env.*` access, including
+ * `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` in src/lib/supabase.ts)
+ * stopped being build-time-resolved. Confirmed absent (0 occurrences) in a
+ * real `vite build` output, so this rule doesn't false-fail clean builds.
+ */
+const IMPORT_META_ENV_LEAK_LABEL =
+  'unfolded "import.meta.env" reference found (Vite did not statically replace an import.meta.env.* access — this is the mechanism that keeps src/features/devPreview/\'s dev-only preview mode inert in production; see the comment above LINE_RULES)';
+
+/**
+ * Test-mode ad group ids (`TEST_AD_GROUP_IDS` in
+ * src/features/ads/adConfig.ts). `resolveAdGroupIds()` only returns these
+ * when `isDev` is true, and `getAdGroupIds()` feeds it
+ * `import.meta.env.DEV` — which Vite statically folds to a literal `false`
+ * in a production build (the exact same build-time constant-folding
+ * mechanism the devPreview gate above relies on). If one of these 4 exact
+ * strings shows up in dist/, that folding didn't happen for this call site
+ * and production traffic could request test ad inventory instead of real
+ * ads (or, depending on Toss's ad SDK behavior, fail to serve ads at all).
+ *
+ * Matched as exact, complete strings only (not a bare "ait-ad-test-"
+ * prefix) — a similar-but-different id like "ait-ad-real-banner-id", or a
+ * truncated/partial "ait-ad-test-" fragment, must NOT trigger this rule.
+ */
+const TEST_AD_GROUP_ID_LABEL =
+  "test-mode ad group id found (ait-ad-test-* — from TEST_AD_GROUP_IDS in src/features/ads/adConfig.ts; resolveAdGroupIds() should only select these when import.meta.env.DEV is true, which Vite folds to a literal false in production — see the comment above LINE_RULES)";
+
+const TEST_AD_GROUP_ID_STRINGS = [
+  "ait-ad-test-interstitial-id",
+  "ait-ad-test-rewarded-id",
+  "ait-ad-test-banner-id",
+  "ait-ad-test-native-image-id",
+];
+
+/**
+ * Line-scope rules: applied to the full line, anywhere in the file
+ * (not just inside string literals) because these markers are meaningful
+ * regardless of surrounding syntax.
+ * @type {{ pattern: RegExp, label: string }[]}
+ */
+const LINE_RULES = [
+  {
+    label: "service_role string found (Supabase service-role key marker)",
+    pattern: /service_role/g,
+  },
+  {
+    label: "eval( call found (disallowed dynamic code execution)",
+    pattern: /eval\(/g,
+  },
+  {
+    label: IMPORT_META_ENV_LEAK_LABEL,
+    pattern: /import\.meta\.env/g,
+  },
+  {
+    label: TEST_AD_GROUP_ID_LABEL,
+    pattern: new RegExp(
+      TEST_AD_GROUP_ID_STRINGS.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+      "g",
+    ),
+  },
+];
+
+/**
+ * Informational-only devPreview literals (NOT fail-closed findings — see
+ * the comment above LINE_RULES for why). Read directly from
+ * devPreview.ts's source at scan time (rather than hard-coded here) so
+ * this stays in sync if the literal ever changes. Presence is expected and
+ * safe on every build; main() logs this for audit visibility only.
+ * @param {string} devPreviewSourcePath
+ * @returns {string | null} the DEV_PREVIEW_USER_ID literal value, or null
+ *   if it couldn't be found/parsed (fail-open — this is diagnostic only).
+ */
+export function extractDevPreviewUserIdLiteral(devPreviewSourcePath) {
+  let source;
+  try {
+    source = readFileSync(devPreviewSourcePath, "utf8");
+  } catch {
+    return null;
+  }
+  const match = /DEV_PREVIEW_USER_ID\s*=\s*'([^']+)'/.exec(source);
+  return match ? match[1] : null;
+}
+
+/**
+ * JWT-shaped tokens (header.payload.signature, each segment base64url) get
+ * decoded and classified by their payload's `role` claim before the generic
+ * long-token heuristic below ever sees them:
+ *   - role === "service_role"        -> hard failure (Supabase service-role
+ *                                        key; full DB bypass, must never
+ *                                        ship to a client bundle)
+ *   - decodes to JSON, any other role
+ *     (e.g. "anon"), missing role, or
+ *     any other value                -> confirmed safe (a real, inspected
+ *                                        JWT — most commonly a public
+ *                                        Supabase anon key, which Vite's
+ *                                        VITE_ prefix intentionally bundles
+ *                                        client-side and which RLS is
+ *                                        responsible for protecting)
+ *   - doesn't decode to JSON at all   -> not actually a JWT; left alone
+ *                                        here and falls through to the
+ *                                        generic long-token heuristic like
+ *                                        any other opaque token
+ *
+ * A confirmed-safe JWT's character range is excluded from the generic
+ * hex/base64 long-token scan below, so its three base64 segments (each
+ * individually 32+ chars) don't also get flagged as "possible raw secrets".
+ */
+const SERVICE_ROLE_JWT_LABEL =
+  "service_role JWT found (Supabase service-role key — full DB bypass, must not ship to client bundle)";
+
+const JWT_PATTERN = /[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}/g;
+
+/**
+ * Decodes a base64url string (JWT segments omit `=` padding) to a utf8
+ * string. Returns null if the segment can't be a valid base64 length.
+ * @param {string} segment
+ * @returns {string | null}
+ */
+function decodeBase64Url(segment) {
+  let b64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const remainder = b64.length % 4;
+  if (remainder === 1) return null; // impossible base64 length
+  if (remainder === 2) b64 += "==";
+  else if (remainder === 3) b64 += "=";
+  try {
+    return Buffer.from(b64, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Attempts to decode a JWT payload segment and parse it as a JSON object.
+ * Returns the parsed object, or null if the segment isn't a decodable JSON
+ * object payload — i.e. it's not really a JWT, just three dot-separated
+ * tokens that happen to look like one (e.g. `React.Component.prototype`).
+ * @param {string} segment
+ * @returns {Record<string, unknown> | null}
+ */
+function decodeJwtPayload(segment) {
+  const decoded = decodeBase64Url(segment);
+  if (decoded == null) return null;
+  try {
+    const parsed = JSON.parse(decoded);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Finds JWT-shaped tokens in a line, decodes+classifies each one, and
+ * returns any service_role findings plus the character ranges of
+ * confirmed-safe JWTs (to exclude from the generic long-token heuristic).
+ * @param {string} lineText
+ * @returns {{ findings: { label: string, snippet: string }[], safeRanges: [number, number][] }}
+ */
+function scanJwts(lineText) {
+  /** @type {{ label: string, snippet: string }[]} */
+  const findings = [];
+  /** @type {[number, number][]} */
+  const safeRanges = [];
+
+  JWT_PATTERN.lastIndex = 0;
+  let m;
+  while ((m = JWT_PATTERN.exec(lineText)) !== null) {
+    const full = m[0];
+    const start = m.index;
+    const end = start + full.length;
+    const segments = full.split(".");
+    if (segments.length === 3) {
+      const payload = decodeJwtPayload(segments[1]);
+      if (payload) {
+        // Successfully decoded to a JSON object -> this is a real JWT.
+        // Exclude its range from the generic long-token scan regardless
+        // of role (we've actually inspected it, so it's not an opaque
+        // "possible secret" anymore).
+        safeRanges.push([start, end]);
+        if (payload.role === "service_role") {
+          findings.push({
+            label: SERVICE_ROLE_JWT_LABEL,
+            snippet: full.slice(0, 160),
+          });
+        }
+      }
+    }
+    if (m.index === JWT_PATTERN.lastIndex) JWT_PATTERN.lastIndex++;
+  }
+
+  return { findings, safeRanges };
+}
+
+/**
+ * True if [start, end) falls entirely inside one of the given ranges.
+ * @param {number} start
+ * @param {number} end
+ * @param {[number, number][]} ranges
+ */
+function isWithinSafeRange(start, end, ranges) {
+  return ranges.some(([s, e]) => start >= s && end <= e);
+}
+
+/**
+ * A "long hex/base64-looking token" heuristic, applied directly to the raw
+ * line text (NOT scoped to string-literal contents via quote-pairing).
+ *
+ * Earlier versions of this scanner tried to first extract string-literal
+ * contents with a quote-pairing regex
+ * (`/"((?:[^"\\]|\\.)*)"|'...'|`...`/g`) and only ran the long-token
+ * heuristic on that extracted text. That approach silently desyncs on real
+ * production bundles: a single production build minifies the entire app
+ * into one 70KB+ line, and if that line contains even one place where the
+ * naive quote-pairing regex miscounts a quote (escaped quotes inside
+ * template-literal `${...}` expressions, regex literals containing quote
+ * characters, or just backtracking giving up partway through a huge line),
+ * every string-literal match after that point in the line is shifted or
+ * dropped entirely — including the one holding the actual secret. This was
+ * reproduced directly: a JWT-shaped secret placed in a large minified
+ * single-line bundle was NOT flagged, while the same secret in a small
+ * hand-written file WAS flagged.
+ *
+ * Fix: don't try to reconstruct "what's inside a string literal" at all.
+ * Run the token patterns directly against the full line text. This can't
+ * desync because there's no quote-state to track — every hex/base64-looking
+ * run of 32+ chars anywhere on the line is found, regardless of what
+ * surrounds it. It trades a bit of specificity (a token embedded in a
+ * non-string context, e.g. a very long minified identifier, could in theory
+ * match) for guaranteed detection, which is the correct tradeoff for a
+ * fail-closed secret scanner — see looksLikeFalsePositive() and the digit
+ * threshold below for the (deliberately narrow) false-positive suppression.
+ *
+ * A token qualifies if:
+ *   - it's 32+ hex chars (0-9a-fA-F only), OR
+ *   - it's 32+ base64-alphabet chars AND contains at least 4 digits
+ *     (real secrets/API keys/JWT segments are digit-dense; long runs of
+ *     camelCase identifiers concatenated in string literals — e.g. an
+ *     exported symbol list — are not, so this keeps false positives down
+ *     without needing a full entropy calculation).
+ */
+const HEX_TOKEN_PATTERN = /\b[0-9a-fA-F]{32,}\b/g;
+const BASE64_TOKEN_PATTERN = /[A-Za-z0-9+/_-]{32,}={0,2}/g;
+
+const LONG_TOKEN_LABEL =
+  "long hex/base64-looking token found (possible raw secret, 32+ chars)";
+
+/**
+ * Recursively collects files under a directory.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+function collectFiles(dir) {
+  /** @type {string[]} */
+  const results = [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectFiles(fullPath));
+    } else if (entry.isFile()) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+/**
+ * Returns true if the matched token looks like a legitimate non-secret
+ * (e.g. a content hash in a filename reference, a long identifier made of a
+ * single repeated character, or a well-known non-secret constant). This
+ * keeps the heuristic from being *completely* unusable, while staying
+ * fail-closed by default (only excludes a narrow set of obvious false
+ * positives observed in real production bundles).
+ * @param {string} token
+ */
+function looksLikeFalsePositive(token) {
+  // All the same character repeated (e.g. filler chars, not a real secret)
+  if (/^(.)\1+$/.test(token)) return true;
+
+  // Every character in the token is distinct (no repeats at all). Real
+  // random secrets 32+ chars long drawn from a <=64-symbol alphabet are, by
+  // the birthday paradox, astronomically unlikely to have zero repeated
+  // characters — a hex token (16-symbol alphabet) can't even be 32 chars
+  // with no repeats (pigeonhole). A token with zero repeats is almost
+  // always a literal enumerated character set baked into a library, e.g.
+  // the base64/base64url alphabet lookup table used internally by
+  // supabase-js's own base64 encoder/decoder implementation (observed
+  // directly in a real production bundle: "ABCDEFGHIJ...xyz0123456789-_",
+  // 64 unique chars) — not a secret.
+  if (new Set(token).size === token.length) return true;
+
+  // Two or more `/` characters. `/` is a valid base64 alphabet character,
+  // so it's not excluded outright, but a token with multiple slashes is far
+  // more likely to be a URL path fragment caught mid-string (e.g. a
+  // sourcemap comment linking to a GitHub discussion,
+  // ".../orgs/supabase/discussions/45715" — observed directly in a real
+  // production bundle) than a genuine base64 secret, which essentially
+  // never contains multiple literal `/` characters in practice.
+  if ((token.match(/\//g) || []).length >= 2) return true;
+
+  return false;
+}
+
+/** Counts digit characters in a string. */
+function digitCount(str) {
+  const matches = str.match(/[0-9]/g);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Runs the long-token (hex/base64) heuristic directly against a line of raw
+ * text (no quote-pairing / string-extraction step — see the comment above
+ * HEX_TOKEN_PATTERN for why) and returns any qualifying tokens, with their
+ * character positions (so callers can exclude ranges already confirmed safe
+ * by scanJwts()).
+ * @param {string} lineText
+ * @returns {{ token: string, start: number, end: number }[]}
+ */
+function findLongTokens(lineText) {
+  /** @type {{ token: string, start: number, end: number }[]} */
+  const tokens = [];
+
+  HEX_TOKEN_PATTERN.lastIndex = 0;
+  let m;
+  while ((m = HEX_TOKEN_PATTERN.exec(lineText)) !== null) {
+    tokens.push({ token: m[0], start: m.index, end: m.index + m[0].length });
+    if (m.index === HEX_TOKEN_PATTERN.lastIndex) HEX_TOKEN_PATTERN.lastIndex++;
+  }
+
+  BASE64_TOKEN_PATTERN.lastIndex = 0;
+  while ((m = BASE64_TOKEN_PATTERN.exec(lineText)) !== null) {
+    const token = m[0];
+    if (digitCount(token) >= 4) {
+      tokens.push({ token, start: m.index, end: m.index + token.length });
+    }
+    if (m.index === BASE64_TOKEN_PATTERN.lastIndex) BASE64_TOKEN_PATTERN.lastIndex++;
+  }
+
+  return tokens;
+}
+
+/**
+ * Scans a single file's text content for secret-shaped findings. Pure
+ * function (no fs access, no process.exit) so it can be unit-tested
+ * directly against fixture strings — including large single-line
+ * "minified bundle" fixtures — without needing a real `dist/` build.
+ *
+ * @param {string} content
+ * @param {string} fileLabel label used for `file` on findings (e.g. a
+ *   relative path); tests can pass anything, e.g. "fixture.js"
+ * @returns {{ file: string, line: number, label: string, snippet: string }[]}
+ */
+export function scanContent(content, fileLabel) {
+  /** @type {{ file: string, line: number, label: string, snippet: string }[]} */
+  const findings = [];
+
+  const lines = content.split(/\r?\n/);
+
+  lines.forEach((lineText, idx) => {
+    // Line-scope rules (service_role, eval().
+    for (const rule of LINE_RULES) {
+      rule.pattern.lastIndex = 0;
+      let match;
+      while ((match = rule.pattern.exec(lineText)) !== null) {
+        findings.push({
+          file: fileLabel,
+          line: idx + 1,
+          label: rule.label,
+          snippet: lineText.trim().slice(0, 160),
+        });
+        if (match.index === rule.pattern.lastIndex) {
+          rule.pattern.lastIndex++;
+        }
+      }
+    }
+
+    // JWT-shaped tokens (header.payload.signature) are decoded and
+    // classified by their payload's `role` claim — service_role is a hard
+    // failure, everything else that decodes cleanly (anon, missing role,
+    // etc.) is confirmed safe and excluded from the generic long-token scan
+    // below. See scanJwts() for why.
+    const { findings: jwtFindings, safeRanges } = scanJwts(lineText);
+    for (const jf of jwtFindings) {
+      findings.push({
+        file: fileLabel,
+        line: idx + 1,
+        label: jf.label,
+        snippet: jf.snippet,
+      });
+    }
+
+    // Long-token rule, applied directly to the raw line text (no
+    // quote-pairing / string-extraction step — see comment above
+    // HEX_TOKEN_PATTERN for why that approach was removed). Tokens that
+    // fall entirely inside a confirmed-safe JWT range (above) are skipped —
+    // they're not opaque "possible secrets" anymore, they're inspected JWT
+    // segments.
+    if (lineText.length >= 32) {
+      const tokens = findLongTokens(lineText).filter(
+        ({ token, start, end }) =>
+          !looksLikeFalsePositive(token) &&
+          !isWithinSafeRange(start, end, safeRanges),
+      );
+      for (const { token } of tokens) {
+        findings.push({
+          file: fileLabel,
+          line: idx + 1,
+          label: LONG_TOKEN_LABEL,
+          snippet: token.slice(0, 160),
+        });
+      }
+    }
+  });
+
+  return findings;
+}
+
+function main() {
+  let distStat;
+  try {
+    distStat = statSync(distDir);
+  } catch {
+    console.error(
+      `[scan-bundle] dist/ not found at ${distDir}. Run "npm run build" first.`,
+    );
+    process.exit(2);
+  }
+  if (!distStat.isDirectory()) {
+    console.error(`[scan-bundle] ${distDir} is not a directory.`);
+    process.exit(2);
+  }
+
+  const files = collectFiles(distDir).filter((file) =>
+    SCAN_EXTENSIONS.has(extname(file).toLowerCase()),
+  );
+
+  /** @type {{ file: string, line: number, label: string, snippet: string }[]} */
+  const findings = [];
+
+  // Informational-only devPreview literal presence check (NOT a fail-closed
+  // finding — see the comment above LINE_RULES). Read the real mock user id
+  // literal from devPreview.ts and log whether it's present in dist/, for
+  // audit visibility that the "always present, harmless" design assumption
+  // documented there still holds.
+  const devPreviewSourcePath = join(
+    projectRoot,
+    "src/features/devPreview/devPreview.ts",
+  );
+  const devPreviewUserIdLiteral = extractDevPreviewUserIdLiteral(
+    devPreviewSourcePath,
+  );
+
+  for (const file of files) {
+    let content;
+    try {
+      content = readFileSync(file, "utf8");
+    } catch (err) {
+      console.error(`[scan-bundle] Could not read ${file}: ${err}`);
+      continue;
+    }
+
+    findings.push(...scanContent(content, relative(projectRoot, file)));
+  }
+
+  if (devPreviewUserIdLiteral !== null) {
+    let literalFound = false;
+    for (const file of files) {
+      try {
+        if (readFileSync(file, "utf8").includes(devPreviewUserIdLiteral)) {
+          literalFound = true;
+          break;
+        }
+      } catch {
+        // already reported above
+      }
+    }
+    console.log(
+      `[scan-bundle] info: devPreview mock user id literal ("${devPreviewUserIdLiteral}") ${
+        literalFound ? "is present" : "is absent"
+      } in dist/ (expected: present — see comment above LINE_RULES in scripts/scan-bundle.mjs).`,
+    );
+  }
+
+  if (findings.length > 0) {
+    console.error(
+      `[scan-bundle] FAILED — found ${findings.length} potential secret leak(s) in dist/:\n`,
+    );
+    for (const f of findings) {
+      console.error(`  ${f.file}:${f.line} — ${f.label}`);
+      console.error(`    ${f.snippet}`);
+    }
+    process.exit(1);
+  }
+
+  console.log(
+    `[scan-bundle] OK — scanned ${files.length} file(s) in dist/, no secrets found.`,
+  );
+  process.exit(0);
+}
+
+// Only run when executed directly (`node scripts/scan-bundle.mjs`), not
+// when imported by tests.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main();
+}
