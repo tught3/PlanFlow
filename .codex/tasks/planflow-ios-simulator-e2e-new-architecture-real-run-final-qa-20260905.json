@@ -1,0 +1,149 @@
+{
+  "task_id": "planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905",
+  "objective": "Diagnose Run #7's common simulator E2E failure from authoritative GitHub evidence, apply the smallest safe fix, validate locally, push normally, and gate a fresh macOS rerun.",
+  "status": "DELIVERED_PENDING_MACOS_RERUN",
+  "project": "PlanFlow",
+  "workspace": "E:\\FluxStudio\\PlanFlow",
+  "starting_head": "2a53a97bde961673637d7d09c7119809ad06fcea",
+  "authoritative_run": {
+    "run_id": 33952318920,
+    "run_number": 7,
+    "head_sha": "2a53a97bde961673637d7d09c7119809ad06fcea",
+    "conclusion": "failure",
+    "evidence_scope": "authenticated GitHub Actions job metadata and downloaded artifacts; no secrets recorded"
+  },
+  "root_cause": {
+    "classification": "COMMON_SIMULATOR_FAILURE",
+    "first_failing_stage": "APP_BUILD",
+    "evidence": [
+      "All small, mainstream, large, and ipad legs recorded SIMULATOR_BOOT PASS and APP_BUILD FAIL.",
+      "Every attempted flow artifact recorded APP_INSTALL, APP_LAUNCH, APP_READY, TEST_DRIVER_ATTACH, TEST_DISCOVERY, and FLOW_EXECUTION as SKIPPED.",
+      "APP_BUILD logs showed flutter build ios --config-only selecting device (ios-release) and failing with No valid code signing certificates were found / No development certificates available to code sign app for device deployment.",
+      "Preflight and flow05-host-fake were successful; simulator boot and baseline privacy setup were successful."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER"
+  },
+  "changes": [
+    {
+      "path": "scripts/ios/e2e_xctest_flow.sh",
+      "summary": "Make the Flutter config-only APP_BUILD explicitly simulator-targeted with --simulator; add non-recursive EXIT handling that propagates cleanup watchdog failure."
+    },
+    {
+      "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
+      "summary": "Require --simulator in the actual config-only block and require fail-closed cleanup exit propagation."
+    }
+  ],
+  "protected_paths": [
+    ".github/workflows/ios-release.yml",
+    ".github/workflows/ios-privacy-audit.yml",
+    ".github/workflows/ios-simulator-e2e.yml",
+    "ios/Podfile",
+    "ios/Runner.xcodeproj/project.pbxproj",
+    "ios/RunnerTests",
+    "ios/Runner/Info.plist",
+    "ios/PlanFlowWidget",
+    "android",
+    "AGENTS.md",
+    "AGENTS.md.before-regen.bak"
+  ],
+  "role_reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "agent_id": "01a070d2-65fb-7c12-a9ca-3a4f598247df",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Inspect Run #7 and current XCTest runner read-only.",
+      "result": "Identified the common simulator workflow step and confirmed the current runner is XCTest-based; initial public-only artifact access was incomplete, then the main agent obtained authenticated artifacts.",
+      "changed_files": [],
+      "test_evidence": "GitHub run/job metadata inspection; no source changes."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "agent_id": "01a070d7-e55f-7840-ba37-051fbc044c05",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define evidence-backed minimal fix, protected paths, and gates.",
+      "result": "Approved --simulator in the config-only command and a two-file implementation scope; required fresh macOS validation.",
+      "changed_files": [],
+      "test_evidence": "Plan report recorded before implementation."
+    },
+    {
+      "role": "Implementer",
+      "agent": "flux_simple_implementer",
+      "agent_id": "01a070d9-3d1a-7e82-91e0-859b8bfbf377",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Implement simulator config target and teardown fail-closed guard in the owned two-file scope.",
+      "result": "Implemented the --simulator flag, contract assertions, and non-recursive on_exit cleanup status propagation.",
+      "changed_files": ["scripts/ios/e2e_xctest_flow.sh", "scripts/ios/tests/e2e_xctest_runner_contract.sh"],
+      "test_evidence": "bash -n for both scripts and runner contract exit 0."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "agent_id": "01a070ec-cc8a-7f81-a575-5518b20a63eb",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run focused shell contracts and diff checks after rework.",
+      "result": "All requested shell syntax/contracts passed after rework; WSL bash initial probe was unavailable and was not used as the final verdict.",
+      "changed_files": [],
+      "test_evidence": "bash -n exit 0; e2e_script_contract 38/38; e2e_stage_markers_contract 18/18; simctl_discover_contract 18/18; scoped diff check exit 0. Prior Flutter contract/FLOW5 suite exit 0 remains valid; no macOS runtime locally."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "agent_id": "01a070de-6eb4-78c1-baf6-f5cc00024df8",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Review the first implementation and fail-closed behavior.",
+      "result": "Found and required correction of a medium teardown status propagation defect; no BLOCKER/HIGH code finding in the first review.",
+      "changed_files": [],
+      "test_evidence": "Review finding was reworked and forced teardown watchdog fixture returned exit 124."
+    },
+    {
+      "role": "Independent Reviewer (final)",
+      "agent": "flux_reviewer",
+      "agent_id": "01a070ec-b220-79c3-a91c-ce2323e2fd18",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Review the post-rework current diff.",
+      "result": "REQUEST_CHANGES only for the not-yet-run fresh macOS validation gate; no source defect was identified in the post-rework static inspection.",
+      "changed_files": [],
+      "test_evidence": "Fresh post-fix GitHub run remains required; no macOS pass claimed."
+    },
+    {
+      "role": "Integrator",
+      "agent": "pending",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "After commit/push, inspect final current diff, run evidence, and fresh macOS result; only then close the task.",
+      "result": "Pending fresh authenticated macOS rerun and final review.",
+      "changed_files": [".codex/tasks/planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905.json"],
+      "test_evidence": "Not yet complete."
+    }
+  ],
+  "local_validation": {
+    "bash_syntax": "PASS",
+    "runner_contract": "PASS",
+    "e2e_script_contract": "PASS 38/38",
+    "e2e_stage_markers_contract": "PASS 18/18",
+    "simctl_discover_contract": "PASS 18/18",
+    "flutter_contract_and_flow05": "PASS exit 0 before final shell-only rework",
+    "forced_teardown_watchdog_fixture": "PASS: cleanup timeout returned exit 124",
+    "scoped_diff_check": "PASS",
+    "full_workspace_diff_check": "UNVERIFIED/FAIL due pre-existing foreign AGENTS.md trailing whitespace; foreign file preserved",
+    "macos_simulator_runtime": "UNVERIFIED",
+    "fresh_github_rerun": "REQUIRED"
+  },
+  "live_gate": "AUDIT_FIX_PUSHED_PENDING_FRESH_MACOS_SIMULATOR_E2E",
+  "artifacts_local_only": true,
+  "do_not_commit": [".tmp/ios-simulator-run7-auth", ".tmp/teardown-contract-fixture", ".tmp/teardown-contract-fixture-2"],
+  "finalization": {
+    "commit": "PENDING",
+    "push": "PENDING",
+    "android": "UNCHANGED",
+    "production_release_privacy_signing": "PROTECTED"
+  }
+}

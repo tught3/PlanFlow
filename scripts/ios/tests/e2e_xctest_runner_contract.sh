@@ -68,6 +68,24 @@ printf '%s' "$runner_text" | grep -qF -- 'test-without-building' || fail 'runner
 printf '%s' "$runner_text" | grep -qF -- 'only-testing:RunnerTests' || fail 'runner target is not scoped to RunnerTests'
 pass 'bounded xcodebuild and xcresult contract present'
 
+app_build_block="$(printf '%s\n' "$runner_text" | awk '/flutter build ios --config-only/,/xcodebuild build-for-testing/ { print }')"
+printf '%s' "$app_build_block" | grep -qF -- 'flutter build ios --config-only' || fail 'runner missing the config-only Flutter build'
+printf '%s' "$app_build_block" | grep -qF -- '--simulator' || fail 'config-only Flutter build does not explicitly target the simulator path'
+if printf '%s' "$app_build_block" | grep -qF -- 'flutter build ios --config-only' \
+  && ! printf '%s' "$app_build_block" | grep -qF -- '--simulator'; then
+  fail 'config-only Flutter build regressed to device-only targeting'
+fi
+pass 'config-only Flutter build is explicitly simulator-targeted'
+
+printf '%s' "$runner_text" | grep -qF -- 'trap - EXIT' || fail 'runner exit handler does not detach its own EXIT trap'
+printf '%s' "$runner_text" | grep -qF -- 'if [ "$exit_status" -ne 0 ]; then' || fail 'runner exit handler does not preserve nonzero exit status'
+printf '%s' "$runner_text" | grep -qF -- 'if [ "$cleanup_rc" -ne 0 ]; then' || fail 'runner exit handler does not inspect cleanup failure'
+printf '%s' "$runner_text" | grep -qF -- 'exit "$cleanup_rc"' || fail 'runner exit handler does not propagate cleanup failure'
+if printf '%s' "$runner_text" | grep -qF -- 'trap cleanup EXIT'; then
+  fail 'runner still uses the recursive cleanup EXIT trap'
+fi
+pass 'exit handler propagates cleanup failure without recursion'
+
 printf '%s' "$podfile" >/dev/null
 grep -qF -- "target 'RunnerTests' do" "$podfile" || fail 'Podfile does not embed RunnerTests'
 grep -qF -- 'inherit! :search_paths' "$podfile" || fail 'RunnerTests does not inherit pod search paths'

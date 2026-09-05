@@ -121,7 +121,25 @@ cleanup() {
   fi
   return "$cleanup_rc"
 }
-trap cleanup EXIT
+
+on_exit() {
+  local exit_status="$1"
+  local cleanup_rc=0
+
+  trap - EXIT
+  cleanup || cleanup_rc=$?
+
+  if [ "$exit_status" -ne 0 ]; then
+    exit "$exit_status"
+  fi
+
+  if [ "$cleanup_rc" -ne 0 ]; then
+    exit "$cleanup_rc"
+  fi
+
+  exit 0
+}
+trap 'on_exit "$?"' EXIT
 
 if [ ! -f "$flow_file" ]; then
   emit_stage SIMULATOR_BOOT FAIL "flow file not found: $flow_file"
@@ -141,11 +159,13 @@ if [ "$current_failure" -eq 0 ]; then
   # These values are intentionally fixed placeholders.  The simulator suite
   # must never fall back to lib/core/env.dart's production Supabase defaults.
   # Keep config generation and native compilation in one APP_BUILD log so a
-  # failed config step cannot be hidden by a later log truncation.
+  # failed config step cannot be hidden by a later log truncation.  Target
+  # the simulator path explicitly so Flutter generates simulator config
+  # instead of device-only ios-release signing material.
   E2E_FLOW_FILE="$flow_file" E2E_UDID="$udid" E2E_DERIVED_DATA="$derived_data" \
     run_bounded APP_BUILD bash -c '
       set -euo pipefail
-      flutter build ios --config-only "$E2E_FLOW_FILE" \
+      flutter build ios --config-only --simulator "$E2E_FLOW_FILE" \
         --dart-define=E2E_MODE=1 \
         --dart-define=SUPABASE_URL=https://your-project.supabase.co \
         --dart-define=SUPABASE_ANON_KEY=your-supabase-anon-key
