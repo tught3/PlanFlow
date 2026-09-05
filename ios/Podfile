@@ -33,11 +33,14 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
 
-  target 'RunnerTests' do
-    inherit! :none
-    pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'
-  end
+target 'RunnerTests' do
+  use_frameworks! :linkage => :static
+  use_modular_headers!
+
+  flutter_install_ios_engine_pod File.dirname(File.realpath(__FILE__))
+  pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'
 end
 
 post_install do |installer|

@@ -71,6 +71,9 @@
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
+		A31F00000000000000000082 /* RunnerTests-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = RunnerTests-Debug.xcconfig; path = Flutter/RunnerTests-Debug.xcconfig; sourceTree = "<group>"; };
+		A31F00000000000000000083 /* RunnerTests-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = RunnerTests-Release.xcconfig; path = Flutter/RunnerTests-Release.xcconfig; sourceTree = "<group>"; };
+		A31F00000000000000000084 /* RunnerTests-Profile.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = RunnerTests-Profile.xcconfig; path = Flutter/RunnerTests-Profile.xcconfig; sourceTree = "<group>"; };
 		A31F00000000000000000080 /* PlanFlowWidget-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = PlanFlowWidget-Debug.xcconfig; path = Flutter/PlanFlowWidget-Debug.xcconfig; sourceTree = "<group>"; };
 		A31F00000000000000000081 /* PlanFlowWidget-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = PlanFlowWidget-Release.xcconfig; path = Flutter/PlanFlowWidget-Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
@@ -117,6 +120,9 @@
 				3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */,
 				9740EEB21CF90195004384FC /* Debug.xcconfig */,
 				7AFA3C8E1D35360C0083082E /* Release.xcconfig */,
+				A31F00000000000000000082 /* RunnerTests-Debug.xcconfig */,
+				A31F00000000000000000083 /* RunnerTests-Release.xcconfig */,
+				A31F00000000000000000084 /* RunnerTests-Profile.xcconfig */,
 				A31F00000000000000000080 /* PlanFlowWidget-Debug.xcconfig */,
 				A31F00000000000000000081 /* PlanFlowWidget-Release.xcconfig */,
 				9740EEB31CF90195004384FC /* Generated.xcconfig */,
@@ -474,7 +480,7 @@
 		};
 		331C8088294A63A400263BE5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
+			baseConfigurationReference = A31F00000000000000000082 /* RunnerTests-Debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -492,7 +498,7 @@
 		};
 		331C8089294A63A400263BE5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			baseConfigurationReference = A31F00000000000000000083 /* RunnerTests-Release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -508,7 +514,7 @@
 		};
 		331C808A294A63A400263BE5 /* Profile */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			baseConfigurationReference = A31F00000000000000000084 /* RunnerTests-Profile.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;

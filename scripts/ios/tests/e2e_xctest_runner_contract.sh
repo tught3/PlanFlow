@@ -97,13 +97,58 @@ fi
 pass 'exit handler propagates cleanup failure without recursion'
 
 printf '%s' "$podfile" >/dev/null
-grep -qF -- "target 'RunnerTests' do" "$podfile" || fail 'Podfile does not embed RunnerTests'
-runner_tests_block="$(awk "/target 'RunnerTests' do/,/end/ { print }" "$podfile")"
-printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :none' || fail 'RunnerTests does not opt out of inherited pod search paths'
-printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'" || fail 'RunnerTests does not explicitly add the integration_test pod from the Flutter helper-compatible path'
-if printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :search_paths'; then
-  fail 'RunnerTests still inherits pod search paths'
+runner_target_start="$(grep -nF -- "target 'Runner' do" "$podfile" | head -n 1 | cut -d: -f1)"
+runner_tests_start="$(grep -nF -- "target 'RunnerTests' do" "$podfile" | head -n 1 | cut -d: -f1 || true)"
+[ -n "$runner_tests_start" ] || fail 'Podfile does not define RunnerTests'
+runner_target_end="$(awk -v start="$runner_target_start" 'NR > start && /^[[:space:]]*end[[:space:]]*$/ { print NR; exit }' "$podfile")"
+[ -n "$runner_target_end" ] || fail 'Podfile Runner target has no closing end'
+if [ "$runner_tests_start" -lt "$runner_target_end" ]; then
+  fail 'RunnerTests must be a top-level target, not nested under Runner'
 fi
+runner_tests_block="$(awk -v start="$runner_tests_start" 'NR >= start { print; if (NR > start && /^[[:space:]]*end[[:space:]]*$/) exit }' "$podfile")"
+printf '%s\n' "$runner_tests_block" | grep -qF -- 'use_frameworks! :linkage => :static' || fail 'RunnerTests does not declare its own static framework linkage'
+printf '%s\n' "$runner_tests_block" | grep -qF -- 'use_modular_headers!' || fail 'RunnerTests does not declare modular headers for integration_test'
+printf '%s\n' "$runner_tests_block" | grep -qF -- 'flutter_install_ios_engine_pod File.dirname(File.realpath(__FILE__))' || fail 'RunnerTests does not install the Flutter engine-only pod helper'
+printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'" || fail 'RunnerTests does not explicitly add the integration_test pod from the Flutter helper-compatible path'
+if printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit!'; then
+  fail 'RunnerTests must not use parent pod inheritance directives'
+fi
+if printf '%s\n' "$runner_tests_block" | grep -qF -- "flutter_install_all_ios_pods"; then
+  fail 'RunnerTests must not install the Runner app pod set'
+fi
+if printf '%s\n' "$runner_tests_block" | grep -E -- '^[[:space:]]*pod ' | grep -vF -- "pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'" | grep -q .; then
+  fail 'RunnerTests must not declare app or plugin pods beyond integration_test'
+fi
+pass 'RunnerTests is an independent aggregate target with only integration_test'
+
+runner_tests_config_list="$(awk '/Build configuration list for PBXNativeTarget "RunnerTests"/,/^[[:space:]]*};$/' "$pbxproj")"
+for config_name in Debug Release Profile; do
+  config_id="$(printf '%s\n' "$runner_tests_config_list" | grep -F -- "/* $config_name */" | sed -E 's/^[[:space:]]*([^ ]+).*/\1/' | head -n 1)"
+  [ -n "$config_id" ] || fail "RunnerTests configuration list is missing $config_name"
+  config_block="$(awk -v id="$config_id" '$0 ~ "^[[:space:]]*" id " /\\*" { found=1 } found { print } found && /^[[:space:]]*};$/ { exit }' "$pbxproj")"
+  printf '%s\n' "$config_block" | grep -qF -- "RunnerTests-$config_name.xcconfig" || fail "RunnerTests $config_name does not use its target-specific xcconfig"
+done
+pass 'RunnerTests Debug/Release/Profile use target-specific base configurations'
+
+for config_name in Debug Release Profile; do
+  config_file="$repo_root/ios/Flutter/RunnerTests-$config_name.xcconfig"
+  [ -f "$config_file" ] || fail "missing RunnerTests target xcconfig: $config_file"
+  config_text="$(cat "$config_file")"
+  printf '%s\n' "$config_text" | grep -qF -- "Pods/Target Support Files/Pods-RunnerTests/Pods-RunnerTests.$(printf '%s' "$config_name" | tr '[:upper:]' '[:lower:]').xcconfig" || fail "RunnerTests $config_name does not include Pods-RunnerTests support config"
+  printf '%s\n' "$config_text" | grep -qF -- '#include? ' || fail "RunnerTests $config_name Pods include is not optional"
+  printf '%s\n' "$config_text" | grep -qF -- '#include "PlanFlow-Identity.xcconfig"' || fail "RunnerTests $config_name loses PlanFlow identity settings"
+  printf '%s\n' "$config_text" | grep -qF -- '#include "Generated.xcconfig"' || fail "RunnerTests $config_name loses Flutter generated settings"
+done
+pass 'RunnerTests xcconfigs are optional CocoaPods-compatible and preserve identity/generated settings'
+
+if printf '%s\n' "$runner_tests_config_list" | grep -E -q -- 'Debug\.xcconfig|Release\.xcconfig([^[:alnum:]_-]|$)'; then
+  fail 'RunnerTests configuration list still references shared Runner xcconfigs'
+fi
+for protected in "$repo_root/ios/Flutter/Debug.xcconfig" "$repo_root/ios/Flutter/Release.xcconfig"; do
+  git -C "$repo_root" diff --quiet -- "$protected" || fail "protected shared xcconfig has an uncommitted change: $protected"
+done
+pass 'shared Runner Debug/Release xcconfigs remain protected and unchanged'
+
 grep -qF -- 'INTEGRATION_TEST_IOS_RUNNER(RunnerTests)' "$objc_runner" || fail 'official integration_test XCTest macro missing'
 grep -qF -- '@import integration_test;' "$objc_runner" || fail 'integration_test module import missing'
 grep -qF -- 'RunnerTests.m' "$pbxproj" || fail 'pbxproj does not reference RunnerTests.m'

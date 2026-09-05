@@ -1,0 +1,5 @@
+// RunnerTests-only CocoaPods support. The optional include keeps source-only
+// Xcode inspection usable before `pod install` creates Target Support Files.
+#include? "Pods/Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"
+#include "PlanFlow-Identity.xcconfig"
+#include "Generated.xcconfig"

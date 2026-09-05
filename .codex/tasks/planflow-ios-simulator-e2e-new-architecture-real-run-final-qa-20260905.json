@@ -1,7 +1,7 @@
 {
   "task_id": "planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905",
-  "objective": "Diagnose Run #7's common simulator E2E failure from authoritative GitHub evidence, apply the smallest safe fix, validate locally, push normally, and gate a fresh macOS rerun.",
-  "status": "IMPLEMENTED_PENDING_MACOS_RERUN",
+  "objective": "Diagnose the common simulator E2E failures through authenticated GitHub Run #15 evidence, isolate RunnerTests from the production Runner CocoaPods graph, validate the safe target-specific contract, push normally, and gate a fresh macOS rerun.",
+  "status": "IMPLEMENTED_PENDING_FRESH_MACOS_RERUN",
   "project": "PlanFlow",
   "workspace": "E:\\FluxStudio\\PlanFlow",
   "starting_head": "2a53a97bde961673637d7d09c7119809ad06fcea",
@@ -57,6 +57,52 @@
     "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
     "next_fix": "Run the simulator XCTest architecture on macos-15, whose documented default is Xcode 16.4, while leaving production release on its existing runner contract."
   },
+  "run13_rerun": {
+    "run_id": 33965383161,
+    "run_number": 13,
+    "head_sha": "c37f3d35",
+    "conclusion": "failure",
+    "first_failing_stage": "XCTEST_EXECUTION",
+    "evidence_scope": "authenticated GitHub Actions job logs and downloaded small artifact; no secrets recorded",
+    "evidence": [
+      "APP_BUILD, simulator install, launch, and ready stages passed; xcodebuild test-without-building exited 65 after about 430 seconds.",
+      "The native runner reported 'Test runner never began executing tests after launching' and no test discovery occurred.",
+      "RunnerTests link output contained Pods-RunnerTests.framework and the complete application Firebase/Maps/plugin pod set; duplicate classes were emitted from Runner.debug.dylib and RunnerTests.xctest/RunnerTests.",
+      "-parallel-testing-enabled NO was present, so the failure was not a parallel clone issue."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
+    "root_cause": "COMMON_SIMULATOR_FAILURE / XCTEST_TARGET / COCOAPODS_RUNNERTESTS_LINK_GRAPH"
+  },
+  "run14_rerun": {
+    "run_id": 33968181647,
+    "run_number": 14,
+    "head_sha": "1be7be96",
+    "conclusion": "failure",
+    "first_failing_stage": "POD_INSTALL",
+    "evidence_scope": "authenticated GitHub Actions job logs; no secrets recorded",
+    "evidence": [
+      "The first RunnerTests isolation attempt used an absolute integration_test pod path.",
+      "CocoaPods rejected the duplicate relative and absolute integration_test sources before archive/test execution.",
+      "The source was corrected to the Flutter helper-compatible relative path .symlinks/plugins/integration_test/ios."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER"
+  },
+  "run15_rerun": {
+    "run_id": 33968582456,
+    "run_number": 15,
+    "head_sha": "0be41f98c63219d801d6ca0e893be28ed35bd0b6",
+    "conclusion": "failure",
+    "first_failing_stage": "XCTEST_EXECUTION",
+    "evidence_scope": "authenticated GitHub Actions logs and artifacts 9970555381/planflow-ios-simulator-e2e-large-15 plus iPad/small logs; no secrets recorded",
+    "evidence": [
+      "preflight and FLOW5 host fake passed; all simulator legs reached APP_BUILD and the bounded XCTest stage, proving the Run14 source conflict was fixed.",
+      "small, large, and iPad completed with duplicate classes and 'Test runner never began executing tests after launching'; mainstream remained in progress at last poll.",
+      "Run15 pod-install.log explicitly warned that RunnerTests used custom Flutter Debug/Release xcconfigs without Pods-RunnerTests support config.",
+      "The generated RunnerTests graph still linked Pods-RunnerTests plus full app plugins, so top-level scope alone was insufficient and target-specific xcconfig wiring was required."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
+    "root_cause": "COMMON_SIMULATOR_FAILURE / XCTEST_TARGET / COCOAPODS_TARGET_SUPPORT_XCCONFIG"
+  },
   "changes": [
     {
       "path": "scripts/ios/e2e_xctest_flow.sh",
@@ -77,13 +123,37 @@
     {
       "path": ".github/workflows/ios-simulator-e2e.yml",
       "summary": "Pin preflight, host FLOW5, and simulator matrix jobs to macos-15/Xcode 16 generation based on the Run #8/#9 Xcode 26.6 linker evidence."
+    },
+    {
+      "path": "ios/Podfile",
+      "summary": "Move RunnerTests to a top-level CocoaPods target with Flutter engine-only plus integration_test dependencies; keep Runner's full production pod installation unchanged."
+    },
+    {
+      "path": "ios/Runner.xcodeproj/project.pbxproj",
+      "summary": "Point only RunnerTests Debug/Release/Profile configurations at dedicated RunnerTests xcconfigs; Runner and PlanFlowWidgetExtension configuration references remain unchanged."
+    },
+    {
+      "path": "ios/Flutter/RunnerTests-Debug.xcconfig",
+      "summary": "RunnerTests-only optional Pods-RunnerTests debug support include while preserving PlanFlow identity and Flutter generated settings."
+    },
+    {
+      "path": "ios/Flutter/RunnerTests-Release.xcconfig",
+      "summary": "RunnerTests-only optional Pods-RunnerTests release support include while preserving PlanFlow identity and Flutter generated settings."
+    },
+    {
+      "path": "ios/Flutter/RunnerTests-Profile.xcconfig",
+      "summary": "RunnerTests-only optional Pods-RunnerTests profile support include while preserving PlanFlow identity and Flutter generated settings."
+    },
+    {
+      "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
+      "summary": "Enforce top-level RunnerTests, engine-only/integration_test pod scope, target-specific xcconfig wiring, shared Runner config protection, no-upload path, and existing XCTest host contract."
     }
   ],
   "protected_paths": [
     ".github/workflows/ios-release.yml",
     ".github/workflows/ios-privacy-audit.yml",
     ".github/workflows/ios-simulator-e2e.yml",
-    "ios/Runner.xcodeproj/project.pbxproj",
+    "ios/Runner.xcodeproj/project.pbxproj# production Runner and Widget sections protected; RunnerTests target-only wiring is in scope",
     "ios/RunnerTests",
     "ios/Runner/Info.plist",
     "ios/PlanFlowWidget",
@@ -170,12 +240,131 @@
       "test_evidence": "Parent reran Git Bash runner contract: exit 0; agent's PowerShell contract fallback exit 0 because /bin/bash was unavailable in its probe shell."
     },
     {
+      "role": "Explorer (Run #13/15 evidence)",
+      "agent": "Curie",
+      "agent_id": "01a07196-7f1d-77a2-b004-05b842fe82f2",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only analysis of the native XCTest failure and duplicate linkage in Run #13/15 artifacts.",
+      "result": "Confirmed full application CocoaPods/plugin linkage into RunnerTests duplicated Runner.debug.dylib classes before test discovery.",
+      "changed_files": [],
+      "test_evidence": "Authenticated artifact/log inspection; no macOS runtime claim."
+    },
+    {
+      "role": "Planner (Run #13/15 rework)",
+      "agent": "Bacon",
+      "agent_id": "01a0719f-6b6e-73b1-910e-ca53f1e53ace",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define bounded RunnerTests CocoaPods isolation and protected paths.",
+      "result": "Required top-level RunnerTests, bounded pod scope, and later target-specific RunnerTests xcconfig wiring without changing production Runner/Widget configuration.",
+      "changed_files": [],
+      "test_evidence": "Plan/protected-path review; macOS rerun required."
+    },
+    {
+      "role": "Implementer (Run #13 rework)",
+      "agent": "Pasteur",
+      "agent_id": "01a071a1-af09-7c42-9906-a49bf8a34b98",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Implement initial top-level RunnerTests and integration_test Podfile isolation.",
+      "result": "Implemented first top-level target; Run14 exposed the absolute pod source conflict later corrected to the helper-compatible relative path.",
+      "changed_files": ["ios/Podfile", "scripts/ios/tests/e2e_xctest_runner_contract.sh"],
+      "test_evidence": "bash -n, contract, and scoped diff checks passed."
+    },
+    {
+      "role": "Test Executor (Run #13 rework)",
+      "agent": "Leibniz",
+      "agent_id": "01a071a4-ce56-7de0-a554-bac464e9e3b5",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run read-only local shell, YAML, and focused Flutter contract checks.",
+      "result": "Focused checks passed; Windows lacks local macOS CocoaPods/Xcode/Simulator runtime.",
+      "changed_files": [],
+      "test_evidence": "Git Bash/YAML/Flutter evidence; unrelated Windows sleep orphan scanner failure preserved as environment limitation."
+    },
+    {
+      "role": "Independent Reviewer (Run #13 rework)",
+      "agent": "Raman",
+      "agent_id": "01a071ab-9387-7be1-964e-cead90820cc9",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Review initial top-level RunnerTests Podfile isolation.",
+      "result": "Static review passed with fresh macOS runtime pending; Run14 then exposed the absolute integration_test source conflict."
+    },
+    {
+      "role": "Independent Reviewer (Run #14 correction)",
+      "agent": "Goodall",
+      "agent_id": "01a071b6-32fe-7612-b6f5-dbfc51715ec3",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Review the helper-compatible relative integration_test source correction.",
+      "result": "FINDINGS with MEDIUM macOS-only retest gate; no source blocker/high finding in the relative-path correction.",
+      "changed_files": [],
+      "test_evidence": "Static contract and diff review passed."
+    },
+    {
+      "role": "Failure Analyst (Run #15)",
+      "agent": "Feynman",
+      "agent_id": "01a071de-42db-7af3-86e5-745f1043a692",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Analyze persistent full-app RunnerTests linkage and determine minimal engine-only/wiring fix.",
+      "result": "Confirmed top-level scope plus Flutter engine-only helper and target-specific Pods-RunnerTests xcconfig wiring are required.",
+      "changed_files": [],
+      "test_evidence": "Run15 logs/artifact plus Flutter podhelper and integration_test podspec inspection."
+    },
+    {
+      "role": "Implementer (Run #15 rework)",
+      "agent": "Ampere",
+      "agent_id": "01a071d2-6be1-7c50-94a3-652700a843d0",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Move RunnerTests to a top-level target and enforce isolated pod scope.",
+      "result": "Implemented top-level RunnerTests and strict contract; engine-only and target-specific xcconfig rework followed the Run15 analysis.",
+      "changed_files": ["ios/Podfile", "scripts/ios/tests/e2e_xctest_runner_contract.sh"],
+      "test_evidence": "bash -n, contract, and scoped diff check passed."
+    },
+    {
+      "role": "Implementer (engine-only/wiring rework)",
+      "agent": "Dalton/Meitner",
+      "agent_id": "01a071e4-c5dc-78f0-80aa-49c1f107884e, 01a071ee-17eb-7872-baf7-78d673b4b9cd",
+      "mapped_model": "gpt-5.4-mini + gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Add Flutter engine-only dependency and target-specific RunnerTests CocoaPods support xcconfigs.",
+      "result": "Added engine-only helper, RunnerTests Debug/Release/Profile optional Pods-RunnerTests includes, project target references, and strict contract coverage; shared Runner/Widget configs remained unchanged.",
+      "changed_files": ["ios/Podfile", "ios/Runner.xcodeproj/project.pbxproj", "ios/Flutter/RunnerTests-Debug.xcconfig", "ios/Flutter/RunnerTests-Release.xcconfig", "ios/Flutter/RunnerTests-Profile.xcconfig", "scripts/ios/tests/e2e_xctest_runner_contract.sh"],
+      "test_evidence": "Git Bash bash -n/contract PASS and scoped diff check PASS."
+    },
+    {
+      "role": "Test Executor (current)",
+      "agent": "Darwin",
+      "agent_id": "01a071e7-1aed-7451-897d-ccfc39ae298a",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run current patch contract, Flutter/Android regression, YAML, and diff checks.",
+      "result": "Focused tests passed; default WSL bash and raw template YAML were environment/format limitations. Parent rerun gave direct Git Bash/workflow YAML PASS.",
+      "changed_files": [],
+      "test_evidence": "Current parent rerun supersedes shell/template limitations with Git Bash contract PASS, workflow YAML PASS, and Flutter suite PASS."
+    },
+    {
+      "role": "Independent Reviewer (current)",
+      "agent": "Sagan",
+      "agent_id": "01a071f3-3518-7ce2-9b77-21f94680fd2f",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review the final current diff and protected production paths.",
+      "result": "PASS; no BLOCKER/HIGH findings. Target-only wiring addresses the Run15 warning statically; macOS pod install/XCTest remains UNKNOWN.",
+      "changed_files": [],
+      "test_evidence": "Final current diff review with Run15 evidence and static contract inspection."
+    },
+    {
       "role": "Integrator",
       "agent": "pending",
       "mapped_model": "gpt-5.6-terra",
       "reasoning_effort": "medium",
-      "assignment": "After commit/push, inspect final current diff, run evidence, and fresh macOS result; only then close the task.",
-      "result": "Pending fresh authenticated macOS rerun and final review.",
+      "assignment": "After commit/push and fresh macOS rerun, inspect final current diff and decide completion.",
+      "result": "Pending commit/push and fresh authenticated macOS rerun; no macOS pass claimed.",
       "changed_files": [".codex/tasks/planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905.json"],
       "test_evidence": "Not yet complete."
     }
@@ -186,19 +375,24 @@
     "e2e_script_contract": "PASS 38/38",
     "e2e_stage_markers_contract": "PASS 18/18",
     "simctl_discover_contract": "PASS 18/18",
-    "flutter_contract_and_flow05": "PASS exit 0 before final shell-only rework",
+    "flutter_contract_and_flow05": "PASS exit 0 current suite; 49 focused iOS/Android contract tests",
     "forced_teardown_watchdog_fixture": "PASS: cleanup timeout returned exit 124",
     "scoped_diff_check": "PASS",
     "full_workspace_diff_check": "UNVERIFIED/FAIL due pre-existing foreign AGENTS.md trailing whitespace; foreign file preserved",
     "macos_simulator_runtime": "UNVERIFIED",
-    "fresh_github_rerun": "Run #9 partial failure at APP_BUILD exit 65 after dynamic-linkage attempt; rerun required after macos-15 pin"
+    "workflow_yaml": "PASS: 6 .github/workflows YAML files parsed",
+    "current_runner_contract": "PASS: Git Bash bash -n and all current e2e_xctest_runner_contract checks",
+    "current_scoped_diff_check": "PASS: Podfile, RunnerTests target pbxproj wiring, RunnerTests xcconfigs, and contract",
+    "flutter_analyze": "TIMEOUT/UNVERIFIED: Windows analyzer produced no output for bounded 120+ seconds and was safely interrupted; owned analyzer processes were reaped",
+    "dart_analyze": "TIMEOUT/UNVERIFIED: wrapper did not produce an exit result before the analyzer process stall; owned analyzer processes were reaped",
+    "fresh_github_rerun": "Run #15 failed at XCTest execution with duplicate full-app pod linkage; fresh run required after current target-specific engine/wiring fix"
   },
-  "live_gate": "AUDIT_FIX_PUSHED_PENDING_FRESH_MACOS_SIMULATOR_E2E",
+  "live_gate": "CURRENT_FIX_READY_TO_COMMIT_PENDING_FRESH_MACOS_SIMULATOR_E2E",
   "artifacts_local_only": true,
   "do_not_commit": [".tmp/ios-simulator-run7-auth", ".tmp/teardown-contract-fixture", ".tmp/teardown-contract-fixture-2"],
   "finalization": {
-    "commit": "b7cd59d4 (simulator targeting + temporary dynamic linkage; macos-15 pin pending)",
-    "push": "b7cd59d4 pushed; macos-15 pin pending",
+    "commit": "PENDING: current target-specific RunnerTests isolation/wiring diff not yet committed",
+    "push": "PENDING: non-force push after current diff integration",
     "android": "UNCHANGED",
     "production_release_privacy_signing": "PROTECTED"
   }
