@@ -1,0 +1,70 @@
+name: Flutter full-suite baseline (non-blocking)
+
+# P4: .github/workflows/ios-readiness.yml:85-88 carries a comment asserting
+# that the full repository test suite "currently contains unrelated
+# environment-sensitive failures (for example Naver/voice integration
+# fixtures)" and uses that claim to justify scoping its own `flutter test`
+# step down to four named iOS contract files instead of running the whole
+# suite. That claim has never actually been measured in this repository's CI
+# -- there is no workflow anywhere that runs `flutter test` against the full
+# suite and records what passes/fails.
+#
+# This workflow is that measurement, and ONLY that measurement:
+#   - It is workflow_dispatch-only (no automatic trigger), so it never adds
+#     load to pull_request/push CI.
+#   - Its job step is `continue-on-error: true`, so a failure here can never
+#     fail this workflow's own job, let alone gate anything else. It does not
+#     replace, narrow, or widen ios-readiness.yml's existing scoped `flutter
+#     test` step, and it does not touch that file.
+#   - It exists to produce evidence (the recorded pass/fail output, uploaded
+#     as an artifact) that the ios-readiness.yml comment's claim can be
+#     confirmed, refuted, or updated against -- it is intentionally NOT
+#     promoted to a gate here. Any future decision to make part or all of the
+#     full suite a blocking check is a separate, deliberate change.
+#
+# This workflow file is NEW and does not modify any pre-existing workflow.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  full-suite-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Run full test suite (measurement only, non-blocking)
+        id: full_suite
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/flutter-test-baseline"
+          flutter test --no-pub 2>&1 \
+            | tee "$RUNNER_TEMP/flutter-test-baseline/full-suite-output.log"
+
+      - name: Report measurement outcome (does not fail the job)
+        if: always()
+        shell: bash
+        run: |
+          echo "Full-suite outcome (informational only, not a gate): ${{ steps.full_suite.outcome }}"
+
+      - name: Upload full-suite output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-full-suite-baseline
+          path: ${{ runner.temp }}/flutter-test-baseline/full-suite-output.log
+          if-no-files-found: warn
+          retention-days: 30

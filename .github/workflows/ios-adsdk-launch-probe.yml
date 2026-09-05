@@ -1,0 +1,107 @@
+name: iOS AdSDK launch probe (production plist)
+
+# Manual-only workflow. Builds, installs, and launches the app against the
+# REAL, unmodified production ios/Runner/Info.plist (which deliberately has
+# no GADApplicationIdentifier key -- see
+# scripts/ios/tests/e2e_admob_contract.sh) and checks whether the app process
+# survives a short wait and whether a new native crash report appears.
+#
+# This is deliberately separate from ios-simulator-e2e.yml: that workflow's
+# E2E legs inject a test GADApplicationIdentifier into the plist before
+# building (scripts/ios/e2e_xctest_flow.sh's inject_e2e_admob_app_id) and
+# restore it afterward, so they have never once observed what actually
+# happens when lib/main.dart's unconditional AdService.instance.initialize()
+# call runs against the plist state that ships in production. See
+# scripts/ios/prod_plist_launch_probe.sh's header comment for the full
+# motivation (R1).
+#
+# This workflow file is NEW and does not modify any of the pre-existing iOS
+# workflows or ios/Runner/Info.plist itself.
+
+on:
+  workflow_dispatch:
+    inputs:
+      wait_seconds:
+        description: 'Seconds to wait after launch before checking liveness/crash state'
+        required: false
+        default: '20'
+      stage_timeout_seconds:
+        description: 'Bound (seconds) applied to each build/install/launch stage'
+        required: false
+        default: '900'
+
+permissions:
+  contents: read
+
+jobs:
+  prod-plist-launch-probe:
+    # Pinned to the same macOS 15 / Xcode 16 generation ios-simulator-e2e.yml
+    # uses, for the same reason documented there: Xcode 26 on macos-latest
+    # cannot link this app's vendored Swift pods.
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate probe script contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ios/tests/prod_plist_launch_probe_contract.sh
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Resolve CocoaPods dependencies
+        run: pod install --project-directory=ios
+
+      - name: Discover a simulator and create/boot it
+        id: sim
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix_json="$(bash scripts/ios/simctl_discover.sh)"
+          if [[ "$matrix_json" == "[]" ]]; then
+            echo "::error title=BLOCKED_NO_SIMULATOR_RUNTIME::No supported simulator was discovered."
+            exit 1
+          fi
+          device_type="$(echo "$matrix_json" | jq -r '.[0].device_type')"
+          runtime="$(echo "$matrix_json" | jq -r '.[0].runtime')"
+          udid="$(xcrun simctl create ProdPlistProbe "$device_type" "$runtime")"
+          xcrun simctl boot "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Run production-plist launch probe
+        id: probe
+        shell: bash
+        env:
+          E2E_WATCHDOG_HEARTBEAT_INTERVAL: 30
+        run: |
+          set -o pipefail
+          bash scripts/ios/prod_plist_launch_probe.sh \
+            "${{ steps.sim.outputs.udid }}" \
+            com.fluxstudio.planflow \
+            "$RUNNER_TEMP/prod-plist-probe/derived-data" \
+            "$RUNNER_TEMP/prod-plist-probe/artifacts" \
+            "${{ inputs.wait_seconds }}" \
+            "${{ inputs.stage_timeout_seconds }}"
+
+      - name: Shut down simulator
+        if: always()
+        shell: bash
+        run: |
+          xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" >/dev/null 2>&1 || true
+
+      - name: Upload probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-plist-launch-probe
+          path: |
+            ${{ runner.temp }}/prod-plist-probe/artifacts/**
+          if-no-files-found: warn
+          retention-days: 14
