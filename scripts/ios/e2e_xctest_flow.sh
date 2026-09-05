@@ -16,6 +16,7 @@ set -uo pipefail
 
 readonly EXIT_USAGE=125
 readonly DEFAULT_STAGE_TIMEOUT=600
+readonly E2E_ADMOB_TEST_APP_ID="ca-app-pub-3940256099942544~1458002511"
 readonly STAGES=(
   SIMULATOR_BOOT
   APP_BUILD
@@ -65,6 +66,9 @@ overall_start="$(date +%s)"
 current_failure=0
 test_status=125
 app_path="$derived_data/Build/Products/Debug-iphonesimulator/Runner.app"
+runner_plist="$script_dir/../../ios/Runner/Info.plist"
+runner_plist_backup="$artifact_dir/.Runner-Info.plist.$$.backup"
+runner_plist_backup_active=0
 
 emit_stage() {
   local name="$1"
@@ -102,6 +106,31 @@ run_bounded() {
   return "$rc"
 }
 
+inject_e2e_admob_app_id() {
+  if [ ! -f "$runner_plist" ]; then
+    return 1
+  fi
+
+  cp -p -- "$runner_plist" "$runner_plist_backup" || return 1
+  runner_plist_backup_active=1
+
+  if /usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' "$runner_plist" >/dev/null 2>&1; then
+    /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $E2E_ADMOB_TEST_APP_ID" "$runner_plist"
+  else
+    /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string $E2E_ADMOB_TEST_APP_ID" "$runner_plist"
+  fi
+}
+
+restore_runner_plist() {
+  if [ "$runner_plist_backup_active" -eq 0 ]; then
+    return 0
+  fi
+
+  cp -p -- "$runner_plist_backup" "$runner_plist" || return 1
+  rm -f -- "$runner_plist_backup" || return 1
+  runner_plist_backup_active=0
+}
+
 cleanup() {
   local cleanup_rc=0
   # xcodebuild normally tears down the test host.  This extra termination is
@@ -129,6 +158,11 @@ on_exit() {
   trap - EXIT
   cleanup || cleanup_rc=$?
 
+  if ! restore_runner_plist; then
+    echo "::error title=BLOCKED_E2E_PLIST_RESTORE::could not restore the original Runner Info.plist" >&2
+    cleanup_rc=1
+  fi
+
   if [ "$exit_status" -ne 0 ]; then
     exit "$exit_status"
   fi
@@ -151,6 +185,13 @@ else
     emit_stage SIMULATOR_BOOT PASS "simctl bootstatus completed for supplied simulator"
   else
     emit_stage SIMULATOR_BOOT FAIL "simctl bootstatus exit=$rc"
+    current_failure=1
+  fi
+fi
+
+if [ "$current_failure" -eq 0 ]; then
+  if ! inject_e2e_admob_app_id; then
+    emit_stage APP_BUILD FAIL "E2E-only AdMob test plist injection failed"
     current_failure=1
   fi
 fi
