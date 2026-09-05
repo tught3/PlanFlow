@@ -263,6 +263,12 @@ cat > "$fakebin_dir/xcrun" <<'EOF'
 exit 1
 EOF
 chmod +x "$fakebin_dir/xcrun"
+cat > "$fakebin_dir/xcodebuild" <<'EOF'
+#!/usr/bin/env bash
+# Fixture stub: the fallback SDK probe must also tolerate xcodebuild failure.
+exit 1
+EOF
+chmod +x "$fakebin_dir/xcodebuild"
 
 case4_runtimes="$tmp_dir/case4_runtimes.json"
 make_runtime_fixture "$case4_runtimes" \

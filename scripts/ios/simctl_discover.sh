@@ -137,12 +137,15 @@ determine_sdk_version() {
   fi
 
   if [ -z "$probed" ] && command -v xcodebuild >/dev/null 2>&1; then
+    local xcodebuild_sdks=""
+    xcodebuild_sdks="$(xcodebuild -showsdks 2>/dev/null || true)"
     probed="$(
-      xcodebuild -showsdks 2>/dev/null \
+      printf '%s\n' "$xcodebuild_sdks" \
         | grep -oE 'iphonesimulator[0-9]+(\.[0-9]+)*' \
         | sed -E 's/^iphonesimulator//' \
         | sort -t. -k1,1n -k2,2n -k3,3n \
-        | tail -n1
+        | tail -n1 \
+        || true
     )"
   fi
 
