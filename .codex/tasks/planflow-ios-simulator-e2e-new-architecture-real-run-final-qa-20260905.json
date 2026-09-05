@@ -494,10 +494,10 @@
   "finalization": {
     "starting_head_preserved": "2a53a97bde961673637d7d09c7119809ad06fcea",
     "e2e_timeout_head": "3415a195b92abd7009a99923bb39faf902cc3818",
-    "final_head": "d4fe5a37d4acf7333202b6cc83bb0ca4fa476b5f",
-    "final_head_note": "d4fe5a37 includes the foreign docs commit rebased as 4b825418 plus this task-state commit rebased as d4fe5a37.",
-    "commit": "bbb8af23 rebased to d4fe5a37.",
-    "push": "SUCCESS non-force after pull --rebase.",
+    "final_head": "0a86281de3936cdd82ac15e3ac81e36f25ef12d4",
+    "final_head_note": "0a86281d includes the foreign docs commit rebased as 4b825418, the task-state commit rebased as d4fe5a37, and the finalization correction committed as 0a86281d.",
+    "commit": "bbb8af23 rebased to d4fe5a37; finalization correction committed as 0a86281d.",
+    "push": "SUCCESS non-force after pull --rebase and finalization correction push.",
     "android": "UNCHANGED",
     "production_release_privacy_signing": "PROTECTED",
     "build16_testflight": "NO_ACTION"
