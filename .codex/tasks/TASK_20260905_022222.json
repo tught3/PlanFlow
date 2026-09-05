@@ -1,11 +1,22 @@
 {
   "task_id": "TASK_20260905_022222",
   "request": "PlanFlow iOS Simulator E2E Final Closure: safely sync from current local main behind origin/main, inspect latest Run #5 preflight contract RCA, make only safe scoped fix, validate, then attempt authenticated simulator E2E and release QA. Preserve foreign AGENTS files; no Build17, no Android, no signing/privacy production changes.",
-  "status": "in_progress",
+  "status": "partial",
   "branch": "task/TASK_20260905_022222",
   "sync": {
-    "command": "git fetch origin --prune; git merge --ff-only origin/main",
-    "result": "PASS: fast-forward bf1a3c77fdb8eb4004e06cbcc1a80aa0e27f996b to 74f1fefee00571e2f38f68f205c6c288bb39566c"
+    "previous": {
+      "command": "git fetch origin --prune; git merge --ff-only origin/main",
+      "result": "PASS: fast-forward bf1a3c77fdb8eb4004e06cbcc1a80aa0e27f996b to 74f1fefee00571e2f38f68f205c6c288bb39566c"
+    },
+    "session_2026_09_05_claude": {
+      "command": "git fetch origin; git merge origin/main (no force, no rebase, no reset, no stash)",
+      "result": "PASS: two normal merge commits; origin/main advanced mid-session from 237b5711 to 63635da1 (another session pushed) and was merged again",
+      "merge_commits": [
+        "c87c9702 (origin/main 237b5711)",
+        "see HEAD merge for origin/main 63635da1"
+      ],
+      "post_state": "git diff --name-only origin/main...HEAD == .codex/tasks/TASK_20260905_022222.json only"
+    }
   },
   "preflight": {
     "command": "python E:\\FluxStudio\\.fluxos\\run.py preflight E:\\FluxStudio-worktrees\\planflow\\planflow-task-20260905-022222 --deep",
@@ -91,11 +102,11 @@
     }
   ],
   "plan": {
-    "r5_artifact_status": "ABSENT",
-    "source_fix_decision": "NO_OP_UNTIL_EVIDENCE",
-    "local_contract_status": "PARTIAL_PASS: Git Bash e2e_script_contract 51/0/0 and e2e_stage_markers_contract 38/0 exit 0; simctl contract remains blocked by missing jq; Dart contracts remain unverified without .dart_tool and are not remediated by generating dependencies.",
-    "authenticated_e2e_status": "BLOCKED_GH_AUTH",
-    "release_qa_status": "BLOCKED: no authenticated GitHub dispatch or macOS evidence",
+    "r5_artifact_status": "RCA_AVAILABLE_VIA_PRIOR_SESSION_RECORD (no new live artifact fetched; gateway has no run-inspection action)",
+    "source_fix_decision": "NO_NEW_SOURCE_FIX - e88eb26b already covers the Run #5 RCA and is now proven locally",
+    "local_contract_status": "FULL_PASS: simctl_discover_contract 18/0, e2e_stage_markers_contract 38/0, e2e_script_contract 51/0/0, flutter ios_simulator_e2e_contract_test all passed",
+    "authenticated_e2e_status": "NOT_ATTEMPTED_BY_POLICY: FluxOS Tool Gateway 'github' exposes only repo_status/pr_list/pr_view/pr_create/issue_comment and explicitly declares workflow execution fail-closed and unregistered; raw gh is forbidden. No macOS host exists either.",
+    "release_qa_status": "NOT_PASS: release QA requires macOS/Xcode evidence per docs/ios/release-readiness.md; only Windows-side static gates were run and they pass",
     "forbidden_scope_touched": false
   },
   "forbidden_files_or_scope": [
@@ -104,14 +115,65 @@
     "Build17/version changes",
     "signing, privacy, or production configuration"
   ],
-  "final_verdict": "BLOCKED",
+  "final_verdict": "PARTIAL - sync, Run #5 RCA review, local contract validation, and scope containment are complete and evidence-backed; live macOS Simulator E2E and release QA remain NOT_PASS and require an authenticated macOS/GitHub operator.",
   "blockers": [
-    "No local SHA-bound Run#5 preflight RCA/artifact",
-    "GitHub CLI unauthenticated; no browser connection",
-    "No macOS/Xcode/xcrun for simulator E2E and release QA",
-    "jq unavailable for simctl contract",
-    ".dart_tool absent for Dart iOS contract tests",
-    "Reviewer HIGH finding: live authenticated E2E/release QA incomplete"
+    "RESOLVED (this session): jq unavailable for simctl contract - jq 1.7.1 installed, contract now 18/0 exit 0",
+    "RESOLVED (this session): .dart_tool absent for Dart iOS contract tests - flutter test --no-pub exits 0",
+    "OPEN: no macOS/Xcode/xcrun, so real Simulator E2E and release QA cannot run on this host",
+    "OPEN: authenticated GitHub workflow dispatch is not an available gateway action (fail-closed by registry); raw gh forbidden",
+    "OPEN: no fresh live Run evidence after e88eb26b; Run #5 remains historical failure evidence only"
   ],
-  "last_update": "2026-09-05T02:40:00+09:00"
+  "last_update": "2026-09-05T13:30:00+09:00",
+  "run5_rca": {
+    "source": ".codex/tasks/planflow-ios-simulator-e2e-final-closure-20260905.json (recorded by the prior session)",
+    "githubRun": "Run #5 (33868864992)",
+    "observed": "Preflight failed before the Simulator matrix; simctl_discover contract case4 15 passed / 3 failed (expected rc=1 got rc=0, missing BLOCKED_NO_ACTIVE_IOS_SDK, non-empty stdout).",
+    "cause": "case4 shadowed a failing xcrun but allowed the host xcodebuild fallback; that fallback pipeline could also terminate under set -euo pipefail when xcodebuild failed or grep found no match.",
+    "fix_commit": "e88eb26b (already on origin/main before this session started)",
+    "new_source_fix_this_session": "NONE_REQUIRED - the evidence-bound fix already exists on origin/main; this session's contribution is turning the prior UNVERIFIED_ENVIRONMENT contract run into a measured PASS."
+  },
+  "environment_remediation": {
+    "jq": "Installed jq 1.7.1 to C:/Users/tught/bin/jq.exe (host tooling only, no repository change). This unblocked simctl_discover_contract.sh, which the prior session could only record as UNVERIFIED_ENVIRONMENT.",
+    "dart_tool": ".dart_tool/package_config.json present, so flutter test --no-pub resolves; the prior Reviewer MEDIUM finding is resolved.",
+    "still_absent": [
+      "macOS",
+      "Xcode",
+      "xcrun/simctl",
+      "authenticated GitHub workflow dispatch"
+    ]
+  },
+  "verification_this_session": [
+    {
+      "check_id": "simctl-discover-contract",
+      "command": "bash scripts/ios/tests/simctl_discover_contract.sh (PATH includes jq)",
+      "exit_code": 0,
+      "result": "18 passed, 0 failed - includes the three case4 assertions that failed in Run #5 (rc=1, BLOCKED_NO_ACTIVE_IOS_SDK, empty stdout)",
+      "attempts": "attempt 1 exit 1 (recorder resolved 'bash' to WSL bash, execvpe failure - not a contract failure); attempt 2 exit 0 with C:/Program Files/Git/bin/bash.exe"
+    },
+    {
+      "check_id": "e2e-stage-markers-contract",
+      "command": "bash scripts/ios/tests/e2e_stage_markers_contract.sh",
+      "exit_code": 0,
+      "result": "38 passed, 0 failed"
+    },
+    {
+      "check_id": "e2e-script-contract",
+      "command": "bash scripts/ios/tests/e2e_script_contract.sh",
+      "exit_code": 0,
+      "result": "51 passed, 0 failed, 0 skipped"
+    },
+    {
+      "check_id": "flutter-ios-e2e-contract-test",
+      "command": "flutter test --no-pub test/ios_simulator_e2e_contract_test.dart",
+      "exit_code": 0,
+      "result": "All tests passed (11 tests)",
+      "attempts": "attempt 1 exit 127 (recorder could not spawn bare 'flutter'); attempt 2 exit 0 with C:/src/flutter/bin/flutter.bat"
+    },
+    {
+      "check_id": "scope-boundary-check",
+      "command": "grep forbidden paths over git status --porcelain -uall and git diff --name-only origin/main...HEAD",
+      "exit_code": 0,
+      "result": "SCOPE_OK - working tree clean; only .codex/tasks/TASK_20260905_022222.json differs from origin/main"
+    }
+  ]
 }
