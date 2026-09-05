@@ -146,6 +146,9 @@ jobs:
     needs: preflight
     if: ${{ needs.preflight.outputs.matrix != '' && needs.preflight.outputs.matrix != '[]' }}
     runs-on: macos-15
+    # A clean Xcode APP_BUILD can exceed the former 600s stage bound without
+    # emitting a compile/link error. Keep the per-stage bound below the
+    # matrix job's 45-minute hard limit while allowing bounded build variance.
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -262,7 +265,7 @@ jobs:
               "$flow_derived" \
               "$flow_result" \
               "$flow_artifact" \
-              600
+              900
             flow_status=$?
             set -e
             combined_log="$flow_artifact/e2e-combined.log"

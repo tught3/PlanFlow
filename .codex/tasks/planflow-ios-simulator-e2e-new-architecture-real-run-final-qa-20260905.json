@@ -1,7 +1,19 @@
 {
   "task_id": "planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905",
-  "objective": "Diagnose the common simulator E2E failures through authenticated GitHub Run #15 evidence, isolate RunnerTests from the production Runner CocoaPods graph, validate the safe target-specific contract, push normally, and gate a fresh macOS rerun.",
-  "status": "IMPLEMENTED_PENDING_FRESH_MACOS_RERUN",
+  "objective": "Diagnose the common simulator E2E failures through authenticated GitHub Run #16 evidence, align RunnerTests with Flutter's official host/search-path topology while preserving target-specific xcconfig wiring, validate the safe contract, push normally, and gate a fresh macOS rerun.",
+  "status": "BLOCKED_RUNTIME_XCTEST",
+  "integration_requirements": {
+    "tracked": true,
+    "allowed_change": [".codex/tasks/planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905.json"],
+    "forbidden_change": ["production", "signing", "privacy", "Android source", "AGENTS.md", "AGENTS.md.before-regen.bak", "$null"],
+    "plan_items": {
+      "artifact_and_history_reconciliation": "DONE",
+      "Run18_failure_analysis": "DONE",
+      "independent_review": "DONE: no BLOCKER/HIGH source finding",
+      "runtime_XCTest_discovery_and_execution": "BLOCKED_RUNTIME_XCTEST"
+    },
+    "classification_and_assignments": "EXIST: prior Simple and Complex Implementer assignments plus Test Executor, Failure Analyst, Reviewer, and Integrator reports are retained in role_reports."
+  },
   "project": "PlanFlow",
   "workspace": "E:\\FluxStudio\\PlanFlow",
   "starting_head": "2a53a97bde961673637d7d09c7119809ad06fcea",
@@ -103,6 +115,49 @@
     "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
     "root_cause": "COMMON_SIMULATOR_FAILURE / XCTEST_TARGET / COCOAPODS_TARGET_SUPPORT_XCCONFIG"
   },
+  "run16_rerun": {
+    "run_id": 33972398956,
+    "run_number": 16,
+    "head_sha": "b38b9c5f6694599ce1ab977b3d2def05b6b762b2",
+    "conclusion": "failure",
+    "first_failing_stage": "XCTEST_EXECUTION",
+    "evidence_scope": "authenticated GitHub Actions job metadata and downloaded non-expired iPad/small/large artifacts 9971621930/9971625269/9971332446; raw job logs denied by GitHub 403 Must have admin rights; no secrets recorded",
+    "evidence": [
+      "preflight and FLOW5 host-fake passed; iPad, small, and large reached APP_BUILD, install, launch, and ready successfully.",
+      "iPad, small, and large all recorded TEST_DRIVER_ATTACH FAIL, TEST_DISCOVERY FAIL, and FLOW_EXECUTION FAIL with XCTest exit 65; mainstream was cancelled by fail-fast after the common failures.",
+      "Run16 APP_BUILD evidence still showed Runner link and RunnerTests link both consuming integration_test; duplicate FLTIntegrationTestRunner, IntegrationTestIosTest, IntegrationTestPlugin classes remained between Runner.debug.dylib and RunnerTests.xctest/RunnerTests.",
+      "The RunnerTests target-specific xcconfig wiring removed the prior full-app Pods contamination, but the independent explicit integration_test pod still duplicated the integration_test already present in the Runner host.",
+      "Run16 confirmed the target-only OTHER_LDFLAGS post-install workaround did not change the final RunnerTests link command and was removed in the follow-up source rework."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
+    "root_cause": "COMMON_SIMULATOR_FAILURE / XCTEST_TARGET / DUPLICATE_INTEGRATION_TEST_HOST_LINK"
+  },
+  "run18_authenticated_evidence": {
+    "run_id": 33978093334,
+    "run_number": 18,
+    "head_sha": "3415a195b92abd7009a99923bb39faf902cc3818",
+    "conclusion": "failure",
+    "classification": "BLOCKED_RUNTIME_XCTEST",
+    "confidence": "about 80% environment or Xcode 16.4 simulator infrastructure; not a confirmed source defect",
+    "evidence_scope": "authenticated Run #18 artifacts under .tmp/ios-simulator-run18-auth and .tmp/ios-simulator-run18-auth-mainstream-extract; no secrets recorded",
+    "passes": [
+      "preflight PASS",
+      "flow05-host-fake PASS",
+      "small, large, iPad, and mainstream artifacts show APP_BUILD, APP_INSTALL, APP_LAUNCH, and APP_READY PASS",
+      "RunnerTests.xctest build/link and bundle loading PASS"
+    ],
+    "failures": [
+      "XCTest had no discovery and no completion across small, large, iPad, and mainstream artifacts",
+      "xcodebuild test exited 65 with Test runner never began executing tests after launching",
+      "diagnostics show Loading test suite..., testmanagerd authorization or daemon-connection failure, and simctl_diagnose timeout"
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
+    "flows_1_to_8": "NOT_VERIFIED",
+    "source_patch_decision": "NO_SOURCE_PATCH_JUSTIFIED",
+    "build16_testflight": "NO_ACTION",
+    "android": "UNCHANGED",
+    "next_gate": "Fresh authenticated macOS-15/Xcode 16.4 simulator rerun after environment repair, or minimal native XCTest isolation after environment repair."
+  },
   "changes": [
     {
       "path": "scripts/ios/e2e_xctest_flow.sh",
@@ -147,6 +202,14 @@
     {
       "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
       "summary": "Enforce top-level RunnerTests, engine-only/integration_test pod scope, target-specific xcconfig wiring, shared Runner config protection, no-upload path, and existing XCTest host contract."
+    },
+    {
+      "path": "ios/Podfile",
+      "summary": "After Run16 proved the independent RunnerTests integration_test link was duplicated in the Runner host, restore Flutter's official nested RunnerTests inherit! :search_paths topology; keep Runner's existing full pod installation and production target graph unchanged."
+    },
+    {
+      "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
+      "summary": "Require nested RunnerTests search-path inheritance, reject a separate engine/integration_test pod and the superseded OTHER_LDFLAGS workaround, and preserve target-specific xcconfig, no-upload, FLOW5, production, and Android guards."
     }
   ],
   "protected_paths": [
@@ -359,14 +422,48 @@
       "test_evidence": "Final current diff review with Run15 evidence and static contract inspection."
     },
     {
+      "role": "Failure Analyst (Run #16)",
+      "agent": "flux_failure_analyst",
+      "agent_id": "01a0721a-f613-7370-9421-2b61934235f3",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Analyze the fresh Run16 duplicate integration_test XCTest host failure and identify the smallest safe topology fix.",
+      "result": "Confirmed Runner already links integration_test through flutter_install_all_ios_pods and RunnerTests independently linked it again; recommended Flutter-standard nested RunnerTests inherit! :search_paths while retaining the target-specific RunnerTests xcconfig wiring.",
+      "changed_files": [],
+      "test_evidence": "Run16 artifact APP_BUILD/XCTest evidence and current Podfile inspection; macOS Run17 rerun required."
+    },
+    {
+      "role": "Implementer (Run #16 rework)",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a07222-7101-72f0-8d47-85cbade09a38",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Remove the ineffective duplicate linker workaround and align Podfile/contract with Flutter's nested RunnerTests search-path topology.",
+      "result": "Removed the OTHER_LDFLAGS workaround and separate RunnerTests engine/integration_test pod; nested RunnerTests under Runner with inherit! :search_paths; retained existing RunnerTests xcconfig/project wiring and protected production/Android paths.",
+      "changed_files": ["ios/Podfile", "scripts/ios/tests/e2e_xctest_runner_contract.sh"],
+      "test_evidence": "Git Bash bash -n and e2e_xctest_runner_contract.sh PASS exit 0; macOS rerun remains required."
+    },
+    {
+      "role": "Independent Reviewer (Run #16 final source rework)",
+      "agent": "flux_reviewer",
+      "agent_id": "completed-independent-evidence-review-run18",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review the final current diff plus authenticated Run #18 evidence and protected paths.",
+      "result": "PASS for final source/diff scope with no BLOCKER/HIGH source finding. Run #18 proves the runtime gate remains blocked: XCTest did not discover or execute tests after successful build/install/launch/ready. No source patch is justified from this evidence.",
+      "changed_files": [],
+      "test_evidence": "Run #18 authenticated artifacts: preflight and flow05-host-fake PASS; RunnerTests.xctest build/link/load PASS; small/large/iPad/mainstream XCTest exit 65 with no discovery/completion; final current diff inspected."
+    },
+    {
       "role": "Integrator",
-      "agent": "pending",
+      "agent": "flux_integrator",
+      "agent_id": "current-session-integrator-run18",
       "mapped_model": "gpt-5.6-terra",
       "reasoning_effort": "medium",
-      "assignment": "After commit/push and fresh macOS rerun, inspect final current diff and decide completion.",
-      "result": "Pending commit/push and fresh authenticated macOS rerun; no macOS pass claimed.",
+      "assignment": "Reconcile task state at foreign final HEAD 6eccca41, Run #18 evidence, final current diff, role reports, and completion gates without touching protected source.",
+      "result": "BLOCKED_RUNTIME_XCTEST. Requirements and plan scope are tracked; simple/complex assignments and failure analysis exist. Final diff is task-state only, source scope is unchanged, and no Reviewer BLOCKER/HIGH remains. The required runtime XCTest gate failed, so this task is not COMPLETE.",
       "changed_files": [".codex/tasks/planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905.json"],
-      "test_evidence": "Not yet complete."
+      "test_evidence": "Focused JSON parse and task-state-only diff required before commit; Run #18 XCTest exit 65 is fresh runtime failure evidence."
     }
   ],
   "local_validation": {
@@ -385,15 +482,24 @@
     "current_scoped_diff_check": "PASS: Podfile, RunnerTests target pbxproj wiring, RunnerTests xcconfigs, and contract",
     "flutter_analyze": "TIMEOUT/UNVERIFIED: Windows analyzer produced no output for bounded 120+ seconds and was safely interrupted; owned analyzer processes were reaped",
     "dart_analyze": "TIMEOUT/UNVERIFIED: wrapper did not produce an exit result before the analyzer process stall; owned analyzer processes were reaped",
-    "fresh_github_rerun": "Run #15 failed at XCTest execution with duplicate full-app pod linkage; fresh run required after current target-specific engine/wiring fix"
+    "fresh_github_rerun": "Run #18 (33978093334 at 3415a195) completed the authenticated macOS-15/Xcode 16.4 rerun: preflight/FLOW5/build/install/launch/ready and RunnerTests.xctest build/link/load passed; native XCTest did not discover or complete tests and xcodebuild exited 65.",
+    "run16_artifacts": "PRESERVED local-only: iPad/small/large artifacts downloaded and inspected; raw job log download blocked by GitHub 403 admin-rights requirement",
+    "current_source_rework": "PASS static: nested RunnerTests inherit! :search_paths; separate integration_test/engine pod and OTHER_LDFLAGS workaround absent; existing target-specific xcconfig wiring retained",
+    "run17_runtime_gate": "SUPERSEDED_BY_RUN18",
+    "run18_runtime_gate": "FAILED/BLOCKED_RUNTIME_XCTEST: small, large, iPad, and mainstream did not provide XCTest discovery or completion; flows 1-8 remain NOT_VERIFIED."
   },
-  "live_gate": "CURRENT_FIX_READY_TO_COMMIT_PENDING_FRESH_MACOS_SIMULATOR_E2E",
+  "live_gate": "FRESH_AUTHENTICATED_MACOS15_XCODE16_4_SIMULATOR_RERUN_OR_MINIMAL_NATIVE_XCTEST_ISOLATION_AFTER_ENVIRONMENT_REPAIR_REQUIRED",
   "artifacts_local_only": true,
   "do_not_commit": [".tmp/ios-simulator-run7-auth", ".tmp/teardown-contract-fixture", ".tmp/teardown-contract-fixture-2"],
   "finalization": {
-    "commit": "PENDING: current target-specific RunnerTests isolation/wiring diff not yet committed",
-    "push": "PENDING: non-force push after current diff integration",
+    "starting_head_preserved": "2a53a97bde961673637d7d09c7119809ad06fcea",
+    "e2e_timeout_head": "3415a195b92abd7009a99923bb39faf902cc3818",
+    "final_head": "0a86281de3936cdd82ac15e3ac81e36f25ef12d4",
+    "final_head_note": "0a86281d includes the foreign docs commit rebased as 4b825418, the task-state commit rebased as d4fe5a37, and the finalization correction committed as 0a86281d.",
+    "commit": "bbb8af23 rebased to d4fe5a37; finalization correction committed as 0a86281d.",
+    "push": "SUCCESS non-force after pull --rebase and finalization correction push.",
     "android": "UNCHANGED",
-    "production_release_privacy_signing": "PROTECTED"
+    "production_release_privacy_signing": "PROTECTED",
+    "build16_testflight": "NO_ACTION"
   }
 }
