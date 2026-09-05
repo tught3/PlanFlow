@@ -40,6 +40,21 @@ if [ "$(printf '%s\n' "$workflow_runs_on" | grep -cF -- 'runs-on: macos-15')" -n
 fi
 pass 'simulator E2E jobs are pinned to the Xcode 16 macOS image'
 
+# Run #17 reached the former 600s APP_BUILD watchdog boundary without a
+# compile/link error. The simulator workflow may override the runner's
+# generic 600s default with this bounded 900s value; the surrounding matrix
+# job remains capped at 45 minutes.
+if [ "$(printf '%s\n' "$workflow_text" | grep -cF -- 'timeout-minutes: 45')" -ne 1 ]; then
+  fail 'simulator E2E matrix job must retain its 45-minute hard timeout'
+fi
+if [ "$(printf '%s\n' "$workflow_text" | grep -cF -- '              900')" -ne 1 ]; then
+  fail 'simulator E2E runner must use the bounded 900-second stage timeout'
+fi
+if printf '%s\n' "$workflow_text" | grep -qF -- '              600'; then
+  fail 'simulator E2E workflow still passes the former 600-second stage timeout'
+fi
+pass 'simulator E2E uses a bounded 900-second stage timeout within the 45-minute job limit'
+
 if printf '%s' "$workflow_text" | grep -qE -- 'flutter[[:space:]]+test.*-d|-d.*flutter[[:space:]]+test'; then
   fail 'workflow still contains a flutter test device-runner invocation'
 fi
