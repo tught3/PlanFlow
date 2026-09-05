@@ -1,0 +1,142 @@
+{
+  "taskId": "planflow-ios-simulator-e2e-final-closure-20260905",
+  "status": "PARTIAL",
+  "originalRequest": "Integrate and deliver the approved PlanFlow iOS Simulator E2E patch in the existing shared workspace only. Commit and push exactly the two approved functional files, then persist and commit task-state metadata. Preserve AGENTS.md and AGENTS.md.before-regen.bak; do not touch Android, workflows, ios project/signing/privacy, production paths, or Build17; do not dispatch GitHub without clearly available authentication.",
+  "safeSync": {
+    "baseHead": "74f1fefee00571e2f38f68f205c6c288bb39566c",
+    "baseOriginMain": "74f1fefee00571e2f38f68f205c6c288bb39566c",
+    "method": "pre-existing safe fast-forward verified; no pull, reset, rebase, or force push performed",
+    "functionalCommit": "e88eb26bf55ad8bb92809dd456bcee749fe7e32f",
+    "functionalPush": "origin/main advanced normally from 74f1fefe to e88eb26b"
+  },
+  "requirements": [
+    "Preserve exactly the two approved functional paths in the functional commit.",
+    "Preserve the supplied foreign-file hashes and keep those paths unstaged.",
+    "Use normal non-force pushes only.",
+    "Record role evidence, verification evidence, RCA, scope boundaries, and the live-validation boundary.",
+    "Do not represent source/local evidence as macOS or Simulator E2E proof."
+  ],
+  "classification": {
+    "overall": "Complex",
+    "implementationItems": [
+      {
+        "id": "sdk-fallback-and-case4-fixture",
+        "classification": "Complex",
+        "assignee": "flux_complex_implementer",
+        "completed": true
+      },
+      {
+        "id": "commit-push-and-state-reconciliation",
+        "classification": "Simple",
+        "assignee": "flux_integrator",
+        "completed": true
+      }
+    ]
+  },
+  "allowedPaths": [
+    "scripts/ios/simctl_discover.sh",
+    "scripts/ios/tests/simctl_discover_contract.sh",
+    ".codex/tasks/planflow-ios-simulator-e2e-final-closure-20260905.json (required delivery metadata only)"
+  ],
+  "forbiddenPaths": [
+    "AGENTS.md",
+    "AGENTS.md.before-regen.bak",
+    "android/**",
+    ".github/workflows/**",
+    "ios/**",
+    "lib/**",
+    "integration_test/**",
+    "test/ios_simulator_e2e_contract_test.dart",
+    "production paths",
+    "Build17"
+  ],
+  "scopePolicy": "The older planner list forbade .codex/tasks/** for its plan-only stage. The delivery skill requires this task-state record; this exact path is approved metadata, not production code.",
+  "rootCauseAnalysis": {
+    "githubRun": "Run #5 (33868864992)",
+    "observed": "Preflight failed before the Simulator matrix; simctl_discover contract case4 had 15 passed and 3 failed: expected rc=1 but got rc=0, missing BLOCKED_NO_ACTIVE_IOS_SDK, and non-empty stdout.",
+    "cause": "Case4 shadowed failing xcrun but permitted host xcodebuild fallback; the fallback pipeline could also terminate under set -euo pipefail when xcodebuild failed or grep had no match.",
+    "fix": "Capture xcodebuild -showsdks with failure tolerated, make the parse pipeline tolerate an empty/no-match result, and shadow xcodebuild with a failing case4 fixture so the existing explicit blocked branch remains authoritative."
+  },
+  "agentReports": {
+    "Explorer": {
+      "agent": "flux_explorer",
+      "invocationId": "01a06f77-98d0-7193-b5b6-be31d6ad4232",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "result": "Read-only narrow inspection: staged patch was exactly the two approved files, minimal (+11/-2), and did not stage foreign, Android, or production paths."
+    },
+    "Planner": {
+      "agent": "flux_planner",
+      "invocationId": "01a06f66-4f35-75e1-9e1e-37be5ca165f0",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "result": "Complex two-file fail-closed SDK probe/fakebin plan; macOS dispatch remains a separate authenticated boundary."
+    },
+    "Implementer": {
+      "agent": "flux_complex_implementer",
+      "invocationId": "01a06f68-d46c-7b03-9a7a-769183cf8c48",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "result": "Changed only the two approved shell files; reported syntax rc=0, fallback success/failure probe checks rc=0, diff check rc=0, and jq-blocked contract execution rc=1."
+    },
+    "TestExecutor": {
+      "agent": "flux_test_executor",
+      "invocationId": "01a06f6a-8c76-7840-a7a9-a7e4156b82cd",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "result": "Bash syntax rc=0 for both files; e2e_stage_markers_contract 51/0 rc=0; e2e_script_contract 51/0 rc=0; flutter test test/ios_simulator_e2e_contract_test.dart rc=0; focused diff check rc=0; simctl_discover_contract rc=1 because jq is absent."
+    },
+    "FailureAnalyst": {
+      "agent": "flux_failure_analyst",
+      "invocationId": "01a06f71-b070-7c13-be4e-3b672699881c",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "result": "Foreign dirty files are preservation requirements, not a patch defect. jq absence is an environment gap; pathspec-only commit plus post-commit independent review safely resolves the prior scope concern."
+    },
+    "Reviewer": {
+      "agent": "flux_reviewer",
+      "invocationId": "01a06f75-099d-7da2-a61f-4cc35f82bf96",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "hostFinal": true,
+      "hostFinalInvocationId": "01a06f75-099d-7da2-a61f-4cc35f82bf96",
+      "finalReviewReportCount": 1,
+      "reportType": "FINAL_REVIEW_REPORT",
+      "verdict": "PASS",
+      "highestSeverity": "NONE",
+      "result": "PASS/NONE: xcodebuild failure and grep no-match are contained; case4 shadows both xcrun and xcodebuild; JSON stdout and normal fallback behavior remain unchanged; no forbidden paths are staged. Dynamic contract execution remains UNVERIFIED_ENVIRONMENT because jq and bash are unavailable locally."
+    },
+    "Integrator": {
+      "agent": "flux_integrator",
+      "invocationId": "current-host-integrator",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "result": "Verified staged scope and foreign hashes before commit; committed and normally pushed the functional patch; recorded fail-closed verification and dispatch boundary."
+    }
+  },
+  "verification": [
+    { "command": "git diff --cached --name-only", "exitCode": 0, "result": "Exactly scripts/ios/simctl_discover.sh and scripts/ios/tests/simctl_discover_contract.sh before functional commit." },
+    { "command": "git diff --cached --check", "exitCode": 0, "result": "No staged whitespace errors before functional commit." },
+    { "command": "bash -n scripts/ios/simctl_discover.sh", "exitCode": 0, "result": "Implementer and Test Executor evidence." },
+    { "command": "bash -n scripts/ios/tests/simctl_discover_contract.sh", "exitCode": 0, "result": "Implementer and Test Executor evidence." },
+    { "command": "bash scripts/ios/tests/e2e_stage_markers_contract.sh", "exitCode": 0, "result": "51 passed, 0 failed." },
+    { "command": "bash scripts/ios/tests/e2e_script_contract.sh", "exitCode": 0, "result": "51 passed, 0 failed, 0 skipped." },
+    { "command": "flutter test test/ios_simulator_e2e_contract_test.dart", "exitCode": 0, "result": "All tests passed." },
+    { "command": "bash scripts/ios/tests/simctl_discover_contract.sh", "exitCode": 1, "result": "UNVERIFIED_ENVIRONMENT: jq is unavailable locally; this is not a passing contract run." },
+    { "command": "git push origin main", "exitCode": 0, "result": "Functional commit e88eb26b pushed normally to origin/main." }
+  ],
+  "foreignFiles": {
+    "AGENTS.md": { "gitHash": "4fdb2655df6bbf30d7d358d5c881854d7ce8fc5c", "state": "modified, foreign, unstaged, preserved" },
+    "AGENTS.md.before-regen.bak": { "sha256": "B0336FE9229A86EC9A5CB899370473EE3E8375C8120B376BE17D0FC643BACFE5", "state": "untracked, foreign, unstaged, preserved" }
+  },
+  "liveEvidence": {
+    "GitHubRun5": "33868864992",
+    "state": "Historical failure evidence only; its preflight did not reach the Simulator matrix.",
+    "simulatorE2E": "NOT_PASS",
+    "macOSContract": "NOT_PASS",
+    "githubDispatch": "NOT_ATTEMPTED: authentication was not clearly available to the integrator."
+  },
+  "nextStep": "An authenticated macOS/GitHub operator must dispatch the iOS Simulator E2E workflow against origin/main containing the functional commit, then inspect preflight, matrix legs, FLOW5, and artifacts. Do not claim Simulator E2E or macOS contract PASS until that run supplies fresh evidence.",
+  "finalVerdict": "PARTIAL: source/local integration, functional commit, independent review, and pushes are complete; jq-dependent dynamic contract and authenticated macOS/GitHub Simulator E2E remain unverified.",
+  "lastUpdated": "2026-09-05"
+}
