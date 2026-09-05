@@ -37,8 +37,14 @@ void main() {
 
     for (final entry in expectedDigests.entries) {
       test('${entry.key} matches its recorded SHA-256', () {
+        // The digests above are LF-normalized on purpose. These workflows are
+        // stored with LF in git, but a Windows checkout (core.autocrlf) hands
+        // them to us with CRLF, so hashing the raw bytes would fail on Windows
+        // while the tracked content is byte-for-byte identical. Normalizing
+        // CRLF -> LF before hashing keeps this a content guard on every host
+        // instead of an accidental line-ending guard.
         final bytes = file(entry.key).readAsBytesSync();
-        final actual = sha256.convert(bytes).toString();
+        final actual = sha256.convert(_normalizeEol(bytes)).toString();
         expect(
           actual,
           entry.value,
@@ -46,7 +52,9 @@ void main() {
               '${entry.key} changed since the iOS Simulator E2E phase (P13) '
               'recorded its digest. This workflow was not supposed to be '
               'touched by that phase; if this change is legitimate, update '
-              'the expected digest in this test deliberately.',
+              'the expected digest in this test deliberately. '
+              '(Line endings are normalized before hashing, so a CRLF/LF '
+              'difference alone cannot cause this failure.)',
         );
       });
     }
@@ -261,4 +269,21 @@ void main() {
       );
     });
   });
+}
+
+/// Strips CR bytes that precede an LF so a CRLF checkout hashes to the same
+/// digest as the LF content git actually tracks. A bare CR (old-Mac EOL) is
+/// left alone, and so is a CR that is not part of a CRLF pair, because those
+/// would be genuine content differences rather than a checkout artifact.
+List<int> _normalizeEol(List<int> bytes) {
+  const cr = 0x0D;
+  const lf = 0x0A;
+  final out = <int>[];
+  for (var i = 0; i < bytes.length; i++) {
+    if (bytes[i] == cr && i + 1 < bytes.length && bytes[i + 1] == lf) {
+      continue;
+    }
+    out.add(bytes[i]);
+  }
+  return out;
 }
