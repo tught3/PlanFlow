@@ -8,7 +8,10 @@
     "method": "pre-existing safe fast-forward verified; no pull, reset, rebase, or force push performed",
     "functionalCommit": "e88eb26bf55ad8bb92809dd456bcee749fe7e32f",
     "functionalPush": "origin/main advanced normally from 74f1fefe to e88eb26b",
-    "metadataCommits": ["c4c17155", "23143a79"],
+    "metadataCommits": [
+      "c4c17155",
+      "23143a79"
+    ],
     "metadataPush": "origin/main advanced normally through 23143a79"
   },
   "requirements": [
@@ -117,22 +120,78 @@
     }
   },
   "verification": [
-    { "command": "git diff --cached --name-only", "exitCode": 0, "result": "Exactly scripts/ios/simctl_discover.sh and scripts/ios/tests/simctl_discover_contract.sh before functional commit." },
-    { "command": "git diff --cached --check", "exitCode": 0, "result": "No staged whitespace errors before functional commit." },
-    { "command": "bash -n scripts/ios/simctl_discover.sh", "exitCode": 0, "result": "Implementer and Test Executor evidence." },
-    { "command": "bash -n scripts/ios/tests/simctl_discover_contract.sh", "exitCode": 0, "result": "Implementer and Test Executor evidence." },
-    { "command": "bash scripts/ios/tests/e2e_stage_markers_contract.sh", "exitCode": 0, "result": "51 passed, 0 failed." },
-    { "command": "bash scripts/ios/tests/e2e_script_contract.sh", "exitCode": 0, "result": "51 passed, 0 failed, 0 skipped." },
-    { "command": "flutter test test/ios_simulator_e2e_contract_test.dart", "exitCode": 0, "result": "All tests passed." },
-    { "command": "bash scripts/ios/tests/simctl_discover_contract.sh", "exitCode": 1, "result": "UNVERIFIED_ENVIRONMENT: jq is unavailable locally; this is not a passing contract run." },
-    { "command": "git push origin main", "exitCode": 0, "result": "Functional commit e88eb26b pushed normally to origin/main." },
-    { "command": "dart analyze", "exitCode": 1, "result": "UNVERIFIED_TIMEOUT: no output for bounded observation; owned process interrupted safely." },
-    { "command": "flutter analyze --no-pub", "exitCode": 1, "result": "UNVERIFIED_TIMEOUT: no output for bounded observation; owned process interrupted safely." },
-    { "command": "git push origin main (metadata)", "exitCode": 0, "result": "Metadata commits c4c17155 and 23143a79 pushed normally; final HEAD equals origin/main." }
+    {
+      "command": "git diff --cached --name-only",
+      "exitCode": 0,
+      "result": "Exactly scripts/ios/simctl_discover.sh and scripts/ios/tests/simctl_discover_contract.sh before functional commit."
+    },
+    {
+      "command": "git diff --cached --check",
+      "exitCode": 0,
+      "result": "No staged whitespace errors before functional commit."
+    },
+    {
+      "command": "bash -n scripts/ios/simctl_discover.sh",
+      "exitCode": 0,
+      "result": "Implementer and Test Executor evidence."
+    },
+    {
+      "command": "bash -n scripts/ios/tests/simctl_discover_contract.sh",
+      "exitCode": 0,
+      "result": "Implementer and Test Executor evidence."
+    },
+    {
+      "command": "bash scripts/ios/tests/e2e_stage_markers_contract.sh",
+      "exitCode": 0,
+      "result": "51 passed, 0 failed."
+    },
+    {
+      "command": "bash scripts/ios/tests/e2e_script_contract.sh",
+      "exitCode": 0,
+      "result": "51 passed, 0 failed, 0 skipped."
+    },
+    {
+      "command": "flutter test test/ios_simulator_e2e_contract_test.dart",
+      "exitCode": 0,
+      "result": "All tests passed."
+    },
+    {
+      "command": "bash scripts/ios/tests/simctl_discover_contract.sh",
+      "exitCode": 1,
+      "result": "UNVERIFIED_ENVIRONMENT: jq is unavailable locally; this is not a passing contract run.",
+      "supersededBy": "followup-2026-09-05-claude/simctl-discover-contract",
+      "note": "Historical: jq was absent on that host at that time. Superseded (not deleted) by the follow-up session run below, which executed the same script with jq present and exited 0 with 18 passed / 0 failed."
+    },
+    {
+      "command": "git push origin main",
+      "exitCode": 0,
+      "result": "Functional commit e88eb26b pushed normally to origin/main."
+    },
+    {
+      "command": "dart analyze",
+      "exitCode": 1,
+      "result": "UNVERIFIED_TIMEOUT: no output for bounded observation; owned process interrupted safely."
+    },
+    {
+      "command": "flutter analyze --no-pub",
+      "exitCode": 1,
+      "result": "UNVERIFIED_TIMEOUT: no output for bounded observation; owned process interrupted safely."
+    },
+    {
+      "command": "git push origin main (metadata)",
+      "exitCode": 0,
+      "result": "Metadata commits c4c17155 and 23143a79 pushed normally; final HEAD equals origin/main."
+    }
   ],
   "foreignFiles": {
-    "AGENTS.md": { "gitHash": "4fdb2655df6bbf30d7d358d5c881854d7ce8fc5c", "state": "modified, foreign, unstaged, preserved" },
-    "AGENTS.md.before-regen.bak": { "sha256": "B0336FE9229A86EC9A5CB899370473EE3E8375C8120B376BE17D0FC643BACFE5", "state": "untracked, foreign, unstaged, preserved" }
+    "AGENTS.md": {
+      "gitHash": "4fdb2655df6bbf30d7d358d5c881854d7ce8fc5c",
+      "state": "modified, foreign, unstaged, preserved"
+    },
+    "AGENTS.md.before-regen.bak": {
+      "sha256": "B0336FE9229A86EC9A5CB899370473EE3E8375C8120B376BE17D0FC643BACFE5",
+      "state": "untracked, foreign, unstaged, preserved"
+    }
   },
   "liveEvidence": {
     "GitHubRun5": "33868864992",
@@ -143,5 +202,53 @@
   },
   "nextStep": "An authenticated macOS/GitHub operator must dispatch the iOS Simulator E2E workflow against origin/main containing the functional commit, then inspect preflight, matrix legs, FLOW5, and artifacts. Do not claim Simulator E2E or macOS contract PASS until that run supplies fresh evidence.",
   "finalVerdict": "PARTIAL: source/local integration, functional commit, independent review, and pushes are complete; jq-dependent dynamic contract, dart/flutter analyze, and authenticated macOS/GitHub Simulator E2E remain unverified.",
-  "lastUpdated": "2026-09-05"
+  "lastUpdated": "2026-09-05 (follow-up session)",
+  "followUpSession": {
+    "sessionId": "629c4e73-490f-4916-a963-2473b0dca1a2",
+    "date": "2026-09-05",
+    "host": "Windows (no macOS, no Xcode, no xcrun)",
+    "scope": "Re-sync, re-inspect the Run #5 RCA, validate the already-pushed fix, attempt live Simulator E2E and release QA.",
+    "sourceChange": "NONE. The Run #5 fix (e88eb26b) was already on origin/main; no new production code change was warranted.",
+    "sync": "Normal merges of origin/main into task/TASK_20260905_022222. origin/main advanced from 237b5711 to 63635da1 mid-session (another session pushed) and was merged again. No force push, rebase, reset, or stash.",
+    "environmentRemediation": "jq 1.7.1 installed at C:/Users/tught/bin/jq.exe (host tooling only, not a repository change). This closed the UNVERIFIED_ENVIRONMENT gap above.",
+    "verification": [
+      {
+        "check_id": "simctl-discover-contract",
+        "command": "bash scripts/ios/tests/simctl_discover_contract.sh",
+        "exitCode": 0,
+        "result": "18 passed, 0 failed. Includes case4_sdk_probe_failure_rc (rc=1), case4_sdk_probe_failure_error_title (BLOCKED_NO_ACTIVE_IOS_SDK) and case4_sdk_probe_failure_never_falls_back_to_newest (stdout empty) - exactly the three assertions that failed in Run #5."
+      },
+      {
+        "check_id": "e2e-stage-markers-contract",
+        "command": "bash scripts/ios/tests/e2e_stage_markers_contract.sh",
+        "exitCode": 0,
+        "result": "38 passed, 0 failed (this run's measured output)."
+      },
+      {
+        "check_id": "e2e-script-contract",
+        "command": "bash scripts/ios/tests/e2e_script_contract.sh",
+        "exitCode": 0,
+        "result": "51 passed, 0 failed, 0 skipped."
+      },
+      {
+        "check_id": "flutter-ios-e2e-contract-test",
+        "command": "flutter test --no-pub test/ios_simulator_e2e_contract_test.dart",
+        "exitCode": 0,
+        "result": "All tests passed. Resolves the prior Reviewer MEDIUM finding about .dart_tool being absent."
+      },
+      {
+        "check_id": "scope-boundary-check",
+        "command": "forbidden-path grep over git status --porcelain -uall plus git diff --name-only origin/main...HEAD",
+        "exitCode": 0,
+        "result": "SCOPE_OK. Working tree clean; the only path differing from origin/main is .codex/tasks/TASK_20260905_022222.json."
+      }
+    ],
+    "liveEvidence": {
+      "simulatorE2E": "NOT_PASS - no macOS/Xcode/xcrun on this host; a real Simulator run is physically impossible here.",
+      "macOSContract": "NOT_PASS - same reason.",
+      "releaseQA": "NOT_PASS - docs/ios/release-readiness.md requires macOS build evidence; only Windows-side static gates were run (and they pass).",
+      "githubDispatch": "NOT_ATTEMPTED_BY_POLICY - the FluxOS Tool Gateway 'github' registry exposes only repo_status/pr_list/pr_view/pr_create/issue_comment and explicitly declares workflow execution, merge, close, delete and secret actions fail-closed and undefined. Raw gh is forbidden. No authorised dispatch path exists from this session."
+    },
+    "verdict": "PARTIAL - the Run #5 RCA fix is now proven by a measured local contract run, but live macOS Simulator E2E and release QA remain unproven."
+  }
 }
