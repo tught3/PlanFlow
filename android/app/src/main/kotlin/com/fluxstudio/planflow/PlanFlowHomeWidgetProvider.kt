@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.view.View
@@ -46,7 +45,7 @@ private const val HOLIDAY_TEXT_COLOR = 0xFFC62828.toInt()
 private const val SATURDAY_TEXT_COLOR = 0xFF1E64B7.toInt()
 private const val MULTI_DAY_TEXT_COLOR = 0xFF4B6336.toInt()
 private const val EVENT_FONT_SIZE_SP = 8.3f
-private const val RECURRING_MARKER_FONT_SIZE_SP = 7.8f
+private const val RECURRING_MARKER_FONT_SIZE_SP = 10.5f
 private const val STRONG_ALARM_MARKER_FONT_SIZE_SP = 5.8f
 private const val STYLE_VERSION_KEY = "calendar_style_contract_version"
 private const val PLANFLOW_SCHEME = "planflow"
@@ -106,6 +105,7 @@ abstract class BasePlanFlowWidgetProvider(
     protected var dateFontSizeSp = 13f
     protected var holidayFontSizeSp = EVENT_FONT_SIZE_SP + 0.5f
     private var strongAlarmMarkerFontSizeSp = STRONG_ALARM_MARKER_FONT_SIZE_SP
+    private var recurringMarkerFontSizeSp = RECURRING_MARKER_FONT_SIZE_SP
 
     /**
      * home_widget writes Dart integers through Android SharedPreferences. On
@@ -140,6 +140,7 @@ abstract class BasePlanFlowWidgetProvider(
         dateFontSizeSp = readStyleNumber(widgetData, "calendar_style_date_font_sp10", 13f)
         holidayFontSizeSp = readStyleNumber(widgetData, "calendar_style_holiday_font_sp10", EVENT_FONT_SIZE_SP + 0.5f)
         strongAlarmMarkerFontSizeSp = readStyleNumber(widgetData, "calendar_style_strong_alarm_marker_sp10", STRONG_ALARM_MARKER_FONT_SIZE_SP)
+        recurringMarkerFontSizeSp = readStyleNumber(widgetData, "calendar_style_recurring_marker_sp10", RECURRING_MARKER_FONT_SIZE_SP)
         fun color(key: String, fallback: Int): Int =
             readInt(widgetData, key, fallback)
         widgetStyle = WidgetCalendarStyle(
@@ -195,10 +196,11 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(AbsoluteSizeSpan(sizeSp, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔", strongAlarmMarkerFontSizeSp.roundToInt())
+        if (isRecurring) appendMarker("↻", recurringMarkerFontSizeSp.roundToInt())
         val titleStart = builder.length
         builder.append(value)
-        // Recurrence is represented by the recurring background/color; do not
-        // add a glyph that consumes the narrow widget cell.
+        // Events render text-only, so the repeat glyph above is the recurrence
+        // affordance; it is enlarged and bold via appendMarker.
         builder.setSpan(
             StyleSpan(if (isCritical) Typeface.BOLD else Typeface.NORMAL),
             titleStart,
@@ -1064,19 +1066,12 @@ abstract class BasePlanFlowWidgetProvider(
         views: RemoteViews,
         eventId: Int,
         drawable: Int,
-        fillColor: Int,
         borderColor: Int? = null,
     ) {
+        // Text-only rendering: month event rows never carry a fill. The
+        // drawable only encodes multi-day border geometry, so no background
+        // tint is applied here.
         views.setInt(eventId, "setBackgroundResource", drawable)
-        if (fillColor != android.graphics.Color.TRANSPARENT &&
-            drawable == R.drawable.widget_month_event_recurring_single &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            views.setColorStateList(
-                eventId,
-                "setBackgroundTintList",
-                ColorStateList.valueOf(fillColor),
-            )
-        }
         // borderColor is encoded by the start/middle/end resource selected by
         // the caller; applying it as a flat tint would erase that geometry.
     }
@@ -2033,16 +2028,10 @@ class PlanFlowMonthlyWidgetProvider :
                         } else {
                             monthSingleBackground(event.isCritical, event.isTeam, event.isRecurring)
                         }
-                        val fillColor = when {
-                            event.isCritical && event.isRecurring -> widgetStyle.criticalBackgroundColor
-                            event.isRecurring -> widgetStyle.recurringBackgroundColor
-                            else -> android.graphics.Color.TRANSPARENT
-                        }
                         applyMonthEventBackground(
                             views,
                             eventId,
                             bgRes,
-                            fillColor,
                             widgetStyle.multiDayBorderColor.takeIf { isMonthRangeSegment(segment) },
                         )
                         views.setViewPadding(
@@ -2300,16 +2289,10 @@ class PlanFlowMonthlyWidgetProvider :
                         } else {
                             monthSingleBackground(eventCritical, eventTeam, eventRecurring)
                         }
-                        val fillColor = when {
-                            eventCritical && eventRecurring -> widgetStyle.criticalBackgroundColor
-                            eventRecurring -> widgetStyle.recurringBackgroundColor
-                            else -> android.graphics.Color.TRANSPARENT
-                        }
                         applyMonthEventBackground(
                             views,
                             eventId,
                             bgRes,
-                            fillColor,
                             widgetStyle.multiDayBorderColor.takeIf { isMonthRangeSegment(segment) },
                         )
                         views.setViewPadding(

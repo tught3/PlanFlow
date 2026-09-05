@@ -47,12 +47,12 @@ void main() {
     expect(payload['calendar_style_date_font_sp10'], 130);
     expect(payload['calendar_style_holiday_font_sp10'], 88);
     expect(payload['calendar_style_group_member_font_sp10'], 100);
-    expect(payload['calendar_style_recurring_marker_sp10'], 78);
+    expect(payload['calendar_style_recurring_marker_sp10'], 105);
     expect(payload['calendar_style_strong_alarm_marker_sp10'], 58);
   });
 
   test(
-      'marker styling keeps only strong-alarm marker and critical title emphasis',
+      'event rows render text-only with an enlarged, bold repeat marker',
       () {
     final calendarSource =
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
@@ -60,16 +60,17 @@ void main() {
     expect(calendarSource, contains('FontWeight.w900'));
     expect(calendarSource,
         contains('markerFontSize: calendarRecurringMarkerFontSize'));
-    expect(calendarSource, contains('markerFontSize: 14'));
+    expect(calendarSource, contains('markerFontSize: 16'));
     expect(calendarSource, contains('calendarStrongAlarmMarkerFontSize'));
     expect(calendarSource, contains('strongAlarmMarkerFontSize: 12'));
     expect(calendarSource, contains('fontSize: calendarEventFontSize'));
     expect(calendarSource, contains("text: '🔔\\u200A'"));
-    expect(calendarSource, isNot(contains("text: '↻\\u200A'")));
+    expect(calendarSource, contains("text: '↻\\u200A'"));
     expect(calendarSource, contains('fontWeight: FontWeight.w700'));
     expect(calendarSource, contains('semanticColor'));
-    expect(calendarSource, contains('final recurringBackground'));
-    expect(calendarSource, contains('color: recurringBackground'));
+    // Text-only: the mini calendar row must not paint any fill.
+    expect(calendarSource, isNot(contains('final recurringBackground')));
+    expect(calendarSource, isNot(contains('color: recurringBackground')));
     expect(calendarSource, contains('left: segment.\$1'));
     expect(calendarSource, contains('right: segment.\$2'));
     final homeSource =
@@ -104,7 +105,8 @@ void main() {
     final applyBackground =
         widgetSource.substring(applyBackgroundStart, applyBackgroundEnd);
     expect(applyBackground, contains('setBackgroundResource'));
-    expect(applyBackground, contains('setBackgroundTintList'));
+    // Text-only: no fill tint is applied to a month event row.
+    expect(applyBackground, isNot(contains('setBackgroundTintList')));
     expect(applyBackground, contains('borderColor'));
     expect(applyBackground, isNot(contains('setBackgroundColor')));
     expect(widgetSource, contains('displayWidgetTitleSpanned'));
@@ -112,8 +114,9 @@ void main() {
     expect(widgetSource, contains('ForegroundColorSpan'));
     expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
     expect(widgetSource, contains('strongAlarmMarkerFontSizeSp.roundToInt()'));
-    expect(widgetSource,
-        isNot(contains('recurringMarkerFontSizeSp.roundToInt()')));
+    expect(widgetSource, contains('recurringMarkerFontSizeSp.roundToInt()'));
+    expect(widgetSource, contains('calendar_style_recurring_marker_sp10'));
+    expect(widgetSource, contains('appendMarker("↻"'));
     expect(widgetSource, contains('calendar_style_event_font_sp10'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
 
@@ -145,18 +148,6 @@ void main() {
     ).readAsStringSync();
     expect(groupWidgetSource, isNot(contains('android:textSize="8.5sp"')));
     expect(groupWidgetSource, contains('android:textSize="10.5sp"'));
-    expect(
-      File(
-        'android/app/src/main/res/drawable/widget_month_event_recurring_single.xml',
-      ).readAsStringSync(),
-      contains('#D2ECE8'),
-    );
-    expect(
-      File(
-        'android/app/src/main/res/drawable/widget_month_event_recurring_critical_single.xml',
-      ).readAsStringSync(),
-      contains('#E2D2F3'),
-    );
     final listStyleStart = widgetStylesSource.indexOf(
       '<style name="PlanFlowWidgetListText">',
     );
@@ -191,23 +182,9 @@ void main() {
       'widget_month_event_team_middle.xml',
       'widget_month_event_team_end.xml',
       'widget_month_event_holiday.xml',
-    ]) {
-      final drawableSource = File(
-        'android/app/src/main/res/drawable/$drawableName',
-      ).readAsStringSync();
-      expect(drawableSource, contains('transparent'));
-    }
-    for (final drawableName in <String>[
       'widget_month_event_critical_start.xml',
       'widget_month_event_critical_middle.xml',
       'widget_month_event_critical_end.xml',
-    ]) {
-      final drawableSource = File(
-        'android/app/src/main/res/drawable/$drawableName',
-      ).readAsStringSync();
-      expect(drawableSource, contains('#E2D2F3'));
-    }
-    for (final drawableName in <String>[
       'widget_month_event_recurring_single.xml',
       'widget_month_event_recurring_start.xml',
       'widget_month_event_recurring_middle.xml',
@@ -220,7 +197,25 @@ void main() {
       final drawableSource = File(
         'android/app/src/main/res/drawable/$drawableName',
       ).readAsStringSync();
-      expect(drawableSource, isNot(contains('transparent')));
+      expect(drawableSource, contains('transparent'));
+    }
+    // Multi-day geometry survives text-only rendering: the segment drawables
+    // keep their border strokes even though every fill is transparent.
+    for (final entry in <String, String>{
+      'widget_month_event_critical_start.xml': '#8051B2',
+      'widget_month_event_critical_middle.xml': '#8051B2',
+      'widget_month_event_critical_end.xml': '#8051B2',
+      'widget_month_event_recurring_start.xml': '#126E68',
+      'widget_month_event_recurring_middle.xml': '#126E68',
+      'widget_month_event_recurring_end.xml': '#126E68',
+      'widget_month_event_recurring_critical_start.xml': '#8051B2',
+      'widget_month_event_recurring_critical_middle.xml': '#8051B2',
+      'widget_month_event_recurring_critical_end.xml': '#8051B2',
+    }.entries) {
+      final drawableSource = File(
+        'android/app/src/main/res/drawable/${entry.key}',
+      ).readAsStringSync();
+      expect(drawableSource, contains(entry.value));
     }
   });
 
