@@ -31,6 +31,15 @@ done
 workflow_text="$(cat "$workflow")"
 runner_text="$(cat "$runner")"
 
+workflow_runs_on="$(printf '%s\n' "$workflow_text" | grep -E '^[[:space:]]+runs-on:' || true)"
+if printf '%s\n' "$workflow_runs_on" | grep -qF -- 'macos-latest'; then
+  fail 'simulator E2E workflow must not float onto the Xcode 26 macos-latest image'
+fi
+if [ "$(printf '%s\n' "$workflow_runs_on" | grep -cF -- 'runs-on: macos-15')" -ne 3 ]; then
+  fail 'simulator E2E workflow must pin preflight, FLOW5 host, and simulator jobs to macos-15'
+fi
+pass 'simulator E2E jobs are pinned to the Xcode 16 macOS image'
+
 if printf '%s' "$workflow_text" | grep -qE -- 'flutter[[:space:]]+test.*-d|-d.*flutter[[:space:]]+test'; then
   fail 'workflow still contains a flutter test device-runner invocation'
 fi
@@ -89,13 +98,6 @@ pass 'exit handler propagates cleanup failure without recursion'
 printf '%s' "$podfile" >/dev/null
 grep -qF -- "target 'RunnerTests' do" "$podfile" || fail 'Podfile does not embed RunnerTests'
 grep -qF -- 'inherit! :search_paths' "$podfile" || fail 'RunnerTests does not inherit pod search paths'
-runner_pod_block="$(awk "/target 'Runner' do/,/target 'RunnerTests' do/ { print }" "$podfile")"
-if ! printf '%s\n' "$runner_pod_block" | grep -Eq '^[[:space:]]*use_frameworks!([[:space:]]+#.*)?$'; then
-  fail 'Runner target does not use dynamic use_frameworks!'
-fi
-if printf '%s\n' "$runner_pod_block" | grep -qE 'use_frameworks!.*:linkage[[:space:]]*=>[[:space:]]*:static'; then
-  fail 'Runner target still requests static framework linkage'
-fi
 grep -qF -- 'INTEGRATION_TEST_IOS_RUNNER(RunnerTests)' "$objc_runner" || fail 'official integration_test XCTest macro missing'
 grep -qF -- '@import integration_test;' "$objc_runner" || fail 'integration_test module import missing'
 grep -qF -- 'RunnerTests.m' "$pbxproj" || fail 'pbxproj does not reference RunnerTests.m'

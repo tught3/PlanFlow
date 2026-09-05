@@ -34,7 +34,10 @@ env:
 
 jobs:
   preflight:
-    runs-on: macos-latest
+    # Simulator E2E is pinned to the macOS 15 image/Xcode 16 generation.
+    # Xcode 26 on macos-latest cannot link this app's vendored Swift pods
+    # because its removed compatibility libraries are still required by them.
+    runs-on: macos-15
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -92,7 +95,7 @@ jobs:
   flow05-host-fake:
     needs: preflight
     if: ${{ needs.preflight.outputs.flow5_exists == 'true' }}
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -141,7 +144,7 @@ jobs:
   simulator-e2e:
     needs: preflight
     if: ${{ needs.preflight.outputs.matrix != '' && needs.preflight.outputs.matrix != '[]' }}
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 45
     strategy:
       fail-fast: false

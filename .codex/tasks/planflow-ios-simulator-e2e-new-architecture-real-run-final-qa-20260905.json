@@ -38,7 +38,24 @@
       "The failure occurred after the --simulator targeting fix and is consistent with static CocoaPods framework linkage under Xcode 26, not signing contamination or the legacy VM-service attach path."
     ],
     "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
-    "next_fix": "Use dynamic use_frameworks! for the Runner CocoaPods target and enforce that contract; preserve RunnerTests nesting and production signing/upload boundaries."
+    "next_fix": "Pin the simulator-only E2E workflow to the macOS 15/Xcode 16 image; preserve the production Podfile and signing/upload boundaries."
+  },
+  "run9_rerun": {
+    "run_id": 33960557254,
+    "run_number": 9,
+    "head_sha": "b7cd59d4680e989013a3281a6d26a80d04d302a6",
+    "partial_conclusion": "large_failed_mainstream_ipad_small_pending_at_capture",
+    "evidence_scope": "authenticated downloaded large artifact; no secrets recorded",
+    "first_failing_stage": "APP_BUILD",
+    "common_failure_classification": "COMMON_SIMULATOR_FAILURE",
+    "evidence": [
+      "preflight and flow05-host-fake passed; large reached the bounded XCTest stage after the --simulator and dynamic-linkage changes.",
+      "large artifact recorded APP_BUILD FAIL exit=65 with install, launch, discovery, and flow execution skipped.",
+      "RunnerTests still failed under Xcode 26.6 with missing swiftCompatibility56, swiftCompatibilityConcurrency, swiftCompatibilityPacks, CoreAudioTypes, and UIUtilities symbols/frameworks.",
+      "Dynamic use_frameworks! did not resolve this app's vendored Swift framework link failure, so the temporary Podfile change was reverted to protect the production CocoaPods contract."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
+    "next_fix": "Run the simulator XCTest architecture on macos-15, whose documented default is Xcode 16.4, while leaving production release on its existing runner contract."
   },
   "changes": [
     {
@@ -51,11 +68,15 @@
     },
     {
       "path": "ios/Podfile",
-      "summary": "Use dynamic CocoaPods frameworks for the Runner target so Xcode 26 does not require removed Swift compatibility libraries from the RunnerTests link."
+      "summary": "Evaluated dynamic CocoaPods linkage in b7cd59d4; Run #9 reproduced the same Xcode 26.6 link failure, so the temporary change was reverted and the production Podfile remains canonical."
     },
     {
       "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
-      "summary": "Require dynamic use_frameworks! and reject static linkage in the Runner Podfile block."
+      "summary": "Require the simulator E2E workflow to pin all three jobs to macos-15 instead of the floating Xcode 26 macos-latest image."
+    },
+    {
+      "path": ".github/workflows/ios-simulator-e2e.yml",
+      "summary": "Pin preflight, host FLOW5, and simulator matrix jobs to macos-15/Xcode 16 generation based on the Run #8/#9 Xcode 26.6 linker evidence."
     }
   ],
   "protected_paths": [
@@ -170,14 +191,14 @@
     "scoped_diff_check": "PASS",
     "full_workspace_diff_check": "UNVERIFIED/FAIL due pre-existing foreign AGENTS.md trailing whitespace; foreign file preserved",
     "macos_simulator_runtime": "UNVERIFIED",
-    "fresh_github_rerun": "Run #8 partial failure at APP_BUILD exit 65; rerun required after dynamic-framework fix"
+    "fresh_github_rerun": "Run #9 partial failure at APP_BUILD exit 65 after dynamic-linkage attempt; rerun required after macos-15 pin"
   },
   "live_gate": "AUDIT_FIX_PUSHED_PENDING_FRESH_MACOS_SIMULATOR_E2E",
   "artifacts_local_only": true,
   "do_not_commit": [".tmp/ios-simulator-run7-auth", ".tmp/teardown-contract-fixture", ".tmp/teardown-contract-fixture-2"],
   "finalization": {
-    "commit": "dea87d43 (simulator targeting); dynamic-framework fix pending",
-    "push": "dea87d43 pushed; dynamic-framework fix pending",
+    "commit": "b7cd59d4 (simulator targeting + temporary dynamic linkage; macos-15 pin pending)",
+    "push": "b7cd59d4 pushed; macos-15 pin pending",
     "android": "UNCHANGED",
     "production_release_privacy_signing": "PROTECTED"
   }
