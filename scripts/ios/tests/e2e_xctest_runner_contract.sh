@@ -89,6 +89,13 @@ pass 'exit handler propagates cleanup failure without recursion'
 printf '%s' "$podfile" >/dev/null
 grep -qF -- "target 'RunnerTests' do" "$podfile" || fail 'Podfile does not embed RunnerTests'
 grep -qF -- 'inherit! :search_paths' "$podfile" || fail 'RunnerTests does not inherit pod search paths'
+runner_pod_block="$(awk "/target 'Runner' do/,/target 'RunnerTests' do/ { print }" "$podfile")"
+if ! printf '%s\n' "$runner_pod_block" | grep -Eq '^[[:space:]]*use_frameworks!([[:space:]]+#.*)?$'; then
+  fail 'Runner target does not use dynamic use_frameworks!'
+fi
+if printf '%s\n' "$runner_pod_block" | grep -qE 'use_frameworks!.*:linkage[[:space:]]*=>[[:space:]]*:static'; then
+  fail 'Runner target still requests static framework linkage'
+fi
 grep -qF -- 'INTEGRATION_TEST_IOS_RUNNER(RunnerTests)' "$objc_runner" || fail 'official integration_test XCTest macro missing'
 grep -qF -- '@import integration_test;' "$objc_runner" || fail 'integration_test module import missing'
 grep -qF -- 'RunnerTests.m' "$pbxproj" || fail 'pbxproj does not reference RunnerTests.m'
