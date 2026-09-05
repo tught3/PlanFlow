@@ -7,7 +7,9 @@
     "baseOriginMain": "74f1fefee00571e2f38f68f205c6c288bb39566c",
     "method": "pre-existing safe fast-forward verified; no pull, reset, rebase, or force push performed",
     "functionalCommit": "e88eb26bf55ad8bb92809dd456bcee749fe7e32f",
-    "functionalPush": "origin/main advanced normally from 74f1fefe to e88eb26b"
+    "functionalPush": "origin/main advanced normally from 74f1fefe to e88eb26b",
+    "metadataCommits": ["c4c17155", "23143a79"],
+    "metadataPush": "origin/main advanced normally through 23143a79"
   },
   "requirements": [
     "Preserve exactly the two approved functional paths in the functional commit.",
@@ -123,7 +125,10 @@
     { "command": "bash scripts/ios/tests/e2e_script_contract.sh", "exitCode": 0, "result": "51 passed, 0 failed, 0 skipped." },
     { "command": "flutter test test/ios_simulator_e2e_contract_test.dart", "exitCode": 0, "result": "All tests passed." },
     { "command": "bash scripts/ios/tests/simctl_discover_contract.sh", "exitCode": 1, "result": "UNVERIFIED_ENVIRONMENT: jq is unavailable locally; this is not a passing contract run." },
-    { "command": "git push origin main", "exitCode": 0, "result": "Functional commit e88eb26b pushed normally to origin/main." }
+    { "command": "git push origin main", "exitCode": 0, "result": "Functional commit e88eb26b pushed normally to origin/main." },
+    { "command": "dart analyze", "exitCode": 1, "result": "UNVERIFIED_TIMEOUT: no output for bounded observation; owned process interrupted safely." },
+    { "command": "flutter analyze --no-pub", "exitCode": 1, "result": "UNVERIFIED_TIMEOUT: no output for bounded observation; owned process interrupted safely." },
+    { "command": "git push origin main (metadata)", "exitCode": 0, "result": "Metadata commits c4c17155 and 23143a79 pushed normally; final HEAD equals origin/main." }
   ],
   "foreignFiles": {
     "AGENTS.md": { "gitHash": "4fdb2655df6bbf30d7d358d5c881854d7ce8fc5c", "state": "modified, foreign, unstaged, preserved" },
@@ -134,9 +139,9 @@
     "state": "Historical failure evidence only; its preflight did not reach the Simulator matrix.",
     "simulatorE2E": "NOT_PASS",
     "macOSContract": "NOT_PASS",
-    "githubDispatch": "NOT_ATTEMPTED: authentication was not clearly available to the integrator."
+    "githubDispatch": "NOT_ATTEMPTED: gh reports no authenticated GitHub host and GH_TOKEN/GITHUB_TOKEN are absent."
   },
   "nextStep": "An authenticated macOS/GitHub operator must dispatch the iOS Simulator E2E workflow against origin/main containing the functional commit, then inspect preflight, matrix legs, FLOW5, and artifacts. Do not claim Simulator E2E or macOS contract PASS until that run supplies fresh evidence.",
-  "finalVerdict": "PARTIAL: source/local integration, functional commit, independent review, and pushes are complete; jq-dependent dynamic contract and authenticated macOS/GitHub Simulator E2E remain unverified.",
+  "finalVerdict": "PARTIAL: source/local integration, functional commit, independent review, and pushes are complete; jq-dependent dynamic contract, dart/flutter analyze, and authenticated macOS/GitHub Simulator E2E remain unverified.",
   "lastUpdated": "2026-09-05"
 }
