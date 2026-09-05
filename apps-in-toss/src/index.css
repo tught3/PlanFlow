@@ -1,0 +1,11 @@
+/**
+ * 진입점 스타일시트. 실제 규칙은 아래 6개 파일에 나눠 정의한다.
+ * screens.css / event.css는 이번 작업 범위 밖이라 빈 파일로만 생성해두고,
+ * 이후 다른 작업에서 채운다.
+ */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/layout.css';
+@import './styles/components.css';
+@import './styles/screens.css';
+@import './styles/event.css';

@@ -1,0 +1,372 @@
+/* 화면별 스타일. */
+
+/* ---- Auth (로그인) ---- */
+.auth-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--pf-space-16);
+}
+
+.auth-login__card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--pf-space-12);
+  width: min(100%, 360px);
+}
+
+.auth-login__title {
+  font-size: var(--pf-font-24);
+  font-weight: 700;
+  color: var(--pf-text);
+  text-align: center;
+  margin: 0;
+}
+
+.auth-login__description {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+  text-align: center;
+  margin: 0 0 var(--pf-space-8);
+}
+
+.auth-login__submit {
+  width: 100%;
+}
+
+.auth-login__privacy {
+  width: 100%;
+}
+
+.auth-login__message {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+  margin: 0;
+}
+
+.auth-login__message--error {
+  color: var(--pf-danger);
+}
+
+/* ---- Today (오늘 일정) ---- */
+.today-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-16);
+}
+
+.today-view--loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.today-view__title {
+  font-size: var(--pf-font-24);
+  font-weight: 700;
+  color: var(--pf-text);
+}
+
+.today-event-list__empty {
+  margin-top: var(--pf-space-8);
+}
+
+.today-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-8);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.today-event-list__item {
+  background: var(--pf-surface);
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-12);
+}
+
+.today-event-list__item--critical {
+  border-left: 3px solid var(--pf-danger);
+  background: var(--pf-danger-bg);
+}
+
+.today-event-list__link {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-12);
+  min-height: var(--pf-touch-target);
+  padding: var(--pf-space-12) var(--pf-space-16);
+  text-decoration: none;
+}
+
+.today-event-list__time {
+  flex: 0 0 auto;
+  width: 88px;
+  font-size: var(--pf-font-14);
+  font-weight: 600;
+  color: var(--pf-text-secondary);
+}
+
+.today-event-list__item--critical .today-event-list__time {
+  color: var(--pf-danger);
+}
+
+.today-event-list__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--pf-font-16);
+  color: var(--pf-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Month (월간 캘린더) ---- */
+.month-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-8);
+}
+
+.month-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf-space-8);
+  padding: var(--pf-space-8) var(--pf-space-4);
+}
+
+.month-view__nav-btn {
+  min-height: var(--pf-touch-target);
+  min-width: var(--pf-touch-target);
+  background: transparent;
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-8);
+  color: var(--pf-text);
+  font-size: var(--pf-font-16);
+  cursor: pointer;
+}
+
+.month-view__label {
+  font-size: var(--pf-font-16);
+  font-weight: 700;
+  color: var(--pf-text);
+}
+
+.month-view__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.month-view__weekday {
+  text-align: center;
+  font-size: var(--pf-font-12);
+  color: var(--pf-text-secondary);
+  padding: var(--pf-space-4);
+}
+
+.month-view__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--pf-grid-line);
+  border: 1px solid var(--pf-grid-line);
+}
+
+.month-view__cell {
+  min-height: 72px;
+  background: var(--pf-surface);
+  padding: var(--pf-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.month-view__cell--outside {
+  opacity: 0.4;
+}
+
+.month-view__cell--today {
+  background: var(--pf-today-bg);
+}
+
+.month-view__daynum {
+  font-size: var(--pf-font-12);
+  color: var(--pf-text);
+}
+
+.month-view__cell--today .month-view__daynum {
+  font-weight: 700;
+}
+
+.month-view__chip {
+  border-radius: var(--pf-radius-4);
+  background: var(--pf-primary-faint);
+  border-left: 3px solid var(--pf-primary-mid);
+  color: var(--pf-primary-mid);
+}
+
+.month-view__chip--critical {
+  background: var(--pf-danger-bg);
+  border-left-color: var(--pf-danger);
+  color: var(--pf-danger);
+}
+
+.month-view__chip--span-start {
+  border-radius: var(--pf-radius-4) 0 0 var(--pf-radius-4);
+}
+
+.month-view__chip--span-end {
+  border-radius: 0 var(--pf-radius-4) var(--pf-radius-4) 0;
+  border-left-width: 0;
+}
+
+.month-view__chip--span-mid {
+  border-radius: 0;
+  border-left-width: 0;
+}
+
+/*
+ * 월간 칩(month-view__chip)은 최대 3개까지 한 셀(min-height:72px)에 들어가야
+ * 해서 week-view__event-link/today-event-list__link가 쓰는 --pf-touch-target
+ * (44px)을 적용할 물리적 공간이 없다. 대신 WCAG 2.2 SC 2.5.8(Target Size
+ * Minimum, AA)이 허용하는 최소 기준인 24x24 CSS px를 적용한다 - 셀 공간
+ * 제약으로 44px 토큰을 그대로 쓸 수 없는 경우의 의도된 예외다.
+ */
+.month-view__chip-link {
+  display: block;
+  min-height: 24px;
+  font-size: 11px;
+  padding: 1px var(--pf-space-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+  text-decoration: none;
+}
+
+.month-view__overflow {
+  font-size: 11px;
+  color: var(--pf-text-secondary);
+  padding: 0 var(--pf-space-4);
+}
+
+/* ---- Week (주간 캘린더) ---- */
+.week-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-8);
+}
+
+.week-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf-space-8);
+  padding: var(--pf-space-8) var(--pf-space-4);
+}
+
+.week-view__nav-btn {
+  min-height: var(--pf-touch-target);
+  padding: 0 var(--pf-space-12);
+  background: transparent;
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-8);
+  color: var(--pf-text);
+  font-size: var(--pf-font-14);
+  cursor: pointer;
+}
+
+.week-view__range {
+  font-size: var(--pf-font-16);
+  font-weight: 700;
+  color: var(--pf-text);
+}
+
+.week-view__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--pf-grid-line);
+  border: 1px solid var(--pf-grid-line);
+}
+
+.week-view__day {
+  min-height: 120px;
+  background: var(--pf-surface);
+  padding: var(--pf-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-view__day--today {
+  background: var(--pf-today-bg);
+}
+
+.week-view__label {
+  display: block;
+  text-align: center;
+  font-size: var(--pf-font-12);
+  color: var(--pf-text-secondary);
+}
+
+.week-view__date {
+  display: block;
+  text-align: center;
+  font-size: var(--pf-font-14);
+  font-weight: 600;
+  color: var(--pf-text);
+  margin-bottom: var(--pf-space-4);
+}
+
+.week-view__day--today .week-view__date {
+  color: var(--pf-primary-mid);
+}
+
+.week-view__events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.week-view__event {
+  font-size: 11px;
+  border-radius: var(--pf-radius-4);
+  background: var(--pf-primary-faint);
+  border-left: 3px solid var(--pf-primary-mid);
+  color: var(--pf-primary-mid);
+  overflow: hidden;
+}
+
+.week-view__event--critical {
+  background: var(--pf-danger-bg);
+  border-left-color: var(--pf-danger);
+  color: var(--pf-danger);
+}
+
+.week-view__event-link {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--pf-touch-target);
+  padding: 1px var(--pf-space-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.week-view__event-time {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.week-view__event-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

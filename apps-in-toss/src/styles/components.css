@@ -1,0 +1,187 @@
+/* 공용 프리미티브 컴포넌트(pf-*) 스타일. */
+
+/* ---- Button ---- */
+.pf-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pf-space-8);
+  min-height: var(--pf-touch-target);
+  padding: 0 var(--pf-space-16);
+  border-radius: var(--pf-radius-8);
+  border: 1px solid var(--pf-grid-line);
+  font-size: var(--pf-font-16);
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--pf-surface);
+  color: var(--pf-text);
+}
+
+.pf-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pf-button--primary {
+  background: var(--pf-primary);
+  border-color: var(--pf-primary);
+  color: var(--pf-surface);
+}
+
+.pf-button--ghost {
+  background: transparent;
+  border-color: var(--pf-primary-faint);
+  color: var(--pf-primary);
+}
+
+.pf-button--danger {
+  background: var(--pf-danger-bg);
+  border-color: var(--pf-danger);
+  color: var(--pf-danger);
+}
+
+/* ---- Card ---- */
+.pf-card {
+  background: var(--pf-surface);
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-12);
+  padding: var(--pf-space-16);
+}
+
+/* ---- Field ---- */
+.pf-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-8);
+  margin-bottom: var(--pf-space-16);
+}
+
+.pf-field__label {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+}
+
+.pf-field__input {
+  min-height: var(--pf-touch-target);
+  padding: 0 var(--pf-space-12);
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-8);
+  font-size: var(--pf-font-16);
+  background: var(--pf-surface);
+  color: var(--pf-text);
+}
+
+.pf-field__input:focus-visible {
+  outline: 2px solid var(--pf-primary-mid);
+  outline-offset: 2px;
+}
+
+.pf-field__error {
+  font-size: var(--pf-font-12);
+  color: var(--pf-danger);
+}
+
+/* ---- Modal ---- */
+.pf-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--pf-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 58, 95, 0.4);
+}
+
+.pf-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(90vw, 360px);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--pf-surface);
+  border-radius: var(--pf-radius-12);
+  padding: var(--pf-space-24) var(--pf-space-16);
+}
+
+.pf-modal__title {
+  font-size: var(--pf-font-20);
+  font-weight: 600;
+  color: var(--pf-text);
+  margin-bottom: var(--pf-space-16);
+}
+
+.pf-modal__message {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+  margin: 0;
+}
+
+.pf-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf-space-8);
+  justify-content: flex-end;
+  margin-top: var(--pf-space-24);
+}
+
+/* ---- Spinner ---- */
+.pf-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pf-space-8);
+  margin: var(--pf-space-24) auto;
+}
+
+.pf-spinner__circle {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--pf-primary-faint);
+  border-top-color: var(--pf-primary);
+  border-radius: 50%;
+  animation: pf-spin 0.8s linear infinite;
+}
+
+.pf-spinner__label {
+  font-size: var(--pf-font-14);
+  color: var(--pf-text-secondary);
+}
+
+@keyframes pf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-spinner__circle {
+    animation-duration: 2.4s;
+  }
+}
+
+/* ---- Empty / Error ---- */
+.pf-empty,
+.pf-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pf-space-8);
+  padding: var(--pf-space-24) var(--pf-space-16);
+  color: var(--pf-text-secondary);
+  font-size: var(--pf-font-14);
+  text-align: center;
+}
+
+.pf-error {
+  color: var(--pf-danger);
+}
+
+.pf-empty__message {
+  margin: 0;
+}

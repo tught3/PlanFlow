@@ -1,0 +1,92 @@
+/* 레이아웃(app-layout) 스타일. 모바일 세로 레이아웃 - 상단 헤더 + 콘텐츠 + 하단 탭. */
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--pf-bg);
+}
+
+.app-layout__header {
+  position: sticky;
+  top: 0;
+  z-index: var(--pf-z-nav);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf-space-8);
+  padding: var(--pf-space-12) var(--pf-space-16);
+  padding-top: calc(var(--pf-space-12) + env(safe-area-inset-top));
+  background: var(--pf-surface);
+  border-bottom: 1px solid var(--pf-grid-line);
+}
+
+.app-layout__title {
+  font-size: var(--pf-font-20);
+  font-weight: 600;
+  color: var(--pf-text);
+  margin: 0;
+}
+
+.app-layout__logout {
+  min-height: var(--pf-touch-target);
+  padding: 0 var(--pf-space-12);
+  background: transparent;
+  border: 1px solid var(--pf-grid-line);
+  border-radius: var(--pf-radius-8);
+  color: var(--pf-text-secondary);
+  font-size: var(--pf-font-14);
+  cursor: pointer;
+}
+
+.app-layout__content {
+  flex: 1;
+  padding: var(--pf-space-16);
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
+}
+
+.app-layout__nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--pf-z-nav);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--pf-surface);
+  border-top: 1px solid var(--pf-grid-line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-layout__nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  color: var(--pf-text-secondary);
+  font-size: var(--pf-font-12);
+  text-decoration: none;
+}
+
+.app-layout__nav-item--active {
+  color: var(--pf-primary);
+  font-weight: 600;
+}
+
+/*
+ * P10: 배너 광고 컨테이너 슬롯.
+ * 클래스명: `.ad-banner-slot` — BannerSlot 컴포넌트(별도 작업)가 이 이름을
+ * 그대로 사용해야 한다.
+ * Toss SDK 요구사항(TossAds.attachBanner 문서 기준):
+ *   - width는 반드시 100%(화면 전체 너비). 고정 px 폭 금지.
+ *   - position: fixed 금지(고정 배치는 SDK가 아니라 배치 컨텍스트가 결정).
+ * min-height는 광고 로드/attach 전에도 레이아웃이 밀리지 않도록 공간을
+ * 미리 확보한다. 상단 헤더의 상호작용 버튼과 인접하면 오클릭 위험이
+ * 있어(Apps-in-Toss 정책상 금지) 기존 --pf-space-* 토큰으로 여백을 둔다.
+ */
+.ad-banner-slot {
+  width: 100%;
+  min-height: 96px;
+  margin: var(--pf-space-16) 0;
+  z-index: var(--pf-z-banner);
+}

@@ -1,0 +1,46 @@
+/**
+ * 디자인 토큰 (원본 실측값 기준)
+ * 출처: E:\FluxStudio\PlanFlow\lib\core\theme.dart (PlanFlowColors)
+ * 다른 CSS 파일에서 hex를 직접 하드코딩하지 말고 반드시 아래 var()를 참조한다.
+ */
+:root {
+  /* 색상 - 원본 theme.dart PlanFlowColors 실측값 */
+  --pf-primary: #1e3a5f; /* PlanFlowColors.primary / textPrimary */
+  --pf-primary-mid: #2e6da4; /* PlanFlowColors.primaryMid / briefing */
+  --pf-primary-faint: #d0e4f0; /* PlanFlowColors.primaryFaint */
+  --pf-bg: #eef5fb; /* PlanFlowColors.background / tagNormalBg */
+  --pf-surface: #ffffff;
+  --pf-text: #1e3a5f; /* PlanFlowColors.textPrimary */
+  --pf-text-secondary: #4a6080; /* PlanFlowColors.textSecondary */
+  --pf-danger: #b42318; /* ColorScheme.error */
+  --pf-danger-bg: #ffe3dd; /* ColorScheme.errorContainer */
+  --pf-grid-line: #e7ebf1; /* PlanFlowColors.calendarGridLine */
+  --pf-today-bg: #dfecfd; /* PlanFlowColors.calendarTodayCellBg */
+
+  /* 간격 */
+  --pf-space-4: 4px;
+  --pf-space-8: 8px;
+  --pf-space-12: 12px;
+  --pf-space-16: 16px;
+  --pf-space-24: 24px;
+
+  /* 반경 */
+  --pf-radius-4: 4px;
+  --pf-radius-8: 8px;
+  --pf-radius-12: 12px;
+
+  /* 폰트 크기 */
+  --pf-font-12: 12px;
+  --pf-font-14: 14px;
+  --pf-font-16: 16px;
+  --pf-font-20: 20px;
+  --pf-font-24: 24px;
+
+  /* 최소 터치 타깃 */
+  --pf-touch-target: 44px;
+
+  /* z-index */
+  --pf-z-nav: 10;
+  --pf-z-banner: 20; /* P10: 배너 광고 슬롯. nav(10)와 modal(100) 사이, 향후 토큰 추가 여유를 둠 */
+  --pf-z-modal: 100;
+}
