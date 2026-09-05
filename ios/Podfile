@@ -36,7 +36,7 @@ target 'Runner' do
 
   target 'RunnerTests' do
     inherit! :none
-    pod 'integration_test', :path => File.expand_path(File.join('.symlinks', 'plugins', 'integration_test', 'ios'), __dir__)
+    pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'
   end
 end
 

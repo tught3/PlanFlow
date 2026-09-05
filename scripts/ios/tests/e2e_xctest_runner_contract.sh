@@ -100,7 +100,7 @@ printf '%s' "$podfile" >/dev/null
 grep -qF -- "target 'RunnerTests' do" "$podfile" || fail 'Podfile does not embed RunnerTests'
 runner_tests_block="$(awk "/target 'RunnerTests' do/,/end/ { print }" "$podfile")"
 printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :none' || fail 'RunnerTests does not opt out of inherited pod search paths'
-printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test', :path => File.expand_path(File.join('.symlinks', 'plugins', 'integration_test', 'ios'), __dir__)" || fail 'RunnerTests does not explicitly add the integration_test pod from the resolved Podfile-relative path'
+printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'" || fail 'RunnerTests does not explicitly add the integration_test pod from the Flutter helper-compatible path'
 if printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :search_paths'; then
   fail 'RunnerTests still inherits pod search paths'
 fi
