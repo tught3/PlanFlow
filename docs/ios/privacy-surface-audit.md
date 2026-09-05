@@ -49,3 +49,40 @@ Windows에서는 실제 macOS binary를 만들 수 없고 Xcode, `otool`, author
 the archive/export and binary gates must therefore run on the macOS GitHub
 runner. The Build 15 upload remains blocked until those gates and Apple’s
 authoritative BuildUpload state pass.
+
+## Audit-only macOS workflow (no upload, no Build 16)
+
+`.github/workflows/ios-privacy-audit.yml` audits the exact preserved Build 15
+IPA on the macOS runner, captures the binary/plist privacy evidence Apple
+error 90683 needs, and stops there. It never rebuilds the current checkout.
+The manual dispatch requires the artifact run/name, the IPA SHA-256, and the
+full source commit recorded in `provenance.json`. The job downloads exactly one
+IPA and one provenance manifest, verifies the IPA hash, build number, bundle
+ID, source commit, embedded `CFBundleVersion`, and the checked-out source
+commit, then scans that preserved IPA. Missing or mismatched provenance fails
+closed before the audit.
+
+`audit_build_number` defaults to `15` and fails closed when empty, zero,
+non-numeric, zero-padded, or `16` or higher. Zero is explicitly rejected, and
+the comparison is forced to base 10 (`10#`). A contract test extracts this
+gate from the workflow and executes it with real inputs, including `0`.
+The job contains no `altool` transport, no `verify-app-store-build.py`
+ingestion query, and no signing or App Store Connect credentials; it prints
+`AUDIT_ONLY_NO_UPLOAD: PASS`, `REBUILD_PERFORMED: NO`,
+`BUILD_16_DISPATCHED: NO`, and `APP_STORE_UPLOAD_PERFORMED: NO`.
+
+The preserved exported IPA is scanned with
+`--require-binary-scan --audit-report`, and the JSON report is uploaded as the
+`planflow-ios-90683-audit-<run>` artifact for 14 days even when a step fails.
+`--audit-report` adds an `audit` block that lists the Runner and Widget
+usage-description keys actually present, the sensitive symbols observed in the
+binaries, and the purpose-string gaps: `frameworkKeyGaps` (a linked mapped
+framework whose key is absent) and `symbolKeyGaps` (a sensitive symbol whose
+key is absent). Gaps are diagnostic evidence for review, not an instruction to
+add a key, so they do not change the pass/fail result of the existing
+fail-closed gates.
+
+An authorized release process must first preserve an IPA plus `provenance.json`
+in a readable Actions artifact. Until that exact Build 15 evidence exists, the
+audit remains intentionally blocked; Build 16 stays undispatched and no App
+Store Connect upload is performed.
