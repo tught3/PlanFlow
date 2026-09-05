@@ -41,7 +41,25 @@ concurrency:
 
 jobs:
   simulator-e2e:
-    runs-on: macos-latest
+    # 러너 이미지를 고정한다 — `macos-latest` 를 쓰지 마라.
+    #
+    # 실측 근거(이 템플릿을 추출한 원본 앱): `macos-latest` 가 Xcode 26 세대로 올라간 뒤,
+    # 벤더드 Swift pod 를 쓰는 앱의 시뮬레이터 빌드가 링크 단계에서 실패했다.
+    # Xcode 26 이 제거한 Swift 호환 라이브러리를 pod 들이 여전히 요구하기 때문이다
+    # (누락 심볼: swiftCompatibility56 / swiftCompatibilityConcurrency /
+    #  swiftCompatibilityPacks / CoreAudioTypes / UIUtilities).
+    # 원본 앱은 `macos-15`(Xcode 16 세대) 로 고정해 이 실패를 넘겼다.
+    # 배치 후에는 `.github/workflows/ios-simulator-e2e.yml` 의 동일 주석을 유지하라.
+    #
+    # 주의 — 이 핀은 "영원히 macos-15"라는 뜻이 아니다. 러너 이미지는 결국 은퇴한다.
+    # 이 값은 **만료되는 핀**이므로 아래 둘 중 하나가 발생하면 재검토한다:
+    #   (a) 이미지 은퇴 공지  (b) 벤더드 pod 들이 새 Xcode 세대를 지원
+    # 재검토 시에는 상위 이미지로 한 번에 올리지 말고, 새 이미지에서
+    # 위 심볼 누락이 재현되는지 1회 실측한 뒤 올린다.
+    #
+    # 앱에 벤더드 Swift pod 가 전혀 없으면 더 최신 이미지를 써도 된다.
+    # 그 판단은 이 템플릿이 대신 해줄 수 없으므로 앱마다 1회 실측한다.
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       # canonical identity — 이 값들은 ios/Flutter/{{APP_NAME}}-Identity.xcconfig 의
@@ -92,15 +110,26 @@ jobs:
 
           # --- 4) 개인정보 usage description 키: 기능 플래그가 켜진 것만 요구한다 ---
           # HAS_MICROPHONE={{HAS_MICROPHONE}} / HAS_SPEECH={{HAS_SPEECH}}
-          # HAS_PHOTOS={{HAS_PHOTOS}} / HAS_LOCATION={{HAS_LOCATION}} / HAS_ADS={{HAS_ADS}}
+          # HAS_PHOTOS={{HAS_PHOTOS}} / HAS_LOCATION={{HAS_LOCATION}}
+          # HAS_ADS={{HAS_ADS}} / USES_TRACKING={{USES_TRACKING}}
           # 아래 목록에서 해당 기능이 false 인 앱은 그 줄을 삭제한다(주석 처리 금지).
+          #
+          # NSUserTrackingUsageDescription 은 HAS_ADS 와 USES_TRACKING 이 **서로 다른 질문**임에 주의한다:
+          #   - HAS_ADS=true       : 광고 SDK 를 포함한다.
+          #   - USES_TRACKING=true : 앱이 실제로 ATT 권한을 요청한다(ATTrackingManager 호출).
+          # 광고 SDK 는 쓰지만 ATT 를 직접 호출하지 않는 앱이 실제로 존재한다.
+          # 그런 앱도 이 키를 **삭제하면 안 된다** — 이 게이트와 릴리스 워크플로의
+          # 동일 게이트가 즉시 BLOCKED_RUNNER_PRIVACY_SOURCE 로 빌드를 막고,
+          # 키 없이 업로드하면 Apple 이 `90683 Missing purpose string` 으로 거부한 이력이 있다.
+          # 즉 이 키의 존재는 "추적한다"의 증거가 아니라 "빌드가 통과하기 위한 전제"다.
+          # HAS_ADS=false 이고 USES_TRACKING=false 인 앱만 이 줄을 삭제한다.
           required_privacy_keys=(
             NSMicrophoneUsageDescription           # HAS_MICROPHONE
             NSSpeechRecognitionUsageDescription    # HAS_SPEECH
             NSPhotoLibraryUsageDescription         # HAS_PHOTOS
             NSPhotoLibraryAddUsageDescription      # HAS_PHOTOS
             NSLocationWhenInUseUsageDescription    # HAS_LOCATION
-            NSUserTrackingUsageDescription         # HAS_ADS
+            NSUserTrackingUsageDescription         # HAS_ADS 또는 USES_TRACKING
           )
           for privacy_key in "${required_privacy_keys[@]}"; do
             privacy_value="$(/usr/libexec/PlistBuddy -c "Print :$privacy_key" ios/Runner/Info.plist 2>/dev/null || true)"
@@ -188,6 +217,54 @@ jobs:
           }
           echo "SIMULATOR_BUILD_PASS: PASS"
 
+      # =========================================================================
+      # E2E 실행 방식 — 두 갈래가 있고, 이 템플릿은 어느 쪽도 "정답"으로 주지 않는다.
+      # -------------------------------------------------------------------------
+      # 아래 스텝은 (A) 방식을 쓴다. 앱마다 직접 선택하고, 선택 근거를 남겨라.
+      #
+      # (A) `flutter test integration_test` — Dart 테스트가 VM Service 로 앱에 attach
+      #     장점: 설정이 단순하고 Dart 로 단언을 쓴다. CocoaPods 타깃 분리가 불필요.
+      #     알려진 실패 모드: **이 CI 환경에서 attach 가 영구 hang 될 수 있다.**
+      #       증상 — 앱은 뜨는데 드라이버가 붙지 못하고 flow body 로그가 전혀 남지 않은 채
+      #       job timeout 까지 대기한다. flow 별 단계 근거가 없어 원인 귀속이 불가능해진다.
+      #     완화: 반드시 외부 watchdog 로 시간 상한을 걸고(무한 대기 금지),
+      #           flow 별 stage evidence(APP_BUILD/INSTALL/LAUNCH/READY/ATTACH/DISCOVERY/EXEC)를
+      #           개별로 남겨라. 단일 대기 타임아웃만 두면 아무것도 배우지 못한다.
+      #
+      # (B) native XCTest (`xcodebuild test-without-building`)
+      #     장점: 실패 지점이 stage 단위로 드러나고 시뮬레이터 안에서 실제로 실행된다.
+      #     알려진 실패 모드: **test discovery 가 개시되지 않고 exit 65.**
+      #       증상 — `Test runner never began executing tests after launching`.
+      #       앱 빌드/설치/실행/ready 와 xctest 번들 로드까지 전부 PASS 인데
+      #       testmanagerd 연결 단계에서 멈춘다. 앱 코드 결함이 아니라 러너 인프라 문제라
+      #       저장소에서 고칠 수단이 없을 수 있다.
+      #     전제: RunnerTests 를 CocoaPods 상 별도 타깃으로 격리해야 한다(아래 참고 노트).
+      #
+      # 원본 앱 실측: (A) 로 시작해 attach 무한 대기를 만났고, (B) 로 전환해
+      # 링크 그래프 문제를 4회에 걸쳐 해소했으나 최종적으로 discovery 미개시에 막혔다.
+      # 두 방식 모두 그 앱에서는 아직 FLOW 를 통과시키지 못했다.
+      # 판정 기록: 원본 저장소의 `docs/ios/XCTEST_STOP_LOSS_DECISION.md`.
+      #
+      # >> 그래서 이 템플릿은 (B) 를 기본값으로 물려주지 않는다.
+      # >> 원본 앱에서 통과가 확인되지 않은 구성을 다음 앱의 기본값으로 삼으면
+      # >> 검증되지 않은 부채를 복제하는 것이다.
+      # >> 다음 앱은 위 두 실패 모드를 알고 스스로 선택하라.
+      #
+      # 참고 노트 — (B) 를 선택할 때만 필요한 RunnerTests CocoaPods 격리 토폴로지:
+      #   - Podfile 을 top-level `target 'Runner' do` + 그 안에 중첩된
+      #     `target 'RunnerTests' do` / `inherit! :search_paths` 형태로 구성한다.
+      #     (원본 앱 실제 구성: `ios/Podfile` 의 해당 target 블록)
+      #     이렇게 하지 않으면 RunnerTests 링크 그래프가 앱 전체 pod 집합을 끌어와
+      #     Runner 호스트와 중복 클래스가 생기고 discovery 가 깨진다.
+      #   - RunnerTests 가 커스텀 Flutter xcconfig 를 쓰면 Pods 지원 xcconfig 가
+      #     누락된다. 타깃 전용 xcconfig 를 별도로 둔다
+      #     (예: `ios/Flutter/RunnerTests-{Debug,Profile,Release}.xcconfig`).
+      #   - `integration_test` pod 를 명시 추가할 때는 절대 경로가 아니라
+      #     Flutter helper 호환 상대 경로(`.symlinks/plugins/integration_test/ios`)를 쓴다.
+      #     절대/상대 중복 선언은 pod install 단계에서 거부된다.
+      #   - 그럼에도 Runner 호스트가 이미 `integration_test` 를 링크하고 있으면
+      #     중복이 남는다. 호스트와 테스트 번들 양쪽의 링크 목록을 실제로 확인하라.
+      # =========================================================================
       - name: Run integration_test E2E flows
         shell: bash
         env:
