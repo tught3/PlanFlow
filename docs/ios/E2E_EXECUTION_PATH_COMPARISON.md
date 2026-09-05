@@ -1,15 +1,24 @@
-# iOS integration_test 실행 경로 비교 (verbose-overhead 조사 P10)
+# iOS integration_test 실행 경로 비교 (historical evidence + final decision)
 
-> **이 문서의 지위 — 지금은 전환하지 않는다.**
+> **최종 결정 (Run #6 이후): XCTest host로 전환**
 >
-> 이 문서는 **비교·판단 자료**다. 이번 Phase에서 실행 경로를 바꾸는 작업은
-> 하지 않으며, 여기의 어떤 권고도 그 자체로 실행 승인이 아니다.
+> 이 문서의 아래 후보 비교와 Run #2~#6 관찰은 보존된 조사 기록이다. 최신
+> 결정은 [E2E_XCTEST_ARCHITECTURE.md](E2E_XCTEST_ARCHITECTURE.md)에 있다.
+> `flutter test -d`는 다섯 CI leg에서 preflight 뒤 VM-service 대기 상태로
+> watchdog에 의해 종료되었고, `flutter drive`도 같은 VM-service attach와
+> 단일 target 제약을 갖는다. 따라서 둘 다 최종 simulator runner가 아니다.
+> 공식 XCTest host는 `RunnerTests`가 integration_test native plugin 결과를
+> 기다리므로 그 attach 경계를 제거하고 `.xcresult`를 남긴다.
+
+> **이 문서의 지위 — 아래 문구는 Run #6 이전의 역사적 기록이다.**
 >
-> 이 문서의 권고가 실행 단계로 승격되는 조건은 하나뿐이다:
-> `docs/ios/E2E_RUN3_DECISION_TREE.md`(P9가 병렬로 작성 중 — 이 문서 작성
-> 시점에 아직 저장소에 존재하지 않음)의 **분기 (iii) — Run#2의 원래 hang이
-> 재확정될 경우**. 그 외 분기(재현 실패 / 다른 근본원인 확정 등)에서는 이
-> 문서를 읽을 필요가 없고, 현재 경로를 유지한다.
+> 이 문서의 본문에는 Run #2~#5 시점의 비교·판단 자료가 보존되어 있다. Run #6
+> 이후의 현재 실행 경로는 위에서 확정한 공식 XCTest host이며, 현재 workflow가
+> 이를 사용한다. 아래의 이전 승격 조건과 후보 순위는 당시 결정 트리를
+> 설명하기 위한 기록이지 현재 실행 승인이 아니다.
+>
+> `E2E_RUN3_DECISION_TREE.md`를 포함한 아래의 과거 기록은 당시의 후보 승격
+> 조건을 설명할 뿐이며, 현재 XCTest 경로를 되돌리는 지시가 아니다.
 >
 > 새 프레임워크(Patrol 등) 도입은 이 조사의 범위가 아니며 후보에 넣지 않았다.
 
@@ -62,7 +71,7 @@ grep -n "launchDeviceUnifiedLogging" -A 40 \
 | U1 | 3.47.2에서 동일한 코드 구조인지 | 로컬에 3.41.9만 있음 (§0.2) |
 | U2 | Dart `print()`가 iOS에서 실제로 unified logging(os_log)에 도달하는지 | 엔진(C++/ObjC) 소스가 로컬에 없음. **간접 근거는 강함** — `_IOSSimulatorLogReader`의 predicate가 `senderImagePath ENDSWITH "/Flutter"`를 명시적으로 포함하고(`simulators.dart:771`), `flutter run`이 iOS 시뮬레이터에서 Dart print를 보여주는 것이 바로 이 리더를 통해서다. 그러나 이 세션에서 macOS 실행으로 직접 관측하지는 못했다. |
 | U3 | 각 경로의 실제 벽시계 비용(초) | macOS 러너에서 실행해봐야 알 수 있음. 표의 비용 칸은 **현재 워크플로 주석에 기록된 실측 추정치**(빌드 약 400s, flow 파일당 약 150s — 워크플로 L296~L305)에서 유도한 상대 비교일 뿐 절대값 측정이 아님 |
-| U4 | 후보 4(XCTest)가 이 앱에서 실제로 빌드·통과하는지 | Podfile/pbxproj 배선이 미완성이라(§5.4) 실행 자체가 불가능 |
+| U4 | 후보 4(XCTest)가 이 앱에서 실제로 빌드·통과하는지 | 아래 §5.4는 Run #6 이전 스냅샷이다. 현재 배선은 추가됐지만 Windows에서는 macOS의 Pod/XCTest 실행을 검증할 수 없다 |
 | U5 | `flutter drive`가 iOS 시뮬레이터에서 hang 없이 도는지 | 현재 hang의 근본원인이 미확정이므로, 경로를 바꾸면 hang이 사라진다는 보장 자체가 없음 (§7.2) |
 
 ### 0.4 실측한 소스 파일 목록
@@ -300,7 +309,10 @@ XCTest 러너가 **호스트 프로세스로서** 앱을 in-process 구동하므
 찍는 것이 그 증거다. 추가로 `.xcresult` 번들이 생겨 사후 분석 자산이
 현재보다 훨씬 풍부하다.
 
-### 5.4 ⚠️ 이 저장소의 현재 배선 상태 (실측 — 미완성)
+### 5.4 ⚠️ Run #6 이전 저장소 배선 스냅샷 (historical)
+
+> 아래 표는 XCTest 배선을 추가하기 전의 상태를 기록한 것이다. 현재의 배선
+> 결과와 실행 단계는 `E2E_XCTEST_ARCHITECTURE.md` 및 workflow를 기준으로 한다.
 
 | 항목 | 실측 결과 | 필요 조치 |
 |---|---|---|
@@ -310,9 +322,9 @@ XCTest 러너가 **호스트 프로세스로서** 앱을 in-process 구동하므
 | `ios/Podfile` 임베드 | ❌ **없음** — `target 'Runner' do`(L31)만 있고 중첩 `target 'RunnerTests'` 없음 | Podfile 수정 + `pod install` |
 | 8개 flow 진입점 | ❌ 없음 | `--config-only`가 단일 타깃이므로 8개를 묶는 진입 dart 파일 필요 |
 
-즉 **"RunnerTests가 이미 있다"는 것은 껍데기만 있다는 뜻**이고, 실제
-XCTest 러너로 쓰려면 위 4가지를 전부 배선해야 한다. (U4: 실제 빌드·통과
-여부는 배선 전이라 확인 불가.)
+즉 **"RunnerTests가 이미 있다"는 것은 당시에는 껍데기만 있다는 뜻**이었다.
+위 표는 현재 상태의 설명이 아니며, 실제 macOS 빌드·통과 여부는 여전히
+GitHub macOS 실행에서 확인해야 한다.
 
 ---
 
@@ -387,7 +399,10 @@ mainstream watchdog가 **1500초(25분)** 인데 사후 회수 창이 **10분**�
 
 ---
 
-## 7. 권고 (승격 조건 충족 시에만 적용)
+## 7. Run #6 이전 권고 (historical)
+
+> 이 절의 후보 순위와 승격 조건은 Run #6 이전 기록이다. 현재 실행 경로는
+> 문서 상단의 최종 결정과 `E2E_XCTEST_ARCHITECTURE.md`를 따른다.
 
 > 다시 강조: `E2E_RUN3_DECISION_TREE.md`의 **분기 (iii)** 에서만 유효하다.
 

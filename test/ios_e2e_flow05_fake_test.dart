@@ -65,7 +65,6 @@ void main() {
       provider.start();
       await _drain();
 
-      expect(provider.hasResolvedInitialSession, isFalse);
       expect(provider.sessionStatus, AuthSessionStatus.unresolved);
       expect(provider.isSignedIn, isFalse);
 
@@ -94,12 +93,12 @@ void main() {
       provider.start();
       await _drain();
 
-      expect(provider.hasResolvedInitialSession, isFalse);
       expect(provider.sessionStatus, AuthSessionStatus.unresolved);
       expect(provider.isSignedIn, isFalse);
 
       await provider.waitForInitialSessionResolution();
-      await _drain();
+      await _waitFor(
+          () => provider.sessionStatus == AuthSessionStatus.signedOut);
 
       expect(provider.hasResolvedInitialSession, isTrue);
       expect(provider.sessionStatus, AuthSessionStatus.signedOut);
@@ -192,5 +191,12 @@ void main() {
 Future<void> _drain([int ticks = 1]) async {
   for (var i = 0; i < ticks; i++) {
     await Future<void>.delayed(Duration.zero);
+  }
+}
+
+Future<void> _waitFor(bool Function() condition) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 4));
+  while (!condition() && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
   }
 }

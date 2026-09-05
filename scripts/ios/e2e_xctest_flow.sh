@@ -92,6 +92,7 @@ run_bounded() {
   local tail_file="$stage_log_dir/$stage.tail.log"
   local start end rc
   start="$(date +%s)"
+  E2E_WATCHDOG_HEARTBEAT_INTERVAL="${E2E_WATCHDOG_HEARTBEAT_INTERVAL:-30}" \
   E2E_WATCHDOG_LOG_FILE="$log_file" \
   E2E_WATCHDOG_TAIL_FILE="$tail_file" \
     bash "$watchdog" "$stage_timeout" "$@"
@@ -224,6 +225,7 @@ if [ "$current_failure" -eq 0 ]; then
   test_log="$stage_log_dir/XCTEST.log"
   test_tail="$stage_log_dir/XCTEST.tail.log"
   test_start="$(date +%s)"
+  E2E_WATCHDOG_HEARTBEAT_INTERVAL="${E2E_WATCHDOG_HEARTBEAT_INTERVAL:-30}" \
   E2E_WATCHDOG_LOG_FILE="$test_log" \
   E2E_WATCHDOG_TAIL_FILE="$test_tail" \
     bash "$watchdog" "$stage_timeout" \

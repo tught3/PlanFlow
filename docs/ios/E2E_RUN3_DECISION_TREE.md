@@ -1,5 +1,15 @@
 # PlanFlow iOS Simulator E2E — Run#4 판독 결정 트리 (Phase P9)
 
+> **역사적 판독 기록 — 현재 workflow의 실행 승인이 아님**
+>
+> 이 문서는 Run#4 이전의 후보 1(`flutter test -d`) 관측과 판정 기준을
+> 보존한다. Run#6 이후 현재 simulator 경로는 공식 XCTest host로 전환됐고,
+> FLOW5 Group A는 host-side fake 테스트로 분리됐다. 따라서 이 문서의
+> “P10 승격”, “FLOW5 현행 유지”, watchdog 상한, 예정 마커에 관한 문구는
+> 당시의 판독 기록이며 현재 구현·실행 경로의 기준이 아니다. 현재 기준은
+> `docs/ios/E2E_XCTEST_ARCHITECTURE.md`와
+> `.github/workflows/ios-simulator-e2e.yml`이다.
+
 > **이 문서의 목적은 다음 재실행(Run#4) 결과의 해석을 *미리* 고정하는 것이다.**
 > 결과를 보고 나서 판정 기준을 만들면 어느 쪽으로든 끼워 맞추게 된다. 그래서 결과가 나오기 전인
 > 지금, "무엇을 보고 어떻게 판정하는가"를 관측 가능한 파일명·마커 문자열 수준으로 못 박는다.

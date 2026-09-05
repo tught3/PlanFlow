@@ -1,64 +1,25 @@
 name: iOS Simulator E2E (Simulator QA)
 
-# PlanFlow iOS Simulator E2E Phase P8.
+# PlanFlow iOS Simulator E2E. The simulator leg uses Flutter's official
+# integration_test XCTest host. The old device runner was removed after the
+# repeated Run #6 VM-service attach timeouts; each flow now exposes bounded
+# build, install, launch, host-test, discovery, execution, and teardown data.
 #
-# Runs the SIMULATOR_FULL/SIMULATOR_PARTIAL scenarios from
-# docs/ios/SIMULATOR_QA_MATRIX.md against a dynamically discovered iOS
-# simulator matrix (no iOS version numbers or device names are hardcoded
-# anywhere in this file — scripts/ios/simctl_discover.sh queries the live
-# `xcrun simctl` catalog on the runner and this workflow only consumes its
-# JSON output).
-#
-# Backend isolation (see "E2E_BACKEND_ISOLATION_PASS" step below): the FLOW1
-# through FLOW4, FLOW6, FLOW7, FLOW8 scenarios never receive a real Supabase
-# credential. They run with placeholder dart-defines that
-# `lib/core/env.dart`'s `AppEnv._looksLikePlaceholder` recognizes, which
-# keeps `AppEnv.hasValidSupabaseConfig` false, which means
-# `lib/main.dart`'s `_initializeSupabase()` never calls
-# `Supabase.initialize(...)` — so this workflow cannot accidentally touch
-# the production Supabase project even though `lib/core/env.dart` falls
-# back to it when a dart-define is *entirely absent*.
-#
-# FLOW5 (auth/backend) is the only scenario in this workflow that ever
-# receives a real Supabase credential — a dedicated *non-production* project,
-# never PROD_SUPABASE_REF. It is gated three ways: (1) the
-# `flow05-auth-backend` job only runs once
-# `integration_test/flow05_auth_backend_test.dart` exists (P6), (2) within
-# that file, the real-backend scenario itself only runs when the
-# `PLANFLOW_E2E_REAL_BACKEND_TEST` secret is set to `1` — until the dedicated
-# test account and non-production Supabase secrets exist, that secret is
-# absent, `E2E_REAL_BACKEND_TEST` defaults to `'0'` below, and the
-# real-backend scenario reports as skipped rather than failing, and (3) the
-# "Resolve FLOW5 Supabase dart-defines" step in the `flow05-auth-backend` job
-# only forwards the real `PLANFLOW_SUPABASE_URL`/`PLANFLOW_SUPABASE_ANON_KEY`
-# secrets when `E2E_REAL_BACKEND_TEST=='1'`; otherwise (the default state,
-# before those secrets are provisioned) it substitutes the same placeholder
-# dart-defines FLOW1-4,6-8 use. Without (3), an unset secret resolves to an
-# *empty* dart-define, which `lib/core/env.dart`'s `_envValue()` treats as
-# absent and silently falls back to the embedded PRODUCTION Supabase project
-# — Group A of flow05_auth_backend_test.dart (fake-based) runs unconditionally
-# regardless of the real-backend flag, so it would otherwise still compile
-# against production every run.
+# FLOW1-4,6-8 use placeholder Supabase defines and never receive a production
+# credential. FLOW5 Group A is a host-side flutter_test file and is also
+# placeholder-only. Real-backend Group B is a separate post-release/manual
+# concern and is not wired into this workflow.
+
 on:
-  # NOTE (review fix): a `download_min_os_runtime` workflow_dispatch input
-  # previously existed here but had no effect — the "Discover simulator
-  # matrix" step below always ran first and always selects only the latest
-  # available runtime (`simctl_discover.sh` explicitly `sort_by(.version) |
-  # last`s the runtime list), so no boolean input could change which
-  # runtime got tested. It was removed rather than wired through, to avoid
-  # misleading anyone into thinking this workflow can be told to test the
-  # minimum supported OS (see IPHONEOS_DEPLOYMENT_TARGET in
-  # ios/Runner.xcodeproj/project.pbxproj) via a checkbox. The macOS runner's
-  # preinstalled Xcode simulator runtimes may not even include that minimum
-  # OS version — verifying the true minimum-OS floor, if ever needed, requires a
-  # deliberate follow-up (e.g. extending scripts/ios/simctl_discover.sh to
-  # also emit a minimum-version candidate, and downloading that runtime
-  # *before* the discovery step runs, not after).
   workflow_dispatch: {}
   pull_request:
     paths:
       - 'integration_test/**'
+      - 'test/ios_e2e_flow05_fake_test.dart'
       - 'scripts/ios/**'
+      - 'ios/Podfile'
+      - 'ios/RunnerTests/**'
+      - 'ios/Runner.xcodeproj/project.pbxproj'
       - '.github/workflows/ios-simulator-e2e.yml'
 
 permissions:
@@ -66,20 +27,10 @@ permissions:
 
 env:
   IOS_BUNDLE_ID: com.fluxstudio.planflow
-  # The production Supabase project ref. This literal string must appear
-  # exactly once in this entire file (this definition). The
-  # "Verify E2E backend isolation" step below fails closed if it appears a
-  # second time anywhere in this workflow (for example if a future edit
-  # wires a real secret into the FLOW1-4,6-8 job env).
   PROD_SUPABASE_REF: xqvvfnvmytjlblcngipn
-  # Placeholder dart-define values recognized by
-  # `AppEnv._looksLikePlaceholder` in lib/core/env.dart. They are not
-  # secrets — they deliberately keep `AppEnv.hasValidSupabaseConfig` false
-  # for every FLOW1-4,6-8 test run so `Supabase.initialize(...)` is never
-  # invoked and no network call can reach any Supabase project, production
-  # or otherwise.
   E2E_SUPABASE_URL_PLACEHOLDER: https://your-project.supabase.co
   E2E_SUPABASE_ANON_KEY_PLACEHOLDER: your-supabase-anon-key
+  E2E_WATCHDOG_HEARTBEAT_INTERVAL: 30
 
 jobs:
   preflight:
@@ -91,55 +42,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run iOS E2E script contract/regression suites (review round 2, MEDIUM)
-        # These three suites (scripts/ios/tests/simctl_discover_contract.sh,
-        # scripts/ios/tests/e2e_stage_markers_contract.sh, and the pre-
-        # existing scripts/ios/tests/e2e_script_contract.sh) run the real
-        # scripts/ios/simctl_discover.sh, scripts/ios/e2e_stage_markers.sh,
-        # and scripts/ios/e2e_summarize.sh as subprocesses against fixture
-        # input — per this repo's safety-gate convention, not mocks of the
-        # gate's own logic. Before this step they were never wired into any
-        # workflow (grep confirmed zero callers), so the root-cause fix's own
-        # regression assertions never ran in CI. `set -euo pipefail` plus
-        # letting each suite's own non-zero exit propagate means a fixture
-        # regression here fails this `preflight` job outright, so the
-        # `simulator-e2e`/`flow05-auth-backend` jobs below (which both
-        # `needs: preflight`) never get dispatched against a
-        # discovery/marker script whose own contract tests are currently
-        # red. `jq` (required by simctl_discover_contract.sh) ships
-        # preinstalled on GitHub's macos-latest runner image, unlike the
-        # Windows dev machine this repo is otherwise developed on.
+      - name: Validate E2E contracts and simulator discovery helpers
         shell: bash
         run: |
           set -euo pipefail
           bash scripts/ios/tests/e2e_script_contract.sh
           bash scripts/ios/tests/e2e_stage_markers_contract.sh
           bash scripts/ios/tests/simctl_discover_contract.sh
+          bash scripts/ios/tests/e2e_xctest_runner_contract.sh
 
-      - name: Verify E2E backend isolation (fail-closed)
+      - name: Verify backend isolation (fail-closed)
         shell: bash
         run: |
           set -euo pipefail
           workflow_file=".github/workflows/ios-simulator-e2e.yml"
-
-          if [[ -f "$workflow_file" ]]; then
-            occurrences="$(grep -c "$PROD_SUPABASE_REF" "$workflow_file" || true)"
-            occurrences="${occurrences:-0}"
-            if (( occurrences > 1 )); then
-              echo "::error title=BLOCKED_E2E_BACKEND_ISOLATION::The production Supabase ref ($PROD_SUPABASE_REF) appears $occurrences times in $workflow_file; expected exactly 1 (its own definition). A second occurrence means a real production credential/URL was wired into an E2E job."
-              exit 1
-            fi
+          occurrences="$(grep -c "$PROD_SUPABASE_REF" "$workflow_file" || true)"
+          if [[ "$occurrences" -gt 1 ]]; then
+            echo "::error title=BLOCKED_E2E_BACKEND_ISOLATION::Production Supabase ref appears more than once in the E2E workflow."
+            exit 1
           fi
-
-          for name in SUPABASE_URL SUPABASE_ANON_KEY; do
-            value="${!name:-}"
-            if [[ -n "$value" && "$value" == *"$PROD_SUPABASE_REF"* ]]; then
-              echo "::error title=BLOCKED_E2E_BACKEND_ISOLATION::$name resolves to the production Supabase project; FLOW1-4,6-8 must never receive a live production credential."
-              exit 1
-            fi
-          done
-
-          echo "E2E_BACKEND_ISOLATION_PASS: PASS (workflow file references the production Supabase ref exactly once; FLOW1-4,6-8 jobs use placeholder dart-defines that keep AppEnv.hasValidSupabaseConfig=false so lib/main.dart never calls Supabase.initialize)"
+          echo "E2E_BACKEND_ISOLATION_PASS: simulator and host FLOW5 paths are placeholder-only"
 
       - name: Discover simulator matrix
         id: discover
@@ -147,20 +69,74 @@ jobs:
         run: |
           set -euo pipefail
           matrix_json="$(bash scripts/ios/simctl_discover.sh)"
-          echo "Discovered simulator matrix: $matrix_json"
+          [[ "$matrix_json" != "[]" ]] || {
+            echo "::error title=BLOCKED_NO_SIMULATOR_RUNTIME::No supported simulator was discovered."
+            exit 1
+          }
           echo "matrix=$matrix_json" >> "$GITHUB_OUTPUT"
+          echo "SIMULATOR_MATRIX_DISCOVERY_PASS: $(echo "$matrix_json" | jq -c 'map(.category)')"
 
-      - name: Check FLOW5 auth/backend test file
+      - name: Check host FLOW5 fixture
         id: flow5
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -f "integration_test/flow05_auth_backend_test.dart" ]]; then
+          if [[ -f test/ios_e2e_flow05_fake_test.dart ]]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=FLOW5_NOT_YET_IMPLEMENTED::integration_test/flow05_auth_backend_test.dart does not exist yet (separate ticket P6). The flow05-auth-backend job is skipped."
+            echo "::error title=BLOCKED_FLOW5_HOST_FIXTURE::Host-side fake FLOW5 test is missing."
+            exit 1
           fi
+
+  flow05-host-fake:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.flow5_exists == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Prepare Flutter dependencies (bounded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/flow05-host"
+          E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/flow05-host/pub-get.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/flow05-host/pub-get.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 300 flutter pub get
+
+      - name: Run FLOW5 Group A host fake test (bounded, zero backend)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/flow05-host"
+          set +e
+          E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/flow05-host/flow05.log" \
+            bash scripts/ios/e2e_watchdog.sh 300 \
+              flutter test --no-pub test/ios_e2e_flow05_fake_test.dart \
+              --dart-define=E2E_MODE=1 \
+              --dart-define=E2E_REAL_BACKEND_TEST=0 \
+              --dart-define=SUPABASE_URL="$E2E_SUPABASE_URL_PLACEHOLDER" \
+              --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER"
+          status=$?
+          set -e
+          echo "FLOW5_HOST_FAKE status=$status"
+          [[ "$status" -eq 0 ]] || exit "$status"
+
+      - name: Upload FLOW5 host evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-simulator-e2e-flow05-host-${{ github.run_number }}
+          path: ${{ runner.temp }}/flow05-host
+          if-no-files-found: ignore
+          retention-days: 14
 
   simulator-e2e:
     needs: preflight
@@ -179,97 +155,73 @@ jobs:
           flutter-version: 3.47.2
           cache: true
 
-      - run: flutter pub get
-
-      # CocoaPods dependency caching was evaluated here as a runner-time /
-      # cost optimization (explicitly unrelated to the hang investigation
-      # instrumented further down in this job) and deliberately NOT adopted.
-      # Reasons, in order of weight:
-      #
-      #   1. There is no committed ios/Podfile.lock in this repository
-      #      (verified on disk). An `actions/cache@v4` key built with
-      #      `hashFiles('ios/Podfile.lock')` would therefore hash nothing and
-      #      collapse to a constant key, so a cache written when one set of
-      #      Flutter plugin pods was resolved would be restored verbatim
-      #      after those plugins change. CocoaPods detects that as a
-      #      sandbox/Manifest mismatch, and the failure surfaces at Xcode
-      #      build time as a confusing "out of sync" error rather than as a
-      #      cache problem. A cache whose key cannot express what it is
-      #      caching is a correctness hazard, not an optimization.
-      #   2. The expensive part of this job is the Xcode build and the
-      #      simulator run, not `pod install`. Caching pods would shave a
-      #      minority of the wall clock while adding a new cross-run state
-      #      carrier.
-      #   3. This job is currently the subject of an active hang
-      #      investigation. Introducing a new source of run-to-run variance
-      #      (restored vs cold pod tree) while trying to characterise a
-      #      non-deterministic stall would actively confound the signal.
-      #
-      # The Flutter SDK itself is already cached by
-      # `subosito/flutter-action@v2` via `cache: true` above, which covers
-      # the largest download in this job.
-      #
-      # Revisit condition: commit ios/Podfile.lock first, then key the cache
-      # on it together with the runner image and Xcode version (pods are
-      # source, but the resolved tree is tied to the toolchain that wrote
-      # it). Until that lock file exists, do not add this cache.
-      - run: pod install --project-directory=ios
+      - name: Prepare Flutter and CocoaPods (bounded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
+          E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/pub-get.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/pub-get.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 300 flutter pub get
+          E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/pod-install.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/pod-install.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 300 pod install --project-directory=ios
 
       - name: Create and boot ${{ matrix.category }} simulator (${{ matrix.name }})
         id: boot
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
           device_name="PlanFlow-E2E-${{ matrix.category }}-${{ github.run_id }}"
-          udid="$(xcrun simctl create "$device_name" "${{ matrix.devicetype_id }}" "${{ matrix.runtime_id }}")"
-          echo "Created simulator $device_name -> $udid"
+          udid_file="$RUNNER_TEMP/e2e-artifacts/simulator-udid"
+          set +e
+          E2E_DEVICE_NAME="$device_name" \
+            E2E_DEVICE_TYPE="${{ matrix.devicetype_id }}" \
+            E2E_RUNTIME_ID="${{ matrix.runtime_id }}" \
+            E2E_UDID_FILE="$udid_file" \
+            E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/simulator-setup.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/simulator-setup.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 180 bash -c '
+              set -euo pipefail
+              created_udid="$(xcrun simctl create "$E2E_DEVICE_NAME" "$E2E_DEVICE_TYPE" "$E2E_RUNTIME_ID")"
+              printf "%s" "$created_udid" > "$E2E_UDID_FILE"
+              xcrun simctl boot "$created_udid"
+              xcrun simctl bootstatus "$created_udid" -b
+            '
+          status=$?
+          set -e
+          udid="$(cat "$udid_file" 2>/dev/null || true)"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+          if [[ "$status" -ne 0 || -z "$udid" ]]; then
+            echo "::error title=BLOCKED_SIMULATOR_BOOT::Simulator create/boot watchdog exit=$status"
+            exit "${status:-1}"
+          fi
+          echo "E2E_STAGE stage=SIMULATOR_BOOT status=PASS evidence=simulator-setup.log"
 
-      - name: Grant baseline privacy permissions before the flow suite
+      - name: Grant baseline simulator privacy permissions
         shell: bash
         run: |
           set -euo pipefail
-          for service in microphone photos location; do
-            bash scripts/ios/simctl_privacy.sh grant "$service" "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
-          done
+          E2E_UDID="${{ steps.boot.outputs.udid }}" \
+            E2E_BUNDLE_ID="$IOS_BUNDLE_ID" \
+            E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/privacy-setup.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/privacy-setup.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 120 bash -c '
+              set -euo pipefail
+              for service in microphone photos location; do
+                bash scripts/ios/simctl_privacy.sh grant "$service" "$E2E_UDID" "$E2E_BUNDLE_ID"
+              done
+            '
+          echo "E2E_STAGE stage=PRIVACY_SETUP status=PASS evidence=privacy-setup.log"
 
-      - name: Run device-category-scoped integration tests (backend-isolated)
+      - name: Run flow through bounded XCTest stages
         id: run_tests
         shell: bash
         run: |
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/e2e-artifacts"
           mkdir -p "$artifact_dir"
-          # `pipefail` (set above) still applies to this step's other command
-          # substitutions (e.g. the `wc -l` line-count read further down).
-          # The flutter test invocation itself no longer flows through a
-          # shell pipe as of Wave3/P5 below: it is bounded and logged via
-          # scripts/ios/e2e_watchdog.sh's E2E_WATCHDOG_LOG_FILE redirection
-          # instead of `2>&1 | tee`, and its exit code is read directly from
-          # `$?` rather than `PIPESTATUS[0]`.
-          # Cost/time optimization (review follow-up to the first live run):
-          # only the "mainstream" category runs the full FLOW1-4,6-8 suite.
-          # The other categories (small, large, ipad) run only
-          # flow08_resilience_a11y_test.dart, and their primary purpose is to
-          # verify that the app installs and boots cleanly on that
-          # device-type's real simulator geometry — not to exercise
-          # device-specific layout differences. Review finding (independent
-          # review, MEDIUM): the layout/accessibility groups inside
-          # flow08_resilience_a11y_test.dart (FLOW8e/f — text scaling,
-          # keyboard inset, orientation, small/large screen size) call
-          # `tester.binding.setSurfaceSize(...)` to force their own logical
-          # screen size, so they exercise the same forced sizes regardless of
-          # which physical/simulated device they run on; they do not depend
-          # on the small/large/ipad simulator's actual geometry. Running the
-          # other flow files again on those devices would just repeat
-          # coverage that mainstream already provides for cold-start, CRUD,
-          # navigation, notifications, voice permissions, and the
-          # widget/app-group surface, without adding any category-specific
-          # signal. Full regression coverage across all flow files is
-          # therefore preserved by the mainstream leg of this matrix, not
-          # lost.
           case "${{ matrix.category }}" in
             mainstream)
               flow_files=(
@@ -283,654 +235,118 @@ jobs:
               )
               ;;
             small|large|ipad)
-              flow_files=(
-                integration_test/flow08_resilience_a11y_test.dart
-              )
+              flow_files=(integration_test/flow08_resilience_a11y_test.dart)
               ;;
             *)
-              echo "::error title=BLOCKED_UNKNOWN_DEVICE_CATEGORY::Unrecognized matrix.category '${{ matrix.category }}'; scripts/ios/simctl_discover.sh only emits small/mainstream/large/ipad."
+              echo "::error title=BLOCKED_UNKNOWN_DEVICE_CATEGORY::Unknown category '${{ matrix.category }}'"
               exit 1
               ;;
           esac
-          # Recorded before the test run itself (which may exit non-zero
-          # under `set -e`) so the "Summarize flow test failures" step below
-          # always knows which flow files this category actually attempted,
-          # without duplicating this category->files mapping in a second
-          # place.
-          echo "flow_files=${flow_files[*]}" >> "$GITHUB_OUTPUT"
+          printf 'FLOW_FILES %s\n' "${flow_files[*]}"
+          overall_status=0
+          for flow_file in "${flow_files[@]}"; do
+            flow_name="$(basename "$flow_file" .dart)"
+            flow_artifact="$artifact_dir/$flow_name"
+            flow_derived="$RUNNER_TEMP/e2e-derived/$flow_name"
+            flow_result="$flow_artifact/$flow_name.xcresult"
+            mkdir -p "$flow_artifact"
+            set +e
+            bash scripts/ios/e2e_xctest_flow.sh \
+              "$flow_file" \
+              "${{ steps.boot.outputs.udid }}" \
+              "$IOS_BUNDLE_ID" \
+              "$flow_derived" \
+              "$flow_result" \
+              "$flow_artifact" \
+              600
+            flow_status=$?
+            set -e
+            combined_log="$flow_artifact/e2e-combined.log"
+            : > "$combined_log"
+            while IFS= read -r log_file; do
+              printf '\n--- %s ---\n' "$log_file" >> "$combined_log"
+              cat "$log_file" >> "$combined_log"
+            done < <(find "$flow_artifact/stages" -type f -name '*.log' -print | sort)
+            if [[ -s "$combined_log" ]]; then
+              source scripts/ios/e2e_mask_secrets.sh
+              mask_secrets < "$combined_log" > "$combined_log.masked"
+              mv "$combined_log.masked" "$combined_log"
+            fi
+            bash scripts/ios/e2e_summarize.sh \
+              "${{ matrix.category }}" \
+              "$combined_log" \
+              "$flow_artifact/failure-summary.md" \
+              "$flow_file" || true
+            echo "FLOW_RESULT flow=$flow_name status=$flow_status category=${{ matrix.category }}"
+            if [[ "$flow_status" -ne 0 ]]; then
+              overall_status=1
+            fi
+          done
+          echo "overall_status=$overall_status" >> "$GITHUB_OUTPUT"
+          [[ "$overall_status" -eq 0 ]] || exit "$overall_status"
 
-          # --- Hang instrumentation (E2E run-2 investigation) -------------
-          # Observed on a live run: both this job and the flow05 job printed
-          # "Running Xcode build..." then "Xcode build done", and then went
-          # completely silent - zero further log lines - until the
-          # job-level hard timeout tore the runner down. The flow05 leg
-          # showed the same symptom while executing zero pumpAndSettle
-          # calls, so the stall is very likely happening inside the Flutter
-          # tool's own install/launch/attach handshake with the simulator,
-          # BEFORE any Dart test body starts running.
-          #
-          # `--verbose` below is the actual instrument: without it the
-          # Flutter tool prints nothing at all between "Xcode build done"
-          # and the first test result, so a stall in that window is
-          # indistinguishable from a slow test. With it, each device
-          # install/launch/observatory-attach step is streamed as it
-          # happens, which is what turns "silent for half an hour" into a
-          # named last-step.
-          #
-          # The watchdog is what makes the diagnostics reachable at all: the
-          # job-level timeout kills the runner outright, so nothing can run
-          # after it. Bounding the test command ourselves - well below the
-          # job limit - leaves room for the on-failure diagnostic dump step
-          # below to run while the simulator is still alive.
-          #
-          # Bound sizing (whole seconds; the job-level cap for this job is
-          # forty five minutes, i.e. 2700 seconds):
-          #   measured Xcode build cost on the live run ....... about 400
-          #   conservative per-flow-file allowance ........... about 150
-          #   mainstream runs 7 flow files: 400 + 7 x 150 = 1450 -> 1500
-          #   small/large/ipad run 1 flow file: 400 + 150 = 550 -> 900
-          # Both values leave the remaining job budget (after checkout, pub
-          # get, pod install and simulator boot) free for the diagnostics
-          # dump, artifact upload and simulator teardown, which the
-          # job-level timeout would otherwise pre-empt.
-          case "${{ matrix.category }}" in
-            mainstream)
-              watchdog_seconds=1500
-              ;;
-            *)
-              watchdog_seconds=900
-              ;;
-          esac
-          echo "Bounding the flutter test run at ${watchdog_seconds}s (category ${{ matrix.category }})"
+      - name: Exercise mainstream OS permission and deep-link checks
+        if: ${{ success() && matrix.category == 'mainstream' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          E2E_UDID="${{ steps.boot.outputs.udid }}" \
+            E2E_BUNDLE_ID="$IOS_BUNDLE_ID" \
+            E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/deeplink-check.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/deeplink-check.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 120 bash -c '
+              set -euo pipefail
+              bash scripts/ios/simctl_privacy.sh revoke microphone "$E2E_UDID" "$E2E_BUNDLE_ID"
+              bash scripts/ios/simctl_privacy.sh grant microphone "$E2E_UDID" "$E2E_BUNDLE_ID"
+              bash scripts/ios/simctl_deeplink_relaunch.sh "$E2E_UDID" "$E2E_BUNDLE_ID"
+            '
+          echo "E2E_STAGE stage=DEEPLINK_CHECK status=PASS evidence=deeplink-check.log"
 
-          # --- Wave3 instrumentation wiring (verbose-overhead investigation, P5) ---
-          # Route the child's stdout+stderr through
-          # scripts/ios/e2e_watchdog.sh's opt-in E2E_WATCHDOG_LOG_FILE
-          # redirection instead of `2>&1 | tee`, so a later run can tell
-          # apart "cost of generating --verbose output" from "cost of
-          # streaming it live to the GitHub Actions console" (see Run#3's
-          # finding in docs/ios/E2E_RUN3_DECISION_TREE.md: the 780s FLOW5
-          # watchdog bound elapsed while still in CocoaPods'
-          # CreateBuildDirectory step with console tee, versus 399-525s to a
-          # clean completion without --verbose at all).
-          #
-          # The redirected log is written OUTSIDE $artifact_dir on purpose:
-          # $artifact_dir is exactly what the "Upload E2E artifacts" step
-          # below uploads wholesale, and this raw log is NOT run through
-          # scripts/ios/e2e_mask_secrets.sh before being written (only the
-          # heartbeat's `last=` line and the on-timeout/failure tail dump
-          # are masked — see the header comment in
-          # scripts/ios/e2e_watchdog.sh). Placing it directly under
-          # $RUNNER_TEMP means it is never a candidate for that upload
-          # step's path and is discarded with the rest of the runner's
-          # filesystem when the job ends. This is a deliberate narrowing
-          # versus the previous behavior (the full raw flow-test-output.log
-          # used to be uploaded wholesale for this job, since these legs
-          # only ever use placeholder Supabase credentials) — the masked
-          # tail file below is the intended replacement diagnostic surface
-          # inside the uploaded artifact bundle.
-          verbose_log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
-          verbose_tail_file="$artifact_dir/flow-test-verbose-tail-${{ matrix.category }}.log"
-
-          # Heartbeat interval: 30s. Against the watchdog bounds sized above
-          # (1500s mainstream, 900s small/large/ipad) that yields roughly
-          # 30 to 50 heartbeat lines over a full timeout window — enough to
-          # localize where progress stalled without flooding the console.
-          heartbeat_interval_seconds=30
-
-          # `set +e` around the watchdog invocation is required: with
-          # `set -e` a non-zero watchdog exit (including 124 on timeout)
-          # would abort this step before `test_status` could be captured.
-          # The watchdog's own exit code is read directly via `$?` now — no
-          # `tee`/PIPESTATUS dance needed, since the child's output no
-          # longer flows through a shell pipeline in this step.
-          step_start_ts=$(date +%s)
-          set +e
-          E2E_WATCHDOG_LOG_FILE="$verbose_log_file" \
-          E2E_WATCHDOG_HEARTBEAT_INTERVAL="$heartbeat_interval_seconds" \
-          E2E_WATCHDOG_TAIL_FILE="$verbose_tail_file" \
-          bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
-            flutter test \
-            --verbose \
-            "${flow_files[@]}" \
-            -d "${{ steps.boot.outputs.udid }}" \
-            --dart-define=E2E_MODE=1 \
-            --dart-define=SUPABASE_URL="$E2E_SUPABASE_URL_PLACEHOLDER" \
-            --dart-define=SUPABASE_ANON_KEY="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER"
-          test_status=$?
-          set -e
-          step_end_ts=$(date +%s)
-
-          if [[ "$test_status" -eq 124 ]]; then
-            echo "WATCHDOG_TIMEOUT: the flutter test run for category ${{ matrix.category }} exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. See the hang-diagnostics directory in this job's uploaded artifacts, and flow-test-verbose-tail-${{ matrix.category }}.log for the last Flutter tool step that reported progress."
-            echo "::error title=E2E_WATCHDOG_TIMEOUT::category ${{ matrix.category }} exceeded the ${watchdog_seconds}s watchdog bound"
-          fi
-
-          # --- E2E_TIMING marker (P8) --------------------------------------
-          # One grep-able line on every exit path this step can take
-          # (success, a real test failure, or a watchdog timeout —
-          # test_status can be 0, some other non-zero value, or 124 here,
-          # and this line runs unconditionally regardless of which). Whole
-          # seconds throughout: docs/ios/E2E_RUN3_DECISION_TREE.md's Run#4
-          # decision tree is written entirely in terms of integer
-          # duration_seconds, and the P13.2 regression guard in
-          # test/ios_simulator_e2e_contract_test.dart forbids dotted-decimal
-          # literals anywhere in this file outside the flutter-version line.
-          duration_seconds=$((step_end_ts - step_start_ts))
-          log_lines=0
-          if [[ -f "$verbose_log_file" ]]; then
-            log_lines="$(wc -l < "$verbose_log_file" | tr -d '[:space:]')"
-            log_lines="${log_lines:-0}"
-          fi
-          lines_per_second=0
-          if [[ "$duration_seconds" -gt 0 ]]; then
-            lines_per_second=$((log_lines / duration_seconds))
-          fi
-          echo "E2E_TIMING category=${{ matrix.category }} duration_seconds=${duration_seconds} log_lines=${log_lines} lines_per_second=${lines_per_second} exit=${test_status}"
-
-          # Exposed as a step output (additive; does not change this step's
-          # own exit behavior below) purely so the later "Report
-          # stage-progress markers" step can pass the real watchdog exit
-          # code into scripts/ios/e2e_stage_markers.sh — that script's
-          # FLUTTER_ATTACH marker specifically checks for exit code 124 to
-          # name the Run#4 VM-Service-wait hang shape.
-          echo "test_status=${test_status}" >> "$GITHUB_OUTPUT"
-
-          # Exit code preserved deliberately: the diagnostics step below is
-          # guarded with `always()` so it still runs, and the job must not
-          # report success after a timeout.
-          exit "$test_status"
-
-      - name: Capture hang diagnostics when the test run did not pass
-        # `always()` so this still runs after the watchdog timeout or a
-        # plain test failure aborts the step above (both leave `outcome`
-        # non-success). Skipped on a green run because the capture itself
-        # costs runner minutes and has nothing to explain. The udid guard
-        # matches the other post-run steps: without a booted simulator
-        # there is nothing to interrogate.
+      - name: Capture simulator diagnostics on failure
         if: ${{ always() && steps.boot.outputs.udid != '' && steps.run_tests.outcome != 'success' }}
         shell: bash
         run: |
           set +e
-          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
-          mkdir -p "$artifact_dir"
-          # e2e_diagnose_hang.sh is best-effort by contract and always
-          # exits zero; it masks credential-shaped text out of every
-          # capture before writing. This job only ever uses placeholder
-          # dart-defines anyway (see E2E_BACKEND_ISOLATION_PASS above), so
-          # there is no real credential here for it to leak.
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
           bash scripts/ios/e2e_diagnose_hang.sh \
             "${{ steps.boot.outputs.udid }}" \
-            "$artifact_dir/hang-diagnostics-${{ matrix.category }}"
-          echo "Hang diagnostics step complete (best-effort; failures here do not change the job result)."
-
-      - name: Exercise microphone permission denial/recovery at the OS level
-        if: ${{ matrix.category == 'mainstream' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # docs/ios/SIMULATOR_QA_MATRIX.md item 18 / flow06 test file header:
-          # the in-process test above only verifies app-level branching under
-          # an *assumed* permission state. Actually toggling the real
-          # simulator TCC permission is this workflow's responsibility.
-          # Scoped to mainstream only (review follow-up): this OS-level TCC
-          # toggle is device-category-independent — it is not a layout
-          # concern — so running it once on mainstream is sufficient and the
-          # small/large/ipad legs skip it to save runner time.
-          bash scripts/ios/simctl_privacy.sh revoke microphone "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
-          bash scripts/ios/simctl_privacy.sh grant microphone "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
-
-      - name: Cold-start deep link relaunch (out-of-process)
-        if: ${{ matrix.category == 'mainstream' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Scoped to mainstream only (review follow-up): deep link relaunch
-          # exercises app routing/state restore, which is also
-          # device-category-independent, so one run on mainstream is enough.
-          bash scripts/ios/simctl_deeplink_relaunch.sh "${{ steps.boot.outputs.udid }}" "$IOS_BUNDLE_ID"
-
-      - name: Summarize flow test failures (best-effort)
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          set +e
-          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
-          mkdir -p "$artifact_dir"
-          # Phase P5: the run_tests step above now redirects verbose output
-          # to $RUNNER_TEMP/e2e-verbose-<category>.log via
-          # E2E_WATCHDOG_LOG_FILE instead of teeing it into
-          # $artifact_dir/flow-test-output.log; this path must track that
-          # change or e2e_summarize.sh silently has nothing to summarize.
-          log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
-          summary_file="$artifact_dir/summary.md"
-          if [[ -f "$log_file" ]]; then
-            bash scripts/ios/e2e_summarize.sh \
-              "${{ matrix.category }}" \
-              "$log_file" \
-              "$summary_file" \
-              "${{ steps.run_tests.outputs.flow_files }}"
-            summarize_status=$?
-            if [[ $summarize_status -ne 0 ]]; then
-              echo "SUMMARY_GENERATION_FAILED: scripts/ios/e2e_summarize.sh exited $summarize_status (best-effort step; run does not fail because of this)." \
-                | tee -a "$summary_file"
-            fi
-          else
-            echo "SUMMARY_GENERATION_SKIPPED: no e2e-verbose-${{ matrix.category }}.log found for category ${{ matrix.category }} (the test-run step may not have started, or scripts/ios/e2e_watchdog.sh could not create E2E_WATCHDOG_LOG_FILE)." \
-              > "$summary_file"
-          fi
-          echo "Summary step complete (best-effort; failures here do not fail the job)."
-
-      - name: Report stage-progress markers (best-effort, never changes job result)
-        # `always()` so this still runs after a watchdog timeout or a plain
-        # test failure — a stage-progress readout is most valuable exactly
-        # when the run did NOT complete cleanly. Placed after the summary
-        # step above so it can reuse the exact same redirected verbose log
-        # path that step already resolved, with the same
-        # E2E_WATCHDOG_LOG_FILE naming convention the run_tests step wrote to
-        # (scripts/ios/e2e_stage_markers.sh's header comment documents why
-        # each marker's anchor phrase is safe to reuse from
-        # scripts/ios/e2e_summarize.sh / scripts/ios/e2e_watchdog.sh rather
-        # than being invented here).
-        #
-        # This is a read-only diagnostic layer: `set +e` plus the script's
-        # own "always exits 0" contract (see e2e_stage_markers.sh) mean this
-        # step can never turn a passing run_tests outcome into a failing job,
-        # and can never mask a real failure either — the job's actual
-        # pass/fail result is decided solely by steps.run_tests.outcome
-        # above, unchanged by anything in this step.
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          set +e
-          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
-          mkdir -p "$artifact_dir"
-          log_file="$RUNNER_TEMP/e2e-verbose-${{ matrix.category }}.log"
-          marker_file="$artifact_dir/stage-markers-${{ matrix.category }}.log"
-          # This job (small/mainstream/large/ipad) only ever uses placeholder
-          # Supabase dart-defines (see E2E_BACKEND_ISOLATION_PASS above), so
-          # persisting the marker output to an uploaded artifact file is
-          # safe — unlike the flow05-auth-backend job's equivalent step,
-          # which is deliberately console-only for that exact reason.
-          bash scripts/ios/e2e_stage_markers.sh \
-            "$log_file" \
-            "${{ steps.boot.outputs.udid }}" \
-            "${{ steps.run_tests.outputs.test_status }}" \
-            | tee "$marker_file"
-          echo "Stage-progress marker step complete (best-effort; failures here do not fail the job)."
-
-      - name: Capture screenshot and simulator diagnostics
-        if: ${{ always() && steps.boot.outputs.udid != '' }}
-        shell: bash
-        run: |
-          set +e
-          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
-          mkdir -p "$artifact_dir"
-          xcrun simctl io "${{ steps.boot.outputs.udid }}" screenshot "$artifact_dir/screenshot-${{ matrix.category }}.png"
-          xcrun simctl diagnose --no-archive -b -o "$artifact_dir/diagnose-${{ matrix.category }}" >/dev/null 2>&1
-          echo "Artifact capture step complete (best-effort; see if-no-files-found on the upload step for missing-file handling)."
-
-      - name: Upload E2E artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: planflow-ios-simulator-e2e-${{ matrix.category }}-${{ github.run_number }}
-          path: ${{ runner.temp }}/e2e-artifacts
-          if-no-files-found: warn
-          retention-days: 14
+            "$RUNNER_TEMP/e2e-artifacts/hang-diagnostics-${{ matrix.category }}"
 
       - name: Shutdown and delete simulator
         if: ${{ always() && steps.boot.outputs.udid != '' }}
         shell: bash
         run: |
           set +e
-          xcrun simctl shutdown "${{ steps.boot.outputs.udid }}"
-          xcrun simctl delete "${{ steps.boot.outputs.udid }}"
-
-  flow05-auth-backend:
-    needs: preflight
-    if: ${{ needs.preflight.outputs.flow5_exists == 'true' }}
-    runs-on: macos-latest
-    # Review fix (MEDIUM): time budget was too tight at 30. This is NOT the
-    # same move as widening a hard timeout to paper over an actual hang (the
-    # 780s watchdog below still bounds the flutter test run itself and still
-    # fails the job on a real stall) - it is giving the *surrounding*
-    # steps (pod install, simulator boot, the worst-case diagnostics dump,
-    # artifact upload, teardown) enough headroom to run to completion
-    # *after* the watchdog fires, so a hang still gets fully diagnosed
-    # instead of the whole job being torn down mid-diagnosis by this cap.
-    #
-    # Worst-case sum of every step in this job when run_flow5 fails and the
-    # diagnostics step runs its full worst case (whole seconds):
-    #   checkout + flutter-action + pub get  ~130
-    #   pod install (no Podfile.lock cache, measured ~1m44s-1m46s)  ~105
-    #   simulator create+boot+bootstatus (cold)                    ~120
-    #   run_flow5 watchdog bound                                   780
-    #   diagnostics worst case (ps 30 + log show 120 + simctl
-    #     diagnose 180, see scripts/ios/e2e_diagnose_hang.sh)       330
-    #   upload-artifact + simulator shutdown/delete                ~50
-    #   ------------------------------------------------------------
-    #   total                                                     ~1515s (~25.25m)
-    # Against the previous 30-minute (1800s) cap that left only ~285s
-    # (~15%) of margin for runner variance (cold Flutter SDK cache, network
-    # jitter on pod install/pub get, macOS "Set up job" overhead). 35
-    # minutes (2100s) restores a ~585s (~28%) margin without touching the
-    # 780s watchdog bound that this job was already carefully sized around
-    # (see the "Bound sizing" comment on the FLOW5 test step below).
-    timeout-minutes: 35
-    env:
-      # Group A (fake-based, always runs) needs no secrets at all. Group B
-      # (real Supabase login) only runs when PLANFLOW_E2E_REAL_BACKEND_TEST
-      # is explicitly set to '1' — until the dedicated test account and
-      # non-production Supabase project exist, these secrets are unset, the
-      # flag below resolves to '0', and integration_test/flow05_auth_backend_test.dart
-      # skips group B cleanly (no failure).
-      E2E_REAL_BACKEND_TEST: ${{ secrets.PLANFLOW_E2E_REAL_BACKEND_TEST || '0' }}
-      E2E_TEST_ACCOUNT_EMAIL: ${{ secrets.PLANFLOW_E2E_TEST_ACCOUNT_EMAIL }}
-      E2E_TEST_ACCOUNT_PASSWORD: ${{ secrets.PLANFLOW_E2E_TEST_ACCOUNT_PASSWORD }}
-      # Reuses the "PLANFLOW_*" secret-naming convention already established
-      # by ios-release.yml (PLANFLOW_APPLE_TEAM_ID,
-      # PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64, etc.) — ios-release.yml
-      # itself does not define a SUPABASE_URL/SUPABASE_ANON_KEY secret pair
-      # (its release build relies on lib/core/env.dart's embedded production
-      # default), so there is no pre-existing name to literally reuse for a
-      # *non-production* project. These two secrets must point at a
-      # dedicated non-production Supabase project, never PROD_SUPABASE_REF.
-      FLOW5_SUPABASE_URL: ${{ secrets.PLANFLOW_SUPABASE_URL }}
-      FLOW5_SUPABASE_ANON_KEY: ${{ secrets.PLANFLOW_SUPABASE_ANON_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 3.47.2
-          cache: true
-
-      - run: flutter pub get
-
-      # No CocoaPods cache here either - same reasoning as the comment above
-      # the equivalent step in the simulator-e2e job (no committed
-      # ios/Podfile.lock to key a cache on).
-      - run: pod install --project-directory=ios
-
-      - name: Select one simulator for FLOW5 (mainstream category, or first available)
-        id: pick
-        shell: bash
-        run: |
-          set -euo pipefail
-          matrix_json='${{ needs.preflight.outputs.matrix }}'
-          selected="$(echo "$matrix_json" | jq -c '([.[] | select(.category == "mainstream")] + .) | first')"
-          if [[ -z "$selected" || "$selected" == "null" ]]; then
-            echo "::error title=BLOCKED_NO_SIMULATOR_RUNTIME::FLOW5 could not select a simulator from the preflight matrix."
-            exit 1
-          fi
-          echo "Selected simulator for FLOW5: $selected"
-          echo "runtime_id=$(echo "$selected" | jq -r '.runtime_id')" >> "$GITHUB_OUTPUT"
-          echo "devicetype_id=$(echo "$selected" | jq -r '.devicetype_id')" >> "$GITHUB_OUTPUT"
-
-      - name: Create and boot FLOW5 simulator
-        id: boot
-        shell: bash
-        run: |
-          set -euo pipefail
-          device_name="PlanFlow-E2E-FLOW5-${{ github.run_id }}"
-          udid="$(xcrun simctl create "$device_name" "${{ steps.pick.outputs.devicetype_id }}" "${{ steps.pick.outputs.runtime_id }}")"
-          echo "Created simulator $device_name -> $udid"
-          echo "udid=$udid" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
-
-      - name: Resolve FLOW5 Supabase dart-defines (fail-closed placeholder fallback)
-        id: backend
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Review fix (HIGH): FLOW5_SUPABASE_URL/FLOW5_SUPABASE_ANON_KEY come
-          # straight from secrets.PLANFLOW_SUPABASE_URL/PLANFLOW_SUPABASE_ANON_KEY,
-          # which are unset until the dedicated non-production Supabase project
-          # exists. An unset secret resolves to an *empty string* dart-define,
-          # and `lib/core/env.dart`'s `_envValue()` treats an empty compile-time
-          # value as "absent" and falls back to the embedded PRODUCTION
-          # Supabase project (`AppEnv._defaultSupabaseUrl` /
-          # `_defaultSupabaseAnonKey`, ref matching $PROD_SUPABASE_REF). Group A
-          # of flow05_auth_backend_test.dart runs unconditionally (fake-based),
-          # so without this step every FLOW5 run before the secrets are
-          # provisioned would silently compile against the production project.
-          #
-          # Fix: only pass the real secrets through when
-          # E2E_REAL_BACKEND_TEST=='1' (i.e. the dedicated non-production
-          # project + test account secrets are actually configured). Otherwise
-          # inject the exact same placeholder dart-defines FLOW1-4,6-8 already
-          # use, which `AppEnv._looksLikePlaceholder` recognizes and which keep
-          # `AppEnv.hasValidSupabaseConfig` false — so `Supabase.initialize(...)`
-          # is never called and no request can reach any Supabase project.
-          if [[ "$E2E_REAL_BACKEND_TEST" == "1" ]]; then
-            resolved_url="$FLOW5_SUPABASE_URL"
-            resolved_anon_key="$FLOW5_SUPABASE_ANON_KEY"
-            if [[ -z "$resolved_url" || -z "$resolved_anon_key" ]]; then
-              echo "::error title=BLOCKED_E2E_MISSING_BACKEND_SECRETS::E2E_REAL_BACKEND_TEST=1 but PLANFLOW_SUPABASE_URL/PLANFLOW_SUPABASE_ANON_KEY secrets are not both set."
-              exit 1
-            fi
-            if [[ "$resolved_url" == *"$PROD_SUPABASE_REF"* ]]; then
-              echo "::error title=BLOCKED_E2E_BACKEND_ISOLATION::PLANFLOW_SUPABASE_URL resolves to the production Supabase project; FLOW5 Group B must point at a dedicated non-production project."
-              exit 1
-            fi
-          else
-            resolved_url="$E2E_SUPABASE_URL_PLACEHOLDER"
-            resolved_anon_key="$E2E_SUPABASE_ANON_KEY_PLACEHOLDER"
-          fi
-          {
-            echo "supabase_url=$resolved_url"
-            echo "supabase_anon_key=$resolved_anon_key"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Run FLOW5 auth/backend integration test
-        id: run_flow5
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Same hang instrumentation as the simulator-e2e job above; see the
-          # long comment in its "Run device-category-scoped integration
-          # tests" step for the observed symptom and the reasoning. This leg
-          # is worth instrumenting separately because it reproduced the exact
-          # same post-build silence while running zero pumpAndSettle calls,
-          # which is the strongest evidence that the stall is not in test
-          # code.
-          #
-          # Bound sizing (whole seconds; this job's cap is thirty minutes,
-          # i.e. 1800 seconds): measured Xcode build cost about 400, plus a
-          # conservative allowance for the single flow file, plus buffer ->
-          # 780. Deliberately smaller than the simulator-e2e mainstream bound
-          # because this job runs exactly one flow file and has a tighter
-          # job-level cap, and the remaining budget must still cover the
-          # diagnostics dump and simulator teardown below.
-          watchdog_seconds=780
-          echo "Bounding the FLOW5 flutter test run at ${watchdog_seconds}s"
-
-          # NOTE (secret safety, revised for Wave3/P6): when
-          # E2E_REAL_BACKEND_TEST is '1' this command line carries a real
-          # (non-production) Supabase anon key and a test-account password,
-          # and `--verbose` makes the Flutter tool echo the full compiler
-          # invocation. GitHub Actions masks registered secret values in the
-          # console log, but it does NOT mask the contents of uploaded
-          # artifact files.
-          #
-          # This step now redirects the child's stdout+stderr to
-          # $RUNNER_TEMP/e2e-verbose-flow05.log via
-          # scripts/ios/e2e_watchdog.sh's E2E_WATCHDOG_LOG_FILE (the same
-          # mechanism as the simulator-e2e job's P5 wiring above), so the
-          # verbose-overhead investigation can also observe FLOW5's
-          # duration_seconds/log_lines. That file is deliberately:
-          #   (a) unmasked raw output — mask_secrets is only ever applied to
-          #       the heartbeat's `last=` line and to the on-failure tail
-          #       dump below, never to the full redirected stream, and
-          #   (b) written directly under $RUNNER_TEMP, NOT under
-          #       $RUNNER_TEMP/e2e-artifacts — the "Upload FLOW5 hang
-          #       diagnostics" step further down only ever uploads the
-          #       e2e-artifacts directory, so this path is never an upload
-          #       candidate and is discarded with the rest of the runner's
-          #       filesystem when the job ends.
-          # E2E_WATCHDOG_TAIL_FILE is deliberately left UNSET here, unlike
-          # the simulator-e2e job: the masked tail dump this produces on a
-          # non-zero exit is still printed to the console (which GitHub
-          # Actions secret-masks), but it is never written to a file, so
-          # Wave1's "never persist FLOW5 verbose output to anything that
-          # could be uploaded" principle
-          # (docs/ios/E2E_RUN3_DECISION_TREE.md §2-3) still holds for
-          # anything that leaves this runner.
-          verbose_log_file="$RUNNER_TEMP/e2e-verbose-flow05.log"
-          heartbeat_interval_seconds=30
-
-          step_start_ts=$(date +%s)
-          set +e
-          E2E_WATCHDOG_LOG_FILE="$verbose_log_file" \
-          E2E_WATCHDOG_HEARTBEAT_INTERVAL="$heartbeat_interval_seconds" \
-          bash scripts/ios/e2e_watchdog.sh "$watchdog_seconds" \
-            flutter test \
-            --verbose \
-            integration_test/flow05_auth_backend_test.dart \
-            -d "${{ steps.boot.outputs.udid }}" \
-            --dart-define=E2E_MODE=1 \
-            --dart-define=E2E_REAL_BACKEND_TEST="$E2E_REAL_BACKEND_TEST" \
-            --dart-define=E2E_TEST_ACCOUNT_EMAIL="$E2E_TEST_ACCOUNT_EMAIL" \
-            --dart-define=E2E_TEST_ACCOUNT_PASSWORD="$E2E_TEST_ACCOUNT_PASSWORD" \
-            --dart-define=SUPABASE_URL="${{ steps.backend.outputs.supabase_url }}" \
-            --dart-define=SUPABASE_ANON_KEY="${{ steps.backend.outputs.supabase_anon_key }}"
-          test_status=$?
-          set -e
-          step_end_ts=$(date +%s)
-
-          if [[ "$test_status" -eq 124 ]]; then
-            echo "WATCHDOG_TIMEOUT: the FLOW5 flutter test run exceeded its ${watchdog_seconds}s bound and was terminated by scripts/ios/e2e_watchdog.sh. Check the console output above for the last Flutter tool step that reported progress."
-            echo "::error title=E2E_WATCHDOG_TIMEOUT::FLOW5 exceeded the ${watchdog_seconds}s watchdog bound"
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
+          E2E_UDID="${{ steps.boot.outputs.udid }}" \
+            E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/teardown.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/teardown.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 120 bash -c '
+              shutdown_status=0
+              delete_status=0
+              xcrun simctl shutdown "$E2E_UDID" >/dev/null 2>&1 || shutdown_status=$?
+              xcrun simctl delete "$E2E_UDID" >/dev/null 2>&1 || delete_status=$?
+              if [[ "$delete_status" -ne 0 ]]; then
+                echo "simctl delete failed: shutdown_status=$shutdown_status delete_status=$delete_status" >&2
+                exit "$delete_status"
+              fi
+              if [[ "$shutdown_status" -ne 0 ]]; then
+                echo "simulator was already stopped or shutdown returned $shutdown_status; delete completed" >&2
+              fi
+              exit 0
+            '
+          status=$?
+          echo "E2E_STAGE stage=TEARDOWN status=$([[ "$status" -eq 0 ]] && echo PASS || echo FAIL) exit=$status"
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error title=BLOCKED_SIMULATOR_TEARDOWN::Simulator cleanup failed with watchdog exit=$status"
+            exit "$status"
           fi
 
-          # --- E2E_TIMING marker (P8) --------------------------------------
-          # Same contract as the simulator-e2e job's marker above: one
-          # grep-able line on every exit path this step can take (0, some
-          # other non-zero value, or 124), whole-second integers throughout.
-          # log_lines is a line count (wc -l) of the unmasked
-          # verbose_log_file — its contents are never echoed here, only its
-          # length.
-          duration_seconds=$((step_end_ts - step_start_ts))
-          log_lines=0
-          if [[ -f "$verbose_log_file" ]]; then
-            log_lines="$(wc -l < "$verbose_log_file" | tr -d '[:space:]')"
-            log_lines="${log_lines:-0}"
-          fi
-          lines_per_second=0
-          if [[ "$duration_seconds" -gt 0 ]]; then
-            lines_per_second=$((log_lines / duration_seconds))
-          fi
-          echo "E2E_TIMING category=flow05 duration_seconds=${duration_seconds} log_lines=${log_lines} lines_per_second=${lines_per_second} exit=${test_status}"
-
-          # Exposed as a step output (additive; does not change this step's
-          # own exit behavior below) purely so the later "Report FLOW5
-          # stage-progress markers" step can pass the real watchdog exit code
-          # into scripts/ios/e2e_stage_markers.sh — see the identical comment
-          # on the simulator-e2e job's run_tests step above.
-          echo "test_status=${test_status}" >> "$GITHUB_OUTPUT"
-
-          exit "$test_status"
-
-      - name: Capture FLOW5 hang diagnostics when the test run did not pass
-        if: ${{ always() && steps.boot.outputs.udid != '' && steps.run_flow5.outcome != 'success' }}
-        shell: bash
-        run: |
-          set +e
-          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
-          mkdir -p "$artifact_dir"
-          bash scripts/ios/e2e_diagnose_hang.sh \
-            "${{ steps.boot.outputs.udid }}" \
-            "$artifact_dir/hang-diagnostics-flow05"
-          echo "FLOW5 hang diagnostics step complete (best-effort; failures here do not change the job result)."
-
-      - name: Report FLOW5 stage-progress markers (console only, best-effort, never changes job result)
-        # `always()` for the same reason as the simulator-e2e job's
-        # equivalent step above: the readout matters most on a run that did
-        # NOT complete cleanly.
-        #
-        # Deliberately console-only (no artifact file, no
-        # `$artifact_dir/stage-markers-*.log` write): this job is the only
-        # one in this workflow that can carry a real (non-production)
-        # Supabase credential in E2E_TEST_ACCOUNT_EMAIL/
-        # E2E_TEST_ACCOUNT_PASSWORD, and the existing convention this job
-        # already follows for exactly that reason is "never persist FLOW5
-        # verbose output to anything that could be uploaded" (see the
-        # comment on `verbose_log_file`/E2E_WATCHDOG_TAIL_FILE in the
-        # "Run FLOW5 auth/backend integration test" step above, and the
-        # header comment in scripts/ios/e2e_summarize.sh explaining why that
-        # script is never wired into this job either). GitHub Actions'
-        # console log secret-masking still applies here; an uploaded log
-        # file would not be covered by it. scripts/ios/e2e_stage_markers.sh
-        # additionally masks anything it recognizes as credential-shaped via
-        # scripts/ios/e2e_mask_secrets.sh before printing, as defense in
-        # depth on top of not persisting the output at all.
+      - name: Upload XCTest and stage evidence
         if: ${{ always() }}
-        shell: bash
-        run: |
-          set +e
-          log_file="$RUNNER_TEMP/e2e-verbose-flow05.log"
-          bash scripts/ios/e2e_stage_markers.sh \
-            "$log_file" \
-            "${{ steps.boot.outputs.udid }}" \
-            "${{ steps.run_flow5.outputs.test_status }}"
-          echo "FLOW5 stage-progress marker step complete (best-effort; failures here do not fail the job; console-only, never uploaded)."
-
-      - name: Upload FLOW5 hang diagnostics (placeholder-backend runs only)
-        # Fail-closed secret gate, with a review fix (MEDIUM) folded in.
-        #
-        # scripts/ios/e2e_diagnose_hang.sh masks credential-shaped text out
-        # of the process listing (processes.txt) and the simulator log
-        # (simulator_log.txt), but its third capture - the `simctl diagnose`
-        # bundle (the simctl_diagnose/ directory) - is raw Xcode/
-        # CoreSimulator logs that are NOT passed through that masking, and
-        # artifact contents are not covered by GitHub's secret masking
-        # either.
-        #
-        # The `if:` condition alone (E2E_REAL_BACKEND_TEST != '1') is not a
-        # complete gate for that risk: E2E_TEST_ACCOUNT_EMAIL/
-        # E2E_TEST_ACCOUNT_PASSWORD are read straight from secrets and get
-        # forwarded to `flutter test --dart-define=...` above regardless of
-        # this flag - a repo could have the test-account secrets configured
-        # (partial provisioning, e.g. while setting up the dedicated
-        # non-production project) while PLANFLOW_E2E_REAL_BACKEND_TEST is
-        # still unset/'0'. In that window this `if:` alone would still let
-        # the upload through even though a real account password was passed
-        # into the process that `simctl diagnose` snapshots.
-        #
-        # Fix: rather than trying to enumerate every credential-bearing
-        # secret in the `if:` condition (and having to keep that list in
-        # sync with every future FLOW5 secret), exclude the raw
-        # simctl_diagnose/ bundle from the uploaded path outright, via the
-        # `!`-prefixed negation pattern below. That closes the leak vector
-        # unconditionally - regardless of which secrets happen to be set -
-        # while keeping the already-masked processes.txt, simulator_log.txt
-        # and diagnose_manifest.txt (and simctl_diagnose.log, which is just
-        # the command's own stdout/stderr, not the raw bundle) available for
-        # download. The existing `if:` condition is kept as defense in depth
-        # for the masked files too, and the "Note withheld" step below still
-        # covers the real-backend-enabled case end to end.
-        if: ${{ always() && env.E2E_REAL_BACKEND_TEST != '1' }}
         uses: actions/upload-artifact@v4
         with:
-          name: planflow-ios-simulator-e2e-flow05-${{ github.run_number }}
-          path: |
-            ${{ runner.temp }}/e2e-artifacts
-            !${{ runner.temp }}/e2e-artifacts/hang-diagnostics-flow05/simctl_diagnose/**
+          name: planflow-ios-simulator-e2e-${{ matrix.category }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/e2e-artifacts
           if-no-files-found: ignore
           retention-days: 14
-
-      - name: Note withheld FLOW5 diagnostics (real-backend runs)
-        if: ${{ always() && env.E2E_REAL_BACKEND_TEST == '1' }}
-        shell: bash
-        run: |
-          echo "::notice title=FLOW5_DIAGNOSTICS_WITHHELD::E2E_REAL_BACKEND_TEST is enabled, so FLOW5 hang diagnostics were captured on the runner but deliberately not uploaded as an artifact (the simctl diagnose bundle is unmasked raw log data). Read this job's console log instead."
-
-      - name: Shutdown and delete FLOW5 simulator
-        if: ${{ always() && steps.boot.outputs.udid != '' }}
-        shell: bash
-        run: |
-          set +e
-          xcrun simctl shutdown "${{ steps.boot.outputs.udid }}"
-          xcrun simctl delete "${{ steps.boot.outputs.udid }}"

@@ -61,6 +61,7 @@ done
 pass 'nine bounded stages are declared in the required order'
 
 printf '%s' "$runner_text" | grep -qF -- 'e2e_watchdog.sh' || fail 'runner is not bounded by e2e_watchdog.sh'
+printf '%s' "$runner_text" | grep -qF -- 'E2E_WATCHDOG_HEARTBEAT_INTERVAL' || fail 'runner does not enable heartbeat diagnostics'
 printf '%s' "$runner_text" | grep -qF -- 'derivedDataPath' || fail 'runner does not isolate derived data'
 printf '%s' "$runner_text" | grep -qF -- '-resultBundlePath' || fail 'runner does not produce an xcresult bundle'
 printf '%s' "$runner_text" | grep -qF -- 'test-without-building' || fail 'runner does not use XCTest test-without-building'

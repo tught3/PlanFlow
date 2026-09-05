@@ -62,7 +62,8 @@ void main() {
 
   group('P13.2 ios-simulator-e2e.yml has zero hardcoded iOS version literals',
       () {
-    test('no dotted-decimal version literal appears outside the '
+    test(
+        'no dotted-decimal version literal appears outside the '
         'Flutter SDK version line', () {
       final content =
           file('.github/workflows/ios-simulator-e2e.yml').readAsStringSync();
@@ -95,14 +96,14 @@ void main() {
 
   group('P13.3 simctl_discover.sh queries the live simulator catalog', () {
     test('discovers both runtimes and device types via `simctl list`', () {
-      final content =
-          file('scripts/ios/simctl_discover.sh').readAsStringSync();
+      final content = file('scripts/ios/simctl_discover.sh').readAsStringSync();
       expect(content, contains('simctl list runtimes'));
       expect(content, contains('simctl list devicetypes'));
     });
   });
 
-  group('P13.4 SIMULATOR_QA_MATRIX.md has >=30 rows and only known '
+  group(
+      'P13.4 SIMULATOR_QA_MATRIX.md has >=30 rows and only known '
       'classification values', () {
     // Parses the "|" delimited markdown table without a markdown library:
     // any line starting with "|" whose first cell parses as an integer is
@@ -134,7 +135,8 @@ void main() {
               'found ${rows.length}');
     });
 
-    test('every row\'s 분류(classification) column is one of the three '
+    test(
+        'every row\'s 분류(classification) column is one of the three '
         'known values (or the explicitly documented ATT exception)', () {
       final content =
           file('docs/ios/SIMULATOR_QA_MATRIX.md').readAsStringSync();
@@ -191,7 +193,8 @@ void main() {
     // to mention PlanFlow's real bundle id and Supabase ref as a worked
     // example for whoever adapts these templates to a new app. The .tmpl
     // files themselves must stay app-agnostic.
-    test('workflow-templates/*.tmpl and checklist-templates/*.tmpl are '
+    test(
+        'workflow-templates/*.tmpl and checklist-templates/*.tmpl are '
         'free of PlanFlow-specific literals', () {
       final templateDirs = [
         dir('docs/ios/templates/workflow-templates'),

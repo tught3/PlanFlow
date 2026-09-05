@@ -1,0 +1,189 @@
+{
+  "task_id": "planflow-ios-simulator-e2e-final-architecture-fix-20260905",
+  "objective": "Replace the repeatedly timing-out Flutter simulator device runner with the official integration_test XCTest host, isolate FLOW5 Group A as a host-side fake test, preserve diagnostics, protect production paths, and deliver the scoped changes through review, commit, and non-force push.",
+  "request_boundary": {
+    "run6_evidence": "User-provided authenticated GitHub Run #6 evidence: preflight passed; mainstream/small/large/iPad/FLOW5 timed out after 1500/900/900/900/780 seconds with flutter test -d and exit 124.",
+    "current_platform": "Windows; macOS Xcode, Simulator, CocoaPods, XCTest, and live GitHub Actions execution are not locally available.",
+    "live_run_status": "NOT_DISPATCHED: no authenticated GitHub CLI/session was available in this turn. No macOS PASS is inferred from local checks."
+  },
+  "baseline": {
+    "starting_head": "237b571165a5186e8b4855b97e690882a964b5a2",
+    "origin_main_at_start": "cd2b4aaf4898b609843d0655bcabfa8deef983a2",
+    "merge_resolution_before_task": ["cdc9617c", "b89ad658"],
+    "current_head_before_integrator": "b89ad658",
+    "shared_workspace_preserved": true,
+    "new_worktree_created": false
+  },
+  "requirements": {
+    "must": [
+      "Use official Objective-C integration_test XCTest host and xcodebuild build-for-testing/test-without-building.",
+      "Expose SIMULATOR_BOOT, APP_BUILD, APP_INSTALL, APP_LAUNCH, APP_READY, TEST_DRIVER_ATTACH, TEST_DISCOVERY, FLOW_EXECUTION, TEARDOWN as bounded evidence stages.",
+      "Keep FLOW5 Group A host-side fake-only and placeholder-backend isolated.",
+      "Preserve watchdog, heartbeat, tails, E2E_TIMING, E2E_STAGE, masking, summarizer, process snapshot, simctl diagnostics, and artifacts.",
+      "Keep production release/privacy/signing workflows, secrets, Widget production configuration, Build 16/TestFlight, and Android untouched.",
+      "Commit owned paths and push normally without force."
+    ],
+    "must_not": [
+      "No new session or worktree.",
+      "No Flutter simulator flutter test -d or flutter drive path.",
+      "No App Store Connect/TestFlight/upload path in the simulator workflow.",
+      "No production Supabase credential or production backend execution.",
+      "Do not stage or alter foreign AGENTS.md changes or its backup."
+    ]
+  },
+  "plan_tracking": {
+    "classification": "Complex delivery with a Simple host-test item",
+    "all_required_items_done": true,
+    "assignments": {
+      "Complex": "Official Objective-C XCTest host, Podfile/pbxproj wiring, bounded simulator workflow and runner diagnostics.",
+      "Simple": "FLOW5 Group A fake-only host coverage and focused contract guards."
+    },
+    "allowed_paths_verified": true,
+    "forbidden_paths_verified_unchanged": [
+      "AGENTS.md",
+      "AGENTS.md.before-regen.bak",
+      ".github/workflows/ios-release.yml",
+      ".github/workflows/ios-privacy-audit.yml",
+      "android",
+      "Runner/Widget production privacy and signing paths"
+    ]
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "Planck",
+      "agent_id": "01a07030-cc2c-7981-9aa0-8a93c793ec92",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "assignment": "Read-only final investigation of Run #6, current diff, architecture, protected paths, and evidence gaps.",
+      "report": "Confirmed Run #6 VM-service timeouts, current XCTest host wiring, FLOW5 host fake isolation, bounded runner/setup diagnostics, protected paths, and Windows/macOS evidence boundary. No edits."
+    },
+    {
+      "role": "Planner",
+      "agent": "Hubble",
+      "agent_id": "01a06fff-2a5c-7942-a763-6ea18ea61676",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "assignment": "Convert the request and Run #6 evidence into an official XCTest-host plan with Simple/Complex classification, allowed files, forbidden files, checks, and gates.",
+      "report": "Recommended official XCTest host, host-only fake FLOW5, flow classification, target files, and macOS-only live verification boundary."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "Huygens",
+      "agent_id": "01a07004-ee0d-70a1-89df-d18b2432bd6e",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "status": "completed_partial",
+      "assignment": "Implement Objective-C RunnerTests/Podfile/pbxproj XCTest wiring in the owned iOS test target paths.",
+      "report": "Partial implementation supplied RunnerTests.m, removed the Swift stub, embedded RunnerTests in Podfile, and updated pbxproj references/configs. Main workspace reconciled the remaining workflow/script/docs work."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "Bohr",
+      "agent_id": "01a07009-1fce-78f3-9974-51107394d6ac",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "assignment": "Add the narrow host-side FLOW5 fake test.",
+      "report": "Added deterministic FakeAuthService/OAuth callback host coverage; initial implementation was made define-compatible after review found placeholder-config assertion mismatch."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "Linnaeus",
+      "agent_id": "01a07015-a098-7b92-a804-d23587e98643",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "status": "completed",
+      "assignment": "Run scoped Dart, shell, YAML, contract, and regression checks and record exit codes.",
+      "report": "Latest Windows verification: combined scoped Flutter tests 17 passed (exit 0); FLOW5 placeholder-define host test 6 passed (exit 0); changed-file dart analyze exit 0; dart format exit 0; PyYAML parse exit 0; Git for Windows Bash runner contract exit 0; script contract exit 0 (51 passed); stage markers contract exit 0 (38 passed); simctl discovery contract exit 0 (18 passed). Initial shell invocations through the broken WSL bash alias exited 1 before source execution and were diagnosed as host-environment failures, then rerun successfully through Git Bash. macOS XCTest remains unrun."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "Dewey",
+      "agent_id": "01a07021-4475-7d71-af39-e8661b4bcdc3",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "completed",
+      "assignment": "Analyze the reviewer HIGH finding for FLOW5 and assess teardown/docs risks.",
+      "report": "Root cause was the placeholder Supabase define making hasResolvedInitialSession getter true; FakeAuthService was correct. Recommended status-based assertion and bounded teardown. Also identified stale historical docs and unbounded workflow setup, which were addressed."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "Nietzsche",
+      "agent_id": "01a07040-2ed0-7df2-851f-d14a6a044d46",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "status": "completed_with_findings_addressed",
+      "assignment": "Independent final staged-diff review after all fixes and fresh Windows verification.",
+      "report": "FINAL_REVIEW_REPORT: verdict PASS; highest_severity NONE; findings NONE. The staged diff satisfies the XCTest host, FLOW5 isolation, bounded execution, diagnostics, teardown ordering/propagation, documentation, and protected-path constraints. macOS live execution is the sole evidence gap."
+    },
+    {
+      "role": "Integrator",
+      "agent": "Codex Integrator",
+      "agent_id": null,
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "status": "completed",
+      "assignment": "Inspect final current diff, update this state, stage only owned paths, run cached diff checks, commit, push origin/main normally, and report final status.",
+      "report": "Final current-tree and cached-diff review completed. Owned staged pathspec excludes foreign AGENTS paths; protected production release/privacy/signing, Android, and Runner/Widget production privacy paths are absent. Fresh Windows checks are recorded. Final state remains delivery-pending only for macOS runtime validation and unauthenticated GitHub dispatch."
+    }
+  ],
+  "reviewer_terminal_gate": {
+    "reviewer_agent": "Nietzsche",
+    "reviewer_invocation_id": "01a07041-c7e7-7d83-b71e-e890e89256b4",
+    "host_final_events": 1,
+    "final_review_report_envelopes": 1,
+    "envelope_valid": true,
+    "verdict": "PASS",
+    "highest_severity": "NONE",
+    "finalization_requested_once": true
+  },
+  "findings_resolution": {
+    "all_findings_addressed": true,
+    "resolved": [
+      "FLOW5 placeholder define assertion mismatch",
+      "Runner teardown boundedness",
+      "Historical documentation labeling",
+      "Workflow setup boundedness",
+      "Current task evidence completeness"
+    ],
+    "open_blockers_or_high": []
+  },
+  "changed_owned_paths": [
+    ".github/workflows/ios-simulator-e2e.yml",
+    "docs/ios/E2E_EXECUTION_PATH_COMPARISON.md",
+    "docs/ios/E2E_RUN3_DECISION_TREE.md",
+    "docs/ios/E2E_XCTEST_ARCHITECTURE.md",
+    "ios/Podfile",
+    "ios/Runner.xcodeproj/project.pbxproj",
+    "ios/RunnerTests/RunnerTests.swift",
+    "ios/RunnerTests/RunnerTests.m",
+    "scripts/ios/e2e_xctest_flow.sh",
+    "scripts/ios/tests/e2e_xctest_runner_contract.sh",
+    "test/ios_e2e_flow05_fake_test.dart",
+    "test/ios_simulator_e2e_contract_test.dart"
+  ],
+  "foreign_preserved_paths": ["AGENTS.md", "AGENTS.md.before-regen.bak"],
+  "verification": [
+    {"command": "flutter test --no-pub test/ios_simulator_e2e_contract_test.dart test/ios_e2e_flow05_fake_test.dart", "exit_code": 0, "evidence": "24 tests passed after final formatting and setup-bound contract addition."},
+    {"command": "flutter test --no-pub test/ios_e2e_flow05_fake_test.dart --dart-define=E2E_MODE=1 --dart-define=E2E_REAL_BACKEND_TEST=0 --dart-define=SUPABASE_URL=https://your-project.supabase.co --dart-define=SUPABASE_ANON_KEY=your-supabase-anon-key", "exit_code": 0, "evidence": "6 FLOW5 host tests passed with the exact placeholder define shape used by workflow."},
+    {"command": "dart analyze test/ios_e2e_flow05_fake_test.dart test/ios_simulator_e2e_contract_test.dart", "exit_code": 0, "evidence": "No issues found."},
+    {"command": "dart format --output=none --set-exit-if-changed test/ios_e2e_flow05_fake_test.dart test/ios_simulator_e2e_contract_test.dart", "exit_code": 0, "evidence": "Both changed Dart tests formatted."},
+    {"command": "python -c PyYAML parse of .github/workflows/ios-simulator-e2e.yml", "exit_code": 0, "evidence": "YAML_PARSE_PASS."},
+    {"command": "Git Bash e2e_xctest_runner_contract.sh", "exit_code": 0, "evidence": "All runner, bounded-stage, Objective-C host, isolation, and no-upload checks passed."},
+    {"command": "Git Bash e2e_script_contract.sh", "exit_code": 0, "evidence": "51 passed, 0 failed, 0 skipped."},
+    {"command": "Git Bash e2e_stage_markers_contract.sh", "exit_code": 0, "evidence": "38 passed, 0 failed."},
+    {"command": "Git Bash simctl_discover_contract.sh", "exit_code": 0, "evidence": "18 passed, 0 failed."},
+    {"command": "flutter analyze", "exit_code": 1, "evidence": "Windows run produced no output for over 60 seconds and was interrupted; full-repository analyze is unverified. Changed-file dart analyze passed."},
+    {"command": "git diff --check scoped owned paths", "exit_code": 0, "evidence": "SCOPED_DIFF_CHECK_PASS; global check remains noisy only because foreign AGENTS.md has pre-existing trailing whitespace."},
+    {"command": "protected path comparison", "exit_code": 0, "evidence": "ios-release.yml, ios-privacy-audit.yml, Android, Runner Info.plist, Widget production target, and Runner entitlements unchanged."}
+  ],
+  "live_gaps": [
+    "No local macOS/Xcode/Simulator; real Pod install, xcodebuild, XCTest, xcresult, simulator flow results, and teardown behavior require GitHub macOS run.",
+    "No authenticated GitHub Actions dispatch/API access in this session; user must manually dispatch the simulator QA workflow once after push."
+  ],
+  "final_verdict": "DELIVERED_PENDING_MACOS_VALIDATION",
+  "last_updated": "2026-09-05T15:45:00+09:00"
+}
