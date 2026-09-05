@@ -40,6 +40,20 @@ FRAMEWORK_KEYS = {
     "LocalAuthentication": "NSFaceIDUsageDescription",
     "MediaPlayer": "NSAppleMusicUsageDescription",
 }
+# Symbols are diagnostic evidence only. They never expand the fail-closed
+# required-key gate, because an observed symbol can come from an indirect
+# dependency or dead code.
+SYMBOL_KEYS = {
+    "AVCaptureDevice": "NSCameraUsageDescription",
+    "PHPhotoLibrary": "NSPhotoLibraryUsageDescription",
+    "CNContactStore": "NSContactsUsageDescription",
+    "EKEventStore": "NSCalendarsUsageDescription",
+    "CBCentralManager": "NSBluetoothAlwaysUsageDescription",
+    "NWPathMonitor": "NSLocalNetworkUsageDescription",
+    "CMMotionManager": "NSMotionUsageDescription",
+    "LAContext": "NSFaceIDUsageDescription",
+    "MPMediaLibrary": "NSAppleMusicUsageDescription",
+}
 PRIVACY_CATEGORIES = {
     "microphone": ("NSMicrophoneUsageDescription", "AVFoundation"),
     "speechRecognition": ("NSSpeechRecognitionUsageDescription", "Speech"),
@@ -61,6 +75,7 @@ PRIVACY_CATEGORIES = {
 WIDGET_FORBIDDEN = {value[0] for value in PRIVACY_CATEGORIES.values()}
 SCAN_REPORT: list[dict] = []
 SCAN_EVIDENCE: set[str] = set()
+SYMBOL_HITS: set[str] = set()
 EVIDENCE_PATTERN = re.compile(
     r"(?:AVFoundation|Speech|AppTrackingTransparency|AdSupport|CoreLocation|Photos|Contacts|EventKit|CoreBluetooth|Network|CoreMotion|LocalAuthentication|MediaPlayer|"
     r"NS(?:Microphone|SpeechRecognition|UserTracking|Location).*UsageDescription|"
@@ -202,9 +217,40 @@ def scan_frameworks(bundle: Path, require: bool, tool_dir: Path | None = None) -
         for item in PRIVACY_CATEGORIES.values():
             if item[1] in symbol_text:
                 SCAN_EVIDENCE.add(item[1])
+        for symbol in SYMBOL_KEYS:
+            if symbol in symbol_text or symbol in output:
+                SYMBOL_HITS.add(symbol)
     if require and scanned == 0:
         raise SystemExit("BLOCKED_PRIVACY_BINARY_SCAN: no binaries were successfully scanned")
     return found
+
+
+def _usage_description_keys(plist: dict) -> list[str]:
+    return sorted(key for key in plist if key.endswith("UsageDescription"))
+
+
+def _audit_gap_analysis(
+    report: dict, runner: dict, widget: dict, frameworks: set[str]
+) -> None:
+    """Record 90683 purpose-string gaps without changing gate results."""
+    runner_keys = set(_usage_description_keys(runner))
+    framework_gaps = sorted(
+        {FRAMEWORK_KEYS[name] for name in frameworks if FRAMEWORK_KEYS[name] not in runner_keys}
+    )
+    symbol_gaps = sorted(
+        {SYMBOL_KEYS[symbol] for symbol in SYMBOL_HITS if SYMBOL_KEYS[symbol] not in runner_keys}
+    )
+    report["audit"] = {
+        "appleErrorCode": "90683",
+        "runnerUsageDescriptionKeys": sorted(runner_keys),
+        "widgetUsageDescriptionKeys": _usage_description_keys(widget),
+        "observedSymbols": sorted(SYMBOL_HITS),
+        "frameworkKeyGaps": framework_gaps,
+        "symbolKeyGaps": symbol_gaps,
+        "uploadPerformed": False,
+    }
+    gaps = sorted(set(framework_gaps) | set(symbol_gaps))
+    print("IOS_PRIVACY_KEY_GAP: " + (", ".join(gaps) if gaps else "NONE_OBSERVED"))
 
 
 def main() -> int:
@@ -214,6 +260,11 @@ def main() -> int:
     parser.add_argument("--runner-bundle", type=Path)
     parser.add_argument("--require-binary-scan", action="store_true")
     parser.add_argument("--report-json", type=Path)
+    parser.add_argument(
+        "--audit-report",
+        action="store_true",
+        help="Record 90683 purpose-string gap analysis without changing gate results.",
+    )
     parser.add_argument("--tool-dir", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.require_binary_scan and args.runner_bundle is None:
@@ -252,6 +303,10 @@ def main() -> int:
                     item["evidenceStrength"] = "linked-framework-or-symbol"
                     item["falsePositivePotential"] = False
             print("IOS_PRIVACY_BINARY_SCAN: " + ("PASS" if frameworks else "PASS_NO_MAPPED_FRAMEWORKS"))
+            if args.audit_report:
+                _audit_gap_analysis(report, runner, widget, frameworks)
+        elif args.audit_report:
+            _audit_gap_analysis(report, runner, widget, set())
         report["status"] = "PASS"
         return 0
     except SystemExit as exc:

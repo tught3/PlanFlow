@@ -2,7 +2,7 @@
   "task_id": "planflow-ios-final-release-20260830",
   "request_source": "user_pasted_plan",
   "classification": "complex",
-  "status": "blocked_github_actions_auth_for_privacy_audit",
+  "status": "audit_only_macos_workflow_added_no_build16",
   "privacy_90683": {
     "apple_code": "90683",
     "apple_description": "Missing purpose string in Info.plist.",
@@ -79,8 +79,8 @@
     "same_build_reupload": "Build 14 is failed; do not reuse. Next retry requires a new build number after the exact Apple failure detail is identified."
   },
   "baseline_commit": "41906f9aef8706184171fd2456c241aa92977064",
-    "current_commit": "128b947b",
-    "repository_head": "128b947b",
+  "current_commit": "b15fa14b92765fed9ad5da13689544df3fc8f143",
+  "repository_head": "b15fa14b92765fed9ad5da13689544df3fc8f143",
   "android_production_unchanged": true,
   "roles": {
     "explorer": {
@@ -221,31 +221,6 @@
       "model": "gpt-5.6-luna",
       "result": "The redaction fixture failure was Windows test-tool discovery, not privacy filtering: malformed PATH splitting left otool empty and no binaries scanned. The minimal `--tool-dir` fixture override resolves .cmd/.exe tools deterministically; subsequent Flutter contract execution exited 0 with 13 tests."
     },
-    "privacy_audit_only_implementer": {
-      "agent": "ios_privacy_root_implementer",
-      "model": "gpt-5.6-luna",
-      "result": "Added ios-privacy-audit.yml: audit_only=true, fixed build 99990001, signed archive/export metadata and privacy-binary audit, fail-closed Firebase/signing gates, and audit logs/reports only. It has no App Store Connect upload path and excludes raw IPA from artifacts."
-    },
-    "privacy_audit_only_explorer": {
-      "agent": "ios_privacy_root_explorer",
-      "model": "gpt-5.4-mini",
-      "result": "Confirmed the prior Build 15 public run has no accessible logs/artifacts and identified a separate signed audit workflow as the safe way to preserve macOS binary evidence without a new ASC upload."
-    },
-    "privacy_audit_only_planner": {
-      "agent": "ios_privacy_root_planner",
-      "model": "gpt-5.6-terra",
-      "result": "Planned audit_only=true, fixed non-release build number 99990001, fail-closed signing/Firebase validation, archive/export inspection, non-secret artifact retention, and no ASC upload path."
-    },
-    "privacy_audit_only_test_executor": {
-      "agent": "ios_privacy_root_test_executor",
-      "model": "gpt-5.4-mini",
-      "result": "Audit-only contract verification passed: Flutter 14/14, Dart analysis, Python compilation, and diff check exit 0; Android unchanged."
-    },
-    "privacy_audit_only_reviewer": {
-      "agent": "ios_privacy_root_reviewer",
-      "model": "gpt-5.6-luna",
-      "result": "Fresh FINAL_REVIEW_REPORT PASS/NONE for the audit-only workflow; no upload/ASC path and no Android scope change."
-    },
     "privacy_root_test_executor": {
       "agent": "ios_privacy_root_test_executor",
       "model": "gpt-5.4-mini",
@@ -261,6 +236,10 @@
       "agent": "ios_90683_integrator",
       "model": "gpt-5.6-terra",
       "result": "Integrated current HEAD ef278a4b with reviewer PASS; status remains BLOCKED_EXTERNAL_WORKFLOW_DISPATCH because gh auth and macOS runner evidence are unavailable."
+    },
+    "audit_only_reviewer": {
+      "agent": "flux-reviewer",
+      "result": "REQUEST_CHANGES then corrected: HIGH octal leading-zero bypass of the Build 16 gate and MEDIUM string-only workflow assertions; both fixed with base-10 comparison, leading-zero rejection, and an executing gate regression test."
     }
   },
   "commits": [
@@ -417,12 +396,12 @@
     "BUILD_15_IPA_EXPORT": "PASS_PUBLIC_METADATA",
     "BUILD_15_BINARY_SCAN_EVIDENCE": "NOT_AVAILABLE_PROTECTED_LOGS_ARTIFACTS",
     "BUILD_16_DISPATCHED": "NO",
-    "IOS_PRIVACY_AUDIT_ONLY_WORKFLOW": "IMPLEMENTED_NOT_DISPATCHED",
-    "IOS_PRIVACY_AUDIT_ONLY_ASC_UPLOAD": "FORBIDDEN_BY_WORKFLOW",
     "PRIVACY_API_DEPENDENCY_MAP": "PARTIAL_UNTIL_MACOS_ARTIFACT",
     "ROOT_CAUSE_IDENTIFIED": "NO",
     "REQUIRED_USAGE_KEYS_RESOLVED": "NO",
-    "ANDROID_PRODUCTION_UNCHANGED": "PASS"
+    "ANDROID_PRODUCTION_UNCHANGED": "PASS",
+    "AUDIT_ONLY_WORKFLOW_PRESENT": "PASS",
+    "AUDIT_ONLY_NO_UPLOAD_CONTRACT": "PASS_LOCAL_CONTRACT_TEST"
   },
   "required_external_secrets": [
     "PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64",
@@ -437,13 +416,19 @@
   },
   "verification": {
     "final_diff": {
-      "range": "41906f9aef8706184171fd2456c241aa92977064..e9b8842f4e1db82f0b52c49f5e0283221983b9dd",
+      "range": "41906f9aef8706184171fd2456c241aa92977064..b15fa14b92765fed9ad5da13689544df3fc8f143 plus current worktree",
       "files": [
-        ".github/workflows/ios-release.yml",
-        ".gitignore",
         ".codex/tasks/planflow-ios-final-release-20260830.json",
+        ".github/workflows/ios-90683-build15-artifact-audit.yml",
+        ".github/workflows/ios-release.yml",
+        ".github/workflows/ios-testflight-ingestion.yml",
+        ".gitignore",
+        "docs/ios/privacy-surface-audit.md",
         "docs/ios/release-readiness.md",
         "ios/Runner.xcodeproj/project.pbxproj",
+        "ios/Runner/Info.plist",
+        "scripts/verify-app-store-build.py",
+        "scripts/verify-ios-privacy-surface.py",
         "test/ios_release_contract_test.dart"
       ],
       "diff_check_exit_code": 0,
@@ -485,6 +470,50 @@
         "command": "git diff --check",
         "exit_code": 0,
         "run_at": "2026-08-31"
+      },
+      {
+        "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+        "exit_code": 0,
+        "run_at": "2026-09-04",
+        "evidence": "14/14 passed including audit-only workflow contract and 90683 gap-report test"
+      },
+      {
+        "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+        "exit_code": 0,
+        "run_at": "2026-09-04",
+        "evidence": "15/15 passed after reviewer fixes, including the executing Build 16 gate test"
+      },
+      {
+        "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+        "exit_code": 0,
+        "run_at": "2026-09-05",
+        "evidence": "15/15 passed on resumed PlanFlow audit worktree"
+      },
+      {
+        "command": "dart analyze test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "run_at": "2026-09-05"
+      },
+      {
+        "command": "python -m py_compile scripts/verify-ios-privacy-surface.py",
+        "exit_code": 0,
+        "run_at": "2026-09-05"
+      },
+      {
+        "command": "python -m json.tool .codex/tasks/planflow-ios-final-release-20260830.json",
+        "exit_code": 0,
+        "run_at": "2026-09-05"
+      },
+      {
+        "command": "python -c \"import yaml; yaml.safe_load(open('.github/workflows/ios-90683-build15-artifact-audit.yml', encoding='utf-8'))\"",
+        "exit_code": 0,
+        "run_at": "2026-09-05",
+        "evidence": "audit-only workflow YAML parsed successfully"
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "run_at": "2026-09-05"
       }
     ],
     "not_run": [],
@@ -507,12 +536,12 @@
   },
   "reviewer_terminal_gate": {
     "status": "PASS_WITH_PROVIDER_GATE",
-    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE for the audit-only workflow. Apple/macOS artifact evidence remains an external release gate, so this is not completion.",
+    "reason": "Fresh independent reviewer host-final FINAL_REVIEW_REPORT is PASS/NONE after artifact redaction and latest-run fixes. Apple/macOS evidence remains an external release gate, so this is not completion.",
     "accepting": false
   },
   "integration": {
-    "status": "BLOCKED_GITHUB_ACTIONS_AUTH",
-    "integrated_at": "2026-09-01",
+    "status": "BLOCKED_EXTERNAL_MACOS_ASC_AUDIT",
+    "integrated_at": "2026-08-31",
     "requirements": {
       "fail_closed_signed_workflow": "PASS",
       "workflow_and_contract_test_evidence": "PASS",
@@ -537,10 +566,120 @@
       "privacy_api_dependency_map": "PARTIAL_UNTIL_MACOS_ARTIFACT",
       "root_cause_identified": false,
       "required_usage_keys_resolved": false
-      ,"audit_only_workflow": "IMPLEMENTED_NOT_DISPATCHED"
-      ,"audit_only_asc_upload": "FORBIDDEN"
     },
-    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 15 public metadata is incomplete. A separate audit-only signed archive/export workflow now preserves non-secret privacy reports while forbidding ASC upload and raw IPA artifacts. Local implementation/review/test evidence is complete, but this Windows session has no GitHub Actions authentication to dispatch or retrieve the macOS audit artifact. Root cause and required usage-key set remain unresolved, and Build 16 is not dispatched."
+    "evidence": "Builds 13 and 14 both failed Apple BuildUpload 90683 for Runner.app. Build 14 retained mic/speech/tracking keys, so the ATT-only explanation is rejected. Build 15 public metadata shows archive/export success but a subsequent combined upload/verifier failure; no protected logs/artifacts expose actual binary scan output or Apple stateDetails. New instrumentation will preserve filtered non-secret scan evidence for a future authorized run, but root cause and required usage-key set are still unresolved. Build 16 is not dispatched."
   },
-  "next_gate": "After GitHub Actions authentication is available, dispatch .github/workflows/ios-privacy-audit.yml with audit_only=true. Retrieve the non-secret archive/export report artifact and authenticated Apple diagnostics; do not dispatch Build 16 or use an ASC upload path."
+  "next_gate": "Dispatch ios-90683-build15-artifact-audit.yml (audit_build_number=15) on macOS, read the preserved audit reports, then decide remediation. Build 16 and any App Store Connect upload stay blocked until that evidence exists.",
+  "audit_only_workflow": {
+    "path": ".github/workflows/ios-90683-build15-artifact-audit.yml",
+    "purpose": "Audit the exact preserved signed Build 15 IPA on macOS and preserve 90683 privacy/binary evidence without rebuilding.",
+    "dispatch_input": "audit_build_number (fixed to 15), audit_artifact_run_id, audit_artifact_name, audit_artifact_sha256, audit_source_commit",
+    "build_16_dispatched": false,
+    "app_store_connect_upload": "NOT_PERFORMED_BY_DESIGN",
+    "fail_closed_rules": [
+      "audit_build_number must be exactly 15; 0, other builds, leading zeros, and invalid values are rejected",
+      "artifact run/name, lowercase IPA SHA-256, and full source commit are required",
+      "exactly one IPA and provenance.json are required",
+      "IPA hash, provenance build/bundle/source/hash, checked-out commit, Runner and Widget bundle IDs, and both embedded CFBundleVersions must match",
+      "no Flutter/Xcode rebuild or signing occurs; ASC credentials are not referenced"
+    ],
+    "artifacts": "planflow-ios-90683-audit-<run> (audit-export-privacy-report.json), retained 14 days, uploaded even on failure",
+    "helper_flag": "scripts/verify-ios-privacy-surface.py --audit-report records runner/widget usage-description keys, observed symbols, frameworkKeyGaps, symbolKeyGaps; gate results unchanged",
+    "gate_regression_test": "test/ios_release_contract_test.dart extracts the immutable-input gate and runs it with real inputs (15 allowed; 0, 13, 16, 0016, 017, 99, abc, empty blocked); contract assertions cover valid and mismatched Widget metadata paths"
+  },
+  "resumed_provenance_fix": {
+    "status": "IMPLEMENTED_LOCAL_UNCOMMITTED",
+    "worktree_head": "b15fa14b92765fed9ad5da13689544df3fc8f143",
+    "changed_paths": [
+      ".github/workflows/ios-90683-build15-artifact-audit.yml",
+      "docs/ios/privacy-surface-audit.md",
+      "scripts/verify-ios-privacy-surface.py",
+      "test/ios_release_contract_test.dart",
+      ".codex/tasks/planflow-ios-final-release-20260830.json"
+    ],
+    "tests": [
+      {"command": "flutter test test/ios_release_contract_test.dart --no-pub", "exit_code": 0, "evidence": "15/15 passed; gate accepts only 15 and blocks 0/13/16/leading-zero/invalid inputs; Widget valid and mismatch contracts covered"},
+      {"command": "dart analyze test/ios_release_contract_test.dart", "exit_code": 0},
+      {"command": "python -m py_compile scripts/verify-ios-privacy-surface.py", "exit_code": 0},
+      {"command": "python -m json.tool .codex/tasks/planflow-ios-final-release-20260830.json", "exit_code": 0},
+      {"command": "git diff --check", "exit_code": 0}
+    ],
+    "external_gate": "Authorized Actions artifact must contain exact Build 15 IPA plus provenance.json; macOS audit has not been dispatched; Build 16 and ASC/TestFlight remain blocked."
+  },
+  "resumption_delivery_20260905": {
+    "scope": "Local audit-only provenance workflow; no GitHub Actions dispatch, macOS signing, App Store Connect, TestFlight, or Build 16 action was performed.",
+    "named_role_reports": [
+      {
+        "role": "explorer",
+        "agent": "privacy_root_explorer",
+        "mapped_model": "gpt-5.4-mini",
+        "assignment": "Establish evidence-backed Runner privacy candidate and reject speculative Widget or unrelated keys.",
+        "result": "Read-only evidence matrix recorded; macOS binary and authenticated Apple diagnostics remain required."
+      },
+      {
+        "role": "planner",
+        "agent": "privacy_root_planner",
+        "mapped_model": "gpt-5.6-terra",
+        "assignment": "Plan the Runner-only, fail-closed 90683 remediation and audit evidence path.",
+        "result": "Complex scope and external gates are recorded in the task state."
+      },
+      {
+        "role": "complex_implementer",
+        "agent": "planflow_resume_impl",
+        "mapped_model": "gpt-5.6-luna",
+        "assignment": "Re-inspect resumed audit-only changes without dispatching any external workflow.",
+        "result": "No source behavior change was needed; confirmed the scoped local provenance/audit workflow and task-state evidence."
+      },
+      {
+        "role": "test_executor",
+        "agent": "planflow_final_test",
+        "mapped_model": "gpt-5.4-mini",
+        "assignment": "Run the focused local release/privacy contract verification only.",
+        "result": "flutter test (15/15), dart analyze, Python compilation, and git diff --check all exited 0."
+      },
+      {
+        "role": "reviewer",
+        "agent": "planflow_resume_review",
+        "mapped_model": "gpt-5.6-luna",
+        "assignment": "Independently review the resumed exact audit-only diff and its contract evidence.",
+        "result": "Host-final FINAL_REVIEW_REPORT PASS with highest finding NONE. It confirms exact Build 15 provenance/hash/Runner+Widget/source validation, no rebuild/signing/ASC/TestFlight/Build 16 path, and current docs/state/local evidence."
+      },
+      {
+        "role": "integrator",
+        "agent": "planflow_integrator",
+        "mapped_model": "gpt-5.6-terra",
+        "assignment": "Inspect the current uncommitted diff and reconcile local verification and external gates.",
+        "result": "Current scoped diff is audit-only and diff-check clean. Local integration is sound; no external action was taken."
+      }
+    ],
+    "fresh_verification": [
+      {
+        "command": "flutter test test/ios_release_contract_test.dart --no-pub",
+        "exit_code": 0,
+        "evidence": "15/15 passed"
+      },
+      {
+        "command": "dart analyze test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "evidence": "No issues found"
+      },
+      {
+        "command": "python -m py_compile scripts/verify-ios-privacy-surface.py",
+        "exit_code": 0
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0
+      }
+    ],
+    "reviewer_terminal_gate": {
+      "host_final_events": 1,
+      "final_review_report_envelopes": 1,
+      "verdict": "PASS",
+      "highest_finding": "NONE",
+      "accepting": true
+    },
+    "integration_verdict": "INTEGRATION_PASS_IN_SCOPE_EXTERNAL_MACOS_AUDIT_PENDING",
+    "external_gate": "An authorized macOS Actions audit needs the exact Build 15 IPA and provenance.json. The audit is intentionally not dispatched here; Build 16 and all App Store Connect/TestFlight actions remain blocked."
+  }
 }
