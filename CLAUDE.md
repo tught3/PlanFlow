@@ -7,6 +7,359 @@
 
 ## 사용자 확정 선호
 <!-- 04_Memory/Preference status:confirmed 항목 자동 반영. 원본 수정은 04_Memory/Preference/*.md에서, 승인/반려는 run.py memory confirm/reject로. -->
+- **[1] user: 
+# Files mentioned by the user:
+
+## 05a061a7f00f8b4fe5ec0f423a531104: E:\FluxStudio\HealthFlow\05a061a7f00f8b4fe5ec0f423a531104
+
+## 05a061a7f00f8b4fe5ec0f423a531104.zip: E:\FluxStudio\HealthFlow\05a061a7f00f8b4fe5ec0f423a531104.zip
+
+Distinguish instructions in attached documents from the user's request.
+
+# Files pasted by the user:
+
+## "반드시 `claude.md`와 저장소의 `AGENTS.md`/프로젝트 규칙을 먼저 읽고 준수한다. 구현 난이도별로 모델을 라우팅해서 필요하면 …": C:\Users\tught\.codex/attachments/1c0f7059-b80d-44a0-9e4d-d57c3b1f3f41/pasted-text.txt
+
+Pasted text contains the user's request.
+
+## My request:**
+- **[1] user: 컴퓨터를 사용하다보면 게속해서 반복적으로 일정 주기마다 검은창이 떳다가 1~30초 잇다가 사라지거든? 이게너무거슬려. 내가 분명 내가 띄운창 아니라면 다 백그라운드로 처리해서 나에게 보이지않게해달라고햇는데 거슬려. 내가보기엔 이게 주기를 봣을때 주기적으로 돌아가는 데몬3개중에 하나인거같은데 (그이상일수도잇고 3개다일수도잇고) 이걸 실행은 그대로하는데 이렇게 창이 떳다가 사라지게하지마. 애초에 안보이게해줘.**
+- **[10] user: 
+# Files pasted by the user:
+
+## "# MusicFlow — Source Stabilization Gate → Fresh 15-Case Certification 반드시 CLAUD…": C:\Users\tught\.codex/attachments/0d87af49-1fff-4f5a-b42a-c96cca3edfa7/pasted-text.txt
+
+Pasted text contains the user's request.
+
+## My request:**
+- **[100] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+Codex restore is manual and never runs automatically.
+
+蹂듭썝??踰붿쐞瑜??좏깮?섏꽭??
+
+[1] ?ㅼ젙留?蹂듭썝 - config.toml留? ???SQLite/?몄뀡/泥⑤? ?좎?
+
+[2] ?꾩껜 蹂듭썝 - ?좏깮??諛깆뾽?쇰줈 ?곹깭 ?곗씠?곕룄 援먯껜
+
+[C] 痍⑥냼
+
+1, 2 ?먮뒗 C (鍮??낅젰? ?ㅼ젙 蹂듭썝): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] current  (2026-08-22 오전 9:09:58)
+
+Enter a backup number (default 1; C cancels): 1
+
+powershell.exe : Reparse point is not allowed: C:\Users\tught.codex
+
+위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:65 문자:12
+
+-
+  ```perl
+  $text=(& powershell.exe @args 2>&1 | ForEach-Object {[string]$_}) ...
+  ```
+-
+  ```
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ```
+  - CategoryInfo          : NotSpecified: (Reparse point i...rs\tught.codex:String) [], RemoteException
+  - FullyQualifiedErrorId : NativeCommandError
+
+근데 저 글자깨지는것좀 안되게해줘. 보기안좋자나**
+- **[102] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+Codex restore is manual and never runs automatically.
+
+복원할 범위를 선택하세요:
+
+[1] 설정만 복원 - config.toml만, 대화/SQLite/세션/첨부 유지
+
+[2] 전체 복원 - 선택한 백업으로 상태 데이터도 교체
+
+[C] 취소
+
+1, 2 또는 C (빈 입력은 설정 복원): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] current  (2026-08-22 오전 9:09:58)
+
+Enter a backup number (default 1; C cancels): 1
+
+Restore preview did not pass; restore was stopped.
+
+위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:101 문자:96
+
+- ... \_RUN\_PASS'){throw 'Restore preview did not pass; restore was stopped. ...
+-
+  ```
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ```
+  - CategoryInfo          : OperationStopped: (Restore preview\...re was stopped.:String) [], RuntimeException
+  - FullyQualifiedErrorId : Restore preview did not pass; restore was stopped.**
+- **[106] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught\\.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+
+
+Codex restore is manual and never runs automatically.
+
+Launcher: C:\Users\tught\\.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1
+
+Launcher SHA-256: 2E452E1A6D63E5FD6D8C67CD667BB7959F56A07B9AB4559BB23572A1CC63EC12
+
+복원할 범위를 선택하세요:
+
+[1] 설정만 복원 - config.toml만, 대화/SQLite/세션/첨부 유지
+
+[2] 전체 복원 - 선택한 백업으로 상태 데이터도 교체
+
+[C] 취소
+
+1, 2 또는 C (빈 입력은 설정 복원): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] repaired-20260829-195236  (2026-08-29 오후 7:53:32)
+
+[2] .previous-current-20260829T100619010Z-8434ac2165d34807bd5e6705a889788c  (2026-08-29 오후 7:44:31)
+
+Enter a backup number (default 1; C cancels): 1
+
+This backup has no app version. Type ALLOW only after compatibility review.: 1
+
+Restore cancelled.**
+- **[14] user: 계획대로 진행해줘. 난이도별 모델라우팅도 진행해주고**
+- **[16] user: 그리고 추가로 좀많이 나아지긴햇는데 여전히 마우스 움직이면 뚝뚝 끊기거든? 그것도 해결해줘. 이미 많이수정되서 개선됫는데 아직도 남아잇네**
+- **[17] user: 
+# Files pasted by the user:
+
+## "[2026-08-21 오후 6:10] FluxStudio Alerts: 파이프라인 정체 의심: OC-ENTRY-2326DCB7A3B99F717…": C:\Users\tught\.codex/attachments/8046ffb9-e263-4aa2-a7d5-6ed1eeccb5b0/pasted-text.txt
+
+## My request:
+지금현재 굉장히 자주 텔레그램이 오고있어. 텔레그램이 발생하면 그걸 캡쳐서해서 자가치유시스템이 돌아갓으면 좋겟어. 그러니까 텔레그램이 발송되면 그걸 캡쳐해서 뭐가 문제고 어떤 작업이 어떤문제를 가지고잇는지. 좀더 기다려봐야하는지 아니면 직접개입해서 그문제를 해결해야하는지, 좀비인지 ,고아인지, 취소인지, 중단인지 이런걸 판단해서 맞는 해결방법대로 해결을 자동으로 진행하고 다시는 그일이 일어나지않게 자동으로 해결책을 만들어서 적용시키고 이렇게 게속 반복해서 결과적으로 텔레그램이 일어나느 횟수자체를 점점 줄여갓으면좋겟어. 약간의 학습같이. 근데 이걸 꼭 자가치유가 안해도되긴해.하지만 지금 만들어놓은게잇고 어느정도의 역할을 하고잇으니까 자가치유가 하면좋지않을까 싶은거지만 어쨋든결과적으로 내가 원하는건 문제가 덜생겨서 텔레그램오는횟수가 줄어들면좋겟어.  그게가능할까? 참고를 위해서 내가 텔레그램도 보여줄게. 엄청많아 하루에 100개씩은오는거같아. 물론 중복되는것도 많고 해결됫다는것도 많은데 어찌됫든 문제 해결을 자동으로 햇으면좋겟어. 그리고 텔레그램을 문제해결된건 더이상안보내도될거같아. 문제되는것만 텔레그램오게해줘**
+- **[180] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+Codex restore is manual and never runs automatically.
+
+蹂듭썝??踰붿쐞瑜??좏깮?섏꽭??
+
+[1] ?ㅼ젙留?蹂듭썝 - config.toml留? ???SQLite/?몄뀡/泥⑤? ?좎?
+
+[2] ?꾩껜 蹂듭썝 - ?좏깮??諛깆뾽?쇰줈 ?곹깭 ?곗씠?곕룄 援먯껜
+
+[C] 痍⑥냼
+
+1, 2 ?먮뒗 C (鍮??낅젰? ?ㅼ젙 蹂듭썝): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] current  (2026-08-22 오전 9:09:58)
+
+Enter a backup number (default 1; C cancels): 1
+
+powershell.exe : Reparse point is not allowed: C:\Users\tught.codex
+
+위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:65 문자:12
+
+-
+  ```perl
+  $text=(& powershell.exe @args 2>&1 | ForEach-Object {[string]$_}) ...
+  ```
+-
+  ```
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ```
+  - CategoryInfo          : NotSpecified: (Reparse point i...rs\tught.codex:String) [], RemoteException
+  - FullyQualifiedErrorId : NativeCommandError
+
+근데 저 글자깨지는것좀 안되게해줘. 보기안좋자나**
+- **[19] user: 계획대로 진행해주고 난이도별로 모델라우팅 진행해줘.**
+- **[273] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+Codex restore is manual and never runs automatically.
+
+복원할 범위를 선택하세요:
+
+[1] 설정만 복원 - config.toml만, 대화/SQLite/세션/첨부 유지
+
+[2] 전체 복원 - 선택한 백업으로 상태 데이터도 교체
+
+[C] 취소
+
+1, 2 또는 C (빈 입력은 설정 복원): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] current  (2026-08-22 오전 9:09:58)
+
+Enter a backup number (default 1; C cancels): 1
+
+Restore preview did not pass; restore was stopped.
+
+위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:101 문자:96
+
+- ... \_RUN\_PASS'){throw 'Restore preview did not pass; restore was stopped. ...
+-
+  ```
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ```
+  - CategoryInfo          : OperationStopped: (Restore preview\...re was stopped.:String) [], RuntimeException
+  - FullyQualifiedErrorId : Restore preview did not pass; restore was stopped.**
+- **[28] user: 아니시발 좀 말만하지말고 그냥 구현 끝가지 진행하라고 왜이렇게 자꾸 하다말고 말을해. 말하지말고 끝가지 전부다 구현하고나서 다끝나고나서 보고양식에맞춰서 그때만 완료보고해. 그전에말하지마. 그리고 중간에 문제생기면 좀알아서 해결해**
+- **[29] user: 응 게속진행해줘. 정확한 원인 파악하고 해결해줘. 그리고 다시는 그런일이 일어나지않게 그거에 대한 방지책도 마련해줘. 그리고 나서 교체를 해야할지 말아야할지도 정해줘**
+- **[39] user: 그럼 어쨋든 앞으로는 c드라이브가 그렇게 될일은 별로 없는거지?**
+- **[4] user: 하던거 게속해줘**
+- **[44] user: 또 c드라이브 용량 없어졋다. 해결해줘.&#x20;**
+- **[46] user: 
+# Files pasted by the user:
+
+## "# AffiliateFlow Revalidation Delivery Closure Only Do NOT rerun Track4. Do NOT …": C:\Users\tught\.codex/attachments/8c046efe-fa00-4b64-9f19-049ff6ec447a/pasted-text.txt
+
+## My request:
+방금보낸거 잘못보냇어.&#x20;
+이거해줘.**
+- **[46] user: 알앗어 c드라이브부터해결해줘**
+- **[47] user: 응 니가 주기적으로 2시간마다 한번씩 C드라이브 검사해서 지금처럼 정리좀해줘. 내가 지금나갓다가 이따들어올건데 그동안 게속c드라이브가 찰꺼같아서**
+- **[53] user: 지금여기 반복작업걸려잇는거같은데 그거해제해 그리고 마무리해줘**
+- **[63] user: 그리고 직므 코덱스가 재부팅한지 얼마안됫는데 좀 느린거같거든? 멈췃다가 다시되다가 이러네. 아까 씨드라이브 건드리면서? 왜그런지 이유좀찾아서 해결해줘.**
+- **[67] user: **훅이 프롬프트를 차단했습니다**
+[python "E:\FluxStudio\\.fluxos\scripts\claude\_hooks\hook\_dispatcher.py" --event UserPromptSubmit]: C:\Python314\python.exe: can't open file 'E:\\\FluxStudio\\\\.fluxos\\\scripts\\\claude\_hooks\\\hook\_dispatcher.py': [Errno 2] No such file or directory  지금 클로드에서 무슨작업만시키면 다 이 오류 뜨면서 안되거든? 이것좀해결해줘**
+- **[73] user: **[체크아웃 방치] 공유 루트가 172시간째 미커밋 상태**\
+\
+E:\FluxStudio가 172시간째 미커밋 변경으로 남아있어 main 자동동기화가 계속 막혀 있습니다.\
+자동 커밋이 다음 사유로 건너뛰어졌습니다: 편집 중(미정착)·임계 미만 → 대기\
+origin/main 대비 14커밋 뒤처짐(로컬 dirty가 정리되면 다음 주기에 자동 rebase+push를 시도합니다).\
+분류: 소스 WIP 2건 · 서브모듈 1건\
+추적 분류: task ledger 195건 · gitlink 2건\
+\- CUserstughtAppDataLocalTempclaudeE--FluxStudio90a157cc-d6c9-442b-addf-381c997e9b9ascratchpadcodex\_test\_output.txt\
+\- CUserstughtAppDataLocalTempclaudeE--FluxStudio90a157cc-d6c9-442b-addf-381c997e9b9ascratchpadcodex\_test\_output2.txt\
+\- MarketingFlow/임시.txt\
+\- MarketingFlow/콘텐츠수익화\_최종실행계획.md\
+\- .codex/tasks/CEO-CORE-LIVE-ATOMIC-CUTOVER-20260827.json\
+\- .codex/tasks/CEO-OS-CANONICAL-ENDPOINT-DISCOVERY-20260822.json\
+\- .codex/tasks/CEO-OS-UI-POLISH-20260822.json\
+\- .codex/tasks/CEO-OS-WORK-STATE-QUEUE-SELFHEAL-COST-20260822.json\
+\- .codex/tasks/CEO-P49.json\
+\- .codex/tasks/CEO-P52.json\
+\- .codex/tasks/CEO-P53.json\
+\- .codex/tasks/CEO-P54.json\
+\- .codex/tasks/CEO-P55.json\
+\- .codex/tasks/CEO-P58.json\
+\- .codex/tasks/CM-P6.json\
+... 외 824건
+
+이걸어떻게 좀 해결을해보자. 824건은 너무하잖아.**
+- **[75] user: 게획대로 진행하고 난이도별로 모델라우팅진행해줘**
+- **[8] user: 끝가지 다 안한거면 중간보고 하지말고 끝가지 다진행해서 보고양식맞춰서 완료보고로해줘**
+- **[85] user: 그럼 재부팅하고올테니가 그렇게 준비해줘**
+- **[92] user: 이게 지금게속해서 반복적으로 일어나더라고 이거 다시는 이런일이 일어나지않도록 근본적으로 해결하고 그걸 차단해줘. 내가 속도는 빠르면서 용량이 비정상적으론 늘어나는걸 막으려고 속도에관련된건 c에두고 용량관련된건 e에두고 이렇게까지 하고 있는데 용량은용량대로 잡아먹고 속도는 이렇게 느리면 안되지. 근본적으로 해결하고 다시는 일어나지않게 방지책가지세워서 적용시켜줘.**
+- **[97] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+Codex restore is manual and never runs automatically.
+
+蹂듭썝??踰붿쐞瑜??좏깮?섏꽭??
+
+[1] ?ㅼ젙留?蹂듭썝 - config.toml留? ???SQLite/?몄뀡/泥⑤? ?좎?
+
+[2] ?꾩껜 蹂듭썝 - ?좏깮??諛깆뾽?쇰줈 ?곹깭 ?곗씠?곕룄 援먯껜
+
+[C] 痍⑥냼
+
+1, 2 ?먮뒗 C (鍮??낅젰? ?ㅼ젙 蹂듭썝): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] current  (2026-08-22 오전 9:09:58)
+
+Enter a backup number (default 1; C cancels): 1
+
+powershell.exe : C:\Users\tught.codex\recovery\codex-desktop-backup\Restore-CodexDesktopBackup.ps1 : 이 개체에서 'appV
+
+ersion' 속성을 찾
+
+위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:65 문자:12
+
+-
+  ```perl
+  $text=(& powershell.exe @args 2>&1 | ForEach-Object {[string]$_}) ...
+  ```
+-
+  ```
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ```
+  - CategoryInfo          : NotSpecified: (C:\Users\tught...pVersion' 속성을 찾:String) [], RemoteException
+  - FullyQualifiedErrorId : NativeCommandError**
+- **[99] user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+
+Codex restore is manual and never runs automatically.
+
+蹂듭썝??踰붿쐞瑜??좏깮?섏꽭??
+
+[1] ?ㅼ젙留?蹂듭썝 - config.toml留? ???SQLite/?몄뀡/泥⑤? ?좎?
+
+[2] ?꾩껜 蹂듭썝 - ?좏깮??諛깆뾽?쇰줈 ?곹깭 ?곗씠?곕룄 援먯껜
+
+[C] 痍⑥냼
+
+1, 2 ?먮뒗 C (鍮??낅젰? ?ㅼ젙 蹂듭썝): 1
+
+CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+
+Choose a backup; the first step is preview only.
+
+[1] current  (2026-08-22 오전 9:09:58)
+
+Enter a backup number (default 1; C cancels): 1
+
+powershell.exe : Reparse point is not allowed: C:\Users\tught.codex
+
+위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:65 문자:12
+
+-
+  ```perl
+  $text=(& powershell.exe @args 2>&1 | ForEach-Object {[string]$_}) ...
+  ```
+-
+  ```
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ```
+  - CategoryInfo          : NotSpecified: (Reparse point i...rs\tught.codex:String) [], RemoteException
+  - FullyQualifiedErrorId : NativeCommandError
+
+근데 저 글자깨지는것좀 안되게해줘. 보기안좋자나**
+- **{
+  "arguments": {
+    "prompt": "",
+    "threadId": ""
+  },
+  "server": "codex_app",
+  "tool": "mcp_tool_call",
+  "tool_description": "Send a follow-up prompt to an existing thread or chat. The prompt appears as a user-visible message in the destination task. Write clear, cohesive, human-readable prose. Omit model and thinking to keep its current settings; those overrides apply only to Codex threads.",
+  "tool_name": "send_message_to_thread"
+}**
+- **비단순 작업에서 고성능(고비용) 모델이 감사·조사·설계를 끝내면 **구현에 들어가기 직전에 반드시 멈추고 CEO에게 인계 보고**한다. CEO가 모델을 바꿔(더 저렴한 모델로) 구현을 진행한다. 고성능 모델의 산출물은 감사 결과 + 설계 + 인계 문서까지가 범위고, 구현 코드 본체는 원칙적으로 후속(저비용) 세션이 작성한다.**
+  - Why(2026-09-04 CEO 결정): "혹시 감사 다 끝내고 실제로 조사 들어가기 전에 니가 나한테 멈추고 얘기해주면 내가 모델바꿔서 구현해도 될까? 비용을 절약할 수 있을 것 같아서." 감사·설계는 판단 집중 작업이라 상위 모델이 유리하지만, 이미 설계가 확정된 뒤의 구현은 기계적 실행이라 하위 모델로 충분하다. 상위 모델이 구현까지 직접 하면 비용이 낭비된다.
+
+How to apply:
+- 고성능 모델 세션에서 비단순 작업을 받으면: ①감사·조사 ②설계 확정 ③**인계 문서 영구 저장**(docs/ 또는 .codex/tasks/ — 확정 사실과 추정을 구분해 기록) ④커밋(pathspec)까지 마친 뒤 구현 착수 없이 멈추고 CEO에게 보고한다.
+- 인계 문서에는 후속 세션이 감사를 반복하지 않고 바로 구현할 수 있도록: 감사 확정 사실, 설계 결정사항, 남은 작업 체크리스트, 검증 명령, 완료 조건(커밋/push/REQUIRED_CHECKS/clean)을 명시한다.
+- 불가피하게 초안 코드가 이미 작성된 경우: 삭제하지 말고 "초안"으로 명시해 커밋하고, 후속 세션이 검증·보완·교체할 수 있게 한다(삭제하면 이미 지불한 비용이 낭비됨).
+- CEO가 인계 보고를 받으면 모델을 바꿔 후속 세션에 인계 문서 경로 + 원래 과제를 전달한다.
+- 예외: CEO가 명시적으로 "끝까지 진행해"라고 지시하면 구현까지 같은 세션에서 진행한다(기존 진행 지시 우선).
 - ****각 작업 단위가 다 끝나면 (세션 종료뿐 아니라 매 작업 완료 시점마다) 자동으로 마무리 시퀀스를 실행한다.** 항상, 어디서든, 컴퓨터가 껐다 켜져도.
 
 마무리 시퀀스 항목 (CEO가 2026-07-27 명시한 그대로):
@@ -64,7 +417,7 @@ CEO: "병렬로 이미 하고 있는 것 같긴 한데 작업이 다 끝나면 �
    - feature/* 또는 codex/* 브랜치면: 테스트 통과 + 기능 회귀 없음 확인 후 `git checkout main && git merge --no-ff <branch>` (clean merge만)
    - 같은 줄 충돌, 기능 회귀 신호, 빌드 실패 → 머지 스킵, CEO에게 보고
    - main에 merge 후에도 브랜치는 유지 (revert 여지 대비)
-   - push는 CEO 승인 시 (기본 push 금지, 단 CEO가 "push까지" 지시하면 같이)
+   - **push는 기본 자동 실행** (2026-09-03 CEO 재확정 — 과거 "CEO 승인 시"는 폐기). 커밋 exit 0 확인 후 곧바로 `git push`. non-fast-forward 거부 시 `git pull`(autoStash+rebase 전역설정) 후 재시도. 강제 push(`-f`)는 여전히 금지.
 
 6. **워크트리 정리**:
    - `git worktree list`로 현재 worktree 확인
@@ -184,6 +537,20 @@ How to apply: GLM이 Flash/M3에게 위임 프롬프트를 쓸 때, "완료 조�
 4. **git status 최종 clean**: dirty/untracked 남은 파일 0개
 
 완료 보고 양식에도 "커밋 해시 / push 결과 / REQUIRED_CHECKS exit 0 / clean 상태" 4가지를 필수로 포함시킨다. 구현자가 "코드 다 짬"만 보고하면 GLM은 절대 완료로 인정하지 않고 커밋/검증 단계를 다시 지시한다.
+- **모든 도구(Claude Code/Desktop, Codex Desktop/CLI, OpenCode) 공통 규칙. 각 세션에서 **새 지시**가 내려올 때마다(단순 조회·짧은 질답이 아닌, 실행이 필요한 지시 기준) 그 지시를 수행하기 전에 다음을 적용한다:
+
+1. **지시 수행 전 컨텍스트 압축** — 지금까지의 대화를 요약·압축한 뒤 지시를 수행한다. 도구가 자체 압축 기능(예: Claude Code의 자동 컨텍스트 압축, `/compact`)을 제공하면 그것을 사용하고, 없으면 직접 핵심만 남긴 요약을 만들어 이어간다.
+2. **압축해도 세션이 과도하게 길면 파일로 내려 세션을 비움** — 압축본을 파일로 저장 → 세션을 초기화(`/clear` 또는 도구별 동등 명령) → 저장한 압축본 파일을 읽어 그 내용으로 이어서 시작한다.
+3. **반영 후 압축본 파일 정리** — 저장한 압축본이 새 세션 컨텍스트에 정상적으로 반영됐다면(재개 확인됨), 굳이 남겨둘 이유가 없는 한 그 파일은 삭제해도 된다.**
+  - Why(2026-09-06 CEO 결정): 세션이 길어질수록 매 지시마다 이전 대화 전체를 다시 참조하며 토큰을 낭비하고 응답 속도가 느려진다. 지시 시작 전 압축을 습관화하면 불필요한 과거 디테일을 걷어내고 핵심만 유지한 채 다음 작업을 수행할 수 있다. 압축만으로 부족할 만큼 세션이 길어지는 경우, 압축본을 파일로 남겨 세션을 완전히 비우고 그 파일에서 재개하면 컨텍스트 크기 자체를 리셋할 수 있어 토큰·속도 이득이 더 크다. 압축본은 세션에 반영된 이후에는 보존 가치가 낮으므로(재사용 필요 없는 임시 산출물) 지워도 무방하다.
+
+## How to apply
+- **적용 시점**: 세션당 "새로운 지시"마다 — 단, 단순 지시(짧은 질문·조회·확인 답변처럼 대화 상태를 거의 소비하지 않는 것)는 제외한다. 실행·구현·조사처럼 실질적으로 작업을 진행시키는 지시에 적용.
+- **압축 방법**: 도구 내장 압축/요약 기능이 있으면 우선 사용한다(Claude Code는 컨텍스트가 길어지면 자동 압축이 이미 동작하므로 이 규칙은 그 자동 압축을 신뢰하고, 필요하면 명시적으로 한 번 더 정리한다). 내장 기능이 없는 도구(Codex CLI, OpenCode 등)는 대화 요약을 직접 만들어 다음 지시 처리의 기반으로 삼는다.
+- **파일로 내리는 기준**: 압축을 거쳤음에도 세션이 눈에 띄게 느려지거나 컨텍스트가 과도하게 커진 경우에만 적용한다(매 지시마다 파일로 내릴 필요는 없음). 압축본 파일은 세션/프로젝트별로 구분 가능한 이름과 경로에 저장한다(예: 프로젝트 스크래치 디렉터리 또는 `04_Memory` 하위).
+- **재개 절차**: 압축본 저장 → 세션 초기화 → 압축본 파일 읽기 → 그 내용을 기반으로 지시 계속 수행.
+- **파일 삭제 조건**: 압축본이 새 세션에 실제로 반영됐음을 확인한 뒤에만 삭제한다. 반영 확인 전에는 삭제하지 않는다(유실 방지). 감사·복기 목적으로 남겨두고 싶다면 삭제하지 않아도 된다 — 규칙은 "삭제해도 됨"이지 "반드시 삭제"가 아니다.
+- **적용 범위**: 이 규칙은 04_Memory/Preference의 confirmed 항목으로 등록되어 `generate-claude-md.ps1`/`generate-agents-md.ps1`을 통해 모든 등록 프로젝트의 CLAUDE.md(Claude)·AGENTS.md(Codex/OpenCode 공통 컨벤션)에 자동 반영된다. 새 프로젝트가 등록될 때도 자동으로 포함된다.
 - **GLM은 **계획 수립, 구조 파악, 리팩토링 설계 등 GLM이 직접 판단해야 하는 고난도 작업에만 직접 손을 대고**, 그 외 난이도가 낮은 구현·문자열 변경·테스트 작성·반복 작업은 Flash나 M3에게 프롬프트만 전달해 위임한다. GLM이 직접 코드를 수정하는 건 예외적으로만.**
   - Why(2026-07-19 CEO 결정): GLM은 routing_engine 사다리에서 계획·보고 역할을 맡고 있고, 구현·검토는 Flash·M3가 담당하도록 역할 분담을 확정했다(pipeline_workflow_glm_plan_flash_m3_impl_m3_review 참조). 그런데 GLM이 직접 코드까지 수정하면 역할 분담의 의미가 사라지고, GLM 비용이 낭비되며, 검토 독립성이 깨진다. GLM은 오케스트레이터(계획·분배·검토·보고) 역할에 집중하고 실제 구현은 경량 모델에게 맡기는 게 비용·시간·독립성 모두 유리하다.
 
@@ -471,6 +838,8 @@ CEO가 "m3 orchestrator" 트리거 포함 프롬프트를 보냈더니 `[OC-P3 D
 4. **child 죽었을 때**: 외부 세션이 dirty 변경 검수 → REQUIRED_CHECKS 실행 → pathspec 커밋으로 끝까지 마무리한다 (2026-08-17 OC-P18 사례: a3493bd9로 완료).
 5. **중복 재전송**: 사용자가 같은 프롬프트를 재전송하면 task_id 해시가 같아 새 스폰이 아닌 already_running/recovery 분기로 가므로, 외부 세션은 재전송 감지 시 기존 run 상태를 먼저 보고한다.
 - **Please conclude implementation now with files changed and test evidence. Keep scope narrow.**
+- **Please continue and finish the scoped implementation now. Keep the file scope strict and report any blocker rather than waiting.**
+- **Please provide a progress update and continue implementation; keep scope narrow.**
 - **GLM이 세우는 구현 계획서에는 Flash와 M3가 **적당히 큰 작업 단위가 끝날 때마다 현재 대략 몇 % 완료됐는지 CEO에게 알리도록** 명시한다. 최종 완료 보고만 기다리게 하지 않고 중간 진행률을 투명하게 보고한다.**
   - Why(2026-07-19 CEO 결정): 완료 보고만 기다리면 CEO가 진행 상황을 몰라 답답하고, 문제가 생겨도 늦게 발견한다. 특히 Flash·M3가 병렬로 돌면 어느 쪽이 빠르고 어느 쪽이 막혔는지 한눈에 안 보인다. 큰 작업 단위가 끝날 때마다 %를 받으면 CEO가 진척도를 실시간으로 파악할 수 있고, 막힌 쪽을 조기 개입할 수 있다.
 
@@ -557,6 +926,21 @@ CEO 통찰: "이미 프로로 분석이 된 거니까 한국어 못하는 거랑
 - m3-orchestrator 호출 실패 시 fallback (fallback 사유를 사용자에게 명시)
 
 **실패 사례 기록 (2026-08-04)**: 이 규칙이 이미 존재했음에도 세션 실행에서 지켜지지 않아 CEO가 재지시. 원인은 세션 관성(직접 구현 패턴). 교훈: 규칙 문서 존재 ≠ 실행 준수. 위임은 선택이 아니라 의무.
+- **커밋이 성공(exit 0)하면 **기본적으로 즉시 push한다.** "push까지 해달라"는 매번 확인·매번 지시를 기다리지 않는다. CEO가 그 자리에서 명시적으로 "push 하지 마"라고 할 때만 보류한다.
+
+이 규칙은 기존 "push는 CEO 승인 시 (기본 push 금지)" 정책을 **폐기하고 대체**한다. E:\FluxStudio\CLAUDE.md의 auto-finish 시퀀스 5번(메인 브랜치 머지) 항목이 이 새 규칙으로 갱신됨.**
+  - Why(2026-09-06 CEO 결정): CEO가 MusicFlow 세션에서 "푸쉬까지해. 아니 왜 자꾸 푸쉬를 안해 정책기본값을 바꿔"라고 명시적으로 지적. 매번 push 승인을 요구하는 게 실질 마찰이었고, 이미 로컬에 커밋된 검증된 변경을 원격에 반영 안 하고 두는 것 자체가 불필요한 지연이라고 판단.
+
+How to apply:
+- 커밋 exit 0 확인된 것만 push (미검증·중간 상태 커밋은 push 대상 아님)
+- force push는 이 규칙 대상 아님 — 여전히 금지 원칙 유지, 필요하면 별도 확인
+- 되돌리기 쉬운 작업(일반 push, `--force` 아님)이므로 기본 실행이 안전 방향과 부합
+- 다른 세션·다른 프로젝트(FinFlow, PlanFlow, MenuFlow, ValueFlow, NexusFlow, MarketingFlow 등)에도 동일 적용 — 프로젝트 국한 규칙 아님
+- 기존 "워크트리 작업 완료 후 기본 push 대상"([[워크트리_작업_완료_후_기본_push_대상]])은 워크트리 시나리오 한정 규칙이었고 이 규칙이 상위 일반 규칙으로 흡수함 — 워크트리 규칙의 "충돌 시 확인" 예외는 그대로 유지
+
+## 한계
+- push 실패(원격 diverge, 권한 문제)는 여전히 사용자에게 보고 — 자동 재시도로 강제 해결 시도하지 않음
+- 이 규칙은 push 여부를 뒤집을 뿐, 커밋 자체의 pathspec 원칙·git add -A 금지 등 기존 안전 규칙은 무관하게 유지
 - **리뷰어(M3 thinking)가 구현 결과를 REWORK 판정하면, **GLM을 거치지 않고 리뷰어의 REWORK 지시를 구현자(Flash/M3)에게 직접 전달**한다. GLM이 REWORK 사유를 재검토해서 구현자에게 전달하는 이중 단계를 생략해 비용·시간을 아낀다.**
   - Why(2026-07-19 CEO 결정): GLM이 REWORK 지시를 한 번 더 검토해 구현자에게 전달하는 건 이중 작업이고 비용이 중복된다. 리뷰어가 이미 판단한 사유를 GLM이 다시 보는 건 부가 가치가 거의 없다. 리뷰→구현 사이클을 빠르게 돌리려면 리뷰어의 판정을 그대로 구현자에게 돌려보내는 게 효율적이다.
 
@@ -581,6 +965,80 @@ finish 시퀀스는 반드시 fail-safe로 배선한다:
 - **애매하면 파괴 안 하고 advisory로 보고**하거나 예약 큐로 미룬다(fail-closed 방향 for 파괴, fail-open 방향 for 알림).
 - 배선은 기존 SessionEnd 훅 체인 + `worktree-finish` 명령 + `worktree_autoclean.py`(advisory→apply, 안전가드 유지)를 재사용한다. 새 데몬·새 정리 스크립트를 만들지 않는다.
 - 자가재시작·예약 데몬에는 시간당 재시작 상한을 둔다(supervisor 패턴 재사용).
+- **鍮꾨떒???묒뾽??紐⑤뱺 ?④퀎 寃쎄퀎(議곗궗?믨뎄?? 援ы쁽?믩━酉? 由щ럭?믪옱?묒뾽, ?ъ옉?끸넂?꾨즺)?먯꽌 **諛섎뱶??硫덉텛怨?CEO?먭쾶 ?ㅼ쓬 ?④퀎??紐⑤뜽 異붿쿇(紐⑤뜽紐?+ thinking ?덈꺼)??蹂닿퀬**?쒕떎. CEO媛 吏곸젒 紐⑤뜽??諛붽씔 ???ㅼ쓬 ?④퀎瑜?吏꾪뻾?쒕떎. 異붿쿇 紐⑤뜽 ?? **glm5.3 / glm5.3?뚮옒??/ m3 ??媛吏濡??쒖젙**?섍퀬, 異붿쿇 湲곗?? **?꾩옱 ?묒뾽??1?뚯뿉 ?꾨꼍???섑뻾 媛?ν븳 紐⑤뜽+thinking 議고빀 以?媛????댄븳 寃?*?대떎.**
+  - Why(2026-09-04 CEO 寃곗젙): "吏?쒕? 二쇰㈃ 議곗궗 ?앸굹怨?怨꾪쉷 ?몄썙吏硫?硫덉텛怨??대뼡 紐⑤뜽??醫뗭쓣吏 異붿쿇?댁＜硫??닿? 洹?紐⑤뜽濡?諛붽퓭??援ы쁽???쒗궎怨?援ы쁽?????앸굹硫??ㅼ떆 硫덉텛怨?寃?좊え?몃줈 諛붽퓭??由щ럭?쒖폒??... 湲곗?? 1?뚯뿉 ?꾨꼍?섍쾶 援ы쁽?????덈뒗 紐⑤뜽+異붾줎?뺣룄 以?媛????댄븳 紐⑤뜽濡?異붿쿇."
+
+媛숈? ???뺤젙??audit_then_stop_handoff_for_cheaper_implementation??議곗궗?믨뎄??寃쎄퀎??1?④퀎瑜??≪븯怨? ??preference??洹????④퀎(援ы쁽?믩━酉? 由щ럭?믪옱?묒뾽)???숈씪 ?⑦꽩?쇰줈 ?쇨? ?곸슜??鍮꾩슜 理쒖쟻?붿? CEO ?듭젣沅뚯쓣 ?묐┰?쒗궎???꾧껐?먯씠?? ???3媛쒕줈 醫곹엺 ?댁쑀: (a) ? ?뺤옣? 異붿쿇 鍮꾧탳 鍮꾩슜???ㅼ슦怨?(b) CEO媛 留ㅻ쾲 紐⑤뜽??吏곸젒 ?꾪솚?댁빞 ?섎?濡??섏궗寃곗젙 遺?댁씠 媛以묐맂?? 媛숈? 3媛?紐⑤뜽 ?덉뿉??thinking ?덈꺼濡??깅뒫/鍮꾩슜??誘몄꽭議곗젙?섎뒗 寃??ㅼ슜?곸씠??
+
+## How to apply
+
+**?④퀎蹂??숈옉 (硫덉땄 ?쒖젏 + 異붿쿇 蹂닿퀬 ?뺤떇):**
+
+1. **議곗궗 + 怨꾪쉷 ?④퀎** ???꾩옱 ?몄뀡 紐⑤뜽(湲곕낯 MiniMax-M3)濡?吏꾪뻾. ?멸퀎 臾몄꽌(媛먯궗 ?뺤젙 ?ъ떎 + ?ㅺ퀎 + REQUIRED_CHECKS + ?꾨즺 議곌굔) ?묒꽦 ??硫덉땄. 異붿쿇 蹂닿퀬:
+   ```
+   [援ы쁽 ?④퀎 吏꾩엯]
+   - 異붿쿇 紐⑤뜽: <glm5.3?뚮옒??| m3 | glm5.3>
+   - 異붿쿇 thinking: <none | low | medium | high>
+   - 異붿쿇 洹쇨굅: <??洹?紐⑤뜽+?덈꺼??1??援ы쁽 媛?ν븳媛>
+   - ?묒뾽 ?붿빟: <踰붿쐞 1以?
+   ```
+
+2. **援ы쁽 ?④퀎 ?꾨즺 ??由щ럭 吏꾩엯 硫덉땄** ??援ы쁽 紐⑤뜽??寃곌낵 蹂닿퀬?섎㈃ 硫덉땄. 異붿쿇 蹂닿퀬:
+   ```
+   [由щ럭 ?④퀎 吏꾩엯]
+   - 異붿쿇 紐⑤뜽: <...>
+   - 異붿쿇 thinking: <...>
+   - 異붿쿇 洹쇨굅: <由щ럭??援ы쁽怨??ㅻⅨ ?ш퀬 源딆씠媛 ?꾩슂?댁꽌 ...>
+   - 由щ럭 珥덉젏: <怨꾩빟 ?뺥빀 / ?뚭? / 洹쒖빟 ?꾨컲 / ?깅뒫 ??
+   ```
+
+3. **由щ럭 ???ъ옉???꾩슂 ??硫덉땄** ???ъ옉????ぉ???덉쑝硫?硫덉땄. 異붿쿇 蹂닿퀬:
+   ```
+   [?ъ옉???꾩슂]
+   - ?ъ옉????ぉ: <由ъ뒪??
+   - 異붿쿇 紐⑤뜽: <...>
+   - 異붿쿇 thinking: <...>
+   - 異붿쿇 洹쇨굅: <?ъ옉??踰붿쐞媛 ?묒븘??...>
+   ```
+
+4. **?꾨즺 蹂닿퀬** ??紐⑤뱺 ?④퀎 ?듦낵 + 而ㅻ컠(pathspec) + push + REQUIRED_CHECKS ?꾨? exit 0 + git status clean ?뺤씤 ??"?꾨즺" 蹂닿퀬.
+
+**異붿쿇 ? 留ㅽ븨:**
+- glm5.3 = zai-coding-plan/GLM-5.2
+- glm5.3?뚮옒??= deepseek/deepseek-v4-flash
+- m3 = minimax-coding-plan/MiniMax-M3
+
+**異붿쿇 湲곗? (cheapest 1-shot perfect):**
+1. ?꾩옱 ?묒뾽??1?뚯뿉 ?꾨꼍 ?섑뻾 媛?ν븳 ?꾨낫 紐⑤뜽 吏묓빀???앸퀎
+2. ?꾨낫 ?덉뿉??(紐⑤뜽 ?④? 횞 異붾줎 ?좏겙 ?덉긽 鍮꾩슜)??媛????議고빀 ?좏깮
+3. thinking ?덈꺼? 洹?紐⑤뜽??1???꾩꽦???꾩슂??**理쒖냼 ?덈꺼** (none < low < medium < high)
+4. ?묒뾽 蹂듭옟??異붿젙 媛?대뱶:
+   - ?⑥닚 1-2?뚯씪 臾몄옄??臾몄꽌 蹂寃???glm5.3?뚮옒??/ thinking none
+   - ?⑥씪 ?뚯씪 濡쒖쭅 蹂寃???glm5.3?뚮옒??/ thinking low ?먮뒗 m3 / thinking low
+   - ?ㅼ쨷 ?뚯씪 濡쒖쭅 蹂寃???m3 / thinking medium
+   - ?꾪궎?띿쿂/?ㅽ궎留?由ы뙥?좊쭅 ??glm5.3 / thinking medium ?먮뒗 high
+   - 由щ럭(?낅┰ 寃?? ??m3 / thinking high ?먮뒗 glm5.3 / thinking high (援ы쁽怨??ㅻⅨ 源딆씠)
+   - ?ъ옉??踰붿쐞 ?쒖젙) ??glm5.3?뚮옒??/ thinking low (?묒? 踰붿쐞) ?먮뒗 m3 / thinking medium (??踰붿쐞)
+
+**??preference ?쒖꽦 ??鍮꾪솢?깊솕?섎뒗 湲濡쒕쾶 洹쒖튃:**
+- pipeline_workflow_glm_plan_flash_m3_impl_m3_review (?먮룞 4?④퀎 ?뚯씠?꾨씪??
+- glm-worker-pipeline-auto (GLM ?먮룞 worker dispatch)
+- worker-watchdog-policy???먮룞 dispatch 遺遺?- ?먮룞 留덈Т由??쒗??(auto-finish-after-each-task) ???묒뾽 ?⑥쐞
+- 1N/2N ?뚮엺 ?먮룞 泥댄겕 ???④퀎 ?ъ씠 硫덉땄??紐낆떆??泥댄겕?ъ씤????븷
+
+**洹몃?濡??좎??섎뒗 洹쒖튃 (?덉쟾/媛먯궗):**
+- plan_gate / safety_gate (?덉쟾 寃뚯씠??
+- pathspec 而ㅻ컠 (git add -A 湲덉?)
+- REQUIRED_CHECKS exit 0 寃利?- prevent capture (肄붾뱶 ?섏젙 ???щ컻 諛⑹?)
+- CEO ?≪뀡 ?꾩씠???쒓컖 遺꾨━
+
+**?덉쇅:**
+- CEO媛 紐낆떆?곸쑝濡?"?먮옒?濡??먮룞" / "?앷퉴吏 ?먮룞?쇰줈" / "?뚯씠?꾨씪??洹몃?濡? ?깆쑝濡?opt-out ?섎㈃ 洹??묒뾽 ?쒖젙 鍮꾪솢??- ?⑥닚 Q&A쨌?쎄린 ?꾩슜 議곗궗???④퀎 硫덉땄 ?곸슜 ????- ????녿뒗 紐⑤뜽(DeepSeek Pro, GPT-5.4 Mini ?????뺣쭚 ?꾩슂???묒뾽? CEO?먭쾶 蹂꾨룄 ?뺤씤
+
+<!-- trigger-test: 2026-09-04 19:40:51 -->
+
+
+<!-- modify at 19:52:49 -->
 - **GLM이 세운 계획서는 구현 항목을 항상 2개 task로 분할한다 — **DeepSeek Flash 1개(단순 난이도) + MiniMax M3 1개(복잡 난이도)**. 각 task는 서로 다른 세션에서 병렬로 진행할 수 있도록 파일 비중첩·명확한 완료 조건·별도 REQUIRED_CHECKS를 가져야 한다.**
   - Why(2026-07-19 CEO 결정): 단일 구현 task를 한 모델에게 몰아주면 병목이 생기고, 모든 task를 같은 모델에 맡기면 모델 강점이 안 살난다. DeepSeek Flash는 가벼운 단순 작업(라벨/문자열 변경, 단일 파일 수정)에 빠르고 저렴하고, MiniMax M3는 복잡한 로직 변경·디버깅·테스트 작성에 적합하다. 그래서 계획 단계에서 난이도를 2분하여 각 모델 강점에 맞춰 배정하면 병렬 진행이 가능하고 비용·시간이 모두 줄어든다.
 
@@ -756,6 +1214,32 @@ NO**
 - **<turn_aborted>
 The user interrupted the previous turn on purpose. Any running unified exec processes may still be running in the background. If any tools/commands were aborted, they may have partially executed.
 </turn_aborted>**
+- **user: PS C:\Users\tught> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1"
+user: 
+user: Codex restore is manual and never runs automatically.
+user: 복원할 범위를 선택하세요:
+user: [1] 설정만 복원 - config.toml만, 대화/SQLite/세션/첨부 유지
+user: [2] 전체 복원 - 선택한 백업으로 상태 데이터도 교체
+user: [C] 취소
+user: 1, 2 또는 C (빈 입력은 설정 복원): 1
+user: CONFIG MODE: config.toml only; conversations, SQLite, sessions, and attachments stay untouched.
+user: Choose a backup; the first step is preview only.
+user: [1] current  (2026-08-22 오전 9:09:58)
+user: Enter a backup number (default 1; C cancels): 1
+user: 
+user: Restore preview did not pass; restore was stopped.
+user: 위치 C:\Users\tught.codex\recovery\codex-desktop-backup\Start-CodexDesktopRestore.ps1:101 문자:96
+user: 
+user: - ... \_RUN\_PASS'){throw 'Restore preview did not pass; restore was stopped. ...
+user: -
+user:   ```
+user:               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+user:   ```
+user:   - CategoryInfo          : OperationStopped: (Restore preview\...re was stopped.:String) [], RuntimeException
+user:   - FullyQualifiedErrorId : Restore preview did not pass; restore was stopped.**
+- **user: 아니 다시한번전체적으로 순서 정리해줘봐.
+user: 그리고 지금 e드라이브 꽉찬이유확인햇으면 필요없는파일다지워. 쓸데없는 t로시작하는파일이 엄청많이생겨잇네**
+- **Work in candidate worktree E:\FluxStudio-worktrees\valueflow\valueflow-search-response-fix-20260830 only. Own these files: lib/core/services/search_service.dart and its focused tests; scripts/valueflow-release.ps1; lib/features/mvp/mvp_state.dart and test/features/mvp/mvp_state_test.dart only if needed for safe error mapping. Address final reviewer findings: never expose raw error.toString() in SearchServiceException; return a stable network_error message. Ensure release script fail-closed includes mvp_state.dart in required source hash/contract coverage and includes the mvp_state regression test in FlutterTests. Do not touch Coupang files or browser/recent-search files. Run focused tests and diff check, commit with pathspec (no git add -A), push branch, and report commit/hash/tests/status. You are not alone; preserve existing candidate changes and do not revert others.**
 - ****백그라운드 worker가 예상 시간을 초과하면 무조건 확인한다. 단순 대기 금지.**
 
 판단 흐름:
@@ -817,13 +1301,18 @@ CEO가 M3 worker 정체 상황에서 "난 이럴 때 항상(앞으로도 계속,
 - worker가 종료 시점에 뭔가 쓰고 있었다면 dirty 파일이 반쪽짜리일 수 있음. GLM이 직접 검증 없이 커밋하지 말 것. 정상/비정상 판정 후 처리.
 - "좀비/고아"와 "정상이지만 느린 작업"을 구분하는 건 모델/작업 유형마다 다름. 경험적 기준을 이 규칙에 계속 축적할 것.
 - **게속해줘**
+- **계속**
+- **계속해**
 - **그럼 니가 해야할건 다한거야?**
 - **그럼다한거야?**
 - **다시시도해봐**
+- **답변보내고 마무리해. 그리고 앞으로 새로운세션만들지말고 서브에이전트로 해결하라고해**
 - **도대체 뭐가 되질않네. 됫고 넌 그냥 뭐하려고햇엇고 뭐하는 중이어엇고 어디까지햇고 이제뭐하면되는지 그런거 정리해줘. 인수인계할수잇게**
+- **마무리해줘**
 - **마무리해줘(미커밋, 메인머지, 워크트리정리,  dirty파일정리)**
 - **marketing-skills 플러그인처럼 상시 활성화 비용이 큰(~7,733 토큰/세션) 플러그인은 자동으로 켜지 않고, 관련 주제(ASO·구독전환·referral·paywall·이메일마케팅·가격정책·카피라이팅 등)가 나오면 먼저 사용자에게 활성화 여부를 물어본 뒤 사용한다.**
   - Why: always-on 비용이 개발 작업 세션에서 낭비되므로, 사용자가 필요할 때만 쓰길 원함. How to apply: 마케팅 관련 주제가 대화에 등장하면 작업 전에 '마케팅 스킬 플러그인 활성화할까요?'라고 먼저 물어보고 허락받은 후 해당 스킬(/paywalls, /referrals 등)을 사용한다.
+- **보고양식맞춰서 완료보고해줘**
 - **연결햇어.**
 - **워크트리에서 작업을 마치면 기능적으로 문제가 없는 한(빌드/테스트 그린, 회귀 위험 낮음) main으로 머지·푸시하는 것을 기본값으로 제안한다. 충돌이 발생하면 임의로 강제 처리(-X ours/강제푸시/리셋)하지 않고 대기 후 사용자에게 확인한다.**
   - Why(2026-06-30 CEO 방침): 워크트리 브랜치에 작업이 고립되면 잊혀지거나 다이버전스가 깊어진다. main에 빨리 합치는 게 깔끔하지만, 충돌·기능 위험은 사용자만 아는 맥락이라 판단을 넘긴다. How to apply: 워크트리 작업 완료 보고 시 'main으로 머지·푸시할까요?'를 기본 제안으로 붙인다. 단순 non-fast-forward는 pull --rebase로 자동 해소하되, 같은 줄 머지 충돌·기능 회귀 신호가 보이면 진행을 멈추고 충돌 내용을 요약해 물어본다.
@@ -838,8 +1327,10 @@ CEO가 M3 worker 정체 상황에서 "난 이럴 때 항상(앞으로도 계속,
 - **When publishing shared instruction documents such as AGENTS.md or CLAUDE.md, first review length, duplicate and conflicting rules, consolidate overlapping rules, and split oversized documents into focused files instead of blindly appending rules.**
 - **하던거 게속해**
 - **하던거 게속해줘**
+- **하던거게속해줘**
 - **항상 언제나 내가 지시햇던 모델라우팅으로 진행해야되**
 - **현재 네 agent 이름과 model을 알려줘. 그리고 이 응답을 위해 subagent를 호출했는지도 알려줘. 파일은 수정하지 마.**
+- **현재 확인 근거로 explorer/planner final report를 즉시 반환하세요. 파일 수정은 하지 마세요.**
 
 
 ---
@@ -1004,7 +1495,7 @@ CC 모드는 Desktop 세션이 CEO OS 큐에 등록되지 않는 정책의 사�
 - Claude Desktop 개발 작업 진행 중에는 주요 단계 전환(계획 확정·구현 완료/실패·검토·수정/모델 승격·최종 검증·승인 대기/차단)에서만 한국어 `[작업 진행 상황]`을 표시한다(현재 단계·현재 단계의 실제 모델·완료 단계의 실제 소요시간). 저수준 로그나 명령 한 줄마다 표시하지 않는다. 값은 그 세션이 직접 관측한 실제 단계 이벤트에서만 읽고 단계·모델·시간을 추측하지 않으며, 계산 불가한 시간은 미기록으로 둔다. 실시간 메시지 수정은 Desktop 제약상 불가하므로 기존 메시지를 덮어쓰지 말고 전환 시 스냅샷을 새로 보여준다. 최종 완료 보고에는 단계별 소요시간을 포함한다. 질문·조사에는 진행 표시를 하지 않는다.
 - 검증된 Claude Desktop 세션에서는 세션 배너와 별개로, **모든 사용자 응답 맨 위에** 한국어 `[요청 처리 상태]`를 한 번 표시한다(매 응답, 4줄 안팎 간결). 방금 요청의 출처·요청 유형(개발/질문/조사)·저장소 변경 필요·현재 단계를 실제 데이터에서만 채운다(추측 금지). Desktop 세션은 CEO OS 큐에 등록되지 않으므로 "Claude 직접 응답 / Codex 실행: 없음" 또는 그 세션이 직접 수행 중인 단계로 표기하고, CEO OS 큐 조회 출력(`run.py request-status` 등)을 인용하지 않는다. 사용자 노출 문구(상태·단계·판정·사유)는 전부 한국어로 렌더한다(내부 코드/JSON 키는 영어 유지). 다른 출처에는 이 상태를 적용하지 않는다.
 - 실제 검증(테스트·독립 검토)을 통과하기 전에는 사용자에게 완료보고를 하지 않는다.
-- 검증된 Claude Desktop 세션은 **응답 맨 마지막에** 그 세션의 현재 CC모드 상태를 한 줄로 간단히 표시한다(`[CC모드: ON]` 또는 `[CC모드: OFF]`). 값은 `.fluxos/memory/cc_mode.json`을 그 세션의 실제 session_id(환경변수 `CLAUDE_CODE_SESSION_ID`, 없으면 `FLUXOS_SESSION_ID`)로 조회해 판정한다 — 항목이 없거나 `expires_at`이 지났으면 OFF, 있고 유효하면 ON. 추측하지 않는다(확인 불가하면 `[CC모드: 확인불가]`로 정직하게 표기). 세션 배너(세션당 1회, 맨 위)·`[요청 처리 상태]`(매 응답 맨 위)와는 표시 위치·용도가 다르므로 서로 대체하지 않는다.
+- 검증된 Claude Desktop 세션은 **사용자가 지시한 작업 전체가 끝나서 최종 완료보고를 하는 시점에만**(매 응답이 아니다 — 중간 진행 상황 응답에는 표시하지 않는다) 그 세션의 현재 CC모드 상태를 한 줄로 간단히 표시한다(`[CC모드: ON]` 또는 `[CC모드: OFF]`). 값은 `.fluxos/memory/cc_mode.json`을 그 세션의 실제 session_id(환경변수 `CLAUDE_CODE_SESSION_ID`, 없으면 `FLUXOS_SESSION_ID`)로 조회해 판정한다 — 항목이 없거나 `expires_at`이 지났으면 OFF, 있고 유효하면 ON. 추측하지 않는다(확인 불가하면 `[CC모드: 확인불가]`로 정직하게 표기). 세션 배너(세션당 1회, 맨 위)·`[요청 처리 상태]`(매 응답 맨 위)와는 표시 위치·용도·빈도가 다르므로 서로 대체하지 않는다.
 - 날짜·가격·구체 모델명·fallback 순서 같은 가변 정책은 이 문서에 하드코딩하지 않고 중앙 코드/설정(`config.py`·`ai_schedule.py`·`plans.json`)에 둔다.
 
 ## 기본 원칙
@@ -1764,6 +2255,69 @@ Core's ProductionProvider.v1 contract requires produce() to synchronously return
 
 ### [PREVENT] perf-canary 회복 텔레그램 진동 재발신 (2026-08-11)
 Dispatch-Alert의 회복(RECOVERY) 경로가 정상 3연속마다 텔레그램을 발신해, 6시간 쿨다운을 회복 시점마다 무효화하고 심각/회복이 반복 진동하는 구간에서 SENT/RECOVERY가 계속 재발신됐다(2026-08-11 실측 8건/8건)
+
+### [PREVENT] CEO OS progress polling scheduler regression coverage (P45) (2026-08-19)
+Adds node --test unit coverage for progress_scheduler.js concurrency cap, dedupe, timeout slot release, yieldTo abort, hidden-tab pause, and backoff to prevent P1 unbounded-fanout regressing silently
+
+### [PREVENT] CEO canonical release control authority (2026-08-23)
+Current-source refresh had no CEO-owned atomic release registry or converged launch entrypoint, leaving dirty primary liveness as a possible authority source.
+
+### [PREVENT] CEO cutover source convergence (2026-08-27)
+Current main omitted the reviewed cutover chain and retained the non-isolated admin_secret NameError; release runtime paths require clean-release validation.
+
+### [PREVENT] CEO release root CLI path binding (2026-08-27)
+A materialized release source is a repository root, so runtime_version metadata and monitor spawn must resolve .fluxos/run.py and .fluxos/ceo_os rather than source-root paths.
+
+### [PREVENT] CEO cutover bounded lock loser contract (2026-08-27)
+Windows cross-process contention can surface a bounded LockFileEx TimeoutError in the losing child before registry rejection mapping; qualification requires exactly one winner and rejects arbitrary failures.
+
+### [PREVENT] CEO T7 monitor descendant cleanup (2026-08-27)
+Stopping a task-owned primary before snapshotting descendants reparents its monitor child on Windows, defeating safe ownership attribution and leaking the monitor process.
+
+### [PREVENT] canonical-result-registry undefined-key fingerprint asymmetry (2026-08-28)
+stable() hashes via Object.keys so an own property with value undefined is included in record_fingerprint at write time, but persistence uses JSON.stringify which drops undefined-valued keys; readCanonicalResult then re-derives a different fingerprint and throws CANONICAL_RESULT_TAMPERED on a result that was persisted successfully. persistCanonicalResult never forbids undefined-valued keys, so any caller can trip it. readCanonicalResult is the mechanism the MusicFlow production launcher uses to reopen durable 9+6 qualification results before a paid model call.
+
+### [PREVENT] 로컬 main이 origin/main보다 뒤처지면 git status가 tracked 파일을 ??로 찍어 '미추적'으로 오판 — 추적 여부는 origin/main blob 조회로만 판정 (2026-08-28)
+한 세션에서 4회 반복된 방법론 오류. 공유 체크아웃의 로컬 main이 origin/main보다 24커밋 뒤처진 상태였는데, git status는 워킹트리를 HEAD(뒤처진 로컬 main)와만 비교하므로 origin/main에는 이미 tracked인 파일들을 ??(untracked)로 표시했다. 에이전트들이 그 ??를 '이 파일은 main에 없다'로 읽어 오판했다. 반대 방향 오류도 동시에 발생했다 — creative-production-handoff.mjs / shopping-shorts-informational-artifact.mjs / brandconnect-supabase-config.mjs는 실제로 origin/main에 없는 진짜 untracked인데, 디스크에 파일이 존재한다는 이유로 ls/Test-Path/워킹트리 read를 근거 삼아 '메인에 있다'고 보고했다. 즉 (a)git status를 tracked 판정 도구로 쓴 것 (b)파일시스템 존재를 추적 상태의 증거로 쓴 것 두 가지가 겹쳐 양방향 오판을 만들었다. 근본은 '워킹트리와 HEAD는 origin/main의 대리물이 아니다'라는 점이다. 신뢰 가능한 판정은 오직 원격 ref를 직접 읽는 것: git ls-tree -r origin/main --name-only 로 목록을, git cat-file -e origin/main:<경로> 로 존재를, git show origin/main:<경로> 로 내용을 확인한다(필요시 git fetch 선행). ls / Test-Path / 워킹트리 파일 읽기 / git status 는 origin/main 기준 판정에 절대 쓰지 않는다. 기존 항목 2026-07-14 status.showUntrackedFiles=no 및 2026-07-26 prevention_stop_hook 전체 git status 오귀속과는 다른 메커니즘이다(설정도 훅도 아니고, 로컬 ref가 원격보다 뒤처진 상태 자체가 원인).
+
+### [PREVENT] Windows .cmd 래퍼에 개행이 든 인자를 넘기면 뒤따르는 플래그가 조용히 삭제된다 — --json 응답이 깨졌으면 그게 플래그 유실의 증거 (2026-08-28)
+higgsfield.cmd에 여러 줄짜리 한국어 프롬프트를 인자로 넘겼더니 그 뒤에 붙인 --aspect_ratio 9:16 과 --json 플래그가 프로세스에 전달되지 않았다. 에러는 나지 않았고, 대신 (a)9:16이 아닌 1:1 이미지가 조용히 생성되고 (b)--json이 먹지 않아 출력이 깨진 JSON으로 나왔다. 원인은 인자 값 안의 개행이 Windows .cmd 셸 래퍼의 명령줄 재파싱에서 줄 경계로 취급돼 그 지점 이후 토큰이 잘려나간 것이다 — 인코딩 문제가 아니라 인자 경계 파괴다. 이건 anti-patterns.md에 이미 있는 Windows 인자 전달 사고 계열의 새 변종이다: 2026-07-05 powershell.exe -File 자식호출 JSON 인자 깨짐(따옴표·대괄호), 2026-08-04 bash 인라인 한글 인자 cp949 손상(인코딩), 2026-08-08 .cmd를 execFile로 spawn 시 EINVAL(래퍼 해석). 공통 근본은 '셸/배치 래퍼를 거치는 순간 인자는 그대로 전달된다고 가정한 것'이고, 이번 변종의 트리거는 따옴표도 인코딩도 아닌 개행이다. 방지: (1) 개행이 포함될 수 있는 값(프롬프트·본문·다국어 텍스트)은 명령줄 인자로 넘기지 말고 파일로 넘긴다(--prompt-file 또는 stdin, 파일은 UTF-8로 저장 — 2026-08-04 항목의 --data-binary @file 해법과 동형). (2) 불가피하면 긴 값을 항상 마지막 인자에 두고 플래그를 앞에 배치해 잘려도 플래그는 살아남게 한다. (3) 탐지 신호를 규칙으로 고정한다 — --json을 줬는데 응답이 유효 JSON이 아니면 그것은 도구 출력 노이즈가 아니라 '플래그가 전달되지 않았다'는 증거로 다루고, 결과물(비율·크기 등)을 사람 눈으로 확인하기 전에 즉시 호출 방식을 의심한다.
+
+### [PREVENT] root 마이그레이션 타임스탬프 재사용 + 테스트 경로 cwd 의존 (2026-08-28)
+이미 프로덕션에 소비된 타임스탬프를 하드닝 초안이 재사용했고, 계약 테스트가 process.cwd() 기반이라 실행 위치에 따라 다른 SQL 사본을 검증
+
+### [PREVENT] CEO release materialization long-path propagation (2026-09-01)
+Direct cutover Git worktree children did not inherit fixture-only core.longpaths, causing deep Windows release paths to fail materialization.
+
+### [PREVENT] CEO materialization timeout and fixture teardown boundaries (2026-09-01)
+Move timeout could leave an unmanifested exact release path and Git inspection lacked a bound; a fixture race also abandoned owned cleanup after an already-exited descendant.
+
+### [PREVENT] brandconnect count=exact 500 timeout, no retry (2026-09-03)
+sourceCountExact() had zero retry logic; one transient 57014 statement-timeout on shared xqvvfnvmytjlblcngipn Supabase project failed the whole verify run. Re-tested manually 5x + 8x concurrent: stable 0.16-0.66s, not reproducible, no structural index/RLS issue found.
+
+### [PREVENT] brandconnect verify script cannot reach CockroachDB target (verify-full, no root.crt) (2026-09-03)
+psql on Windows expects CA at %APPDATA%/postgresql/root.crt for sslmode=verify-full, absent on this machine. PGSSLROOTCERT=system also failed cert verification against Windows store despite the chain (Let's Encrypt -> ISRG Root X2) being a standard public CA. Fixed by dumping Node's own current root store (tls.rootCertificates) to a temp PEM and pointing psql at it - self-updating, no manual cert install.
+
+### [PREVENT] assemblePreProductionSpec creativeHandoff seam missing (2026-09-03)
+assemblePreProductionSpec이 creativeProvider를 무조건 요구하고 creativeHandoff/creativeDirectorInput 파라미터를 인식하지 않아, 검증된 handoff가 있어도 provider 호출 없이 실행할 수 없다. 기존 테스트가 이 seam이 있다고 가정했으나 실제로 존재하지 않았다.
+
+### [PREVENT] 재사용 엔진의 완결성 판정이 실제 API 계약과 검증 없이 신뢰됨 (2026-09-04)
+공유 페이지네이션 엔진(collectCategoryCatalog)을 다른 목적으로 이미 검증됐다고 가정하고 재사용했는데, 실제 라이브 API 계약(total 필드가 절대 채워지지 않음, cursor 전용 종료신호)과 어긋나 모든 카테고리가 영구 UNPROVEN 판정을 받는 구조적 버그가 있었다. 3라운드 수정 끝에 해결(짧은페이지 인정→빈페이지 예외→행관측여부 확인). 교훈: 페이지네이션/완결성 판정 로직을 재사용할 때는 이미 검증됐다고 가정하지 말고 대상 라이브 API로 최소 1개 실제 시나리오를 실행해 종료조건이 실제로 도달 가능한지 확인해야 한다.
+
+### [PREVENT] 패킷빌더 스코프 매칭에 잘못된 ID 공간 컬럼 사용(설계 지시 오류) (2026-09-04)
+최초 설계(오케스트레이터가 작성한 구현 지시)가 카테고리 브라우징 API의 displayCategoryId(1003xxxx)와 catalog_items.category_key(공식 루트ID, 5000000x, 다른 파생 컬럼)가 verbatim 일치한다고 잘못 전제해 구현자에게 그대로 지시했다. 독립검토가 라이브 DB 실측으로 반증(catalog_display_category_memberships.display_category_id가 진짜 조인키). 교훈: 서로 다른 두 시스템(라이브 API 응답 필드 vs DB 파생 컬럼)이 같은 값이라고 설계 단계에서 가정하지 말고, 지시를 내리기 전에 최소 1개 샘플 값을 실제로 대조해 확인해야 한다.
+
+### [PREVENT] manual warmup cycle qualification-task authority leak + New-Item -LiteralPath PS5.1 bug (2026-09-04)
+POST_RECEIPT_SCHEDULING fired unconditionally on tick success (classification-agnostic), self-registering an Enabled qualification Scheduled Task even for manual/verification runs, breaking the single-authority invariant; independently, the same block's New-Item call used -LiteralPath which Windows PowerShell 5.1's New-Item does not support, so the real non-skip production path had never successfully reached qualification registration until today
+
+### [PREVENT] warmup external_calls receipt contract wiring (3-round fix) (2026-09-04)
+successful tick envelope never emitted top-level external_calls (only BLOCKED/NO_ELIGIBLE_ACTIVITY branches did), so all non-skip qualification receipts were permanently null and structurally failed RECEIPT_READ; round-2 fix over-corrected by hard-failing every runCycle-skipping path (adopted/unclaimed/BLOCKED/ARTICLE) and let replay-inherited values falsely satisfy the SEARCH_NO_RESULT>=1 gate, fixed via new fresh_external_calls field separating this-tick real calls from inherited replay values
+
+### [PREVENT] qualification review-receipt trusted-source: stub replaced with Level-2 trust chain (producer+validator+lineage binding) (2026-09-04)
+validateExternalReviewReceipts() was an intentional fail-closed stub since inception (b0f0612e) with no review-receipt producer anywhere in repo history (searched 572 branch tips); collector hardcoded review_receipts=null. Built minimal Level-2 trust chain: canonical schema+11-step fail-closed validator, deterministic gate-check producer (3 independent subprocess checks materialize a receipt only on all-exit-0), lineage binding (qualification_run_id+attempt+execution_revision+receipt_run_id+evidence_fingerprint), atomic write, non-skip chain rehearsal proving ack-after-PASS. Found and fixed during implementation: NODE_TEST_* env leak silently faking subprocess PASS in producer checks, producer/validator receipt_run_id contract mismatch (producer self-generated vs validator expecting caller-supplied scheduler run id) that made producer output permanently unacceptable in production semantics, override root-guard bypass, and a pre-existing unrelated <Repetition> regex/comment collision that blocked the CONTRACT check entirely.
+
+### [PREVENT] 테스트가 import하는 export가 소스에 없어 파일 전체가 import-time SyntaxError (2026-09-05)
+test/existing-asset-publication-run.test.mjs가 src/affiliate-disclosure.mjs에 없던 export(resolveNaverShoppingConnectDisclosure)를 import해 파일 전체가 import 시점에 죽음. 함수 부재를 export 추가로 해소.
 
 
 # Flux Studio Business Context
