@@ -26,12 +26,38 @@ still unavailable.
 
 ## Build 16 and Apple evidence status
 
-No authenticated Build 16 or App Store Connect `stateDetails` evidence is
-available in this integration. Build 16 remains undispatched, and no
-TestFlight readiness or `90683_RESOLVED_BY_BUILD16` claim is made. The
-historical Build 13/14/15 transport and BuildUpload observations above remain
-diagnostic only; they do not substitute for an authenticated macOS binary
-audit or Apple evidence.
+Within this integration (this checkout/session), no authenticated Build 16 or
+App Store Connect `stateDetails` evidence was independently re-verified, and
+this document makes no `90683_RESOLVED_BY_BUILD16` claim of its own.
+
+A separate task record, `.codex/tasks/planflow-ios-90683-final-release-20260902.json`,
+does report Build 16 as dispatched and resolved. Quoting that file directly
+(read and confirmed verbatim on this date):
+
+- `build_16.status` (line ~87): `"SUCCESS"`, workflow
+  `.github/workflows/ios-release.yml`, run_id `33634034706`, run_number `16`,
+  head_sha `503bba99ec5efe37195b2a516c0f923c9fd8b4c6`.
+- `verification.apple_authoritative_build_upload` (line ~301): `"PASS: App
+  Store Connect resource for com.fluxstudio.planflow 1.0.0 (16) state
+  COMPLETE"`.
+- `verification.90683_resolution` (line ~302): `"PASS: RESOLVED_BY_BUILD16"`.
+- `verification.release_readiness` (line ~303): `"PASS: TESTFLIGHT_READY"`.
+
+What this record proves: an App Store Connect resource for build (16) reached
+`COMPLETE` ingestion state — i.e. the binary was accepted and processed by
+Apple's backend (`BuildUpload`/ingestion succeeded).
+
+What this record does not prove: it is not an authenticated macOS binary scan
+performed independently in *this* document/session, and it is not evidence
+that the app has been run/verified on a real device or simulator as part of
+this audit. `COMPLETE` ingestion status is a distinct claim from "the app
+works correctly at runtime" — this document does not conflate the two.
+
+No new `90683_RESOLVED_BY_BUILD16`-style claim is asserted by this document
+beyond quoting the above task record. The historical Build 13/14/15 transport
+and BuildUpload observations above remain diagnostic only; they do not
+substitute for an authenticated macOS binary audit or Apple evidence
+independently reproduced here.
 
 ## Run #3 archive/export evidence
 
