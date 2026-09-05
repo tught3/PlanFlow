@@ -681,5 +681,28 @@
     },
     "integration_verdict": "INTEGRATION_PASS_IN_SCOPE_EXTERNAL_MACOS_AUDIT_PENDING",
     "external_gate": "An authorized macOS Actions audit needs the exact Build 15 IPA and provenance.json. The audit is intentionally not dispatched here; Build 16 and all App Store Connect/TestFlight actions remain blocked."
+  },
+  "integration_finalization_20260905": {
+    "branch": "codex/planflow-ios-90683-main-integration-20260905",
+    "head": "a2f52571cbd99058f9003785b9489d903966ba0f",
+    "named_role_confirmation": {
+      "complex_implementer": "planflow_resume_impl",
+      "test_executor": "planflow_final_test: flutter 15/15, Dart analyze, Python compilation, and diff check passed",
+      "reviewer": "planflow_resume_review: host-final FINAL_REVIEW_REPORT PASS, highest NONE",
+      "integrator": "planflow_integrator"
+    },
+    "dual_workflow_rationale": {
+      "release_workflow": "Existing signed release/transport workflow remains the only path that can build, sign, and upload.",
+      "artifact_audit_workflow": "ios-90683-build15-artifact-audit.yml is intentionally a separate macOS audit-only consumer of an already preserved Build 15 IPA; it never rebuilds, signs, uploads, queries ASC, or dispatches Build 16.",
+      "reason": "Separating immutable artifact forensics from release transport prevents an evidence-gathering action from becoming an App Store delivery action."
+    },
+    "external_gate": {
+      "status": "BLOCKED_MISSING_ACCESSIBLE_BUILD15_ARTIFACT_PROVENANCE",
+      "required_inputs": ["artifact run ID", "artifact name", "IPA SHA-256", "full source commit", "exactly one IPA", "exactly one provenance.json"],
+      "known_source_commit": "8a3ded300fd954449cc223572edf5e9e7e3c6214",
+      "blocker": "No authenticated GitHub CLI/API access is available and the recorded Build 15 run exposes no usable artifact/provenance evidence in this session.",
+      "forbidden_until_resolved": ["Build 16", "App Store Connect upload", "TestFlight action"]
+    },
+    "integration_verdict": "INTEGRATION_PASS_LOCAL_AUDIT_ONLY_EXTERNAL_ARTIFACT_GATE_PENDING"
   }
 }
