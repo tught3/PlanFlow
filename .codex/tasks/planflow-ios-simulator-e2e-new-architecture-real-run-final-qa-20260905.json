@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-simulator-e2e-new-architecture-real-run-final-qa-20260905",
-  "objective": "Diagnose the common simulator E2E failures through authenticated GitHub Run #15 evidence, isolate RunnerTests from the production Runner CocoaPods graph, validate the safe target-specific contract, push normally, and gate a fresh macOS rerun.",
+  "objective": "Diagnose the common simulator E2E failures through authenticated GitHub Run #16 evidence, align RunnerTests with Flutter's official host/search-path topology while preserving target-specific xcconfig wiring, validate the safe contract, push normally, and gate a fresh macOS rerun.",
   "status": "IMPLEMENTED_PENDING_FRESH_MACOS_RERUN",
   "project": "PlanFlow",
   "workspace": "E:\\FluxStudio\\PlanFlow",
@@ -103,6 +103,23 @@
     "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
     "root_cause": "COMMON_SIMULATOR_FAILURE / XCTEST_TARGET / COCOAPODS_TARGET_SUPPORT_XCCONFIG"
   },
+  "run16_rerun": {
+    "run_id": 33972398956,
+    "run_number": 16,
+    "head_sha": "b38b9c5f6694599ce1ab977b3d2def05b6b762b2",
+    "conclusion": "failure",
+    "first_failing_stage": "XCTEST_EXECUTION",
+    "evidence_scope": "authenticated GitHub Actions job metadata and downloaded non-expired iPad/small/large artifacts 9971621930/9971625269/9971332446; raw job logs denied by GitHub 403 Must have admin rights; no secrets recorded",
+    "evidence": [
+      "preflight and FLOW5 host-fake passed; iPad, small, and large reached APP_BUILD, install, launch, and ready successfully.",
+      "iPad, small, and large all recorded TEST_DRIVER_ATTACH FAIL, TEST_DISCOVERY FAIL, and FLOW_EXECUTION FAIL with XCTest exit 65; mainstream was cancelled by fail-fast after the common failures.",
+      "Run16 APP_BUILD evidence still showed Runner link and RunnerTests link both consuming integration_test; duplicate FLTIntegrationTestRunner, IntegrationTestIosTest, IntegrationTestPlugin classes remained between Runner.debug.dylib and RunnerTests.xctest/RunnerTests.",
+      "The RunnerTests target-specific xcconfig wiring removed the prior full-app Pods contamination, but the independent explicit integration_test pod still duplicated the integration_test already present in the Runner host.",
+      "Run16 confirmed the target-only OTHER_LDFLAGS post-install workaround did not change the final RunnerTests link command and was removed in the follow-up source rework."
+    ],
+    "legacy_attach_status": "NOT_APPLICABLE_NEW_RUNNER",
+    "root_cause": "COMMON_SIMULATOR_FAILURE / XCTEST_TARGET / DUPLICATE_INTEGRATION_TEST_HOST_LINK"
+  },
   "changes": [
     {
       "path": "scripts/ios/e2e_xctest_flow.sh",
@@ -147,6 +164,14 @@
     {
       "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
       "summary": "Enforce top-level RunnerTests, engine-only/integration_test pod scope, target-specific xcconfig wiring, shared Runner config protection, no-upload path, and existing XCTest host contract."
+    },
+    {
+      "path": "ios/Podfile",
+      "summary": "After Run16 proved the independent RunnerTests integration_test link was duplicated in the Runner host, restore Flutter's official nested RunnerTests inherit! :search_paths topology; keep Runner's existing full pod installation and production target graph unchanged."
+    },
+    {
+      "path": "scripts/ios/tests/e2e_xctest_runner_contract.sh",
+      "summary": "Require nested RunnerTests search-path inheritance, reject a separate engine/integration_test pod and the superseded OTHER_LDFLAGS workaround, and preserve target-specific xcconfig, no-upload, FLOW5, production, and Android guards."
     }
   ],
   "protected_paths": [
@@ -359,6 +384,39 @@
       "test_evidence": "Final current diff review with Run15 evidence and static contract inspection."
     },
     {
+      "role": "Failure Analyst (Run #16)",
+      "agent": "flux_failure_analyst",
+      "agent_id": "01a0721a-f613-7370-9421-2b61934235f3",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Analyze the fresh Run16 duplicate integration_test XCTest host failure and identify the smallest safe topology fix.",
+      "result": "Confirmed Runner already links integration_test through flutter_install_all_ios_pods and RunnerTests independently linked it again; recommended Flutter-standard nested RunnerTests inherit! :search_paths while retaining the target-specific RunnerTests xcconfig wiring.",
+      "changed_files": [],
+      "test_evidence": "Run16 artifact APP_BUILD/XCTest evidence and current Podfile inspection; macOS Run17 rerun required."
+    },
+    {
+      "role": "Implementer (Run #16 rework)",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a07222-7101-72f0-8d47-85cbade09a38",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Remove the ineffective duplicate linker workaround and align Podfile/contract with Flutter's nested RunnerTests search-path topology.",
+      "result": "Removed the OTHER_LDFLAGS workaround and separate RunnerTests engine/integration_test pod; nested RunnerTests under Runner with inherit! :search_paths; retained existing RunnerTests xcconfig/project wiring and protected production/Android paths.",
+      "changed_files": ["ios/Podfile", "scripts/ios/tests/e2e_xctest_runner_contract.sh"],
+      "test_evidence": "Git Bash bash -n and e2e_xctest_runner_contract.sh PASS exit 0; macOS rerun remains required."
+    },
+    {
+      "role": "Independent Reviewer (Run #16 final source rework)",
+      "agent": "pending",
+      "agent_id": "pending",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Review the stable nested RunnerTests rework and protected-path diff before commit/push.",
+      "result": "Pending concise final review.",
+      "changed_files": [],
+      "test_evidence": "Git Bash contract PASS; macOS Run17 pod install/XCTest remains required."
+    },
+    {
       "role": "Integrator",
       "agent": "pending",
       "mapped_model": "gpt-5.6-terra",
@@ -385,14 +443,17 @@
     "current_scoped_diff_check": "PASS: Podfile, RunnerTests target pbxproj wiring, RunnerTests xcconfigs, and contract",
     "flutter_analyze": "TIMEOUT/UNVERIFIED: Windows analyzer produced no output for bounded 120+ seconds and was safely interrupted; owned analyzer processes were reaped",
     "dart_analyze": "TIMEOUT/UNVERIFIED: wrapper did not produce an exit result before the analyzer process stall; owned analyzer processes were reaped",
-    "fresh_github_rerun": "Run #15 failed at XCTest execution with duplicate full-app pod linkage; fresh run required after current target-specific engine/wiring fix"
+    "fresh_github_rerun": "Run #16 failed at XCTest execution with duplicate integration_test host linkage; current source rework is ready for a fresh authenticated macOS Run #17",
+    "run16_artifacts": "PRESERVED local-only: iPad/small/large artifacts downloaded and inspected; raw job log download blocked by GitHub 403 admin-rights requirement",
+    "current_source_rework": "PASS static: nested RunnerTests inherit! :search_paths; separate integration_test/engine pod and OTHER_LDFLAGS workaround absent; existing target-specific xcconfig wiring retained",
+    "run17_runtime_gate": "REQUIRED: macOS pod install, generated Runner/RunnerTests linker inspection, XCTest discovery/execution, and full simulator matrix"
   },
-  "live_gate": "CURRENT_FIX_READY_TO_COMMIT_PENDING_FRESH_MACOS_SIMULATOR_E2E",
+  "live_gate": "FRESH_MACOS_RUN17_REQUIRED",
   "artifacts_local_only": true,
   "do_not_commit": [".tmp/ios-simulator-run7-auth", ".tmp/teardown-contract-fixture", ".tmp/teardown-contract-fixture-2"],
   "finalization": {
-    "commit": "PENDING: current target-specific RunnerTests isolation/wiring diff not yet committed",
-    "push": "PENDING: non-force push after current diff integration",
+    "commit": "b38b9c5f fix(ios): isolate simulator XCTest pod target; current nested-topology rework uncommitted",
+    "push": "b38b9c5f pushed to origin/main non-force; Run17 rework pending review/commit",
     "android": "UNCHANGED",
     "production_release_privacy_signing": "PROTECTED"
   }

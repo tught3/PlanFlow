@@ -100,26 +100,42 @@ printf '%s' "$podfile" >/dev/null
 runner_target_start="$(grep -nF -- "target 'Runner' do" "$podfile" | head -n 1 | cut -d: -f1)"
 runner_tests_start="$(grep -nF -- "target 'RunnerTests' do" "$podfile" | head -n 1 | cut -d: -f1 || true)"
 [ -n "$runner_tests_start" ] || fail 'Podfile does not define RunnerTests'
-runner_target_end="$(awk -v start="$runner_target_start" 'NR > start && /^[[:space:]]*end[[:space:]]*$/ { print NR; exit }' "$podfile")"
+runner_target_end="$(awk -v start="$runner_target_start" 'NR > start && /^[[:space:]]*end[[:space:]]*$/ { end_count++; if (end_count == 2) { print NR; exit } }' "$podfile")"
 [ -n "$runner_target_end" ] || fail 'Podfile Runner target has no closing end'
-if [ "$runner_tests_start" -lt "$runner_target_end" ]; then
-  fail 'RunnerTests must be a top-level target, not nested under Runner'
+runner_block="$(sed -n "${runner_target_start},${runner_target_end}p" "$podfile")"
+printf '%s\n' "$runner_block" | grep -qF -- 'flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))' || fail 'Runner no longer uses the existing flutter_install_all_ios_pods helper'
+if [ "$runner_tests_start" -le "$runner_target_start" ] || [ "$runner_tests_start" -ge "$runner_target_end" ]; then
+  fail 'RunnerTests must be nested inside the top-level Runner target'
 fi
 runner_tests_block="$(awk -v start="$runner_tests_start" 'NR >= start { print; if (NR > start && /^[[:space:]]*end[[:space:]]*$/) exit }' "$podfile")"
-printf '%s\n' "$runner_tests_block" | grep -qF -- 'use_frameworks! :linkage => :static' || fail 'RunnerTests does not declare its own static framework linkage'
-printf '%s\n' "$runner_tests_block" | grep -qF -- 'use_modular_headers!' || fail 'RunnerTests does not declare modular headers for integration_test'
-printf '%s\n' "$runner_tests_block" | grep -qF -- 'flutter_install_ios_engine_pod File.dirname(File.realpath(__FILE__))' || fail 'RunnerTests does not install the Flutter engine-only pod helper'
-printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'" || fail 'RunnerTests does not explicitly add the integration_test pod from the Flutter helper-compatible path'
-if printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit!'; then
-  fail 'RunnerTests must not use parent pod inheritance directives'
+printf '%s\n' "$runner_tests_block" | grep -qF -- 'inherit! :search_paths' || fail 'RunnerTests must inherit Runner search paths'
+if printf '%s\n' "$runner_tests_block" | grep -qF -- 'flutter_install_ios_engine_pod'; then
+  fail 'RunnerTests must not install a separate Flutter engine pod'
+fi
+if printf '%s\n' "$runner_tests_block" | grep -qF -- "pod 'integration_test'"; then
+  fail 'RunnerTests must not declare an explicit integration_test pod'
+fi
+if printf '%s\n' "$runner_tests_block" | grep -qF -- 'use_frameworks!'; then
+  fail 'RunnerTests must inherit Runner framework linkage instead of declaring its own'
+fi
+if printf '%s\n' "$runner_tests_block" | grep -qF -- 'use_modular_headers!'; then
+  fail 'RunnerTests must inherit Runner modular headers instead of declaring its own'
 fi
 if printf '%s\n' "$runner_tests_block" | grep -qF -- "flutter_install_all_ios_pods"; then
   fail 'RunnerTests must not install the Runner app pod set'
 fi
-if printf '%s\n' "$runner_tests_block" | grep -E -- '^[[:space:]]*pod ' | grep -vF -- "pod 'integration_test', :path => '.symlinks/plugins/integration_test/ios'" | grep -q .; then
-  fail 'RunnerTests must not declare app or plugin pods beyond integration_test'
+if printf '%s\n' "$runner_tests_block" | grep -E -- '^[[:space:]]*pod ' | grep -q .; then
+  fail 'RunnerTests must not declare any explicit pods'
 fi
-pass 'RunnerTests is an independent aggregate target with only integration_test'
+pass 'RunnerTests is nested under Runner and inherits search paths without a separate integration_test pod'
+
+if grep -qF -- 'OTHER_LDFLAGS' "$podfile"; then
+  fail 'Podfile must not mutate OTHER_LDFLAGS for the XCTest topology'
+fi
+if grep -qF -- 'remove_integration_test_linker_flags' "$podfile"; then
+  fail 'Podfile must not contain the superseded integration_test linker workaround'
+fi
+pass 'superseded OTHER_LDFLAGS workaround is absent'
 
 runner_tests_config_list="$(awk '/Build configuration list for PBXNativeTarget "RunnerTests"/,/^[[:space:]]*};$/' "$pbxproj")"
 for config_name in Debug Release Profile; do
