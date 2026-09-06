@@ -36,6 +36,12 @@ const double calendarGroupMemberFontSize = 10;
 const double calendarRecurringMarkerFontSize = 7.8;
 const double calendarStrongAlarmMarkerFontSize = 5.8;
 
+/// Font-weight tokens shared by the calendar tab and native widget so
+/// holiday labels and importance emphasis stay visually consistent.
+const FontWeight calendarHolidayFontWeight = FontWeight.normal;
+const FontWeight calendarCriticalEventFontWeight = FontWeight.w700;
+const FontWeight calendarNormalEventFontWeight = FontWeight.normal;
+
 int _argb(Color color) => color.toARGB32();
 
 Map<String, Object> calendarStyleContractPayload() => <String, Object>{

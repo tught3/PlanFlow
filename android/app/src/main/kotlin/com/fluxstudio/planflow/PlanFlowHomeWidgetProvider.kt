@@ -105,6 +105,9 @@ abstract class BasePlanFlowWidgetProvider(
     private var eventFontSizeSp = EVENT_FONT_SIZE_SP
     protected var dateFontSizeSp = 13f
     protected var holidayFontSizeSp = EVENT_FONT_SIZE_SP + 0.5f
+    // Recurring marker glyph ('↻') is no longer rendered, but this field and its
+    // backing payload key (calendar_style_recurring_marker_sp10) are kept so the
+    // widget style contract version does not need to change.
     private var recurringMarkerFontSizeSp = RECURRING_MARKER_FONT_SIZE_SP
     private var strongAlarmMarkerFontSizeSp = STRONG_ALARM_MARKER_FONT_SIZE_SP
 
@@ -197,13 +200,12 @@ abstract class BasePlanFlowWidgetProvider(
             builder.setSpan(AbsoluteSizeSpan(sizeSp, true), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (isCritical && useStrongAlarm) appendMarker("🔔", strongAlarmMarkerFontSizeSp.roundToInt())
-        if (isRecurring) appendMarker("↻", recurringMarkerFontSizeSp.roundToInt())
         val titleStart = builder.length
         builder.append(value)
-        // Keep the title at normal weight even when a legacy widget layout
-        // supplies a bold TextView style. Marker spans above remain bold.
+        // Only important (critical) events render the title bold; this also
+        // overrides a legacy widget layout style that defaults to bold.
         builder.setSpan(
-            StyleSpan(Typeface.NORMAL),
+            if (isCritical) StyleSpan(Typeface.BOLD) else StyleSpan(Typeface.NORMAL),
             titleStart,
             builder.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -665,15 +667,8 @@ abstract class BasePlanFlowWidgetProvider(
         name: String,
         color: Int,
     ) {
-        val content = SpannableStringBuilder(name).also { builder ->
-            builder.setSpan(
-                StyleSpan(Typeface.BOLD),
-                0,
-                builder.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-        views.setTextViewText(id, content)
+        // Holiday labels are not bold; only critical events use bold weight.
+        views.setTextViewText(id, name)
         views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, holidayFontSizeSp)
         views.setTextColor(id, color)
         views.setViewVisibility(id, View.VISIBLE)
