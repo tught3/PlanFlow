@@ -980,6 +980,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI 일정 대화는 명시적 종료 버튼으로도 동일한 확인 흐름을 거친다', (tester) async {
+    final stt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            sttService: stt,
+            repository: _FakeEventRepository(const <EventModel>[]),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const Scaffold(
+            body: Text('홈 화면'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // '대화 종료' 버튼을 누르면 확인 바텀시트가 뜬다
+    await tester.tap(find.text('대화 종료'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
+    expect(find.text('계속 대화하기'), findsOneWidget);
+    expect(find.text('나가기'), findsOneWidget);
+
+    // '계속 대화하기'를 누르면 시트가 닫히고 대화 화면이 그대로 유지된다
+    await tester.tap(find.text('계속 대화하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsNothing);
+    expect(find.text('AI 일정 대화'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-conversation-end-button')), findsOneWidget);
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'AI 일정 대화는 홈 버튼(push) 진입 경로에서도 취소-재시도 후 정상적으로 홈으로 돌아간다',
     (tester) async {

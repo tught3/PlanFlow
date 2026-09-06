@@ -1880,6 +1880,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             onPressed: _handleConversationBack,
           ),
           actions: [
+            TextButton(
+              key: const ValueKey('voice-conversation-end-button'),
+              onPressed:
+                  _isExitingConversation ? null : _handleConversationBack,
+              child: const Text('대화 종료'),
+            ),
             IconButton(
               tooltip: '일정 새로고침',
               onPressed: _isLoading ? null : _loadEvents,
