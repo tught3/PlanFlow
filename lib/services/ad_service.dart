@@ -319,6 +319,14 @@ class AdService {
   bool get isShowing => _showingAd;
   RewardedAdAttemptSnapshot? get lastVoiceAttempt => _lastVoiceAttempt;
 
+  /// 테스트 전용(P13): `initialize()` 성공 직후 시작되는 웜 프리로드가 실제로
+  /// 로드를 시도했는지 확인한다. `_lastLoadAt`은 `_doLoad()` 최초 진입 시
+  /// (SDK 콜백을 기다리기 전) 동기적으로 설정되고 이후 절대 초기화되지
+  /// 않으므로, 이 값이 non-null이면 최소 1회 로드 시도가 있었다는 영구적
+  /// 증거가 된다. 프로덕션 분기 로직에는 관여하지 않는 순수 조회용 getter.
+  @visibleForTesting
+  bool get debugPreloadAttempted => _lastLoadAt != null;
+
   void _recordVoiceAttempt(
     String attemptId,
     String phase, {
@@ -483,6 +491,13 @@ class AdService {
         await MobileAds.instance.initialize();
       }
       _initialized = true;
+      // Start one cached rewarded-ad request as soon as the consent-gated SDK
+      // initialization succeeds. This is intentionally best-effort and is
+      // never awaited, so app startup and the fail-closed entitlement path do
+      // not depend on inventory availability. User-triggered flows still
+      // re-check their feature switches and grant rewards only after the SDK
+      // callback confirms completion.
+      _preloadNextAd();
     } catch (error, stackTrace) {
       debugPrint('AdService.initialize failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -938,34 +953,50 @@ class AdService {
       };
       _cancelActiveLoad = cancelActiveLoad;
 
-      RewardedAd.load(
-        adUnitId: adUnitId,
-        request: const AdRequest(),
-        rewardedAdLoadCallback: RewardedAdLoadCallback(
-          onAdLoaded: (RewardedAd ad) {
-            if (generation != _loadGeneration || completer.isCompleted) {
-              ad.dispose();
-              return;
-            }
-            _rewardedAd = ad;
-            _lastAdResponseId = _readAdResponseId(ad);
-            _loadingAd = false;
-            finish(true);
-          },
-          onAdFailedToLoad: (LoadAdError error) {
-            if (generation != _loadGeneration || completer.isCompleted) return;
-            _rewardedAd = null;
-            _loadingAd = false;
-            debugPrint(
-              'AdService._loadRewardedAd failed: code=${error.code} '
-              'domain=${error.domain} message=${error.message}',
-            );
-            _lastLoadErrorCode = error.code;
-            _lastLoadErrorDomain = error.domain;
-            _lastLoadErrorMessage = _safeAdDetail(error.message);
-            finish(false);
-          },
-        ),
+      // The platform invocation itself is asynchronous. Keep the existing
+      // callback timeout authoritative while observing invocation failures,
+      // so a missing platform channel neither leaks an unhandled Future nor
+      // leaves a user-triggered load waiting indefinitely.
+      unawaited(
+        RewardedAd.load(
+          adUnitId: adUnitId,
+          request: const AdRequest(),
+          rewardedAdLoadCallback: RewardedAdLoadCallback(
+            onAdLoaded: (RewardedAd ad) {
+              if (generation != _loadGeneration || completer.isCompleted) {
+                ad.dispose();
+                return;
+              }
+              _rewardedAd = ad;
+              _lastAdResponseId = _readAdResponseId(ad);
+              _loadingAd = false;
+              finish(true);
+            },
+            onAdFailedToLoad: (LoadAdError error) {
+              if (generation != _loadGeneration || completer.isCompleted) {
+                return;
+              }
+              _rewardedAd = null;
+              _loadingAd = false;
+              debugPrint(
+                'AdService._loadRewardedAd failed: code=${error.code} '
+                'domain=${error.domain} message=${error.message}',
+              );
+              _lastLoadErrorCode = error.code;
+              _lastLoadErrorDomain = error.domain;
+              _lastLoadErrorMessage = _safeAdDetail(error.message);
+              finish(false);
+            },
+          ),
+        ).catchError((Object error, StackTrace stackTrace) {
+          if (generation != _loadGeneration || completer.isCompleted) return;
+          debugPrint('AdService._loadRewardedAd invocation failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          _rewardedAd = null;
+          _loadingAd = false;
+          _lastLoadErrorMessage = _safeAdDetail(error.toString());
+          finish(false);
+        }),
       );
       timeoutTimer = Timer(const Duration(seconds: 15), () {
         if (generation != _loadGeneration || completer.isCompleted) return;
