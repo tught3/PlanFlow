@@ -828,6 +828,78 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // 회귀: _TodayEventCard의 제목 fontWeight가 isCritical에 따라
+  // 정확히 w700(중요)/w500(보통)으로 렌더링되는지 확인한다.
+  // 스타일 설정은 3c7acce1(커밋)에서 추가됐는데 테스트가 없어,
+  // 향후 리팩토링 시 조용히 제거될 위험이 있었다.
+  testWidgets(
+    'HomeScreen의 오늘 일정 목록은 중요 일정만 굵게 렌더링한다',
+    (tester) async {
+      final now = DateTime.now();
+      final latestStart = now.subtract(const Duration(hours: 1));
+
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => <EventModel>[
+                EventModel(
+                  id: 'important-event',
+                  userId: 'user-1',
+                  title: '중요한 일정',
+                  startAt: latestStart,
+                  isCritical: true,
+                ),
+                EventModel(
+                  id: 'normal-event',
+                  userId: 'user-1',
+                  title: '일반 일정',
+                  startAt: latestStart.add(const Duration(seconds: 30)),
+                  isCritical: false,
+                ),
+              ],
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+            nowProvider: () => now,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      // 두 일정의 제목 Text 위젯을 찾는다.
+      final importantTitle = tester.widget<Text>(
+        find.text('중요한 일정'),
+      );
+      final normalTitle = tester.widget<Text>(
+        find.text('일반 일정'),
+      );
+
+      // 중요 일정: w700(굵음)
+      expect(
+        importantTitle.style?.fontWeight,
+        FontWeight.w700,
+        reason: 'isCritical: true인 일정은 w700(굵게)으로 렌더링되어야 한다',
+      );
+
+      // 일반 일정: w500(보통)
+      expect(
+        normalTitle.style?.fontWeight,
+        FontWeight.w500,
+        reason: 'isCritical: false인 일정은 w500(보통)으로 렌더링되어야 한다',
+      );
+    },
+  );
 }
 
 class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
