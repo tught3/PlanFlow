@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/analytics_service.dart';
 import '../core/env.dart';
 import '../core/diag_logger.dart';
+import '../widgets/rewarded_ad_dialog.dart';
 import '../widgets/voice_conversation_ad_dialog.dart';
 import 'ad_consent_service.dart';
 import 'ad_service.dart';
@@ -228,7 +229,11 @@ class VoiceConversationAdGate {
       _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
       return;
     }
-    final confirmed = await showVoiceConversationAdDialog(context);
+    final confirmed = await showVoiceConversationAdDialog(
+      context,
+      initialRemaining: peek.initialRemaining,
+      dailyRemaining: peek.dailyRemaining,
+    );
     if (!confirmed) {
       await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
       _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
@@ -236,11 +241,38 @@ class VoiceConversationAdGate {
     }
 
     // 5. 광고 표시.
+    // 광고 로드/표시는 최대 수 초~15초 정도 걸릴 수 있어, 그동안 화면이
+    // 완전히 죽은 것처럼 보이지 않도록 진행 오버레이를 띄운다. 이 게이트는
+    // 위젯이 아니라 서비스이므로 [RewardedAdLoadingOverlay]의 static
+    // show/hide를 직접 호출한다(voice_conversation_launcher.dart는 건드리지
+    // 않음). 오버레이가 떠 있는 상태로 이 메서드를 벗어나는 경로가 하나라도
+    // 있으면 화면이 영구 잠기므로, show 시점부터 finally에서 반드시 hide한다.
     final requestId = _requestId();
-    final outcome =
-        await AdService.instance.showForVoiceConversationWithOutcome(
-      requestId: requestId,
-    );
+    var overlayVisible = false;
+    final VoiceConversationAdOutcome outcome;
+    try {
+      outcome = await AdService.instance.showForVoiceConversationWithOutcome(
+        requestId: requestId,
+        onProgress: (stage) {
+          if (!context.mounted) {
+            return;
+          }
+          // 매 단계 전환마다 우선 이전 오버레이를 내리고, loading/shown
+          // 단계에서만 다시 띄운다. completed/failed/cancelled는 그대로
+          // 내려간 상태로 남는다(다음 줄 finally도 안전망으로 한 번 더 hide).
+          RewardedAdLoadingOverlay.hide();
+          overlayVisible = false;
+          if (stage == 'loading' || stage == 'shown') {
+            RewardedAdLoadingOverlay.show(context, stage: stage);
+            overlayVisible = true;
+          }
+        },
+      );
+    } finally {
+      if (overlayVisible) {
+        RewardedAdLoadingOverlay.hide();
+      }
+    }
     DiagLogger.log(
       'RewardedAdGate',
       'phase=outcome reason=${outcome.analyticsReason}'
