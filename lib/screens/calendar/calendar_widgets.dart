@@ -1107,7 +1107,14 @@ InlineSpan _calendarEventTitleSpan(
   final markerColor = Color.lerp(titleColor, Colors.black, 0.28)!;
   final spans = <InlineSpan>[];
   if (leadingText != null && leadingText.isNotEmpty) {
-    spans.add(TextSpan(text: leadingText));
+    spans.add(TextSpan(
+      text: leadingText,
+      style: TextStyle(
+        fontWeight: isCritical
+            ? calendarCriticalEventFontWeight
+            : calendarNormalEventFontWeight,
+      ),
+    ));
   }
   if (isCritical && useStrongAlarm) {
     spans.add(TextSpan(

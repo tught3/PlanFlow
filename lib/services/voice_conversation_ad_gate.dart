@@ -53,6 +53,14 @@ class VoiceConversationAdGate {
   @visibleForTesting
   VoiceConversationGateDenialReason? lastDenialReason;
 
+  /// 'shown' 단계 오버레이가 스스로 내려가기까지 기다리는 최대 시간.
+  /// [AdService.runRewardedAdLifecycle]의 하드캡(2분)이 실제로 발동하는
+  /// 드문 상황(AdMob이 광고 종료 콜백을 끝내 안 준 경우)에서 전체 화면을
+  /// 가리는 오버레이가 그 2분 내내 떠 있지 않도록 20초로 제한한다. outcome
+  /// future 자체의 대기 시간에는 영향을 주지 않는다 — 오버레이만 먼저 내려
+  /// 사용자가 화면을 다시 조작할 수 있게 할 뿐이다.
+  static const Duration _overlayWatchdogTimeout = Duration(seconds: 20);
+
   /// 무료 사용 한도 (Remote Config). 실패 시 0 반환 (항상 광고).
   int freeTrialLimit() {
     return RemoteConfigService.voiceConversationFreeTrialCount;
@@ -249,6 +257,19 @@ class VoiceConversationAdGate {
     // 있으면 화면이 영구 잠기므로, show 시점부터 finally에서 반드시 hide한다.
     final requestId = _requestId();
     var overlayVisible = false;
+    // `AdService.runRewardedAdLifecycle` hard-caps the show phase at 2
+    // minutes (ad_service.dart) when the SDK never delivers a
+    // dismiss/reward/failure callback after the user closes the ad (a known
+    // flaky path). Without this watchdog, the 'shown' overlay — a full-screen
+    // opaque barrier — would stay up and swallow every touch for up to that
+    // long. The watchdog only ever hides the overlay early; it never touches
+    // the outcome future, reward, entitlement, or gate branching.
+    Timer? overlayWatchdog;
+    void cancelOverlayWatchdog() {
+      overlayWatchdog?.cancel();
+      overlayWatchdog = null;
+    }
+
     final VoiceConversationAdOutcome outcome;
     try {
       outcome = await AdService.instance.showForVoiceConversationWithOutcome(
@@ -260,15 +281,23 @@ class VoiceConversationAdGate {
           // 매 단계 전환마다 우선 이전 오버레이를 내리고, loading/shown
           // 단계에서만 다시 띄운다. completed/failed/cancelled는 그대로
           // 내려간 상태로 남는다(다음 줄 finally도 안전망으로 한 번 더 hide).
+          cancelOverlayWatchdog();
           RewardedAdLoadingOverlay.hide();
           overlayVisible = false;
           if (stage == 'loading' || stage == 'shown') {
             RewardedAdLoadingOverlay.show(context, stage: stage);
             overlayVisible = true;
+            overlayWatchdog = Timer(_overlayWatchdogTimeout, () {
+              // 오버레이만 내린다 — outcome future/보상/엔타이틀먼트/게이트
+              // 분기에는 절대 관여하지 않는다.
+              RewardedAdLoadingOverlay.hide();
+              overlayVisible = false;
+            });
           }
         },
       );
     } finally {
+      cancelOverlayWatchdog();
       if (overlayVisible) {
         RewardedAdLoadingOverlay.hide();
       }
