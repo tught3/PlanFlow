@@ -9,6 +9,7 @@ import '../core/analytics_service.dart';
 import '../core/diag_logger.dart';
 import 'ad_consent_service.dart';
 import 'ad_reward_state.dart';
+import 'ad_runtime_policy.dart';
 import 'remote_config_service.dart';
 
 /// AdMob 공식 광고 단위 ID 형식(`ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY`)인지 검증.
@@ -412,6 +413,13 @@ class AdService {
     if (_initialized) {
       return;
     }
+    if (!isAdsRuntimeSupported()) {
+      DiagLogger.log(
+        'RewardedAd',
+        unsupportedAdsRuntimeDiagnostic('AdService.initialize'),
+      );
+      return;
+    }
     if (!RemoteConfigService.rewardedAdEnabled) {
       // 진단 신호 (M1, 이슈 A). lastFetchSucceeded로 OFF 사유를 구분한다:
       //  - false: RC fetch 실패 → 컴파일타임 기본값(false)을 읽은 것으로
@@ -525,6 +533,13 @@ class AdService {
     required String requestId,
     void Function(String stage)? onProgress,
   }) async {
+    if (!isAdsRuntimeSupported()) {
+      DiagLogger.log(
+        'RewardedAd',
+        unsupportedAdsRuntimeDiagnostic('AdService.showForParseSchedule'),
+      );
+      return false;
+    }
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
     }
@@ -626,6 +641,15 @@ class AdService {
   /// 다이얼로그가 열린 동안 캐시 또는 기존 load Future를 준비하며, 보상이나
   /// 진입 권한은 전혀 만들지 않는다.
   Future<bool> preloadForUserInitiatedRewardedAd({String? requestId}) async {
+    if (!isAdsRuntimeSupported()) {
+      DiagLogger.log(
+        'RewardedAd',
+        unsupportedAdsRuntimeDiagnostic(
+          'AdService.preloadForUserInitiatedRewardedAd',
+        ),
+      );
+      return false;
+    }
     if (!RemoteConfigService.rewardedAdEnabled) {
       return false;
     }
@@ -652,6 +676,17 @@ class AdService {
     required String requestId,
     void Function(String stage)? onProgress,
   }) async {
+    if (!isAdsRuntimeSupported()) {
+      DiagLogger.log(
+        'RewardedAd',
+        unsupportedAdsRuntimeDiagnostic(
+          'AdService.showForVoiceConversationWithOutcome',
+        ),
+      );
+      return const VoiceConversationAdOutcome(
+        VoiceConversationAdOutcomeKind.disabled,
+      );
+    }
     _lastAdResponseId = null;
     _recordVoiceAttempt(requestId, 'started');
     if (!RemoteConfigService.rewardedAdEnabled ||

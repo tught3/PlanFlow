@@ -1,0 +1,161 @@
+{
+  "task_id": "planflow-ios-build17-real-device-launch-crash-20260907",
+  "status": "SOURCE_FIX_READY_FOR_SCOPED_COMMIT",
+  "request": "Investigate the confirmed immediate TestFlight Build 16 iPhone 13 mini launch crash, apply only an evidence-backed minimal iOS-safe fix, verify it, independently review it, then commit, non-force push, and run the canonical Build 17 release if all gates and authority allow.",
+  "source_identity": {
+    "build_16_commit": "503bba99ec5efe37195b2a516c0f923c9fd8b4c6",
+    "start_head": "cb5fd9e4e2df04bd7bc055120297d51f8a1d5f1c"
+  },
+  "constraints": [
+    "Do not change Android.",
+    "Do not alter production signing architecture or commit secrets/signing material.",
+    "Do not force-push or rewrite Build 16 history.",
+    "Do not perform unrelated refactors.",
+    "Preserve pre-existing foreign dirty files."
+  ],
+  "required_roles": {
+    "explorer": {
+      "agent": "flux_explorer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only Build 16 versus current startup-path and iOS native-contract investigation.",
+      "result": "Verified that Build 16 Runner Info.plist lacks GADApplicationIdentifier while the registered google_mobile_ads plugin reaches UMP and MobileAds initialization after runApp. Build 16 to current startup order is unchanged. Home Widget is a lower-ranked residual candidate with internally consistent App Group wiring.",
+      "changed_files": [],
+      "test_evidence": []
+    },
+    "planner": {
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define the minimal fail-closed iOS ad-runtime containment plan, constraints, tests, and Build 17 gates.",
+      "result": "Classified the shared iOS runtime boundary and all UMP/Google Mobile Ads entry-point guards as Complex. iOS must be unavailable until a separate approved configuration release; Android, signing, native configuration, and release workflow remain unchanged.",
+      "changed_files": [],
+      "test_evidence": []
+    },
+    "implementer": {
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement the centralized Android-only ads-runtime policy and guard every UMP/Mobile Ads entry point without touching native iOS, Android, signing, or workflows.",
+      "result": "Added the centralized policy; guarded AdService initialization/load/show paths and AdConsentService UMP/privacy-option paths; added focused regression contracts. An initial source-contract assertion failed on a multiline call and was corrected before the successful focused test rerun.",
+      "changed_files": [
+        "lib/services/ad_runtime_policy.dart",
+        "lib/services/ad_service.dart",
+        "lib/services/ad_consent_service.dart",
+        "test/services/ad_runtime_policy_test.dart"
+      ],
+      "test_evidence": [
+        "dart format: exit 0",
+        "flutter test test/services/ad_runtime_policy_test.dart test/ios_admob_contract_test.dart: exit 0, 5 passed",
+        "initial source-contract test: exit 1, fixed before rerun"
+      ]
+    },
+    "test_executor": {
+      "agent": "flux_test_executor",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run the required local verification, then rerun the full candidate suite after reviewer-requested runtime-boundary rework.",
+      "result": "Post-rework focused Flutter suite, narrow Dart analyzer, iOS AdMob contract, Python compile, diff check, Android diff, and Runner plist diff passed. Global Flutter/Dart analyzer routes remain environment-blocked without diagnostics; narrow analysis covers every changed candidate Dart source/test file.",
+      "changed_files": [],
+      "test_evidence": [
+        "flutter test focused suite: exit 0",
+        "Git Bash e2e_admob_contract.sh: exit 0",
+        "python -m py_compile scripts/verify-ios-privacy-surface.py: exit 0",
+        "git diff --check: exit 0",
+        "git diff --exit-code -- android: exit 0",
+        "git diff --exit-code -- ios/Runner/Info.plist: exit 0",
+        "flutter analyze: interrupted, exit 1, no diagnostic result",
+        "dart analyze --format machine changed Dart files: exit 0, no diagnostics",
+        "post-rework focused Flutter suite: exit 0, all passed"
+      ]
+    },
+    "reviewer": {
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently inspect the final current diff, tests, scope isolation, and all UMP/Google Mobile Ads iOS bypass paths.",
+      "result": "Initial review required runtime-boundary rework. Final re-review PASS: mocked iOS runtime covers every listed public ads/consent boundary with zero UMP and Google Mobile Ads channel calls and zero injected initializer calls. External macOS/Apple/device gates remain unverified rather than source-review failures.",
+      "findings": [
+        "Initial review: runtime entry-point boundary coverage incomplete",
+        "Final review: PASS, no BLOCKER/HIGH/MEDIUM/LOW findings"
+      ],
+      "changed_files": [],
+      "test_evidence": [
+        "initial review required rework",
+        "final re-review PASS; current diff, task state, and post-rework evidence inspected"
+      ]
+    },
+    "integrator": {
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile required role reports, final diff, scope ownership, verification, and source-commit readiness.",
+      "result": "SOURCE_FIX_READY_FOR_SCOPED_COMMIT. The autonomous current HEAD commit contains only candidate policy/test files. Final reviewer PASS; scoped remaining files are safe to commit. External macOS/Apple/TestFlight/device gates remain NOT_STARTED.",
+      "changed_files": [],
+      "test_evidence": [
+        "focused regression check exit 0",
+        "narrow changed-file Dart analysis exit 0",
+        "diff check exit 0",
+        "Android and Runner Info.plist diff checks exit 0"
+      ]
+    }
+  },
+  "plan": [
+    "Centralize Android-only Google Mobile Ads runtime eligibility.",
+    "Guard all UMP and Google Mobile Ads entry points before platform calls.",
+    "Add focused regression contracts; verify Android and iOS native/release surfaces are untouched.",
+    "Run independent review, then commit and non-force push only the scoped fix.",
+    "Dispatch canonical Build 17 only through authenticated authority after local and review gates pass."
+  ],
+  "changed_files": [
+    "lib/services/ad_runtime_policy.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/ad_consent_service.dart",
+    "test/services/ad_runtime_policy_test.dart",
+    ".codex/tasks/planflow-ios-build17-real-device-launch-crash-20260907.json"
+  ],
+  "verification": [
+    "focused Flutter tests PASS",
+    "iOS AdMob contract PASS",
+    "privacy verifier Python compile PASS",
+    "diff check PASS",
+    "Android and Runner Info.plist diffs EMPTY",
+    "global Flutter/Dart analyzer environment-blocked without diagnostics",
+    "narrow Dart analysis of all candidate Dart files PASS",
+    "post-review-rework runtime mock-channel regression PASS"
+  ],
+  "failure_analysis": {
+    "agent": "flux_failure_analyst",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "high",
+    "result": "The interrupted flutter analyze produced no source diagnostic and is infrastructure-shaped. A long-lived Flutter test process belongs to another worktree and was preserved. No candidate code change is justified; retry analyzer in a fresh command with --no-pub and captured output, then use Dart analyzer only if Flutter stalls again.",
+    "changed_files": [],
+    "test_evidence": [
+      "foreign process preserved",
+      "analysis_options and package configuration unchanged by candidate"
+    ]
+  },
+  "rework": {
+    "agent": "flux_complex_implementer",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "medium",
+    "assignment": "Address the reviewer runtime-boundary coverage finding without changing production/native configuration.",
+    "result": "Added direct unsupported-iOS runtime tests with mocked UMP/Google Mobile Ads method channels. Every covered public consent/ads entry point made zero native channel calls, and the injected ads initializer was not invoked.",
+    "changed_files": [
+      "test/services/ad_runtime_policy_test.dart"
+    ],
+    "test_evidence": [
+      "dart format test/services/ad_runtime_policy_test.dart: exit 0",
+      "flutter test test/services/ad_runtime_policy_test.dart: exit 0, 4 passed",
+      "flutter test consent and ad service suites: exit 0, 36 passed",
+      "UMP method-channel calls: 0",
+      "Google Mobile Ads method-channel calls: 0",
+      "injected initializer calls: 0"
+    ]
+  },
+  "release": {
+    "build": 17,
+    "status": "NOT_STARTED"
+  },
+  "updated_at": "2026-09-07T00:00:00+09:00"
+}

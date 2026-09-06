@@ -1,10 +1,42 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_mobile_ads/src/ump/user_messaging_codec.dart';
+import 'package:planflow/services/ad_consent_service.dart';
+import 'package:planflow/services/ad_service.dart';
 import 'package:planflow/services/ad_runtime_policy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const umpChannelName = 'plugins.flutter.io/google_mobile_ads/ump';
+  const adsChannelName = 'plugins.flutter.io/google_mobile_ads';
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      ..setMockMethodCallHandler(
+        MethodChannel(
+          umpChannelName,
+          StandardMethodCodec(UserMessagingCodec()),
+        ),
+        null,
+      )
+      ..setMockMethodCallHandler(
+        const MethodChannel(adsChannelName),
+        null,
+      );
+    AdConsentService.instance.resetForTesting();
+    AdService.instance.dispose();
+  });
+
   test('ads runtime policy supports Android only', () {
     expect(
       isAdsRuntimeSupported(isWeb: false, platform: TargetPlatform.android),
@@ -81,6 +113,72 @@ void main() {
         contains('ConsentInformation.instance.requestConsentInfoUpdate'));
     expect(consentService,
         contains('ConsentForm.loadAndShowConsentFormIfRequired'));
+  });
+
+  test('unsupported iOS makes every public ads boundary a zero-call path',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    var umpCalls = 0;
+    var adsCalls = 0;
+    var injectedInitializerCalls = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    messenger.setMockMethodCallHandler(
+      MethodChannel(
+        umpChannelName,
+        StandardMethodCodec(UserMessagingCodec()),
+      ),
+      (call) async {
+        umpCalls += 1;
+        return null;
+      },
+    );
+    messenger.setMockMethodCallHandler(
+      const MethodChannel(adsChannelName),
+      (call) async {
+        adsCalls += 1;
+        return null;
+      },
+    );
+
+    final consent = AdConsentService.instance;
+    final adService = AdService(
+      dynamicAdsInitializer: () async {
+        injectedInitializerCalls += 1;
+        return null;
+      },
+    );
+
+    expect(consent.canRequestAds, isFalse);
+    expect(await consent.canRequestAdsLive, isFalse);
+    await consent.ensureReady();
+    await consent.retryAfterUserAction();
+    expect(consent.requiresConsentForm, isFalse);
+    expect(await consent.privacyOptionsRequired, isFalse);
+    expect(await consent.showPrivacyOptionsForm(), isFalse);
+
+    await adService.initialize();
+    expect(
+      await adService.showForParseSchedule(requestId: 'runtime-boundary'),
+      isFalse,
+    );
+    expect(
+      await adService.preloadForUserInitiatedRewardedAd(
+        requestId: 'runtime-boundary',
+      ),
+      isFalse,
+    );
+    final voiceOutcome = await adService.showForVoiceConversationWithOutcome(
+      requestId: 'runtime-boundary',
+    );
+    expect(voiceOutcome.kind, VoiceConversationAdOutcomeKind.disabled);
+
+    expect(umpCalls, 0);
+    expect(adsCalls, 0);
+    expect(injectedInitializerCalls, 0);
+
+    adService.dispose();
   });
 
   test('production iOS plist has no AdMob app ID', () {
