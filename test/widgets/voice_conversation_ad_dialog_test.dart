@@ -25,8 +25,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('예시 패널은 콘텐츠 폭을 채우고 지원 동작별 예시를 보인다',
-      (tester) async {
+  testWidgets('예시 패널은 콘텐츠 폭을 채우고 지원 동작별 예시를 보인다', (tester) async {
     await openDialog(tester);
 
     final panel = tester.getRect(find.byKey(voiceConversationExamplesPanelKey));
@@ -43,6 +42,11 @@ void main() {
     ]) {
       expect(find.text('• $example'), findsOneWidget);
     }
+
+    expect(
+      find.text('무료 사용 횟수를 모두 사용한 뒤에도 광고 시청 후 계속 이용할 수 있어요.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('취소와 광고 시작 버튼은 각각 기존 결과를 반환한다', (tester) async {

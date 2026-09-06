@@ -201,6 +201,104 @@ void main() {
   });
 
   testWidgets(
+    'CalendarScreen uses bold only for important event titles and omits recurrence emoji',
+    (tester) async {
+      final selectedDay = DateTime(DateTime.now().year + 1, 6, 15, 9);
+      final repository = _AsyncEventRepository([
+        Future.value([
+          _event('normal', '일반 일정', selectedDay),
+          EventModel(
+            id: 'critical',
+            userId: 'user-1',
+            title: '중요 일정',
+            startAt: selectedDay.add(const Duration(hours: 1)),
+            endAt: selectedDay.add(const Duration(hours: 2)),
+            isCritical: true,
+          ),
+          EventModel(
+            id: 'recurring',
+            userId: 'user-1',
+            title: '반복 일정',
+            startAt: selectedDay.add(const Duration(hours: 2)),
+            endAt: selectedDay.add(const Duration(hours: 3)),
+            parentEventId: 'recurrence-series',
+          ),
+        ]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: selectedDay,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final eventList = find.byKey(const ValueKey('calendar-day-events-list'));
+      final normalTitle = tester.widget<Text>(
+        find.descendant(of: eventList, matching: find.text('일반 일정')),
+      );
+      final criticalTitle = tester.widget<Text>(
+        find.descendant(of: eventList, matching: find.text('중요 일정')),
+      );
+      final recurringTitle = tester.widget<Text>(
+        find.descendant(of: eventList, matching: find.textContaining('반복 일정')),
+      );
+      final normalTitleSpan = normalTitle.textSpan! as TextSpan;
+      final criticalTitleSpan = criticalTitle.textSpan! as TextSpan;
+      final recurringTitleSpan = recurringTitle.textSpan! as TextSpan;
+
+      expect(normalTitle.style?.fontWeight, FontWeight.normal);
+      expect(
+        (normalTitleSpan.children!.single as TextSpan).style?.fontWeight,
+        FontWeight.normal,
+      );
+      expect(
+        (criticalTitleSpan.children!.single as TextSpan).style?.fontWeight,
+        FontWeight.w700,
+      );
+      expect(recurringTitle.style?.fontWeight, FontWeight.normal);
+      expect(recurringTitleSpan.children, hasLength(1));
+      expect(recurringTitleSpan.toPlainText(), '반복 일정');
+    },
+  );
+
+  testWidgets('CalendarScreen renders holiday labels without bold weight', (
+    tester,
+  ) async {
+    final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
+    // 광복절(8/15)은 매년 반복되는 고정 공휴일이라 연도만 미래로 잡으면
+    // 시간이 지나도 깨지지 않는다.
+    final liberationDay = DateTime(DateTime.now().year + 1, 8, 15);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: liberationDay,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final holidayLabel = find.descendant(
+      of: find.byKey(
+        ValueKey(
+          'calendar-mini-events-'
+          '${liberationDay.year}-${liberationDay.month}-${liberationDay.day}',
+        ),
+      ),
+      matching: find.text('광복절'),
+    );
+    expect(
+        tester.widget<Text>(holidayLabel).style?.fontWeight, FontWeight.normal);
+  });
+
+  testWidgets(
     'briefing opens the selected-day sheet before a delayed event load completes',
     (tester) async {
       // banned-ok: 고정 날짜 fixture로 선택 시트 로딩 순서를 검증합니다.
