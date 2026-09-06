@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import '../services/remote_config_service.dart';
 
 class RewardedAdDialog extends StatelessWidget {
   const RewardedAdDialog({
@@ -38,7 +39,7 @@ class RewardedAdDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '오늘 무료 AI 일정 정리 2회를 모두 사용했어요.\n'
+            '오늘 무료 AI 일정 정리 ${RemoteConfigService.scheduleParseDailyFreeCount}회를 모두 사용했어요.\n'
             '광고를 시청하면 AI 자동 정리를 1회 더 사용할 수 있어요.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: PlanFlowColors.textSecondary,

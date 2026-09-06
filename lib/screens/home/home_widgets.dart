@@ -863,7 +863,7 @@ class _TodayEventCard extends StatelessWidget {
                             : isMultiDay
                                 ? const Color(0xFF174F4A)
                                 : PlanFlowColors.primary,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: event.isCritical ? FontWeight.w700 : FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1049,7 +1049,7 @@ class _UpcomingEventCard extends StatelessWidget {
                       event.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: event.isCritical ? FontWeight.w700 : FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
