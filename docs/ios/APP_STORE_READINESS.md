@@ -4,6 +4,41 @@
 
 배경 사실(확정): Build 16까지 TestFlight 파이프라인(서명/IPA 메타데이터/privacy audit/BuildUpload/App Store ingestion)이 전부 PASS로 완료되었다.
 
+---
+
+## 0. 최종 판정 (iOS Release Closure Phase)
+
+> **`APP_STORE_BLOCKED`** — 차단 사유 **1건**: `R1_UNDETERMINED`.
+> 프로덕션 `ios/Runner/Info.plist` 형상에서 앱이 실제로 부팅·생존한다는 **런타임 증거가 0건**이다.
+> 판정 근거 전문: [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md)
+> 판정 맥락(QA 증거표·실기기 판정): [`docs/ios/release-readiness.md`](release-readiness.md)
+
+**중요 — 이 판정은 아래 항목 1~18과 성격이 다르다.**
+항목 1~18의 "확인 필요"는 *콘솔 데이터 입력 미완*(= configuration gap)이다.
+`APP_STORE_BLOCKED`는 *제품이 iOS에서 뜨는지 자체가 미확인*(= runtime unknown)이라는 뜻이며,
+콘솔을 아무리 채워도 해소되지 않는다.
+
+**단일 해제 조건**
+`.github/workflows/ios-adsdk-launch-probe.yml`를 GitHub Actions에서 `workflow_dispatch`로
+1회 실행(≤40분) →
+`PROD_PLIST_APP_ALIVE` = PASS **그리고** `PROD_PLIST_NO_CRASH` = PASS
+→ 즉시 **`APP_STORE_READY_PENDING_USER_CONFIGURATION`**으로 전환되고,
+그 뒤로는 이 문서의 항목 2~16, 18(콘솔 입력)만 남는다.
+결과가 FAIL이면 `R1_CONFIRMED_BLOCKER`이며 **코드 수정 + Build 17**이 필요하다
+(제안 패치는 R1 문서 §5, **미적용** 상태).
+
+**Physical iPhone: `REQUIRED`** — 단, "제출 준비 완료" 시점이 아니라 **"공개 배포 승인" 시점**의
+요건이다. 근거는 `docs/ios/release-readiness.md`의 Physical iPhone 판정 절 참조
+(요약: 알림 실제 탭·딜리버리 타이밍·위젯 홈화면 렌더·ATT 프롬프트·STT 실품질은 시뮬레이터로
+대체 불가이고, FLOW1~8 실행 증거가 0건이며, R1이 시뮬레이터에서 CLEAR돼도 GMA 네이티브
+device 슬라이스 확인이 남는다).
+
+**Build 16과의 관계**: Build 16까지의 PASS는 *빌드·서명·업로드·ingestion*의 증거이지
+*런타임 부팅*의 증거가 아니다. 그 파이프라인에는 앱 프로세스를 띄워 생존을 확인하는 단계가
+없다. 따라서 항목 18의 "Build 16 PASS"는 이 판정을 뒤집지 않는다.
+
+---
+
 ## 1. 버전(빌드번호/버전명)
 
 `.github/workflows/ios-release.yml`의 `env` 블록에 하드코딩되어 있다:
@@ -144,3 +179,27 @@ Build 16까지 TestFlight 파이프라인(서명 → IPA 메타데이터 검증 
 
 - 자동확인(코드/설정 기반): 2개 (항목 1, 17)
 - 확인필요(App Store Connect 콘솔): 16개 (항목 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18)
+- **콘솔 외 차단 사유: 1개 (R1 — §0)**
+
+### 초안이 준비된 콘솔 항목 (작성이 아니라 확인·복사 수준)
+
+| 항목 | 초안 위치 |
+|---|---|
+| 3 Subtitle / 4 Keywords / 5 Category / 설명 | `docs/ios/app-store-metadata.md` |
+| 6 Screenshots (후보 자산 인벤토리) | `docs/ios/screenshot-inventory.md` |
+| 9 Privacy Policy URL (게시할 본문) | `docs/privacy-policy.md` |
+| 10 App Privacy 답변 / 12 광고추적 고지 | `docs/ios/app-privacy-answers.md` |
+| 14 Review Notes / 15 데모 계정 / 16 위젯 설명 | `docs/ios/review-notes.md` |
+
+### 사용자 액션 우선순위
+
+1. **R1 프로브 실행** (§0) — 유일한 차단 사유 해소
+2. Privacy Policy / Support URL 게시 (항목 8·9)
+3. 콘솔 메타데이터 입력 (항목 2~5, 11, 13)
+4. 심사용 데모 계정 등록 (항목 15)
+5. 6.9" 스크린샷 생성·업로드 (항목 6) 및 육안 검수
+6. 실기기 FLOW QA (공개 배포 승인 요건)
+7. App Privacy 답변 확정 — ATT 문구-동작 불일치 처리 (항목 10·12)
+
+전체 목록과 "왜 사용자만 가능한가"는 `docs/ios/release-readiness.md`의
+남은 사용자 액션 절에 정리돼 있다.

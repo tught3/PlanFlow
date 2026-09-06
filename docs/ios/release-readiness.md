@@ -1,5 +1,161 @@
 # PlanFlow iOS 출시 준비 기준
 
+## 최종 판정 (iOS Release Closure Phase)
+
+> **`APP_STORE_BLOCKED`**
+> 차단 사유는 **단 하나**: `R1_UNDETERMINED` — 프로덕션 `Info.plist` 상태에서
+> 앱이 실제로 부팅·생존한다는 **런타임 증거가 0건**이다.
+> 상세: [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md)
+>
+> **해제 조건 (단일)**: `.github/workflows/ios-adsdk-launch-probe.yml`를
+> `workflow_dispatch`로 1회 실행해 `PROD_PLIST_APP_ALIVE` = PASS,
+> `PROD_PLIST_NO_CRASH` = PASS를 얻으면 즉시
+> **`APP_STORE_READY_PENDING_USER_CONFIGURATION`으로 전환**된다.
+> 그 시점부터 남는 것은 전부 App Store Connect 콘솔 입력(§남은 사용자 액션)뿐이다.
+
+### 왜 `APP_STORE_READY_PENDING_USER_CONFIGURATION`이 아닌가
+
+"PENDING_USER_CONFIGURATION"은 *제품은 동작하는데 콘솔 값이 안 채워진 상태*를 뜻한다.
+현재는 그 전제가 성립하지 않는다 — **이 앱이 iOS에서 출시 형상 그대로 부팅에 성공하는 것을
+아무도 관측한 적이 없다.**
+
+- 시뮬레이터 XCTest는 증거가 아니다. `scripts/ios/e2e_xctest_flow.sh:263`의 APP_LAUNCH는
+  `simctl launch`의 spawn 종료코드만 보고, `scripts/ios/e2e_xctest_flow.sh:281`의 APP_READY는
+  `scripts/ios/e2e_xctest_flow.sh:283`에서 시뮬레이터 launchd 서비스 생존만 확인한 뒤 앱을
+  종료한다 — **앱 프로세스 생존을 한 번도 묻지 않는다.** 게다가
+  `scripts/ios/e2e_xctest_flow.sh:121`이 테스트용 `GADApplicationIdentifier`를 주입해
+  **프로덕션 plist 형상도 아니었다.**
+- TestFlight 파이프라인(Build 16까지 PASS)은 서명·업로드·ingestion의 증거이지
+  런타임 부팅의 증거가 아니다.
+- FLOW1~FLOW8은 `integration_test/`에 코드가 실재하지만 **실행 증거 0건**이다
+  (`docs/ios/XCTEST_STOP_LOSS_DECISION.md` §2.2).
+
+이 문서는 이미 아래 기준을 스스로 선언하고 있다(§기능 분류):
+`IMPLEMENTED`와 `LIVE VALIDATED`를 구분하며 **증거가 없으면 iOS 출시 PASS가 아니다.**
+그 기준을 R1에만 예외 적용할 근거가 없다.
+
+### 왜 `APP_STORE_BLOCKED`가 과하지 않은가
+
+차단 비용이 작기 때문이다. 해제에 필요한 것은 **수동 워크플로 1회 실행(≤40분)**이며,
+`R1_CLEARED`가 나오면 그 자리에서 판정이 올라간다. 반대로 이 확인을 건너뛰고 제출했을 때의
+실패 모드는 **런치 크래시 → Guideline 2.1 리젝 → Build 17 재빌드**로 훨씬 비싸다.
+
+---
+
+## Physical iPhone 판정: `REQUIRED`
+
+**단, 요건이 걸리는 시점은 "제출 준비 완료"가 아니라 "공개 배포 승인"이다.**
+실기기 없이도 (a) App Store Connect 메타데이터 입력, (b) TestFlight 내부 테스트 빌드 업로드,
+(c) R1 프로브 실행은 모두 가능하다. 실기기가 필수가 되는 지점은 **일반 사용자에게 공개하는
+결정**이다.
+
+### 근거 1 — 시뮬레이터로 대체 불가능한 항목이 릴리스 영향도를 갖는다
+
+| 항목 | 시뮬레이터 한계 | 릴리스 영향 |
+|---|---|---|
+| 알림 실제 탭 라우팅 | `docs/ios/SIMULATOR_QA_MATRIX.md`가 이 항목을 `PHYSICAL_DEVICE_REQUIRED`로 분류 | 알림이 핵심 기능(역산 알림)이므로 탭 경로가 깨지면 제품 가치 훼손 |
+| 로컬 알림 딜리버리 타이밍 | 같은 문서에서 `SIMULATOR_PARTIAL` — 백그라운드 실행 정책이 실기기와 다름 | 동일 |
+| 홈 화면 위젯 렌더 | WidgetKit timeline 갱신 주기는 실기기에서만 실제 동작 | 2군 기능, 리젝 요인은 아니나 심사 스크린샷/설명과 불일치 위험 |
+| ATT 프롬프트 | `ios/Runner/Info.plist:28`에 `NSUserTrackingUsageDescription`이 있으나 실제 트리거 코드 부재(APP_STORE_READINESS 항목 10·12) | 문구-동작 불일치는 심사 지적 대상 |
+| 음성 STT 실품질 / 마이크 UX | 시뮬레이터 오디오 입력은 호스트 마이크 경유로 실기기와 동등하지 않음 | 1군 핵심 기능 |
+| AdMob/UMP 네이티브 슬라이스 | 시뮬레이터는 simulator 슬라이스, 실기기는 device 슬라이스 — SDK 초기화 동작이 다를 수 있음 | **R1이 시뮬레이터에서 CLEAR돼도 실기기 확인이 남는다**(R1 문서 §6-1) |
+
+### 근거 2 — 현재 end-to-end 실행 증거가 문자 그대로 0건이다
+
+FLOW1~FLOW8 전부 `NOT_VERIFIED`이고 XCTest 경로는 stop-loss로 중단됐다
+(`docs/ios/XCTEST_STOP_LOSS_DECISION.md`). 즉 **시뮬레이터 경로에서도 확보된 통합 증거가 없다.**
+이 상태에서 실기기까지 생략하면 "동작 확인 0"인 앱을 공개하는 것이 된다.
+
+### 근거 3 — R1이 미확정이다
+
+프로브가 `R1_CONFIRMED_BLOCKER`를 내면 실기기 재확인이 필수가 되고,
+`R1_CLEARED`를 내도 근거 1의 마지막 행 때문에 실기기 확인이 남는다.
+**어느 결과가 나와도 실기기 요건은 사라지지 않는다.**
+
+---
+
+## QA 증거 요약표
+
+"근거 있음"으로 인정하는 것은 **CI에서 실제로 실행되는 것**뿐이다.
+현재 그 조건을 만족하는 것은 **2가지**다.
+
+### 실행 증거가 있는 것
+
+| 대상 | 실행 위치 | 성격 | 판정 |
+|---|---|---|---|
+| `test/ios_phase2_contract_test.dart` 외 3개(`ios_phase3_native` / `ios_phase4_identity` / `ios_release`) | `.github/workflows/ios-readiness.yml:89-94` | 텍스트·파일 대조 계약 테스트 (제품 런타임 검증 아님) | `PARTIALLY_VERIFIED` |
+| `test/ios_e2e_flow05_fake_test.dart` | `.github/workflows/ios-simulator-e2e.yml:126` | host fake (시뮬레이터 밖, 호스트 VM) | `PARTIALLY_VERIFIED` |
+
+`.github/workflows/ios-readiness.yml:84`의 `flutter analyze`와 unsigned `xcodebuild` Runner
+빌드도 실행된다 — 즉 **컴파일 가능성**은 검증된다(런타임 동작은 아님).
+
+### 기능별 판정
+
+| 기능 | 판정 | 릴리스 분류 | 근거 |
+|---|---|---|---|
+| 컴파일·서명·IPA 생성·TestFlight ingestion | `VERIFIED` | — | Build 16까지 파이프라인 PASS(확정 사실) |
+| iOS 네이티브 계약(plist 키·identity·deeplink 문자열) | `VERIFIED` | — | `.github/workflows/ios-readiness.yml:89-94` 계약 테스트 |
+| **앱 런치 생존(프로덕션 plist)** | **`NOT_VERIFIED`** | **`RELEASE_BLOCKER`** | R1. 프로브 미실행 |
+| 인증/세션(FLOW5) | `PARTIALLY_VERIFIED` | `RELEASE_BLOCKER` | host fake만 실행(`.github/workflows/ios-simulator-e2e.yml:126`), 실백엔드·시뮬레이터 실행 없음 |
+| 콜드스타트(FLOW1) | `NOT_VERIFIED` | `RELEASE_BLOCKER` | 코드는 `integration_test/flow01_cold_start_test.dart`에 있으나 미실행. 세션복원 시나리오는 `integration_test/flow01_cold_start_test.dart:90`에서 영구 `skip: true` |
+| 일정 CRUD(FLOW2) | `NOT_VERIFIED` | `RELEASE_BLOCKER` | 미실행 |
+| 라우팅·딥링크(FLOW3) | `NOT_VERIFIED` | `RELEASE_BLOCKER` | 미실행 |
+| 알림(FLOW4) | `NOT_VERIFIED` | `RELEASE_BLOCKER` | 미실행 + 실제 탭은 실기기 필요 |
+| 음성·권한(FLOW6) | `NOT_VERIFIED` | `RELEASE_BLOCKER` | 미실행 + 실품질은 실기기 필요 |
+| 위젯·App Group(FLOW7) | `NOT_VERIFIED` | `POST_RELEASE_RECOMMENDED` | 미실행. 2군 기능 |
+| 복원력·접근성(FLOW8) | `NOT_VERIFIED` | `POST_RELEASE_RECOMMENDED` | 미실행 |
+| 광고 보상 흐름(iOS) | `NOT_VERIFIED` | `OPTIONAL` | iOS 광고 단위 ID가 Remote Config에 부재(`lib/services/remote_config_service.dart:125`는 android 키뿐) → iOS 광고는 현재 기능적으로 비활성 |
+| 그룹 달력 위젯(iOS) | `NOT_VERIFIED` | `OPTIONAL` | Android 전용, iOS 미구현(§현재 기능 상태) |
+| 전체 `test/` 스위트(157개) | `NOT_VERIFIED` | `POST_RELEASE_RECOMMENDED` | 측정 수단(`.github/workflows/flutter-test-baseline.yml`)은 생겼으나 `workflow_dispatch` 전용 + `continue-on-error` — **실행 결과 없음** |
+
+> 표의 `RELEASE_BLOCKER`는 "이 항목이 검증되지 않으면 공개 배포하면 안 된다"는 뜻이며,
+> 최상단 `APP_STORE_BLOCKED` 판정의 **단일 차단 사유는 R1 하나**다. 나머지
+> `RELEASE_BLOCKER` 행들은 실기기 QA(위 `REQUIRED` 판정)로 해소할 대상이다.
+
+---
+
+## 남은 사용자 액션 (우선순위 순)
+
+AI가 대신할 수 없고 **사용자만 할 수 있는 것**만 남겼다.
+
+| # | 액션 | 왜 사용자만 가능한가 | 막고 있는 것 |
+|---|---|---|---|
+| 1 | **R1 프로브 1회 실행** — GitHub Actions → `iOS AdSDK launch probe (production plist)` → `Run workflow` | macOS runner 필요 + 이 세션 호스트는 Windows, `gh` 미인증 | `APP_STORE_BLOCKED` 해제 |
+| 2 | Privacy Policy URL / Support URL **게시** | 도메인·호스팅 소유 | App Store Connect 필수 필드 (항목 8·9) |
+| 3 | App Store Connect 메타데이터 입력 (이름·Subtitle·Keywords·Category·연령등급·Export Compliance) | 콘솔 접근 | 제출 (항목 2~5, 11, 13) |
+| 4 | 심사용 **데모 계정** 생성 후 App Review Information에 등록 | 실계정 생성·자격증명 | 로그인 필수 앱 심사 요건 (항목 15) |
+| 5 | 6.9" iPhone 스크린샷 생성·업로드 | 실기기/시뮬레이터 캡처 + 마케팅 판단 | 제출 (항목 6). 후보는 `docs/ios/screenshot-inventory.md` |
+| 6 | 스크린샷 **육안 검수** (한국어 문구·개인정보 노출·최신 UI 여부) | 사람 판단 | 심사 리젝 예방 |
+| 7 | **실기기 iPhone 확보 후 FLOW QA** | 하드웨어 | 공개 배포 승인 (위 `REQUIRED` 판정) |
+| 8 | App Privacy(Nutrition Label) 답변 확정 — 특히 ATT 문구-동작 불일치 처리 | 법적·사업적 판단 | 제출 (항목 10·12). 초안: `docs/ios/app-privacy-answers.md` |
+
+3·4·5·8의 입력 초안은 `docs/ios/app-store-metadata.md`와 `docs/ios/review-notes.md`에 준비돼 있어
+**작성이 아니라 확인·복사 수준**이다.
+
+---
+
+## 이번 Phase 산출물
+
+| 산출물 | 위치 | 성격 |
+|---|---|---|
+| R1 판정 문서 | `docs/ios/R1-admob-launch-risk.md` | 판정 + 프로브 실행/해석 절차 + 미적용 패치 제안 |
+| XCTest stop-loss 판정 | `docs/ios/XCTEST_STOP_LOSS_DECISION.md` | DEFER + REPLACE 병행 |
+| 스크린샷 인벤토리 | `docs/ios/screenshot-inventory.md` | 실측 자산 목록 |
+| 심사 노트 초안 | `docs/ios/review-notes.md` | 데모계정·권한 매핑·위젯 안내 |
+| App Store 등록정보 초안 | `docs/ios/app-store-metadata.md` | iOS 초안 포함 |
+| App Privacy 답변 매핑 | `docs/ios/app-privacy-answers.md` | ATT 항목 포함 |
+| privacy-surface audit | `docs/ios/privacy-surface-audit.md` | Build16 서술 범위 정정 |
+| 개인정보처리방침 광고 섹션 | `docs/privacy-policy.md` | 초안 |
+| 릴리스 템플릿 세트 | `docs/ios/templates/` | 파라미터화 완료 |
+| 프로덕션 plist 런치 프로브 | `scripts/ios/prod_plist_launch_probe.sh` | R1 판별 수단 (미실행) |
+| 프로브 정적 계약 | `scripts/ios/tests/prod_plist_launch_probe_contract.sh` | 비-macOS에서도 실행 가능 |
+| 프로브 워크플로 | `.github/workflows/ios-adsdk-launch-probe.yml` | `workflow_dispatch` 전용 |
+| 전체 스위트 베이스라인 워크플로 | `.github/workflows/flutter-test-baseline.yml` | 비차단 측정용 (미실행) |
+| 템플릿 파라미터 검증 | `scripts/verify-template-parameters.sh` | |
+| 문서 참조 정합성 검증 | `scripts/verify-docs-consistency.sh` | `docs/ios/**`의 `파일:줄` 참조 실재 검증 |
+
+---
+
 ## Phase 4 판정 상태
 
 - `ACCOUNT_CONFIGURED_CLOUD_BUILD_PENDING`: Firebase iOS 앱과 Apple identity/App Group 설정값 반영 완료, 실제 macOS 빌드 증거 대기
