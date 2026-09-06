@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-build17-real-device-launch-crash-20260907",
-  "status": "SOURCE_FIX_READY_FOR_SCOPED_COMMIT",
+  "status": "SOURCE_FIX_PUSHED_RELEASE_DISPATCH_BLOCKED",
   "request": "Investigate the confirmed immediate TestFlight Build 16 iPhone 13 mini launch crash, apply only an evidence-backed minimal iOS-safe fix, verify it, independently review it, then commit, non-force push, and run the canonical Build 17 release if all gates and authority allow.",
   "source_identity": {
     "build_16_commit": "503bba99ec5efe37195b2a516c0f923c9fd8b4c6",
@@ -155,7 +155,13 @@
   },
   "release": {
     "build": 17,
-    "status": "NOT_STARTED"
+    "status": "DISPATCH_BLOCKED_UNAUTHENTICATED",
+    "source_commits": [
+      "0a5a00c3e536e9ad8d4ea956f62adc0087fdb419",
+      "75d49a487a8baa78a3aaa9e640619638488a67c9"
+    ],
+    "dispatch_evidence": "gh auth status returned not logged into any GitHub hosts; no workflow dispatch was attempted.",
+    "required_user_action": "GitHub Actions > iOS signed release (TestFlight) > Run workflow > main > Run workflow"
   },
   "updated_at": "2026-09-07T00:00:00+09:00"
 }
