@@ -18,14 +18,23 @@
 `APP_STORE_BLOCKED`는 *제품이 iOS에서 뜨는지 자체가 미확인*(= runtime unknown)이라는 뜻이며,
 콘솔을 아무리 채워도 해소되지 않는다.
 
-**단일 해제 조건**
+**해제 조건**
 `.github/workflows/ios-adsdk-launch-probe.yml`를 GitHub Actions에서 `workflow_dispatch`로
 1회 실행(≤40분) →
-`PROD_PLIST_APP_ALIVE` = PASS **그리고** `PROD_PLIST_NO_CRASH` = PASS
-→ 즉시 **`APP_STORE_READY_PENDING_USER_CONFIGURATION`**으로 전환되고,
+`PROD_PLIST_APP_ALIVE` = PASS **그리고** `PROD_PLIST_ADS_INIT_REACHED` = PASS
+**그리고** `PROD_PLIST_NO_CRASH` = PASS
+→ 이때만 **`APP_STORE_READY_PENDING_USER_CONFIGURATION`**으로 전환되고,
 그 뒤로는 이 문서의 항목 2~16, 18(콘솔 입력)만 남는다.
 결과가 FAIL이면 `R1_CONFIRMED_BLOCKER`이며 **코드 수정 + Build 17**이 필요하다
 (제안 패치는 R1 문서 §5, **미적용** 상태).
+
+> **주의(리뷰 HIGH-1).** `PROD_PLIST_ADS_INIT_REACHED`가 `UNDETERMINED`면
+> 나머지 둘이 PASS여도 **전환되지 않는다.** 앱 생존은 "R1 없음"과
+> "R1 코드에 도달 못 함"을 구분하지 못하므로, 도달 증거 없이 전환하면
+> 근거 없는 클리어가 된다. 이 스테이지는 대부분의 실행에서 `UNDETERMINED`가
+> 나올 것으로 예상된다(성공 경로에 관측 가능한 마커가 없음 —
+> `docs/ios/R1-admob-launch-risk.md` §4-3의 실측된 한계 참조). 즉 이 게이트는
+> 현재 **자동으로 열리지 않으며**, 여는 것은 별도 작업이다.
 
 **Physical iPhone: `REQUIRED`** — 단, "제출 준비 완료" 시점이 아니라 **"공개 배포 승인" 시점**의
 요건이다. 근거는 `docs/ios/release-readiness.md`의 Physical iPhone 판정 절 참조

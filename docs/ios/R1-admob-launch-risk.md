@@ -58,6 +58,15 @@ if (!_consentService.isAvailable &&
 
 즉 크래시 지점 후보가 2개이고, 그중 하나(UMP)의 결과가 다른 하나(MobileAds)의
 도달 여부를 결정한다. **정적 분석은 여기서 멈춘다.**
+
+**세 번째 조기 return(완전성 보강, 리뷰 LOW-1).** 위 두 지점보다 더 앞에
+`lib/services/ad_service.dart:415`의 `if (!RemoteConfigService.rewardedAdEnabled)`
+→ `:446 return`이 하나 더 있다. 따라서 `:483`에 도달하기까지의 조기 return은
+총 **3개**다. 다만 **이 사실이 R1 판정을 뒤집지는 않는다**:
+`rewardedAdEnabled`의 기본값이 `true`이므로
+(`lib/services/remote_config_service.dart:207`, 그리고 `:393`의 `?? true`)
+Remote Config fetch가 실패해도 이 분기는 통과하고 광고 경로를 계속 탄다.
+즉 이 return은 “운영자가 콘솔에서 명시적으로 OFF한 경우”에만 걸린다.
 `_consentService.isAvailable` / `canRequestAdsLive`의 런타임 값은
 실제 iOS 프로세스에서 UMP SDK를 실행해봐야만 알 수 있다.
 
@@ -188,7 +197,7 @@ R1은 "GAD ID가 **없는**" 상태의 리스크이므로, 이 실행은 R1이 �
 
 ### 왜 `R1_CONFIRMED_BLOCKER`도 아닌가
 
-§1-1의 조기 return(`ad_service.dart:453-454`) 때문이다. iOS에서 UMP가 unavailable이면
+§1-1의 조기 return(`lib/services/ad_service.dart:453-454`) 때문이다. iOS에서 UMP가 unavailable이면
 `MobileAds.instance.initialize()`(`:483`)에 도달하지 못하므로 GAD ID 부재로 인한
 MobileAds 크래시는 발생하지 않는다. `_consentService.isAvailable`의 iOS 런타임 값을
 모르는 상태에서 크래시를 단정하면 그것도 미실측 주장이다.
@@ -238,32 +247,90 @@ gh run watch
 
 ### 4-2. 결과 해석 — 스테이지 조합별 판정표
 
-프로브의 스테이지는 `scripts/ios/prod_plist_launch_probe.sh:54-62`에 정의된 7개다:
+프로브의 스테이지는 `scripts/ios/prod_plist_launch_probe.sh:59-68`에 정의된 8개다:
 `SIMULATOR_BOOT` → `APP_BUILD` → `APP_INSTALL` → `APP_LAUNCH` →
-`PROD_PLIST_APP_ALIVE` → `PROD_PLIST_NO_CRASH` → `TEARDOWN`.
+`PROD_PLIST_APP_ALIVE` → `PROD_PLIST_ADS_INIT_REACHED` →
+`PROD_PLIST_NO_CRASH` → `TEARDOWN`.
 
-R1 판정에 쓰는 것은 뒤의 **두 개**다.
+R1 판정에 쓰는 것은 뒤의 **세 개**다.
 
-- **`PROD_PLIST_APP_ALIVE`** (`prod_plist_launch_probe.sh:307-315`) —
-  `wait_seconds` 대기 후 `launchctl list`에 해당 bundle id의 **live job**이 있는지 확인.
-  FAIL 메시지: `no live launchctl job found for ... the app likely crashed or exited`.
+- **`PROD_PLIST_APP_ALIVE`** (`scripts/ios/prod_plist_launch_probe.sh:340-360`) —
+  `wait_seconds` 대기 후 **`simctl launch`가 보고한 그 PID가 아직 살아 있는지**를
+  직접 확인한다(`kill -0`). PID를 파싱하지 못한 경우에만 `launchctl list`로
+  폴백하되, 그때도 **PID 열이 숫자인 경우에만** 생존으로 인정한다.
   → **앱 프로세스 생존 여부.** §2-1에서 XCTest에 없다고 지적한 바로 그 확인이다.
-- **`PROD_PLIST_NO_CRASH`** (`prod_plist_launch_probe.sh:365-368`) —
-  런치 이후 새로 생긴 네이티브 crash report를 `~/Library/Logs/DiagnosticReports`와
-  그 `Retired` 하위에서 탐색. 새 리포트가 있으면 FAIL이며 아티팩트로 복사된다.
-  이 스테이지는 `PROD_PLIST_APP_ALIVE`가 이미 실패했더라도 **건너뛰지 않고 실행된다**
-  (스크립트 `:327` 주석: 크래시를 진단 가능하게 하기 위함).
 
-| `APP_ALIVE` | `NO_CRASH` | 해석 | R1 판정 |
-|---|---|---|---|
-| PASS | PASS | 프로덕션 plist 상태에서 앱이 부팅 후 생존했고 네이티브 크래시 리포트도 없다 | **`R1_CLEARED`** |
-| FAIL | FAIL | 앱이 죽었고 그 원인인 crash report가 실제로 생성됐다 — 가장 명확한 확정 | **`R1_CONFIRMED_BLOCKER`** |
-| FAIL | PASS | 앱이 사라졌으나 crash report는 없다. 크래시가 아니라 정상 종료/`exit()`거나, 리포트 생성 지연일 수 있다. `wait_seconds`를 45~60으로 올려 재실행하고, 그래도 같으면 crash가 아닌 조기 종료로 보아 **블로커로 취급하되** 원인은 별도 조사 | `R1_CONFIRMED_BLOCKER` (조건부) |
-| PASS | FAIL | 앱은 살아 있는데 새 crash report가 있다 — Runner 본체가 아니라 **다른 프로세스**(예: Widget extension)의 리포트일 수 있다. 아티팩트 `prod-plist-launch-probe`에 복사된 리포트의 프로세스명을 확인해 Runner 것이 아니면 R1과 무관 | 리포트 확인 후 재판정 |
-| 그 이전 스테이지에서 FAIL | — | `APP_BUILD`/`APP_INSTALL` 실패는 R1이 아니라 빌드 환경 문제 | `R1_UNDETERMINED` 유지 |
+  > **정정 이력(리뷰 HIGH-2).** 이전 구현은
+  > `launchctl list | grep -F <bundle-id>`였다. `launchctl list`는 `PID Status Label`
+  > 3열이고 앱은 `UIKitApplication:<bundle-id>[...]` **라벨**로 등록되므로, 이 grep은
+  > 라벨만 매칭했다. 프로세스가 죽어 PID 열이 `-`로 떨어진 상태(job은 loaded,
+  > 프로세스 없음)에서도 PASS가 났다 — 즉 **크래시를 생존으로 오판**했다. 이는 이
+  > 프로브의 존재 이유 자체를 무력화하는 결함이었다.
+
+- **`PROD_PLIST_ADS_INIT_REACHED`** (`scripts/ios/prod_plist_launch_probe.sh:412-423`) —
+  런치 직후 구간의 앱 로그를 캡처해 **R1 코드에 도달했는지**를 따로 본다.
+  판정은 `PASS`(도달 입증) 또는 `UNDETERMINED`(도달 미입증) 두 값뿐이며,
+  `UNDETERMINED`는 프로브 실패로 치지 않는다(진단 증거 부재이지 오작동이 아니다).
+  자세한 근거와 한계는 아래 §4-3.
+- **`PROD_PLIST_NO_CRASH`** (`scripts/ios/prod_plist_launch_probe.sh:493-496`) —
+  런치 이후 새로 생긴 네이티브 crash report를 `~/Library/Logs/DiagnosticReports`,
+  그 `Retired` 하위, 그리고 `~/Library/Logs/CoreSimulator/<udid>`에서 탐색.
+  새 리포트가 있으면 FAIL이며 아티팩트로 복사된다.
+  이 스테이지는 `PROD_PLIST_APP_ALIVE`가 이미 실패했더라도 **건너뛰지 않고 실행된다**
+  (크래시를 진단 가능하게 하기 위함). 컷오프 타임스탬프 계산이 실패하면 PASS가
+  아니라 `UNKNOWN`으로 떨어진다(fail-closed).
+
+| `APP_ALIVE` | `ADS_INIT_REACHED` | `NO_CRASH` | 해석 | R1 판정 |
+|---|---|---|---|---|
+| PASS | **PASS** | PASS | 앱이 생존했고, **R1 코드에 실제로 도달한 증거가 있으며**, 네이티브 크래시 리포트도 없다 | **`R1_CLEARED`** |
+| PASS | **UNDETERMINED** | PASS | 앱은 생존했으나 **R1 코드에 도달했다는 증거가 없다.** 생존의 원인이 (a) R1이 없어서인지 (b) 조기 return으로 R1 코드에 **도달조차 못 해서**인지 구분 불가 — §1-1이 이미 지적한 바로 그 미지수가 해소되지 않은 상태다 | **`R1_CLEARED_ONLY_IF_INIT_REACHED`** (= 아직 클리어 아님, `R1_UNDETERMINED` 유지) |
+| FAIL | (무관) | FAIL | 앱이 죽었고 그 원인인 crash report가 실제로 생성됐다 — 가장 명확한 확정 | **`R1_CONFIRMED_BLOCKER`** |
+| FAIL | (무관) | PASS | 앱이 사라졌으나 crash report는 없다. 크래시가 아니라 정상 종료/`exit()`거나, 리포트 생성 지연일 수 있다. `wait_seconds`를 45~60으로 올려 재실행하고, 그래도 같으면 crash가 아닌 조기 종료로 보아 **블로커로 취급하되** 원인은 별도 조사 | `R1_CONFIRMED_BLOCKER` (조건부) |
+| PASS | (무관) | FAIL | 앱은 살아 있는데 새 crash report가 있다 — Runner 본체가 아니라 **다른 프로세스**(예: Widget extension)의 리포트일 수 있다. 아티팩트 `prod-plist-launch-probe`에 복사된 리포트의 프로세스명을 확인해 Runner 것이 아니면 R1과 무관 | 리포트 확인 후 재판정 |
+| PASS | (무관) | UNKNOWN | 크래시 리포트 컷오프 계산 실패로 크래시 유무 자체가 미검증. **클린으로 읽어서는 안 된다** | `R1_UNDETERMINED` 유지 |
+| 그 이전 스테이지에서 FAIL | — | — | `APP_BUILD`/`APP_INSTALL` 실패는 R1이 아니라 빌드 환경 문제 | `R1_UNDETERMINED` 유지 |
+
+> **핵심 규칙(리뷰 HIGH-1).** `R1_CLEARED`는 `ADS_INIT_REACHED=PASS`일 때만 나온다.
+> 이전 판정표는 `APP_ALIVE=PASS`+`NO_CRASH=PASS`를 무조건 `R1_CLEARED`로 매핑했는데,
+> 이는 이 문서 §1-1이 스스로 적어둔 논거(“UMP unavailable이면 `:468`에서 return하므로
+> `:483`에 **도달조차 하지 않는다**”)와 정면으로 모순됐다. 생존은 R1 부재의 증거가
+> 아니라 **R1 부재 또는 R1 미도달**의 증거다. 도달이 입증되지 않으면 클리어하지 않는다.
 
 아티팩트는 `prod-plist-launch-probe` 이름으로 14일간 보관된다
 (`.github/workflows/ios-adsdk-launch-probe.yml`의 `Upload probe artifacts` 스텝).
+
+### 4-3. `PROD_PLIST_ADS_INIT_REACHED`가 관측할 수 있는 것과 없는 것
+
+이 스테이지는 런치 직후 구간의 앱 로그(`simctl spawn ... log show`)를 캡처해
+아티팩트 `app-log.txt`로 남기고, 그 안에서 **실제로 출력되는 리터럴만** 찾는다.
+
+| 로그에서 찾는 리터럴 | 출처 | 의미 | 판정 |
+|---|---|---|---|
+| `AdService.initialize failed:` | `lib/services/ad_service.dart:487` | `:483`을 감싼 try 블록의 catch. **`MobileAds.instance.initialize()`가 실제로 호출됐다는 유일한 양성 증거** | `PASS` (도달 입증) |
+| `AdService initialize skipped:` | `lib/main.dart:190` | priming try/catch가 예외를 삼킴 | `UNDETERMINED` |
+| `Analytics event skipped (ad_load_failed)` | `lib/core/analytics_service.dart:15` + 이벤트명 `:143` | 4개 조기 종료 분기 중 하나가 돌았을 가능성 | `UNDETERMINED` |
+| (아무것도 없음) | — | 도달했든 안 했든 마커가 없는 경우 | `UNDETERMINED` |
+
+> **실측된 한계 — 이 스테이지를 확장하기 전에 반드시 읽을 것.**
+> 조기 종료 사유 문자열(`ump_unavailable` — `lib/services/ad_service.dart:464`,
+> `post_prime_not_initialized` — `lib/main.dart:184`, `rc_fetch_failed`,
+> `disabled_in_rc`)은 **런타임에 어디에도 출력되지 않는다.** 이들은
+> `AnalyticsService.logAdLoadFailed`의 `reason:` **파라미터**로 전달되는데,
+> `lib/core/analytics_service.dart:10-18`의 `_logEvent`는 no-op이며
+> `Analytics event skipped (<이벤트명>): analytics disabled` 한 줄만 찍고
+> `parameters`를 **통째로 버린다**. 따라서 4개 사유가 전부 **동일한** 한 줄로
+> 붕괴하며 서로 구분할 수 없다. `lib/main.dart:179`의 주석
+> (“debug/profile에선 즉시 grep 가능”)은 이 점에서 **사실과 다르다**
+> — 다만 `lib/` 수정은 이번 작업 범위 밖이라 코드는 건드리지 않았다.
+> 이 사유 문자열들을 grep하는 코드를 추가해서는 안 되며,
+> `scripts/ios/tests/prod_plist_launch_probe_contract.sh`가 그 추가를 차단한다.
+
+그 결과 **“도달했고 성공했다”는 아무 마커도 남기지 않는다**(성공 경로에는
+`debugPrint`가 없다). 즉 이 스테이지는 대부분의 정상 실행에서 `UNDETERMINED`가
+나올 것으로 예상되며, 그때 R1은 **자동으로 클리어되지 않는다.** 이것은 버그가
+아니라 의도된 fail-closed 동작이다 — 근거 없는 `R1_CLEARED`보다 정직한
+`R1_UNDETERMINED`가 낫다. R1을 실제로 클리어하려면 도달을 입증할 관측 가능한
+신호를 **`lib/` 쪽에 먼저 만들어야 한다**(별도 작업, 이번 범위 밖).
 
 ---
 
@@ -285,7 +352,7 @@ if (!kIsWeb && Platform.isIOS) {
   // R1: 프로덕션 Info.plist에 GADApplicationIdentifier가 없고
   //     (scripts/ios/tests/e2e_admob_contract.sh:24-25가 그 부재를 강제),
   //     iOS 광고 단위 ID도 Remote Config에 존재하지 않는다
-  //     (remote_config_service.dart:125는 android 키뿐).
+  //     (lib/services/remote_config_service.dart:125는 android 키뿐).
   //     따라서 iOS에서 AdService 초기화는 얻는 것이 없고 런치 크래시 위험만 있다.
   return;
 }
@@ -298,8 +365,8 @@ await AdService.instance.initialize();
 ### 5-2. 기능 손실이 0인 근거
 
 §1-4에서 확인한 대로 **iOS 전용 광고 단위 ID가 Remote Config에 아예 없고**
-(`remote_config_service.dart:125`의 `rewarded_ad_unit_id_android` 하나뿐),
-`_resolveAdUnitId()`(`ad_service.dart:507-512`)는 그 Android 키를 그대로 쓴다.
+(`lib/services/remote_config_service.dart:125`의 `rewarded_ad_unit_id_android` 하나뿐),
+`_resolveAdUnitId()`(`lib/services/ad_service.dart:507-512`)는 그 Android 키를 그대로 쓴다.
 따라서 iOS에서 광고는 **현재도 정상 서빙될 수 없는 상태**다.
 초기화를 스킵해도 잃는 기능이 없다.
 
@@ -316,7 +383,7 @@ await AdService.instance.initialize();
 ### 5-4. 대안 (참고, 검토 안 됨)
 
 `ios/Runner/Info.plist`에 실제 iOS `GADApplicationIdentifier`를 추가하는 방향도
-이론적으로는 R1을 해소한다. 그러나 (a) `e2e_admob_contract.sh:24-25`가 그 키의 부재를
+이론적으로는 R1을 해소한다. 그러나 (a) `scripts/ios/tests/e2e_admob_contract.sh:24-25`가 그 키의 부재를
 **계약으로 강제**하고 있어 계약 자체를 뒤집어야 하고, (b) iOS 광고 단위 ID가 없어
 광고가 서빙되지도 않으며, (c) 실제 AdMob iOS 앱 등록이 선행돼야 한다.
 **이번 Phase 범위 밖이며 검토하지 않았다.**
@@ -338,7 +405,7 @@ await AdService.instance.initialize();
    그 버전을 저장소에서 확정할 수 없다. 즉 CI가 `pod install` 할 때마다 다른 네이티브
    SDK 버전이 들어올 수 있고, R1의 결론이 시점에 따라 달라질 수 있다.
 3. **UMP 경로는 프로브로도 완전히 갈라지지 않는다.** 프로브는 "앱이 죽었는가"를
-   측정하지 crash가 UMP(`ad_service.dart:448`)에서 났는지 MobileAds(`:483`)에서 났는지
+   측정하지 crash가 UMP(`lib/services/ad_service.dart:448`)에서 났는지 MobileAds(`:483`)에서 났는지
    구분하지 않는다. 구분이 필요하면 아티팩트의 crash report 스택을 읽어야 한다.
 4. **프로브 미실행 사실 자체가 추론이다.** §3에서 밝힌 대로 gh CLI 미인증으로
    run 이력을 직접 조회하지 못했다. workflow_dispatch 전용 + 방금 생성이라는

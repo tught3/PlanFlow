@@ -27,9 +27,14 @@
 # unmodified ios/Runner/Info.plist (this script never writes to it — see the
 # "does not touch the plist" contract enforced by
 # scripts/ios/tests/prod_plist_launch_probe_contract.sh) and then, after a
-# configurable wait, checks two independent things:
-#   1. Is the app process still registered/alive in the simulator's launchd?
-#   2. Did a new native crash report appear for it since launch?
+# configurable wait, checks three independent things:
+#   1. Is the launched app PROCESS (by the pid simctl launch reported) still
+#      alive?
+#   2. Is there evidence about whether the R1 code path
+#      (MobileAds.instance.initialize()) was actually REACHED, as opposed to
+#      being skipped by one of the three early returns before it? Survival
+#      alone cannot distinguish "no R1 crash" from "never got to R1".
+#   3. Did a new native crash report appear for it since launch?
 #
 # Usage:
 #   prod_plist_launch_probe.sh <udid> <bundle-id> <derived-data> \
@@ -57,6 +62,7 @@ readonly STAGES=(
   APP_INSTALL
   APP_LAUNCH
   PROD_PLIST_APP_ALIVE
+  PROD_PLIST_ADS_INIT_REACHED
   PROD_PLIST_NO_CRASH
   TEARDOWN
 )
@@ -103,6 +109,10 @@ stage_log_dir="$artifact_dir/stages"
 mkdir -p -- "$stage_log_dir"
 stage_evidence_file="$artifact_dir/stage-evidence.log"
 crash_copy_dir="$artifact_dir/crash-reports"
+# Records which crash-report directories existed at scan time, so the next real
+# macOS run measures which tree simulator crashes actually land in instead of
+# leaving it a guess (review fix, MEDIUM-1).
+crash_scan_census="$artifact_dir/crash-scan-dirs.log"
 
 overall_start="$(date +%s)"
 current_failure=0
@@ -271,13 +281,26 @@ else
 fi
 
 # --- APP_LAUNCH ---------------------------------------------------------------
+# `xcrun simctl launch` prints the launched process's host PID on success, in
+# the form "<bundle-id>: <pid>". run_bounded sends the child's stdout+stderr to
+# "$stage_log_dir/<stage>.log" (see e2e_watchdog.sh's E2E_WATCHDOG_LOG_FILE
+# handling), so that PID is recoverable from the APP_LAUNCH stage log below.
+# Capturing it is what lets PROD_PLIST_APP_ALIVE check THIS process rather than
+# a launchd job label (review fix, HIGH-2).
 launch_epoch=0
+launch_pid=""
 if [ "$current_failure" -eq 0 ]; then
   launch_epoch="$(date +%s)"
   run_bounded APP_LAUNCH xcrun simctl launch "$udid" "$bundle_id"
   rc=$?
   if [ "$rc" -eq 0 ]; then
-    emit_stage APP_LAUNCH PASS "simctl launch accepted the Runner bundle against the unmodified production plist"
+    launch_pid="$(sed -n 's/^[[:space:]]*'"$bundle_id"':[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' \
+      "$stage_log_dir/APP_LAUNCH.log" 2>/dev/null | tail -n 1)"
+    if [ -n "$launch_pid" ]; then
+      emit_stage APP_LAUNCH PASS "simctl launch accepted the Runner bundle against the unmodified production plist (pid=$launch_pid)"
+    else
+      emit_stage APP_LAUNCH PASS "simctl launch accepted the Runner bundle against the unmodified production plist (pid not parsed from launch output; PROD_PLIST_APP_ALIVE falls back to the launchctl PID column)"
+    fi
   else
     emit_stage APP_LAUNCH FAIL "simctl launch exit=$rc"
     current_failure=1
@@ -296,27 +319,111 @@ if [ "$current_failure" -eq 0 ]; then
 fi
 
 # --- PROD_PLIST_APP_ALIVE ------------------------------------------------------
-# The simulator's own launchd is queried (via `xcrun simctl spawn ... launchctl
-# list`) for a job matching the app's bundle id. A crashed/exited app is
-# unloaded from launchd, so an entry disappearing here is direct evidence the
-# process did not survive the wait above -- unlike e2e_xctest_flow.sh's
-# APP_READY stage, which only ever confirmed the simulator's launchd service
-# was reachable in general, never that this specific app was still running.
+# Liveness must mean "the launched PROCESS is still running", not "a launchd job
+# with this label is still registered" (review fix, HIGH-2).
+#
+# `launchctl list` output is three columns -- PID, Status, Label -- and an app
+# is registered under a "UIKitApplication:<bundle-id>[...]" label. A plain
+# `grep -F <bundle-id>` matches the LABEL column only, so it still succeeded
+# when the process was already dead and the PID column had degraded to "-"
+# (job loaded, no process). That turned a crash into a PASS, which is exactly
+# the failure mode this probe exists to detect.
+#
+# Primary check: the PID captured from `simctl launch` above. Simulator apps
+# run as host macOS processes, so `kill -0 <pid>` from this shell is a direct,
+# unambiguous liveness test on the very process that was launched.
+# Fallback (only when the PID could not be parsed): require the launchctl PID
+# COLUMN to be numeric for the matching label, instead of accepting a bare
+# label match.
+# Fail-closed: if neither path can produce positive evidence of a live
+# process, this stage is FAIL/UNKNOWN -- never PASS.
 if [ "$current_failure" -eq 0 ]; then
-  E2E_UDID="$udid" E2E_BUNDLE_ID="$bundle_id" \
-    run_bounded PROD_PLIST_APP_ALIVE bash -c '
-      set -euo pipefail
-      xcrun simctl spawn "$E2E_UDID" launchctl list | grep -F -- "$E2E_BUNDLE_ID"
-    '
-  rc=$?
-  if [ "$rc" -eq 0 ]; then
-    emit_stage PROD_PLIST_APP_ALIVE PASS "launchctl list reported a live job for $bundle_id after ${wait_seconds}s"
+  if [ -n "$launch_pid" ]; then
+    if kill -0 "$launch_pid" 2>/dev/null; then
+      emit_stage PROD_PLIST_APP_ALIVE PASS "launched pid $launch_pid is still alive after ${wait_seconds}s"
+    else
+      emit_stage PROD_PLIST_APP_ALIVE FAIL "launched pid $launch_pid is no longer running after ${wait_seconds}s; the app crashed or exited"
+      current_failure=1
+    fi
   else
-    emit_stage PROD_PLIST_APP_ALIVE FAIL "no live launchctl job found for $bundle_id after ${wait_seconds}s (exit=$rc); the app likely crashed or exited"
-    current_failure=1
+    E2E_UDID="$udid" E2E_BUNDLE_ID="$bundle_id" \
+      run_bounded PROD_PLIST_APP_ALIVE bash -c '
+        set -uo pipefail
+        xcrun simctl spawn "$E2E_UDID" launchctl list \
+          | awk -v bid="$E2E_BUNDLE_ID" '"'"'index($3, bid) > 0 && $1 ~ /^[0-9]+$/ { found = 1; print } END { exit(found ? 0 : 1) }'"'"'
+      '
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      emit_stage PROD_PLIST_APP_ALIVE PASS "launch pid unavailable; launchctl list reported a numeric PID column for a $bundle_id job after ${wait_seconds}s"
+    else
+      emit_stage PROD_PLIST_APP_ALIVE FAIL "launch pid unavailable and no launchctl job for $bundle_id had a numeric PID column after ${wait_seconds}s (exit=$rc); treated as not-alive (fail-closed)"
+      current_failure=1
+    fi
   fi
 else
   mark_skipped PROD_PLIST_APP_ALIVE
+fi
+
+# --- PROD_PLIST_ADS_INIT_REACHED ----------------------------------------------
+# Why this stage exists (review fix, HIGH-1): APP_ALIVE=PASS alone does NOT
+# clear R1. The app can survive either because (a) there is no R1 crash, or
+# because (b) execution never REACHED the R1 code at all -- there are three
+# early returns before lib/services/ad_service.dart:483's
+# `MobileAds.instance.initialize()` (:446 rewardedAdEnabled off, :468 UMP
+# unavailable, and the priming try/catch in lib/main.dart). Mapping PASS/PASS
+# straight to R1_CLEARED silently assumes (a). This stage exists to look for
+# evidence of which branch actually ran.
+#
+# IMPORTANT, measured limitation -- read before extending this stage:
+# the reason strings 'ump_unavailable' (ad_service.dart:464) and
+# 'post_prime_not_initialized' (main.dart:184) are NOT observable at runtime.
+# They are passed as the `reason:` PARAMETER to
+# AnalyticsService.logAdLoadFailed, and lib/core/analytics_service.dart's
+# _logEvent (:10-18) is a no-op that prints only
+#   "Analytics event skipped (<event-name>): analytics disabled"
+# discarding `parameters` entirely. So all four early-exit reasons collapse to
+# the SAME console line carrying the event name 'ad_load_failed' (:143) and
+# nothing that distinguishes them. Only the literals below actually appear in
+# output; do not add a grep for a `reason:` value, it can never match.
+#
+# Consequence: a positive "reached" proof exists (the initialize() catch block
+# at ad_service.dart:487 logs a distinct literal), but "reached and succeeded"
+# leaves no marker at all. This stage therefore reports UNDETERMINED whenever
+# it cannot positively prove reach, and UNDETERMINED must NOT be read as
+# CLEARED (see docs/ios/R1-admob-launch-risk.md's verdict table).
+#
+# UNDETERMINED deliberately does not set current_failure: it is missing
+# diagnostic evidence, not a probe malfunction. The fail-closed behavior lives
+# in the R1 verdict mapping, which refuses to clear without a REACHED result.
+ads_log_file="$artifact_dir/app-log.txt"
+if [ "$launch_epoch" -ne 0 ]; then
+  log_window=$((wait_seconds + 10))
+  E2E_UDID="$udid" E2E_LOG_WINDOW="${log_window}s" E2E_ADS_LOG_FILE="$ads_log_file" \
+    run_bounded PROD_PLIST_ADS_INIT_REACHED bash -c '
+      set -uo pipefail
+      xcrun simctl spawn "$E2E_UDID" log show \
+        --style compact \
+        --last "$E2E_LOG_WINDOW" \
+        --predicate '"'"'processImagePath CONTAINS "Runner"'"'"' \
+        > "$E2E_ADS_LOG_FILE" 2>/dev/null
+    '
+  rc=$?
+  if [ "$rc" -ne 0 ] || [ ! -s "$ads_log_file" ]; then
+    emit_stage PROD_PLIST_ADS_INIT_REACHED UNDETERMINED "could not capture app log (exit=$rc); cannot tell whether MobileAds init was reached, so R1 must not be cleared from this run"
+  elif grep -qF -- 'AdService.initialize failed:' "$ads_log_file"; then
+    # ad_service.dart:487 -- only reachable from inside the try block that
+    # wraps :483, i.e. MobileAds.instance.initialize() was actually invoked.
+    emit_stage PROD_PLIST_ADS_INIT_REACHED PASS "found 'AdService.initialize failed:' (ad_service.dart:487): MobileAds init was reached and threw; R1 code path is exercised"
+  elif grep -qF -- 'AdService initialize skipped:' "$ads_log_file"; then
+    # main.dart:190 -- the priming try/catch swallowed a throw.
+    emit_stage PROD_PLIST_ADS_INIT_REACHED UNDETERMINED "found 'AdService initialize skipped:' (main.dart:190): priming threw before completing; reach not proven"
+  elif grep -qF -- 'Analytics event skipped (ad_load_failed)' "$ads_log_file"; then
+    emit_stage PROD_PLIST_ADS_INIT_REACHED UNDETERMINED "an ad_load_failed analytics event was logged during the launch window; one of the four early-exit branches likely ran, but the reason parameter is discarded by analytics_service.dart:10-18 so the branch is indistinguishable and reach is not proven"
+  else
+    emit_stage PROD_PLIST_ADS_INIT_REACHED UNDETERMINED "no ad-init marker found in the captured log; 'reached and succeeded' leaves no marker, so this is indistinguishable from an early exit and R1 must not be cleared from this run"
+  fi
+else
+  mark_skipped PROD_PLIST_ADS_INIT_REACHED
 fi
 
 # --- PROD_PLIST_NO_CRASH ------------------------------------------------------
@@ -330,9 +437,19 @@ find_new_crash_reports() {
   local since_epoch="$1"
   local since_ts
   local dir
+  # Simulator app crashes have been reported in BOTH the host-wide
+  # DiagnosticReports tree and a per-device CoreSimulator tree; which one is
+  # authoritative has not been measured on a real runner from this (Windows)
+  # host, so all three are scanned (review fix, MEDIUM-1). A non-existent
+  # directory is skipped by the `-d` test below, so adding the CoreSimulator
+  # path is side-effect free if it turns out never to be used. The
+  # per-directory census written by the caller records which paths existed and
+  # what each contributed, so the next real run measures this instead of
+  # guessing.
   local dirs=(
     "$HOME/Library/Logs/DiagnosticReports"
     "$HOME/Library/Logs/DiagnosticReports/Retired"
+    "$HOME/Library/Logs/CoreSimulator/$udid"
   )
   # BSD `date -r <epoch>` (macOS) formats an epoch seconds value; this is
   # deliberately NOT portable to GNU date (`-r` means "use file mtime" there)
@@ -340,21 +457,32 @@ find_new_crash_reports() {
   # header comment).
   since_ts="$(date -r "$since_epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)"
   if [ -z "$since_ts" ]; then
-    return 0
+    # Fail-closed (review fix, MEDIUM-2). Returning 0 with no output here used
+    # to make the caller see "no crash reports" and emit PASS, i.e. a failure
+    # to compute the cutoff timestamp was silently indistinguishable from a
+    # clean run. Exit non-zero instead so the caller reports UNKNOWN.
+    return 2
   fi
   for dir in "${dirs[@]}"; do
     if [ -d "$dir" ]; then
+      printf 'CRASH_SCAN_DIR path=%s state=present\n' "$dir" >> "$crash_scan_census" 2>/dev/null || true
       find "$dir" -type f \
         \( -iname 'Runner-*' -o -iname 'Runner_*' -o -iname 'Runner.*' \) \
         -newermt "$since_ts" 2>/dev/null || true
+    else
+      printf 'CRASH_SCAN_DIR path=%s state=absent\n' "$dir" >> "$crash_scan_census" 2>/dev/null || true
     fi
   done
 }
 
 if [ "$launch_epoch" -ne 0 ]; then
   mkdir -p -- "$crash_copy_dir"
-  crash_reports="$(find_new_crash_reports "$launch_epoch")"
-  if [ -n "$crash_reports" ]; then
+  crash_scan_rc=0
+  crash_reports="$(find_new_crash_reports "$launch_epoch")" || crash_scan_rc=$?
+  if [ "$crash_scan_rc" -ne 0 ]; then
+    emit_stage PROD_PLIST_NO_CRASH UNKNOWN "could not compute the crash-report cutoff timestamp (date -r exit path, rc=$crash_scan_rc); crash state is unverified and must not be read as clean"
+    current_failure=1
+  elif [ -n "$crash_reports" ]; then
     while IFS= read -r report; do
       [ -z "$report" ] && continue
       cp -p -- "$report" "$crash_copy_dir/" 2>/dev/null || true
@@ -365,7 +493,7 @@ EOF
     emit_stage PROD_PLIST_NO_CRASH FAIL "found $report_count new crash report(s) since launch; copied to $crash_copy_dir"
     current_failure=1
   else
-    emit_stage PROD_PLIST_NO_CRASH PASS "no new crash report for Runner found since launch (checked ~/Library/Logs/DiagnosticReports and its Retired subdirectory)"
+    emit_stage PROD_PLIST_NO_CRASH PASS "no new crash report for Runner found since launch (checked ~/Library/Logs/DiagnosticReports, its Retired subdirectory, and ~/Library/Logs/CoreSimulator/<udid>; per-directory presence recorded in $crash_scan_census)"
   fi
 else
   mark_skipped PROD_PLIST_NO_CRASH

@@ -37,11 +37,11 @@ does report Build 16 as dispatched and resolved. Quoting that file directly
 - `build_16.status` (line ~87): `"SUCCESS"`, workflow
   `.github/workflows/ios-release.yml`, run_id `33634034706`, run_number `16`,
   head_sha `503bba99ec5efe37195b2a516c0f923c9fd8b4c6`.
-- `verification.apple_authoritative_build_upload` (line ~301): `"PASS: App
+- `verification.apple_authoritative_build_upload` (line 302): `"PASS: App
   Store Connect resource for com.fluxstudio.planflow 1.0.0 (16) state
   COMPLETE"`.
-- `verification.90683_resolution` (line ~302): `"PASS: RESOLVED_BY_BUILD16"`.
-- `verification.release_readiness` (line ~303): `"PASS: TESTFLIGHT_READY"`.
+- `verification.90683_resolution` (line 303): `"PASS: RESOLVED_BY_BUILD16"`.
+- `verification.release_readiness` (line 304): `"PASS: TESTFLIGHT_READY"`.
 
 What this record proves: an App Store Connect resource for build (16) reached
 `COMPLETE` ingestion state — i.e. the binary was accepted and processed by

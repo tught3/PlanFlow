@@ -93,7 +93,7 @@ unsigned `xcodebuild` Runner 빌드를 돌린다 — 즉 **컴파일 가능성**
 | 항목 | 상태 | 근거 |
 |---|---|---|
 | FLOW1 ~ FLOW8 (8개 전부) | **NOT_VERIFIED** | Run#18 `flows_1_to_8: "NOT_VERIFIED"` |
-| `test/` 아래 `_test.dart` **157개** | **어떤 CI에서도 자동 실행 안 됨** | `ios-readiness.yml:89-93`이 4개만 명시 실행. 전체 스위트를 돌리는 `flutter-test-baseline.yml`은 `workflow_dispatch` 전용 + `continue-on-error: true`라 자동 실행·차단 모두 하지 않는다 |
+| `test/` 아래 `_test.dart` **157개** | **어떤 CI에서도 자동 실행 안 됨** | `.github/workflows/ios-readiness.yml:89-94`이 4개만 명시 실행. 전체 스위트를 돌리는 `flutter-test-baseline.yml`은 `workflow_dispatch` 전용 + `continue-on-error: true`라 자동 실행·차단 모두 하지 않는다 |
 | `integration_test/flow01` 세션 복원 시나리오 | **영구 skip** | `integration_test/flow01_cold_start_test.dart:90` `skip: true` |
 
 `integration_test/` 에는 flow01~flow08 파일 8개가 실재한다.
@@ -160,7 +160,7 @@ App Group 실물 왕복, 권한 다이얼로그 분기)은 §4의 대체 QA로 *
    `flutter-test-baseline.yml`(커밋 `f29f9a24`로 추가됨)을 **`workflow_dispatch`로 1회 실행**하고
    업로드되는 `flutter-full-suite-baseline` 아티팩트(`full-suite-output.log`)에서
    pass/fail/skip 수를 기록한다.
-   `ios-readiness.yml:85-88`의 "environment-sensitive failures" 주장이
+   `.github/workflows/ios-readiness.yml:85-88`의 "environment-sensitive failures" 주장이
    사실인지, 사실이면 몇 건인지를 먼저 숫자로 만든다.
    **이 측정 없이 다음 단계로 가지 마라** — 워크플로가 존재한다는 사실은
    측정 결과가 아니다. 실행 로그가 나오기 전까지 §2.2는 그대로 미확정이다.
@@ -180,7 +180,7 @@ App Group 실물 왕복, 권한 다이얼로그 분기)은 §4의 대체 QA로 *
 
 4. **[유지] host-runnable E2E는 계속 쓴다.**
    `test/ios_e2e_flow05_fake_test.dart`는 이미 CI에서 통과한다
-   (`ios-simulator-e2e.yml:126`). 같은 host-fake 패턴으로 커버 가능한
+   (`.github/workflows/ios-simulator-e2e.yml:126`). 같은 host-fake 패턴으로 커버 가능한
    FLOW를 추가 이식하는 것이 시뮬레이터 안으로 들어가는 것보다 싸다.
 
 5. **[기록] 커버되지 않는 항목을 명시적으로 남긴다.**

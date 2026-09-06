@@ -7,11 +7,19 @@
 > 앱이 실제로 부팅·생존한다는 **런타임 증거가 0건**이다.
 > 상세: [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md)
 >
-> **해제 조건 (단일)**: `.github/workflows/ios-adsdk-launch-probe.yml`를
-> `workflow_dispatch`로 1회 실행해 `PROD_PLIST_APP_ALIVE` = PASS,
-> `PROD_PLIST_NO_CRASH` = PASS를 얻으면 즉시
-> **`APP_STORE_READY_PENDING_USER_CONFIGURATION`으로 전환**된다.
+> **해제 조건**: `.github/workflows/ios-adsdk-launch-probe.yml`를
+> `workflow_dispatch`로 1회 실행해 **세 스테이지가 모두** 아래를 만족해야 한다:
+> `PROD_PLIST_APP_ALIVE` = PASS, `PROD_PLIST_ADS_INIT_REACHED` = PASS,
+> `PROD_PLIST_NO_CRASH` = PASS. 이때만
+> **`APP_STORE_READY_PENDING_USER_CONFIGURATION`으로 전환**되고,
 > 그 시점부터 남는 것은 전부 App Store Connect 콘솔 입력(§남은 사용자 액션)뿐이다.
+>
+> **`PROD_PLIST_ADS_INIT_REACHED`가 왜 필수인가(리뷰 HIGH-1).** 생존(PASS)만으로는
+> R1이 없다는 결론이 나오지 않는다 — 앱이 살아남은 이유가 (a) R1이 없어서인지
+> (b) 조기 return 때문에 **R1 코드에 도달조차 못 해서**인지 구분되지 않기 때문이다.
+> 도달이 입증되지 않으면(`UNDETERMINED`) 판정은 `R1_UNDETERMINED`로 **그대로 유지**된다.
+> 상세와 이 스테이지의 실측된 한계는
+> [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md) §4-3.
 
 ### 왜 `APP_STORE_READY_PENDING_USER_CONFIGURATION`이 아닌가
 

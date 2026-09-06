@@ -113,6 +113,73 @@ if printf '%s' "$probe_text" | grep -qF -- 'PROD_PLIST_NO_CRASH'; then
 else
   fail "probe script is missing the PROD_PLIST_NO_CRASH stage marker"
 fi
+if printf '%s' "$probe_text" | grep -qF -- 'PROD_PLIST_ADS_INIT_REACHED'; then
+  pass "probe script defines the PROD_PLIST_ADS_INIT_REACHED stage marker"
+else
+  fail "probe script is missing the PROD_PLIST_ADS_INIT_REACHED stage marker"
+fi
+
+# --- 6. Liveness must not regress to a label-only launchctl match ----------
+# Review fix HIGH-2. `launchctl list` prints "PID Status Label" and an app is
+# registered as "UIKitApplication:<bundle-id>[...]", so a bare
+# `grep -F -- "$E2E_BUNDLE_ID"` matches the LABEL and returns success even when
+# the PID column has degraded to "-" (job loaded, process dead) -- i.e. it
+# scores a crash as PASS. Liveness must instead test the launched pid directly,
+# with a launchctl fallback that requires a NUMERIC PID column.
+if printf '%s' "$probe_text" | grep -qE -- 'launchctl list[[:space:]]*\|[[:space:]]*grep'; then
+  fail "probe script pipes launchctl list straight into grep (label-only match; passes for a dead process)"
+else
+  pass "probe script does not use a label-only launchctl-list grep for liveness"
+fi
+if printf '%s' "$probe_text" | grep -qE -- 'kill -0 "\$launch_pid"'; then
+  pass "probe script tests the launched pid directly for liveness"
+else
+  fail "probe script does not test the launched pid directly for liveness"
+fi
+if printf '%s' "$probe_text" | grep -qE -- '\$1 ~ /\^\[0-9\]\+\$/'; then
+  pass "probe script's launchctl fallback requires a numeric PID column"
+else
+  fail "probe script's launchctl fallback does not require a numeric PID column"
+fi
+
+# --- 7. Ad-init reach evidence uses only observable literals ----------------
+# The `reason:` values passed to AnalyticsService.logAdLoadFailed
+# ('ump_unavailable', 'post_prime_not_initialized', ...) never reach any log:
+# lib/core/analytics_service.dart's _logEvent discards `parameters` and prints
+# only the event name. A grep for them could therefore never match, and adding
+# one would create a stage that silently always takes its "not found" branch.
+# Only literals that a debugPrint actually emits are legitimate here.
+if printf '%s' "$probe_text" | grep -qE -- 'grep[^|]*(ump_unavailable|post_prime_not_initialized)'; then
+  fail "probe script greps for an analytics reason parameter that is never emitted to any log"
+else
+  pass "probe script does not grep for a discarded analytics reason parameter"
+fi
+if printf '%s' "$probe_text" | grep -qF -- "AdService.initialize failed:"; then
+  pass "probe script looks for the observable ad-init literal from ad_service.dart"
+else
+  fail "probe script does not look for the observable ad-init literal from ad_service.dart"
+fi
+
+# --- 8. Crash scan covers the per-device CoreSimulator tree ----------------
+if printf '%s' "$probe_text" | grep -qF -- 'Library/Logs/CoreSimulator'; then
+  pass "probe script also scans the per-device CoreSimulator log tree for crash reports"
+else
+  fail "probe script does not scan the per-device CoreSimulator log tree for crash reports"
+fi
+
+# --- 9. A failed crash-cutoff computation must not read as clean -----------
+# Review fix MEDIUM-2: find_new_crash_reports used to `return 0` with no output
+# when `date -r` produced nothing, which the caller could not distinguish from
+# "no crash reports found" and reported as PASS.
+if printf '%s' "$probe_text" | grep -qE -- 'if \[ -z "\$since_ts" \]; then[[:space:]]*$'; then
+  if printf '%s' "$probe_text" | grep -A 8 -- 'if \[ -z "\$since_ts" \]; then' | grep -qE -- 'return [1-9]'; then
+    pass "probe script fails closed when the crash-report cutoff timestamp cannot be computed"
+  else
+    fail "probe script returns success when the crash-report cutoff timestamp cannot be computed (fail-open)"
+  fi
+else
+  fail "probe script no longer guards an empty crash-report cutoff timestamp"
+fi
 
 echo ""
 echo "=== Results: $pass_count passed, $fail_count failed ==="
