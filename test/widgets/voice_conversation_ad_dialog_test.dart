@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/theme.dart';
+import 'package:planflow/services/remote_config_service.dart';
 import 'package:planflow/widgets/voice_conversation_ad_dialog.dart';
 
 void main() {
@@ -69,5 +70,37 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('취소'));
     expect(await result.future, isFalse);
+  });
+
+  testWidgets('무료 소진 시 오늘 무료 횟수와 광고 안내를 표시한다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildPlanFlowTheme(),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () {
+              unawaited(
+                showVoiceConversationAdDialog(
+                  context,
+                  initialRemaining: 0,
+                  dailyRemaining: 0,
+                ),
+              );
+            },
+            child: const Text('open exhausted dialog'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open exhausted dialog'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('오늘 무료 AI일정대화'), findsOneWidget);
+    expect(
+      find.textContaining(
+          '${RemoteConfigService.voiceConversationDailyFreeCount}회'),
+      findsOneWidget,
+    );
   });
 }
