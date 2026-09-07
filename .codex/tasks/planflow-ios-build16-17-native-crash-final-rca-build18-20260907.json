@@ -1,0 +1,206 @@
+{
+  "task_id": "planflow-ios-build16-17-native-crash-final-rca-build18-20260907",
+  "status": "SYMBOL_RECONSTRUCTION_DELIVERY_READY_BUILD18_BLOCKED_PENDING_PUSH_AND_AUTHENTICATED_MACOS_DISPATCH",
+  "request": "Ingest the authoritative Build 16 and Build 17 iPhone crash reports, symbolicate only with an exact UUID-matched Runner/dSYM, restore Android feature parity only after evidence identifies the native cause, and release Build 18 only after every fail-closed gate passes.",
+  "source_identity": {
+    "branch": "main",
+    "starting_head": "311d7ddc08a5c49f1258502a94e9e2b3bb0504db",
+    "origin_main_at_start": "311d7ddc08a5c49f1258502a94e9e2b3bb0504db",
+    "ahead_behind_at_start": "0/0",
+    "build_16_commit": "503bba99ec5efe37195b2a516c0f923c9fd8b4c6",
+    "build_17_commit": "f5cd355e0aa78eeb575326cee2822e6bbb528805"
+  },
+  "authoritative_crash_evidence": {
+    "raw_reports": "Four local .ips files were read in place and were not copied, committed, or uploaded. One file was a duplicate, leaving two unique Build 16 incidents and one Build 17 incident.",
+    "common_device": "iPhone14,4 (iPhone 13 mini), arm64, iOS 26.6.1",
+    "build_16": {
+      "version": "1.0.0",
+      "build": 16,
+      "bundle_id": "com.fluxstudio.planflow",
+      "runner_uuid": "96EB03A3-C4E7-3C3E-9C58-9E3F6DE896BC",
+      "unique_incidents": 2,
+      "process_lifetime_ms": [79, 506],
+      "exception": "EXC_CRASH / SIGABRT / Abort trap 6",
+      "fault_queue": "com.apple.root.default-qos",
+      "runner_offsets": [7717012, 7717392]
+    },
+    "build_17": {
+      "version": "1.0.0",
+      "build": 17,
+      "bundle_id": "com.fluxstudio.planflow",
+      "runner_uuid": "D9B552C8-3F13-3217-B8B9-6886EE0926D0",
+      "unique_incidents": 1,
+      "process_lifetime_ms": [217],
+      "exception": "EXC_CRASH / SIGABRT / Abort trap 6",
+      "fault_queue": "com.apple.root.default-qos",
+      "runner_offsets": [7717068, 7717448]
+    },
+    "shared_signature": "CoreFoundation exception preprocessing -> objc_exception_throw -> NSException raise -> two Runner frames -> dispatch; corresponding Runner offsets differ by exactly 56 bytes in Build 17.",
+    "exception_reason": "The .ips reports contain no more specific exception reason than abort() called.",
+    "classification": "COMMON_NATIVE_NS_EXCEPTION_PATH_CONFIRMED"
+  },
+  "verdicts": {
+    "admob_dart_init_as_sole_root_cause": "FALSIFIED",
+    "crash_function": "NOT_YET_IDENTIFIED",
+    "root_cause": "ROOT_CAUSE_STRONGLY_NARROWED",
+    "decisive_diagnostic": "UUID_MATCHED_HISTORICAL_SYMBOL_RECONSTRUCTION_READY",
+    "build_18": "BLOCKED_PENDING_UUID_MATCHED_SYMBOLICATION",
+    "r1": "UNRESOLVED",
+    "app_store": "BLOCKED",
+    "android": "UNCHANGED"
+  },
+  "constraints": [
+    "Use only the current shared checkout and named in-app subagents; do not create a new task, session, or worktree.",
+    "Preserve AGENTS.md, CLAUDE.md, $null, and AGENTS.md.before-regen.bak as foreign dirty files.",
+    "Do not change Android, ios-release.yml, signing/provisioning, Apple Developer configuration, GitHub Secrets, privacy keys, entitlements, AppDelegate, or product runtime code before symbolication identifies the cause.",
+    "Do not create placeholder AdMob identifiers or restore iOS Ads/UMP without canonical iOS configuration.",
+    "Do not archive/export/upload a signed product and do not dispatch Build 18.",
+    "Do not commit raw crash reports, PII, protected plist contents, signing material, or provider credentials.",
+    "No force push."
+  ],
+  "allowed_files": [
+    ".github/workflows/ios-historical-symbol-reconstruction.yml",
+    "scripts/ios/reconstruct_historical_runner_symbols.sh",
+    "scripts/ios/tests/historical_symbol_reconstruction_contract.sh",
+    "docs/ios/build16-17-native-crash-rca.md",
+    ".codex/tasks/planflow-ios-build16-17-native-crash-final-rca-build18-20260907.json"
+  ],
+  "implementation": {
+    "workflow": "Manual main-only, read-only-permission macOS matrix for fixed Build 16 and Build 17 source SHAs, crash UUIDs, versions, builds, and offsets.",
+    "source_fidelity": "Reuses the historical release label macos-latest and Flutter 3.47.2, records current Xcode/Swift/CocoaPods provenance, and records that neither historical commit contains ios/Podfile.lock.",
+    "variants": "Reproduces the production sequence as two explicit variants: Flutter no-code-sign preparation build and an ephemeral unsigned Xcode archive. The archive variant is preferred; the preparation variant is allowed only when its own Runner and dSYM exactly match the crash UUID.",
+    "symbolication_gate": "For each selected variant, crash UUID, arm64 Runner UUID, and that variant's arm64 dSYM UUID must all match; dSYM verification, __TEXT range validation, and resolvable atos function output must pass. If both variants match, their sanitized frames must be identical.",
+    "secret_boundary": "The canonical protected Firebase plist is decoded in one dedicated step, passed to reconstruction as an owner-only temporary file path rather than a secret environment value, removed before archive to mirror production, and deleted before annotations/artifact upload.",
+    "output_boundary": "Only bounded function/module/file-basename/line data, variant states, UUIDs, toolchain provenance, and fixed internal reasons are emitted. Raw .ips, app, dSYM, xcarchive, IPA, logs, plist, secrets, and signing material are never uploaded.",
+    "release_boundary": "No signing identity other than an explicitly empty archive override, no team/profile/certificate/keychain, no exportArchive, no IPA, no altool/Transporter/ASC upload, and no Build 18 path.",
+    "parity_inventory": "The source-level table records Firebase, Supabase/auth, maps, notifications, microphone, speech, photo/file, Widget/App Group, deep links, secure storage, Ads/UMP/rewarded, analytics, Crashlytics, Remote Config, offline, lifecycle, sharing, and review flow. Ads/UMP/rewarded are the only identified iOS diagnostic disable family; runtime restoration remains configuration- and RCA-gated."
+  },
+  "roles": {
+    "explorer": {
+      "agent_id": "01a07b87-5476-7c62-9b6b-bed2f3fa716b",
+      "agent": "flux_explorer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only crash/source/evidence inventory and historical release comparison.",
+      "result": "Confirmed the Build 16/17 source and release evidence boundary, common native Runner exception region, retained-artifact gap, and the need for exact UUID-gated symbolication before product changes.",
+      "changed_files": []
+    },
+    "planner": {
+      "agent_id": "01a07b8d-5dfd-70a3-ba5b-95c9da99a8ef",
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define the bounded historical reconstruction plan and Build 18 authorization gates.",
+      "result": "Use independent fixed Build 16/17 reconstructions, require crash/executable/dSYM UUID equality before atos, treat any mismatch as no-result, and keep Build 18 blocked.",
+      "changed_files": []
+    },
+    "complex_implementer": {
+      "agent_id": "01a07b9d-26f0-7e92-994f-717891626afb",
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement the isolated audit-only reconstruction workflow, script, contract test, and sanitized RCA inventory.",
+      "result": "Created the four-file implementation without changing product code, Android, signing, or release workflows. Main integration subsequently hardened dSYM usage, exact dispatched SHA binding, archive fidelity, dual-variant ambiguity handling, and protected Firebase input scope.",
+      "changed_files": [
+        ".github/workflows/ios-historical-symbol-reconstruction.yml",
+        "scripts/ios/reconstruct_historical_runner_symbols.sh",
+        "scripts/ios/tests/historical_symbol_reconstruction_contract.sh",
+        "docs/ios/build16-17-native-crash-rca.md"
+      ]
+    },
+    "simple_implementer": {
+      "agent_id": "01a07c09-a15c-7f62-9f87-a77c28799026",
+      "agent": "flux_simple_implementer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Correct the independent review finding that non-UUID reconstruction failures were reported as UUID mismatch, and strengthen the static contract.",
+      "result": "Added a centralized no-match classifier. Actual executable or dSYM UUID mismatches retain UUID_MISMATCH_NO_SYMBOLICATION, while archive creation, missing output, invalid arm64 UUID extraction, dSYM verification, and unknown states report RECONSTRUCTION_OR_VERIFICATION_FAILED_NO_SYMBOLICATION. MATCH selection and atos behavior are unchanged. Contract and Bash syntax passed with Git Bash.",
+      "changed_files": [
+        "scripts/ios/reconstruct_historical_runner_symbols.sh",
+        "scripts/ios/tests/historical_symbol_reconstruction_contract.sh"
+      ]
+    },
+    "high_risk_reviewer": {
+      "agent_id": "01a07b91-0d61-7930-be90-eac9aaaaeafc",
+      "agent": "flux_high_risk_reviewer",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "assignment": "Review whether historical reconstruction is a valid bounded experiment and whether the production archive action must be reproduced.",
+      "result": "Approved a dual-variant design: unsigned archive first, Flutter-build fallback only on exact three-way UUID match, explicit same-variant paths, identical symbols if both match, and no signing/export/upload/Build 18. Initial A-only blockers were corrected.",
+      "changed_files": []
+    },
+    "parity_explorer": {
+      "agent_id": "01a07bce-4a22-7680-8e7d-9fe55abcfcd9",
+      "agent": "flux_explorer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Produce the current Android feature baseline and iOS diagnostic-disable inventory without changing code.",
+      "result": "INTERRUPTED_NO_REPORT after two bounded waits and a narrowed interrupt request. This outcome is not counted as PASS; the main agent completed the direct source inventory and assigned it to final independent review.",
+      "execution_status": "SHUTDOWN_WITHOUT_FINAL_REPORT",
+      "changed_files": []
+    },
+    "test_executor": {
+      "agent_id": "01a07bda-7994-7933-acd6-1bb4ca29ba6c",
+      "agent": "flux_test_executor",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run final workflow/script contracts, YAML/JSON validation, Flutter regressions, diff/isolation checks, and record platform gaps.",
+      "result": "Historical reconstruction contract, both shell syntax checks, YAML/JSON parsing, focused iOS Ads/runtime/release/native contracts, staged diff check, and owned-path isolation passed. Default Windows bash resolved to unavailable WSL, so shell checks were rerun successfully with Git Bash. The first broad analyzer attempts stalled and were terminated only after exact process ownership checks; sequential dart analyze lib, test, and integration_test all passed. The full Flutter suite completed with 1464 passes and 23 failures; it is not reported as PASS.",
+      "execution_status": "COMPLETE_WITH_RECORDED_NON_GATING_FULL_SUITE_FAILURES",
+      "changed_files": []
+    },
+    "failure_analyst": {
+      "agent_id": "01a07bf9-d7fe-7eb2-ae54-26d1d2985bea",
+      "agent": "flux_failure_analyst",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Classify the full Flutter suite failures against the staged five-file iOS diagnostic diff using bounded isolated reruns.",
+      "result": "The Naver CalDAV file reproduced 9 failures out of 29 tests, including one failure in isolation, because the quick-sync range derived from the current 2026-09-07 clock begins on 2026-06-07 while its fixtures use 2026-05-05. A control test with an explicit May 2026 range passed. These 9 failures are an existing time-dependent fixture/contract issue and are not caused by the staged diff. The remaining 14 full-suite failures lack complete retained names and remain UNKNOWN; no Dart product or test path is changed by this delivery.",
+      "execution_status": "COMPLETE_WITH_14_UNCLASSIFIED_BASELINE_FAILURES",
+      "changed_files": []
+    },
+    "reviewer": {
+      "agent_id": "01a07c04-340d-7d13-9ed6-3c14b76af46f",
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review the final current diff, tests, evidence classification, secret/output boundaries, and Build 18 gate.",
+      "result": "Initial review found one MEDIUM no-match reason-classification issue and no BLOCKER/HIGH. After the Simple Implementer correction and focused retest, final review found no remaining findings, confirmed exact five-file scope plus secret/output/unsigned-only/no-upload/no-Android gates, and approved the diagnostic workflow for push. Build 18 remains blocked pending authenticated macOS exact-UUID symbolication.",
+      "execution_status": "FINAL_REVIEW_PASS",
+      "changed_files": []
+    },
+    "integrator": {
+      "agent_id": "01a07c15-f84e-7891-be53-de578bfa3e33",
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile final current diff, role reports, Git state, and the remaining authenticated macOS evidence gate.",
+      "result": "SYMBOL_RECONSTRUCTION_DELIVERY_READY_BUILD18_BLOCKED. No HIGH/BLOCKER/MEDIUM findings remain. The Integrator approved committing and non-force pushing exactly the five audit-only diagnostic files, confirmed role/test evidence and preserved foreign dirty state, and retained the authenticated macOS exact-UUID symbolication gate before any source fix, parity restoration, Build 18, real-device, TestFlight, or App Store claim.",
+      "execution_status": "INTEGRATION_PASS_FOR_DIAGNOSTIC_DELIVERY_ONLY",
+      "changed_files": []
+    }
+  },
+  "verification": [
+    "Historical Build 16 and Build 17 commits both contain scripts/verify-ios-firebase-config.sh.",
+    "Public GitHub job metadata confirms both production release jobs used the macos-latest label.",
+    "Local historical reconstruction contract: PASS after dual-variant and secret-scope hardening.",
+    "Git Bash syntax for reconstruction and contract scripts: PASS.",
+    "PyYAML workflow parse: PASS.",
+    "Task-state JSON parse: PASS.",
+    "Focused Flutter contracts for Ads runtime policy, iOS AdMob, iOS release, and iOS native phase 3: PASS.",
+    "Sequential dart analyze lib, dart analyze test, and dart analyze integration_test: PASS.",
+    "Full flutter test --no-pub: FAIL with 1464 passed and 23 failed; 9 Naver CalDAV failures are independently reproduced as a current-date fixture mismatch, while 14 failures remain UNKNOWN because their complete names were not retained.",
+    "No staged path exists under lib, test, integration_test, android, ios, or the production ios-release workflow.",
+    "Reviewer MEDIUM no-match reason classification finding: CORRECTED; final independent re-review: PASS with no remaining findings.",
+    "macOS Xcode/dwarfdump/atos execution: NOT_RUN_ON_WINDOWS; authenticated workflow dispatch remains required."
+  ],
+  "unresolved": [
+    "No retained historical archive, IPA, or dSYM is available from the Build 16/17 GitHub artifacts, and App Store Connect does not provide these modern non-bitcode dSYMs through the currently accessible path.",
+    "The current macos-latest image and unlocked CocoaPods resolution can differ from the historical jobs, so reconstruction may correctly return UUID_MISMATCH_NO_SYMBOLICATION.",
+    "Fourteen failures from the broad Flutter suite remain unclassified because the complete failure names were not retained; they are outside the staged iOS diagnostic paths and are not claimed as passing.",
+    "The exact native function/file/line, exception reason, source-level root cause, minimal fix, iOS parity restoration, Build 18 release, and real-device QA remain blocked on a UUID-matched result.",
+    "GitHub CLI and in-app GitHub/App Store Connect sessions are unauthenticated, so this task cannot dispatch the macOS workflow directly."
+  ],
+  "next_step": "After the owned workflow is pushed to main, manually dispatch iOS historical Runner symbol reconstruction (audit-only) on main exactly once.",
+  "updated_at": "2026-09-07T22:48:00+09:00"
+}
