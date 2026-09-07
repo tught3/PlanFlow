@@ -1,0 +1,94 @@
+name: Collect Build17 TestFlight crash evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect-build17-crash-evidence:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted main collector
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Collect sanitized Build 17 evidence
+        id: collect
+        shell: bash
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          report_dir="$RUNNER_TEMP/build17-crash-evidence"
+          mkdir -p "$report_dir"
+          key_path="$RUNNER_TEMP/asc-build17-key.p8"
+          trap 'rm -f -- "$key_path"' EXIT
+          umask 077
+          printf '%s' "$ASC_API_KEY_P8" > "$key_path"
+          set +e
+          python3 scripts/collect_asc_beta_crash_feedback.py \
+            --key-path "$key_path" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --json-output "$report_dir/build17-crash-evidence.json" \
+            --markdown-output "$report_dir/build17-crash-evidence.md"
+          collector_exit=$?
+          set -e
+          echo "exit_code=$collector_exit" >> "$GITHUB_OUTPUT"
+          exit "$collector_exit"
+
+      - name: Cleanup protected credential material
+        id: cleanup
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/asc-build17-key.p8"
+          cleanup_ok=false
+          if rm -f -- "$key_path" && [[ ! -e "$key_path" ]]; then
+            cleanup_ok=true
+          fi
+          echo "cleanup_ok=$cleanup_ok" >> "$GITHUB_OUTPUT"
+          [[ "$cleanup_ok" == "true" ]]
+
+      - name: Append sanitized summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="$RUNNER_TEMP/build17-crash-evidence/build17-crash-evidence.md"
+          if [[ -f "$summary" ]]; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' '# Build 17 TestFlight crash evidence' '' '- Status: FAIL_CLOSED (no sanitized report was produced)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload sanitized Build 17 evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-17-testflight-crash-evidence
+          path: ${{ runner.temp }}/build17-crash-evidence/*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail closed on collection result
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="${{ steps.collect.outputs.exit_code }}"
+          cleanup_ok="${{ steps.cleanup.outputs.cleanup_ok }}"
+          if [[ -z "$result" || "$result" != "0" || "$cleanup_ok" != "true" ]]; then
+            echo 'Build 17 crash evidence collection or credential cleanup failed closed.' >&2
+            exit 1
+          fi

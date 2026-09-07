@@ -1,0 +1,226 @@
+{
+  "task_id": "planflow-ios-build17-native-crash-evidence-20260907",
+  "status": "LOCAL_DELIVERY_APPROVED_EXTERNAL_EVIDENCE_PENDING",
+  "request": "Use Build 16 and Build 17 real-device evidence to perform an evidence-first native launch RCA. Do not guess-patch or release Build 18 without decisive evidence. Build a safe read-only evidence path when authenticated Apple crash data is otherwise unavailable.",
+  "source_identity": {
+    "starting_head": "f5cd355e0aa78eeb575326cee2822e6bbb528805",
+    "origin_main": "f5cd355e0aa78eeb575326cee2822e6bbb528805",
+    "build_16_commit": "503bba99ec5efe37195b2a516c0f923c9fd8b4c6",
+    "build_17_commit": "f5cd355e0aa78eeb575326cee2822e6bbb528805",
+    "build_17_run_id": 34066956754,
+    "build_17_run_number": 17
+  },
+  "authoritative_runtime_evidence": {
+    "device": "iPhone 13 mini",
+    "build_16": "Immediate return to the iOS Home Screen before PlanFlow UI was meaningfully visible.",
+    "build_17": "Same immediate return to the iOS Home Screen after TestFlight update.",
+    "build_17_ingestion": "COMPLETE per user-provided App Store Connect evidence",
+    "device_crash_report": "NOT_AVAILABLE"
+  },
+  "direct_evidence": [
+    "GitHub public API identifies release run 17 head_sha=f5cd355e0aa78eeb575326cee2822e6bbb528805 and conclusion=success.",
+    "Release run 17 archive, IPA export, upload, and ingestion-poll steps concluded success; one privacy artifact exists.",
+    "Commit 75d49a48 is an ancestor of Build 17 source and contains the Android-only Ads/UMP runtime policy.",
+    "Unauthenticated GitHub access can read run/job/artifact metadata but cannot download logs (403) or artifacts (401).",
+    "No .ips, termination reason, crashed thread, shipped binary UUID, dSYM, or Apple crash feedback is currently available.",
+    "Google Mobile Ads Flutter v5.3.1 native registration does not call GADMobileAds start; start occurs in the MobileAds#initialize method branch."
+  ],
+  "verdicts": {
+    "ads_runtime_isolation_confirmed_in_build_17_source": true,
+    "admob_as_sole_root_cause": "REJECTED",
+    "root_cause": "ROOT_CAUSE_NOT_IDENTIFIED",
+    "build_18": "BUILD18_BLOCKED_INSUFFICIENT_EVIDENCE",
+    "crash_classification": "UNKNOWN",
+    "last_proven_startup_stage": "PROCESS_CREATED"
+  },
+  "constraints": [
+    "Do not create a new user-visible task, session, or worktree.",
+    "Do not change Android.",
+    "Do not change ios-release.yml, signing, provisioning, Firebase configuration, privacy keys, AppDelegate, Info.plist, entitlements, or production upload behavior.",
+    "Do not persist secrets, JWTs, tester identity, comments, raw API responses, raw crash logs, device identifiers, or crash-log PII.",
+    "Do not dispatch or upload Build 18.",
+    "Preserve AGENTS.md, CLAUDE.md, $null, and AGENTS.md.before-regen.bak as foreign dirty files.",
+    "No force push."
+  ],
+  "allowed_files": [
+    ".github/workflows/ios-testflight-crash-feedback.yml",
+    "scripts/collect_asc_beta_crash_feedback.py",
+    "scripts/tests/test_collect_asc_beta_crash_feedback.py",
+    ".codex/tasks/planflow-ios-build17-native-crash-evidence-20260907.json"
+  ],
+  "plan": [
+    "Implement a workflow-dispatch-only, GET-only App Store Connect evidence collector fixed to PlanFlow 1.0.0 Build 17.",
+    "Query and validate the canonical app/build, beta feedback crash submissions, crash logs, and Apple diagnostic signatures.",
+    "Write only an allowlisted PII-safe JSON report and a bounded GitHub summary; preserve no raw provider payload.",
+    "Add deterministic fixture tests for build binding, pagination, sanitization, parsing, and HTTP-method restrictions.",
+    "Run focused validation, independent final-diff review, and integration; commit and non-force push only owned files.",
+    "Keep Build 18 blocked. If the workflow cannot be dispatched here, request exactly one user action to run it."
+  ],
+  "roles": {
+    "explorer": {
+      "agent": "flux_explorer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only Build16/17 source differential, native startup, plugin, binary-risk, and evidence-gap investigation.",
+      "result": "Build 17 source contains the Ads isolation. AppDelegate/plugin registration remains the earliest unresolved source-visible boundary; binary/runtime evidence is absent. Build 18 is not authorized by evidence.",
+      "changed_files": []
+    },
+    "planner": {
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define fail-closed root-cause and Build18 gates plus the smallest safe evidence-acquisition implementation.",
+      "result": "ROOT_CAUSE_NOT_IDENTIFIED and Build18 blocked. Implement a separate, manually dispatched, GET-only ASC collector with strict build binding and PII-safe output; do not touch release/native/Android files.",
+      "changed_files": []
+    },
+    "complex_implementer": {
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement the isolated workflow-dispatch-only, GET-only App Store Connect Build 17 crash-evidence collector, PII-safe output, and deterministic contract tests.",
+      "result": "Created the three-file collector/workflow/test implementation. Rework aligned Build.attributes.version with build 17 and preReleaseVersion 1.0.0/IOS, normalized absolute pagination links, parsed beta crash logs and official diagnostic log schemas, and separated beta-crash from launch/hang/disk-write diagnostics. Final integration hardening added concatenated multi-line JSON .ips decoding and fail-closed handling for unparseable crash logs. Review cycle 2 added strict JSON:API resource/relationship validation, allowlist sanitizers, bounded crash/diagnostic output with truncation markers, collector-step-only secrets, trusted exact-main-SHA checkout, and mocked HTTP/schema/size security tests. Review cycle 3 validated every relationship linkage, required structurally complete JSON or classic crash logs, removed provider request IDs from output, and made verified credential cleanup part of the final fail-closed gate. Review cycle 4 replaced generic provider-text handling with field-specific canonical allowlists, rejected IP/MAC/IPv6 and identifier/token classes, bound diagnostic signature relationships to canonical Build 17, and required at least one valid diagnostic log before diagnostic evidence can PASS. Review cycle 5 blocked semantic PII/secret/credential/API-key/provider-token classes across symbols, binaries, and signatures, and rejected any concatenated crash payload containing a non-object JSON document. Review cycle 6 generalized Stripe-style sk/pk/rk prefixes across environments and broadened GitHub, Slack, Google, and AWS provider-prefix blocking with full serialized-output tests. Review cycle 7 replaced permissive arbitrary bare symbol/binary/signature acceptance with positive program-shape, runtime, system, and known-dependency namespace allowlists while preserving deliberate Runner/App.framework crash evidence.",
+      "changed_files": [
+        ".github/workflows/ios-testflight-crash-feedback.yml",
+        "scripts/collect_asc_beta_crash_feedback.py",
+        "scripts/tests/test_collect_asc_beta_crash_feedback.py"
+      ],
+      "test_evidence": [
+        "implementer py_compile: exit 0",
+        "implementer unittest: 9 passed before final integration hardening",
+        "implementer YAML parse: exit 0",
+        "implementer git diff --check: exit 0",
+        "review rework py_compile: exit 0",
+        "review rework unittest: 14 passed",
+        "review rework YAML parse: exit 0",
+        "review rework git diff --check: exit 0",
+        "second review rework py_compile: exit 0",
+        "second review rework unittest: 15 passed",
+        "second review rework YAML parse: exit 0",
+        "second review rework git diff --check: exit 0",
+        "third review rework py_compile: exit 0",
+        "third review rework unittest: 18 passed",
+        "third review rework YAML parse: exit 0",
+        "third review rework git diff --check: exit 0",
+        "fourth review rework py_compile: exit 0",
+        "fourth review rework unittest: 19 passed",
+        "fourth review rework YAML parse: exit 0",
+        "fourth review rework git diff --check: exit 0",
+        "fifth review rework py_compile: exit 0",
+        "fifth review rework unittest: 21 passed",
+        "fifth review rework YAML parse: exit 0",
+        "fifth review rework git diff --check: exit 0",
+        "sixth review rework py_compile: exit 0",
+        "sixth review rework unittest: 23 passed",
+        "sixth review rework YAML parse: exit 0",
+        "sixth review rework git diff --check: exit 0"
+      ]
+    },
+    "test_executor": {
+      "agent": "flux_test_executor",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run read-only verification against the final current staged diff and record command-level evidence.",
+      "result": "PASS after sixth rework. Python compilation, all 23 expanded focused tests, YAML/task JSON parsing, staged diff checks, four-file allowlist, Android/protected-iOS isolation, positive program-shape allowlist negative and positive controls, full serialized-output probes, all prior fail-closed schema and cleanup gates, and trusted-main exact-SHA behavior passed.",
+      "changed_files": [],
+      "cycle": 7,
+      "test_evidence": [
+        "python -m py_compile scripts/collect_asc_beta_crash_feedback.py: exit 0",
+        "python scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0; Ran 23 tests; OK",
+        "PyYAML safe_load of ios-testflight-crash-feedback.yml: exit 0",
+        "python -m json.tool task state: exit 0",
+        "git diff --cached --check: exit 0",
+        "staged path allowlist: exactly four owned files",
+        "staged and unstaged Android diff: empty",
+        "staged protected iOS diff: empty",
+        "mutating ASC method / Build18 / release upload command scan: no matches",
+        "workflow dispatch gate refs/heads/main plus exact github.sha checkout and persist-credentials false: PASS",
+        "valid modern concatenated .ips collect harness: exit 0; MATCHED_BETA_CRASH_EVIDENCE; one emitted crash record",
+        "malformed diagnostic relationship and exception-only JSON/text harnesses: expected exit 1 and FAIL_CLOSED",
+        "sensitive field classes, IP/MAC/IPv6, request/token, locale/timezone sanitizer probes: PASS",
+        "diagnostic build-other relationship and empty productData/diagnosticLogs probes: FAIL_CLOSED as expected",
+        "valid diagnostic log and valid modern/classic crash evidence probes: PASS",
+        "customerId/apiKey/secretValue/provider-secret-prefix sanitizer probes: UNKNOWN and absent from serialized output",
+        "non-object concatenated JSON before or after valid incident: FAIL_CLOSED; valid object-only metadata plus incident remains supported",
+        "sk/pk/rk environment variants plus GitHub, Slack, Google, and AWS credential-prefix sanitizers and serialized output: PASS",
+        "positive program-shape controls retained and arbitrary bare values plus short provider markers rejected: PASS"
+      ],
+      "verification_gaps": [
+        "Authenticated App Store Connect collection has not run.",
+        "No real-device runtime evidence was available to this role."
+      ]
+    },
+    "reviewer": {
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently inspect the final current staged diff for schema, fail-closed, secret-boundary, PII-safety, summary-size, and regression risks.",
+      "result": "PASS on review cycle 7 after all earlier findings were reworked. The reviewer found no BLOCKER, HIGH, MEDIUM, or LOW issue in the final current staged diff.",
+      "changed_files": [],
+      "cycle": 7,
+      "verdict": "PASS",
+      "findings": []
+    },
+    "integrator": {
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Inspect the complete final current staged and unstaged diff, reconcile the persisted Explorer, Planner, Complex Implementer rework, Test Executor, and independent Reviewer evidence, and decide the pre-commit gate without claiming authenticated ASC or device evidence.",
+      "result": "PRECOMMIT_PASS. The exact four-file staged diff matches the allowed scope: it adds only a workflow-dispatch-only, GET-only Build 17 collector, its deterministic tests, and this task state. The workflow is main-gated, checks out the exact github.sha with persisted credentials disabled, exposes existing ASC secrets only to the collector step, and fails closed unless credential cleanup succeeds. Fresh local verification passed: JSON parse, isolated py_compile, 23 focused tests, workflow/RCA contract inspection, cached diff check, and exact allowed-path/protected-surface checks. Reviewer cycle 7 is PASS with no findings. Local code readiness does not identify the native root cause and does not replace absent authenticated ASC collection, shipped IPA/dSYM, or real-device crash evidence; ROOT_CAUSE_NOT_IDENTIFIED and BUILD18_BLOCKED remain in force.",
+      "changed_files": [
+        ".codex/tasks/planflow-ios-build17-native-crash-evidence-20260907.json"
+      ],
+      "verification_evidence": [
+        "python -m json.tool task state: exit 0",
+        "isolated py_compile scripts/collect_asc_beta_crash_feedback.py: exit 0",
+        "python -B scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0; Ran 23 tests; OK",
+        "workflow main/exact-SHA/secrets/cleanup and task RCA contract inspection: exit 0",
+        "AST outbound Request method inspection: GET only; exit 0",
+        "git diff --cached --check: exit 0",
+        "complete staged path allowlist: exactly four owned files; Android and protected iOS/release surfaces unchanged; exit 0"
+      ],
+      "review_cycle": 7,
+      "reviewer_verdict": "PASS",
+      "review_findings": [],
+      "verification_gaps": [
+        "Authenticated App Store Connect collection has not run.",
+        "No shipped Build 17 IPA/dSYM is available in the current unauthenticated environment.",
+        "No real-device crash report, termination reason, or native root-cause evidence is available."
+      ],
+      "verdict": "PRECOMMIT_PASS"
+    }
+  },
+  "verification": [
+    "python -m py_compile scripts/collect_asc_beta_crash_feedback.py: exit 0",
+    "python scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0, 23 tests passed",
+    "Python PyYAML safe_load of ios-testflight-crash-feedback.yml: exit 0",
+    "python -m json.tool task state: exit 0",
+    "git diff --cached --check: exit 0",
+    "Test Executor staged allowlist and Android/protected-iOS isolation checks: PASS"
+  ],
+  "resolved_review_findings": [
+    "HIGH: Validate JSON:API resource and relationship types fail-closed; malformed diagnostics must not produce PASS.",
+    "HIGH: Harden provider-string sanitization against camelCase device/incident identifiers and locale/timezone or similar metadata leakage.",
+    "HIGH: Scope ASC secrets to the collector step and bind checkout/execution to a trusted main revision.",
+    "MEDIUM: Bound crash evidence and GitHub summary size with explicit truncation signaling.",
+    "MEDIUM: Add mocked real HTTP error, oversized response, invalid JSON, malformed schema, relation-type, and workflow-order coverage.",
+    "HIGH cycle 2: Validate every JSON:API relationship linkage and reject structurally incomplete crash logs even when they contain a decisive-looking exception field.",
+    "HIGH cycle 2: Do not emit provider x-request-id or other unique request tokens in sanitized artifacts.",
+    "MEDIUM cycle 2: Verify credential deletion and include cleanup success in the final fail-closed gate.",
+    "HIGH cycle 3: Restrict every provider-derived output field so camelCase identifiers, IP/MAC/IPv6 addresses, and request-like tokens cannot pass the sanitizer.",
+    "HIGH cycle 3: If a diagnostic signature exposes a build relationship, bind its linkage ID to canonical Build 17.",
+    "HIGH cycle 3: A diagnostic signature without at least one valid diagnostic log must not produce MATCHED_DIAGNOSTIC_EVIDENCE or PASS.",
+    "HIGH cycle 4: Reject semantic identifier, address, secret, credential, API-key, and provider-token classes from all symbol, binary, and signature outputs.",
+    "HIGH cycle 4: Reject concatenated crash payloads containing any non-object or extraneous document; do not silently discard invalid trailing values.",
+    "HIGH cycle 5: Reject provider secret prefixes across live, test, and other environment variants, including sk_test and pk_test, in every output field.",
+    "HIGH cycle 6: Reject short, incomplete, and bare provider markers and arbitrary bare text by positively allowlisting only known program-symbol and binary namespace forms."
+  ],
+  "unresolved": [
+    "Apple/TestFlight crash feedback has not been queried with authenticated authority.",
+    "No shipped Build 17 IPA/dSYM is available in the current unauthenticated environment.",
+    "Native termination boundary remains unknown."
+  ],
+  "review_findings": [],
+  "next_step": "Commit and push the four owned files, then dispatch the GET-only Build 17 evidence workflow.",
+  "final_verdict": null,
+  "updated_at": "2026-09-07T12:24:37.2623076+09:00"
+}
