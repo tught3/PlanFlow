@@ -40,8 +40,19 @@ def official_diagnostic_log(event="hang", architecture="arm64", symbol="main"):
 
 
 def submissions_document(items, links=None):
-    included_ids = {item["relationships"]["build"]["data"]["id"] for item in items if isinstance(item.get("relationships", {}).get("build", {}).get("data"), dict)}
-    document = {"data": items, "included": [resource("builds", ident, {"version": "17"}) for ident in sorted(included_ids)]}
+    document = {"data": items, "included": []}
+    if items:
+        document["included"] = [
+            resource(
+                "builds",
+                "build-17",
+                {"version": "17"},
+                {
+                    "app": relation("apps", "app-1"),
+                    "preReleaseVersion": relation("preReleaseVersions", "pre-1"),
+                },
+            )
+        ]
     if links is not None:
         document["links"] = links
     return document
@@ -94,6 +105,144 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(report["counts"]["matched_feedback"], 1)
         self.assertEqual(report["counts"]["crash_logs"], 1)
         self.assertTrue(all(method == "GET" for method, _ in transport.calls))
+
+    def test_nonempty_submissions_require_one_canonical_included_build_before_crash_log_requests(self):
+        submission = resource("betaFeedbackCrashSubmissions", "s-1", {}, {"build": relation("builds", "build-17"), "crashLog": relation("betaCrashLogs", "log-1")})
+        canonical_build = resource(
+            "builds",
+            "build-17",
+            {"version": "17"},
+            {"app": relation("apps", "app-1"), "preReleaseVersion": relation("preReleaseVersions", "pre-1")},
+        )
+        cases = {
+            "missing": {"data": [submission]},
+            "wrong": {"data": [submission], "included": [resource("builds", "build-other", {"version": "17"}, {"app": relation("apps", "app-1"), "preReleaseVersion": relation("preReleaseVersions", "pre-1")})]},
+            "duplicate": {"data": [submission], "included": [canonical_build, canonical_build]},
+        }
+        for name, document in cases.items():
+            transport = FakeTransport(self.base([( "/apps/app-1/betaFeedbackCrashSubmissions", document )]))
+            with self.subTest(name=name):
+                report = collector.collect(self.client(transport))
+                self.assertEqual(report["counts"]["feedback_submissions"], 1)
+                self.assertEqual(report["counts"]["matched_feedback"], 0)
+                self.assertEqual(report["counts"]["crash_logs"], 0)
+                self.assertEqual(report["counts"]["crash_evidence_emitted"], 0)
+                self.assertEqual(report["crash_evidence"], [])
+                self.assertNotIn("MATCHED_BETA_CRASH_EVIDENCE", report["status"])
+                self.assertIn("FAIL_CLOSED", report["status"])
+                self.assertNotIn(("GET", "/betaFeedbackCrashSubmissions/s-1/crashLog?fields[betaCrashLogs]=logText"), transport.calls)
+
+    def test_stage_errors_stop_before_downstream_requests_or_positive_evidence(self):
+        app = resource("apps", "app-1", {"bundleId": collector.BUNDLE_ID})
+        build = resource("builds", "build-17", {"version": "17"}, {"preReleaseVersion": relation("preReleaseVersions", "pre-1"), "app": relation("apps", "app-1")})
+        pre = resource("preReleaseVersions", "pre-1", {"version": "1.0.0", "platform": "IOS"})
+        app_included = resource("apps", "app-1", {"bundleId": collector.BUNDLE_ID})
+        submission = resource("betaFeedbackCrashSubmissions", "s-1", {}, {"build": relation("builds", "build-17"), "crashLog": relation("betaCrashLogs", "log-1")})
+        cases = {
+            "app_pagination": (
+                [
+                    ("/apps?", {"data": [app], "links": {"next": "/broken-app-page"}}),
+                    ("/broken-app-page", {}),
+                ],
+                "/builds?",
+            ),
+            "build_pagination": (
+                [
+                    ("/builds?", {"data": [build], "included": [pre, app_included], "links": {"next": "/broken-build-page"}}),
+                    ("/broken-build-page", {}),
+                ],
+                "/apps/app-1/betaFeedbackCrashSubmissions",
+            ),
+            "submission_pagination": (
+                [
+                    ("/apps/app-1/betaFeedbackCrashSubmissions", submissions_document([submission], {"next": "/broken-submission-page"})),
+                    ("/broken-submission-page", {}),
+                ],
+                "/betaFeedbackCrashSubmissions/s-1/crashLog",
+            ),
+        }
+        for name, (overrides, forbidden_prefix) in cases.items():
+            transport = FakeTransport(self.base(overrides))
+            with self.subTest(name=name):
+                report = collector.collect(self.client(transport))
+                self.assertIn("FAIL_CLOSED", report["status"])
+                self.assertNotIn("MATCHED_BETA_CRASH_EVIDENCE", report["status"])
+                self.assertNotIn("MATCHED_DIAGNOSTIC_EVIDENCE", report["status"])
+                self.assertEqual(report["crash_evidence"], [])
+                self.assertEqual(report["diagnostic_aggregate"], [])
+                self.assertFalse(any(path.startswith(forbidden_prefix) for _, path in transport.calls))
+
+    def test_preexisting_request_error_and_late_diagnostic_error_cannot_emit_positive_evidence(self):
+        preexisting_transport = FakeTransport(self.base())
+        preexisting_client = self.client(preexisting_transport)
+        preexisting_client.errors.append("HTTP_401")
+        preexisting_report = collector.collect(preexisting_client)
+        self.assertEqual(preexisting_report["crash_evidence"], [])
+        self.assertNotIn("MATCHED_BETA_CRASH_EVIDENCE", preexisting_report["status"])
+        self.assertFalse(any(path.startswith("/builds?") for _, path in preexisting_transport.calls))
+
+        matching = resource("betaFeedbackCrashSubmissions", "s-good", {}, {"build": relation("builds", "build-17"), "crashLog": relation("betaCrashLogs", "log-1")})
+        crash_log = {"data": resource("betaCrashLogs", "log-1", {"logText": json.dumps({"system": {"model": "iPhone15,2", "osVersion": "iOS 17.6", "cpuType": "ARM-64", "uptime": "20 seconds"}, "exception": {"type": "EXC_BAD_ACCESS"}, "faultingThread": 0, "threads": [{"triggered": True, "frames": [{"symbol": "Runner main"}]}], "usedImages": [{"name": "Runner", "uuid": "AABBCCDD-1234"}]})})}
+        late_error_transport = FakeTransport(self.base([
+            ("/apps/app-1/betaFeedbackCrashSubmissions", submissions_document([matching])),
+            ("/betaFeedbackCrashSubmissions/s-good/crashLog", crash_log),
+            ("/builds/build-17/diagnosticSignatures", {}),
+        ]))
+        late_error_report = collector.collect(self.client(late_error_transport))
+        self.assertIn("FAIL_CLOSED", late_error_report["status"])
+        self.assertNotIn("MATCHED_BETA_CRASH_EVIDENCE", late_error_report["status"])
+        self.assertEqual(late_error_report["crash_evidence"], [])
+        self.assertEqual(late_error_report["counts"]["crash_evidence_emitted"], 0)
+
+    def test_pagination_helpers_do_not_emit_limit_on_request_or_schema_failure(self):
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("https://api.appstoreconnect.apple.com/v1/apps", 404, "not found", Message(), io.BytesIO(b"{}"))):
+            client = collector.ASCClient("secret-token")
+            self.assertEqual(client.pages("/apps?filter[bundleId]=com.fluxstudio.planflow", "apps"), [])
+            self.assertIn("HTTP_404", client.errors)
+            self.assertIn("ASC_APP_LIST_REQUEST_FAILED", client.errors)
+            self.assertNotIn("PAGINATION_LIMIT", client.errors)
+        with mock.patch("urllib.request.urlopen", return_value=FakeResponse(json.dumps({"data": [resource("builds", "build-17", {"version": "17"})]}).encode("utf-8"))):
+            client = collector.ASCClient("secret-token")
+            self.assertEqual(client.pages_with_included("/builds?filter[app]=app-1&filter[version]=17&include=preReleaseVersion,app", "builds", {"preReleaseVersions", "apps"}), ([
+                resource("builds", "build-17", {"version": "17"})
+            ], []))
+            self.assertIn("JSON_API_INCLUDED_SCHEMA_MISMATCH", client.errors)
+            self.assertIn("ASC_BUILD_LIST_REQUEST_FAILED", client.errors)
+            self.assertNotIn("PAGINATION_LIMIT", client.errors)
+
+    def test_exactly_100_pages_only_emit_limit_when_next_is_present(self):
+        def paginated_responses(with_extra_next: bool):
+            responses = []
+            for index in range(100):
+                path = "/builds?filter[app]=app-1&filter[version]=17&include=preReleaseVersion,app" if index == 0 else f"/page-{index + 1}"
+                next_link = {"next": f"/page-{index + 2}"} if index < 99 or with_extra_next else None
+                document = {"data": []}
+                if next_link is not None:
+                    document["links"] = next_link
+                responses.append((path, document))
+            if with_extra_next:
+                responses.append(("/page-101", {"data": []}))
+            return responses
+
+        no_next_client = self.client(FakeTransport(self.base(paginated_responses(False))))
+        submissions, included = no_next_client.pages_with_included(
+            "/builds?filter[app]=app-1&filter[version]=17&include=preReleaseVersion,app",
+            "builds",
+            {"preReleaseVersions", "apps"},
+        )
+        self.assertEqual(submissions, [])
+        self.assertEqual(included, [])
+        self.assertNotIn("PAGINATION_LIMIT", no_next_client.errors)
+
+        next_client = self.client(FakeTransport(self.base(paginated_responses(True))))
+        submissions, included = next_client.pages_with_included(
+            "/builds?filter[app]=app-1&filter[version]=17&include=preReleaseVersion,app",
+            "builds",
+            {"preReleaseVersions", "apps"},
+        )
+        self.assertEqual(submissions, [])
+        self.assertEqual(included, [])
+        self.assertIn("PAGINATION_LIMIT", next_client.errors)
 
     def test_absolute_apple_pagination_link_is_normalized(self):
         transport = FakeTransport(self.base([
@@ -171,6 +320,46 @@ class CollectorTests(unittest.TestCase):
         error_report = collector.collect(self.client(api_error))
         self.assertIn("ASC_API_ERROR", error_report["status"])
         self.assertIn("FAIL_CLOSED", error_report["status"])
+
+    def test_empty_included_is_accepted_only_for_empty_data_and_nonempty_binding_stays_required(self):
+        empty_submissions_transport = FakeTransport(self.base([
+            ("/apps/app-1/betaFeedbackCrashSubmissions", {"data": []}),
+        ]))
+        empty_client = self.client(empty_submissions_transport)
+        submissions, submission_included = empty_client.pages_with_included(
+            "/apps/app-1/betaFeedbackCrashSubmissions?filter[build]=build-17&include=build&fields[betaFeedbackCrashSubmissions]=crashLog,build",
+            "betaFeedbackCrashSubmissions",
+            {"builds"},
+        )
+        self.assertEqual(submissions, [])
+        self.assertEqual(submission_included, [])
+        self.assertNotIn("JSON_API_INCLUDED_SCHEMA_MISMATCH", empty_client.errors)
+        self.assertNotIn("PAGINATION_LIMIT", empty_client.errors)
+
+        build_client = self.client(FakeTransport(self.base()))
+        builds, included = build_client.pages_with_included(
+            "/builds?filter[app]=app-1&filter[version]=17&include=preReleaseVersion,app",
+            "builds",
+            {"preReleaseVersions", "apps"},
+        )
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(len(included), 2)
+        self.assertEqual(build_client.errors, [])
+
+    def test_finish_dedupes_errors_in_insertion_order_before_applying_five_item_cap(self):
+        client = self.client(FakeTransport(self.base()))
+        client.errors = ["ONE", "ONE", "TWO", "THREE", "TWO", "FOUR", "FIVE", "SIX"]
+        report = collector._finish({"status": []}, client, True)
+        self.assertEqual(report["status"], ["ONE", "TWO", "THREE", "FOUR", "FIVE", "FAIL_CLOSED"])
+
+    def test_request_scope_markers_are_fixed_and_non_sensitive(self):
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("https://api.appstoreconnect.apple.com/v1/betaFeedbackCrashSubmissions/s-1/crashLog?fields[betaCrashLogs]=logText", 404, "not found", Message(), io.BytesIO(b"{}"))):
+            client = collector.ASCClient("secret-token")
+            self.assertEqual(client.get("/betaFeedbackCrashSubmissions/s-1/crashLog?fields[betaCrashLogs]=logText"), {})
+            self.assertIn("HTTP_404", client.errors)
+            self.assertIn("ASC_CRASH_LOG_REQUEST_FAILED", client.errors)
+            serialized = json.dumps(client.errors)
+            self.assertNotRegex(serialized, r"/betaFeedbackCrashSubmissions|s-1|request-safe-1|https://|v1/")
 
     def test_real_urllib_failures_and_body_bound_are_safe(self):
         headers = Message()

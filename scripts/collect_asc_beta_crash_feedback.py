@@ -161,6 +161,26 @@ def make_token(key_path: str, key_id: str, issuer_id: str) -> str:
             pass
 
 
+def _request_scope_error_marker(path: str) -> str | None:
+    parsed = urllib.parse.urlparse(str(path))
+    safe_path = parsed.path or str(path)
+    if safe_path.startswith("/v1/"):
+        safe_path = safe_path[3:]
+    if safe_path.startswith("/apps/") and safe_path.endswith("/betaFeedbackCrashSubmissions"):
+        return "ASC_SUBMISSION_LIST_REQUEST_FAILED"
+    if safe_path.startswith("/betaFeedbackCrashSubmissions/") and safe_path.endswith("/crashLog"):
+        return "ASC_CRASH_LOG_REQUEST_FAILED"
+    if safe_path.startswith("/diagnosticSignatures/") and safe_path.endswith("/logs"):
+        return "ASC_DIAGNOSTIC_LOG_REQUEST_FAILED"
+    if safe_path.startswith("/builds/") and safe_path.endswith("/diagnosticSignatures"):
+        return "ASC_DIAGNOSTIC_SIGNATURES_REQUEST_FAILED"
+    if safe_path.startswith("/builds"):
+        return "ASC_BUILD_LIST_REQUEST_FAILED"
+    if safe_path.startswith("/apps"):
+        return "ASC_APP_LIST_REQUEST_FAILED"
+    return None
+
+
 class ASCClient:
     def __init__(self, token: str, transport: Callable[[str, str], tuple[Any, str | None]] | None = None, timeout: int = 30):
         self.token = token
@@ -168,10 +188,17 @@ class ASCClient:
         self.timeout = timeout
         self.errors: list[str] = []
 
+    def _append_request_scope_error(self, path: str) -> None:
+        marker = _request_scope_error_marker(path)
+        if marker and marker not in self.errors:
+            self.errors.append(marker)
+
     def get(self, path: str) -> dict[str, Any]:
+        original_path = path
         path = self._normalize_link(path)
         if not path:
             self.errors.append("UNTRUSTED_ASC_LINK")
+            self._append_request_scope_error(original_path)
             return {}
         if self.transport:
             document, _transport_metadata = self.transport("GET", path)
@@ -179,6 +206,7 @@ class ASCClient:
             parsed = urllib.parse.urlparse(path)
             if parsed.netloc and parsed.hostname != "api.appstoreconnect.apple.com":
                 self.errors.append("UNTRUSTED_ASC_LINK")
+                self._append_request_scope_error(path)
                 return {}
             safe_path = parsed.path + (("?" + parsed.query) if parsed.query else "")
             if safe_path.startswith("/v1/"):
@@ -189,17 +217,21 @@ class ASCClient:
                     body = response.read(MAX_RESPONSE_BYTES + 1)
                     if len(body) > MAX_RESPONSE_BYTES:
                         self.errors.append("ASC_RESPONSE_TOO_LARGE")
+                        self._append_request_scope_error(path)
                         document = {}
                     else:
                         document = json.loads(body)
             except urllib.error.HTTPError as error:
                 self.errors.append(f"HTTP_{error.code}")
+                self._append_request_scope_error(path)
                 document = {}
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
                 self.errors.append("ASC_REQUEST_FAILED")
+                self._append_request_scope_error(path)
                 document = {}
         if isinstance(document, dict) and document.get("errors"):
             self.errors.append("ASC_API_ERROR")
+            self._append_request_scope_error(path)
         return document if isinstance(document, dict) else {}
 
     def _normalize_link(self, path: str) -> str | None:
@@ -218,20 +250,25 @@ class ASCClient:
     def pages(self, path: str, expected_type: str) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         next_path: str | None = path
+        current_path = path
         for _ in range(100):
             if not next_path:
                 break
-            document = self.get(next_path)
+            current_path = next_path
+            document = self.get(current_path)
             data = document.get("data")
             if not isinstance(data, list):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 break
             if not all(_is_resource(item, expected_type) for item in data):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 break
             result.extend(data)
             if "links" in document and not isinstance(document.get("links"), dict):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 break
             links = document.get("links", {})
             candidate = links.get("next")
@@ -239,35 +276,60 @@ class ASCClient:
                 next_path = None
             elif not isinstance(candidate, str):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 next_path = None
             else:
                 next_path = self._normalize_link(str(candidate))
                 if not next_path:
                     self.errors.append("UNTRUSTED_ASC_LINK")
-        if next_path:
-            self.errors.append("PAGINATION_LIMIT")
+                    self._append_request_scope_error(current_path)
+        else:
+            if next_path:
+                self.errors.append("PAGINATION_LIMIT")
+                self._append_request_scope_error(current_path)
         return result
 
     def pages_with_included(self, path: str, expected_type: str, included_types: set[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         result: list[dict[str, Any]] = []
         included: list[dict[str, Any]] = []
+        included_keys: set[tuple[str, str]] = set()
         next_path: str | None = path
+        current_path = path
         for _ in range(100):
             if not next_path:
                 break
-            document = self.get(next_path)
+            current_path = next_path
+            document = self.get(current_path)
             data = document.get("data")
             if not isinstance(data, list) or not all(_is_resource(item, expected_type) for item in data):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 break
             result.extend(data)
-            values = document.get("included")
-            if not isinstance(values, list) or not all(_is_resource(item) and item.get("type") in included_types for item in values):
+            if "included" not in document:
+                if data:
+                    self.errors.append("JSON_API_INCLUDED_SCHEMA_MISMATCH")
+                    self._append_request_scope_error(current_path)
+                    break
+                values: list[dict[str, Any]] = []
+            else:
+                values = document.get("included")
+                if not isinstance(values, list) or not all(_is_resource(item) and item.get("type") in included_types for item in values):
+                    self.errors.append("JSON_API_INCLUDED_SCHEMA_MISMATCH")
+                    self._append_request_scope_error(current_path)
+                    break
+            page_keys = [(item["type"], item["id"]) for item in values]
+            if len(page_keys) != len(set(page_keys)):
                 self.errors.append("JSON_API_INCLUDED_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 break
-            included.extend(values)
+            for item, key in zip(values, page_keys):
+                if key not in included_keys:
+                    included.append(item)
+                    included_keys.add(key)
             if "links" in document and not isinstance(document.get("links"), dict):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 break
             links = document.get("links", {})
             candidate = links.get("next")
@@ -275,13 +337,17 @@ class ASCClient:
                 next_path = None
             elif not isinstance(candidate, str):
                 self.errors.append("JSON_API_SCHEMA_MISMATCH")
+                self._append_request_scope_error(current_path)
                 next_path = None
             else:
                 next_path = self._normalize_link(str(candidate))
                 if not next_path:
                     self.errors.append("UNTRUSTED_ASC_LINK")
-        if next_path:
-            self.errors.append("PAGINATION_LIMIT")
+                    self._append_request_scope_error(current_path)
+        else:
+            if next_path:
+                self.errors.append("PAGINATION_LIMIT")
+                self._append_request_scope_error(current_path)
         return result, included
 
 
@@ -375,6 +441,26 @@ def _relationship_id(resource: dict[str, Any], name: str, expected_type: str) ->
     if not isinstance(data, dict) or data.get("type") != expected_type or not isinstance(data.get("id"), str) or not data.get("id"):
         return None
     return data["id"]
+
+
+def _canonical_submission_build(
+    included: list[dict[str, Any]],
+    build_id: str,
+    app_id: str,
+    pre_release_version_id: str,
+) -> dict[str, Any] | None:
+    if len(included) != 1:
+        return None
+    build = included[0]
+    if not _is_resource(build, "builds"):
+        return None
+    if build.get("id") != build_id or _attrs(build).get("version") != BUILD_NUMBER:
+        return None
+    if _relationship_id(build, "app", "apps") != app_id:
+        return None
+    if _relationship_id(build, "preReleaseVersion", "preReleaseVersions") != pre_release_version_id:
+        return None
+    return build
 
 
 def _provider_text(value: Any, limit: int, allow_iphone_brand: bool = False) -> str | None:
@@ -806,6 +892,8 @@ def collect(client: ASCClient) -> dict[str, Any]:
         "diagnostic_aggregate": [],
     }
     apps = client.pages("/apps?filter[bundleId]=" + urllib.parse.quote(BUNDLE_ID, safe=""), "apps")
+    if client.errors:
+        return _finish(report, client, False)
     app = next((item for item in apps if _attrs(item).get("bundleId") == BUNDLE_ID), None)
     if len(apps) != 1 or not app or not app.get("id"):
         report["status"].append("CANONICAL_APP_NOT_FOUND")
@@ -816,6 +904,8 @@ def collect(client: ASCClient) -> dict[str, Any]:
         "builds",
         {"preReleaseVersions", "apps"},
     )
+    if client.errors:
+        return _finish(report, client, False)
     build = next((item for item in builds if str(_attrs(item).get("version")) == BUILD_NUMBER), None)
     pre = _relationship_id(build, "preReleaseVersion", "preReleaseVersions") if build else None
     related_app = _relationship_id(build, "app", "apps") if build else None
@@ -848,15 +938,18 @@ def collect(client: ASCClient) -> dict[str, Any]:
         "betaFeedbackCrashSubmissions",
         {"builds"},
     )
-    if submissions and not any(item.get("id") == build_id for item in submission_included):
-        client.errors.append("JSON_API_INCLUDED_SCHEMA_MISMATCH")
     report["counts"]["feedback_submissions"] = len(submissions)
+    if client.errors:
+        return _finish(report, client, False)
+    if submissions and not _canonical_submission_build(submission_included, build_id, app_id, pre):
+        client.errors.append("JSON_API_INCLUDED_SCHEMA_MISMATCH")
+        return _finish(report, client, False)
     for submission in submissions:
         linked_build = _relationship_id(submission, "build", "builds")
         linked_log = _relationship_id(submission, "crashLog", "betaCrashLogs")
         if not linked_build or not linked_log:
             client.errors.append("JSON_API_RELATIONSHIP_SCHEMA_MISMATCH")
-            continue
+            return _finish(report, client, False)
         if linked_build != build_id:
             continue
         report["counts"]["matched_feedback"] += 1
@@ -864,14 +957,16 @@ def collect(client: ASCClient) -> dict[str, Any]:
         if not isinstance(sid, str):
             continue
         log = client.get("/betaFeedbackCrashSubmissions/" + urllib.parse.quote(sid, safe="") + "/crashLog?fields[betaCrashLogs]=logText")
+        if client.errors:
+            return _finish(report, client, False)
         log_data = log.get("data")
         if not _is_resource(log_data, "betaCrashLogs") or log_data.get("id") != linked_log:
             client.errors.append("BETA_CRASH_LOG_SCHEMA_MISMATCH")
-            continue
+            return _finish(report, client, False)
         raw = _attrs(log_data).get("logText")
         if not isinstance(raw, str) or not raw:
             client.errors.append("BETA_CRASH_LOG_SCHEMA_MISMATCH")
-            continue
+            return _finish(report, client, False)
         report["counts"]["crash_logs"] += 1
         structurally_supported = _supported_crash_log(raw)
         evidence = parse_crash_log(raw)
@@ -882,10 +977,13 @@ def collect(client: ASCClient) -> dict[str, Any]:
                 report["counts"]["crash_evidence_truncated"] += 1
         else:
             client.errors.append("CRASH_LOG_UNPARSEABLE")
+            return _finish(report, client, False)
     report["counts"]["crash_evidence_emitted"] = len(report["crash_evidence"])
     if report["counts"]["crash_evidence_truncated"]:
         report["status"].append("CRASH_EVIDENCE_TRUNCATED")
     diagnostics = client.pages("/builds/" + urllib.parse.quote(build_id, safe="") + "/diagnosticSignatures", "diagnosticSignatures")
+    if client.errors:
+        return _finish(report, client, False)
     report["counts"]["diagnostic_signatures"] = len(diagnostics)
     aggregates = []
     for item in diagnostics:
@@ -897,23 +995,25 @@ def collect(client: ASCClient) -> dict[str, Any]:
             or ("topFrames" in attributes and (not isinstance(attributes["topFrames"], list) or not all(isinstance(value, str) for value in attributes["topFrames"])))
         ):
             client.errors.append("DIAGNOSTIC_SIGNATURE_SCHEMA_MISMATCH")
-            continue
+            return _finish(report, client, False)
         if "build" in item.get("relationships", {}):
             diagnostic_build = _relationship_id(item, "build", "builds")
             if diagnostic_build != build_id:
                 client.errors.append("DIAGNOSTIC_BUILD_MISMATCH")
-                continue
+                return _finish(report, client, False)
         signature_id = item.get("id")
         logs_document = client.get("/diagnosticSignatures/" + urllib.parse.quote(signature_id, safe="") + "/logs?limit=50")
+        if client.errors:
+            return _finish(report, client, False)
         try:
             logs = parse_diagnostic_logs(logs_document)
         except SchemaError:
             client.errors.append("DIAGNOSTIC_LOG_SCHEMA_MISMATCH")
-            logs = []
+            return _finish(report, client, False)
         report["counts"]["diagnostic_logs"] += len(logs)
         if not logs:
             client.errors.append("NO_DIAGNOSTIC_LOGS")
-            continue
+            return _finish(report, client, False)
         if len(aggregates) < MAX_DIAGNOSTIC_AGGREGATES:
             aggregates.append(_diagnostic(item, logs))
         else:
@@ -936,7 +1036,23 @@ def collect(client: ASCClient) -> dict[str, Any]:
 
 def _finish(report: dict[str, Any], client: ASCClient, ok: bool) -> dict[str, Any]:
     if client.errors:
-        report["status"].extend(client.errors[:5])
+        distinct_errors: list[str] = []
+        seen_errors: set[str] = set()
+        for error in client.errors:
+            if error in seen_errors:
+                continue
+            seen_errors.add(error)
+            distinct_errors.append(error)
+        if "crash_evidence" in report:
+            report["crash_evidence"] = []
+        if "diagnostic_aggregate" in report:
+            report["diagnostic_aggregate"] = []
+        counts = report.get("counts")
+        if isinstance(counts, dict):
+            counts["crash_evidence_emitted"] = 0
+            counts["diagnostic_aggregates_emitted"] = 0
+        report["status"] = [status for status in report["status"] if not status.startswith("MATCHED_")]
+        report["status"].extend(distinct_errors[:5])
         ok = False
     report["status"].append("PASS" if ok else "FAIL_CLOSED")
     return report
