@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-build16-17-native-crash-final-rca-build18-20260907",
-  "status": "SYMBOL_RECONSTRUCTION_DELIVERY_READY_BUILD18_BLOCKED_PENDING_PUSH_AND_AUTHENTICATED_MACOS_DISPATCH",
+  "status": "HISTORICAL_RECONSTRUCTION_NO_MATCH_BUILD18_BLOCKED",
   "request": "Ingest the authoritative Build 16 and Build 17 iPhone crash reports, symbolicate only with an exact UUID-matched Runner/dSYM, restore Android feature parity only after evidence identifies the native cause, and release Build 18 only after every fail-closed gate passes.",
   "source_identity": {
     "branch": "main",
@@ -43,7 +43,7 @@
     "admob_dart_init_as_sole_root_cause": "FALSIFIED",
     "crash_function": "NOT_YET_IDENTIFIED",
     "root_cause": "ROOT_CAUSE_STRONGLY_NARROWED",
-    "decisive_diagnostic": "UUID_MATCHED_HISTORICAL_SYMBOL_RECONSTRUCTION_READY",
+    "decisive_diagnostic": "AUTHENTICATED_MACOS_RECONSTRUCTION_COMPLETED_WITH_UUID_MISMATCH_NO_SYMBOLICATION",
     "build_18": "BLOCKED_PENDING_UUID_MATCHED_SYMBOLICATION",
     "r1": "UNRESOLVED",
     "app_store": "BLOCKED",
@@ -192,15 +192,16 @@
     "Full flutter test --no-pub: FAIL with 1464 passed and 23 failed; 9 Naver CalDAV failures are independently reproduced as a current-date fixture mismatch, while 14 failures remain UNKNOWN because their complete names were not retained.",
     "No staged path exists under lib, test, integration_test, android, ios, or the production ios-release workflow.",
     "Reviewer MEDIUM no-match reason classification finding: CORRECTED; final independent re-review: PASS with no remaining findings.",
-    "macOS Xcode/dwarfdump/atos execution: NOT_RUN_ON_WINDOWS; authenticated workflow dispatch remains required."
+    "Authenticated macOS workflow run 34129859121 from 258de3348d0004af0bdd86d0a599454872ef24cd completed both Build 16 and Build 17 reconstruction steps and created sanitized artifacts 10022039962 and 10022135827; both failed closed at no-result because Flutter preparation output was missing and unsigned-archive executable/dSYM UUIDs did not match the historical crash UUIDs. No authoritative atos function result was produced.",
+    "GitHub run annotations independently confirmed Build 16 and Build 17 reason=RECONSTRUCTION_OR_VERIFICATION_FAILED_NO_SYMBOLICATION with variant states flutter_build:MISSING_OUTPUT and unsigned_archive:EXECUTABLE_UUID_MISMATCH."
   ],
   "unresolved": [
-    "No retained historical archive, IPA, or dSYM is available from the Build 16/17 GitHub artifacts, and App Store Connect does not provide these modern non-bitcode dSYMs through the currently accessible path.",
+    "No retained historical archive, IPA, or dSYM is available from the Build 16/17 GitHub artifacts, and the authenticated macOS reconstruction on run 34129859121 produced UUID-mismatched outputs rather than an authoritative symbol pair. App Store Connect does not provide these modern non-bitcode dSYMs through the currently accessible path.",
     "The current macos-latest image and unlocked CocoaPods resolution can differ from the historical jobs, so reconstruction may correctly return UUID_MISMATCH_NO_SYMBOLICATION.",
     "Fourteen failures from the broad Flutter suite remain unclassified because the complete failure names were not retained; they are outside the staged iOS diagnostic paths and are not claimed as passing.",
-    "The exact native function/file/line, exception reason, source-level root cause, minimal fix, iOS parity restoration, Build 18 release, and real-device QA remain blocked on a UUID-matched result.",
+    "The exact native function/file/line, exception reason, source-level root cause, minimal fix, iOS parity restoration, Build 18 release, and real-device QA remain blocked because the authenticated reconstruction produced no UUID-matched result.",
     "GitHub CLI and in-app GitHub/App Store Connect sessions are unauthenticated, so this task cannot dispatch the macOS workflow directly."
   ],
-  "next_step": "After the owned workflow is pushed to main, manually dispatch iOS historical Runner symbol reconstruction (audit-only) on main exactly once.",
-  "updated_at": "2026-09-07T22:48:00+09:00"
+  "next_step": "No further Build 18 or product change is authorized. Obtain an exact historical Runner/dSYM pair or an equivalent immutable historical build environment before any new symbolication attempt; keep Build 18 blocked.",
+  "updated_at": "2026-09-07T23:18:00+09:00"
 }

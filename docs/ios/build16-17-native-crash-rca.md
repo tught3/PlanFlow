@@ -60,7 +60,25 @@ lock state is recorded in the sanitized report after `pod install`. Toolchain
 versions (Xcode, Swift, Flutter, and CocoaPods) are recorded there as
 provenance. The ephemeral unsigned archive is deleted by the cleanup trap and
 is never uploaded. No IPA, export, App Store Connect, TestFlight, signing, or
-team/profile operation is part of reconstruction.
+  team/profile operation is part of reconstruction.
+
+## Authenticated macOS reconstruction result
+
+Run `34129859121` executed from `258de3348d0004af0bdd86d0a599454872ef24cd`.
+Both matrix jobs completed their reconstruction step and produced sanitized
+reports, then failed closed at the no-result gate:
+
+| Build | Flutter preparation variant | Unsigned archive variant | Result |
+| --- | --- | --- | --- |
+| 16 | `MISSING_OUTPUT` | `EXECUTABLE_UUID_MISMATCH`; executable and dSYM UUID `9F77993B-BEEA-340B-8C44-C2728F6243F6` | `RECONSTRUCTION_OR_VERIFICATION_FAILED_NO_SYMBOLICATION` |
+| 17 | `MISSING_OUTPUT` | `EXECUTABLE_UUID_MISMATCH`; executable and dSYM UUID `3889A669-E6BD-3660-ADEF-50BDBA232E5C` | `RECONSTRUCTION_OR_VERIFICATION_FAILED_NO_SYMBOLICATION` |
+
+The sanitized reports were created as artifacts `10022039962` and
+`10022135827`. Neither reconstructed UUID equals its historical crash UUID,
+so no `atos` function/file/line result is authoritative. The run therefore
+confirms environment/build drift or missing historical outputs, not a product
+root cause. Build 18 remains blocked until an exact historical Runner/dSYM
+pair is available.
 
 ## Android parity baseline and current iOS source state
 
