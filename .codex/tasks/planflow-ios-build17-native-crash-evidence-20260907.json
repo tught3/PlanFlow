@@ -1,37 +1,48 @@
 {
   "task_id": "planflow-ios-build17-native-crash-evidence-20260907",
-  "status": "LOCAL_DELIVERY_APPROVED_EXTERNAL_EVIDENCE_PENDING",
+  "status": "DELIVERY_COMPLETE_R1_BLOCKED_EVIDENCE",
   "request": "Use Build 16 and Build 17 real-device evidence to perform an evidence-first native launch RCA. Do not guess-patch or release Build 18 without decisive evidence. Build a safe read-only evidence path when authenticated Apple crash data is otherwise unavailable.",
   "source_identity": {
     "starting_head": "f5cd355e0aa78eeb575326cee2822e6bbb528805",
-    "origin_main": "f5cd355e0aa78eeb575326cee2822e6bbb528805",
+    "origin_main_at_final_integration": "38c90ba3288a5b3dc17587f89d708966f7b39168",
     "build_16_commit": "503bba99ec5efe37195b2a516c0f923c9fd8b4c6",
     "build_17_commit": "f5cd355e0aa78eeb575326cee2822e6bbb528805",
     "build_17_run_id": 34066956754,
-    "build_17_run_number": 17
+    "build_17_run_number": 17,
+    "initial_collector_commit": "ca050fdb7b922c0a4f60332bb15e30e19c83b2b4",
+    "final_hardening_commit": "38c90ba3288a5b3dc17587f89d708966f7b39168"
   },
   "authoritative_runtime_evidence": {
     "device": "iPhone 13 mini",
     "build_16": "Immediate return to the iOS Home Screen before PlanFlow UI was meaningfully visible.",
     "build_17": "Same immediate return to the iOS Home Screen after TestFlight update.",
     "build_17_ingestion": "COMPLETE per user-provided App Store Connect evidence",
-    "device_crash_report": "NOT_AVAILABLE"
+    "device_crash_report": "NOT_AVAILABLE",
+    "release_evidence": "Release run 34066956754 at f5cd355e completed archive, IPA, privacy, transport, BuildUpload COMPLETE, and App Store build VALID. Privacy artifact 9999494096 reported archive/export PASS, six Runner privacy keys, no Widget forbidden keys, and seven binaries scanned; no retained IPA/dSYM/full load commands/signed entitlement dump."
   },
   "direct_evidence": [
-    "GitHub public API identifies release run 17 head_sha=f5cd355e0aa78eeb575326cee2822e6bbb528805 and conclusion=success.",
-    "Release run 17 archive, IPA export, upload, and ingestion-poll steps concluded success; one privacy artifact exists.",
-    "Commit 75d49a48 is an ancestor of Build 17 source and contains the Android-only Ads/UMP runtime policy.",
-    "Unauthenticated GitHub access can read run/job/artifact metadata but cannot download logs (403) or artifacts (401).",
-    "No .ips, termination reason, crashed thread, shipped binary UUID, dSYM, or Apple crash feedback is currently available.",
-    "Google Mobile Ads Flutter v5.3.1 native registration does not call GADMobileAds start; start occurs in the MobileAds#initialize method branch."
+    "Release run 34066956754 at f5cd355e0aa78eeb575326cee2822e6bbb528805 completed archive, IPA, privacy, transport, BuildUpload COMPLETE, and App Store build VALID.",
+    "Initial authenticated collector run 34080094031 at ca050fdb7b922c0a4f60332bb15e30e19c83b2b4 succeeded through collector, cleanup, summary, and sanitized artifact upload; only the final fail-closed gate failed. Artifact 10003398978 reported CANONICAL_APP_BUILD_BOUND, NO_MATCHED_CRASH_EVIDENCE, HTTP_404, JSON_API_SCHEMA_MISMATCH, PAGINATION_LIMIT, and FAIL_CLOSED. The false PAGINATION_LIMIT/request-scope ambiguity drove hardening rework.",
+    "Final authenticated rerun exactly once was https://github.com/tught3/PlanFlow/actions/runs/34082930216 at 38c90ba3288a5b3dc17587f89d708966f7b39168. Checkout, collector continue-on-error step, credential cleanup, summary, and sanitized artifact upload succeeded; only the final fail-closed gate failed.",
+    "Final artifact 10004258812, build-17-testflight-crash-evidence, is nonexpired, 975 bytes, and expires 2026-09-14T04:23:54Z. Its sanitized Build 17 report has CANONICAL_APP_BUILD_BOUND, HTTP_404, ASC_DIAGNOSTIC_SIGNATURES_REQUEST_FAILED, JSON_API_SCHEMA_MISMATCH, and FAIL_CLOSED; all counts are zero.",
+    "Authenticated canonical app/build binding succeeded. Beta feedback crash submissions returned valid empty data (zero); Build 17 diagnosticSignatures returned HTTP 404; no crash payload was retrieved. This does not prove that the device did not crash.",
+    "Build 16 and Build 17 both immediately returned the iPhone 13 mini to the Home Screen before PlanFlow UI was meaningfully visible.",
+    "Build 17 contains Dart/runtime Ads/UMP isolation. Native Google Mobile Ads remains linked and registered, but official plugin registration does not call GADMobileAds.start; initialization is the MobileAds#initialize branch.",
+    "No .ips, termination reason, exception, crashed thread, binary UUID, dSYM, symbolication, breadcrumbs, or unified logs are available."
   ],
   "verdicts": {
     "ads_runtime_isolation_confirmed_in_build_17_source": true,
     "admob_as_sole_root_cause": "REJECTED",
+    "ads_root_cause": "FALSIFIED_AS_SOLE_OR_COMMON_CAUSE",
     "root_cause": "ROOT_CAUSE_NOT_IDENTIFIED",
     "build_18": "BUILD18_BLOCKED_INSUFFICIENT_EVIDENCE",
     "crash_classification": "UNKNOWN",
-    "last_proven_startup_stage": "PROCESS_CREATED"
+    "last_proven_startup_stage": "PROCESS_CREATED",
+    "confidence": "LOW",
+    "r1_gate": "R1_BLOCKED_EVIDENCE",
+    "build_18_run": "NOT_RUN",
+    "android": "UNCHANGED",
+    "app_store_runtime": "BLOCKED"
   },
   "constraints": [
     "Do not create a new user-visible task, session, or worktree.",
@@ -54,7 +65,7 @@
     "Write only an allowlisted PII-safe JSON report and a bounded GitHub summary; preserve no raw provider payload.",
     "Add deterministic fixture tests for build binding, pagination, sanitization, parsing, and HTTP-method restrictions.",
     "Run focused validation, independent final-diff review, and integration; commit and non-force push only owned files.",
-    "Keep Build 18 blocked. If the workflow cannot be dispatched here, request exactly one user action to run it."
+    "Keep Build 18 blocked; authenticated ASC collection is exhausted and the remaining authority is a device Analytics .ips or same-time JetsamEvent file."
   ],
   "roles": {
     "explorer": {
@@ -115,87 +126,103 @@
         "sixth review rework git diff --check: exit 0"
       ]
     },
+    "failure_analyst": {
+      "agent": "flux_failure_analyst",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Analyze the first authenticated collector failure without treating the final fail-closed gate as a collector success, separate request-scope/pagination defects from unavailable ASC diagnostic evidence, and define the narrow retest.",
+      "result": "Found the false PAGINATION_LIMIT/request-scope ambiguity and a strict omitted-included concern. The initial line-851 claim was rejected, then a fresh Reviewer reproduced the broader evidence-plus-FAIL contradiction that required hardening. Retest scope was collector fixtures, pagination/request-scope semantics, evidence clearing, and final fail-closed behavior.",
+      "changed_files": []
+    },
+    "simple_implementer": {
+      "agent": "flux_simple_implementer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Apply the narrow recovery hardening only in the collector and its focused tests, then return the final diff for independent verification.",
+      "result": "Changed only the collector and tests: request-scope fixed markers, true pagination semantics, empty included semantics, target binding, same-page duplicate rejection/cross-page dedupe, stage-wide immediate fail-closed, evidence clearing, and stable distinct first-five behavior. Two later Simple Implementer resumptions stalled and were safely stopped before main integration; neither is recorded as PASS and no concurrent worker remains on these files.",
+      "changed_files": [
+        "scripts/collect_asc_beta_crash_feedback.py",
+        "scripts/tests/test_collect_asc_beta_crash_feedback.py"
+      ]
+    },
     "test_executor": {
       "agent": "flux_test_executor",
       "model": "gpt-5.4-mini",
       "reasoning_effort": "low",
-      "assignment": "Run read-only verification against the final current staged diff and record command-level evidence.",
-      "result": "PASS after sixth rework. Python compilation, all 23 expanded focused tests, YAML/task JSON parsing, staged diff checks, four-file allowlist, Android/protected-iOS isolation, positive program-shape allowlist negative and positive controls, full serialized-output probes, all prior fail-closed schema and cleanup gates, and trusted-main exact-SHA behavior passed.",
+      "assignment": "Run read-only verification against the final hardening commit and record command-level evidence.",
+      "result": "PASS. Python compilation, all 31 focused tests, YAML/task JSON parsing, diff/path/isolation checks, and no Build18/upload/Android/native mutation passed.",
       "changed_files": [],
-      "cycle": 7,
+      "cycle": "final-hardening",
       "test_evidence": [
         "python -m py_compile scripts/collect_asc_beta_crash_feedback.py: exit 0",
-        "python scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0; Ran 23 tests; OK",
-        "PyYAML safe_load of ios-testflight-crash-feedback.yml: exit 0",
-        "python -m json.tool task state: exit 0",
-        "git diff --cached --check: exit 0",
-        "staged path allowlist: exactly four owned files",
-        "staged and unstaged Android diff: empty",
-        "staged protected iOS diff: empty",
-        "mutating ASC method / Build18 / release upload command scan: no matches",
-        "workflow dispatch gate refs/heads/main plus exact github.sha checkout and persist-credentials false: PASS",
-        "valid modern concatenated .ips collect harness: exit 0; MATCHED_BETA_CRASH_EVIDENCE; one emitted crash record",
-        "malformed diagnostic relationship and exception-only JSON/text harnesses: expected exit 1 and FAIL_CLOSED",
-        "sensitive field classes, IP/MAC/IPv6, request/token, locale/timezone sanitizer probes: PASS",
-        "diagnostic build-other relationship and empty productData/diagnosticLogs probes: FAIL_CLOSED as expected",
-        "valid diagnostic log and valid modern/classic crash evidence probes: PASS",
-        "customerId/apiKey/secretValue/provider-secret-prefix sanitizer probes: UNKNOWN and absent from serialized output",
-        "non-object concatenated JSON before or after valid incident: FAIL_CLOSED; valid object-only metadata plus incident remains supported",
-        "sk/pk/rk environment variants plus GitHub, Slack, Google, and AWS credential-prefix sanitizers and serialized output: PASS",
-        "positive program-shape controls retained and arbitrary bare values plus short provider markers rejected: PASS"
+        "python scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0; Ran 31 tests; OK",
+        "PyYAML safe_load of ios-testflight-crash-feedback.yml and python -m json.tool task state: exit 0",
+        "git diff --check, exact allowed path checks, and Android/native/release isolation: PASS",
+        "No Build18 run, upload behavior change, Android mutation, or native mutation: PASS",
+        "Final authenticated rerun 34082930216 exercised collector, cleanup, summary, and sanitized artifact upload; expected final fail-closed gate failure preserved."
       ],
       "verification_gaps": [
-        "Authenticated App Store Connect collection has not run.",
-        "No real-device runtime evidence was available to this role."
+        "Authenticated collection ran, but it returned no crash payload and diagnosticSignatures HTTP 404.",
+        "No real-device .ips, JetsamEvent, or native termination evidence was available to this role."
       ]
     },
     "reviewer": {
       "agent": "flux_reviewer",
       "model": "gpt-5.6-luna",
       "reasoning_effort": "high",
-      "assignment": "Independently inspect the final current staged diff for schema, fail-closed, secret-boundary, PII-safety, summary-size, and regression risks.",
-      "result": "PASS on review cycle 7 after all earlier findings were reworked. The reviewer found no BLOCKER, HIGH, MEDIUM, or LOW issue in the final current staged diff.",
+      "assignment": "Independently inspect the final hardening diff and recovery behavior for schema, fail-closed, request-scope/pagination, evidence-clearing, secret-boundary, and regression risks.",
+      "result": "PASS after the final hardening review. The reviewer found BLOCKER/HIGH/MEDIUM/LOW counts of 0; prior HIGH and MEDIUM findings were resolved.",
       "changed_files": [],
-      "cycle": 7,
+      "cycle": "final-hardening",
       "verdict": "PASS",
-      "findings": []
+      "findings": [],
+      "task_state_final_review": {
+        "agent_id": "01a07a20-f213-7ca3-bb66-265838b25772",
+        "role": "flux_reviewer",
+        "report_type": "FINAL_REVIEW_REPORT",
+        "verdict": "PASS",
+        "highest_severity": "NONE",
+        "finding_counts": {
+          "BLOCKER": 0,
+          "HIGH": 0,
+          "MEDIUM": 0,
+          "LOW": 0
+        },
+        "inspection_scope": "Final task JSON diff, current Git HEAD/origin and working status, and persisted delivery evidence.",
+        "findings": []
+      }
     },
     "integrator": {
       "agent": "flux_integrator",
       "model": "gpt-5.6-terra",
       "reasoning_effort": "medium",
-      "assignment": "Inspect the complete final current staged and unstaged diff, reconcile the persisted Explorer, Planner, Complex Implementer rework, Test Executor, and independent Reviewer evidence, and decide the pre-commit gate without claiming authenticated ASC or device evidence.",
-      "result": "PRECOMMIT_PASS. The exact four-file staged diff matches the allowed scope: it adds only a workflow-dispatch-only, GET-only Build 17 collector, its deterministic tests, and this task state. The workflow is main-gated, checks out the exact github.sha with persisted credentials disabled, exposes existing ASC secrets only to the collector step, and fails closed unless credential cleanup succeeds. Fresh local verification passed: JSON parse, isolated py_compile, 23 focused tests, workflow/RCA contract inspection, cached diff check, and exact allowed-path/protected-surface checks. Reviewer cycle 7 is PASS with no findings. Local code readiness does not identify the native root cause and does not replace absent authenticated ASC collection, shipped IPA/dSYM, or real-device crash evidence; ROOT_CAUSE_NOT_IDENTIFIED and BUILD18_BLOCKED remain in force.",
+      "assignment": "Reconcile current HEAD/origin, final hardening/review evidence, authenticated ASC evidence runs, and the remaining device-evidence authority under user Case C without modifying code or release surfaces.",
+      "result": "DELIVERY_COMPLETE_R1_BLOCKED_EVIDENCE. HEAD and origin/main both equal 38c90ba3288a5b3dc17587f89d708966f7b39168. Final hardening is pushed and independently reviewed; final local verification is PASS. The authenticated ASC path successfully bound the canonical Build 17 but yielded an empty beta-feedback dataset and HTTP 404 diagnostic signatures, so it does not identify or disprove a device crash. Delivery is complete with Build18 intentionally blocked and exactly one external evidence action remaining.",
       "changed_files": [
         ".codex/tasks/planflow-ios-build17-native-crash-evidence-20260907.json"
       ],
       "verification_evidence": [
-        "python -m json.tool task state: exit 0",
-        "isolated py_compile scripts/collect_asc_beta_crash_feedback.py: exit 0",
-        "python -B scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0; Ran 23 tests; OK",
-        "workflow main/exact-SHA/secrets/cleanup and task RCA contract inspection: exit 0",
-        "AST outbound Request method inspection: GET only; exit 0",
-        "git diff --cached --check: exit 0",
-        "complete staged path allowlist: exactly four owned files; Android and protected iOS/release surfaces unchanged; exit 0"
+        "HEAD and origin/main: 38c90ba3288a5b3dc17587f89d708966f7b39168",
+        "final Test Executor py_compile/YAML/task JSON/diff/path/isolation verification: PASS",
+        "final Test Executor focused collector suite: 31 tests PASS",
+        "final Reviewer: PASS; BLOCKER/HIGH/MEDIUM/LOW 0",
+        "authenticated final ASC rerun 34082930216: collector/cleanup/summary/artifact upload success; final fail-closed gate failure expected from unavailable diagnostic evidence"
       ],
       "review_cycle": 7,
       "reviewer_verdict": "PASS",
       "review_findings": [],
       "verification_gaps": [
-        "Authenticated App Store Connect collection has not run.",
-        "No shipped Build 17 IPA/dSYM is available in the current unauthenticated environment.",
-        "No real-device crash report, termination reason, or native root-cause evidence is available."
+        "No device Analytics .ips or same-time JetsamEvent file is attached.",
+        "No termination reason, exception, crashed thread, binary UUID, dSYM, symbolication, breadcrumbs, or unified logs are available."
       ],
-      "verdict": "PRECOMMIT_PASS"
+      "verdict": "DELIVERY_COMPLETE_R1_BLOCKED_EVIDENCE"
     }
   },
   "verification": [
-    "python -m py_compile scripts/collect_asc_beta_crash_feedback.py: exit 0",
-    "python scripts/tests/test_collect_asc_beta_crash_feedback.py: exit 0, 23 tests passed",
-    "Python PyYAML safe_load of ios-testflight-crash-feedback.yml: exit 0",
-    "python -m json.tool task state: exit 0",
-    "git diff --cached --check: exit 0",
-    "Test Executor staged allowlist and Android/protected-iOS isolation checks: PASS"
+    "HEAD and origin/main directly verified at 38c90ba3288a5b3dc17587f89d708966f7b39168.",
+    "Final Test Executor: py_compile, YAML, task JSON, diff/path/isolation checks PASS; 31 focused tests PASS.",
+    "Final Reviewer: PASS with BLOCKER/HIGH/MEDIUM/LOW all zero.",
+    "Authenticated final ASC rerun 34082930216: checkout, collector, cleanup, summary, and sanitized artifact upload succeeded; final fail-closed gate correctly failed for unavailable diagnostic evidence."
   ],
   "resolved_review_findings": [
     "HIGH: Validate JSON:API resource and relationship types fail-closed; malformed diagnostics must not produce PASS.",
@@ -212,15 +239,18 @@
     "HIGH cycle 4: Reject semantic identifier, address, secret, credential, API-key, and provider-token classes from all symbol, binary, and signature outputs.",
     "HIGH cycle 4: Reject concatenated crash payloads containing any non-object or extraneous document; do not silently discard invalid trailing values.",
     "HIGH cycle 5: Reject provider secret prefixes across live, test, and other environment variants, including sk_test and pk_test, in every output field.",
-    "HIGH cycle 6: Reject short, incomplete, and bare provider markers and arbitrary bare text by positively allowlisting only known program-symbol and binary namespace forms."
+    "HIGH cycle 6: Reject short, incomplete, and bare provider markers and arbitrary bare text by positively allowlisting only known program-symbol and binary namespace forms.",
+    "HIGH final hardening: Replace false PAGINATION_LIMIT/request-scope ambiguity with fixed request-scope markers and true pagination semantics.",
+    "HIGH final hardening: Treat valid empty included data correctly; reject same-page duplicates, dedupe cross-page results, bind target data, clear invalid evidence immediately, and keep a stable distinct first-five summary."
   ],
   "unresolved": [
-    "Apple/TestFlight crash feedback has not been queried with authenticated authority.",
-    "No shipped Build 17 IPA/dSYM is available in the current unauthenticated environment.",
-    "Native termination boundary remains unknown."
+    "The authenticated ASC path is exhausted: beta feedback data was valid and empty, diagnosticSignatures returned HTTP 404, and no crash payload was retrieved.",
+    "Crash classification remains UNKNOWN with LOW confidence; the last proven startup stage is PROCESS_CREATED.",
+    "Static/source audit cannot identify dyld, codesign, entitlement, common plugin, Firebase, Flutter engine, Dart, watchdog, jetsam, or OS termination alternatives without device-native evidence.",
+    "No .ips, termination reason, exception, crashed thread, binary UUID, dSYM, symbolication, breadcrumbs, or unified logs are available."
   ],
   "review_findings": [],
-  "next_step": "Commit and push the four owned files, then dispatch the GET-only Build 17 evidence workflow.",
-  "final_verdict": null,
-  "updated_at": "2026-09-07T12:24:37.2623076+09:00"
+  "next_step": "On the iPhone 13 mini, open Settings > Privacy & Security > Analytics & Improvements > Analytics Data and attach the latest Runner_... .ips file (PlanFlow executable is Runner), or, if absent, the same-time JetsamEvent_... file.",
+  "final_verdict": "DELIVERY_COMPLETE_BUILD18_BLOCKED_R1_BLOCKED_EVIDENCE",
+  "updated_at": "2026-09-07T13:33:54.6667467+09:00"
 }
