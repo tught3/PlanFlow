@@ -583,7 +583,14 @@ try {
   Write-Stage "Building release appbundle"
   Remove-Item -LiteralPath $MapArtifactMarkerPath -Force -ErrorAction SilentlyContinue
   $buildLogPath = New-DeployLogPath -Stage 'build'
-  $buildOutput = & $FlutterLocal build appbundle --release --no-pub 2>&1 | Tee-Object -FilePath $buildLogPath
+  # --no-pub intentionally omitted: the focused-test stage above runs `flutter test`,
+  # which regenerates GeneratedPluginRegistrant.java in non-release mode (dev-only
+  # plugins like integration_test included). Skipping pub here would build against
+  # that stale non-release registrant and fail release Java/Kotlin compilation with
+  # "package dev.flutter.plugins.integration_test does not exist". Running pub get
+  # here re-injects plugins in release mode (dev dependencies excluded) right before
+  # the Gradle build, at negligible extra cost since no dependency actually changed.
+  $buildOutput = & $FlutterLocal build appbundle --release 2>&1 | Tee-Object -FilePath $buildLogPath
   if ($LASTEXITCODE -ne 0) {
     $buildDetails = Get-BuildFailureExcerpt -Path $buildLogPath
     Write-Host ''
