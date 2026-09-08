@@ -1,0 +1,165 @@
+{
+  "task_id": "planflow-build18-exact-dsym-native-rca-20260908",
+  "status": "ROOT_CAUSE_IDENTIFIED_BLOCKED_EXTERNAL_CONFIGURATION",
+  "request": "Use only the exact retained Build 18 dSYM to symbolicate the iPhone crash, identify the native cause without placeholders or speculative disables, and do not create Build 19 until a reviewed fix exists.",
+  "source_identity": {
+    "branch": "main",
+    "head_at_investigation_start": "18075eda699be7adf22f8d246b4ae1d5580f9684",
+    "release_run": {
+      "workflow": "iOS signed release (TestFlight)",
+      "run_id": 34216415059,
+      "run_number": 19,
+      "source_sha": "1d4923347c44d6a8570c008cca085e5b1203140a",
+      "build": 18,
+      "symbol_artifact": "planflow-ios-build18-symbols-19",
+      "artifact_id": 10052360958,
+      "artifact_sha256": "a7d8eaaa50e7ec551f9aac750316d81cf15499d50326e90e233a397048e99069",
+      "artifact_expires_at": "2026-12-07T10:37:17Z"
+    }
+  },
+  "uuid_evidence": {
+    "crash_runner_uuid": "F7F3A788-967B-3243-851D-E4207B739ADE",
+    "archive_executable_uuid_arm64": "F7F3A788-967B-3243-851D-E4207B739ADE",
+    "manifest_dsym_uuid_arm64": "F7F3A788-967B-3243-851D-E4207B739ADE",
+    "physical_dsym_macho_uuid_arm64": "F7F3A788-967B-3243-851D-E4207B739ADE",
+    "three_way_match": "PASS",
+    "inner_dsym_zip_sha256": "70f5853178c0fec6c0d01973813b419accc277dda13fffdc831e97d7a436f6db",
+    "dwarf_verify": "PASS"
+  },
+  "symbolication": {
+    "runtime_image_base_decimal": 4365942784,
+    "runtime_image_base_hex": "0x1043B0000",
+    "preferred_image_base_hex": "0x100000000",
+    "aslr_slide_hex": "0x43B0000",
+    "frames": [
+      {
+        "image_offset_decimal": 7726788,
+        "image_offset_hex": "0x75E6C4",
+        "runtime_vm_address_hex": "0x104B0E6C4",
+        "dsym_preferred_vm_address_hex": "0x10075E6C4",
+        "function": "GADApplicationVerifyPublisherInitializedCorrectly",
+        "module": "GoogleMobileAds / Google-Mobile-Ads-SDK 11.13.0 statically linked into Runner",
+        "source_file": "NOT_AVAILABLE_IN_VENDOR_DSYM",
+        "source_line": "NOT_AVAILABLE_IN_VENDOR_DSYM"
+      },
+      {
+        "image_offset_decimal": 7727168,
+        "image_offset_hex": "0x75E840",
+        "runtime_vm_address_hex": "0x104B0E840",
+        "dsym_preferred_vm_address_hex": "0x10075E840",
+        "function": "GADApplicationVerifyPublisherInitializedCorrectly",
+        "module": "GoogleMobileAds / Google-Mobile-Ads-SDK 11.13.0 statically linked into Runner",
+        "source_file": "NOT_AVAILABLE_IN_VENDOR_DSYM",
+        "source_line": "NOT_AVAILABLE_IN_VENDOR_DSYM"
+      }
+    ],
+    "tool_result": "llvm-symbolizer returned the exact function for both preferred VM addresses and ??:0:0 for vendor file/line; no file or line is fabricated."
+  },
+  "root_cause": {
+    "status": "ROOT_CAUSE_IDENTIFIED",
+    "statement": "The exact Build 18 binary enters Google Mobile Ads publisher initialization validation while its production Runner Info.plist has no GADApplicationIdentifier. Google Mobile Ads documents this as a GADInvalidInitializationException app-start crash.",
+    "exact_source_corroboration": [
+      "The source-run Runner Info.plist has no GADApplicationIdentifier.",
+      "ios/Runner/GeneratedPluginRegistrant.m registers FLTGoogleMobileAdsPlugin on iOS.",
+      "The Dart Android-only runtime policy does not remove the statically linked native Google Mobile Ads SDK from the iOS binary."
+    ],
+    "official_sdk_evidence": "Google Mobile Ads iOS documentation requires a real GADApplicationIdentifier and documents an app-start GADInvalidInitializationException when it is absent."
+  },
+  "build16_17_18_commonality": {
+    "build16_17": "Same native EXC_CRASH/SIGABRT/NSException pattern with two Runner frames, but no exact retained UUID-matched dSYM exists for either build.",
+    "build18": "Exact symbolication identifies Google Mobile Ads publisher initialization validation.",
+    "conclusion": "The Build 18 cause strongly explains the earlier shared signature, but Build 16 and Build 17 are not individually claimed as exact-symbol-proven."
+  },
+  "diagnostic_disable_inventory": {
+    "ios_ads_ump_rewarded": "CONFIGURATION_REQUIRED: the current Dart-level Android-only policy is insufficient because the iOS binary still contains the native SDK validator. Do not restore or bypass until a canonical iOS AdMob App ID is verified.",
+    "firebase_widget_maps_notifications_supabase_and_other_ios_features": "KEEP: no crash evidence supports disabling them.",
+    "android": "UNCHANGED"
+  },
+  "boundaries": [
+    "No placeholder or test AdMob App ID was added.",
+    "No iOS plugin-registration, linkage, signing, privacy, workflow, Android, or release-build change was applied.",
+    "No Build 19 was created or dispatched.",
+    "No secret, profile, certificate, private key, raw crash log, archive, IPA, or dSYM was committed."
+  ],
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only inspection of retained-symbol helpers and safe no-rebuild paths.",
+      "result": "Confirmed the production retention contract and that historical reconstruction is out of scope; no files changed.",
+      "changed_files": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Classify whether a durable source-only remedy is justified under the no-placeholder and no-arbitrary-disable constraints.",
+      "result": "BLOCKED_EXTERNAL_CONFIGURATION: a canonical iOS AdMob App ID is required before a narrow Info.plist fix and fresh runtime validation are justified.",
+      "changed_files": []
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review exact UUID/symbol/source evidence and the decision to block Build 19.",
+      "result": "No BLOCKER or HIGH finding against ROOT_CAUSE_IDENTIFIED. Build 19 remains BLOCKED pending canonical iOS AdMob configuration and fresh signed real-device validation.",
+      "changed_files": []
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Validate the RCA task state, diff hygiene, and Android isolation without changing source.",
+      "result": "PASS: task JSON parsed, git diff --check passed, and both working-tree and post-run Android pathspec checks reported no changes.",
+      "changed_files": []
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Reconcile the final RCA evidence, final diff, review findings, verification, and Build 19 gate without declaring completion.",
+      "result": "BLOCKED_EXTERNAL_CONFIGURATION: ROOT_CAUSE_IDENTIFIED is supported, but no app or release-source commit/push is justified until a verified canonical iOS AdMob App ID permits a narrow configuration fix and fresh signed real-device validation.",
+      "changed_files": []
+    }
+  ],
+  "verification": [
+    {
+      "command": "download artifact and SHA-256 comparison",
+      "exit_code": 0,
+      "result": "Outer artifact digest matched GitHub Actions metadata."
+    },
+    {
+      "command": "nested ZIP traversal validation and extraction",
+      "exit_code": 0,
+      "result": "No unsafe paths; inner dSYM ZIP hash matched manifest."
+    },
+    {
+      "command": "llvm-dwarfdump --uuid and direct Mach-O LC_UUID parser",
+      "exit_code": 0,
+      "result": "Physical dSYM UUID matches crash and archive executable UUID."
+    },
+    {
+      "command": "llvm-dwarfdump --verify",
+      "exit_code": 0,
+      "result": "No errors."
+    },
+    {
+      "command": "llvm-symbolizer with runtime base, ASLR slide, and preferred VM addresses",
+      "exit_code": 0,
+      "result": "Both crash offsets resolve to GADApplicationVerifyPublisherInitializedCorrectly."
+    },
+    {
+      "command": "exact-source plist and registrant checks; git diff --check; Android pathspec checks",
+      "exit_code": 0,
+      "result": "Missing ID and iOS plugin registration corroborated; diff hygiene passed; Android unchanged."
+    }
+  ],
+  "build19": "BLOCKED",
+  "remaining_user_action": "Provide or authorize use of the verified, canonical iOS AdMob App ID for bundle com.fluxstudio.planflow."
+}
