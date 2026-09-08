@@ -19,4 +19,4 @@ PLANFLOW_IOS_APP_GROUP = group.com.fluxstudio.planflow
 // MARKETING_VERSION / CURRENT_PROJECT_VERSION on the xcodebuild command line,
 // which takes precedence over everything here for release archives.
 PLANFLOW_WIDGET_MARKETING_VERSION = 1.1.1
-PLANFLOW_WIDGET_BUILD_NUMBER = 163
+PLANFLOW_WIDGET_BUILD_NUMBER = 164
