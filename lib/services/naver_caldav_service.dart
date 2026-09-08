@@ -654,8 +654,21 @@ class NaverCalDavService {
   }
 
   Future<bool> hasCredentials() async {
-    final credentials = await _credentialStore.readCredentials();
-    return credentials != null;
+    try {
+      // 로그인 온보딩 체인(외부 캘린더 연동 안내)에서 호출되므로, 그 체인
+      // 전체 상한보다 확실히 짧게 끊는다. calendar_sync_service.dart의
+      // Supabase 커넥션 조회 타임아웃(6초)과 동일한 값을 사용해 두 캘린더
+      // 연동 확인 호출의 상한을 일치시킨다.
+      final credentials =
+          await _credentialStore.readCredentials().timeout(
+                const Duration(seconds: 6),
+              );
+      return credentials != null;
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV credential check skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
   }
 
   Future<NaverCalDavConnectionResult> testConnection({

@@ -1089,10 +1089,16 @@ class CalendarSyncService {
     CalendarProvider provider,
   ) async {
     try {
-      return await _calendarConnectionRepository.fetchConnection(
-        userId: _currentUserId(),
-        provider: _providerKey(provider),
-      );
+      // 로그인 온보딩 체인(외부 캘린더 연동 안내) 안에서 호출되므로, 그 체인
+      // 전체 상한(수 초~10초대)보다 확실히 짧게 끊어 무한 대기를 막는다.
+      // :1013의 Naver Calendar API 호출 타임아웃(10초)과 다른 값을 쓰는 이유는
+      // 이 호출이 Supabase 단일 row 조회로 훨씬 가볍기 때문이다.
+      return await _calendarConnectionRepository
+          .fetchConnection(
+            userId: _currentUserId(),
+            provider: _providerKey(provider),
+          )
+          .timeout(const Duration(seconds: 6));
     } catch (error, stackTrace) {
       debugPrint('Calendar connection fetch skipped: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
