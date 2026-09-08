@@ -19,13 +19,33 @@
 
 ## 3. Redirect URL 등록
 
-`Authentication` > `URL Configuration`에서 Redirect URL에 아래 값을 추가합니다.
+`Authentication` > `URL Configuration`에서 아래 두 값을 모두 정확히 설정합니다.
+
+- **Site URL**: `planflow://auth-callback` (앱 딥링크). **웹 로컬 개발 주소(`http://127.0.0.1:3000` 등)로 두면 안 됩니다.** Site URL은 GoTrue가 `redirect_to`를 허용목록에서 찾지 못했을 때 폴백하는 주소이기 때문에, 웹 로컬 주소로 두면 앱의 소셜/이메일 로그인이 전부 그쪽으로 새어나가 깨집니다.
+- **Redirect URLs (허용목록)**: 여기에는 여러 개를 등록할 수 있습니다. 최소한 아래 값이 반드시 포함돼야 합니다.
 
 ```text
 planflow://auth-callback
 ```
 
+`apps-in-toss/`(Toss 웹 MVP) 로컬 개발 때문에 `http://127.0.0.1:3000` 같은 웹 로컬 주소가 필요하다면, 위 딥링크 항목을 **지우지 말고 추가로 병기**합니다.
+
+```text
+planflow://auth-callback
+http://127.0.0.1:3000/**
+```
+
+앱 코드 쪽 값은 `lib/core/env.dart`의 `AppEnv.authRedirectUrl`(`'planflow://auth-callback'`, env.dart:35)에 상수로 고정돼 있으며, 이 값은 대시보드 설정과 무관하게 절대 바뀌지 않습니다. 즉 로그인이 깨졌다면 원인은 항상 대시보드 쪽 설정이지 앱 코드가 아닙니다.
+
 비밀번호 재설정과 소셜 로그인 모두 이 딥링크로 앱에 돌아옵니다.
+
+> **경고**: 웹 클라이언트(Toss MVP 등)를 위해 이 화면의 설정을 바꿀 때는 기존 모바일 딥링크 항목(Site URL, Redirect URLs의 `planflow://auth-callback`)을 절대 삭제하거나 덮어쓰지 마세요. 반드시 기존 값은 유지한 채 웹 로컬 주소를 **추가**하는 방식으로만 변경합니다.
+
+### 장애 사례: 소셜 로그인 전면 장애 (Site URL 폴백)
+
+- **증상**: Google/Naver/Kakao 소셜 로그인 시 앱으로 돌아오지 않고 `http://127.0.0.1:3000/?code=<uuid>` 같은 웹 로컬 주소로 리다이렉트되며 `ERR_CONNECTION_REFUSED`가 발생. Android/iOS 모두 동일 증상.
+- **원인**: 대시보드 `Authentication` > `URL Configuration`에서 Redirect URLs 허용목록에 `planflow://auth-callback`이 빠져 있었고, Site URL이 `http://127.0.0.1:3000`으로 설정돼 있었음. GoTrue는 `redirect_to`로 전달된 값이 허용목록에 없으면 조용히 무시하고 Site URL로 폴백하는데, 그 Site URL이 로컬호스트였기 때문에 전체 로그인이 깨짐. 앱 코드(`lib/core/env.dart`)는 변경된 적이 없었음. 유력 유입 경로는 `apps-in-toss/`(Toss 웹 MVP) 로컬 개발 편의를 위해 대시보드 값을 웹 로컬 기준으로 바꾸면서 기존 모바일 항목을 덮어쓴 것으로 추정.
+- **확인 방법**: 대시보드 `Authentication` > `URL Configuration` 화면을 열어 (1) Site URL이 `planflow://auth-callback`인지, (2) Redirect URLs 허용목록에 `planflow://auth-callback`이 있는지 두 가지만 확인하면 5분 안에 자가진단 가능. 둘 중 하나라도 어긋나 있으면 이 섹션 맨 위의 값대로 즉시 복원합니다.
 
 ## 4. 소셜 로그인 Provider 설정
 
