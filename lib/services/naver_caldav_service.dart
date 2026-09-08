@@ -618,6 +618,48 @@ class NaverCalDavService {
   final Uri _baseUri;
   final ApiUsageGuard? _usageGuard;
 
+  /// `_withCancelableTimeout`가 만든 타이머 중 아직 발화/취소되지 않은 것들.
+  /// `dispose()`에서 일괄 취소해, 위젯이 dispose된 뒤에도 타이머가 살아남아
+  /// widget test의 "pending timer" 검사를 실패시키는 것을 막는다.
+  /// `Future<T>.timeout()`은 내부 Timer를 외부에서 취소할 수 없어 이 문제를
+  /// 근본적으로 못 막기 때문에, 이 헬퍼로 직접 Timer를 관리한다.
+  final Set<Timer> _pendingTimeoutTimers = <Timer>{};
+
+  /// [future]가 [timeout] 안에 끝나지 않으면 [TimeoutException]으로 실패하는
+  /// 래퍼. `Future<T>.timeout()`과 동작은 같지만, 내부에서 만든 [Timer]를
+  /// [_pendingTimeoutTimers]에 등록해 [dispose]가 명시적으로 취소할 수 있게
+  /// 한다. 원본 future가 먼저 끝나면 타이머를 즉시 취소한다.
+  Future<T> _withCancelableTimeout<T>(Future<T> future, Duration timeout) {
+    final completer = Completer<T>();
+    late final Timer timer;
+    timer = Timer(timeout, () {
+      _pendingTimeoutTimers.remove(timer);
+      if (!completer.isCompleted) {
+        completer.completeError(
+          TimeoutException('Operation timed out after $timeout'),
+        );
+      }
+    });
+    _pendingTimeoutTimers.add(timer);
+    future.then(
+      (value) {
+        timer.cancel();
+        _pendingTimeoutTimers.remove(timer);
+        if (!completer.isCompleted) {
+          completer.complete(value);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        timer.cancel();
+        _pendingTimeoutTimers.remove(timer);
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+    );
+    return completer.future;
+  }
+
   /// API 사용량 가드 인스턴스. 테스트 주입 우선, 없으면 싱글톤 사용.
   ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
@@ -648,6 +690,18 @@ class NaverCalDavService {
   }
 
   Future<void> dispose() async {
+    // 진행 중인 `_withCancelableTimeout` 타이머를 모두 취소한다. 이 서비스를
+    // 소유한 위젯이 dispose되는 시점에 readCredentials() 등 배경 조회가 아직
+    // 안 끝났다면, 그 타이머를 살려두지 않고 여기서 끊어 완료되지 않은
+    // Future를 즉시 TimeoutException으로 정리한다(호출부는 이미 try/catch로
+    // 감싸져 있어 안전). 이렇게 하지 않으면 위젯 dispose 후에도 최대 6초짜리
+    // Timer가 백그라운드에 남아, widget test 하네스가 "pending timer"로
+    // 실패 처리한다(설정 화면을 빠르게 드나드는 실사용 시나리오에서도 같은
+    // 낭비가 발생할 수 있다).
+    for (final timer in _pendingTimeoutTimers.toList()) {
+      timer.cancel();
+    }
+    _pendingTimeoutTimers.clear();
     if (_ownsHttpClient) {
       _httpClient.close();
     }
@@ -658,11 +712,13 @@ class NaverCalDavService {
       // 로그인 온보딩 체인(외부 캘린더 연동 안내)에서 호출되므로, 그 체인
       // 전체 상한보다 확실히 짧게 끊는다. calendar_sync_service.dart의
       // Supabase 커넥션 조회 타임아웃(6초)과 동일한 값을 사용해 두 캘린더
-      // 연동 확인 호출의 상한을 일치시킨다.
-      final credentials =
-          await _credentialStore.readCredentials().timeout(
-                const Duration(seconds: 6),
-              );
+      // 연동 확인 호출의 상한을 일치시킨다. `Future.timeout()` 대신
+      // `_withCancelableTimeout`을 쓰는 이유는 dispose() 시점에 이 타이머를
+      // 명시적으로 취소할 수 있어야 하기 때문이다(위 dispose() 주석 참고).
+      final credentials = await _withCancelableTimeout(
+        _credentialStore.readCredentials(),
+        const Duration(seconds: 6),
+      );
       return credentials != null;
     } catch (error, stackTrace) {
       debugPrint('Naver CalDAV credential check skipped: $error');
