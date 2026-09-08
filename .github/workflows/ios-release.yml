@@ -16,7 +16,7 @@ jobs:
     env:
       IOS_BUNDLE_ID: com.fluxstudio.planflow
       IOS_WIDGET_BUNDLE_ID: com.fluxstudio.planflow.PlanFlowWidget
-      IOS_BUILD_NUMBER: ${{ github.run_number }}
+      IOS_BUILD_NUMBER: 18
       IOS_BUILD_NAME: 1.0.0
       APPLE_TEAM_ID: ${{ secrets.PLANFLOW_APPLE_TEAM_ID }}
       DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
@@ -29,6 +29,24 @@ jobs:
       ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fail-closed Build 18 public release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF:-}" != "refs/heads/main" ]]; then
+            echo "::error title=BLOCKED_IOS_RELEASE_REF::The public iOS release is allowed only from refs/heads/main."
+            exit 1
+          fi
+          if [[ "${GITHUB_RUN_NUMBER:-}" != "18" ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER::The public iOS release is authorized only for workflow run number 18; refusing to guess Build 19."
+            exit 1
+          fi
+          if [[ "$IOS_BUILD_NUMBER" != "18" ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The public iOS release must remain fixed to Build 18."
+            exit 1
+          fi
+          echo "Build 18 release gates: ref=refs/heads/main run_number=$GITHUB_RUN_NUMBER build=18."
 
       - name: Preflight protected release gates
         shell: bash
@@ -229,6 +247,85 @@ jobs:
           echo "ARCHIVE_PRIVACY_PREFLIGHT_PASS: PASS"
           echo "Archive gates: Runner and embedded WidgetKit extension present."
 
+      - name: Verify and retain exact Build 18 arm64 Runner symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_root="$RUNNER_TEMP/PlanFlow.xcarchive"
+          archive_runner="$archive_root/Products/Applications/Runner.app/Runner"
+          archive_dsym="$archive_root/dSYMs/Runner.app.dSYM"
+          runner_uuids="$(dwarfdump --uuid "$archive_runner" | awk '/UUID:.*\(arm64\)/ {print $2}')"
+          dsym_uuids="$(dwarfdump --uuid "$archive_dsym" | awk '/UUID:.*\(arm64\)/ {print $2}')"
+          if [[ "$(printf '%s\n' "$runner_uuids" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" || \
+                "$(printf '%s\n' "$dsym_uuids" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" ]]; then
+            echo "::error title=BLOCKED_SYMBOL_UUID_CARDINALITY::Expected exactly one arm64 UUID for Runner and dSYM."
+            exit 1
+          fi
+          runner_uuid="$(printf '%s\n' "$runner_uuids" | tr '[:lower:]' '[:upper:]')"
+          dsym_uuid="$(printf '%s\n' "$dsym_uuids" | tr '[:lower:]' '[:upper:]')"
+          if [[ "$runner_uuid" != "$dsym_uuid" ]]; then
+            echo "::error title=BLOCKED_SYMBOL_UUID_MISMATCH::Runner and dSYM arm64 UUIDs do not match."
+            exit 1
+          fi
+          symbols_stage="$RUNNER_TEMP/planflow-ios-build18-symbols"
+          rm -rf "$symbols_stage"
+          mkdir -p "$symbols_stage"
+          ditto -c -k --sequesterRsrc --keepParent "$archive_dsym" "$symbols_stage/Runner.app.dSYM.zip"
+          dsym_checksum="$(shasum -a 256 "$symbols_stage/Runner.app.dSYM.zip" | awk '{print $1}')"
+          runner_plist="$archive_root/Products/Applications/Runner.app/Info.plist"
+          xcode_version="$(xcodebuild -version | head -n 1)"
+          flutter_version="$(flutter --version | head -n 1)"
+          cocoapods_version="$(pod --version)"
+          macos_version="$(sw_vers -productVersion)"
+          export RUNNER_UUID="$runner_uuid" DSYM_UUID="$dsym_uuid" DSYM_CHECKSUM="$dsym_checksum"
+          export XCODE_VERSION="$xcode_version" FLUTTER_VERSION="$flutter_version"
+          export COCOAPODS_VERSION="$cocoapods_version" MACOS_VERSION="$macos_version"
+          export SYMBOLS_STAGE="$symbols_stage" RUNNER_PLIST="$runner_plist"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          def plist(key):
+              return subprocess.check_output([
+                  "/usr/libexec/PlistBuddy", "-c", f"Print :{key}", os.environ["RUNNER_PLIST"]
+              ], text=True).strip()
+
+          manifest = {
+              "schema_version": 1,
+              "bundle_id": plist("CFBundleIdentifier"),
+              "version": plist("CFBundleShortVersionString"),
+              "build": plist("CFBundleVersion"),
+              "source_sha": os.environ["GITHUB_SHA"],
+              "source_ref": os.environ["GITHUB_REF"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_number": os.environ["GITHUB_RUN_NUMBER"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "xcode": os.environ["XCODE_VERSION"],
+              "flutter": os.environ["FLUTTER_VERSION"],
+              "cocoapods": os.environ["COCOAPODS_VERSION"],
+              "macos": os.environ["MACOS_VERSION"],
+              "executable_uuid_arm64": os.environ["RUNNER_UUID"],
+              "dsym_uuid_arm64": os.environ["DSYM_UUID"],
+              "dsym_zip_sha256": os.environ["DSYM_CHECKSUM"],
+          }
+          with open(os.path.join(os.environ["SYMBOLS_STAGE"], "manifest.json"), "w", encoding="utf-8") as handle:
+              json.dump(manifest, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          PY
+          echo "Exact arm64 Runner/dSYM UUID match: $runner_uuid"
+          echo "Build 18 symbol retention manifest created without app, IPA, archive, plist, or signing material."
+
+      - name: Upload retained Build 18 symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-build18-symbols-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/planflow-ios-build18-symbols/Runner.app.dSYM.zip
+            ${{ runner.temp }}/planflow-ios-build18-symbols/manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Export signed IPA
         shell: bash
         run: |
@@ -337,6 +434,7 @@ jobs:
           rm -f ios/Runner/GoogleService-Info.plist
           rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist "$RUNNER_TEMP"/planflow-altool-upload.log
           rm -f "${PLANFLOW_IPA_PATH:-}"
+          rm -rf "$RUNNER_TEMP/planflow-ios-build18-symbols"
           rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true

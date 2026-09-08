@@ -3,18 +3,19 @@
 ## 최종 판정 (iOS Release Closure Phase)
 
 > **`APP_STORE_BLOCKED`**
-> 차단 사유는 **단 하나**: `R1_UNDETERMINED` — 프로덕션 `Info.plist` 상태에서
-> 앱이 실제로 부팅·생존한다는 **런타임 증거가 0건**이다.
+> 현재 1차 차단 사유는 `NATIVE_STARTUP_CRASH_NOT_IDENTIFIED`다. Build 16과
+> Build 17은 실제 기기에서 즉시 종료됐고, 원본 dSYM 부재로 정확한 historical
+> symbolication이 불가능했다. Build 18은 이 원인을 확정하기 위한 단 한 번의
+> 진단 release이며, 아직 macOS archive·TestFlight·실기기 결과가 없다.
+>
+> `R1_UNDETERMINED`도 별도 미해결 항목이지만 현재 native crash보다 하위 게이트다.
+> 기존 `ios-adsdk-launch-probe.yml` 한 번만으로 출시 준비 상태를 해제할 수 없다.
+> 먼저 Build 18의 signed archive와 Runner/dSYM UUID 일치, Apple ingestion,
+> 실기기 생존 또는 UUID가 일치하는 crash/진단 근거를 확보해 native 원인을
+> 판정해야 한다. 그 뒤에만 R1과 실제 iOS Ads 구성 게이트를 독립적으로 재평가한다.
 > 상세: [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md)
 >
-> **해제 조건**: `.github/workflows/ios-adsdk-launch-probe.yml`를
-> `workflow_dispatch`로 1회 실행해 **세 스테이지가 모두** 아래를 만족해야 한다:
-> `PROD_PLIST_APP_ALIVE` = PASS, `PROD_PLIST_ADS_INIT_REACHED` = PASS,
-> `PROD_PLIST_NO_CRASH` = PASS. 이때만
-> **`APP_STORE_READY_PENDING_USER_CONFIGURATION`으로 전환**되고,
-> 그 시점부터 남는 것은 전부 App Store Connect 콘솔 입력(§남은 사용자 액션)뿐이다.
->
-> **`PROD_PLIST_ADS_INIT_REACHED`가 왜 필수인가(리뷰 HIGH-1).** 생존(PASS)만으로는
+> **`PROD_PLIST_ADS_INIT_REACHED`가 왜 이후에도 필요한가.** 생존(PASS)만으로는
 > R1이 없다는 결론이 나오지 않는다 — 앱이 살아남은 이유가 (a) R1이 없어서인지
 > (b) 조기 return 때문에 **R1 코드에 도달조차 못 해서**인지 구분되지 않기 때문이다.
 > 도달이 입증되지 않으면(`UNDETERMINED`) 판정은 `R1_UNDETERMINED`로 **그대로 유지**된다.
@@ -44,9 +45,10 @@
 
 ### 왜 `APP_STORE_BLOCKED`가 과하지 않은가
 
-차단 비용이 작기 때문이다. 해제에 필요한 것은 **수동 워크플로 1회 실행(≤40분)**이며,
-`R1_CLEARED`가 나오면 그 자리에서 판정이 올라간다. 반대로 이 확인을 건너뛰고 제출했을 때의
-실패 모드는 **런치 크래시 → Guideline 2.1 리젝 → Build 17 재빌드**로 훨씬 비싸다.
+차단을 유지하는 비용보다 근거 없이 공개 배포하는 비용이 크기 때문이다. 먼저 Build 18
+진단 release와 실제 iPhone 결과로 native startup crash를 판정해야 하고, 그 뒤 R1을
+별도 검증해야 한다. 어느 한 workflow 결과도 다른 미해결 게이트를 자동으로 올리지 않는다.
+이 순서를 건너뛰면 런치 크래시와 Guideline 2.1 리젝을 반복할 위험이 있다.
 
 ---
 
@@ -117,8 +119,9 @@ FLOW1~FLOW8 전부 `NOT_VERIFIED`이고 XCTest 경로는 stop-loss로 중단됐�
 | 전체 `test/` 스위트(157개) | `NOT_VERIFIED` | `POST_RELEASE_RECOMMENDED` | 측정 수단(`.github/workflows/flutter-test-baseline.yml`)은 생겼으나 `workflow_dispatch` 전용 + `continue-on-error` — **실행 결과 없음** |
 
 > 표의 `RELEASE_BLOCKER`는 "이 항목이 검증되지 않으면 공개 배포하면 안 된다"는 뜻이며,
-> 최상단 `APP_STORE_BLOCKED` 판정의 **단일 차단 사유는 R1 하나**다. 나머지
-> `RELEASE_BLOCKER` 행들은 실기기 QA(위 `REQUIRED` 판정)로 해소할 대상이다.
+> 최상단 `APP_STORE_BLOCKED`의 현재 1차 사유는 native startup crash다.
+> R1과 나머지 `RELEASE_BLOCKER` 행들도 별도 해제 근거가 필요하며, Build 18
+> 진단 결과 하나가 이들을 자동으로 PASS시키지 않는다.
 
 ---
 
@@ -128,14 +131,16 @@ AI가 대신할 수 없고 **사용자만 할 수 있는 것**만 남겼다.
 
 | # | 액션 | 왜 사용자만 가능한가 | 막고 있는 것 |
 |---|---|---|---|
-| 1 | **R1 프로브 1회 실행** — GitHub Actions → `iOS AdSDK launch probe (production plist)` → `Run workflow` | macOS runner 필요 + 이 세션 호스트는 Windows, `gh` 미인증 | `APP_STORE_BLOCKED` 해제 |
-| 2 | Privacy Policy URL / Support URL **게시** | 도메인·호스팅 소유 | App Store Connect 필수 필드 (항목 8·9) |
-| 3 | App Store Connect 메타데이터 입력 (이름·Subtitle·Keywords·Category·연령등급·Export Compliance) | 콘솔 접근 | 제출 (항목 2~5, 11, 13) |
-| 4 | 심사용 **데모 계정** 생성 후 App Review Information에 등록 | 실계정 생성·자격증명 | 로그인 필수 앱 심사 요건 (항목 15) |
-| 5 | 6.9" iPhone 스크린샷 생성·업로드 | 실기기/시뮬레이터 캡처 + 마케팅 판단 | 제출 (항목 6). 후보는 `docs/ios/screenshot-inventory.md` |
-| 6 | 스크린샷 **육안 검수** (한국어 문구·개인정보 노출·최신 UI 여부) | 사람 판단 | 심사 리젝 예방 |
-| 7 | **실기기 iPhone 확보 후 FLOW QA** | 하드웨어 | 공개 배포 승인 (위 `REQUIRED` 판정) |
-| 8 | App Privacy(Nutrition Label) 답변 확정 — 특히 ATT 문구-동작 불일치 처리 | 법적·사업적 판단 | 제출 (항목 10·12). 초안: `docs/ios/app-privacy-answers.md` |
+| 1 | **Build 18 진단 release 1회 실행** — GitHub Actions → `ios-release.yml` → `Run workflow` → `main` → `Run workflow` | 인증된 Actions/macOS·Apple signing 권한 | exact Runner/dSYM 확보와 native crash 진단 |
+| 2 | Build 18을 실제 iPhone에 설치·실행하고, 생존하지 않으면 UUID가 일치하는 crash report와 bounded startup 로그 확보 | TestFlight·실기기 접근 | native root cause 판정 |
+| 3 | native crash 판정 후 **R1 프로브 1회 실행** — GitHub Actions → `iOS AdSDK launch probe (production plist)` → `Run workflow` | macOS runner 필요 + 이 세션 호스트는 Windows, `gh` 미인증 | 별도 R1 게이트 |
+| 4 | Privacy Policy URL / Support URL **게시** | 도메인·호스팅 소유 | App Store Connect 필수 필드 (항목 8·9) |
+| 5 | App Store Connect 메타데이터 입력 (이름·Subtitle·Keywords·Category·연령등급·Export Compliance) | 콘솔 접근 | 제출 (항목 2~5, 11, 13) |
+| 6 | 심사용 **데모 계정** 생성 후 App Review Information에 등록 | 실계정 생성·자격증명 | 로그인 필수 앱 심사 요건 (항목 15) |
+| 7 | 6.9" iPhone 스크린샷 생성·업로드 | 실기기/시뮬레이터 캡처 + 마케팅 판단 | 제출 (항목 6). 후보는 `docs/ios/screenshot-inventory.md` |
+| 8 | 스크린샷 **육안 검수** (한국어 문구·개인정보 노출·최신 UI 여부) | 사람 판단 | 심사 리젝 예방 |
+| 9 | **실기기 iPhone FLOW QA** | 하드웨어 | 공개 배포 승인 (위 `REQUIRED` 판정) |
+| 10 | App Privacy(Nutrition Label) 답변 확정 — 특히 ATT 문구-동작 불일치 처리 | 법적·사업적 판단 | 제출 (항목 10·12). 초안: `docs/ios/app-privacy-answers.md` |
 
 3·4·5·8의 입력 초안은 `docs/ios/app-store-metadata.md`와 `docs/ios/review-notes.md`에 준비돼 있어
 **작성이 아니라 확인·복사 수준**이다.
@@ -243,6 +248,33 @@ versioned payload의 날짜별 공휴일(`holidayDates`)과 오늘 일정만 읽
 
 `IMPLEMENTED`와 `LIVE VALIDATED`를 구분한다. macOS/실기기 증거가 없으면 iOS 출시 PASS가 아니다.
 
+## Build 18 decisive native diagnostics
+
+Build 18 is a behavior-preserving diagnostic fallback, not a root-cause fix.
+The public release workflow is fail-closed to `refs/heads/main` and build
+number `18`; it must never infer Build 19 from a later run. After archive it
+requires exact arm64 UUID equality between the archived Runner executable and
+Runner dSYM, then retains only a zipped `Runner.app.dSYM` and a bounded UUID /
+provenance manifest for 90 days. IPA, archive, app, signing, keychain,
+provisioning, Firebase plist, and API-key material are excluded from that
+artifact. Cleanup removes the staging directory even when later export or
+transport/ingestion fails.
+
+The diagnostics are source-ready only. macOS CI with Flutter 3.47.2, Xcode,
+CocoaPods, signed archive, transport, App Store Connect ingestion, and an
+authenticated iPhone run remain separate gates and have not been claimed from
+this Windows checkout (Flutter 3.41.9). Ads/UMP/rewarded remain
+`CONFIGURATION_REQUIRED` until real iOS identifiers and evidence exist.
+Firebase, Widget, and App Group source configuration is retained, and Android
+is unchanged.
+
+Build 16 and Build 17 release logs show Flutter 3.47.2 automatically completed
+UIScene migration in each build working tree. Build 18 therefore explicitly
+source-controls the canonical `UIApplicationSceneManifest`,
+`FlutterImplicitEngineDelegate`, and implicit-engine plugin registration
+contract. This removes build-time source mutation but does not identify the
+crash cause because both prior crashing binaries already used that lifecycle.
+
 ## GitHub Actions signed release
 
 `.github/workflows/ios-release.yml`은 `workflow_dispatch` 전용 TestFlight 경로다.
@@ -261,8 +293,10 @@ provisioning profile을 생성하지 않는다. 인증서·두 프로파일을 �
 등록해야 한다. workflow는 secret을 로그에 출력하지 않고 임시 keychain/profile/plist/
 API key를 `always()` cleanup 단계에서 제거한다. Runner archive 안에
 `PlanFlowWidgetExtension.appex`가 없으면 export/upload를 진행하지 않는다.
-빌드 이름과 번호는 해당 iOS workflow의 run number로만 주입하며 Android pubspec은
-변경하지 않는다. TestFlight 업로드 수락은 배포 완료나 실기기 `LIVE VALIDATED` 증거가 아니다.
+빌드 이름은 `1.0.0`, 빌드 번호는 `18`로 고정하며, 보호 작업 전
+`GITHUB_RUN_NUMBER == 18`과 `refs/heads/main`을 함께 검증한다. 이후 workflow
+run은 Build 19를 추측하거나 Build 18을 재생성하지 않는다. Android pubspec은 변경하지
+않는다. TestFlight 업로드 수락은 배포 완료나 실기기 `LIVE VALIDATED` 증거가 아니다.
 
 ## App Store 준비 초안
 

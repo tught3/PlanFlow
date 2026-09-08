@@ -14,6 +14,7 @@ import 'core/analytics_service.dart';
 import 'core/diag_logger.dart';
 import 'core/env.dart';
 import 'core/local_time.dart';
+import 'core/native_startup_diagnostics.dart';
 import 'core/runtime_error_filter.dart';
 import 'core/startup_route_gate.dart';
 import 'core/supabase_auth_options.dart';
@@ -34,6 +35,7 @@ Future<void> main() async {
 @visibleForTesting
 Future<void> runPlanFlowApp({List<Override> overrides = const []}) async {
   WidgetsFlutterBinding.ensureInitialized();
+  NativeStartupDiagnostics.dartMainEnter();
   startupRouteGate.beginStartupWorkDeferral();
   ensureTimeZonesInitialized();
   if (kReleaseMode) {
@@ -46,6 +48,10 @@ Future<void> runPlanFlowApp({List<Override> overrides = const []}) async {
   FlutterError.onError = FlutterError.presentError;
 
   runApp(ProviderScope(overrides: overrides, child: const PlanFlowApp()));
+  NativeStartupDiagnostics.runAppReached();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    NativeStartupDiagnostics.firstFrame();
+  });
   unawaited(_initializePlatformServices());
   unawaited(_scheduleStaleGroupAlarmReconcile());
 }

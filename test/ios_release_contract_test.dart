@@ -93,6 +93,11 @@ void main() {
     expect(plist, contains('NSLocationWhenInUseUsageDescription'));
     expect(plist, contains('NSPhotoLibraryUsageDescription'));
     expect(plist, contains('NSPhotoLibraryAddUsageDescription'));
+    expect(plist, contains('UIApplicationSceneManifest'));
+    expect(plist, contains('UIApplicationSupportsMultipleScenes'));
+    expect(plist, contains('UIWindowSceneSessionRoleApplication'));
+    expect(plist, contains('<string>FlutterSceneDelegate</string>'));
+    expect(plist, contains('<string>flutter</string>'));
     final phoneOrientations =
         plist.split('<key>UISupportedInterfaceOrientations~ipad</key>').first;
     expect(phoneOrientations, contains('UIInterfaceOrientationPortrait'));
@@ -561,6 +566,34 @@ echo AVFoundation.framework
     expect(workflow, contains('verify-ios-privacy-surface.py'));
     expect(workflow, contains('actions/upload-artifact@v4'));
     expect(workflow, contains('planflow-ios-privacy-audit-'));
+    expect(workflow, contains('IOS_BUILD_NUMBER: 18'));
+    expect(workflow, contains('refs/heads/main'));
+    expect(workflow, contains('BLOCKED_IOS_BUILD_NUMBER'));
+    expect(workflow, contains(r'GITHUB_RUN_NUMBER:-'));
+    expect(workflow, contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"'));
+    expect(workflow, contains('dwarfdump --uuid'));
+    expect(workflow,
+        contains('Verify and retain exact Build 18 arm64 Runner symbols'));
+    expect(workflow, contains('Upload retained Build 18 symbols'));
+    expect(workflow, contains('if-no-files-found: error'));
+    expect(workflow, contains('retention-days: 90'));
+    expect(workflow, contains('workflow_run_id'));
+    expect(workflow, contains('workflow_run_number'));
+    expect(workflow, contains('workflow_run_attempt'));
+    expect(workflow, contains('export RUNNER_UUID='));
+    expect(workflow, contains('python3 - <<\'PY\''));
+    final symbolsUploadStart =
+        workflow.indexOf('      - name: Upload retained Build 18 symbols');
+    final symbolsExportStart =
+        workflow.indexOf('      - name: Export signed IPA', symbolsUploadStart);
+    final symbolsUpload =
+        workflow.substring(symbolsUploadStart, symbolsExportStart);
+    expect(symbolsUpload, isNot(contains('always()')));
+    expect(symbolsUpload, contains('Runner.app.dSYM.zip'));
+    expect(symbolsUpload, contains('manifest.json'));
+    expect(symbolsUpload, isNot(contains('*')));
+    expect(workflow,
+        contains(r'rm -rf "$RUNNER_TEMP/planflow-ios-build18-symbols"'));
     final requiredPrivacyKeys = <String>{
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
@@ -749,8 +782,8 @@ echo AVFoundation.framework
             .readAsStringSync();
     // Extract the real gate script from the workflow and execute it, so a
     // broken gate cannot pass on string matching alone.
-    final start =
-        workflow.indexOf('      - name: Validate immutable Build 15 audit inputs');
+    final start = workflow
+        .indexOf('      - name: Validate immutable Build 15 audit inputs');
     expect(start, isNot(-1));
     final runMarker = workflow.indexOf('run: |', start);
     expect(runMarker, isNot(-1));
@@ -763,7 +796,8 @@ echo AVFoundation.framework
     final script = File(
         '${Directory.systemTemp.createTempSync('planflow-audit-gate-').path}${Platform.pathSeparator}gate.sh');
     script.writeAsStringSync(lines.join('\n'));
-    expect(script.readAsStringSync(), contains('this 90683 workflow audits Build 15 only'));
+    expect(script.readAsStringSync(),
+        contains('this 90683 workflow audits Build 15 only'));
     int runGate(String value) => Process.runSync(
           bash,
           [script.path.replaceAll(r'\', '/')],
@@ -778,11 +812,23 @@ echo AVFoundation.framework
           },
         ).exitCode;
     expect(runGate('15'), 0);
-    for (final blocked in <String>['0', '16', '0016', '017', '99', 'abc', '', '1a']) {
+    for (final blocked in <String>[
+      '0',
+      '16',
+      '0016',
+      '017',
+      '99',
+      'abc',
+      '',
+      '1a'
+    ]) {
       expect(runGate(blocked), isNot(0), reason: 'must block "$blocked"');
     }
     script.parent.deleteSync(recursive: true);
-  }, skip: resolveBash() == null ? 'POSIX bash is unavailable on this host' : null);
+  },
+      skip: resolveBash() == null
+          ? 'POSIX bash is unavailable on this host'
+          : null);
 
   test('privacy helper audit report records 90683 purpose-string gaps', () {
     final temp = Directory.systemTemp.createTempSync('planflow-privacy-audit-');
@@ -813,9 +859,9 @@ echo AVFoundation.framework
           .writeAsStringSync('fake runner binary');
       final toolDir = Directory('${temp.path}${Platform.pathSeparator}tools')
         ..createSync(recursive: true);
-      File('${toolDir.path}${Platform.pathSeparator}otool.cmd')
-          .writeAsStringSync('@echo off\n'
-              'echo /System/Library/Frameworks/CoreLocation.framework/CoreLocation\n');
+      File('${toolDir.path}${Platform.pathSeparator}otool.cmd').writeAsStringSync(
+          '@echo off\n'
+          'echo /System/Library/Frameworks/CoreLocation.framework/CoreLocation\n');
       File('${toolDir.path}${Platform.pathSeparator}nm.cmd')
           .writeAsStringSync('@echo off\necho _AVCaptureDevice\n');
       File('${toolDir.path}${Platform.pathSeparator}strings.cmd')

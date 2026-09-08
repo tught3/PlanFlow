@@ -26,7 +26,7 @@ void main() {
     // expected digest here deliberately rather than by accident).
     const expectedDigests = <String, String>{
       '.github/workflows/ios-release.yml':
-          '6a17ca3740b7a0ae844147a4d8199d637ab312ed56e1d90979ae923cc0bbd54f',
+          'de1f3af8bfe7dcb686d69350afd22374927562f910ac781b7c9bc1ddff10b9d4',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':

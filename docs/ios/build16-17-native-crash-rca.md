@@ -77,8 +77,48 @@ The sanitized reports were created as artifacts `10022039962` and
 `10022135827`. Neither reconstructed UUID equals its historical crash UUID,
 so no `atos` function/file/line result is authoritative. The run therefore
 confirms environment/build drift or missing historical outputs, not a product
-root cause. Build 18 remains blocked until an exact historical Runner/dSYM
-pair is available.
+root cause. At the end of that reconstruction phase, Build 18 remained blocked
+pending an exact historical Runner/dSYM pair. The later, explicitly authorized
+decisive-diagnostic fallback supersedes that historical gate below.
+
+## Authoritative release-run provenance and retained privacy artifacts
+
+The actual Build 16 and Build 17 release logs both contain the exact Flutter
+3.47.2 line `Finished migration to UIScene lifecycle`. Flutter 3.47.2 performed
+that migration in each build working tree before compilation, rewriting the
+old template AppDelegate to `FlutterImplicitEngineDelegate` registration and
+inserting `UIApplicationSceneManifest`. Therefore both crashing binaries used
+the post-migration lifecycle even though the corresponding source commits
+retained the old template. Build 18 now source-controls that same lifecycle and
+manifest so its build does not depend on an automatic working-tree rewrite.
+This is build-fidelity evidence, not root-cause evidence: Builds 16 and 17 both
+crashed after using that lifecycle, so the root cause remains `NOT_IDENTIFIED`.
+
+| Build | Release run / job log | Runner and image provenance | Toolchain |
+| --- | --- | --- | --- |
+| 16 | run `33634034706`; job log `100260270253` | macOS `26.5.2 (25F84)`; image `macos-26-arm64 20260728.0273.1` | `Xcode_26.6.app`; Flutter `3.47.2`; CocoaPods `UNKNOWN` |
+| 17 | run `34066956754`; job log `101577295311` | macOS `26.6.2 (25G83)`; image `macos-26-arm64 20260831.0337.3` | `Xcode_26.6.app`; Flutter `3.47.2`; CocoaPods `UNKNOWN` |
+
+CocoaPods stays `UNKNOWN` because neither release log explicitly captured its
+version. No secret, team, certificate, profile, or protected plist value is
+part of this provenance.
+
+The retained GitHub artifacts are privacy reports, not executable or symbol
+artifacts:
+
+| Build | Artifact | GitHub SHA-256 / expiry |
+| --- | --- | --- |
+| 16 | id `9848730798`; `planflow-ios-privacy-audit-16` | `fcd91e583ac1b5dd53b445e9bd6adbdb2c8c2ab7baa54b47cfc46aa1dbc0fe37`; `2026-09-16T13:27:42Z` |
+| 17 | id `9999494096`; `planflow-ios-privacy-audit-17` | `865dac3a4edbbf24f0b7b21523d6d86564922ad7840cfa7a4469fbb3f356d8cc`; `2026-09-20T23:46:04Z` |
+
+Each downloaded ZIP matched its recorded SHA-256 exactly and contained only
+`archive-privacy-report.json` (`31114` bytes) and
+`export-privacy-report.json` (`30994` bytes). Both reports were `PASS`: all six
+required Runner privacy keys were `true`, `widgetForbiddenKeys` was empty, and
+the scans covered Runner, Flutter, App, NMaps, and the Widget appex. Filtered
+evidence included `UIImageWriteToSavedPhotosAlbum` and `PHPhotoLibrary`.
+Neither artifact contains an archive, IPA, Runner executable, or dSYM, so it
+cannot authorize symbolication.
 
 ## Android parity baseline and current iOS source state
 
@@ -113,16 +153,49 @@ does not claim that Build 16 or 17 reached that path before crashing.
 
 | Guard | Current effect | Disposition | Gate |
 | --- | --- | --- | --- |
-| `isAdsRuntimeSupported` | Allows Ads SDK runtime only on Android | `RESTORE_AFTER_FIX` | Root cause excludes Ads path and canonical iOS AdMob configuration exists |
-| UMP entry points | Skip consent initialization/options on iOS | `RESTORE_AFTER_FIX` | Restore with Ads and keep iOS ATT/privacy policy |
-| `MobileAds.instance.initialize` caller | Skipped on iOS before SDK initialization | `RESTORE_AFTER_FIX` | Same RCA/configuration gate |
-| Ad preload/retry paths | Return without loading on iOS | `RESTORE_AFTER_FIX` | Migrate every caller when Ads is restored |
-| Schedule/voice rewarded paths | Return disabled on iOS | `RESTORE_AFTER_FIX` | Restore reward semantics with valid iOS unit IDs |
-| Integration-test fakes, `E2E_MODE`, simulator seams | Prevent production backend/plugin access in tests | `KEEP_TEST_ONLY` | Must remain unreachable from ordinary production launch |
-| Android alarm, calendar-provider, and permission guards | Exclude Android-only platform APIs from iOS | `KEEP_PLATFORM_REQUIREMENT` | Preserve; implement iOS equivalents where product behavior requires them |
+| `isAdsRuntimeSupported` | Allows Ads SDK runtime only on Android | `CONFIGURATION_REQUIRED` | Root cause excludes Ads path and canonical iOS AdMob configuration exists |
+| UMP entry points | Skip consent initialization/options on iOS | `CONFIGURATION_REQUIRED` | Restore with Ads and keep iOS ATT/privacy policy |
+| `MobileAds.instance.initialize` caller | Skipped on iOS before SDK initialization | `CONFIGURATION_REQUIRED` | Same RCA/configuration gate |
+| Ad preload/retry paths | Return without loading on iOS | `CONFIGURATION_REQUIRED` | Migrate every caller when Ads is restored |
+| Schedule/voice rewarded paths | Return disabled on iOS | `CONFIGURATION_REQUIRED` | Restore reward semantics with valid iOS unit IDs |
+| Integration-test fakes, `E2E_MODE`, simulator seams | Prevent production backend/plugin access in tests | `JUSTIFIED_KEEP` | Must remain unreachable from ordinary production launch |
+| Android alarm, calendar-provider, and permission guards | Exclude Android-only platform APIs from iOS | `JUSTIFIED_KEEP` | Preserve; implement iOS equivalents where product behavior requires them |
 
-No separate `REMOVE_DIAGNOSTIC_ONLY` production bypass was identified in this
-bounded inventory. Ads/UMP containment is not accepted as final parity and no
-placeholder AdMob ID is introduced. Build 18 remains blocked until the
-historical symbolication yields an evidence-backed function or another
-decisive diagnostic is approved.
+No `RESTORED` or `REMOVED` production bypass exists in this bounded inventory.
+Ads/UMP containment is not accepted as final parity and no placeholder AdMob
+ID is introduced. The superseding phase below records the later authorization
+for one decisive Build 18 diagnostic despite unavailable historical symbols.
+
+## Superseding Build 18 decisive native diagnostic phase
+
+The original Build 16/17 archive, IPA, Runner executable, and dSYM artifacts
+are `NOT_FOUND`; the retained privacy-report artifacts described above contain
+none of those binary inputs.
+The authoritative crash UUIDs remain Build 16
+`96EB03A3-C4E7-3C3E-9C58-9E3F6DE896BC` and Build 17
+`D9B552C8-3F13-3217-B8B9-6886EE0926D0`. Reconstructed Runner/dSYM UUIDs did
+not match either crash UUID; the three-way match is `NO`, so symbolication was
+`NOT_RUN` and the root cause remains `NOT_IDENTIFIED`.
+
+This phase source-controls Flutter 3.47.2's post-migration AppDelegate and
+canonical Scene manifest, then adds behavior-preserving
+`DECISIVE_NATIVE_DIAGNOSTIC` markers around the native process, AppDelegate,
+implicit-engine registrar path, engine, Dart entry, `runApp`, and first frame.
+The forwarding registry proxy records an allowlisted marker immediately before
+each generated registrar request while forwarding `registrar`, `hasPlugin`,
+and `valuePublished` unchanged. The registrar marker is an observation boundary
+only: the next registrar request or `PLUGIN_REGISTRATION_END` means the
+preceding registration call returned, not that it caused or did not cause the
+crash. The ledger is bounded, allowlisted, local, and has no network or raw
+userInfo. The exception marker emits only an allowlisted exception name,
+fixed reason category, inspected-frame count, and allowlisted module-presence
+labels. Raw reason, frame text, paths, addresses, and arbitrary identifiers are
+never logged. Firebase, Widget, and App Group source configuration is retained.
+This task changes no Android path; the concurrent foreign AndroidManifest
+working-tree change is preserved and excluded from this delivery.
+
+Ads/UMP/rewarded remain `CONFIGURATION_REQUIRED` because no real iOS IDs are
+available. Build 18 may be labeled `DIAGNOSTIC_READY` only after focused tests
+and independent review pass. This Windows implementation itself does not claim
+macOS Flutter 3.47.2 compilation, archive, dispatch, TestFlight, or device
+evidence; the current Windows Flutter version is 3.41.9.

@@ -8,9 +8,11 @@
 
 ## 0. 최종 판정 (iOS Release Closure Phase)
 
-> **`APP_STORE_BLOCKED`** — 차단 사유 **1건**: `R1_UNDETERMINED`.
-> 프로덕션 `ios/Runner/Info.plist` 형상에서 앱이 실제로 부팅·생존한다는 **런타임 증거가 0건**이다.
-> 판정 근거 전문: [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md)
+> **`APP_STORE_BLOCKED`** — 현재 1차 차단 사유는
+> `NATIVE_STARTUP_CRASH_NOT_IDENTIFIED`다. Build 16과 Build 17은 실제 iPhone에서
+> 즉시 종료됐고 원본 dSYM이 없어 historical symbolication을 완료하지 못했다.
+> `R1_UNDETERMINED`는 그 뒤에 별도로 해제해야 하는 하위 게이트다.
+> R1 근거: [`docs/ios/R1-admob-launch-risk.md`](R1-admob-launch-risk.md)
 > 판정 맥락(QA 증거표·실기기 판정): [`docs/ios/release-readiness.md`](release-readiness.md)
 
 **중요 — 이 판정은 아래 항목 1~18과 성격이 다르다.**
@@ -18,15 +20,16 @@
 `APP_STORE_BLOCKED`는 *제품이 iOS에서 뜨는지 자체가 미확인*(= runtime unknown)이라는 뜻이며,
 콘솔을 아무리 채워도 해소되지 않는다.
 
-**해제 조건**
-`.github/workflows/ios-adsdk-launch-probe.yml`를 GitHub Actions에서 `workflow_dispatch`로
-1회 실행(≤40분) →
-`PROD_PLIST_APP_ALIVE` = PASS **그리고** `PROD_PLIST_ADS_INIT_REACHED` = PASS
-**그리고** `PROD_PLIST_NO_CRASH` = PASS
-→ 이때만 **`APP_STORE_READY_PENDING_USER_CONFIGURATION`**으로 전환되고,
-그 뒤로는 이 문서의 항목 2~16, 18(콘솔 입력)만 남는다.
-결과가 FAIL이면 `R1_CONFIRMED_BLOCKER`이며 **코드 수정 + Build 17**이 필요하다
-(제안 패치는 R1 문서 §5, **미적용** 상태).
+**게이트 순서**
+먼저 `ios-release.yml`의 고정 Build 18 진단 release를 1회 실행해 signed archive,
+Runner/dSYM UUID 일치, Apple ingestion을 확인한다. 이어 실제 iPhone에서 앱 생존을
+확인하거나, 종료되면 UUID가 일치하는 crash report와 bounded startup evidence로
+native 원인을 판정한다. 이 단계 전에는 App Store readiness로 전환하지 않는다.
+
+Native gate가 해제된 뒤에만 `.github/workflows/ios-adsdk-launch-probe.yml`의
+`PROD_PLIST_APP_ALIVE`, `PROD_PLIST_ADS_INIT_REACHED`, `PROD_PLIST_NO_CRASH`를
+별도 R1 근거로 평가한다. 이 프로브 하나는 native crash, 실기기 FLOW QA, 또는
+App Store Connect 입력을 자동으로 PASS시키지 않는다.
 
 > **주의(리뷰 HIGH-1).** `PROD_PLIST_ADS_INIT_REACHED`가 `UNDETERMINED`면
 > 나머지 둘이 PASS여도 **전환되지 않는다.** 앱 생존은 "R1 없음"과
@@ -42,7 +45,7 @@
 대체 불가이고, FLOW1~8 실행 증거가 0건이며, R1이 시뮬레이터에서 CLEAR돼도 GMA 네이티브
 device 슬라이스 확인이 남는다).
 
-**Build 16과의 관계**: Build 16까지의 PASS는 *빌드·서명·업로드·ingestion*의 증거이지
+**Build 16/17과의 관계**: 각 release workflow PASS는 *빌드·서명·업로드·ingestion*의 증거이지
 *런타임 부팅*의 증거가 아니다. 그 파이프라인에는 앱 프로세스를 띄워 생존을 확인하는 단계가
 없다. 따라서 항목 18의 "Build 16 PASS"는 이 판정을 뒤집지 않는다.
 
@@ -188,7 +191,7 @@ Build 16까지 TestFlight 파이프라인(서명 → IPA 메타데이터 검증 
 
 - 자동확인(코드/설정 기반): 2개 (항목 1, 17)
 - 확인필요(App Store Connect 콘솔): 16개 (항목 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18)
-- **콘솔 외 차단 사유: 1개 (R1 — §0)**
+- **콘솔 외 차단 사유: native startup crash 진단, R1, 실기기 FLOW QA (§0)**
 
 ### 초안이 준비된 콘솔 항목 (작성이 아니라 확인·복사 수준)
 
@@ -202,13 +205,15 @@ Build 16까지 TestFlight 파이프라인(서명 → IPA 메타데이터 검증 
 
 ### 사용자 액션 우선순위
 
-1. **R1 프로브 실행** (§0) — 유일한 차단 사유 해소
-2. Privacy Policy / Support URL 게시 (항목 8·9)
-3. 콘솔 메타데이터 입력 (항목 2~5, 11, 13)
-4. 심사용 데모 계정 등록 (항목 15)
-5. 6.9" 스크린샷 생성·업로드 (항목 6) 및 육안 검수
-6. 실기기 FLOW QA (공개 배포 승인 요건)
-7. App Privacy 답변 확정 — ATT 문구-동작 불일치 처리 (항목 10·12)
+1. **Build 18 진단 release 1회 실행** (§0)
+2. Build 18 실제 iPhone 실행 후 생존 또는 UUID 일치 crash/진단 근거 확보
+3. Native gate 판정 후 **R1 프로브 실행** (§0)
+4. Privacy Policy / Support URL 게시 (항목 8·9)
+5. 콘솔 메타데이터 입력 (항목 2~5, 11, 13)
+6. 심사용 데모 계정 등록 (항목 15)
+7. 6.9" 스크린샷 생성·업로드 (항목 6) 및 육안 검수
+8. 실기기 FLOW QA (공개 배포 승인 요건)
+9. App Privacy 답변 확정 — ATT 문구-동작 불일치 처리 (항목 10·12)
 
 전체 목록과 "왜 사용자만 가능한가"는 `docs/ios/release-readiness.md`의
 남은 사용자 액션 절에 정리돼 있다.
