@@ -67,8 +67,20 @@ void main() {
     final parsed = parseAuthRedirectUrl(envSource);
     final plist = file('ios/Runner/Info.plist').readAsStringSync();
 
-    expect(plist, contains('<string>${parsed.scheme}</string>'),
+    // CFBundleURLTypes 배열 블록만 통째로 찾아, 그 안에서만 scheme 문자열을
+    // 확인한다 (plist 다른 곳에 우연히 같은 문자열이 있어도 매칭되는 것을
+    // 방지). CFBundleURLTypes -> [ { CFBundleURLSchemes -> [...] } ] 구조를
+    // 가정해 <key>CFBundleURLTypes</key>부터 그 뒤에 처음 나오는
+    // </dict></array> 쌍(중첩 CFBundleURLSchemes 배열의 닫힘 다음)까지를
+    // 블록으로 삼는다.
+    final urlTypesBlock = RegExp(
+      '<key>CFBundleURLTypes</key>[\\s\\S]*?</dict>\\s*</array>',
+    ).firstMatch(plist);
+    expect(urlTypesBlock, isNotNull,
+        reason: 'Info.plist에 CFBundleURLTypes 블록이 없다');
+    final block = urlTypesBlock!.group(0)!;
+    expect(block, contains('<string>${parsed.scheme}</string>'),
         reason:
-            'Info.plist CFBundleURLSchemes에 env.dart scheme(${parsed.scheme})이 없다');
+            'Info.plist CFBundleURLTypes 블록 안에 env.dart scheme(${parsed.scheme})이 없다');
   });
 }
