@@ -1224,18 +1224,25 @@ class HomeWidgetService {
           jsonEncode(rawEvents),
         ) &&
         success;
-    final canonicalWidgetPayload = WidgetSchedulePayload.fromLegacyRawEvents(
-      rawEvents: rawEvents,
-      generatedAt: DateTime.now().toUtc(),
-      dayCounts: _dayCountsForWidget(monthCells),
-      holidays: _holidaysForWidget(monthCells),
-      holidayDates: _holidayDatesForWidget(monthCells),
-    );
-    success = await _saveValue(
-          'widget_schedule_payload_v1',
-          canonicalWidgetPayload.encode(),
-        ) &&
-        success;
+    try {
+      final canonicalWidgetPayload = WidgetSchedulePayload.fromLegacyRawEvents(
+        rawEvents: rawEvents,
+        generatedAt: DateTime.now().toUtc(),
+        dayCounts: _dayCountsForWidget(monthCells),
+        holidays: _holidaysForWidget(monthCells),
+        holidayDates: _holidayDatesForWidget(monthCells),
+      );
+      success = await _saveValue(
+            'widget_schedule_payload_v1',
+            canonicalWidgetPayload.encode(),
+          ) &&
+          success;
+    } catch (e, st) {
+      debugPrint(
+        'HomeWidgetService: fromLegacyRawEvents failed, skipping widget_schedule_payload_v1: $e',
+      );
+      debugPrintStack(stackTrace: st, maxFrames: 8);
+    }
     success = await _saveMonthData(month: month, days: monthDays) && success;
     success = await _saveMonthCalendarData(monthCells) && success;
     success = await _saveMonthCalendarData(
