@@ -569,8 +569,11 @@ echo AVFoundation.framework
     expect(workflow, contains('IOS_BUILD_NUMBER: 18'));
     expect(workflow, contains('refs/heads/main'));
     expect(workflow, contains('BLOCKED_IOS_BUILD_NUMBER'));
-    expect(workflow, contains(r'GITHUB_RUN_NUMBER:-'));
-    expect(workflow, contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"'));
+    expect(workflow, contains('workflow_run_number'));
+    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "18"'));
+    expect(workflow,
+        isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
+    expect(workflow, contains('workflow attempts, not iOS binaries'));
     expect(workflow, contains('dwarfdump --uuid'));
     expect(workflow,
         contains('Verify and retain exact Build 18 arm64 Runner symbols'));

@@ -38,15 +38,13 @@ jobs:
             echo "::error title=BLOCKED_IOS_RELEASE_REF::The public iOS release is allowed only from refs/heads/main."
             exit 1
           fi
-          if [[ "${GITHUB_RUN_NUMBER:-}" != "18" ]]; then
-            echo "::error title=BLOCKED_IOS_BUILD_NUMBER::The public iOS release is authorized only for workflow run number 18; refusing to guess Build 19."
-            exit 1
-          fi
-          if [[ "$IOS_BUILD_NUMBER" != "18" ]]; then
+          # GitHub run numbers identify workflow attempts, not iOS binaries. A
+          # failed attempt before transport must be retryable as the same Build 18.
+          if [[ "${IOS_BUILD_NUMBER:-}" != "18" ]]; then
             echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The public iOS release must remain fixed to Build 18."
             exit 1
           fi
-          echo "Build 18 release gates: ref=refs/heads/main run_number=$GITHUB_RUN_NUMBER build=18."
+          echo "Build 18 release gates: ref=refs/heads/main workflow_run=$GITHUB_RUN_NUMBER attempt=$GITHUB_RUN_ATTEMPT build=$IOS_BUILD_NUMBER."
 
       - name: Preflight protected release gates
         shell: bash

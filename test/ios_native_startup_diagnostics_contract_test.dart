@@ -261,7 +261,10 @@ void main() {
     final workflow = read('.github/workflows/ios-release.yml');
     expect(workflow, contains('IOS_BUILD_NUMBER: 18'));
     expect(workflow, contains('GITHUB_REF:-'));
-    expect(workflow, contains('GITHUB_RUN_NUMBER:-'));
+    expect(workflow, contains('workflow_run_number'));
+    expect(workflow,
+        isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
+    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "18"'));
     expect(workflow, contains('workflow_run_id'));
     expect(workflow, contains('workflow_run_number'));
     expect(workflow, contains('workflow_run_attempt'));
