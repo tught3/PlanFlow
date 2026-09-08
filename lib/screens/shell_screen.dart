@@ -130,6 +130,19 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
   bool _onboardingDecisionPending = false;
 
+  // 온보딩 단계의 "표시 여부 판단" I/O(prefs·네트워크) 상한.
+  // 정상 경로에서는 수십~수백 ms면 끝나고, 이 구간이 멈추면 화면에는 아무것도
+  // 뜨지 않은 채 "로딩 중"만 남는다. 느린 기기의 콜드스타트 여유까지 감안해
+  // 6초로 잡고, 초과하면 "표시하지 않음"으로 안전하게 판정해 다음 단계로 간다.
+  static const Duration _onboardingProbeTimeout = Duration(seconds: 6);
+
+  // 온보딩 단계의 "사용자 상호작용 화면"(투어·권한 온보딩·안내 다이얼로그)
+  // 상한. 이 구간은 사용자가 직접 읽고 조작하는 시간이라 초 단위로 끊으면
+  // 정상 흐름이 깨진다(투어를 읽는 도중 다음 단계 화면이 위에 push된다).
+  // 따라서 라우터/다이얼로그가 결과를 영영 돌려주지 않는 hang만 끊기 위한
+  // 최후 상한으로만 쓴다.
+  static const Duration _onboardingPresentationTimeout = Duration(minutes: 5);
+
   @override
   void initState() {
     super.initState();
@@ -272,7 +285,15 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     final inFlight = _sessionOnboardingFlow;
     if (inFlight != null) {
-      await inFlight;
+      // 먼저 시작한 인스턴스의 flow가 던지더라도, 이 인스턴스는 반드시 아래
+      // 게이트 해제까지 도달해야 한다. 여기서 예외가 새면 "로딩 중" 화면이
+      // 영구히 남는다.
+      try {
+        await inFlight;
+      } catch (error, stackTrace) {
+        DiagLogger.log('Onboarding', 'shared onboarding flow failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
       if (mounted && _onboardingDecisionPending) {
         setState(() => _onboardingDecisionPending = false);
       }
@@ -297,37 +318,87 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     final startedAt = DateTime.now();
     var flowCompleted = false;
     try {
-      await _maybeOpenFeatureTour();
+      await _runOnboardingStage(
+        'feature_tour',
+        () => _maybeOpenFeatureTour(),
+      );
+      // 위젯이 사라졌으면 이후 단계는 의미가 없다. return해도 아래 finally가
+      // 실행돼 게이트는 반드시 풀린다(flowCompleted=false로 남겨 세션 완료
+      // 표시는 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문).
       if (!mounted) {
         return;
       }
-      await _maybeOpenPermissionOnboarding();
+      await _runOnboardingStage(
+        'permission_onboarding',
+        () => _maybeOpenPermissionOnboarding(),
+      );
       if (!mounted) {
         return;
       }
-      await _maybeShowExternalCalendarSyncGuide();
+      await _runOnboardingStage(
+        'external_calendar_guide',
+        () => _maybeShowExternalCalendarSyncGuide(),
+      );
       flowCompleted = true;
+    } catch (error, stackTrace) {
+      // 어떤 예외도 게이트 해제를 막아선 안 된다. 호출부가 unawaited라
+      // 여기서 새면 예외가 그대로 삼켜지고 "로딩 중"만 남는다.
+      DiagLogger.log('Onboarding', 'startup tasks failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     } finally {
       // Always release the route gate, including onboarding/prefs exceptions.
       // Nonessential platform work has its own settled-idle permit, so this
       // cannot strand the app behind a permanent startup lock.
       startupRouteGate.completeStartupWorkDeferral();
-      if (mounted) {
-        _clearOnboardingGate();
-        if (flowCompleted && authProvider.userId == userId) {
-          _sessionOnboardingUserId = userId;
-        }
-        DiagLogger.log(
-          'Onboarding',
-          'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms',
-        );
+      // 게이트 해제와 세션 완료 표시는 위젯 생존(mounted)과 무관하게 항상
+      // 수행한다. 온보딩 도중 ShellScreen State가 교체되면 죽은 인스턴스에서
+      // mounted가 false가 되는데, 예전에는 그때 _sessionOnboardingUserId
+      // 기록까지 통째로 스킵돼 새 인스턴스가 온보딩을 처음부터 다시 돌리고
+      // "로딩 중"에 영구히 갇혔다. setState 호출만 mounted로 가드한다.
+      _clearOnboardingGate();
+      if (flowCompleted && authProvider.userId == userId) {
+        _sessionOnboardingUserId = userId;
       }
+      DiagLogger.log(
+        'Onboarding',
+        'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms '
+            '(completed=$flowCompleted, mounted=$mounted)',
+      );
       if (flowCompleted) {
         _queuePostOnboardingStartupTasks(
           reason: reason,
           generation: _startupWorkGeneration,
         );
       }
+    }
+  }
+
+  /// 온보딩 단계 하나를 상한 시간·예외로부터 격리해 실행한다.
+  ///
+  /// 타임아웃이든 예외든 다음 단계로 넘어가고, 어느 경우에도 호출부의
+  /// 게이트 해제(finally)에 반드시 도달한다. 릴리즈 빌드 logcat에서 어느
+  /// 단계가 멈췄는지 구분할 수 있도록 start/done/timeout/error를 남긴다.
+  Future<void> _runOnboardingStage(
+    String name,
+    Future<void> Function() stage, {
+    Duration timeout = _onboardingPresentationTimeout,
+  }) async {
+    DiagLogger.log('Onboarding', 'stage=$name start');
+    var timedOut = false;
+    try {
+      await stage().timeout(
+        timeout,
+        onTimeout: () {
+          timedOut = true;
+        },
+      );
+      DiagLogger.log(
+        'Onboarding',
+        'stage=$name ${timedOut ? 'timeout' : 'done'}',
+      );
+    } catch (error, stackTrace) {
+      DiagLogger.log('Onboarding', 'stage=$name error: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -423,8 +494,11 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   Future<void> _maybeOpenFeatureTour() async {
     if (_checkedFeatureTour || !mounted) return;
     _checkedFeatureTour = true;
-    final shouldShow =
-        await const SharedPreferencesFeatureTourStore().shouldShow();
+    // prefs 읽기가 멈추면 화면엔 "로딩 중"만 남는다. 상한을 넘기면 투어를
+    // 건너뛴다(다음 실행에서 다시 판정된다).
+    final shouldShow = await const SharedPreferencesFeatureTourStore()
+        .shouldShow()
+        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
     if (shouldShow && mounted) {
       await context.push(AppRoutes.featureTour);
     }
@@ -608,7 +682,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
 
     try {
-      final completed = await _permissionService.isOnboardingCompleted(userId);
+      // 조회가 멈추면 온보딩을 띄우지 않고 넘어간다(completed=true로 판정).
+      // 권한 온보딩은 설정 화면에서 다시 진입할 수 있고, 다음 실행에서 재판정
+      // 되므로 "로딩 중"에 갇히는 쪽보다 안전하다.
+      final completed = await _permissionService
+          .isOnboardingCompleted(userId)
+          .timeout(_onboardingProbeTimeout, onTimeout: () => true);
       if (!mounted) {
         return;
       }
@@ -625,12 +704,15 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   void _clearOnboardingGate() {
-    if (!mounted || !_onboardingDecisionPending) {
+    if (!_onboardingDecisionPending) {
       return;
     }
-    setState(() {
-      _onboardingDecisionPending = false;
-    });
+    // 플래그 자체는 mounted와 무관하게 항상 내린다. dispose된 위젯에 setState를
+    // 부르면 크래시하므로 리빌드 트리거만 mounted로 가드한다.
+    _onboardingDecisionPending = false;
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _maybeShowExternalCalendarSyncGuide() async {
@@ -644,8 +726,11 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final shouldShow =
-        await _externalCalendarGuideService.shouldShowForUser(userId);
+    // 이 판정은 prefs + 연동 캘린더 조회를 타므로 네트워크에 걸릴 수 있다.
+    // 상한을 넘기면 안내를 건너뛴다.
+    final shouldShow = await _externalCalendarGuideService
+        .shouldShowForUser(userId)
+        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
     if (!shouldShow || !mounted) {
       return;
     }
@@ -682,7 +767,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       },
     );
 
-    await _externalCalendarGuideService.markSeen(userId);
+    await _externalCalendarGuideService.markSeen(userId).timeout(
+          _onboardingProbeTimeout,
+          onTimeout: () {},
+        );
     if (!mounted) {
       return;
     }
