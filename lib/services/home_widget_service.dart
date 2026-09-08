@@ -1238,6 +1238,7 @@ class HomeWidgetService {
           ) &&
           success;
     } catch (e, st) {
+      success = false;
       debugPrint(
         'HomeWidgetService: fromLegacyRawEvents failed, skipping widget_schedule_payload_v1: $e',
       );
