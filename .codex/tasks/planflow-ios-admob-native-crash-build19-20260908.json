@@ -1,0 +1,197 @@
+{
+  "task_id": "planflow-ios-admob-native-crash-build19-20260908",
+  "date": "2026-09-08",
+  "status": "IN_PROGRESS_AUTHORITATIVE_IOS_ADMOB_CONFIGURATION",
+  "classification": "complex",
+  "starting_head": "18075eda699be7adf22f8d246b4ae1d5580f9684",
+  "final_head_observed": "6e66972e8546cd3bdb408cc857be78a4d0007aff",
+  "upstream_observation": "Local main advanced by one unrelated auto commit after task start; it changes none of the iOS AdMob, release, or Android paths audited here. origin/main remains at the starting head, so no push was attempted.",
+  "scope": "iOS AdMob configuration, native startup crash fix, safe ad parity restoration, and Build 19 release candidate only after authoritative configuration and release gates.",
+  "root_cause": {
+    "status": "ROOT_CAUSE_IDENTIFIED",
+    "summary": "The exact Build 18 dSYM investigation identified Google Mobile Ads native startup validation as the abort source when production Runner Info.plist lacks GADApplicationIdentifier.",
+    "current_source_state": "Runner and Widget production plists are both key-absent; the attachment contains the literal placeholder <IOS_ADMOB_APP_ID> and no strict iOS App ID."
+  },
+  "authoritative_external_configuration": {
+    "iOS_AdMob_App_ID": {
+      "received": true,
+      "strict_format_validated": true,
+      "source": "direct user-provided authoritative external configuration",
+      "raw_value_persisted_in_task_state": false
+    },
+    "iOS_rewarded_ad_unit": {
+      "received": false,
+      "status": "CONFIGURATION_REQUIRED",
+      "rule": "Do not reuse Android or Google test ad-unit identifiers."
+    }
+  },
+  "external_blockers": [
+    "A verified canonical iOS AdMob App ID in ca-app-pub-<publisher>~<application> format was not supplied and was not found in tracked production source.",
+    "No authoritative iOS rewarded ad-unit configuration was found; iOS rewarded/UMP parity must remain configuration-required rather than use a fake, Android, or Google test value.",
+    "The canonical release workflow is explicitly fixed and guarded for iOS Build 18, so Build 19 requires a reviewed release-gate update after the source fix; it must not be dispatched now."
+  ],
+  "architecture_decision": {
+    "configuration_source_after_authority_is_supplied": "ios/Runner/Info.plist only",
+    "reason": "A literal target-local Runner plist key is unambiguous in archive inspection and avoids widening the existing identity xcconfig chain for a Runner-only SDK requirement.",
+    "required_exclusions": [
+      "ios/PlanFlowWidget/Info.plist remains key-absent",
+      "No Widget build-setting or target change",
+      "No Android App ID or Android rewarded unit reuse",
+      "No Firebase, signing, entitlement, Podfile, or project-signing modification"
+    ]
+  },
+  "foreign_dirty_paths_preserved": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "$null",
+    "AGENTS.md.before-regen.bak"
+  ],
+  "task_owned_cleanup": {
+    "path": "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "event": "A focused Flutter test generated an integration_test registrant block after the initial preflight.",
+    "resolution": "Removed only that exact generated block with apply_patch; final Android numstat is empty and no Android source change remains."
+  },
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only inventory of iOS/Android AdMob configuration, runtime policy, test-only injection, and foreign ownership risks.",
+      "mode": "read-only",
+      "changed_files": [],
+      "final_report": {
+        "production_iOS": "No GADApplicationIdentifier in Runner Info.plist and no tracked production iOS App ID source.",
+        "test_only_iOS": "The only iOS-form App ID usage is Google test-ID injection and restore in E2E scripts.",
+        "android": "Android keeps a separate production application ID in the manifest and Android-specific rewarded unit configuration in Remote Config paths.",
+        "runtime_policy": "Current policy treats iOS/non-Android as ads-unsupported while native Google Mobile Ads plugin registration still occurs.",
+        "conclusion": "No source edit or Build 19 is safe before canonical iOS App ID authority is supplied."
+      },
+      "test_evidence": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define the safe configuration architecture, permitted files after authority, non-requirements, Build 19 gates, and current decision.",
+      "mode": "read-only",
+      "changed_files": [],
+      "final_report": {
+        "decision": "PLANNED_BLOCKED; no implementation is authorized now.",
+        "architecture": "After strict validation, add one literal GADApplicationIdentifier only to ios/Runner/Info.plist; keep Widget explicitly excluded and do not use the identity xcconfig chain.",
+        "after_authority_allowed_files": [
+          "ios/Runner/Info.plist",
+          "test/ios_admob_contract_test.dart",
+          "test/ios_native_startup_diagnostics_contract_test.dart",
+          "scripts/ios/e2e_xctest_flow.sh",
+          "scripts/ios/prod_plist_launch_probe.sh",
+          "scripts/ios/tests/e2e_admob_contract.sh",
+          "scripts/ios/tests/prod_plist_launch_probe_contract.sh"
+        ],
+        "parity_rule": "iOS runtime ads may be restored only after a distinct authoritative iOS rewarded unit is available; do not fabricate values or reuse Android configuration.",
+        "release_rule": "Build 19 requires a fresh reviewed canonical-release gate update, signed archive/export, exact dSYM retention, upload/processing evidence, and physical iOS device first-launch evidence."
+      },
+      "test_evidence": []
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run focused current-state AdMob contract and non-mutating script/diff checks.",
+      "mode": "read-only verification",
+      "changed_files": [],
+      "final_report": "Current source contracts match the blocked baseline: production Runner has no App ID and E2E uses only a temporary public test configuration.",
+      "test_evidence": [
+        {
+          "command": "flutter test test/ios_admob_contract_test.dart",
+          "exit_code": 0,
+          "result": "PASS; confirms production key absence and test-only injection/restore behavior."
+        },
+        {
+          "command": "& 'C:\\Program Files\\Git\\bin\\bash.exe' -n scripts/ios/tests/e2e_admob_contract.sh",
+          "exit_code": 0,
+          "result": "PASS; syntax-only validation, no plist mutation executed."
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "PASS; no whitespace or patch-format error."
+        },
+        {
+          "command": "git status --short",
+          "exit_code": 0,
+          "result": "Observed and preserved foreign dirty paths; no task-owned product source change."
+        }
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review authority handling, target isolation, Build 19 path, Android preservation, and real-device gate.",
+      "mode": "read-only",
+      "changed_files": [],
+      "final_report": {
+        "verdict": "FINDINGS",
+        "highest_severity": "MEDIUM",
+        "finding_1": "Blocked treatment, Runner-only architecture, and Widget/Android exclusion are correct; task state must persist plan and focused test evidence.",
+        "finding_2": "The existing release workflow is hardcoded and guarded for Build 18, so Build 19 cannot dispatch unchanged and needs a later reviewed gate update.",
+        "resolution": "This task state persists the required planning and test evidence. No source or workflow edit is permitted until an actual App ID is supplied."
+      },
+      "test_evidence": []
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Inspect final current Git diff and persisted delivery evidence; determine whether the task is complete or externally blocked.",
+      "mode": "read-only integration",
+      "changed_files": [],
+      "final_report": {
+        "status": "BLOCKED_EXTERNAL_CONFIGURATION_AUTHORITY",
+        "evidence": "Explorer, Planner, Test Executor, and Reviewer evidence is adequate. Fresh git diff --check passed. No task-owned product/source diff exists; the sole task-owned artifact is this task-state JSON.",
+        "amended_after_android_cleanup": "The Flutter-generated integration_test registrant block was removed. Final Android numstat is empty, current status has no Android path, and Android remains unchanged.",
+        "rechecked_after_head_advance": "The local 18075..6e66972 advance changes none of the audited iOS AdMob, release, or Android paths. Runner and Widget keys remain absent; preserve the unrelated unpushed commit and retain this blocker.",
+        "review_status": "No BLOCKER or HIGH review finding remains; the MEDIUM persistence finding is resolved by this record.",
+        "remaining_user_action": "Supply the authoritative iOS AdMob App ID, not a placeholder, Android ID, Google test ID, or ad-unit ID.",
+        "release_constraint": "Build 19 cannot use the current Build18-hardcoded and guarded release workflow unchanged; a later reviewed gate update is required only after the real App ID and Runner-only source fix."
+      },
+      "test_evidence": [
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "PASS during final integration."
+        }
+      ]
+    }
+  ],
+  "next_safe_user_action": "Provide the actual canonical iOS AdMob App ID, not the literal placeholder, not an Android ID, not a test ID, and not an ad-unit ID.",
+  "implementation_report": {
+    "role": "Complex Implementer",
+    "agent": "codex",
+    "mapped_model": "gpt-5",
+    "reasoning_effort": "high",
+    "assignment": "Implement the authoritative Runner-only iOS AdMob native startup crash fix and prepare the canonical iOS Build 19 release gate.",
+    "changed_files": [
+      "ios/Runner/Info.plist",
+      "test/ios_admob_contract_test.dart",
+      "test/services/ad_runtime_policy_test.dart",
+      "scripts/ios/tests/e2e_admob_contract.sh",
+      "scripts/ios/prod_plist_launch_probe.sh",
+      "scripts/ios/tests/prod_plist_launch_probe_contract.sh",
+      ".github/workflows/ios-release.yml",
+      "test/ios_release_contract_test.dart",
+      "test/ios_native_startup_diagnostics_contract_test.dart"
+    ],
+    "implementation_summary": "Added one strict production Runner GADApplicationIdentifier; retained Widget key absence and iOS runtime-disabled policy; changed contracts to positive fail-closed validation; made E2E production preservation and secret-free output checks explicit; made the production probe reject missing, malformed, and public-test configuration without printing the value; updated the canonical fixed release gate and symbol artifact expectations from Build 18 to Build 19 while preserving signing and archive/export/upload logic.",
+    "verification": "Not rerun after the final edits at the user's request. Earlier read-only baseline checks were not used as final proof.",
+    "remaining_risks": [
+      "macOS/Xcode archive, signing, App Store Connect processing, and physical-device first-launch validation remain unverified.",
+      "Independent Reviewer and Integrator final review still required by the delivery gate."
+    ]
+  }
+}
