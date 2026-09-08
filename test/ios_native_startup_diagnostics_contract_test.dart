@@ -271,6 +271,16 @@ void main() {
     expect(workflow, contains('executable_uuid_arm64'));
     expect(workflow, contains('dsym_uuid_arm64'));
     expect(workflow, contains('dsym_zip_sha256'));
+    expect(workflow,
+        contains(r'''xcode_version_output="$(xcodebuild -version)"'''));
+    expect(workflow,
+        contains(r'''flutter_version_output="$(flutter --version)"'''));
+    expect(workflow,
+        contains(r'''xcode_version="${xcode_version_output%%$'\n'*}"'''));
+    expect(workflow,
+        contains(r'''flutter_version="${flutter_version_output%%$'\n'*}"'''));
+    expect(workflow, isNot(contains('xcodebuild -version | head -n 1')));
+    expect(workflow, isNot(contains('flutter --version | head -n 1')));
     final uploadStart =
         workflow.indexOf('      - name: Upload retained Build 18 symbols');
     final exportStart =

@@ -1,0 +1,160 @@
+{
+  "task_id": "planflow-ios-build18-release-broken-pipe-fix-20260908",
+  "status": "SOURCE_DELIVERY_APPROVED_FOR_PATH_SCOPED_COMMIT",
+  "request": "Fix the Build 18 signed-release workflow broken pipe without changing app runtime, signing, privacy, or Android; preserve exact UUID/dSYM retention and keep Build 18.",
+  "source_identity": {
+    "branch": "main",
+    "starting_head": "9fc21c7a3db67fe9d029ef9ed0da300cbafb2a69",
+    "origin_main_at_start": "9fc21c7a3db67fe9d029ef9ed0da300cbafb2a69",
+    "ahead_behind_at_start": "0/0"
+  },
+  "authoritative_failure": {
+    "workflow_run_id": 34189157756,
+    "workflow_run_number": 18,
+    "job_id": 101943467490,
+    "head_sha": "9fc21c7a3db67fe9d029ef9ed0da300cbafb2a69",
+    "archive": "PASS",
+    "failure_step": "Verify and retain exact Build 18 arm64 Runner symbols",
+    "failure": "NSFileHandleOperationException Broken pipe from xcodebuild -version piped to head -n 1; exit 134",
+    "ipa_export": "NOT_RUN",
+    "testflight_upload": "NOT_RUN",
+    "apple_build_18_uploaded": false
+  },
+  "scope": {
+    "allowed": [
+      ".github/workflows/ios-release.yml",
+      "test/ios_release_contract_test.dart",
+      "test/ios_native_startup_diagnostics_contract_test.dart",
+      ".codex/tasks/planflow-ios-build18-release-broken-pipe-fix-20260908.json"
+    ],
+    "forbidden": [
+      "lib/",
+      "android/",
+      "ios/Runner runtime code",
+      "AppDelegate",
+      "Info.plist",
+      "Widget",
+      "Firebase config",
+      "signing assets",
+      "privacy keys",
+      "Ads policy"
+    ]
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "agent_id": "01a07f76-4198-76c3-845b-a063963ca4db",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Locate exact broken-pipe producer/consumer and direct regression scope.",
+      "status": "COMPLETE",
+      "result": "ROOT_CAUSE_STRONGLY_NARROWED: ios-release.yml xcodebuild -version | head -n 1 is the only xcodebuild early-closing consumer in the failing step; archive/export tee consumers drain output."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "agent_id": "01a07f78-c7a4-7a31-9e16-58e7e7f43296",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Classify and plan the minimal workflow-only fix and verification gates.",
+      "status": "COMPLETE",
+      "result": "SIMPLE: replace the unsafe version capture without changing UUID, manifest, artifact secrecy, signing, privacy, runtime, or Build 18 gates."
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "agent_id": "01a07f7d-2e78-7910-86ff-3ade0a2153f7",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Apply the workflow-only pipe-safe version-capture fix and focused release contracts.",
+      "status": "UNAVAILABLE",
+      "result": "No repository change was produced before the in-app agent stopped responding; replacement implementer assigned."
+    },
+    {
+      "role": "Simple Implementer replacement",
+      "agent": "flux_simple_implementer",
+      "agent_id": "01a07f82-bf91-78e1-9ef2-5275a4d4410d",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Apply the exact pipe-safe version-capture change and static release contract in the shared checkout.",
+      "status": "UNAVAILABLE",
+      "result": "The in-app agent stopped without a terminal report; its narrowly scoped workflow/test edits were recovered and validated by the primary integrator."
+    },
+    {
+      "role": "Primary integrator recovery",
+      "agent": "current Codex agent",
+      "assignment": "Recover the bounded workflow/test edits left by stalled implementers and repair only Dart test-string escaping.",
+      "status": "COMPLETE",
+      "changed_files": [
+        ".github/workflows/ios-release.yml",
+        "test/ios_release_contract_test.dart",
+        "test/ios_native_startup_diagnostics_contract_test.dart"
+      ]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "agent_id": "01a07f88-93fb-7761-a845-8e8a6ef3f1b0",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Independently run focused Dart contracts, YAML parse, extracted symbol-step bash syntax, diff check, and scope check.",
+      "status": "COMPLETE",
+      "result": {
+        "flutter_test": "PASS (exit 0): ios_release_contract_test.dart + ios_native_startup_diagnostics_contract_test.dart",
+        "yaml_parse": "PASS (exit 0)",
+        "symbol_step_bash_syntax": "PASS (exit 0)",
+        "git_diff_check": "PASS (exit 0; CRLF warnings only)",
+        "scope": "PASS: no Android, lib, AppDelegate, Info.plist, or runtime changes in the task diff"
+      }
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "agent_id": "01a07f8b-30ca-7491-98b2-7419adcb9aa4",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently review the final scoped diff and release invariants.",
+      "status": "COMPLETE",
+      "result": "FINAL_REVIEW_PASS: BLOCKER=0, HIGH=0, MEDIUM=0, LOW=0."
+    },
+    {
+      "role": "Integrator pre-commit audit",
+      "agent": "flux_integrator",
+      "agent_id": "01a07f8e-4830-7232-950c-c259ff66fbe9",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Verify delivery state before the final commit.",
+      "status": "COMPLETE",
+      "result": "NEEDS_TASK_STATE_FINALIZATION_ONLY: code scope and review passed; required a refreshed verification record and final integration report."
+    },
+    {
+      "role": "Final Integrator",
+      "agent": "flux_integrator",
+      "agent_id": "01a07f90-b379-7a50-aaaf-a814697c7dd7",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Confirm final delivery gates and exact path-scoped commit eligibility.",
+      "status": "COMPLETE",
+      "result": "INTEGRATION_PASS_READY_TO_COMMIT: exact owned paths only; required role history present; fresh tests/YAML/shell/diff PASS; live macOS/TestFlight NOT_RUN."
+    }
+  ],
+  "completion_gates": [
+    "No early-closing consumer receives xcodebuild or flutter version output.",
+    "Runner/dSYM arm64 UUID cardinality and equality remain fail-closed.",
+    "Artifact remains only Runner.app.dSYM.zip plus manifest.json, 90 days, with no secret-bearing inputs.",
+    "Build number remains 18 and no Build 19 is inferred.",
+    "YAML parse, shell syntax, focused contracts, diff check, independent review, and integration pass."
+  ],
+  "final_verification": {
+    "command": "flutter test --no-pub test/ios_release_contract_test.dart test/ios_native_startup_diagnostics_contract_test.dart",
+    "focused_contracts": "PASS (exit 0; 27 tests)",
+    "yaml_parse": "PASS (exit 0)",
+    "symbol_step_bash_syntax": "PASS (exit 0)",
+    "git_diff_check": "PASS (exit 0; CRLF warnings only)",
+    "scope_check": "PASS: task-owned paths are workflow, two contracts, and this task-state; foreign paths are excluded",
+    "runtime_retest": "NOT_RUN: corrected workflow has not been dispatched on authenticated macOS"
+  },
+  "implementation_exception": "Two in-app simple implementer calls stopped without terminal reports. The first left the intended narrow workflow/contracts edits; the primary integrator repaired only invalid Dart escaping, then independent Test Executor and Reviewer verified the final diff.",
+  "updated_at": "2026-09-08T00:00:00+09:00"
+}

@@ -663,6 +663,40 @@ echo AVFoundation.framework
     expect(workflow, contains('Secret cleanup gate executed.'));
   });
 
+  test('Build 18 version capture drains xcodebuild and Flutter output', () {
+    final workflow = file('.github/workflows/ios-release.yml').readAsStringSync();
+    expect(workflow,
+        contains(r'''xcode_version_output="$(xcodebuild -version)"'''));
+    expect(workflow,
+        contains(r'''flutter_version_output="$(flutter --version)"'''));
+    expect(workflow,
+        contains(r'''xcode_version="${xcode_version_output%%$'\n'*}"'''));
+    expect(workflow,
+        contains(r'''flutter_version="${flutter_version_output%%$'\n'*}"'''));
+    expect(workflow, isNot(contains('xcodebuild -version | head -n 1')));
+    expect(workflow, isNot(contains('flutter --version | head -n 1')));
+  });
+
+  test('pipe-safe Build 18 version capture preserves a multi-line producer',
+      () async {
+    final bash = Platform.isWindows
+        ? r'C:\Program Files\Git\bin\bash.exe'
+        : 'bash';
+    final result = await Process.run(bash, <String>[
+      '-lc',
+      r'''
+set -euo pipefail
+xcodebuild() {
+  printf '%s\n' 'Xcode 26.6' 'Build version 26F90'
+}
+xcode_version_output="$(xcodebuild -version)"
+xcode_version="${xcode_version_output%%$'\n'*}"
+[[ "$xcode_version" == 'Xcode 26.6' ]]
+''',
+    ]);
+    expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
+  });
+
   test(
       'App Store Connect ingestion verifier keeps transport and processing separate',
       () {
