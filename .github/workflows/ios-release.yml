@@ -150,6 +150,10 @@ jobs:
           signing_identity_count="$(awk '/^[[:space:]]*[0-9]+\)/ {count++} END {print count+0}' "$identities_log")"
           echo "Signing identity exists: $([[ "$signing_identity_count" -gt 0 ]] && echo yes || echo no)"
           echo "Signing identity count: $signing_identity_count"
+          if (( signing_identity_count == 0 )); then
+            echo "::error title=BLOCKED_SIGNING_IDENTITY::No usable code-signing identity was imported into the temporary signing keychain."
+            exit 1
+          fi
           security list-keychains -d user -s "$keychain" login.keychain-db
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           runner_plist="$RUNNER_TEMP/runner-profile.plist"

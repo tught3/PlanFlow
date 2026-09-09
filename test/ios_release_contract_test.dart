@@ -54,6 +54,10 @@ void main() {
     if (requireFailClosed) {
       expect(identityFailClosed, greaterThan(identityCount));
       expect(searchList, greaterThan(identityFailClosed));
+      final zeroIdentityGuard =
+          workflow.substring(identityFailClosed, searchList);
+      expect(zeroIdentityGuard, contains('BLOCKED_SIGNING_IDENTITY'));
+      expect(zeroIdentityGuard, contains('exit 1'));
     } else {
       expect(searchList, greaterThan(identityCount));
     }
@@ -295,7 +299,7 @@ void main() {
             .hasMatch(archive),
         isFalse);
     expect(workflow, contains('security import'));
-    expectSigningParity(workflow, requireFailClosed: true);
+    expectSigningParity(workflow);
     expect(workflow, contains('BLOCKED_AUDIT_CONFIG'));
     expect(
         workflow, contains(r'export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"'));
@@ -337,7 +341,7 @@ void main() {
         file('.github/workflows/ios-privacy-audit.yml').readAsStringSync();
     final releaseArchive = archiveBlock(release);
     final auditArchive = archiveBlock(audit);
-    expectSigningParity(release);
+    expectSigningParity(release, requireFailClosed: true);
     expectSigningParity(audit);
     final canonicalMappings = <String>[
       'APPLE_TEAM_ID: \${{ secrets.PLANFLOW_APPLE_TEAM_ID }}',

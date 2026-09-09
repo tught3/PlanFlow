@@ -1,0 +1,204 @@
+{
+  "task_id": "TASK_20260830_140101",
+  "original_request": "PlanFlow iOS Final Release Phase: investigate signing strategy and implement GitHub macOS signed archive, IPA export, and TestFlight upload pipeline using existing Apple/App Store Connect secrets; preserve Android production; fail closed without signing evidence.",
+  "status": "COMPLETE_SOURCE_READY_EXTERNAL_RELEASE_GATED",
+  "requirements": [
+    "Maintain a manual GitHub macOS signed-release workflow that requires Apple distribution, Runner/Widget profiles, Firebase, and App Store Connect inputs.",
+    "Fail closed before archive, export, or upload when signing or identity evidence is absent or invalid.",
+    "Archive Runner with the embedded WidgetKit extension, export exactly one signed IPA, and verify TestFlight transport and authoritative App Store Connect ingestion.",
+    "Preserve Android production paths and do not commit secrets."
+  ],
+  "non_requirements": [
+    "No GitHub Actions dispatch, App Store Connect upload, TestFlight release, credential rotation, or Apple account mutation from this Windows session.",
+    "No Android, production deployment, database, authentication, or secret-file changes."
+  ],
+  "preflight": {
+    "command": "python E:\\FluxStudio\\.fluxos\\run.py preflight E:\\FluxStudio-worktrees\\planflow\\planflow-task-20260830-140101 --deep",
+    "exit_code": 0,
+    "result": "WARN/VERIFY_AND_CONTINUE: 19 warnings are existing secret-pattern/generated-file findings plus the invoking process; no blocking ownership conflict."
+  },
+  "claim": {
+    "command": "python E:\\FluxStudio\\.fluxos\\run.py claim PlanFlow .codex/tasks/TASK_20260830_140101.json --owner Codex-TASK_20260830_140101",
+    "exit_code": 0,
+    "result": "CLAIMED",
+    "lock_id": "L1790",
+    "scope": [".codex/tasks/TASK_20260830_140101.json"]
+  },
+  "allowed_files": [
+    ".github/workflows/ios-release.yml",
+    "test/ios_release_contract_test.dart",
+    ".codex/tasks/TASK_20260830_140101.json"
+  ],
+  "forbidden_files": [
+    "android/**",
+    "production deployment configuration",
+    "Apple certificates, provisioning profiles, Firebase plist, and API private keys",
+    "unrelated files"
+  ],
+  "plan": [
+    {
+      "id": "signed_identity_guard",
+      "classification": "complex",
+      "assigned_role": "Complex Implementer",
+      "allowed_files": [".github/workflows/ios-release.yml"],
+      "status": "completed",
+      "objective": "Fail before keychain selection or archive when security find-identity returns zero usable code-signing identities."
+    },
+    {
+      "id": "signed_identity_guard_contract",
+      "classification": "simple",
+      "assigned_role": "Simple Implementer",
+      "allowed_files": ["test/ios_release_contract_test.dart"],
+      "status": "completed",
+      "objective": "Require the release workflow to contain the zero-identity fail-closed guard."
+    }
+  ],
+  "role_reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only inspection of signing strategy, workflow, current contracts, and scope.",
+      "changed_files": [],
+      "test_evidence": [],
+      "final_report": "Current ios-release.yml already implements manual main-only Build 18 signed archive, separate Runner/Widget profiles, Widget archive validation, exact-one IPA export and metadata/privacy checks, TestFlight transport, ASC ingestion verification, and cleanup. No code gap found. Android and identity paths remain out of scope; fresh protected macOS/ASC evidence is still required.",
+      "status": "completed"
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Read-only requirements, scope, classification, and verification plan.",
+      "changed_files": [],
+      "test_evidence": ["Existing root diagnostic: flutter test test/ios_release_contract_test.dart exited 0 (19 passed) before the planned regression change."],
+      "final_report": "A demonstrated gap exists: the workflow records a zero security find-identity count but does not stop. Add a BLOCKED_SIGNING_IDENTITY exit before list-keychains/archive and require that guard in the release parity test. All other release, Android, identity, credential, and external-action paths are forbidden.",
+      "status": "completed"
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Add only the fail-closed zero-identity signing guard to the signed-release workflow.",
+      "changed_files": [".github/workflows/ios-release.yml"],
+      "test_evidence": ["The initial condition did not match the existing exact-string contract. After Failure Analyst direction, a static ordering check and git diff --check -- .github/workflows/ios-release.yml both exited 0."],
+      "final_report": "Added BLOCKED_SIGNING_IDENTITY and exit 1 immediately after security find-identity count reporting and before security list-keychains, using the contract-required Bash condition if (( signing_identity_count == 0 )); then. No release, archive, upload, Android, or secret action was performed. The implementer did not self-approve.",
+      "status": "completed"
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Require the release workflow to contain the zero-identity fail-closed signing contract.",
+      "changed_files": ["test/ios_release_contract_test.dart"],
+      "test_evidence": ["git diff --check -- test/ios_release_contract_test.dart exited 0 for the final rework."],
+      "final_report": "Release parity now requires the zero-identity guard. Its requireFailClosed branch checks the BLOCKED_SIGNING_IDENTITY marker and exit 1 before list-keychains. The audit-only call intentionally does not request this release-specific marker; the release call does. The zeroIdentityGuard declaration was adjusted to Dart formatter form; its only remaining formatter difference is the mapped pre-existing HEAD baseline at line 574. The implementer did not self-approve.",
+      "status": "completed"
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Classify the introduced release-contract failure and define the smallest remediation.",
+      "changed_files": [],
+      "test_evidence": ["Confirmed the workflow's [[ ... -eq 0 ]] form did not meet the test helper's exact arithmetic-condition contract."],
+      "final_report": "Root cause was an exact-string mismatch, not a signing policy change. The one-line arithmetic-condition correction is Bash-equivalent and preserves the error/exit behavior. The formatter failure first differs at an unrelated pre-existing line 574 and is not caused by this task's one-line assertion change.",
+      "status": "completed"
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "assignment": "Execute focused release contract and diff checks without modifying source.",
+      "changed_files": [],
+      "test_evidence": [
+        "flutter test test/ios_release_contract_test.dart exited 1 before remediation: the new condition did not match the helper's required arithmetic form.",
+        "flutter test --no-pub test/ios_release_contract_test.dart exited 0 after remediation (19 passed).",
+        "A reviewer-requested assertion caused one audit-specific mismatch and failed; the Failure Analyst scoped its one-line correction. The final no-pub run exited 0 (19 passed).",
+        "git diff --check -- .github/workflows/ios-release.yml test/ios_release_contract_test.dart exited 0.",
+        "git diff --name-only HEAD -- android produced no content diff."
+      ],
+      "final_report": "Final focused verification passed. The only HEAD content changes are the workflow fail-closed guard and its test assertion. The initial Flutter dependency resolution temporarily regenerated Android plugin code; it was removed before the no-pub re-test, and Android has no final content diff.",
+      "status": "completed"
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent final diff, contract, test-evidence, and external-gate review.",
+      "changed_files": [],
+      "test_evidence": ["flutter test --no-pub test/ios_release_contract_test.dart: exit 0 (19 passed).", "git diff --check: exit 0.", "Android HEAD content diff: none.", "No introduced formatter difference; the first remaining difference maps to HEAD line 574 baseline."],
+      "final_report": "FINAL_REVIEW_REPORT: PASS. No BLOCKER, HIGH, or MEDIUM finding remains. The zero-identity guard and release-only marker/exit regression assertions are correctly placed. Signed archive, IPA, TestFlight transport, and ASC ingestion remain external macOS/Apple evidence gates.",
+      "status": "completed"
+    }
+  ],
+  "tests": [
+    {
+      "command": "flutter test --no-pub test/ios_release_contract_test.dart",
+      "exit_code": 0,
+      "result": "19 passed after the fail-closed condition and release-only test assertions were corrected."
+    },
+    {
+      "command": "git diff --check -- .github/workflows/ios-release.yml test/ios_release_contract_test.dart",
+      "exit_code": 0,
+      "result": "No whitespace errors."
+    },
+    {
+      "command": "git diff --name-only HEAD -- android",
+      "exit_code": 0,
+      "result": "No Android content diff."
+    }
+  ],
+  "failure_analysis": {
+    "role": "Failure Analyst",
+    "agent": "flux_failure_analyst",
+    "mapped_model": "gpt-5.6-luna",
+    "reasoning_effort": "high",
+    "failed_command": "flutter test test/ios_release_contract_test.dart",
+    "root_cause": "The newly added Bash guard used [[ ... -eq 0 ]], but the existing parity helper requires the equivalent arithmetic form if (( signing_identity_count == 0 )); then and therefore called indexOf with -1.",
+    "classification": "simple one-line workflow correction",
+    "allowed_files": [".github/workflows/ios-release.yml"],
+    "fix": "Replace only the condition with if (( signing_identity_count == 0 )); then; preserve the error marker and exit.",
+    "retest": ["flutter test --no-pub test/ios_release_contract_test.dart", "git diff --check"],
+    "format_note": "The formatter's first differing source is a pre-existing unrelated line 574; the task's only test-file diff is line 340. Do not broaden this fix into an unrelated whole-file reformat."
+  },
+  "review": {
+    "verdict": "PASS",
+    "blocker_high_medium_findings": [],
+    "external_gate": "Source implementation is complete, but an authorized new protected macOS Actions run must prove archive, exact-one IPA export, TestFlight transport, and App Store Connect ingestion before operational release success can be claimed."
+  },
+  "review_cycle_1": {
+    "role": "Reviewer",
+    "agent": "flux_reviewer",
+    "mapped_model": "gpt-5.6-luna",
+    "reasoning_effort": "high",
+    "verdict": "REWORK",
+    "blocker_high_findings": [],
+    "medium_finding": "The regression helper required the arithmetic zero-identity condition and order but did not assert the BLOCKED_SIGNING_IDENTITY marker or exit 1 within the guard.",
+    "required_rework": "Add only marker and exit assertions to the existing requireFailClosed test branch, then rerun focused test and review.",
+    "external_gate": "Fresh protected macOS GitHub Actions evidence remains required before any archive/IPA/TestFlight success claim."
+  },
+  "integration": null,
+  "integration": {
+    "role": "Integrator",
+    "agent": "flux_integrator",
+    "mapped_model": "gpt-5.6-terra",
+    "reasoning_effort": "medium",
+    "verdict": "PASS_SOURCE_COMPLETE_EXTERNALLY_GATED",
+    "final_report": "Both plan items are complete; final Reviewer PASS has no BLOCKER/HIGH/MEDIUM findings. Final HEAD content diff is limited to the signed-release guard and its release-only contract test. Source completion is valid, while actual macOS signed archive, exact-one IPA export, TestFlight transport, and App Store Connect ingestion remain unproven external gates."
+  },
+  "changed_files": [
+    ".github/workflows/ios-release.yml",
+    "test/ios_release_contract_test.dart"
+  ],
+  "external_gates": [
+    "A fresh protected macOS GitHub Actions run is required for signed archive, IPA export, TestFlight transport, and App Store Connect ingestion proof."
+  ],
+  "last_updated": "2026-09-09T09:42:00+09:00"
+}
