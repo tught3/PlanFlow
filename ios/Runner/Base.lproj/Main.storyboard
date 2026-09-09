@@ -3,7 +3,7 @@
     <scenes>
         <scene sceneID="tne-QT-ifu">
             <objects>
-                <viewController id="FlutterViewController" customClass="FlutterViewController" customModule="Runner" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController id="FlutterViewController" customClass="FlutterViewController" sceneMemberID="viewController">
                     <view key="view" contentMode="scaleToFill" id="iN0-l3-epB">
                         <rect key="frame" x="0.0" y="0.0" width="600" height="600"/>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>

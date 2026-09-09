@@ -1,0 +1,233 @@
+{
+  "task_id": "planflow-build20-root-first-frame-build21-20260909",
+  "date": "2026-09-09",
+  "status": "INTEGRATION_PASS_READY_FOR_NON_FORCE_DELIVERY",
+  "classification": "complex",
+  "starting_head": "feb68385e7c260bf5228122e394207e95aa643af",
+  "starting_origin_main": "abdf6a49bcee66c533108c16a4ea5c3e12140410",
+  "authoritative_build20_device_evidence": {
+    "device": "iPhone 13 mini",
+    "build": 20,
+    "process_survives": "YES",
+    "diagnostic_overlay_visible": "YES",
+    "scene_connected": "YES",
+    "window": "PRESENT",
+    "root": "OTHER",
+    "first_frame_received": "NO"
+  },
+  "accepted_history": {
+    "build18_admob_rca": "Exact dSYM proved missing Runner GADApplicationIdentifier caused GADApplicationVerifyPublisherInitializedCorrectly SIGABRT.",
+    "admob_fix": "Runner-only App ID is preserved; Widget has no App ID; iOS rewarded unit remains CONFIGURATION_REQUIRED.",
+    "build20_source": "Canonical app-owned SceneDelegate plus a bounded Build20 diagnostic overlay was delivered to origin/main."
+  },
+  "preflight": {
+    "working_branch": "main",
+    "working_head": "feb68385e7c260bf5228122e394207e95aa643af",
+    "origin_main": "abdf6a49bcee66c533108c16a4ea5c3e12140410",
+    "working_relation_to_origin": "1 ahead, 4 behind; do not checkout, pull, reset, clean, or rewrite the shared dirty checkout.",
+    "root_cause_candidate": "Main.storyboard declares FlutterViewController with customModule=Runner while Flutter 3.47.2 template declares no module. Current source contains no Runner FlutterViewController subclass. This is an evidence-backed candidate, pending lifecycle/adjudication.",
+    "diagnostic_limitations": "Build20 records scene topology immediately after super.scene and uses last_event, so root may be time-sensitive and SCENE_CONNECTED can overwrite earlier engine/plugin events."
+  },
+  "scope": {
+    "allowed": [
+      "ios/Runner/Base.lproj/Main.storyboard",
+      "ios/Runner/Info.plist",
+      "ios/Runner/AppDelegate.swift",
+      "ios/Runner/SceneDelegate.swift",
+      "ios/Runner/StartupDiagnostics.swift",
+      "lib/core/native_startup_diagnostics.dart",
+      "lib/main.dart",
+      ".github/workflows/ios-release.yml",
+      "targeted iOS startup, release, export-compliance, and AdMob contract tests",
+      "this task-state file"
+    ],
+    "forbidden": [
+      "Android files or behavior changes",
+      "GADApplicationIdentifier removal/change",
+      "Firebase, Widget, Maps, Supabase, notification, signing material, entitlement, Podfile, dependency, or generated-registrant changes",
+      "feature/plugin disablement",
+      "new worktree or new Codex session",
+      "force push, reset, clean, stash, or foreign-dirty overwrite"
+    ]
+  },
+  "foreign_dirty_preserved": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "$null",
+    "AGENTS.md.before-regen.bak",
+    "all existing staged/unstaged Build19/20 delivery artifacts"
+  ],
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "agent_id": "01a085b7-92a8-74e2-a5ee-90b15a15a53f",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only Build20 evidence and source-contract exploration.",
+      "result": "UNAVAILABLE_MODEL",
+      "final_report": "The gpt-5.4-mini model is not supported when using Codex with a ChatGPT account. No files changed and no result was substituted for this named role.",
+      "test_evidence": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "agent_id": "01a085b7-9743-7811-b3e7-b5ab1f62937c",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Classify Build20 device evidence, define Build21 source/diagnostic/export-compliance delivery gates.",
+      "result": "COMPLETE_READ_ONLY",
+      "final_report": "Build20 proves SCENE_CONNECTED/WINDOW_PRESENT only; root=OTHER is a post-super direct-root snapshot and must not alone declare root cause identified. Build21 must either carry a minimal evidence-backed source correction plus decisive topology/engine/Dart diagnostics, or stay diagnostic-only. Runner-only ITSAppUsesNonExemptEncryption=false needs source/archive/IPA fail-closed gates; Android, signing, Firebase, Widget and AdMob policy remain out of scope.",
+      "test_evidence": []
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "agent_id": "01a085b7-9b04-76b0-8794-9a75169cefad",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Adjudicate the Main.storyboard module divergence against Build20 root evidence.",
+      "result": "COMPLETE_READ_ONLY",
+      "final_report": "The storyboard's customModule=Runner/customModuleProvider=target diverges from Flutter 3.47.2's canonical FlutterViewController declaration, while no Runner.FlutterViewController subclass exists. Removing only those two attributes is a valid low-risk minimal correction, but Build20 alone cannot distinguish class-resolution failure from a container/timing topology. RCA remains STRONGLY_NARROWED until Build21 device evidence shows Flutter view, implicit callback, Dart and render result.",
+      "test_evidence": []
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a085c0-7a26-76c0-9d2d-328ad1620b01",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement Build21 bounded native topology/implicit-engine/plugin/Dart/first-frame diagnostics and startup contracts without feature changes.",
+      "result": "COMPLETE_NOT_SELF_APPROVED",
+      "changed_files": [
+        "ios/Runner/StartupDiagnostics.swift",
+        "ios/Runner/AppDelegate.swift",
+        "ios/Runner/SceneDelegate.swift",
+        "lib/core/native_startup_diagnostics.dart",
+        "lib/main.dart",
+        "test/ios_native_startup_diagnostics_contract_test.dart"
+      ],
+      "final_report": "Retargeted bounded diagnostic to Build21; it is first-frame-gated, presents at most twice after 12 seconds and dismisses after 30 seconds. It records categorical root topology, implicit engine callback, engine ready, plugin-registration state, Dart, System UI, runApp, first-frame and last-event boundaries. It does not alter Flutter startup scheduling, plugin configuration, Android, or production AdMob setup.",
+      "test_evidence": [
+        {
+          "command": "dart format test/ios_native_startup_diagnostics_contract_test.dart",
+          "exit_code": 0
+        },
+        {
+          "command": "git diff --check (implementer scoped paths)",
+          "exit_code": 0
+        },
+        {
+          "command": "flutter test test/ios_native_startup_diagnostics_contract_test.dart",
+          "exit_code": 0,
+          "summary": "8 tests passed"
+        }
+      ]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "agent_id": "01a085c6-cbdc-7cb3-bd49-01fd16322bc6",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Run project-defined Build21 verification without edits.",
+      "result": "UNAVAILABLE_MODEL",
+      "final_report": "The gpt-5.4-mini model is not supported when using Codex with a ChatGPT account. No files changed and no Test Executor result was fabricated.",
+      "test_evidence": []
+    },
+    {
+      "role": "Lead fallback verification",
+      "agent": "Codex",
+      "mapped_model": "current",
+      "reasoning_effort": "n/a",
+      "assignment": "Run the unavailable Test Executor's scoped local checks without asserting macOS/iPhone proof.",
+      "result": "COMPLETE_LOCAL_ONLY",
+      "test_evidence": [
+        {
+          "command": "flutter test test/ios_native_startup_diagnostics_contract_test.dart test/ios_admob_contract_test.dart",
+          "exit_code": 0,
+          "summary": "13 tests passed"
+        },
+        {
+          "command": "flutter test test/ios_release_contract_test.dart",
+          "exit_code": 0,
+          "summary": "21 tests passed"
+        },
+        {
+          "command": "flutter analyze lib/main.dart lib/core/native_startup_diagnostics.dart",
+          "exit_code": 0,
+          "summary": "No issues found"
+        },
+        {
+          "command": "bash scripts/ios/tests/e2e_admob_contract.sh",
+          "exit_code": 0
+        },
+        {
+          "command": "bash scripts/ios/tests/prod_plist_launch_probe_contract.sh",
+          "exit_code": 0,
+          "summary": "18 passed, 0 failed"
+        }
+      ]
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_high_risk_reviewer",
+      "agent_id": "01a085db-660e-79e2-8b62-d4801568f8a9",
+      "mapped_model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "assignment": "Review immutable candidate 7a0444c3f68d646517e089805590a7d7b32b7f81 against origin/main for P0/P1 release, Swift diagnostic, scope, secret, dSYM, export-compliance and Android risks.",
+      "result": "PASS",
+      "final_report": "PASS — P0/P1/BLOCKER/HIGH/MEDIUM 없음. BLOCKED_SIGNING_IDENTITY and strict release signing parity remain; Build21 dSYM UUID/SHA-256/90-day retention remains; Runner-only export compliance is source/archive/IPA fail-closed and Widget inheritance is blocked; no Android, AdMob ID or plugin configuration changes exist; storyboard correction is scoped to customModule/customModuleProvider removal; Swift diagnostic has no HIGH crash, deadlock or PII risk. macOS archive/export, TestFlight and real-device validation remain required.",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "git diff --check origin/main 7a0444c3f68d646517e089805590a7d7b32b7f81",
+          "exit_code": 0
+        },
+        {
+          "command": "git diff --name-only origin/main 7a0444c3f68d646517e089805590a7d7b32b7f81",
+          "exit_code": 0
+        }
+      ]
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "agent_id": "01a085df-899b-7b21-ae1a-dfccf4a04d62",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Inspect final reviewed candidate 03791660ed86fca72243176b9e94bbfb9c94077f against origin/main; enforce role evidence, scope, release gates and external-proof boundary.",
+      "result": "INTEGRATION_PASS",
+      "final_report": "INTEGRATION_PASS. Candidate changed only eight allowed files, has no Android/signing/material/plugin deletion, keeps Build21 and dSYM retention, verifies Runner-only export compliance at source/archive/IPA, retains FlutterViewController while removing only storyboard module overrides, contains task-state role evidence and has no reviewer BLOCKER/HIGH. The reviewed-code candidate differs from the reviewer candidate only by task state. macOS archive, TestFlight and iPhone validation remain NOT_RUN/PENDING and are not claimed as PASS.",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "git diff --check origin/main 03791660ed86fca72243176b9e94bbfb9c94077f",
+          "exit_code": 0
+        },
+        {
+          "command": "git diff --name-only origin/main 03791660ed86fca72243176b9e94bbfb9c94077f",
+          "exit_code": 0
+        },
+        {
+          "command": "git show 03791660ed86fca72243176b9e94bbfb9c94077f:.codex/tasks/planflow-build20-root-first-frame-build21-20260909.json",
+          "exit_code": 0
+        }
+      ]
+    }
+  ],
+  "implementation": {
+    "status": "INTEGRATION_PASS",
+    "root_cause_status": "ROOT_CAUSE_STRONGLY_NARROWED",
+    "candidate_fix": "Removed only Main.storyboard customModule=Runner and customModuleProvider=target so the storyboard matches Flutter 3.47.2's FlutterViewController template; no app-owned Runner.FlutterViewController subclass exists. Build21 retains a bounded categorical topology/engine/marker overlay so outcome is proven on the real device rather than inferred.",
+    "export_compliance": "Runner Info.plist declares ITSAppUsesNonExemptEncryption=false. Widget has no such declaration. Release workflow fails closed for Runner source, archived Runner.app and exported IPA and rejects Widget inheritance at each boundary."
+  },
+  "verification": {
+    "full_analyzer": "UNKNOWN_TOOL_ENVIRONMENT: do not repeat the prior no-output full-analyzer stall.",
+    "candidate_static_contract": "PASS: alternate-index candidate YAML/XML/diff/static checks preserve strict signing guard, Runner-only export declaration, Widget exclusion, Build21 and dSYM retention.",
+    "android": "PASS: generated integration_test registration created by local Flutter verification was removed; android pathspec diff is empty.",
+    "macos_archive": "NOT_RUN",
+    "build21_testflight": "NOT_RUN",
+    "device_validation": "PENDING_BUILD21_TESTFLIGHT"
+  }
+}

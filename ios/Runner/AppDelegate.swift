@@ -9,7 +9,7 @@ import UIKit
   ) -> Bool {
     StartupDiagnostics.shared.installExceptionHandler()
     StartupDiagnostics.shared.mark("NATIVE_PROCESS_START")
-    StartupDiagnostics.shared.armBuild20FirstFrameDiagnostic()
+    StartupDiagnostics.shared.armBuild21FirstFrameDiagnostic()
     return super.application(application, willFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -27,6 +27,7 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     let diagnostics = StartupDiagnostics.shared
+    diagnostics.mark("IMPLICIT_ENGINE_CALLBACK")
     diagnostics.attach(to: engineBridge.applicationRegistrar.messenger())
     StartupDiagnostics.shared.mark("PLUGIN_REGISTRATION_BEGIN")
     let registry = StartupDiagnosticsPluginRegistry(wrapping: engineBridge.pluginRegistry)

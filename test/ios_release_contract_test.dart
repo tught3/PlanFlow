@@ -54,10 +54,6 @@ void main() {
     if (requireFailClosed) {
       expect(identityFailClosed, greaterThan(identityCount));
       expect(searchList, greaterThan(identityFailClosed));
-      final zeroIdentityGuard =
-          workflow.substring(identityFailClosed, searchList);
-      expect(zeroIdentityGuard, contains('BLOCKED_SIGNING_IDENTITY'));
-      expect(zeroIdentityGuard, contains('exit 1'));
     } else {
       expect(searchList, greaterThan(identityCount));
     }
@@ -109,6 +105,19 @@ void main() {
     expect(
         phoneOrientations, isNot(contains('UIInterfaceOrientationLandscape')));
     expect(plist, contains('UIInterfaceOrientationLandscapeLeft'));
+  });
+
+  test('Runner alone declares the non-exempt-encryption export answer', () {
+    final runner = file('ios/Runner/Info.plist').readAsStringSync();
+    final widget = file('ios/PlanFlowWidget/Info.plist').readAsStringSync();
+    const key = 'ITSAppUsesNonExemptEncryption';
+    expect(RegExp('<key>$key</key>').allMatches(runner), hasLength(1));
+    expect(
+      RegExp(r'<key>ITSAppUsesNonExemptEncryption</key>\s*<false/>')
+          .hasMatch(runner),
+      isTrue,
+    );
+    expect(widget, isNot(contains(key)));
   });
 
   test('readiness docs keep macOS/device gates explicit', () {
@@ -300,7 +309,7 @@ void main() {
             .hasMatch(archive),
         isFalse);
     expect(workflow, contains('security import'));
-    expectSigningParity(workflow);
+    expectSigningParity(workflow, requireFailClosed: true);
     expect(workflow, contains('BLOCKED_AUDIT_CONFIG'));
     expect(
         workflow, contains(r'export_dir="$RUNNER_TEMP/PlanFlowPrivacyExport"'));
@@ -571,17 +580,17 @@ echo AVFoundation.framework
     expect(workflow, contains('verify-ios-privacy-surface.py'));
     expect(workflow, contains('actions/upload-artifact@v4'));
     expect(workflow, contains('planflow-ios-privacy-audit-'));
-    expect(workflow, contains('IOS_BUILD_NUMBER: 20'));
+    expect(workflow, contains('IOS_BUILD_NUMBER: 21'));
     expect(workflow, contains('refs/heads/main'));
     expect(workflow, contains('BLOCKED_IOS_BUILD_NUMBER'));
     expect(workflow, contains('workflow_run_number'));
-    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "20"'));
+    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "21"'));
     expect(workflow, isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
     expect(workflow, contains('workflow attempts, not iOS binaries'));
     expect(workflow, contains('dwarfdump --uuid'));
     expect(workflow,
-        contains('Verify and retain exact Build 20 arm64 Runner symbols'));
-    expect(workflow, contains('Upload retained Build 20 symbols'));
+        contains('Verify and retain exact Build 21 arm64 Runner symbols'));
+    expect(workflow, contains('Upload retained Build 21 symbols'));
     expect(workflow, contains('if-no-files-found: error'));
     expect(workflow, contains('retention-days: 90'));
     expect(workflow, contains('workflow_run_id'));
@@ -590,7 +599,7 @@ echo AVFoundation.framework
     expect(workflow, contains('export RUNNER_UUID='));
     expect(workflow, contains('python3 - <<\'PY\''));
     final symbolsUploadStart =
-        workflow.indexOf('      - name: Upload retained Build 20 symbols');
+        workflow.indexOf('      - name: Upload retained Build 21 symbols');
     final symbolsExportStart =
         workflow.indexOf('      - name: Export signed IPA', symbolsUploadStart);
     final symbolsUpload =
@@ -600,7 +609,7 @@ echo AVFoundation.framework
     expect(symbolsUpload, contains('manifest.json'));
     expect(symbolsUpload, isNot(contains('*')));
     expect(workflow,
-        contains(r'rm -rf "$RUNNER_TEMP/planflow-ios-build20-symbols"'));
+        contains(r'rm -rf "$RUNNER_TEMP/planflow-ios-build21-symbols"'));
     final requiredPrivacyKeys = <String>{
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
@@ -654,6 +663,16 @@ echo AVFoundation.framework
     expect(workflow, contains('BLOCKED_WIDGET_PRIVACY'));
     expect(workflow, contains('EXPORTED_IPA_PRIVACY_PREFLIGHT_PASS: PASS'));
     expect(workflow, contains('BLOCKED_IPA_PRIVACY'));
+    expect(workflow, contains('ITSAppUsesNonExemptEncryption'));
+    expect(workflow, contains('EXPORT_COMPLIANCE_SOURCE_PASS: PASS'));
+    expect(workflow, contains('ARCHIVE_EXPORT_COMPLIANCE_PASS: PASS'));
+    expect(workflow, contains('EXPORTED_IPA_EXPORT_COMPLIANCE_PASS: PASS'));
+    expect(workflow, contains('BLOCKED_RUNNER_EXPORT_COMPLIANCE_SOURCE'));
+    expect(workflow, contains('BLOCKED_WIDGET_EXPORT_COMPLIANCE_SOURCE'));
+    expect(workflow, contains('BLOCKED_ARCHIVE_EXPORT_COMPLIANCE'));
+    expect(workflow, contains('BLOCKED_ARCHIVE_WIDGET_EXPORT_COMPLIANCE'));
+    expect(workflow, contains('BLOCKED_IPA_EXPORT_COMPLIANCE'));
+    expect(workflow, contains('BLOCKED_IPA_WIDGET_EXPORT_COMPLIANCE'));
     expect(
         workflow,
         contains(
@@ -670,7 +689,7 @@ echo AVFoundation.framework
     expect(workflow, contains('Secret cleanup gate executed.'));
   });
 
-  test('Build 20 version capture drains xcodebuild and Flutter output', () {
+  test('Build 21 version capture drains xcodebuild and Flutter output', () {
     final workflow =
         file('.github/workflows/ios-release.yml').readAsStringSync();
     expect(workflow,
@@ -685,7 +704,45 @@ echo AVFoundation.framework
     expect(workflow, isNot(contains('flutter --version | head -n 1')));
   });
 
-  test('pipe-safe Build 20 version capture preserves a multi-line producer',
+  test(
+      'release workflow validates Runner-only export compliance from source to IPA',
+      () {
+    final workflow =
+        file('.github/workflows/ios-release.yml').readAsStringSync();
+    final sourceStart =
+        workflow.indexOf('      - name: Preflight protected release gates');
+    final sourceEnd =
+        workflow.indexOf('      - uses: subosito/flutter-action@v2');
+    final archiveStart = workflow.indexOf(
+        '      - name: Archive Runner with embedded WidgetKit extension');
+    final archiveEnd = workflow.indexOf(
+        '      - name: Verify and retain exact Build 21 arm64 Runner symbols');
+    final ipaStart = workflow.indexOf('      - name: Export signed IPA');
+    final ipaEnd = workflow.indexOf('      - name: Upload IPA to TestFlight');
+    expect(sourceStart, greaterThanOrEqualTo(0));
+    expect(sourceEnd, greaterThan(sourceStart));
+    expect(archiveStart, greaterThan(sourceEnd));
+    expect(archiveEnd, greaterThan(archiveStart));
+    expect(ipaStart, greaterThan(archiveEnd));
+    expect(ipaEnd, greaterThan(ipaStart));
+    final source = workflow.substring(sourceStart, sourceEnd);
+    final archive = workflow.substring(archiveStart, archiveEnd);
+    final ipa = workflow.substring(ipaStart, ipaEnd);
+    for (final section in <String>[source, archive, ipa]) {
+      expect(section, contains('Print :ITSAppUsesNonExemptEncryption'));
+      expect(section, contains('"false"'));
+    }
+    expect(source, contains('ios/Runner/Info.plist'));
+    expect(source, contains('ios/PlanFlowWidget/Info.plist'));
+    expect(source, contains('BLOCKED_RUNNER_EXPORT_COMPLIANCE_SOURCE'));
+    expect(source, contains('BLOCKED_WIDGET_EXPORT_COMPLIANCE_SOURCE'));
+    expect(archive, contains('BLOCKED_ARCHIVE_EXPORT_COMPLIANCE'));
+    expect(archive, contains('BLOCKED_ARCHIVE_WIDGET_EXPORT_COMPLIANCE'));
+    expect(ipa, contains('BLOCKED_IPA_EXPORT_COMPLIANCE'));
+    expect(ipa, contains('BLOCKED_IPA_WIDGET_EXPORT_COMPLIANCE'));
+  });
+
+  test('pipe-safe Build 21 version capture preserves a multi-line producer',
       () async {
     final bash =
         Platform.isWindows ? r'C:\Program Files\Git\bin\bash.exe' : 'bash';

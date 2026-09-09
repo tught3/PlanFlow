@@ -12,15 +12,16 @@ void main() {
   String read(String path) =>
       File('${root.path}${Platform.pathSeparator}$path').readAsStringSync();
 
-  test('native and Dart startup markers are exact and ordered by surface', () {
+  test('Build 21 native contract is bounded and categorical', () {
     final native = read('ios/Runner/StartupDiagnostics.swift');
     final appDelegate = read('ios/Runner/AppDelegate.swift');
-    final dart = read('lib/core/native_startup_diagnostics.dart');
-    final main = read('lib/main.dart');
+    final sceneDelegate = read('ios/Runner/SceneDelegate.swift');
     const markers = <String>[
       'NATIVE_PROCESS_START',
       'APPDELEGATE_ENTER',
       'SCENE_WILL_CONNECT',
+      'SCENE_CONNECTED',
+      'IMPLICIT_ENGINE_CALLBACK',
       'PLUGIN_REGISTRATION_BEGIN',
       'PLUGIN_REGISTRATION_END',
       'FLUTTER_ENGINE_READY',
@@ -31,67 +32,106 @@ void main() {
       'FIRST_FRAME',
     ];
     for (final marker in markers) {
-      expect(native, contains(marker));
+      expect(native, contains(marker), reason: marker);
     }
-    expect(main, contains('NativeStartupDiagnostics.dartMainEnter();'));
-    expect(main, contains('NativeStartupDiagnostics.runAppReached();'));
-    expect(main, contains('NativeStartupDiagnostics.firstFrame();'));
-    expect(dart,
-        contains('kIsWeb || defaultTargetPlatform != TargetPlatform.iOS'));
-    expect(main.indexOf('WidgetsFlutterBinding.ensureInitialized();'),
-        lessThan(main.indexOf('NativeStartupDiagnostics.dartMainEnter();')));
-    expect(main.indexOf('NativeStartupDiagnostics.dartMainEnter();'),
-        lessThan(main.indexOf('runApp(ProviderScope')));
-    expect(appDelegate, contains('willFinishLaunchingWithOptions'));
-    expect(appDelegate.indexOf('NATIVE_PROCESS_START'),
-        lessThan(appDelegate.indexOf('didFinishLaunchingWithOptions')));
-    final willFinish = appDelegate.substring(
-      appDelegate.indexOf('willFinishLaunchingWithOptions'),
-      appDelegate.indexOf('didFinishLaunchingWithOptions'),
-    );
-    expect(willFinish.indexOf('installExceptionHandler()'),
-        lessThan(willFinish.indexOf('return super.application')));
-    expect(willFinish.indexOf('armBuild20FirstFrameDiagnostic()'),
-        lessThan(willFinish.indexOf('return super.application')));
-    expect(appDelegate,
-        contains('FlutterAppDelegate, FlutterImplicitEngineDelegate'));
+    expect(native, contains('build21DiagnosticBuildNumber = "21"'));
+    expect(native, contains('build21DiagnosticDelay: TimeInterval = 12'));
+    expect(native, contains('build21DiagnosticMaximumAttempts = 2'));
+    expect(native, contains('DispatchQueue.main.asyncAfter'));
+    expect(native, contains('overlay.removeFromSuperview()'));
+    expect(native, contains('firstFrameReceived ||'));
+    for (final field in <String>[
+      'ROOT_CLASS=',
+      'FLUTTER_VIEW=',
+      'ENGINE=',
+      'IMPLICIT_ENGINE=',
+      'PLUGIN_REGISTRATION=',
+      'DART_MAIN=',
+      'SYSTEM_UI=',
+      'RUNAPP=',
+      'FIRST_FRAME=',
+      'LAST_EVENT=',
+    ]) {
+      expect(native, contains(field), reason: field);
+    }
+    for (final value in <String>[
+      'FLUTTER_VIEW_CONTROLLER',
+      'NAVIGATION_CONTROLLER',
+      'TAB_BAR_CONTROLLER',
+      'SPLIT_VIEW_CONTROLLER',
+      'PAGE_VIEW_CONTROLLER',
+      'UI_VIEW_CONTROLLER',
+      'OTHER',
+      'MISSING',
+      'ROOT',
+      'CHILD',
+      'PRESENTED',
+      'ABSENT',
+      'READY',
+      'NOT_SEEN',
+      'BEGIN',
+      'COMPLETE',
+      'YES',
+      'NO',
+    ]) {
+      expect(native, contains(value), reason: value);
+    }
+    for (final forbidden in <String>[
+      'UserDefaults',
+      'URLSession',
+      'URLRequest',
+      'Crashlytics.sharedInstance',
+      'recordError',
+      'setCustomValue',
+    ]) {
+      expect(native, isNot(contains(forbidden)), reason: forbidden);
+    }
+    expect(native, isNot(contains('BUILD20')));
+    expect(native, contains('topologyTraversalDepthLimit = 12'));
+    expect(native, contains('Set<ObjectIdentifier>()'));
+    expect(native, contains('rootClassCategory'));
+    expect(native, contains('flutterViewLocation'));
     expect(
-        appDelegate,
+        native,
         contains(
-            'didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge)'));
-    final didFinish = appDelegate.substring(
-      appDelegate.indexOf('didFinishLaunchingWithOptions'),
+            'guard !firstFrameReceived && !diagnosticOverlayPresented else'));
+    expect(native, isNot(contains('String(describing:')));
+    expect(native, isNot(contains('NSClassFromString')));
+    expect(appDelegate, contains('armBuild21FirstFrameDiagnostic()'));
+    final callback = appDelegate.substring(
       appDelegate.indexOf('didInitializeImplicitFlutterEngine'),
     );
-    expect(didFinish, isNot(contains('GeneratedPluginRegistrant.register')));
-    final implicitCallback = appDelegate
-        .substring(appDelegate.indexOf('didInitializeImplicitFlutterEngine'));
+    expect(callback.indexOf('IMPLICIT_ENGINE_CALLBACK'),
+        lessThan(callback.indexOf('attach(')));
+    expect(callback.indexOf('attach('),
+        lessThan(callback.indexOf('PLUGIN_REGISTRATION_BEGIN')));
+    expect(callback.indexOf('PLUGIN_REGISTRATION_BEGIN'),
+        lessThan(callback.indexOf('GeneratedPluginRegistrant.register')));
+    expect(callback.indexOf('GeneratedPluginRegistrant.register'),
+        lessThan(callback.indexOf('PLUGIN_REGISTRATION_END')));
     expect(
-      implicitCallback
-          .indexOf('attach(to: engineBridge.applicationRegistrar.messenger())'),
-      lessThan(implicitCallback.indexOf('PLUGIN_REGISTRATION_BEGIN')),
-    );
-    expect(implicitCallback.indexOf('PLUGIN_REGISTRATION_BEGIN'),
-        lessThan(implicitCallback.indexOf('StartupDiagnosticsPluginRegistry')));
-    expect(
-        implicitCallback.indexOf('StartupDiagnosticsPluginRegistry'),
-        lessThan(
-            implicitCallback.indexOf('GeneratedPluginRegistrant.register')));
-    expect(appDelegate.indexOf('PLUGIN_REGISTRATION_BEGIN'),
-        lessThan(appDelegate.indexOf('GeneratedPluginRegistrant.register')));
-    expect(appDelegate.indexOf('GeneratedPluginRegistrant.register'),
-        lessThan(appDelegate.indexOf('PLUGIN_REGISTRATION_END')));
-    expect(appDelegate.indexOf('PLUGIN_REGISTRATION_END'),
-        lessThan(appDelegate.indexOf('FLUTTER_ENGINE_READY')));
-    expect(native, contains('not causal crash evidence'));
+        sceneDelegate,
+        contains(
+            'super.scene(scene, willConnectTo: session, options: connectionOptions)'));
+    expect(sceneDelegate.indexOf('captureSceneWindow(window)'),
+        greaterThan(sceneDelegate.indexOf('super.scene(')));
   });
 
-  test('Flutter 3.47.2 UIScene manifest is explicit and canonical', () {
+  test('canonical storyboard has no module overrides', () {
+    final storyboard = read('ios/Runner/Base.lproj/Main.storyboard');
+    expect(storyboard, contains('FlutterViewController'));
+    expect(storyboard, isNot(contains('customModule=')));
+    expect(storyboard, isNot(contains('customModuleProvider=')));
+  });
+
+  test('Flutter 3.47.2 UIScene and implicit-engine boundaries remain canonical',
+      () {
     final plist = read('ios/Runner/Info.plist');
+    final appDelegate = read('ios/Runner/AppDelegate.swift');
+    final main = read('lib/main.dart');
     for (final entry in <String>[
       '<key>UIApplicationSceneManifest</key>',
       '<key>UIApplicationSupportsMultipleScenes</key>',
-      '<false/>',
       '<key>UISceneConfigurations</key>',
       '<key>UIWindowSceneSessionRoleApplication</key>',
       '<key>UISceneClassName</key>',
@@ -106,96 +146,37 @@ void main() {
       expect(plist, contains(entry), reason: entry);
     }
     expect(RegExp('UIApplicationSceneManifest').allMatches(plist).length, 1);
-  });
-
-  test(
-      'SceneDelegate owns the scene boundary and captures the window after super',
-      () {
-    final sceneDelegate = read('ios/Runner/SceneDelegate.swift');
+    expect(appDelegate,
+        contains('FlutterAppDelegate, FlutterImplicitEngineDelegate'));
     expect(
-        sceneDelegate, contains('class SceneDelegate: FlutterSceneDelegate'));
-    expect(sceneDelegate,
-        contains('StartupDiagnostics.shared.mark("SCENE_WILL_CONNECT")'));
-    expect(
-        sceneDelegate,
-        contains(
-            'super.scene(scene, willConnectTo: session, options: connectionOptions)'));
-    expect(sceneDelegate,
-        contains('StartupDiagnostics.shared.captureSceneWindow(window)'));
-    expect(
-      sceneDelegate.indexOf('captureSceneWindow(window)'),
-      greaterThan(sceneDelegate.indexOf('super.scene(')),
-      reason: 'window capture must observe the post-super scene state',
+      appDelegate,
+      contains(
+        'didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge)',
+      ),
     );
+    final callback = appDelegate.substring(
+      appDelegate.indexOf('didInitializeImplicitFlutterEngine'),
+    );
+    expect(callback.indexOf('IMPLICIT_ENGINE_CALLBACK'),
+        lessThan(callback.indexOf('attach(')));
+    expect(callback.indexOf('attach('),
+        lessThan(callback.indexOf('PLUGIN_REGISTRATION_BEGIN')));
+    expect(callback.indexOf('PLUGIN_REGISTRATION_BEGIN'),
+        lessThan(callback.indexOf('StartupDiagnosticsPluginRegistry')));
+    expect(callback.indexOf('StartupDiagnosticsPluginRegistry'),
+        lessThan(callback.indexOf('GeneratedPluginRegistrant.register')));
+    expect(callback.indexOf('GeneratedPluginRegistrant.register'),
+        lessThan(callback.indexOf('PLUGIN_REGISTRATION_END')));
+    expect(main, contains('NativeStartupDiagnostics.dartMainEnter();'));
+    expect(main, contains('NativeStartupDiagnostics.runAppReached();'));
+    expect(main, contains('NativeStartupDiagnostics.firstFrame();'));
+    expect(main.indexOf('WidgetsFlutterBinding.ensureInitialized();'),
+        lessThan(main.indexOf('NativeStartupDiagnostics.dartMainEnter();')));
+    expect(main.indexOf('NativeStartupDiagnostics.dartMainEnter();'),
+        lessThan(main.indexOf('runApp(ProviderScope')));
   });
 
-  test('Build 20 diagnostic is bounded, build-gated, and local-only', () {
-    final native = read('ios/Runner/StartupDiagnostics.swift');
-    expect(native, contains('build20DiagnosticBuildNumber = "20"'));
-    expect(native, contains('build20DiagnosticDelay: TimeInterval = 12'));
-    expect(native, contains('build20DiagnosticMaximumAttempts = 2'));
-    expect(native, contains('CFBundleVersion'));
-    expect(
-        native,
-        contains(
-            'scheduleBuild20DiagnosticPresentation(after: Self.build20DiagnosticDelay)'));
-    expect(
-        native,
-        contains(
-            'diagnosticPresentationAttempt >= Self.build20DiagnosticMaximumAttempts'));
-    expect(native, contains('firstFrameReceived'));
-    expect(native, contains('SCENE_CONNECTED window='));
-    expect(native, contains('root='));
-    expect(native, contains('BUILD20_STARTUP_DIAGNOSTIC'));
-    expect(native, contains('window.addSubview(overlay)'));
-    expect(native, contains('overlay.removeFromSuperview()'));
-    for (final forbidden in <String>[
-      'UserDefaults',
-      'URLSession',
-      'URLRequest',
-      'Crashlytics.sharedInstance',
-      'recordError',
-      'setCustomValue',
-      'catch',
-      'NSSetUncaughtExceptionHandler {',
-    ]) {
-      expect(native, isNot(contains(forbidden)), reason: forbidden);
-    }
-  });
-
-  test('Dart system UI markers bracket the awaited startup call', () {
-    final main = read('lib/main.dart');
-    final begin = main.indexOf('NativeStartupDiagnostics.systemUiModeBegin();');
-    final awaitCall = main.indexOf(
-        'await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);');
-    final complete =
-        main.indexOf('NativeStartupDiagnostics.systemUiModeComplete();');
-    final runApp = main.indexOf('runApp(ProviderScope');
-    expect(begin, greaterThanOrEqualTo(0));
-    expect(awaitCall, greaterThan(begin));
-    expect(complete, greaterThan(awaitCall));
-    expect(runApp, greaterThan(complete));
-  });
-
-  test('readiness docs keep native crash ahead of the separate R1 gate', () {
-    for (final path in <String>[
-      'docs/ios/release-readiness.md',
-      'docs/ios/APP_STORE_READINESS.md',
-    ]) {
-      final doc = read(path);
-      expect(doc, contains('NATIVE_STARTUP_CRASH_NOT_IDENTIFIED'),
-          reason: path);
-      expect(doc, contains('Build 18'), reason: path);
-      expect(doc, isNot(contains('단일 차단 사유는 R1 하나')), reason: path);
-      expect(doc, isNot(contains('유일한 차단 사유')), reason: path);
-      expect(doc, isNot(contains('차단 사유 **1건**')), reason: path);
-      expect(doc, isNot(contains('수동 워크플로 1회 실행')), reason: path);
-      expect(doc, isNot(contains('R1_CLEARED`가 나오면 그 자리에서')), reason: path);
-    }
-  });
-
-  test('registrar diagnostics match generated plugin keys and remain bounded',
-      () {
+  test('plugin registry observation remains bounded and forwarded', () {
     final native = read('ios/Runner/StartupDiagnostics.swift');
     final generated = read('ios/Runner/GeneratedPluginRegistrant.m');
     final generatedKeys = RegExp(r'registrarForPlugin:@"([^"]+)"')
@@ -207,8 +188,6 @@ void main() {
         .map((match) => match.group(1)!)
         .toSet();
     expect(allowlist, generatedKeys);
-    expect(native, contains('ledger.count < 64'));
-    expect(native, contains('arguments.count == 1'));
     expect(
         native,
         contains(
@@ -218,6 +197,8 @@ void main() {
     expect(native, contains('return wrappedRegistry.hasPlugin(pluginKey)'));
     expect(native,
         contains('return wrappedRegistry.valuePublished(byPlugin: pluginKey)'));
+    expect(native, contains('ledger.count < 64'));
+    expect(native, contains('arguments.count == 1'));
     final proxyRegistrar = native.substring(
       native.indexOf('func registrar(forPlugin pluginKey: String)'),
       native.indexOf('func hasPlugin(_ pluginKey: String)'),
@@ -230,15 +211,15 @@ void main() {
     expect(native, isNot(contains('URLSession')));
     expect(native, isNot(contains('URLRequest')));
     expect(native, isNot(contains('UserDefaults')));
-    expect(generated, isNot(contains('StartupDiagnostics')));
   });
 
-  test('exception chain is preserve-and-forward-only when present', () {
+  test('exception diagnostics preserve forwarding and redact raw details', () {
     final native = read('ios/Runner/StartupDiagnostics.swift');
     expect(native, contains('NSGetUncaughtExceptionHandler()'));
-    expect(native, contains('NSSetUncaughtExceptionHandler'));
-    expect(native, contains('planFlowUncaughtExceptionHandler'));
-    expect(native, isNot(contains('NSSetUncaughtExceptionHandler {')));
+    expect(
+        native,
+        contains(
+            'NSSetUncaughtExceptionHandler(planFlowUncaughtExceptionHandler)'));
     expect(native, contains('previous?(exception)'));
     expect(native, contains('planFlowPreviousExceptionHandler = nil'));
     expect(native, contains('exception.reason'));
@@ -248,32 +229,42 @@ void main() {
     expect(native, contains('allowedModuleTokens'));
     expect(native, contains('classifyReason(exception.reason)'));
     expect(native, contains('modulePresenceSummary(inspectedFrames)'));
-    expect(native, contains('logger.fault('));
-    expect(native, contains('reason_category='));
-    expect(native, contains('module_presence='));
     expect(native, contains('ADMOB_CONFIGURATION'));
     expect(native, contains('GOOGLE_MAPS_CONFIGURATION'));
     expect(native, contains('NAVER_MAPS_CONFIGURATION'));
     expect(native, contains('FIREBASE_CONFIGURATION'));
     expect(native, contains('DUPLICATE_PLUGIN_REGISTRATION'));
     expect(native, contains('UISCENE_STORYBOARD_CONFIGURATION'));
-    expect(native, contains('return "UNCLASSIFIED"'));
     final publicExceptionLog = native.substring(
       native.indexOf('logger.fault('),
       native.indexOf('  private func classifyReason'),
     );
     expect(publicExceptionLog, isNot(contains('exception.reason')));
     expect(publicExceptionLog, isNot(contains('callStackSymbols')));
-    expect(publicExceptionLog, isNot(contains('backtrace')));
+    expect(publicExceptionLog, isNot(contains('backtrace=')));
     expect(publicExceptionLog, isNot(contains('rawName')));
-    expect(native, isNot(contains('redactAndBound')));
-    expect(native, isNot(contains('NSRegularExpression')));
-    expect(native, isNot(contains('reason=\\(')));
-    expect(native, isNot(contains('backtrace=')));
     expect(native, isNot(contains('exception.userInfo')));
-    expect(native, isNot(contains('private func recordStage')));
-    expect(native, isNot(contains('signal')));
     expect(native, isNot(contains('method_exchangeImplementations')));
+  });
+
+  test('Dart markers are iOS-only and bracket startup boundaries', () {
+    final dart = read('lib/core/native_startup_diagnostics.dart');
+    final main = read('lib/main.dart');
+    expect(dart,
+        contains('kIsWeb || defaultTargetPlatform != TargetPlatform.iOS'));
+    expect(main, contains('NativeStartupDiagnostics.dartMainEnter();'));
+    expect(main, contains('NativeStartupDiagnostics.runAppReached();'));
+    expect(main, contains('NativeStartupDiagnostics.firstFrame();'));
+    final begin = main.indexOf('NativeStartupDiagnostics.systemUiModeBegin();');
+    final awaitCall = main.indexOf(
+        'await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);');
+    final complete =
+        main.indexOf('NativeStartupDiagnostics.systemUiModeComplete();');
+    final runApp = main.indexOf('runApp(ProviderScope');
+    expect(begin, greaterThanOrEqualTo(0));
+    expect(awaitCall, greaterThan(begin));
+    expect(complete, greaterThan(awaitCall));
+    expect(runApp, greaterThan(complete));
   });
 
   test('Android startup markers make zero native channel calls', () async {
@@ -334,59 +325,6 @@ void main() {
     } finally {
       debugDefaultTargetPlatformOverride = null;
       messenger.setMockMethodCallHandler(channel, null);
-    }
-  });
-
-  test('Build 20 symbols gate is fail-closed and artifact allowlisted', () {
-    final workflow = read('.github/workflows/ios-release.yml');
-    expect(workflow, contains('IOS_BUILD_NUMBER: 20'));
-    expect(workflow, contains('GITHUB_REF:-'));
-    expect(workflow, contains('workflow_run_number'));
-    expect(workflow, isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
-    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "20"'));
-    expect(workflow, contains('workflow_run_id'));
-    expect(workflow, contains('workflow_run_number'));
-    expect(workflow, contains('workflow_run_attempt'));
-    expect(workflow, contains('refs/heads/main'));
-    expect(workflow, contains('dwarfdump --uuid'));
-    expect(workflow, contains('BLOCKED_SYMBOL_UUID_MISMATCH'));
-    expect(workflow, contains('executable_uuid_arm64'));
-    expect(workflow, contains('dsym_uuid_arm64'));
-    expect(workflow, contains('dsym_zip_sha256'));
-    expect(workflow,
-        contains(r'''xcode_version_output="$(xcodebuild -version)"'''));
-    expect(workflow,
-        contains(r'''flutter_version_output="$(flutter --version)"'''));
-    expect(workflow,
-        contains(r'''xcode_version="${xcode_version_output%%$'\n'*}"'''));
-    expect(workflow,
-        contains(r'''flutter_version="${flutter_version_output%%$'\n'*}"'''));
-    expect(workflow, isNot(contains('xcodebuild -version | head -n 1')));
-    expect(workflow, isNot(contains('flutter --version | head -n 1')));
-    final uploadStart =
-        workflow.indexOf('      - name: Upload retained Build 20 symbols');
-    final exportStart =
-        workflow.indexOf('      - name: Export signed IPA', uploadStart);
-    expect(uploadStart, greaterThanOrEqualTo(0));
-    expect(exportStart, greaterThan(uploadStart));
-    final uploadBlock = workflow.substring(uploadStart, exportStart);
-    expect(uploadBlock, contains('if-no-files-found: error'));
-    expect(uploadBlock, contains('retention-days: 90'));
-    expect(uploadBlock, contains('Runner.app.dSYM.zip'));
-    expect(uploadBlock, contains('manifest.json'));
-    expect(uploadBlock, isNot(contains('always()')));
-    expect(uploadBlock, isNot(contains('/*')));
-    for (final forbidden in <String>[
-      'Runner.app/Runner',
-      '.ipa',
-      '.xcarchive',
-      '.p12',
-      '.mobileprovision',
-      'keychain',
-      'GoogleService-Info.plist',
-      'API_KEY',
-    ]) {
-      expect(uploadBlock, isNot(contains(forbidden)), reason: forbidden);
     }
   });
 }

@@ -40,16 +40,17 @@ final class StartupDiagnosticsPluginRegistry: NSObject, FlutterPluginRegistry {
   }
 }
 
-/// Bounded, local-only startup evidence for the Build 20 diagnostic release.
+/// Bounded, local-only startup evidence for the Build 21 diagnostic release.
 /// The next registrar request or PLUGIN_REGISTRATION_END proves only that the
 /// previous registration call returned; it is not causal crash evidence.
 final class StartupDiagnostics {
   static let shared = StartupDiagnostics()
 
   static let exceptionFrameInspectionLimit = 8
-  static let build20DiagnosticBuildNumber = "20"
-  static let build20DiagnosticDelay: TimeInterval = 12
-  static let build20DiagnosticMaximumAttempts = 2
+  static let build21DiagnosticBuildNumber = "21"
+  static let build21DiagnosticDelay: TimeInterval = 12
+  static let build21DiagnosticMaximumAttempts = 2
+  static let topologyTraversalDepthLimit = 12
 
   private static let allowedExceptionNames: Set<String> = [
     "NSGenericException",
@@ -75,6 +76,8 @@ final class StartupDiagnostics {
     "NATIVE_PROCESS_START",
     "APPDELEGATE_ENTER",
     "SCENE_WILL_CONNECT",
+    "SCENE_CONNECTED",
+    "IMPLICIT_ENGINE_CALLBACK",
     "PLUGIN_REGISTRATION_BEGIN",
     "PLUGIN_REGISTRATION_END",
     "FLUTTER_ENGINE_READY",
@@ -116,6 +119,7 @@ final class StartupDiagnostics {
   private var diagnosticChannel: FlutterMethodChannel?
   private weak var sceneWindow: UIWindow?
   private var firstFrameReceived = false
+  private var lastEvent = "NONE"
   private var diagnosticPresentationAttempt = 0
   private var diagnosticOverlayPresented = false
 
@@ -169,19 +173,20 @@ final class StartupDiagnostics {
     lock.lock()
     sceneWindow = window
     lock.unlock()
-    record("SCENE_CONNECTED window=\(windowState) root=\(rootType)")
+    record("SCENE_CONNECTED")
+    logger.info("SCENE_CONNECTED window=\(windowState, privacy: .public) root=\(rootType, privacy: .public)")
   }
 
-  /// Build 20 is a bounded diagnostic release, not a product behavior change.
+  /// Build 21 is a bounded diagnostic release, not a product behavior change.
   /// It presents one local, no-PII overlay after the normal launch window so a
   /// Windows plus TestFlight iPhone user can report the last known boundary
   /// even when Flutter paints no usable pixels. Later builds do not arm it.
-  func armBuild20FirstFrameDiagnostic() {
+  func armBuild21FirstFrameDiagnostic() {
     guard Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ==
-        Self.build20DiagnosticBuildNumber else {
+        Self.build21DiagnosticBuildNumber else {
       return
     }
-    scheduleBuild20DiagnosticPresentation(after: Self.build20DiagnosticDelay)
+    scheduleBuild21DiagnosticPresentation(after: Self.build21DiagnosticDelay)
   }
 
   func installExceptionHandler() {
@@ -203,6 +208,9 @@ final class StartupDiagnostics {
     if value == "FIRST_FRAME" {
       firstFrameReceived = true
     }
+    if Self.stageNames.contains(value) {
+      lastEvent = value
+    }
     if ledger.count < 64 {
       ledger.append(value)
     }
@@ -210,42 +218,44 @@ final class StartupDiagnostics {
     logger.info("\(value, privacy: .public)")
   }
 
-  private func scheduleBuild20DiagnosticPresentation(after delay: TimeInterval) {
+  private func scheduleBuild21DiagnosticPresentation(after delay: TimeInterval) {
     DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-      self?.presentBuild20DiagnosticOverlay()
+      self?.presentBuild21DiagnosticOverlay()
     }
   }
 
-  private func presentBuild20DiagnosticOverlay() {
-    let snapshot: (window: UIWindow?, firstFrameReceived: Bool, lastEvent: String, attempt: Int)?
+  private func presentBuild21DiagnosticOverlay() {
+    let attempt: Int?
     lock.lock()
-    if diagnosticOverlayPresented ||
-        diagnosticPresentationAttempt >= Self.build20DiagnosticMaximumAttempts {
-      snapshot = nil
+    if diagnosticOverlayPresented || firstFrameReceived ||
+        diagnosticPresentationAttempt >= Self.build21DiagnosticMaximumAttempts {
+      attempt = nil
     } else {
       diagnosticPresentationAttempt += 1
-      snapshot = (
-        sceneWindow,
-        firstFrameReceived,
-        ledger.last ?? "NONE",
-        diagnosticPresentationAttempt
-      )
+      attempt = diagnosticPresentationAttempt
     }
+    let capturedWindow = sceneWindow
     lock.unlock()
 
-    guard let snapshot else { return }
-    guard let window = snapshot.window ?? activeWindow(), !window.bounds.isEmpty else {
+    guard let attempt else { return }
+    guard let window = activeWindow() ?? capturedWindow, !window.bounds.isEmpty else {
       logger.info(
-        "BUILD20_DIAGNOSTIC_WINDOW_UNAVAILABLE attempt=\(snapshot.attempt, privacy: .public)"
+        "BUILD21_DIAGNOSTIC_WINDOW_UNAVAILABLE attempt=\(attempt, privacy: .public)"
       )
-      if snapshot.attempt < Self.build20DiagnosticMaximumAttempts {
-        scheduleBuild20DiagnosticPresentation(after: 3)
+      if attempt < Self.build21DiagnosticMaximumAttempts {
+        scheduleBuild21DiagnosticPresentation(after: 3)
       }
       return
     }
 
     lock.lock()
+    guard !firstFrameReceived && !diagnosticOverlayPresented else {
+      lock.unlock()
+      return
+    }
     diagnosticOverlayPresented = true
+    let firstFrame = firstFrameReceived ? "YES" : "NO"
+    let capturedLastEvent = lastEvent
     lock.unlock()
 
     let overlay = UIView(frame: window.bounds)
@@ -253,7 +263,7 @@ final class StartupDiagnostics {
     overlay.backgroundColor = UIColor.black.withAlphaComponent(0.82)
 
     let horizontalInset: CGFloat = 24
-    let cardHeight: CGFloat = 154
+    let cardHeight: CGFloat = 210
     let cardY = max(window.safeAreaInsets.top + 24, (window.bounds.height - cardHeight) / 2)
     let card = UIView(
       frame: CGRect(
@@ -270,19 +280,93 @@ final class StartupDiagnostics {
     label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     label.numberOfLines = 0
     label.textColor = .black
-    label.font = UIFont.monospacedSystemFont(ofSize: 14, weight: .medium)
-    let firstFrame = snapshot.firstFrameReceived ? "YES" : "NO"
-    label.text = "BUILD20_STARTUP_DIAGNOSTIC\nfirst_frame_received=\(firstFrame)\nlast_event=\(snapshot.lastEvent)\nRecord this screen, then wait for dismissal."
+    label.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+    let topology = topologySnapshot(window: window)
+    label.text = "BUILD21_STARTUP_DIAGNOSTIC\nROOT_CLASS=\(topology.rootClass) FLUTTER_VIEW=\(topology.flutterView)\nIMPLICIT_ENGINE=\(hasStage(\"IMPLICIT_ENGINE_CALLBACK\") ? \"YES\" : \"NO\") ENGINE=\(hasStage(\"FLUTTER_ENGINE_READY\") ? \"READY\" : \"NOT_SEEN\")\nPLUGIN_REGISTRATION=\(pluginRegistrationState())\nDART_MAIN=\(hasStage(\"DART_MAIN_ENTER\") ? \"YES\" : \"NO\") SYSTEM_UI=\(systemUIState())\nRUNAPP=\(hasStage(\"RUNAPP_REACHED\") ? \"YES\" : \"NO\") FIRST_FRAME=\(firstFrame)\nLAST_EVENT=\(capturedLastEvent)"
 
     card.addSubview(label)
     overlay.addSubview(card)
     window.addSubview(overlay)
     logger.info(
-      "BUILD20_DIAGNOSTIC_PRESENTED first_frame=\(firstFrame, privacy: .public) last_event=\(snapshot.lastEvent, privacy: .public)"
+      "BUILD21_DIAGNOSTIC_PRESENTED root_class=\(topology.rootClass, privacy: .public) flutter_view=\(topology.flutterView, privacy: .public) implicit_engine=\(hasStage(\"IMPLICIT_ENGINE_CALLBACK\") ? \"YES\" : \"NO\", privacy: .public) engine=\(hasStage(\"FLUTTER_ENGINE_READY\") ? \"READY\" : \"NOT_SEEN\", privacy: .public) plugin_registration=\(pluginRegistrationState(), privacy: .public) dart_main=\(hasStage(\"DART_MAIN_ENTER\") ? \"YES\" : \"NO\", privacy: .public) system_ui=\(systemUIState(), privacy: .public) runapp=\(hasStage(\"RUNAPP_REACHED\") ? \"YES\" : \"NO\", privacy: .public) first_frame=\(firstFrame, privacy: .public) last_event=\(capturedLastEvent, privacy: .public)"
     )
     DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
       overlay.removeFromSuperview()
     }
+  }
+
+  private func hasStage(_ stage: String) -> Bool {
+    lock.lock()
+    let present = ledger.contains(stage)
+    lock.unlock()
+    return present
+  }
+
+  private func pluginRegistrationState() -> String {
+    if hasStage("PLUGIN_REGISTRATION_END") { return "COMPLETE" }
+    if hasStage("PLUGIN_REGISTRATION_BEGIN") { return "BEGIN" }
+    return "NOT_SEEN"
+  }
+
+  private func systemUIState() -> String {
+    if hasStage("SYSTEM_UI_MODE_COMPLETE") { return "COMPLETE" }
+    if hasStage("SYSTEM_UI_MODE_BEGIN") { return "BEGIN" }
+    return "NOT_SEEN"
+  }
+
+  private func topologySnapshot(window: UIWindow) -> (rootClass: String, flutterView: String) {
+    guard let root = window.rootViewController else {
+      return ("MISSING", "ABSENT")
+    }
+    var visited = Set<ObjectIdentifier>()
+    let flutterView = flutterViewLocation(
+      in: root,
+      relation: "ROOT",
+      depth: 0,
+      visited: &visited
+    ) ?? "ABSENT"
+    return (rootClassCategory(root), flutterView)
+  }
+
+  private func rootClassCategory(_ controller: UIViewController) -> String {
+    if controller is FlutterViewController { return "FLUTTER_VIEW_CONTROLLER" }
+    if controller is UINavigationController { return "NAVIGATION_CONTROLLER" }
+    if controller is UITabBarController { return "TAB_BAR_CONTROLLER" }
+    if controller is UISplitViewController { return "SPLIT_VIEW_CONTROLLER" }
+    if controller is UIPageViewController { return "PAGE_VIEW_CONTROLLER" }
+    if type(of: controller) == UIViewController.self { return "UI_VIEW_CONTROLLER" }
+    return "OTHER"
+  }
+
+  private func flutterViewLocation(
+    in controller: UIViewController,
+    relation: String,
+    depth: Int,
+    visited: inout Set<ObjectIdentifier>
+  ) -> String? {
+    guard depth <= Self.topologyTraversalDepthLimit else { return nil }
+    guard visited.insert(ObjectIdentifier(controller)).inserted else { return nil }
+    if controller is FlutterViewController { return relation }
+    if let presented = controller.presentedViewController,
+       let result = flutterViewLocation(
+         in: presented,
+         relation: "PRESENTED",
+         depth: depth + 1,
+         visited: &visited
+       ) {
+      return result
+    }
+    for child in controller.children {
+      if let result = flutterViewLocation(
+        in: child,
+        relation: "CHILD",
+        depth: depth + 1,
+        visited: &visited
+      ) {
+        return result
+      }
+    }
+    return nil
   }
 
   private func activeWindow() -> UIWindow? {
