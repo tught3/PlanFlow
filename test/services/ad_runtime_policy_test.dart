@@ -181,11 +181,13 @@ void main() {
     adService.dispose();
   });
 
-  test('production iOS plist has no AdMob app ID', () {
+  test('iOS remains configuration-required while runtime ads stay disabled', () {
     final plist = File(
         'ios${Platform.pathSeparator}Runner${Platform.pathSeparator}Info.plist');
     expect(plist.existsSync(), isTrue);
+    expect(plist.readAsStringSync(), contains('GADApplicationIdentifier'));
     expect(
-        plist.readAsStringSync(), isNot(contains('GADApplicationIdentifier')));
+        isAdsRuntimeSupported(isWeb: false, platform: TargetPlatform.iOS),
+        isFalse);
   });
 }

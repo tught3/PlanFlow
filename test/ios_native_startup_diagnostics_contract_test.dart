@@ -257,14 +257,14 @@ void main() {
     }
   });
 
-  test('Build 18 symbols gate is fail-closed and artifact allowlisted', () {
+  test('Build 19 symbols gate is fail-closed and artifact allowlisted', () {
     final workflow = read('.github/workflows/ios-release.yml');
-    expect(workflow, contains('IOS_BUILD_NUMBER: 18'));
+    expect(workflow, contains('IOS_BUILD_NUMBER: 19'));
     expect(workflow, contains('GITHUB_REF:-'));
     expect(workflow, contains('workflow_run_number'));
     expect(workflow,
         isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
-    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "18"'));
+    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "19"'));
     expect(workflow, contains('workflow_run_id'));
     expect(workflow, contains('workflow_run_number'));
     expect(workflow, contains('workflow_run_attempt'));
@@ -285,7 +285,7 @@ void main() {
     expect(workflow, isNot(contains('xcodebuild -version | head -n 1')));
     expect(workflow, isNot(contains('flutter --version | head -n 1')));
     final uploadStart =
-        workflow.indexOf('      - name: Upload retained Build 18 symbols');
+        workflow.indexOf('      - name: Upload retained Build 19 symbols');
     final exportStart =
         workflow.indexOf('      - name: Export signed IPA', uploadStart);
     expect(uploadStart, greaterThanOrEqualTo(0));

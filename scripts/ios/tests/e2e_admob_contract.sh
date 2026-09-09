@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Static, macOS-independent contract checks for E2E-only AdMob configuration.
+# Static, macOS-independent contract checks for production and E2E AdMob configuration.
 
 set -euo pipefail
 
@@ -20,9 +20,19 @@ pass() {
 runner_text="$(cat "$runner")"
 plist_text="$(cat "$plist")"
 summarizer_text="$(cat "$summarizer")"
+plist_flat="$(printf '%s' "$plist_text" | tr '\n' ' ')"
+production_app_id="$(printf '%s' "$plist_flat" | sed -nE 's/.*<key>GADApplicationIdentifier<\/key>[[:space:]]*<string>(ca-app-pub-[0-9]+~[0-9]+)<\/string>.*/\1/p')"
 
-printf '%s' "$plist_text" | grep -qF -- 'GADApplicationIdentifier' && \
-  fail 'production Runner Info.plist contains GADApplicationIdentifier'
+printf '%s' "$plist_flat" | grep -qE -- '<key>GADApplicationIdentifier</key>[[:space:]]*<string>ca-app-pub-[0-9]+~[0-9]+</string>' || \
+  fail 'production Runner Info.plist is missing a strict AdMob application ID'
+if printf '%s' "$plist_text" | grep -qE -- 'ca-app-pub-3940256099942544~(1458002511|3347511713)'; then
+  fail 'production Runner Info.plist contains a public Google test application ID'
+fi
+printf '%s' "$plist_text" | grep -qF -- 'GADApplicationIdentifier' || \
+  fail 'production Runner Info.plist App ID key is missing'
+if [ -z "$production_app_id" ] || printf '%s' "$runner_text" | grep -qF -- "$production_app_id"; then
+  fail 'E2E runner contains a committed production App ID instead of temporary injection'
+fi
 printf '%s' "$runner_text" | grep -qF -- 'ca-app-pub-3940256099942544~1458002511' || \
   fail 'official iOS Google sample app ID is missing from the E2E runner'
 printf '%s' "$runner_text" | grep -qF -- 'ca-app-pub-3940256099942544~3347511713' && \

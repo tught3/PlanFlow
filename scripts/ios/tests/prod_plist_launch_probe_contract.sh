@@ -5,8 +5,8 @@
 # This probe exists specifically to observe the REAL, unmodified production
 # ios/Runner/Info.plist (see prod_plist_launch_probe.sh's own header comment
 # for the full R1 motivation). Its entire value depends on never writing to
-# that plist and never hardcoding a GAD Application ID that would make its
-# build behave like the E2E-only injected-plist path
+# that plist. The probe may read the committed value to reject missing,
+# malformed, or public-test configuration, but must never inject one itself.
 # (scripts/ios/e2e_xctest_flow.sh) instead. These checks are the safety net
 # for that invariant, plus a couple of basic sanity checks (syntax, stage
 # marker names actually present) that do not require macOS to run.
@@ -53,29 +53,29 @@ else
   pass "probe script contains no PlistBuddy write command"
 fi
 
-# Belt-and-suspenders: also reject any literal invocation of the PlistBuddy
-# binary itself (its full path, as any real invocation must use), since a
-# read-only Print call has no legitimate reason to exist in a script whose
-# only interaction with the plist file should be "read it via a normal
-# build", not "inspect a specific key via PlistBuddy". This deliberately
-# checks the binary PATH, not the bare word "PlistBuddy", so this script's own
-# explanatory comments (which reference the word without invoking the binary)
-# do not trip a false failure.
-if printf '%s' "$probe_text" | grep -qF -- '/usr/libexec/PlistBuddy'; then
-  fail "probe script invokes the PlistBuddy binary at all; it must only read the plist implicitly via the normal build"
+# A read-only Print is allowed for validation, but no mutating PlistBuddy verb
+# may be introduced.
+if printf '%s' "$probe_text" | grep -qE -- '/usr/libexec/PlistBuddy[^\n]*-c[^\n]*"(Set|Add|Delete) :'; then
+  fail "probe script contains a PlistBuddy write command (Set/Add/Delete)"
 else
-  pass "probe script never invokes the PlistBuddy binary"
+  pass "probe script uses no PlistBuddy write command"
 fi
 
-# --- 2. No GAD Application ID literal anywhere in the probe -----------------
-# Matches the "ca-app-pub-<publisher>~<app>" shape used by both the official
-# Google sample IDs (scripts/ios/e2e_xctest_flow.sh, e2e_admob_contract.sh)
-# and any real production ID. This probe must observe whatever the committed
-# plist already has -- or does not have -- never supply its own.
-if printf '%s' "$probe_text" | grep -qE -- 'ca-app-pub-[0-9]+~[0-9]+'; then
-  fail "probe script contains a GAD Application ID literal"
+# --- 2. Production AdMob configuration is read and validated -----------------
+if printf '%s' "$probe_text" | grep -qF -- "Print :GADApplicationIdentifier"; then
+  pass "probe reads the committed Runner AdMob application ID"
 else
-  pass "probe script contains no GAD Application ID literal"
+  fail "probe does not read the committed Runner AdMob application ID"
+fi
+if printf '%s' "$probe_text" | grep -qE -- 'ca-app-pub-\[0-9\]\+~\[0-9\]'; then
+  pass "probe validates the strict AdMob application ID shape"
+else
+  fail "probe does not validate the strict AdMob application ID shape"
+fi
+if printf '%s' "$probe_text" | grep -qF -- 'return 1'; then
+  pass "probe has fail-closed invalid/test configuration branches"
+else
+  fail "probe lacks fail-closed invalid/test configuration handling"
 fi
 
 # --- 3. The probe must not write to ios/Runner/Info.plist at all -----------

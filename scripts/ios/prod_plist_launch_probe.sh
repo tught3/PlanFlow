@@ -4,11 +4,9 @@
 # Motivation (R1): lib/main.dart calls AdService.instance.initialize() with no
 # platform branch, which on iOS reaches ad_service.dart's UMP ensureReady()
 # and then MobileAds.instance.initialize(). The PRODUCTION ios/Runner/
-# Info.plist deliberately has NO GADApplicationIdentifier key (enforced by
-# scripts/ios/tests/e2e_admob_contract.sh's "production Runner Info.plist
-# contains GADApplicationIdentifier" -> fail assertion). The Google Mobile Ads
-# iOS SDK's documented behavior when that key is missing is a native crash
-# that Dart try/catch cannot intercept.
+# Info.plist must contain the production GADApplicationIdentifier key. This
+# probe validates that requirement before building; missing, malformed, or
+# public Google test IDs fail closed without printing the configured value.
 #
 # NONE of the existing iOS CI can observe this:
 #   - scripts/ios/e2e_xctest_flow.sh injects a test GAD app id into the plist
@@ -126,6 +124,23 @@ app_path="$derived_data/Build/Products/Debug-iphonesimulator/Runner.app"
 # enforces that this stays true.
 runner_plist="$script_dir/../../ios/Runner/Info.plist"
 
+validate_production_admob_plist() {
+  if [ ! -f "$runner_plist" ]; then
+    return 1
+  fi
+  local app_id
+  app_id="$(/usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' "$runner_plist" 2>/dev/null || true)"
+  if [[ ! "$app_id" =~ ^ca-app-pub-[0-9]+~[0-9]+$ ]]; then
+    return 1
+  fi
+  case "$app_id" in
+    ca-app-pub-3940256099942544~1458002511|ca-app-pub-3940256099942544~3347511713)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
 emit_stage() {
   local name="$1"
   local status="$2"
@@ -230,6 +245,9 @@ fi
 if [ "$current_failure" -eq 0 ]; then
   if [ ! -f "$runner_plist" ]; then
     emit_stage APP_BUILD FAIL "production Runner Info.plist not found at $runner_plist"
+    current_failure=1
+  elif ! validate_production_admob_plist; then
+    emit_stage APP_BUILD FAIL "production Runner Info.plist has missing, invalid, or public-test AdMob configuration"
     current_failure=1
   fi
 fi

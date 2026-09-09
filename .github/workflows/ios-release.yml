@@ -16,7 +16,7 @@ jobs:
     env:
       IOS_BUNDLE_ID: com.fluxstudio.planflow
       IOS_WIDGET_BUNDLE_ID: com.fluxstudio.planflow.PlanFlowWidget
-      IOS_BUILD_NUMBER: 18
+      IOS_BUILD_NUMBER: 19
       IOS_BUILD_NAME: 1.0.0
       APPLE_TEAM_ID: ${{ secrets.PLANFLOW_APPLE_TEAM_ID }}
       DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail-closed Build 18 public release gates
+      - name: Fail-closed Build 19 public release gates
         shell: bash
         run: |
           set -euo pipefail
@@ -39,12 +39,12 @@ jobs:
             exit 1
           fi
           # GitHub run numbers identify workflow attempts, not iOS binaries. A
-          # failed attempt before transport must be retryable as the same Build 18.
-          if [[ "${IOS_BUILD_NUMBER:-}" != "18" ]]; then
-            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The public iOS release must remain fixed to Build 18."
+          # failed attempt before transport must be retryable as the same Build 19.
+          if [[ "${IOS_BUILD_NUMBER:-}" != "19" ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The public iOS release must remain fixed to Build 19."
             exit 1
           fi
-          echo "Build 18 release gates: ref=refs/heads/main workflow_run=$GITHUB_RUN_NUMBER attempt=$GITHUB_RUN_ATTEMPT build=$IOS_BUILD_NUMBER."
+          echo "Build 19 release gates: ref=refs/heads/main workflow_run=$GITHUB_RUN_NUMBER attempt=$GITHUB_RUN_ATTEMPT build=$IOS_BUILD_NUMBER."
 
       - name: Preflight protected release gates
         shell: bash
@@ -245,7 +245,7 @@ jobs:
           echo "ARCHIVE_PRIVACY_PREFLIGHT_PASS: PASS"
           echo "Archive gates: Runner and embedded WidgetKit extension present."
 
-      - name: Verify and retain exact Build 18 arm64 Runner symbols
+      - name: Verify and retain exact Build 19 arm64 Runner symbols
         shell: bash
         run: |
           set -euo pipefail
@@ -265,7 +265,7 @@ jobs:
             echo "::error title=BLOCKED_SYMBOL_UUID_MISMATCH::Runner and dSYM arm64 UUIDs do not match."
             exit 1
           fi
-          symbols_stage="$RUNNER_TEMP/planflow-ios-build18-symbols"
+          symbols_stage="$RUNNER_TEMP/planflow-ios-build19-symbols"
           rm -rf "$symbols_stage"
           mkdir -p "$symbols_stage"
           ditto -c -k --sequesterRsrc --keepParent "$archive_dsym" "$symbols_stage/Runner.app.dSYM.zip"
@@ -314,15 +314,15 @@ jobs:
               handle.write("\n")
           PY
           echo "Exact arm64 Runner/dSYM UUID match: $runner_uuid"
-          echo "Build 18 symbol retention manifest created without app, IPA, archive, plist, or signing material."
+          echo "Build 19 symbol retention manifest created without app, IPA, archive, plist, or signing material."
 
-      - name: Upload retained Build 18 symbols
+      - name: Upload retained Build 19 symbols
         uses: actions/upload-artifact@v4
         with:
-          name: planflow-ios-build18-symbols-${{ github.run_number }}
+          name: planflow-ios-build19-symbols-${{ github.run_number }}
           path: |
-            ${{ runner.temp }}/planflow-ios-build18-symbols/Runner.app.dSYM.zip
-            ${{ runner.temp }}/planflow-ios-build18-symbols/manifest.json
+            ${{ runner.temp }}/planflow-ios-build19-symbols/Runner.app.dSYM.zip
+            ${{ runner.temp }}/planflow-ios-build19-symbols/manifest.json
           if-no-files-found: error
           retention-days: 90
 
@@ -434,7 +434,7 @@ jobs:
           rm -f ios/Runner/GoogleService-Info.plist
           rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist "$RUNNER_TEMP"/planflow-altool-upload.log
           rm -f "${PLANFLOW_IPA_PATH:-}"
-          rm -rf "$RUNNER_TEMP/planflow-ios-build18-symbols"
+          rm -rf "$RUNNER_TEMP/planflow-ios-build19-symbols"
           rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true

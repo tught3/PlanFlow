@@ -2,9 +2,10 @@ import 'package:flutter/foundation.dart';
 
 /// Runtime policy for the Google Mobile Ads/UMP integration.
 ///
-/// Production only supplies an Android rewarded unit and the iOS Runner
-/// plist intentionally has no GADApplicationIdentifier. Keep this decision in
-/// one testable policy so no caller can accidentally enable the iOS SDK.
+/// Production only supplies an Android rewarded unit. The iOS Runner carries
+/// its required SDK application identifier, but iOS remains unsupported until
+/// an iOS rewarded unit is explicitly configured. Keep this decision in one
+/// testable policy so no caller can accidentally enable the iOS SDK.
 bool isAdsRuntimeSupported({
   bool? isWeb,
   TargetPlatform? platform,
