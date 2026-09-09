@@ -20,10 +20,13 @@ void main() {
     const markers = <String>[
       'NATIVE_PROCESS_START',
       'APPDELEGATE_ENTER',
+      'SCENE_WILL_CONNECT',
       'PLUGIN_REGISTRATION_BEGIN',
       'PLUGIN_REGISTRATION_END',
       'FLUTTER_ENGINE_READY',
       'DART_MAIN_ENTER',
+      'SYSTEM_UI_MODE_BEGIN',
+      'SYSTEM_UI_MODE_COMPLETE',
       'RUNAPP_REACHED',
       'FIRST_FRAME',
     ];
@@ -47,6 +50,8 @@ void main() {
       appDelegate.indexOf('didFinishLaunchingWithOptions'),
     );
     expect(willFinish.indexOf('installExceptionHandler()'),
+        lessThan(willFinish.indexOf('return super.application')));
+    expect(willFinish.indexOf('armBuild20FirstFrameDiagnostic()'),
         lessThan(willFinish.indexOf('return super.application')));
     expect(appDelegate,
         contains('FlutterAppDelegate, FlutterImplicitEngineDelegate'));
@@ -92,7 +97,7 @@ void main() {
       '<key>UISceneClassName</key>',
       '<string>UIWindowScene</string>',
       '<key>UISceneDelegateClassName</key>',
-      '<string>FlutterSceneDelegate</string>',
+      r'<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>',
       '<key>UISceneConfigurationName</key>',
       '<string>flutter</string>',
       '<key>UISceneStoryboardFile</key>',
@@ -101,6 +106,75 @@ void main() {
       expect(plist, contains(entry), reason: entry);
     }
     expect(RegExp('UIApplicationSceneManifest').allMatches(plist).length, 1);
+  });
+
+  test(
+      'SceneDelegate owns the scene boundary and captures the window after super',
+      () {
+    final sceneDelegate = read('ios/Runner/SceneDelegate.swift');
+    expect(
+        sceneDelegate, contains('class SceneDelegate: FlutterSceneDelegate'));
+    expect(sceneDelegate,
+        contains('StartupDiagnostics.shared.mark("SCENE_WILL_CONNECT")'));
+    expect(
+        sceneDelegate,
+        contains(
+            'super.scene(scene, willConnectTo: session, options: connectionOptions)'));
+    expect(sceneDelegate,
+        contains('StartupDiagnostics.shared.captureSceneWindow(window)'));
+    expect(
+      sceneDelegate.indexOf('captureSceneWindow(window)'),
+      greaterThan(sceneDelegate.indexOf('super.scene(')),
+      reason: 'window capture must observe the post-super scene state',
+    );
+  });
+
+  test('Build 20 diagnostic is bounded, build-gated, and local-only', () {
+    final native = read('ios/Runner/StartupDiagnostics.swift');
+    expect(native, contains('build20DiagnosticBuildNumber = "20"'));
+    expect(native, contains('build20DiagnosticDelay: TimeInterval = 12'));
+    expect(native, contains('build20DiagnosticMaximumAttempts = 2'));
+    expect(native, contains('CFBundleVersion'));
+    expect(
+        native,
+        contains(
+            'scheduleBuild20DiagnosticPresentation(after: Self.build20DiagnosticDelay)'));
+    expect(
+        native,
+        contains(
+            'diagnosticPresentationAttempt >= Self.build20DiagnosticMaximumAttempts'));
+    expect(native, contains('firstFrameReceived'));
+    expect(native, contains('SCENE_CONNECTED window='));
+    expect(native, contains('root='));
+    expect(native, contains('BUILD20_STARTUP_DIAGNOSTIC'));
+    expect(native, contains('window.addSubview(overlay)'));
+    expect(native, contains('overlay.removeFromSuperview()'));
+    for (final forbidden in <String>[
+      'UserDefaults',
+      'URLSession',
+      'URLRequest',
+      'Crashlytics.sharedInstance',
+      'recordError',
+      'setCustomValue',
+      'catch',
+      'NSSetUncaughtExceptionHandler {',
+    ]) {
+      expect(native, isNot(contains(forbidden)), reason: forbidden);
+    }
+  });
+
+  test('Dart system UI markers bracket the awaited startup call', () {
+    final main = read('lib/main.dart');
+    final begin = main.indexOf('NativeStartupDiagnostics.systemUiModeBegin();');
+    final awaitCall = main.indexOf(
+        'await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);');
+    final complete =
+        main.indexOf('NativeStartupDiagnostics.systemUiModeComplete();');
+    final runApp = main.indexOf('runApp(ProviderScope');
+    expect(begin, greaterThanOrEqualTo(0));
+    expect(awaitCall, greaterThan(begin));
+    expect(complete, greaterThan(awaitCall));
+    expect(runApp, greaterThan(complete));
   });
 
   test('readiness docs keep native crash ahead of the separate R1 gate', () {
@@ -214,6 +288,8 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     try {
       NativeStartupDiagnostics.dartMainEnter();
+      NativeStartupDiagnostics.systemUiModeBegin();
+      NativeStartupDiagnostics.systemUiModeComplete();
       NativeStartupDiagnostics.runAppReached();
       NativeStartupDiagnostics.firstFrame();
       await pumpEventQueue();
@@ -228,6 +304,8 @@ void main() {
     const channel = MethodChannel('planflow/native_startup_diagnostics');
     const expectedStages = <String>[
       'DART_MAIN_ENTER',
+      'SYSTEM_UI_MODE_BEGIN',
+      'SYSTEM_UI_MODE_COMPLETE',
       'RUNAPP_REACHED',
       'FIRST_FRAME',
     ];
@@ -241,6 +319,8 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     try {
       NativeStartupDiagnostics.dartMainEnter();
+      NativeStartupDiagnostics.systemUiModeBegin();
+      NativeStartupDiagnostics.systemUiModeComplete();
       NativeStartupDiagnostics.runAppReached();
       NativeStartupDiagnostics.firstFrame();
       await pumpEventQueue();
@@ -257,14 +337,13 @@ void main() {
     }
   });
 
-  test('Build 19 symbols gate is fail-closed and artifact allowlisted', () {
+  test('Build 20 symbols gate is fail-closed and artifact allowlisted', () {
     final workflow = read('.github/workflows/ios-release.yml');
-    expect(workflow, contains('IOS_BUILD_NUMBER: 19'));
+    expect(workflow, contains('IOS_BUILD_NUMBER: 20'));
     expect(workflow, contains('GITHUB_REF:-'));
     expect(workflow, contains('workflow_run_number'));
-    expect(workflow,
-        isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
-    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "19"'));
+    expect(workflow, isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
+    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "20"'));
     expect(workflow, contains('workflow_run_id'));
     expect(workflow, contains('workflow_run_number'));
     expect(workflow, contains('workflow_run_attempt'));
@@ -285,7 +364,7 @@ void main() {
     expect(workflow, isNot(contains('xcodebuild -version | head -n 1')));
     expect(workflow, isNot(contains('flutter --version | head -n 1')));
     final uploadStart =
-        workflow.indexOf('      - name: Upload retained Build 19 symbols');
+        workflow.indexOf('      - name: Upload retained Build 20 symbols');
     final exportStart =
         workflow.indexOf('      - name: Export signed IPA', uploadStart);
     expect(uploadStart, greaterThanOrEqualTo(0));

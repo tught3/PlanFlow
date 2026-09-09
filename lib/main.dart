@@ -44,7 +44,9 @@ Future<void> runPlanFlowApp({List<Override> overrides = const []}) async {
   // Use Flutter's supported edge-to-edge mode instead of legacy system-bar
   // color/visibility APIs. SafeArea widgets keep interactive content clear of
   // the system insets while Android 15+ enforces edge-to-edge by default.
+  NativeStartupDiagnostics.systemUiModeBegin();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  NativeStartupDiagnostics.systemUiModeComplete();
   FlutterError.onError = FlutterError.presentError;
 
   runApp(ProviderScope(overrides: overrides, child: const PlanFlowApp()));

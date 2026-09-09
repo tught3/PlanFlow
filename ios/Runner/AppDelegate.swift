@@ -9,6 +9,7 @@ import UIKit
   ) -> Bool {
     StartupDiagnostics.shared.installExceptionHandler()
     StartupDiagnostics.shared.mark("NATIVE_PROCESS_START")
+    StartupDiagnostics.shared.armBuild20FirstFrameDiagnostic()
     return super.application(application, willFinishLaunchingWithOptions: launchOptions)
   }
 

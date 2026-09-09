@@ -1,0 +1,272 @@
+{
+  "task_id": "planflow-ios-build19-black-screen-build20-20260909",
+  "date": "2026-09-09",
+  "status": "IMPLEMENTATION_PLANNED_DECISIVE_DIAGNOSTIC",
+  "classification": "complex",
+  "starting_head": "ce7b0c9103b2d38f47b537891c06a2b5113972c2",
+  "starting_origin_main": "caa3101721e9351cd895062dbf3e26a6bf7844c6",
+  "authoritative_real_device_evidence": {
+    "device": "iPhone 13 mini",
+    "build": 19,
+    "immediate_native_crash": "NOT_OBSERVED",
+    "process_survives": "OBSERVED_BY_USER",
+    "black_screen_stall": "CONFIRMED_BY_USER",
+    "usable_ui": "NOT_OBSERVED"
+  },
+  "accepted_historical_admob_rca": "Build 18 exact dSYM identified GADApplicationVerifyPublisherInitializedCorrectly; Build 19 Runner-only App ID fix is preserved and not reinvestigated.",
+  "build19_identity": {
+    "source_candidate": "5ab939b1fe61e9c78ddcba35f3fba9ad0aad3fce",
+    "origin_main_contains_candidate": true,
+    "github_cli_access": "UNAUTHENTICATED",
+    "archive_dsym_testflight_binding": "USER_REPORTED_BUILD19_ONLY; AUTHENTICATED_ARTIFACT_LOOKUP_UNAVAILABLE"
+  },
+  "source_adjudication": {
+    "build18_to_build19_runtime_diff": "Runner GADApplicationIdentifier only; AppDelegate, SceneDelegate, StartupDiagnostics, project and Podfile unchanged.",
+    "build18_lifecycle_change": "Build 18 added UIScene manifest and FlutterImplicitEngineDelegate startup wiring.",
+    "template_contract": "Flutter 3.47.2 Info.plist template selects $(PRODUCT_MODULE_NAME).SceneDelegate; current source selected FlutterSceneDelegate while compiling an app-owned SceneDelegate subclass.",
+    "existing_diagnostics_retrieval": "NOT_RETRIEVABLE_FROM_WINDOWS_PLUS_TESTFLIGHT_IPHONE: bounded memory ledger plus unified os.Logger only; no persisted or user-visible export path.",
+    "black_ui_assessment": "Splash and Theme are light; no intended all-black initial screen was found.",
+    "root_cause_status": "ROOT_CAUSE_STRONGLY_NARROWED",
+    "last_proven_stage": "PROCESS_CREATED",
+    "first_unknown_boundary": "UIScene -> Flutter engine -> Dart -> first frame",
+    "build20_basis": "Canonical UIScene delegate alignment plus a bounded, no-PII native first-frame diagnostic presentation that is directly readable on the black-screen device."
+  },
+  "scope": {
+    "allowed": [
+      "ios/Runner/Info.plist",
+      "ios/Runner/SceneDelegate.swift",
+      "ios/Runner/AppDelegate.swift",
+      "ios/Runner/StartupDiagnostics.swift",
+      "lib/core/native_startup_diagnostics.dart",
+      "lib/main.dart",
+      ".github/workflows/ios-release.yml",
+      "targeted iOS startup and release contract tests",
+      "this task-state file"
+    ],
+    "forbidden": [
+      "Android changes",
+      "AdMob App ID removal or ads runtime-policy changes",
+      "Firebase, Widget, Maps, Supabase, notification, signing, entitlement, Podfile, dependency, or generated-registrant changes",
+      "feature/plugin disablement",
+      "new worktree or new Codex session",
+      "force push, reset, clean, stash, or foreign-dirty overwrite"
+    ]
+  },
+  "foreign_dirty_paths_preserved": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "$null",
+    "AGENTS.md.before-regen.bak"
+  ],
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only Build 19 startup source inventory.",
+      "status": "UNAVAILABLE_MODEL",
+      "changed_files": [],
+      "test_evidence": [],
+      "final_report": "The configured gpt-5.4-mini role is unsupported for this ChatGPT account; no source claim is attributed to this role."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Classify the black screen, define Build 20 evidence gates and safe scope.",
+      "status": "COMPLETE",
+      "changed_files": [],
+      "test_evidence": [],
+      "final_report": "Build 19 RCA was initially unknown; Build 20 may proceed only as a reviewed, actually retrievable diagnostic if exact root cause remains unproven."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent read-only native lifecycle and diagnostic-retrieval audit.",
+      "status": "COMPLETE",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "PASS during read-only audit"
+        }
+      ],
+      "final_report": "Current os.Logger/memory-only markers are not retrievable from Windows plus TestFlight iPhone. The built-but-unselected SceneDelegate and noncanonical plist class reference require targeted lifecycle evidence; no feature disablement is justified."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Bounded Build 20 startup and release contract tests only.",
+      "status": "COMPLETE",
+      "changed_files": [
+        "test/ios_native_startup_diagnostics_contract_test.dart",
+        "test/ios_release_contract_test.dart"
+      ],
+      "test_evidence": [
+        {
+          "command": "flutter test --no-pub test/ios_native_startup_diagnostics_contract_test.dart test/ios_release_contract_test.dart",
+          "exit_code": 0,
+          "result": "PASS: 30 tests"
+        }
+      ],
+      "final_report": "Implemented targeted source contracts for canonical app-owned UIScene selection, bounded Build 20 diagnostics, marker ordering, and Build 20 release-symbol retention."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Independent project-defined Build 20 verification.",
+      "status": "UNAVAILABLE_MODEL",
+      "changed_files": [],
+      "test_evidence": [],
+      "final_report": "Agent launch 01a08550-7d28-76a0-9d71-f403592fcf66 failed before work because gpt-5.4-mini is unsupported for this ChatGPT account. The lead retained the completed complex-implementer test result and ran the same and additional verification locally; this is not attributed to the unavailable role."
+    },
+    {
+      "role": "Test Executor Fallback Evidence",
+      "agent": "lead-orchestrator plus flux_complex_implementer evidence",
+      "mapped_model": "not a configured Test Executor role",
+      "reasoning_effort": "n/a",
+      "assignment": "Complete the test-executor checklist without claiming unavailable-role execution.",
+      "status": "COMPLETE_PENDING_REVIEW",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "flutter test --no-pub test/ios_native_startup_diagnostics_contract_test.dart test/ios_release_contract_test.dart",
+          "exit_code": 0,
+          "result": "PASS: 30 tests"
+        },
+        {
+          "command": "flutter test --no-pub test/ios_admob_contract_test.dart test/services/ad_runtime_policy_test.dart",
+          "exit_code": 0,
+          "result": "PASS: 9 tests; Runner-only AdMob configuration preserved and iOS rewarded runtime remains configuration-required"
+        },
+        {
+          "command": "flutter analyze lib/main.dart lib/core/native_startup_diagnostics.dart",
+          "exit_code": 0,
+          "result": "PASS: no issues"
+        },
+        {
+          "command": "dart format --output=none --set-exit-if-changed lib/main.dart lib/core/native_startup_diagnostics.dart test/ios_native_startup_diagnostics_contract_test.dart test/ios_release_contract_test.dart",
+          "exit_code": 0,
+          "result": "PASS: no changes"
+        },
+        {
+          "command": "python YAML safe_load plus PowerShell XML parse of ios/Runner/Info.plist",
+          "exit_code": 0,
+          "result": "PASS"
+        },
+        {
+          "command": "bash scripts/ios/tests/e2e_admob_contract.sh and scripts/ios/tests/prod_plist_launch_probe_contract.sh",
+          "exit_code": 0,
+          "result": "PASS"
+        },
+        {
+          "command": "git diff --check; git diff -- android",
+          "exit_code": 0,
+          "result": "PASS after removing the Flutter-test-generated integration_test registration block; Android diff empty"
+        }
+      ],
+      "final_report": "Full analyzer remains UNKNOWN_TOOL_ENVIRONMENT because its prior no-output stall is not repeated; targeted analysis is PASS. macOS archive, transport, and TestFlight remain external NOT_RUN."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Review exact alternate-index candidate 4cf5a3f421e0f19153232e9ea552070d51067bec against caa3101721e9351cd895062dbf3e26a6bf7844c6, including the deliberate exclusion of foreign signing-identity weakening.",
+      "status": "PASS",
+      "changed_files": [],
+      "test_evidence": [],
+      "final_report": "PASS. BLOCKER=0, HIGH=0, MEDIUM=0, LOW=0. Candidate uses the app-owned SceneDelegate contract and bounded local diagnostics, preserves Runner-only AdMob and Widget absence, leaves Android unchanged, retains Build 20 exact-dSYM artifacts for 90 days, preserves BLOCKED_SIGNING_IDENTITY guards, and keeps the root-cause status STRONGLY_NARROWED. Caveat only: configured Test Executor unavailable; macOS archive, TestFlight, and device runtime remain external NOT_RUN."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Inspect final candidate 0131c289bf9926ad2146f61d92e0c504d0962087 against origin/main and delivery-role evidence.",
+      "status": "BLOCKED_PROCESS_EVIDENCE_REMEDIATION",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "git diff --check caa3101721e9351cd895062dbf3e26a6bf7844c6 0131c289bf9926ad2146f61d92e0c504d0962087",
+          "exit_code": 0,
+          "result": "PASS"
+        }
+      ],
+      "final_report": "Code and delivery surface were PASS: direct parent ancestry, in-scope files, Android empty, preserved signing guard, 90-day dSYM retention, and reviewer BLOCKER/HIGH zero. It requested exact-candidate reviewer/task-state revalidation because the review report was recorded on the source-identical predecessor and the configured Test Executor model was unavailable. No code or test blocker was found."
+    },
+    {
+      "role": "Independent Reviewer Exact Candidate Revalidation",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Revalidate exact candidate 414da3110acb5cc99d3219b3a524b2dd572437c5 against origin/main after delivery-evidence remediation.",
+      "status": "PASS",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "git diff --check caa3101721e9351cd895062dbf3e26a6bf7844c6 414da3110acb5cc99d3219b3a524b2dd572437c5",
+          "exit_code": 0,
+          "result": "PASS"
+        }
+      ],
+      "final_report": "PASS. BLOCKER=0, HIGH=0, MEDIUM=0, LOW=0. Exact candidate is source-identical to the prior review across .github, ios, lib, and test; only task-state evidence differs. Build 20, signing-identity guard, 90-day dSYM retention, and Android isolation remain intact."
+    },
+    {
+      "role": "Integrator Final",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Re-evaluate exact candidate b1f77ee3253101a1a8fbc993bcb01727ed92b625 after reviewer/task-state remediation.",
+      "status": "PASS",
+      "changed_files": [],
+      "test_evidence": [
+        {
+          "command": "git diff --check caa3101721e9351cd895062dbf3e26a6bf7844c6 b1f77ee3253101a1a8fbc993bcb01727ed92b625",
+          "exit_code": 0,
+          "result": "PASS"
+        }
+      ],
+      "final_report": "PASS. Source-delivery readiness is complete: direct parent ancestry, in-scope source, Android/dependency isolation, Build 20 contract, 90-day exact-dSYM retention, fail-closed signing identity guard, targeted tests/contracts/analyzer/format/plist/YAML, and independent reviewer BLOCKER/HIGH zero. External gates remain correctly separate: full analyzer UNKNOWN_TOOL_ENVIRONMENT; macOS archive/TestFlight NOT_RUN; physical device PENDING_USER."
+    }
+  ],
+  "implementation": {
+    "status": "INTEGRATION_PASS_PENDING_NON_FORCE_PUSH",
+    "changed_files": [
+      ".github/workflows/ios-release.yml",
+      "ios/Runner/Info.plist",
+      "ios/Runner/SceneDelegate.swift",
+      "ios/Runner/AppDelegate.swift",
+      "ios/Runner/StartupDiagnostics.swift",
+      "lib/core/native_startup_diagnostics.dart",
+      "lib/main.dart",
+      "test/ios_native_startup_diagnostics_contract_test.dart",
+      "test/ios_release_contract_test.dart"
+    ],
+    "diagnostic_contract": "Build 20 selects the Flutter 3.47.2 app-owned SceneDelegate, records scene lifecycle and Dart pre-runApp boundaries, then presents only bounded stage names and first-frame received yes/no after a 12-second delay. No secret, PII, network, persistence, exception swallowing, or feature disablement.",
+    "foreign_hunk_exclusion": "The pre-existing removal of BLOCKED_SIGNING_IDENTITY from ios-release.yml and its corresponding release-contract weakening are foreign stale hunks. They will be excluded from the alternate-index candidate so origin/main's fail-closed identity guard remains intact."
+  },
+  "verification": {
+    "startup_release_contracts": "PASS: 30 targeted Flutter tests",
+    "admob_contracts": "PASS: 9 targeted Flutter tests plus two bash contracts",
+    "targeted_analyzer": "PASS: lib/main.dart and lib/core/native_startup_diagnostics.dart",
+    "format": "PASS",
+    "plist_yaml_parse": "PASS",
+    "android_diff": "EMPTY after task-owned Flutter test side effect was removed",
+    "diff_check": "PASS",
+    "candidate_source_assertions": "PASS for candidate 4cf5a3f421e0f19153232e9ea552070d51067bec: origin/main parent, Build 20/dSYM artifact references, app-owned SceneDelegate, fail-closed signing identity guard, release-contract guard, XML/YAML parse, and Android diff empty.",
+    "reviewed_source_tree_equivalence": "PASS: reviewer candidate 4cf5a3f421e0f19153232e9ea552070d51067bec and integration candidate 0131c289bf9926ad2146f61d92e0c504d0962087 have identical .github, ios, lib, and test trees; only task-state evidence differs.",
+    "full_analyzer": "UNKNOWN_TOOL_ENVIRONMENT: previous full analyze stalled without diagnostics; do not repeat identically.",
+    "macos_archive": "NOT_RUN",
+    "testflight_device": "PENDING_USER"
+  }
+}

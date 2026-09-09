@@ -100,7 +100,8 @@ void main() {
     expect(plist, contains('UIApplicationSceneManifest'));
     expect(plist, contains('UIApplicationSupportsMultipleScenes'));
     expect(plist, contains('UIWindowSceneSessionRoleApplication'));
-    expect(plist, contains('<string>FlutterSceneDelegate</string>'));
+    expect(plist,
+        contains(r'<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>'));
     expect(plist, contains('<string>flutter</string>'));
     final phoneOrientations =
         plist.split('<key>UISupportedInterfaceOrientations~ipad</key>').first;
@@ -570,18 +571,17 @@ echo AVFoundation.framework
     expect(workflow, contains('verify-ios-privacy-surface.py'));
     expect(workflow, contains('actions/upload-artifact@v4'));
     expect(workflow, contains('planflow-ios-privacy-audit-'));
-    expect(workflow, contains('IOS_BUILD_NUMBER: 19'));
+    expect(workflow, contains('IOS_BUILD_NUMBER: 20'));
     expect(workflow, contains('refs/heads/main'));
     expect(workflow, contains('BLOCKED_IOS_BUILD_NUMBER'));
     expect(workflow, contains('workflow_run_number'));
-    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "19"'));
-    expect(workflow,
-        isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
+    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "20"'));
+    expect(workflow, isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
     expect(workflow, contains('workflow attempts, not iOS binaries'));
     expect(workflow, contains('dwarfdump --uuid'));
     expect(workflow,
-        contains('Verify and retain exact Build 19 arm64 Runner symbols'));
-    expect(workflow, contains('Upload retained Build 19 symbols'));
+        contains('Verify and retain exact Build 20 arm64 Runner symbols'));
+    expect(workflow, contains('Upload retained Build 20 symbols'));
     expect(workflow, contains('if-no-files-found: error'));
     expect(workflow, contains('retention-days: 90'));
     expect(workflow, contains('workflow_run_id'));
@@ -590,7 +590,7 @@ echo AVFoundation.framework
     expect(workflow, contains('export RUNNER_UUID='));
     expect(workflow, contains('python3 - <<\'PY\''));
     final symbolsUploadStart =
-        workflow.indexOf('      - name: Upload retained Build 19 symbols');
+        workflow.indexOf('      - name: Upload retained Build 20 symbols');
     final symbolsExportStart =
         workflow.indexOf('      - name: Export signed IPA', symbolsUploadStart);
     final symbolsUpload =
@@ -600,7 +600,7 @@ echo AVFoundation.framework
     expect(symbolsUpload, contains('manifest.json'));
     expect(symbolsUpload, isNot(contains('*')));
     expect(workflow,
-        contains(r'rm -rf "$RUNNER_TEMP/planflow-ios-build19-symbols"'));
+        contains(r'rm -rf "$RUNNER_TEMP/planflow-ios-build20-symbols"'));
     final requiredPrivacyKeys = <String>{
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
@@ -670,8 +670,9 @@ echo AVFoundation.framework
     expect(workflow, contains('Secret cleanup gate executed.'));
   });
 
-  test('Build 19 version capture drains xcodebuild and Flutter output', () {
-    final workflow = file('.github/workflows/ios-release.yml').readAsStringSync();
+  test('Build 20 version capture drains xcodebuild and Flutter output', () {
+    final workflow =
+        file('.github/workflows/ios-release.yml').readAsStringSync();
     expect(workflow,
         contains(r'''xcode_version_output="$(xcodebuild -version)"'''));
     expect(workflow,
@@ -684,11 +685,10 @@ echo AVFoundation.framework
     expect(workflow, isNot(contains('flutter --version | head -n 1')));
   });
 
-  test('pipe-safe Build 19 version capture preserves a multi-line producer',
+  test('pipe-safe Build 20 version capture preserves a multi-line producer',
       () async {
-    final bash = Platform.isWindows
-        ? r'C:\Program Files\Git\bin\bash.exe'
-        : 'bash';
+    final bash =
+        Platform.isWindows ? r'C:\Program Files\Git\bin\bash.exe' : 'bash';
     final result = await Process.run(bash, <String>[
       '-lc',
       r'''

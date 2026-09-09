@@ -11,6 +11,10 @@ class NativeStartupDiagnostics {
 
   static void dartMainEnter() => _report('DART_MAIN_ENTER');
 
+  static void systemUiModeBegin() => _report('SYSTEM_UI_MODE_BEGIN');
+
+  static void systemUiModeComplete() => _report('SYSTEM_UI_MODE_COMPLETE');
+
   static void runAppReached() => _report('RUNAPP_REACHED');
 
   static void firstFrame() => _report('FIRST_FRAME');
