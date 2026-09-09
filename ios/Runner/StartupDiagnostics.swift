@@ -282,13 +282,20 @@ final class StartupDiagnostics {
     label.textColor = .black
     label.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .medium)
     let topology = topologySnapshot(window: window)
-    label.text = "BUILD21_STARTUP_DIAGNOSTIC\nROOT_CLASS=\(topology.rootClass) FLUTTER_VIEW=\(topology.flutterView)\nIMPLICIT_ENGINE=\(hasStage(\"IMPLICIT_ENGINE_CALLBACK\") ? \"YES\" : \"NO\") ENGINE=\(hasStage(\"FLUTTER_ENGINE_READY\") ? \"READY\" : \"NOT_SEEN\")\nPLUGIN_REGISTRATION=\(pluginRegistrationState())\nDART_MAIN=\(hasStage(\"DART_MAIN_ENTER\") ? \"YES\" : \"NO\") SYSTEM_UI=\(systemUIState())\nRUNAPP=\(hasStage(\"RUNAPP_REACHED\") ? \"YES\" : \"NO\") FIRST_FRAME=\(firstFrame)\nLAST_EVENT=\(capturedLastEvent)"
+    let implicitEngine = hasStage("IMPLICIT_ENGINE_CALLBACK") ? "YES" : "NO"
+    let engine = hasStage("FLUTTER_ENGINE_READY") ? "READY" : "UNKNOWN"
+    let pluginRegistration = pluginRegistrationState()
+    let dartMain = hasStage("DART_MAIN_ENTER") ? "YES" : "NO"
+    let systemUIBegin = hasStage("SYSTEM_UI_MODE_BEGIN") ? "YES" : "NO"
+    let systemUIEnd = hasStage("SYSTEM_UI_MODE_COMPLETE") ? "YES" : "NO"
+    let runApp = hasStage("RUNAPP_REACHED") ? "YES" : "NO"
+    label.text = "BUILD21_STARTUP_DIAGNOSTIC\nROOT_CLASS=\(topology.rootClass) FLUTTER_VIEW=\(topology.flutterView)\nIMPLICIT_ENGINE=\(implicitEngine) ENGINE=\(engine)\nPLUGIN_REGISTRATION=\(pluginRegistration)\nDART_MAIN=\(dartMain) SYSTEM_UI_BEGIN=\(systemUIBegin) SYSTEM_UI_END=\(systemUIEnd)\nRUNAPP=\(runApp) FIRST_FRAME=\(firstFrame)\nLAST_EVENT=\(capturedLastEvent)"
 
     card.addSubview(label)
     overlay.addSubview(card)
     window.addSubview(overlay)
     logger.info(
-      "BUILD21_DIAGNOSTIC_PRESENTED root_class=\(topology.rootClass, privacy: .public) flutter_view=\(topology.flutterView, privacy: .public) implicit_engine=\(hasStage(\"IMPLICIT_ENGINE_CALLBACK\") ? \"YES\" : \"NO\", privacy: .public) engine=\(hasStage(\"FLUTTER_ENGINE_READY\") ? \"READY\" : \"NOT_SEEN\", privacy: .public) plugin_registration=\(pluginRegistrationState(), privacy: .public) dart_main=\(hasStage(\"DART_MAIN_ENTER\") ? \"YES\" : \"NO\", privacy: .public) system_ui=\(systemUIState(), privacy: .public) runapp=\(hasStage(\"RUNAPP_REACHED\") ? \"YES\" : \"NO\", privacy: .public) first_frame=\(firstFrame, privacy: .public) last_event=\(capturedLastEvent, privacy: .public)"
+      "BUILD21_DIAGNOSTIC_PRESENTED root_class=\(topology.rootClass, privacy: .public) flutter_view=\(topology.flutterView, privacy: .public) implicit_engine=\(implicitEngine, privacy: .public) engine=\(engine, privacy: .public) plugin_registration=\(pluginRegistration, privacy: .public) dart_main=\(dartMain, privacy: .public) system_ui_begin=\(systemUIBegin, privacy: .public) system_ui_end=\(systemUIEnd, privacy: .public) runapp=\(runApp, privacy: .public) first_frame=\(firstFrame, privacy: .public) last_event=\(capturedLastEvent, privacy: .public)"
     )
     DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
       overlay.removeFromSuperview()
@@ -305,12 +312,6 @@ final class StartupDiagnostics {
   private func pluginRegistrationState() -> String {
     if hasStage("PLUGIN_REGISTRATION_END") { return "COMPLETE" }
     if hasStage("PLUGIN_REGISTRATION_BEGIN") { return "BEGIN" }
-    return "NOT_SEEN"
-  }
-
-  private func systemUIState() -> String {
-    if hasStage("SYSTEM_UI_MODE_COMPLETE") { return "COMPLETE" }
-    if hasStage("SYSTEM_UI_MODE_BEGIN") { return "BEGIN" }
     return "NOT_SEEN"
   }
 

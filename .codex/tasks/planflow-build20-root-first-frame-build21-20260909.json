@@ -1,7 +1,7 @@
 {
   "task_id": "planflow-build20-root-first-frame-build21-20260909",
   "date": "2026-09-09",
-  "status": "INTEGRATION_PASS_READY_FOR_NON_FORCE_DELIVERY",
+  "status": "COMPLETE_SOURCE_DELIVERY_PENDING_GITHUB_DISPATCH",
   "classification": "complex",
   "starting_head": "feb68385e7c260bf5228122e394207e95aa643af",
   "starting_origin_main": "abdf6a49bcee66c533108c16a4ea5c3e12140410",
@@ -229,5 +229,129 @@
     "macos_archive": "NOT_RUN",
     "build21_testflight": "NOT_RUN",
     "device_validation": "PENDING_BUILD21_TESTFLIGHT"
+  },
+  "post_push_contract_alignment": {
+    "base_delivery_commit": "21190d5f4b8f7b9b462b2a29fc332a293272cb38",
+    "reason": "Align Build21 overlay labels exactly with the requested direct-readable diagnostic contract without changing behavior.",
+    "changes": [
+      "ENGINE absence is labeled UNKNOWN rather than NOT_SEEN.",
+      "SYSTEM_UI_BEGIN and SYSTEM_UI_END are emitted as separate YES/NO fields rather than one aggregate state."
+    ],
+    "status": "INTEGRATION_PASS",
+    "pre_retest_integration": {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "agent_id": "01a085ee-b412-7311-ab00-a70c9e7c474c",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "candidate": "eb2f8d11b9c85a1e96f4545010c84e83e004a0ac",
+      "result": "BLOCKED_PENDING_EXACT_CANDIDATE_RETEST",
+      "final_report": "Static scope and label checks passed, but integration correctly required exact-candidate Flutter test evidence and a final review-state update before approval. No code defect, macOS archive, TestFlight, or device result was claimed."
+    },
+    "retest": {
+      "candidate": "eb2f8d11b9c85a1e96f4545010c84e83e004a0ac",
+      "working_tree_content_match": "PASS: hash-object of StartupDiagnostics.swift and ios_native_startup_diagnostics_contract_test.dart exactly matched the immutable candidate before test execution.",
+      "test_evidence": [
+        {
+          "command": "flutter test test/ios_native_startup_diagnostics_contract_test.dart",
+          "exit_code": 0,
+          "summary": "8 tests passed"
+        },
+        {
+          "command": "git diff --check 21190d5f4b8f7b9b462b2a29fc332a293272cb38 eb2f8d11b9c85a1e96f4545010c84e83e004a0ac",
+          "exit_code": 0
+        }
+      ],
+      "android_after_test": "PASS: Flutter-generated integration_test registrant block was removed; Android remains outside the candidate diff."
+    },
+    "first_final_review": {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "agent_id": "01a085f3-8b32-7440-9c43-b9359c4984a3",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "candidate": "dcc6e91eae3f323744c0fc6467421ac26706b04a",
+      "result": "BLOCKED_PENDING_EXACT_CANDIDATE_EVIDENCE_CHAIN",
+      "final_report": "Requested code/test labels, scope and diff check passed. The reviewer required the Flutter test evidence to be tied to dcc6e91 rather than its state-only predecessor; no source defect was found and no external result was claimed."
+    },
+    "exact_candidate_retest": {
+      "candidate": "dcc6e91eae3f323744c0fc6467421ac26706b04a",
+      "source_test_blob_identity": {
+        "ios/Runner/StartupDiagnostics.swift": "c0ebda333700c4c46bcc4635530726bcba2d8607",
+        "test/ios_native_startup_diagnostics_contract_test.dart": "4f488fead66e13557adf96312a5b412838de9849"
+      },
+      "working_tree_content_match": "PASS: both source/test blobs matched dcc6e91 before Flutter execution.",
+      "test_evidence": [
+        {
+          "command": "flutter test test/ios_native_startup_diagnostics_contract_test.dart",
+          "exit_code": 0,
+          "summary": "8 tests passed"
+        },
+        {
+          "command": "git diff --check 21190d5f4b8f7b9b462b2a29fc332a293272cb38 dcc6e91eae3f323744c0fc6467421ac26706b04a",
+          "exit_code": 0
+        }
+      ],
+      "state_only_chain": "eb2f8d11 to dcc6e91 changes only task state; source/test blobs are identical. Subsequent task-state report commits necessarily receive a new commit SHA, so source/test blob identity is the immutable proof that the exact test applies.",
+      "android_after_test": "PASS: Flutter-generated integration_test registrant block was removed; git diff and status are empty under android/."
+    },
+    "final_review": {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "agent_id": "01a085f3-8b32-7440-9c43-b9359c4984a3",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "candidate": "ec6e9d1c76fe8d31c3135d1572f82538e3856432",
+      "result": "PASS",
+      "final_report": "FINAL_REVIEW_REPORT: PASS, highest severity NONE. ec6e9d1 source/test blob IDs equal the dcc6e91-tested blobs; task state records Flutter test exit 0 (8 passed), diff check, and Android cleanup. ENGINE is READY|UNKNOWN, plugin NOT_SEEN is separate, SYSTEM_UI_BEGIN/END are independent YES/NO, and no aggregate SYSTEM_UI remains. Android, release, signing and AdMob are unchanged; external macOS/TestFlight/device proof remains unclaimed.",
+      "test_evidence": [
+        {
+          "command": "git diff --check 21190d5f4b8f7b9b462b2a29fc332a293272cb38 ec6e9d1c76fe8d31c3135d1572f82538e3856432",
+          "exit_code": 0
+        },
+        {
+          "command": "git rev-parse dcc6e91:path equals git rev-parse ec6e9d1:path for StartupDiagnostics.swift and its contract test",
+          "exit_code": 0
+        }
+      ]
+    },
+    "final_integration": {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "agent_id": "01a085ee-b412-7311-ab00-a70c9e7c474c",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "candidate": "6e83701d5647c127df7a5e3e66f3632e16883400",
+      "result": "INTEGRATION_PASS",
+      "final_report": "Exact-label alignment approved with no BLOCKER/HIGH. Scope is exactly task state, StartupDiagnostics.swift and its contract test. ENGINE is READY|UNKNOWN; SYSTEM_UI_BEGIN/END are independent YES/NO; no aggregate SYSTEM_UI or ENGINE NOT_SEEN remains. dcc6e91, ec6e9d1 and 6e83701 share identical source/test blobs; ec6e9d1 to 6e83701 is state-only. Exact-blob Flutter test passed 8/8, independent review passed, forbidden Android/release/signing/AdMob paths are unchanged. No macOS archive, TestFlight or device result was claimed.",
+      "test_evidence": [
+        {
+          "command": "git diff --check 21190d5f4b8f7b9b462b2a29fc332a293272cb38 6e83701d5647c127df7a5e3e66f3632e16883400",
+          "exit_code": 0
+        },
+        {
+          "command": "git rev-parse source/test blobs across dcc6e91, ec6e9d1 and 6e83701",
+          "exit_code": 0,
+          "summary": "all source/test blobs identical"
+        }
+      ],
+      "state_only_final_report_commit": "The delivery commit that records this integration report changes only task state from the approved candidate; source/test blobs, review scope and test evidence remain identical."
+    },
+    "review": {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "agent_id": "01a085ea-0d4e-7271-9860-b9aa62f5c64a",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "candidate": "eb2f8d11b9c85a1e96f4545010c84e83e004a0ac",
+      "result": "PASS",
+      "final_report": "FINAL_REVIEW_REPORT: PASS, highest_severity NONE. Exact candidate diff check passed; only diagnostic source, contract test and task-state changed. ENGINE falls back to UNKNOWN, SYSTEM_UI_BEGIN/END are separate YES/NO fields, tests cover both labels, and no stale aggregate label remains.",
+      "test_evidence": [
+        {
+          "command": "git diff --check 21190d5f4b8f7b9b462b2a29fc332a293272cb38 eb2f8d11b9c85a1e96f4545010c84e83e004a0ac",
+          "exit_code": 0
+        }
+      ]
+    }
   }
 }

@@ -47,7 +47,8 @@ void main() {
       'IMPLICIT_ENGINE=',
       'PLUGIN_REGISTRATION=',
       'DART_MAIN=',
-      'SYSTEM_UI=',
+      'SYSTEM_UI_BEGIN=',
+      'SYSTEM_UI_END=',
       'RUNAPP=',
       'FIRST_FRAME=',
       'LAST_EVENT=',
@@ -69,6 +70,7 @@ void main() {
       'ABSENT',
       'READY',
       'NOT_SEEN',
+      'UNKNOWN',
       'BEGIN',
       'COMPLETE',
       'YES',
@@ -91,6 +93,12 @@ void main() {
     expect(native, contains('Set<ObjectIdentifier>()'));
     expect(native, contains('rootClassCategory'));
     expect(native, contains('flutterViewLocation'));
+    expect(native,
+        contains('hasStage("FLUTTER_ENGINE_READY") ? "READY" : "UNKNOWN"'));
+    expect(native,
+        contains('let systemUIBegin = hasStage("SYSTEM_UI_MODE_BEGIN")'));
+    expect(native,
+        contains('let systemUIEnd = hasStage("SYSTEM_UI_MODE_COMPLETE")'));
     expect(
         native,
         contains(
