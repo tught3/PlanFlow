@@ -1,0 +1,200 @@
+{
+  "task_id": "planflow-build21-ios-permission-onboarding-build22-20260909",
+  "status": "SOURCE_READY_FOR_NONFORCE_PUSH",
+  "classification": "COMPLEX",
+  "starting_head": "bad565500ed4f24988a555a7c2117947fd247550",
+  "starting_origin_main": "ca3d520e37b4a02ffc81f70fbe1cc333bde715d5",
+  "shared_checkout": "DIRTY_PRESERVED_NO_RESET_CLEAN_STASH_WORKTREE_OR_SESSION",
+  "user_device_evidence": {
+    "build": 21,
+    "device": "iPhone 13 mini",
+    "launch": "PASS",
+    "black_screen": "RESOLVED",
+    "permission_onboarding": "FAIL_AFTER_MICROPHONE",
+    "observation": "Microphone dialog was accepted; the following permission showed no system dialog and no visible transition."
+  },
+  "scope": {
+    "required": [
+      "identify actual onboarding permission order and exact iOS request/status boundary",
+      "terminal no-dialog handling without fake grant",
+      "preserve Android, Build21 startup fixes, AdMob, Widget, signing, dSYM and export-compliance gates",
+      "prepare Build22 source/readiness only after RCA, tests, review and integration"
+    ],
+    "forbidden": [
+      "android changes",
+      "feature/plugin disablement",
+      "AdMob/Firebase/Widget/signing/Podfile/Xcode project changes",
+      "usage-description deletion",
+      "force push/reset/clean/stash/foreign-dirty overwrite",
+      "Build23 or upload without a reviewed source fix"
+    ]
+  },
+  "root_cause": {
+    "status": "IDENTIFIED",
+    "failed_permission": "notification",
+    "cause": "NotificationService exposes iOS notificationsEnabled as null outside Android, and requestNotificationPermission compares that null to true after requesting. The notification step therefore cannot become granted in the onboarding snapshot.",
+    "microphone_dialog_provenance": "NOT_OWNED_BY_CURRENT_ONBOARDING_ADAPTER: AppPermissionService's iOS microphone branch returns immediately and cannot emit the observed dialog; the separate runtime source remains unproven."
+  },
+  "preliminary_source_evidence": {
+    "order": ["microphone", "notification", "location", "calendar", "android-only alarm/battery/full-screen steps"],
+    "notification_iOS_gap": "NotificationService.checkPermissionStatus returns notificationsEnabled=null outside Android, so AppPermissionSnapshot treats iOS notifications as ungranted even after a plugin request.",
+    "microphone_provenance_gap": "AppPermissionService requestMicrophonePermission returns true outside Android and cannot itself produce an iOS microphone dialog; the observed dialog may come from a separate speech-to-text path and must not be conflated with the notification defect."
+  },
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "agent_id": "01a086a8-20cf-7562-a898-74a4d04e0e5a",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "result": "UNAVAILABLE_MODEL",
+      "final_report": "gpt-5.4-mini is not supported for this ChatGPT account. No files changed and no Explorer result was fabricated."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "agent_id": "01a086a8-b928-7722-84e5-9ca9b691804c",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "result": "COMPLETE_READ_ONLY",
+      "final_report": "Classified the work as complex, required a terminal result for every permission path, Android preservation, scoped verification, independent review and integration. It also flagged that microphone dialog provenance must be separated from the current Android-only onboarding adapter."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "agent_id": "01a086ad-bf83-7a91-9765-8973070e222c",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "result": "ROOT_CAUSE_IDENTIFIED_READ_ONLY",
+      "final_report": "Confirmed microphone then notification order. AppPermissionService does not issue an iOS microphone request; NotificationService returns null notification state outside Android and requestNotificationPermission therefore resolves false after an iOS request. Initialization can also consume the Darwin prompt before onboarding. Android and existing startup/export/AdMob contracts remain out of scope."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a086b3-f7de-7271-851e-c64551ed4d98",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "result": "INTERRUPTED_NO_OUTPUT",
+      "final_report": "Stopped after repeated no-output waits. No completion, review, or test result was accepted from this agent."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a086b9-5108-7f83-bd83-4d4db287baaf",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "result": "INTERRUPTED_PARTIAL_UNAPPROVED",
+      "final_report": "Stopped without a final report after partial changes to NotificationService and AppPermissionService. The lead retained only code that passed subsequent source review and tests; no self-approval was accepted."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a086be-589f-7441-b54a-5346e09c3296",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "result": "INTERRUPTED_PARTIAL_UNAPPROVED",
+      "final_report": "Stopped without a final report after partial native channel, plist, screen, and test changes. The lead corrected syntax, completed scoped handling, and requires independent review before integration."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "agent_id": "NOT_EXPOSED_IN_CURRENT_DESKTOP_TOOLSET",
+      "mapped_model": "UNAVAILABLE",
+      "reasoning_effort": "n/a",
+      "result": "LEAD_EXECUTED_EVIDENCE_PENDING_INDEPENDENT_AGENT",
+      "final_report": "The current desktop toolset initially exposed no in-conversation Test Executor endpoint. Lead execution passed with exit 0: flutter test --no-pub test/services/app_permission_ios_adapter_test.dart test/services/notification_permission_ios_contract_test.dart test/ios_permission_onboarding_contract_test.dart test/screens/permission_onboarding_screen_test.dart (20 tests); targeted dart analyze (exit 0); Info.plist XML parse (exit 0); git diff --check candidate (exit 0). Flutter left no Android GeneratedPluginRegistrant diff after test completion."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "agent_id": "01a088ca-dc42-7180-8cd4-2d6745fe5cbd",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "result": "UNAVAILABLE_MODEL",
+      "final_report": "The agent could not start because gpt-5.4-mini is unsupported for this ChatGPT account. No test result was fabricated; the separately recorded lead-run evidence remains available."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "agent_id": "01a088ca-d5a0-77b2-85a8-60ab2c961a20",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "result": "COMPLETE_NO_ADDITIONAL_CHANGE",
+      "final_report": "Inspected the scoped iOS permission implementation, made no further source change, and verified dart format --output=none for six permission files/tests (exit 0; 0 changed) plus targeted dart analyze (exit 0; no issues). It confirmed iOS order/status separation and notification auto-request suppression, while correctly withholding macOS/device/release approval."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "agent_id": "01a088cb-b128-7d32-970b-326a4a35d779",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "result": "REWORK_APPLIED",
+      "final_report": "Initial workspace review identified a valid iOS 15/16 calendar fallback issue: requestAccess(to: .event) needs NSCalendarsUsageDescription in addition to the iOS 17 full-access key. It also mistakenly evaluated foreign working-tree workflow changes instead of the isolated candidate; its Build22 workflow/signing findings were therefore not accepted as candidate findings. The calendar key and all candidate preflight loops were corrected before immutable candidate creation."
+    },
+    {
+      "role": "High-Risk Reviewer",
+      "agent": "flux_high_risk_reviewer",
+      "agent_id": "01a088d3-eaff-7243-81ba-a9d671e4c391",
+      "mapped_model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "result": "PASS",
+      "final_report": "Reviewed immutable commit 744e61b9042a313de369ee1102feb1d99ec9c9ae against ca3d520e37b4a02ffc81f70fbe1cc333bde715d5. BLOCKER=0, HIGH=0. Confirmed protected signing/release path preservation, Build22/dSYM consistency, both calendar keys and three privacy preflight locations, no Android/pbxproj changes, and no fake native grants. Withheld macOS and real-device claims."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_high_risk_reviewer",
+      "agent_id": "01a088d3-eaff-7243-81ba-a9d671e4c391",
+      "mapped_model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "result": "PASS",
+      "final_report": "Final independent review record for immutable commit 744e61b9042a313de369ee1102feb1d99ec9c9ae: PASS; BLOCKER=0; HIGH=0. The review scope was exactly parent ca3d520e37b4a02ffc81f70fbe1cc333bde715d5 to candidate diff."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "agent_id": "01a088d5-d6b6-71f2-9678-ba76ee977d3a",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "result": "RECHECK_REQUIRED",
+      "final_report": "Candidate scope checks passed, but this first integration pass blocked because the task state did not yet contain the terminal Reviewer PASS record, Integrator report, or explicit lead test exit codes. Those records have now been persisted; a final integration recheck is required."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "agent_id": "01a088d5-d6b6-71f2-9678-ba76ee977d3a",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "result": "INTEGRATION_PASS",
+      "final_report": "Final integration recheck: source candidate 744e61b9042a313de369ee1102feb1d99ec9c9ae is READY to commit/non-force-push. Parent matches origin/main; scope excludes Android and project.pbxproj; recorded checks exit 0; final independent Reviewer PASS has BLOCKER=0/HIGH=0; Build22 signing guard, calendar/IPA preflights, and 90-day dSYM retention are present. macOS Xcode, GitHub Actions, and real-device success remain unclaimed."
+    }
+  ],
+  "candidate": {
+    "base": "origin/main@ca3d520e37b4a02ffc81f70fbe1cc333bde715d5",
+    "source_commit": "744e61b9042a313de369ee1102feb1d99ec9c9ae",
+    "paths": [
+      ".github/workflows/ios-release.yml",
+      "ios/Runner/AppDelegate.swift",
+      "ios/Runner/Info.plist",
+      "lib/screens/onboarding/permission_onboarding_screen.dart",
+      "lib/services/app_permission_service.dart",
+      "lib/services/notification_service.dart",
+      "test/ios_permission_onboarding_contract_test.dart",
+      "test/services/app_permission_ios_adapter_test.dart",
+      "test/services/notification_permission_ios_contract_test.dart"
+    ],
+    "checks": [
+      "flutter test --no-pub target set: 20 PASS",
+      "dart analyze target set: PASS",
+      "git diff --check candidate: PASS",
+      "Build22 workflow markers and calendar preflight contract: PASS",
+      "candidate Android paths: EMPTY",
+      "candidate project.pbxproj path: EMPTY"
+    ]
+  },
+  "delivery_gate": {
+    "reviewer": "PASS: immutable source candidate reviewed independently with BLOCKER=0 and HIGH=0.",
+    "integrator": "PASS: final source integration approved for non-force push.",
+    "build22": "READY: source release readiness only. macOS Xcode workflow, GitHub Actions, and iPhone real-device evidence remain pending and must not be implied by this status."
+  },
+  "next_step": "Non-force push the approved source candidate, then use the canonical Build22 workflow for macOS/Xcode validation before any real-device conclusion."
+}
