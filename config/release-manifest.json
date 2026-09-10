@@ -13,7 +13,8 @@
     "repoSlug": "tught3/PlanFlow",
     "workflowFile": "ios-release.yml",
     "releaseRef": "main",
-    "successMarker": "TESTFLIGHT_AVAILABLE"
+    "successMarker": "TESTFLIGHT_AVAILABLE",
+    "approvedVersionTrain": "1.1.1"
   },
   "version": {
     "source": "pubspec.yaml",
