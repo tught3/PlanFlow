@@ -195,7 +195,12 @@ final class PlanFlowPermissionChannel: NSObject, CLLocationManagerDelegate {
     }
     let store = EKEventStore()
     if #available(iOS 17.0, *) {
-      store.requestFullAccessToEvents { [weak self] _ in
+      // requestFullAccessToEvents completion is (Bool, Error?) -> Void; both are
+      // discarded because calendarStatus() re-queries EKEventStore's live
+      // authorizationStatus right after, which reflects denied/restricted
+      // correctly even when granted==false or an error fired (matches the
+      // mic/speech/legacy-calendar completion pattern above).
+      store.requestFullAccessToEvents { [weak self] _, _ in
         DispatchQueue.main.async { completion(self?.calendarStatus() ?? "error") }
       }
     } else {
