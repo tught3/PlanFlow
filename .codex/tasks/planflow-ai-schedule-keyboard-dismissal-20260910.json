@@ -1,0 +1,129 @@
+{
+  "task_id": "planflow-ai-schedule-keyboard-dismissal-20260910",
+  "status": "INTEGRATION_PASS",
+  "classification": "COMPLEX",
+  "request": "Allow manual text fallback in AI schedule chat, dismiss the keyboard after send, and provide an iPhone-discoverable keyboard dismissal control.",
+  "scope": {
+    "allowed_files": [
+      "lib/screens/voice/voice_conversation_screen.dart",
+      "test/screens/voice_conversation_screen_test.dart"
+    ],
+    "forbidden": [
+      "android/**",
+      "ios/**",
+      "signing, release, dependency, or configuration changes",
+      "reset, clean, stash, force push, or foreign-dirty overwrite"
+    ]
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "result": "UNAVAILABLE: assigned model is unsupported for this ChatGPT account; no source was changed. Direct scoped inspection established the input bar and STT paths."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "result": "READY: focus ownership, explicit dismissal control, and widget regressions are required; preserve STT and entitlement behavior."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "changed_files": [
+        "lib/screens/voice/voice_conversation_screen.dart",
+        "test/screens/voice_conversation_screen_test.dart"
+      ],
+      "result": "Implemented owned FocusNode lifecycle, manual-input interruption of active STT, explicit keyboard-dismiss UI, and send unfocus wiring. Its initial global-primary-focus test was invalid; remediation retained the source behavior and tested the TextField FocusNode directly."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "result": "UNAVAILABLE: assigned model is unsupported for this ChatGPT account. Host verification was run directly and recorded below."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "result": "UNAVAILABLE: agent did not emit a final report. Direct compiler evidence identified the exact unsupported IconButton semanticLabel parameter; it was replaced with a Semantics wrapper and retested."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "result": "FINAL_REVIEW_REPORT PASS: BLOCKER=0, HIGH=0. The current code diff and task-state evidence were inspected after all remediation; source requirements and verification evidence are sufficient for integration."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only final integration: inspect the current final diff and task state; record no source changes.",
+      "changed_files": [
+        ".codex/tasks/planflow-ai-schedule-keyboard-dismissal-20260910.json"
+      ],
+      "result": "INTEGRATION_PASS: final current diff and task state were reconciled. The independent terminal reviewer report is persisted as FINAL_REVIEW_REPORT PASS with BLOCKER=0 and HIGH=0; all task requirements, scoped verification evidence, and delivery gates pass."
+    }
+  ],
+  "verification": [
+    {
+      "command": "flutter test --no-pub -r silent test/screens/voice_conversation_screen_test.dart",
+      "exit_code": 0,
+      "result": "47 tests passed, including failed-STT/manual fallback, native-ready interruption, keyboard close, send-button unfocus, keyboard-send unfocus, and accessibility label coverage."
+    },
+    {
+      "command": "dart analyze lib/screens/voice/voice_conversation_screen.dart test/screens/voice_conversation_screen_test.dart",
+      "exit_code": 0,
+      "result": "No issues found."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "result": "Passed. Scoped task diff contains only the two allowed Dart files; pre-existing Android GeneratedPluginRegistrant dirty state was preserved and excluded."
+    },
+    {
+      "command": "flutter test --no-pub -r compact test/screens/voice_conversation_screen_test.dart",
+      "exit_code": 0,
+      "result": "Fresh final integration evidence: 47 tests passed."
+    },
+    {
+      "command": "dart analyze lib/screens/voice/voice_conversation_screen.dart test/screens/voice_conversation_screen_test.dart",
+      "exit_code": 0,
+      "result": "Fresh final integration evidence: No issues found."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "result": "Fresh final integration evidence: passed. Current task-scoped diff names only lib/screens/voice/voice_conversation_screen.dart and test/screens/voice_conversation_screen_test.dart. android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java remains a separate foreign dirty change; no ios/** diff is present."
+    }
+  ],
+  "failure_analysis": {
+    "initial_test_failure": "Testing FocusManager.instance.primaryFocus misread the root FocusScope as a focused input.",
+    "resolution": "Assert the owned TextField FocusNode directly.",
+    "compatibility_failure": "This Flutter version's IconButton lacks semanticLabel.",
+    "resolution_2": "Wrap the icon in Semantics(label: '키보드 닫기', button: true)."
+  },
+  "review": "PASS: FINAL_REVIEW_REPORT BLOCKER=0 HIGH=0",
+  "integration": {
+    "verdict": "INTEGRATION_PASS",
+    "requirements": {
+      "manual_text_fallback_after_failed_or_ready_stt": "CONFIRMED by current source inspection and passing widget tests.",
+      "send_and_keyboard_send_dismiss_focus": "CONFIRMED by current source inspection and passing widget tests.",
+      "visible_accessible_keyboard_dismiss_control": "CONFIRMED by current source inspection and passing widget tests.",
+      "no_android_or_ios_source_change_attributed_to_task": "CONFIRMED: task-scoped diff contains only the two allowed Dart files; existing Android GeneratedPluginRegistrant diff is foreign, and no ios/** diff is present.",
+      "fresh_verification": "CONFIRMED: 47 tests, analyze, and diff check each exited 0.",
+      "independent_reviewer_terminal_pass_blocker_0_high_0": "CONFIRMED: final rerun PASS with BLOCKER=0 and HIGH=0."
+    },
+    "runtime_note": "No real-iPhone runtime evidence was inspected or claimed.",
+    "blocker": "NONE"
+  }
+}

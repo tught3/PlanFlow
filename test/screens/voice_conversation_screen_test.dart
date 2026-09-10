@@ -506,6 +506,119 @@ void main() {
     expect(textField.controller?.text, '이번주 금요일 일정');
   });
 
+  testWidgets('AI 일정 대화는 음성 입력 중 입력창을 탭하면 수동 입력으로 전환된다', (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(sttService: stt),
+    );
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    stt.emitStatus(SttNativeStatus.stalled);
+    await tester.pump();
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    expect(stt.stopCalls, greaterThanOrEqualTo(1));
+    expect(find.text('음성으로 명령하기'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).focusNode?.hasFocus,
+      isTrue,
+    );
+
+    await tester.enterText(find.byType(TextField), '이번주 일정 보여줘');
+    await tester.pump();
+    stt.emitPartial('늦게 도착한 음성 결과');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '이번주 일정 보여줘',
+    );
+  });
+
+  testWidgets('AI 일정 대화는 음성 인식 실패 뒤에도 텍스트로 전환해 자동 재시작을 멈춘다',
+      (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(sttService: stt),
+    );
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    stt.completeFailure('음성을 알아듣지 못했어요.');
+    await tester.pump(const Duration(milliseconds: 20));
+
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), '이번주 일정 보여줘');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '이번주 일정 보여줘',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(stt.listenCalls, 1);
+  });
+
+  testWidgets('AI 일정 대화는 native ready 음성 입력 중에도 입력창 탭으로 수동 전환한다',
+      (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(sttService: stt),
+    );
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    stt.emitStatus(SttNativeStatus.ready);
+    await tester.pump();
+    expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsOneWidget);
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    expect(stt.stopCalls, greaterThanOrEqualTo(1));
+    expect(find.text('음성으로 명령하기'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).focusNode?.hasFocus,
+      isTrue,
+    );
+  });
+
+  testWidgets('AI 일정 대화는 focus 중 키보드 닫기와 전송에서 입력 포커스를 해제한다', (tester) async {
+    await pumpConversation(
+      tester,
+      const VoiceConversationScreen(),
+    );
+
+    final textField = find.byType(TextField);
+    await tester.tap(textField);
+    await tester.pump();
+    expect(find.byTooltip('키보드 닫기'), findsOneWidget);
+    expect(find.bySemanticsLabel('키보드 닫기'), findsOneWidget);
+    expect(tester.widget<TextField>(textField).focusNode?.hasFocus, isTrue);
+
+    await tester.tap(find.byTooltip('키보드 닫기'));
+    await tester.pump();
+    expect(tester.widget<TextField>(textField).focusNode?.hasFocus, isFalse);
+    expect(find.byTooltip('키보드 닫기'), findsNothing);
+
+    await tester.tap(textField);
+    await tester.enterText(textField, '이번주 일정 보여줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(textField).focusNode?.hasFocus, isFalse);
+
+    await tester.tap(textField);
+    await tester.enterText(textField, '다음주 일정 보여줘');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(textField).focusNode?.hasFocus, isFalse);
+  });
+
   testWidgets('AI 일정 대화는 native ready 전에는 듣는 중으로 표시하지 않는다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(
