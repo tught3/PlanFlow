@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,8 @@ class AppPermissionService {
 
   static const MethodChannel _androidPermissionsChannel =
       MethodChannel('planflow/android_permissions');
+  static const MethodChannel _iosPermissionsChannel =
+      MethodChannel('planflow/ios_permissions');
   static const String _onboardingPrefix = 'planflow_permissions_onboarded_v1';
 
   final NotificationService _notificationService;
@@ -49,16 +53,46 @@ class AppPermissionService {
 
   Future<AppPermissionSnapshot> _checkAllInternal() async {
     final notificationFuture = _notificationService.checkPermissionStatus();
-    final microphoneFuture = checkMicrophonePermission();
-    final locationFuture = checkLocationPermission();
-    final calendarFuture = checkCalendarPermission();
+    final microphoneStatusFuture = defaultTargetPlatform == TargetPlatform.iOS
+        ? checkMicrophonePermissionStatus()
+        : checkMicrophonePermission().then(
+            (granted) => granted
+                ? AppPermissionStatus.granted
+                : AppPermissionStatus.denied,
+          );
+    final speechStatusFuture = defaultTargetPlatform == TargetPlatform.iOS
+        ? checkSpeechRecognitionPermissionStatus()
+        : Future<AppPermissionStatus>.value(AppPermissionStatus.granted);
+    final locationStatusFuture = defaultTargetPlatform == TargetPlatform.iOS
+        ? checkLocationPermissionStatus()
+        : checkLocationPermission().then(
+            (granted) => granted
+                ? AppPermissionStatus.granted
+                : AppPermissionStatus.denied,
+          );
+    final calendarStatusFuture = defaultTargetPlatform == TargetPlatform.iOS
+        ? checkCalendarPermissionStatus()
+        : checkCalendarPermission().then(
+            (granted) => granted
+                ? AppPermissionStatus.granted
+                : AppPermissionStatus.denied,
+          );
     final batteryFuture =
         _batteryOptimizationService.isIgnoringBatteryOptimizations();
     final notificationStatus = await notificationFuture;
+    final microphoneStatus = await microphoneStatusFuture;
+    final speechStatus = await speechStatusFuture;
+    final locationStatus = await locationStatusFuture;
+    final calendarStatus = await calendarStatusFuture;
     return AppPermissionSnapshot(
-      microphoneGranted: await microphoneFuture,
-      locationGranted: await locationFuture,
-      calendarGranted: await calendarFuture,
+      microphoneGranted: microphoneStatus == AppPermissionStatus.granted,
+      microphoneStatus: microphoneStatus,
+      speechRecognitionGranted: speechStatus == AppPermissionStatus.granted,
+      speechRecognitionStatus: speechStatus,
+      locationGranted: locationStatus == AppPermissionStatus.granted,
+      locationStatus: locationStatus,
+      calendarGranted: calendarStatus == AppPermissionStatus.granted,
+      calendarStatus: calendarStatus,
       notificationStatus: notificationStatus,
       batteryOptimizationIgnored: await batteryFuture,
     );
@@ -75,6 +109,10 @@ class AppPermissionService {
   }
 
   Future<bool> requestMicrophonePermission() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await requestMicrophonePermissionStatus() ==
+          AppPermissionStatus.granted;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
@@ -91,6 +129,10 @@ class AppPermissionService {
   }
 
   Future<bool> checkMicrophonePermission() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await checkMicrophonePermissionStatus() ==
+          AppPermissionStatus.granted;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
@@ -107,6 +149,10 @@ class AppPermissionService {
   }
 
   Future<bool> requestLocationPermission() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await requestLocationPermissionStatus() ==
+          AppPermissionStatus.granted;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
@@ -123,6 +169,10 @@ class AppPermissionService {
   }
 
   Future<bool> checkLocationPermission() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await checkLocationPermissionStatus() ==
+          AppPermissionStatus.granted;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
@@ -139,6 +189,10 @@ class AppPermissionService {
   }
 
   Future<bool> requestCalendarPermission() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await requestCalendarPermissionStatus() ==
+          AppPermissionStatus.granted;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
@@ -155,6 +209,10 @@ class AppPermissionService {
   }
 
   Future<bool> checkCalendarPermission() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await checkCalendarPermissionStatus() ==
+          AppPermissionStatus.granted;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
@@ -261,6 +319,18 @@ class AppPermissionService {
   }
 
   Future<bool> openAppSettings() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        return await _iosPermissionsChannel.invokeMethod<bool>(
+              'openAppSettings',
+            ) ??
+            false;
+      } catch (error, stackTrace) {
+        debugPrint('Open iOS app settings failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return false;
+      }
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
@@ -298,6 +368,48 @@ class AppPermissionService {
 
   String _onboardingKey(String userId) => '$_onboardingPrefix:$userId';
 
+  Future<AppPermissionStatus> checkMicrophonePermissionStatus() =>
+      _iosStatus('checkMicrophonePermission');
+
+  Future<AppPermissionStatus> requestMicrophonePermissionStatus() =>
+      _iosStatus('requestMicrophonePermission');
+
+  Future<AppPermissionStatus> checkSpeechRecognitionPermissionStatus() =>
+      _iosStatus('checkSpeechRecognitionPermission');
+
+  Future<AppPermissionStatus> requestSpeechRecognitionPermissionStatus() =>
+      _iosStatus('requestSpeechRecognitionPermission');
+
+  Future<AppPermissionStatus> checkLocationPermissionStatus() =>
+      _iosStatus('checkLocationPermission');
+
+  Future<AppPermissionStatus> requestLocationPermissionStatus() =>
+      _iosStatus('requestLocationPermission');
+
+  Future<AppPermissionStatus> checkCalendarPermissionStatus() =>
+      _iosStatus('checkCalendarPermission');
+
+  Future<AppPermissionStatus> requestCalendarPermissionStatus() =>
+      _iosStatus('requestCalendarPermission');
+
+  Future<AppPermissionStatus> _iosStatus(String method) async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return AppPermissionStatus.unavailable;
+    }
+    try {
+      final value = await _iosPermissionsChannel
+          .invokeMethod<String>(method)
+          .timeout(const Duration(seconds: 12));
+      return AppPermissionStatus.fromNative(value);
+    } on TimeoutException {
+      return AppPermissionStatus.timeout;
+    } catch (error, stackTrace) {
+      debugPrint('iOS permission operation failed ($method): $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return AppPermissionStatus.error;
+    }
+  }
+
   double? _doubleValue(Object? value) {
     if (value is double) {
       return value;
@@ -312,15 +424,25 @@ class AppPermissionService {
 class AppPermissionSnapshot {
   const AppPermissionSnapshot({
     required this.microphoneGranted,
+    this.microphoneStatus = AppPermissionStatus.granted,
+    this.speechRecognitionGranted = true,
+    this.speechRecognitionStatus = AppPermissionStatus.granted,
     required this.locationGranted,
+    this.locationStatus = AppPermissionStatus.granted,
     required this.calendarGranted,
+    this.calendarStatus = AppPermissionStatus.granted,
     required this.notificationStatus,
     this.batteryOptimizationIgnored = true,
   });
 
   final bool microphoneGranted;
+  final AppPermissionStatus microphoneStatus;
+  final bool speechRecognitionGranted;
+  final AppPermissionStatus speechRecognitionStatus;
   final bool locationGranted;
+  final AppPermissionStatus locationStatus;
   final bool calendarGranted;
+  final AppPermissionStatus calendarStatus;
   final NotificationPermissionStatus notificationStatus;
 
   /// true이면 배터리 최적화 예외가 적용된 것(절전이 알람을 막지 않음).
@@ -347,6 +469,35 @@ class AppPermissionSnapshot {
 
   /// 알람이 정시에 울리기 위한 최소 조건 (알람 예약 가드에서 사용).
   bool get alarmWillFire => exactAlarmsGranted && batteryOptimizationIgnored;
+}
+
+enum AppPermissionStatus {
+  granted,
+  denied,
+  settingsRequired,
+  restricted,
+  unavailable,
+  error,
+  timeout;
+
+  static AppPermissionStatus fromNative(String? value) {
+    switch (value) {
+      case 'granted':
+        return AppPermissionStatus.granted;
+      case 'denied':
+        return AppPermissionStatus.denied;
+      case 'settingsRequired':
+        return AppPermissionStatus.settingsRequired;
+      case 'restricted':
+        return AppPermissionStatus.restricted;
+      case 'unavailable':
+        return AppPermissionStatus.unavailable;
+      case 'timeout':
+        return AppPermissionStatus.timeout;
+      default:
+        return AppPermissionStatus.error;
+    }
+  }
 }
 
 class GeoPoint {

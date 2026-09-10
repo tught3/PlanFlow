@@ -126,6 +126,8 @@ class NotificationService {
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
+  static const MethodChannel _iosPermissionsChannel =
+      MethodChannel('planflow/ios_permissions');
 
   Future<void> initialize() {
     return _initializationFuture ??= _initializeInternal();
@@ -589,6 +591,27 @@ class NotificationService {
   }
 
   Future<NotificationPermissionStatus> checkPermissionStatus() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await initialize();
+        final ios = _plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+        final permissions = await ios?.checkPermissions();
+        return NotificationPermissionStatus(
+          notificationsEnabled: permissions?.isEnabled ?? false,
+          exactAlarmsEnabled: null,
+          fullScreenIntentStatus: PermissionCheckState.unsupported,
+        );
+      } catch (error, stackTrace) {
+        debugPrint('iOS notification permission check failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return const NotificationPermissionStatus(
+          notificationsEnabled: false,
+          exactAlarmsEnabled: null,
+          fullScreenIntentStatus: PermissionCheckState.unsupported,
+        );
+      }
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return const NotificationPermissionStatus(
         notificationsEnabled: null,
@@ -621,6 +644,10 @@ class NotificationService {
   }
 
   Future<NotificationPermissionStatus> requestAndCheckPermissions() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await requestNotificationPermission();
+      return checkPermissionStatus();
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return checkPermissionStatus();
     }
@@ -643,6 +670,22 @@ class NotificationService {
 
   Future<bool> requestNotificationPermission() async {
     await initialize();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        final requested = await _plugin
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>()
+            ?.requestPermissions(alert: true, badge: true, sound: true);
+        if (requested != null) {
+          return requested;
+        }
+      } catch (error, stackTrace) {
+        debugPrint('iOS notification permission request failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return false;
+      }
+      return (await checkPermissionStatus()).notificationsEnabled == true;
+    }
     await _runPermissionRequestBestEffort(
       'notification permission',
       _requestNotificationPermissionIfNeeded,
@@ -725,6 +768,18 @@ class NotificationService {
   }
 
   Future<bool> openAppNotificationSettings() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        return await _iosPermissionsChannel.invokeMethod<bool>(
+              'openAppSettings',
+            ) ??
+            false;
+      } catch (error, stackTrace) {
+        debugPrint('Open iOS notification settings failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return false;
+      }
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
@@ -763,9 +818,9 @@ class NotificationService {
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('ic_stat_planflow'),
       iOS: DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestSoundPermission: true,
-        requestBadgePermission: true,
+        requestAlertPermission: false,
+        requestSoundPermission: false,
+        requestBadgePermission: false,
         defaultPresentAlert: true,
         defaultPresentSound: true,
         defaultPresentBadge: true,
@@ -801,10 +856,13 @@ class NotificationService {
       },
     );
     await _ensureAndroidNotificationChannels();
-    await _runPermissionRequestBestEffort(
-      'initial notification permission',
-      _requestNotificationPermissionIfNeeded,
-    );
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      await _runPermissionRequestBestEffort(
+        'initial notification permission',
+        _requestNotificationPermissionIfNeeded,
+      );
+    }
   }
 
   Future<void> _ensureAndroidNotificationChannels() async {
@@ -1267,8 +1325,9 @@ class NotificationService {
   /// `event:` payload(강한알람 suffix가 붙어 있을 수도 있음)에서 순수
   /// eventId만 추출한다.
   static String _eventIdFromEventPayload(String payload) {
-    var value =
-        payload.startsWith('event:') ? payload.substring('event:'.length) : payload;
+    var value = payload.startsWith('event:')
+        ? payload.substring('event:'.length)
+        : payload;
     if (value.endsWith(criticalAlarmPayloadSuffix)) {
       value = value.substring(
         0,

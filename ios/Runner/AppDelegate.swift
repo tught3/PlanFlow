@@ -1,4 +1,8 @@
+import AVFoundation
+import CoreLocation
+import EventKit
 import Flutter
+import Speech
 import UIKit
 
 @main
@@ -29,10 +33,184 @@ import UIKit
     let diagnostics = StartupDiagnostics.shared
     diagnostics.mark("IMPLICIT_ENGINE_CALLBACK")
     diagnostics.attach(to: engineBridge.applicationRegistrar.messenger())
+    PlanFlowPermissionChannel.register(with: engineBridge.applicationRegistrar.messenger())
     StartupDiagnostics.shared.mark("PLUGIN_REGISTRATION_BEGIN")
     let registry = StartupDiagnosticsPluginRegistry(wrapping: engineBridge.pluginRegistry)
     GeneratedPluginRegistrant.register(with: registry)
     StartupDiagnostics.shared.mark("PLUGIN_REGISTRATION_END")
     StartupDiagnostics.shared.mark("FLUTTER_ENGINE_READY")
+  }
+}
+
+/// The native authority for the iOS permissions requested by onboarding.
+///
+/// Status values deliberately distinguish denied, settings-required,
+/// restricted and unavailable states so the Dart UI never treats a missing
+/// system prompt as a successful grant.
+final class PlanFlowPermissionChannel: NSObject, CLLocationManagerDelegate {
+  private static let channelName = "planflow/ios_permissions"
+  private static var instances: [PlanFlowPermissionChannel] = []
+  private let channel: FlutterMethodChannel
+  private var locationManager: CLLocationManager?
+  private var locationCompletion: ((String) -> Void)?
+
+  private init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: Self.channelName, binaryMessenger: messenger)
+    super.init()
+    channel.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call: call, result: result)
+    }
+  }
+
+  static func register(with messenger: FlutterBinaryMessenger) {
+    instances.append(PlanFlowPermissionChannel(messenger: messenger))
+  }
+
+  private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "checkMicrophonePermission":
+      result(microphoneStatus())
+    case "requestMicrophonePermission":
+      AVAudioSession.sharedInstance().requestRecordPermission { [weak self] _ in
+        DispatchQueue.main.async {
+          result(self?.microphoneStatus() ?? "error")
+        }
+      }
+    case "checkSpeechRecognitionPermission":
+      result(speechStatus())
+    case "requestSpeechRecognitionPermission":
+      SFSpeechRecognizer.requestAuthorization { [weak self] _ in
+        DispatchQueue.main.async {
+          result(self?.speechStatus() ?? "error")
+        }
+      }
+    case "checkLocationPermission":
+      result(locationStatus())
+    case "requestLocationPermission":
+      requestLocation { status in result(status) }
+    case "checkCalendarPermission":
+      result(calendarStatus())
+    case "requestCalendarPermission":
+      requestCalendar { status in result(status) }
+    case "openAppSettings":
+      openSettings(result: result)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func microphoneStatus() -> String {
+    switch AVAudioSession.sharedInstance().recordPermission {
+    case .granted: return "granted"
+    case .denied: return "settingsRequired"
+    case .undetermined: return "denied"
+    @unknown default: return "unavailable"
+    }
+  }
+
+  private func speechStatus() -> String {
+    switch SFSpeechRecognizer.authorizationStatus() {
+    case .authorized: return "granted"
+    case .denied: return "settingsRequired"
+    case .restricted: return "restricted"
+    case .notDetermined: return "denied"
+    @unknown default: return "unavailable"
+    }
+  }
+
+  private func locationStatus() -> String {
+    switch CLLocationManager.authorizationStatus() {
+    case .authorizedAlways, .authorizedWhenInUse: return "granted"
+    case .denied: return "settingsRequired"
+    case .restricted: return "restricted"
+    case .notDetermined: return "denied"
+    @unknown default: return "unavailable"
+    }
+  }
+
+  private func calendarStatus() -> String {
+    let status = EKEventStore.authorizationStatus(for: .event)
+    if #available(iOS 17.0, *) {
+      switch status {
+      case .fullAccess: return "granted"
+      case .writeOnly, .denied: return "settingsRequired"
+      case .restricted: return "restricted"
+      case .notDetermined: return "denied"
+      @unknown default: return "unavailable"
+      }
+    }
+    switch status {
+    case .authorized: return "granted"
+    case .denied: return "settingsRequired"
+    case .restricted: return "restricted"
+    case .notDetermined: return "denied"
+    @unknown default: return "unavailable"
+    }
+  }
+
+  private func requestLocation(completion: @escaping (String) -> Void) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        completion("error")
+        return
+      }
+      guard CLLocationManager.authorizationStatus() == .notDetermined else {
+        completion(self.locationStatus())
+        return
+      }
+      guard self.locationCompletion == nil else {
+        completion("timeout")
+        return
+      }
+      let manager = CLLocationManager()
+      manager.delegate = self
+      self.locationManager = manager
+      self.locationCompletion = completion
+      manager.requestWhenInUseAuthorization()
+    }
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    resolveLocationIfReady()
+  }
+
+  func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+    resolveLocationIfReady()
+  }
+
+  private func resolveLocationIfReady() {
+    guard CLLocationManager.authorizationStatus() != .notDetermined else { return }
+    let status = locationStatus()
+    let completion = locationCompletion
+    locationCompletion = nil
+    locationManager = nil
+    completion?(status)
+  }
+
+  private func requestCalendar(completion: @escaping (String) -> Void) {
+    let current = calendarStatus()
+    guard current == "denied" else {
+      completion(current)
+      return
+    }
+    let store = EKEventStore()
+    if #available(iOS 17.0, *) {
+      store.requestFullAccessToEvents { [weak self] _ in
+        DispatchQueue.main.async { completion(self?.calendarStatus() ?? "error") }
+      }
+    } else {
+      store.requestAccess(to: .event) { [weak self] _, _ in
+        DispatchQueue.main.async { completion(self?.calendarStatus() ?? "error") }
+      }
+    }
+  }
+
+  private func openSettings(result: @escaping FlutterResult) {
+    guard let url = URL(string: UIApplication.openSettingsURLString),
+          UIApplication.shared.canOpenURL(url) else {
+      result(false)
+      return
+    }
+    UIApplication.shared.open(url, options: [:]) { opened in result(opened) }
   }
 }
