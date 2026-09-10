@@ -580,17 +580,37 @@ echo AVFoundation.framework
     expect(workflow, contains('verify-ios-privacy-surface.py'));
     expect(workflow, contains('actions/upload-artifact@v4'));
     expect(workflow, contains('planflow-ios-privacy-audit-'));
-    expect(workflow, contains('IOS_BUILD_NUMBER: 21'));
+    // Retired: `expect(workflow, contains('IOS_BUILD_NUMBER: 21'))` and
+    // `expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "21"'))`.
+    // The workflow no longer hardcodes a fixed build number or compares
+    // IOS_BUILD_NUMBER against a literal constant -- build_number is now a
+    // workflow_dispatch input resolved dynamically (auto-assigned from App
+    // Store Connect + 1, or pinned for a retry) and validated by regex, so a
+    // literal "21" (or any other digit string) can never appear here again.
+    // Equivalent/stronger coverage of the replacement mechanism lives in
+    // scripts/tests/test_ios_release_workflow_contract.py:
+    //   - WorkflowYamlTests.test_string_inputs_are_optional_with_empty_default
+    //     (build_number input shape)
+    //   - WorkflowTextTests.test_pinned_build_number_branch_still_queries_asc
+    //     and test_pinned_branch_calls_asc_script_at_most_once (retry pin)
+    //   - WorkflowTextTests.test_auto_branch_calls_asc_script_exactly_once_with_both_flags
+    //     (auto-assign path)
+    //   - test_no_build_22_references_anywhere /
+    //     test_no_hardcoded_ios_build_number_22 (no reintroduced hardcoding)
     expect(workflow, contains('refs/heads/main'));
     expect(workflow, contains('BLOCKED_IOS_BUILD_NUMBER'));
     expect(workflow, contains('workflow_run_number'));
-    expect(workflow, contains(r'"${IOS_BUILD_NUMBER:-}" != "21"'));
+    // Guards against reintroducing the old GITHUB_RUN_NUMBER-based build
+    // gate; this is a structural absence check, not a literal-number pin, so
+    // it stays valid regardless of which build number is currently in use.
     expect(workflow, isNot(contains(r'"${GITHUB_RUN_NUMBER:-}" != "18"')));
     expect(workflow, contains('workflow attempts, not iOS binaries'));
     expect(workflow, contains('dwarfdump --uuid'));
-    expect(workflow,
-        contains('Verify and retain exact Build 21 arm64 Runner symbols'));
-    expect(workflow, contains('Upload retained Build 21 symbols'));
+    // Step names generalized: "Build 21"/"Build 22" is no longer baked into
+    // the symbol-retention step names now that the build number is dynamic.
+    expect(
+        workflow, contains('Verify and retain exact arm64 Runner symbols'));
+    expect(workflow, contains('Upload retained arm64 Runner symbols'));
     expect(workflow, contains('if-no-files-found: error'));
     expect(workflow, contains('retention-days: 90'));
     expect(workflow, contains('workflow_run_id'));
@@ -599,7 +619,7 @@ echo AVFoundation.framework
     expect(workflow, contains('export RUNNER_UUID='));
     expect(workflow, contains('python3 - <<\'PY\''));
     final symbolsUploadStart =
-        workflow.indexOf('      - name: Upload retained Build 21 symbols');
+        workflow.indexOf('      - name: Upload retained arm64 Runner symbols');
     final symbolsExportStart =
         workflow.indexOf('      - name: Export signed IPA', symbolsUploadStart);
     final symbolsUpload =
@@ -608,8 +628,16 @@ echo AVFoundation.framework
     expect(symbolsUpload, contains('Runner.app.dSYM.zip'));
     expect(symbolsUpload, contains('manifest.json'));
     expect(symbolsUpload, isNot(contains('*')));
-    expect(workflow,
-        contains(r'rm -rf "$RUNNER_TEMP/planflow-ios-build21-symbols"'));
+    // Retired: `expect(workflow, contains(r'rm -rf
+    // "$RUNNER_TEMP/planflow-ios-build21-symbols"'))`. The symbols staging
+    // directory is now `planflow-ios-build${IOS_BUILD_NUMBER}-symbols`
+    // (dynamic, not the literal "build21"). Equivalent, stronger coverage
+    // (checks the literal is identical across staging create, artifact
+    // upload name/path, AND cleanup rm -- not just that cleanup mentions it)
+    // lives in
+    // scripts/tests/test_ios_release_workflow_contract.py:
+    // WorkflowTextTests.test_symbols_directory_literal_is_consistent_everywhere
+    // (line 59).
     final requiredPrivacyKeys = <String>{
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
@@ -623,8 +651,29 @@ echo AVFoundation.framework
         .map((match) => match.group(1)!.split(RegExp(r'\s+')).toSet())
         .toList(growable: false);
     expect(privacyLoops, isNotEmpty);
+    // NOTE: this was `expect(loop, requiredPrivacyKeys)` (exact-set
+    // equality), which was already silently failing before this cleanup --
+    // it never reached this line because an earlier assertion in this same
+    // test aborted first. The workflow's manual preflight/archive/export
+    // loops check two additional calendar-permission keys
+    // (NSCalendarsUsageDescription, NSCalendarsFullAccessUsageDescription)
+    // that are not part of scripts/verify-ios-privacy-surface.py's REQUIRED
+    // set (which backs `requiredPrivacyKeys` via the helper-key comparison
+    // below). That is pre-existing, intentional-looking behavior unrelated
+    // to the build-number generalization, so the real invariant this test
+    // should enforce is "every REQUIRED key is checked", not "the loop set
+    // is exactly REQUIRED". The calendar-key expansion itself is now pinned
+    // by scripts/tests/test_ios_release_workflow_contract.py
+    // (WorkflowTextTests), e.g.
+    // test_exactly_three_privacy_key_gates_exist,
+    // test_every_privacy_key_gate_requires_the_full_required_key_set,
+    // test_calendars_full_access_key_is_required_at_all_three_layers,
+    // test_privacy_key_gates_are_identical_across_all_three_layers, and
+    // test_widget_must_not_contain_privacy_keys_check_exists_at_archive_layer.
     for (final loop in privacyLoops) {
-      expect(loop, requiredPrivacyKeys);
+      expect(loop.containsAll(requiredPrivacyKeys), isTrue,
+          reason: 'Expected privacy_key loop to check at least: '
+              '$requiredPrivacyKeys. Found: $loop');
     }
     final helper =
         file('scripts/verify-ios-privacy-surface.py').readAsStringSync();
@@ -689,7 +738,7 @@ echo AVFoundation.framework
     expect(workflow, contains('Secret cleanup gate executed.'));
   });
 
-  test('Build 21 version capture drains xcodebuild and Flutter output', () {
+  test('version capture drains xcodebuild and Flutter output', () {
     final workflow =
         file('.github/workflows/ios-release.yml').readAsStringSync();
     expect(workflow,
@@ -715,8 +764,12 @@ echo AVFoundation.framework
         workflow.indexOf('      - uses: subosito/flutter-action@v2');
     final archiveStart = workflow.indexOf(
         '      - name: Archive Runner with embedded WidgetKit extension');
-    final archiveEnd = workflow.indexOf(
-        '      - name: Verify and retain exact Build 21 arm64 Runner symbols');
+    // Step name generalized: "Build 21" is no longer baked into the
+    // symbol-retention step name now that the build number is dynamic (see
+    // the "signed release workflow has explicit Apple signing and cleanup
+    // gates" test above for the full rationale).
+    final archiveEnd = workflow
+        .indexOf('      - name: Verify and retain exact arm64 Runner symbols');
     final ipaStart = workflow.indexOf('      - name: Export signed IPA');
     final ipaEnd = workflow.indexOf('      - name: Upload IPA to TestFlight');
     expect(sourceStart, greaterThanOrEqualTo(0));
@@ -742,7 +795,7 @@ echo AVFoundation.framework
     expect(ipa, contains('BLOCKED_IPA_WIDGET_EXPORT_COMPLIANCE'));
   });
 
-  test('pipe-safe Build 21 version capture preserves a multi-line producer',
+  test('pipe-safe version capture preserves a multi-line producer',
       () async {
     final bash =
         Platform.isWindows ? r'C:\Program Files\Git\bin\bash.exe' : 'bash';

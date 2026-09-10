@@ -338,7 +338,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--issuer-id", help="App Store Connect API issuer ID (or APP_STORE_CONNECT_ISSUER_ID env var)")
     parser.add_argument("--private-key-path", help="Path to the .p8 private key file")
     parser.add_argument("--private-key-base64", help="Base64-encoded .p8 private key contents")
-    parser.add_argument("--emit-github-env", action="store_true", help="Append IOS_BUILD_NUMBER=<n> to $GITHUB_ENV (or stdout if unset)")
+    parser.add_argument("--emit-github-env", action="store_true", help="Append IOS_BUILD_NUMBER=<n> to $GITHUB_ENV (or stderr if unset)")
     parser.add_argument("--json", action="store_true", help="Print the result as JSON to stdout")
     return parser
 

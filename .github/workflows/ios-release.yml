@@ -2,6 +2,37 @@ name: iOS signed release (TestFlight)
 
 on:
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: >-
+          Explicit iOS build number (CFBundleVersion). Leave empty to auto-assign
+          the latest App Store Connect build + 1. Pin an existing value to retry
+          the same build after a pre-transport failure.
+        type: string
+        required: false
+        default: ''
+      build_name:
+        description: >-
+          Marketing version override (CFBundleShortVersionString, X.Y.Z). Leave
+          empty to derive it from the pubspec.yaml version field.
+        type: string
+        required: false
+        default: ''
+      allow_version_train_change:
+        description: >-
+          Allow the resolved marketing version to differ from the latest App Store
+          Connect version train. Required when intentionally moving the release to
+          a new version train.
+        type: boolean
+        required: false
+        default: false
+      dry_run:
+        description: >-
+          Run every build, signing, privacy, compliance and symbol gate but stop
+          immediately before the Apple transport (no TestFlight upload).
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -16,8 +47,6 @@ jobs:
     env:
       IOS_BUNDLE_ID: com.fluxstudio.planflow
       IOS_WIDGET_BUNDLE_ID: com.fluxstudio.planflow.PlanFlowWidget
-      IOS_BUILD_NUMBER: 22
-      IOS_BUILD_NAME: 1.0.0
       APPLE_TEAM_ID: ${{ secrets.PLANFLOW_APPLE_TEAM_ID }}
       DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.PLANFLOW_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
@@ -30,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail-closed Build 22 public release gates
+      - name: Fail-closed public release gates
         shell: bash
         run: |
           set -euo pipefail
@@ -39,12 +68,160 @@ jobs:
             exit 1
           fi
           # GitHub run numbers identify workflow attempts, not iOS binaries. A
-          # failed attempt before transport must be retryable as the same Build 22.
-          if [[ "${IOS_BUILD_NUMBER:-}" != "22" ]]; then
-            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The public iOS release must remain fixed to Build 22."
+          # failed attempt before transport must be retryable as the same build
+          # number, which is why build_number is a workflow_dispatch input and
+          # never derived from the run number.
+          echo "Release gates: ref=refs/heads/main workflow_run=$GITHUB_RUN_NUMBER attempt=$GITHUB_RUN_ATTEMPT."
+
+      - name: Resolve iOS build number and marketing version
+        shell: bash
+        env:
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          INPUT_BUILD_NAME: ${{ inputs.build_name }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          asc_latest_train=""
+          asc_lookup_ok=false
+          asc_json="$RUNNER_TEMP/asc-next-build-number.json"
+          # One App Store Connect scan, not two: --emit-github-env and --json
+          # are answered from the same paginated build query, so the build
+          # number and the version train can never disagree and a transient
+          # second-call failure can no longer silently disable the guard.
+          if [[ -n "${INPUT_BUILD_NUMBER:-}" ]]; then
+            echo "Build number source: workflow_dispatch input (retry pin)."
+            # Validate BEFORE writing to $GITHUB_ENV, never after. A build_number
+            # containing a newline would otherwise inject a second variable
+            # (e.g. a forged ASC_LATEST_TRAIN) into the job environment and make
+            # the version-train guard below approve a train it never verified.
+            # The "Fail-closed build identity gates" step re-validates the same
+            # value on purpose: this is double defense, not a duplicate.
+            # A leading zero is rejected rather than normalized: 0022 would ship
+            # to Apple as CFBundleVersion 0022 and then never string-match the
+            # "22" App Store Connect reports back, silently breaking retry pins.
+            if [[ ! "$INPUT_BUILD_NUMBER" =~ ^[1-9][0-9]{0,9}$ ]]; then
+              echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The build_number input must be 1 to 10 digits, must not start with 0, and must not contain a newline: $(printf '%s' "$INPUT_BUILD_NUMBER" | tr -d '\n' | cut -c1-64)"
+              exit 1
+            fi
+            printf 'IOS_BUILD_NUMBER=%s\n' "$INPUT_BUILD_NUMBER" >> "$GITHUB_ENV"
+            # Pinning a build number is a transport-retry decision; it is not a
+            # decision to move the marketing version train. The train is still
+            # queried (without --emit-github-env, which would overwrite the pin)
+            # and the guard below still applies to this run.
+            if python3 scripts/asc-next-build-number.py --bundle-id "$IOS_BUNDLE_ID" --json > "$asc_json"; then
+              asc_lookup_ok=true
+            else
+              echo "App Store Connect version train lookup failed while the build number was pinned."
+            fi
+          else
+            echo "Build number source: App Store Connect latest build + 1."
+            # Fail-closed: a failed lookup must fail the release, never fall back to 1.
+            python3 scripts/asc-next-build-number.py \
+              --bundle-id "$IOS_BUNDLE_ID" \
+              --emit-github-env \
+              --json > "$asc_json"
+            asc_lookup_ok=true
+          fi
+          if [[ "$asc_lookup_ok" == "true" ]]; then
+            asc_latest_train="$(ASC_JSON="$asc_json" python3 -c 'import json, os; print(json.load(open(os.environ["ASC_JSON"], encoding="utf-8")).get("latestTrain") or "")' || true)"
+          fi
+          train_unverified_reason=""
+          if [[ "$asc_lookup_ok" != "true" ]]; then
+            train_unverified_reason="the App Store Connect version train lookup failed."
+          elif [[ -z "$asc_latest_train" ]]; then
+            train_unverified_reason="App Store Connect did not report a latest version train."
+          elif [[ ! "$asc_latest_train" =~ ^[0-9]+(\.[0-9]+){0,3}$ ]]; then
+            # Same rule as the build_number check above: an unvalidated value is
+            # never forwarded into $GITHUB_ENV, because a newline inside it would
+            # inject a second variable. A malformed train degrades to
+            # "unverified", so the documented allow_version_train_change
+            # recovery still applies unchanged.
+            train_unverified_reason="App Store Connect reported a malformed latest version train."
+            asc_latest_train=""
+          fi
+          if [[ -n "$train_unverified_reason" ]]; then
+            printf 'VERSION_TRAIN_GUARD_UNVERIFIED_REASON=%s\n' "$train_unverified_reason" >> "$GITHUB_ENV"
+          fi
+          build_name="${INPUT_BUILD_NAME:-}"
+          if [[ -n "$build_name" ]]; then
+            echo "Build name source: workflow_dispatch input."
+          else
+            build_name="$(python3 -c 'import re; m = re.search(r"^version:\s*([0-9]+\.[0-9]+\.[0-9]+)", open("pubspec.yaml", encoding="utf-8").read(), re.M); print(m.group(1) if m else "")')"
+            echo "Build name source: pubspec.yaml version field."
+          fi
+          # Validate BEFORE writing to $GITHUB_ENV, never after: a newline in
+          # the resolved marketing version would inject a second variable into
+          # the job environment. The identity-gate step re-validates the same
+          # value on purpose (double defense).
+          if [[ ! "$build_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NAME_CONFIG::The resolved marketing version must be X.Y.Z with no embedded newline: $(printf '%s' "$build_name" | tr -d '\n' | cut -c1-64)"
             exit 1
           fi
-          echo "Build 22 release gates: ref=refs/heads/main workflow_run=$GITHUB_RUN_NUMBER attempt=$GITHUB_RUN_ATTEMPT build=$IOS_BUILD_NUMBER."
+          printf 'IOS_BUILD_NAME=%s\n' "$build_name" >> "$GITHUB_ENV"
+          if [[ -n "$asc_latest_train" ]]; then
+            printf 'ASC_LATEST_TRAIN=%s\n' "$asc_latest_train" >> "$GITHUB_ENV"
+          fi
+          echo "Resolved marketing version: $build_name"
+          echo "App Store Connect latest version train: ${asc_latest_train:-unavailable}"
+
+      - name: Fail-closed build identity gates
+        shell: bash
+        env:
+          ALLOW_VERSION_TRAIN_CHANGE: ${{ inputs.allow_version_train_change }}
+        run: |
+          set -euo pipefail
+          build_number="${IOS_BUILD_NUMBER:-}"
+          build_name="${IOS_BUILD_NAME:-}"
+          if [[ -z "$build_number" ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The resolved iOS build number is empty."
+            exit 1
+          fi
+          if [[ ! "$build_number" =~ ^[0-9]+$ ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The resolved iOS build number must be digits only: $build_number"
+            exit 1
+          fi
+          if [[ "$build_number" =~ ^0 ]]; then
+            # Rejected, not normalized: 0022 would be shipped to Apple as
+            # CFBundleVersion 0022 and would then never string-match the "22"
+            # App Store Connect reports back when a retry is pinned.
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The resolved iOS build number must not have a leading zero: $build_number"
+            exit 1
+          fi
+          if (( ${#build_number} > 10 )); then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The resolved iOS build number must not exceed 10 digits: $build_number"
+            exit 1
+          fi
+          if (( 10#$build_number <= 0 )); then
+            echo "::error title=BLOCKED_IOS_BUILD_NUMBER_CONFIG::The resolved iOS build number must be greater than zero: $build_number"
+            exit 1
+          fi
+          if [[ -z "$build_name" || ! "$build_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=BLOCKED_IOS_BUILD_NAME_CONFIG::The resolved marketing version must be X.Y.Z: ${build_name:-<empty>}"
+            exit 1
+          fi
+          if [[ -z "${ASC_LATEST_TRAIN:-}" ]]; then
+            # Fail-closed: an unverifiable train is treated exactly like an
+            # unapproved train change, because it can hide one.
+            train_unverified_reason="${VERSION_TRAIN_GUARD_UNVERIFIED_REASON:-the App Store Connect latest version train is unavailable.}"
+            if [[ "${ALLOW_VERSION_TRAIN_CHANGE:-false}" == "true" ]]; then
+              echo "Version train could not be verified ($train_unverified_reason) but allow_version_train_change: true explicitly approves resolving $build_name regardless."
+            else
+              echo "::error title=BLOCKED_VERSION_TRAIN_UNVERIFIED::The App Store Connect version train could not be confirmed ($train_unverified_reason), so this run stopped before building to avoid silently opening a new version train with $build_name. If this run is intended, re-run this workflow with allow_version_train_change: true."
+              exit 1
+            fi
+          elif [[ "$build_name" != "$ASC_LATEST_TRAIN" ]]; then
+            if [[ "${ALLOW_VERSION_TRAIN_CHANGE:-false}" == "true" ]]; then
+              echo "Version train change approved by workflow input: $ASC_LATEST_TRAIN -> $build_name."
+            else
+              echo "::error title=BLOCKED_VERSION_TRAIN_CHANGE::App Store Connect is on version train $ASC_LATEST_TRAIN but this run resolved $build_name. The only supported resolution is to re-run this workflow with allow_version_train_change: true."
+              exit 1
+            fi
+          else
+            echo "Version train unchanged: $build_name."
+          fi
+          echo "Build identity gates: build=$build_number version=$build_name."
 
       - name: Preflight protected release gates
         shell: bash
@@ -269,7 +446,7 @@ jobs:
           echo "ARCHIVE_PRIVACY_PREFLIGHT_PASS: PASS"
           echo "Archive gates: Runner and embedded WidgetKit extension present."
 
-      - name: Verify and retain exact Build 22 arm64 Runner symbols
+      - name: Verify and retain exact arm64 Runner symbols
         shell: bash
         run: |
           set -euo pipefail
@@ -289,7 +466,7 @@ jobs:
             echo "::error title=BLOCKED_SYMBOL_UUID_MISMATCH::Runner and dSYM arm64 UUIDs do not match."
             exit 1
           fi
-          symbols_stage="$RUNNER_TEMP/planflow-ios-build22-symbols"
+          symbols_stage="$RUNNER_TEMP/planflow-ios-build${IOS_BUILD_NUMBER}-symbols"
           rm -rf "$symbols_stage"
           mkdir -p "$symbols_stage"
           ditto -c -k --sequesterRsrc --keepParent "$archive_dsym" "$symbols_stage/Runner.app.dSYM.zip"
@@ -338,15 +515,15 @@ jobs:
               handle.write("\n")
           PY
           echo "Exact arm64 Runner/dSYM UUID match: $runner_uuid"
-          echo "Build 22 symbol retention manifest created without app, IPA, archive, plist, or signing material."
+          echo "Symbol retention manifest for build $IOS_BUILD_NUMBER created without app, IPA, archive, plist, or signing material."
 
-      - name: Upload retained Build 22 symbols
+      - name: Upload retained arm64 Runner symbols
         uses: actions/upload-artifact@v4
         with:
-          name: planflow-ios-build22-symbols-${{ github.run_number }}
+          name: planflow-ios-build${{ env.IOS_BUILD_NUMBER }}-symbols-${{ github.run_number }}
           path: |
-            ${{ runner.temp }}/planflow-ios-build22-symbols/Runner.app.dSYM.zip
-            ${{ runner.temp }}/planflow-ios-build22-symbols/manifest.json
+            ${{ runner.temp }}/planflow-ios-build${{ env.IOS_BUILD_NUMBER }}-symbols/Runner.app.dSYM.zip
+            ${{ runner.temp }}/planflow-ios-build${{ env.IOS_BUILD_NUMBER }}-symbols/manifest.json
           if-no-files-found: error
           retention-days: 90
 
@@ -423,10 +600,30 @@ jobs:
             exit 1
           fi
 
+      # Fail-closed gate. The condition is positive on purpose: the Apple
+      # transport runs only when dry_run is explicitly, unambiguously false.
+      # The previous negated form (dry_run "not equal to" the boolean true)
+      # was fail-open -- any value that is not the native boolean true (a
+      # string, an empty value, a mis-cast input) satisfied it and produced an
+      # irreversible TestFlight upload that also burned a build number. Both representations of an
+      # explicit false are accepted because a workflow_dispatch input can
+      # reach this expression as the boolean false or as the string 'false'.
       - name: Upload IPA to TestFlight with App Store Connect API key
+        if: ${{ inputs.dry_run == false || inputs.dry_run == 'false' }}
         shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+          # Second half of the double defense, in the same fail-closed shell
+          # style as the ALLOW_VERSION_TRAIN_CHANGE guard above: even if the
+          # if: expression ever casts the input differently than expected, the
+          # shell refuses to hand a binary to Apple unless dry_run is literally
+          # false.
+          if [[ "${DRY_RUN:-}" != "false" ]]; then
+            echo "::error title=BLOCKED_DRY_RUN_ASSERT::Apple transport refused: dry_run resolved to '${DRY_RUN:-<unset>}' instead of the literal false. No IPA was uploaded and no build number was consumed."
+            exit 1
+          fi
           api_key="$RUNNER_TEMP/asc-api-key.p8"
           umask 077
           printf '%s' "$ASC_API_KEY_P8" > "$api_key"
@@ -440,6 +637,24 @@ jobs:
           echo "TestFlight transport gate: upload accepted by App Store Connect."
           echo "Transport delivery UUID: ${delivery_uuid:-not-reported}"
           echo "TESTFLIGHT_TRANSPORT_UPLOAD_PASS: PASS"
+
+      # Deliberately a separate step from the Apple transport above. Once altool
+      # succeeds the build number is consumed, so an ingestion polling failure
+      # must never be mistaken for a transport failure and must never be retried
+      # under a new build number. GitHub Actions cannot re-run a single step, so
+      # the only two supported recoveries are printed by the step itself below:
+      # re-poll ingestion out-of-band with the checked-in verification script,
+      # or re-run this job with build_number pinned to the same consumed value.
+      # Same fail-closed gate as the transport step above, deliberately
+      # repeated per step rather than shared: a single shared gate would let
+      # one of the two steps run unconditionally.
+      - name: Verify App Store ingestion
+        if: ${{ inputs.dry_run == false || inputs.dry_run == 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_key="$RUNNER_TEMP/asc-api-key.p8"
+          ingestion_status=0
           python3 scripts/verify-app-store-build.py \
             --key-path "$api_key" \
             --key-id "$ASC_KEY_ID" \
@@ -448,8 +663,50 @@ jobs:
             --version "$IOS_BUILD_NAME" \
             --build "$IOS_BUILD_NUMBER" \
             --timeout-seconds 900 \
-            --poll-interval-seconds 30
+            --poll-interval-seconds 30 || ingestion_status=$?
+          if (( ingestion_status != 0 )); then
+            echo "Ingestion verification failed (exit $ingestion_status) for $IOS_BUNDLE_ID $IOS_BUILD_NAME build $IOS_BUILD_NUMBER."
+            echo "The Apple transport already succeeded, so build $IOS_BUILD_NUMBER is consumed. Never re-upload this binary under a new build number."
+            echo "GitHub Actions cannot re-run a single step, so re-running this job re-runs the transport step too. Supported recoveries:"
+            echo "  1. Preferred, no re-upload: run scripts/verify-app-store-build.py yourself (locally or from a separate verification workflow) with the same App Store Connect API key and --bundle-id $IOS_BUNDLE_ID --version $IOS_BUILD_NAME --build $IOS_BUILD_NUMBER until Apple finishes processing."
+            echo "  2. Only if you must re-run this job: pin build_number to $IOS_BUILD_NUMBER so no new build number is burned. Expect the transport step to fail on Apple's duplicate-binary rejection, which is the safe outcome; it does not re-verify ingestion."
+            exit "$ingestion_status"
+          fi
           echo "App Store build ingestion gate: build resource found for $IOS_BUNDLE_ID."
+          # Sole emission point of config/release-manifest.json's
+          # ios.successMarker. It is printed only here, after ingestion
+          # verification actually passed: an accepted Apple transport
+          # (TESTFLIGHT_TRANSPORT_UPLOAD_PASS) and an ingested,
+          # TestFlight-available build are different events. A dry run skips
+          # this whole step, so a dry run can never print this marker.
+          echo "TESTFLIGHT_AVAILABLE: PASS"
+
+      # Exact logical complement of the two gates above (the negation of the
+      # same expression, not a separate guess). When the preceding steps
+      # succeed, exactly one of the two branches runs. Step-level `if:`
+      # without an explicit status function implicitly ANDs in success(), so
+      # if an earlier step in this job fails, all three steps (including this
+      # one) are skipped -- neither branch runs. That is the safe direction
+      # (no upload happens), but it means "exactly one always runs" only
+      # holds when the job reaches this point; an ambiguous dry_run value on
+      # a successful run must never skip both and leave the run with no
+      # record of which path was taken.
+      - name: Dry run stop before Apple transport
+        if: ${{ !(inputs.dry_run == false || inputs.dry_run == 'false') }}
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN:-}" == "true" ]]; then
+            echo "DRY_RUN_STOP_BEFORE_TRANSPORT: PASS"
+            echo "Apple transport and App Store Connect ingestion verification were skipped by the dry_run input."
+            echo "All build, signing, privacy, export-compliance and symbol gates ran to completion."
+          else
+            echo "DRY_RUN_STOP_BEFORE_TRANSPORT: BLOCKED"
+            echo "::error title=BLOCKED_DRY_RUN_AMBIGUOUS::dry_run resolved to '${DRY_RUN:-<unset>}', which is neither the literal true nor the literal false. This run stopped before the Apple transport instead of guessing; nothing was uploaded and no build number was consumed. Re-dispatch with dry_run set explicitly."
+            exit 1
+          fi
 
       - name: Preserve iOS privacy audit reports
         if: ${{ always() }}
@@ -468,7 +725,7 @@ jobs:
           rm -f ios/Runner/GoogleService-Info.plist
           rm -f "$RUNNER_TEMP"/planflow-distribution.p12 "$RUNNER_TEMP"/planflow-runner.mobileprovision "$RUNNER_TEMP"/planflow-widget.mobileprovision "$RUNNER_TEMP"/runner-profile.plist "$RUNNER_TEMP"/widget-profile.plist "$RUNNER_TEMP"/asc-api-key.p8 "$RUNNER_TEMP"/export-options.plist "$RUNNER_TEMP"/planflow-altool-upload.log
           rm -f "${PLANFLOW_IPA_PATH:-}"
-          rm -rf "$RUNNER_TEMP/planflow-ios-build22-symbols"
+          rm -rf "$RUNNER_TEMP/planflow-ios-build${IOS_BUILD_NUMBER:-}-symbols"
           rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_RUNNER_PROFILE_UUID:-}.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/${PLANFLOW_WIDGET_PROFILE_UUID:-}.mobileprovision"
           security delete-keychain "$RUNNER_TEMP/planflow-signing.keychain-db" >/dev/null 2>&1 || true

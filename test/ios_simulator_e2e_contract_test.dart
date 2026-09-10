@@ -25,8 +25,20 @@ void main() {
     // whoever changed it must explain why (and, if legitimate, update the
     // expected digest here deliberately rather than by accident).
     const expectedDigests = <String, String>{
+      // 2026-09-10: updated deliberately for the global release orchestrator
+      // work — ios-release.yml now removes the Build 22 hardcode, adds four
+      // workflow_dispatch inputs, splits out a dedicated ingestion step,
+      // adds a fail-closed version-train guard, and a fail-closed dry_run
+      // gate plus stronger privacy/build-number validation. If this workflow
+      // keeps evolving under active review, this digest will need updating
+      // again — that is expected, not a sign the guard is broken.
+      // 2026-09-10 (later same day): updated again, comment-only, to correct
+      // the "dry run stop" step's own comment (it previously overclaimed
+      // that exactly one of its two branches always runs; it now also notes
+      // that an earlier-step failure skips both, per GitHub's implicit
+      // success() on step-level `if:`).
       '.github/workflows/ios-release.yml':
-          'de1f3af8bfe7dcb686d69350afd22374927562f910ac781b7c9bc1ddff10b9d4',
+          'f189c8fda2f4108926c6104c533dbe9f173d7d6991e8256c6b07d52e661b7d85',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':

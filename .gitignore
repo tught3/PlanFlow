@@ -83,3 +83,5 @@ ios/Flutter/ephemeral/
 .claude/settings.local.json
 # Local Apple App Store Connect private keys must never be committed.
 AuthKey_*.p8
+# Flux Release Orchestrator run state (never committed)
+.release-state/
