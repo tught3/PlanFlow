@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "projectId": "planflow",
+  "displayName": "PlanFlow",
+  "android": {
+    "enabled": true,
+    "productionScript": "scripts/deploy-play-production.ps1",
+    "alphaScript": "scripts/deploy-play-internal.ps1",
+    "alphaProjectKey": "planflow"
+  },
+  "ios": {
+    "enabled": true,
+    "repoSlug": "tught3/PlanFlow",
+    "workflowFile": "ios-release.yml",
+    "releaseRef": "main",
+    "successMarker": "TESTFLIGHT_AVAILABLE"
+  },
+  "version": {
+    "source": "pubspec.yaml",
+    "commitPathspec": ["pubspec.yaml", "ios/Flutter/PlanFlow-Identity.xcconfig"]
+  }
+}
