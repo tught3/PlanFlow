@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-build21-ios-permission-onboarding-build22-20260909",
-  "status": "SOURCE_READY_FOR_NONFORCE_PUSH",
+  "status": "SOURCE_DELIVERED_BUILD22_READY",
   "classification": "COMPLEX",
   "starting_head": "bad565500ed4f24988a555a7c2117947fd247550",
   "starting_origin_main": "ca3d520e37b4a02ffc81f70fbe1cc333bde715d5",
@@ -171,6 +171,7 @@
   "candidate": {
     "base": "origin/main@ca3d520e37b4a02ffc81f70fbe1cc333bde715d5",
     "source_commit": "744e61b9042a313de369ee1102feb1d99ec9c9ae",
+    "delivery_commit": "77d3cc4ef5ce016caac5224be3bc68ebcff2a647",
     "paths": [
       ".github/workflows/ios-release.yml",
       "ios/Runner/AppDelegate.swift",
@@ -193,8 +194,8 @@
   },
   "delivery_gate": {
     "reviewer": "PASS: immutable source candidate reviewed independently with BLOCKER=0 and HIGH=0.",
-    "integrator": "PASS: final source integration approved for non-force push.",
+    "integrator": "PASS: final source integration approved and non-force-pushed as 77d3cc4ef5ce016caac5224be3bc68ebcff2a647.",
     "build22": "READY: source release readiness only. macOS Xcode workflow, GitHub Actions, and iPhone real-device evidence remain pending and must not be implied by this status."
   },
-  "next_step": "Non-force push the approved source candidate, then use the canonical Build22 workflow for macOS/Xcode validation before any real-device conclusion."
+  "next_step": "Use the canonical Build22 workflow for macOS/Xcode validation only when its production/TestFlight dispatch is intentionally authorized; then obtain real-device permission-flow evidence before any App Store readiness claim."
 }
