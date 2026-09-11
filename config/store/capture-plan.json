@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "projectId": "planflow",
+  "platform": "ios",
+  "devices": [
+    {
+      "slot": "IPHONE",
+      "displayClass": "6.9",
+      "simulator": "iPhone 16 Pro Max",
+      "width": 1320,
+      "height": 2868
+    }
+  ],
+  "shots": [
+    {
+      "screenshotId": "iphone69-1-voice-input",
+      "featureIds": ["voice-schedule-input"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-2-departure-alert",
+      "featureIds": ["smart-departure-alert"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-3-voice-edit",
+      "featureIds": ["voice-schedule-edit"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-4-calendar-sync",
+      "featureIds": ["calendar-sync"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-5-home-widget",
+      "featureIds": ["home-widget"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-6-briefing-settings",
+      "featureIds": ["briefing-settings"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-7-group",
+      "featureIds": ["group-management-menu"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "iphone69-8-home-briefing",
+      "featureIds": ["home-today-briefing"],
+      "route": "",
+      "fixture": "demo-default"
+    }
+  ],
+  "determinism": {
+    "locale": "ko_KR",
+    "theme": "light",
+    "statusBarOverride": {
+      "time": "9:41",
+      "battery": 100,
+      "wifi": 3,
+      "cellular": 4
+    }
+  }
+}
