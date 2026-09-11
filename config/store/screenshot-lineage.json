@@ -1,0 +1,765 @@
+{
+  "schemaVersion": 1,
+  "projectId": "planflow",
+  "globalVisualPaths": [
+    "lib/core/theme.dart"
+  ],
+  "features": {
+    "calendar-month": {
+      "description": "월간 캘린더 뷰: 날짜 그리드, 그룹 필터 칩, 선택한 날짜의 개인/그룹 일정 목록을 함께 보여준다. (Read 도구로 IPAD 01, ANDROID_TABLET 1 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/calendar/calendar_screen.dart"
+      ]
+    },
+    "group-dashboard": {
+      "description": "그룹 대시보드: 오늘 일정/이번 주 일정/멤버 수/다가오는 일정 카드와 멤버별 공유 현황, 다가오는 일정 리스트. (Read 도구로 IPAD 02, ANDROID_TABLET 2 직접 확인)",
+      "sourcePaths": [
+        "lib/features/groups/screens/group_dashboard_screen.dart"
+      ]
+    },
+    "group-management-menu": {
+      "description": "그룹 상세 메뉴 화면: 대시보드/그룹 일정/초대 관리/멤버 관리 진입 그리드와 '이 그룹에 새 일정 자동 공유' 토글, 기존 일정 공유 버튼. (Read 도구로 ANDROID_PHONE screenshot 7 직접 확인)",
+      "sourcePaths": [
+        "lib/features/groups/screens/group_detail_screen.dart"
+      ]
+    },
+    "voice-schedule-input": {
+      "description": "음성으로 말한 일정을 파싱해 제목/날짜/시간/장소가 채워진 확인 화면. (Read 도구로 IPHONE screenshot 1, ANDROID_PHONE screenshot 1 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/voice/confirm_screen.dart"
+      ]
+    },
+    "smart-departure-alert": {
+      "description": "일정 상세 화면 하단의 스마트 준비 알람(이동시간 계산 기반 출발/준비 알림) 목록. (Read 도구로 IPHONE screenshot 2, ANDROID_PHONE screenshot 2 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/event/event_detail_screen.dart",
+        "lib/services/travel_time_buffer_service.dart"
+      ]
+    },
+    "voice-schedule-edit": {
+      "description": "AI 일정 대화 화면: 자연어로 일정 조회/수정(장소 추가, 삭제, 이동 등)을 이어서 요청. (Read 도구로 IPHONE screenshot 3, ANDROID_PHONE screenshot 3 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/voice/voice_conversation_screen.dart"
+      ]
+    },
+    "calendar-sync": {
+      "description": "설정 화면의 캘린더 연동 섹션: Google Calendar/네이버 캘린더 연동 상태, 재동기화 버튼, 휴대폰 내부 캘린더 일정 가져오기. (Read 도구로 IPHONE screenshot 4, ANDROID_PHONE screenshot 4 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/settings/settings_screen.dart",
+        "lib/services/naver_caldav_service.dart"
+      ]
+    },
+    "home-widget": {
+      "description": "홈 화면 위젯: 월간 미니 캘린더 + 다음 일정 카드 + 음성 시작 마이크 버튼. (Read 도구로 IPHONE screenshot 5, ANDROID_PHONE screenshot 5 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/home/home_widgets.dart",
+        "lib/services/home_widget_service.dart"
+      ]
+    },
+    "briefing-settings": {
+      "description": "설정 화면의 브리핑 시간 섹션: 브리핑 알람 사용 토글, 모닝/이브닝 브리핑 시간 설정. 별도 화면 파일은 확인하지 못했고 settings_screen.dart 내 섹션으로 추정(설정 화면 전체를 line 단위로 재확인하지 않음). (Read 도구로 IPHONE screenshot 6, ANDROID_PHONE screenshot 6 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/settings/settings_screen.dart"
+      ]
+    },
+    "home-today-briefing": {
+      "description": "홈탭: 오늘 일정 요약 카드, 모닝/이브닝 브리핑 듣기 버튼, 지나간/오늘/다가오는 일정 리스트. (Read 도구로 IPHONE screenshot 8, ANDROID_PHONE screenshot 8 직접 확인)",
+      "sourcePaths": [
+        "lib/screens/home/home_screen.dart",
+        "lib/services/briefing_scheduler_service.dart"
+      ]
+    }
+  },
+  "screenshots": [
+    {
+      "screenshotId": "ipad13-01-calendar",
+      "slot": "IPAD",
+      "displayClass": "13",
+      "path": "docs/screenshots/app-store/ipad-13/01_ipad13_landscape_calendar.png",
+      "sha256": "a1fedc32d1510a01d4b37950922a435d597a48f0d0db3ae701fb3cf20a8b1e33",
+      "width": 2064,
+      "height": 2752,
+      "orientation": "portrait",
+      "featureIds": [
+        "calendar-month"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "한 달 일정을 한눈에",
+        "body": "캘린더와 일정 상세를 함께 확인해요",
+        "claimedFeatureIds": [
+          "calendar-month"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Android tablet (model not verified)",
+      "sourceCapture": "스크린샷 아이폰/가로/PlanFlow_tablet_landscape_1.png",
+      "sourceDimensions": [
+        2064,
+        2752
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": true,
+      "transformations": [
+        "top chrome band y~436-478 replaced with adjacent background color",
+        "bottom chrome band y~2048-2145 (screen-interior x~696-1981) replaced with adjacent background color",
+        "no crop/resize/rotation; canvas preserved at 2064x2752"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [
+        "실상호 '삼성서울병원'이 우측 개인 일정 카드에 그대로 노출됨(Read 도구로 이미지를 직접 열어 확인, 2026-09-11)",
+        "실상호 '스타벅스 강남역 지점'/'스타벅스 강남대로점'이 우측 개인 일정 카드에 그대로 노출됨(Read 도구로 이미지를 직접 열어 확인, 2026-09-11)"
+      ],
+      "lastVerifiedSourceSha": "18d829010edc3861c3925eac35ddc0962f673f95",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "iPad 13\" 슬롯의 정본 후보(치수 2064x2752가 spec과 정확히 일치, docs/screenshots/app-store/ipad-13/README.md 근거). 실제 App Store Connect 업로드 여부는 확인하지 못했다(readback 없음). lastVerifiedSourceSha는 '이 이미지 파일이 저장소에 들어온 커밋'(18d82901, 'chore(screenshots): add iPad 13\" store screenshots with Android chrome removed')이며, 그 시점 이후 소스 코드가 동일하다는 의미는 아니다. piiReviewed=true는 위 findings를 실제로 육안 확인했다는 뜻이지, PII가 없다는 뜻이 아니다 -- 업로드 전 재작업 필요. capture-plan.json(fixture=demo-default, IPHONE_69_ASSET_MISSING 대응)으로 신규 캡처할 때는 이 iPad 세트에서 실측된 것과 같은 실상호(삼성서울병원/스타벅스 강남역) 노출이 재발하지 않도록 데모 데이터에 실제 상호명이 들어가지 않는 fixture를 써야 한다 -- capture-plan.v1 스키마는 determinism 옆에 자유 note 필드를 허용하지 않아(additionalProperties:false) 이 lineage notes에 대신 기록한다."
+    },
+    {
+      "screenshotId": "ipad13-02-group",
+      "slot": "IPAD",
+      "displayClass": "13",
+      "path": "docs/screenshots/app-store/ipad-13/02_ipad13_landscape_group.png",
+      "sha256": "48918b87d2a8f5cf63118465277aa55762528608a01403d20b3c159641040a1a",
+      "width": 2064,
+      "height": 2752,
+      "orientation": "portrait",
+      "featureIds": [
+        "group-dashboard"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "가족과 팀, 넓게 펼쳐보세요",
+        "body": "그룹 일정을 한 화면에서 관리해요",
+        "claimedFeatureIds": [
+          "group-dashboard"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Android tablet (model not verified)",
+      "sourceCapture": "스크린샷 아이폰/가로/PlanFlow_tablet_landscape_2.png",
+      "sourceDimensions": [
+        2064,
+        2752
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": true,
+      "transformations": [
+        "top chrome band y~436-478 replaced with adjacent background color",
+        "bottom chrome band y~2048-2145 (screen-interior x~696-1981) replaced with adjacent background color",
+        "no crop/resize/rotation; canvas preserved at 2064x2752"
+      ],
+      "piiReviewed": false,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "18d829010edc3861c3925eac35ddc0962f673f95",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "이미지를 Read 도구로 직접 열어 확인했으나 뚜렷한 실상호/개인정보는 발견하지 못했다('팀장님과 통화하기' 등 일반 텍스트만 보임). 다만 전수 스캔이 아니므로 piiReviewed는 false로 유지한다. 실제 App Store Connect 업로드 여부는 UNKNOWN. lastVerifiedSourceSha는 파일이 저장소에 들어온 커밋(18d82901)일 뿐, 소스 코드 동일성을 보장하지 않는다."
+    },
+    {
+      "screenshotId": "iphone65-1-voice-input",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_1.png",
+      "sha256": "b6dba269d8beedac1326da0b508136e85fc14df6e97fb9f236959955a055758a",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "voice-schedule-input"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "적지 말고, 말하세요",
+        "body": "'내일 오후 3시 강남역에서 팀 미팅' 처럼 말하면 일정으로 정리돼요",
+        "claimedFeatureIds": [
+          "voice-schedule-input"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (status bar shows a weather-widget icon and a 'TALK' app icon layout inconsistent with iOS's centered-time status bar; judged Android based on direct visual inspection, device model not confirmed)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "이 파일은 App Store 6.9\" 요구 치수(1260x2736)도, 6.5\" 슬롯 자체도 App Store Connect가 실제로 받아주는지 확인되지 않았다. docs/ios/screenshot-inventory.md에 따르면 이 8장은 6.5\" 규격(1242x2688)과 픽셀 단위로 일치하나, 상태바가 Android 기기의 것으로 판단되어(원 아이콘, 배터리 표기 위치 등) sourcePlatform=android, chromeRemoved=false로 기록한다. validator가 PLATFORM_CHROME_MISMATCH(CRITICAL)를 내는 것이 정답이라고 판단해 status=REJECTED로 등록한다(거짓으로 CANDIDATE 처리하지 않음)."
+    },
+    {
+      "screenshotId": "iphone65-2-departure-alert",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_2.png",
+      "sha256": "3fae443284eb12c2508fecf494a38871ea193463b496b43f2deb85e653750922",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "smart-departure-alert"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "나갈 시간까지, 미리 알려드려요",
+        "body": "이동시간을 계산해 언제 출발해야 하는지 미리 알려드려요",
+        "claimedFeatureIds": [
+          "smart-departure-alert"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (same Android-style status bar as screenshot 1)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "screenshot 1과 동일한 사유로 REJECTED. Android 상태바가 그대로 남아있음(Read 도구로 직접 확인)."
+    },
+    {
+      "screenshotId": "iphone65-3-voice-edit",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_3.png",
+      "sha256": "e21e198c10e52bf398aa60e64b217b533a2229491388a1e1eed5947325752924",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "voice-schedule-edit"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "틀리면, 말로 바로 고쳐요",
+        "body": "조회부터 수정까지, 대화하듯 말하세요",
+        "claimedFeatureIds": [
+          "voice-schedule-edit"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (no status bar visible in this crop, but same source set as 1/2)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "이 프레임에는 상태바가 잘려 안 보여 sourcePlatform을 이 이미지 단독으로는 육안 판별 못 했다. 나머지 7장이 모두 같은 캡처 세트(docs/screenshots/store_final/final_deliverables_report.md: 'S23, adb screencap')에서 나온 것으로 문서화되어 있어 android로 기록한다. chromeRemoved=false는 확인 못 했으므로 보수적으로 유지."
+    },
+    {
+      "screenshotId": "iphone65-4-calendar-sync",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_4.png",
+      "sha256": "4b2600ffb9c753ddc00b264d3fdc3482e749c78a2613942c5d5568b054726bb5",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "calendar-sync"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "사용하던 일정도 한곳에서",
+        "body": "네이버·구글 캘린더를 연결해 자동으로 동기화하세요",
+        "claimedFeatureIds": [
+          "calendar-sync"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (not individually re-opened; inferred from the same capture set as screenshot 1/2, which show an Android-style status bar)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": false,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "이 파일 자체는 Read 도구로 열지 않았다(동일 폴더의 store_final_v3/phone_1080x1920/PlanFlow_screenshot_4.png -- 별개 파일, 다른 sha256 -- 을 대신 열어 카피 문구를 확인함). 화면 구성이 같은 캡처 세트에서 나온 것으로 문서화돼 있어 카피는 신뢰할 수 있으나, 이 정확한 파일의 픽셀 내용과 sourcePlatform은 UNVERIFIED로 표시하는 것이 맞다. status=REJECTED는 판단 근거 부족에 따른 보수적 조치."
+    },
+    {
+      "screenshotId": "iphone65-5-home-widget",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_5.png",
+      "sha256": "83b76eeb1532d4b139a57562092de35a6d8861d729d215db34eb361341140a3c",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "home-widget"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "홈 화면에서, 바로 말하세요",
+        "body": "위젯의 마이크 버튼으로 빠르게 일정을 추가해요",
+        "claimedFeatureIds": [
+          "home-widget"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (rendered as a phone-shaped device mockup with a home-screen widget composition, consistent with docs/screenshots/store_final/final_deliverables_report.md's description of an Android home-widget composite)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "Read 도구로 직접 확인. 배경은 단색으로 이미지 패치되어 있고(원본 실사진 배경 대체, final_deliverables_report.md §2 근거) 실명은 보이지 않는다. 다만 이 자산 자체가 Android 홈 위젯 목업이라 iOS 슬롯 부적합 판단은 동일하게 유지."
+    },
+    {
+      "screenshotId": "iphone65-6-briefing-settings",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_6.png",
+      "sha256": "823c86b094d1f0a0ade205466d3736ea694056bacd42d2a586d301ac954a4577",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "briefing-settings"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "원하는 시간에 브리핑을 받아보세요",
+        "body": "모닝·이브닝 브리핑 시간을 직접 설정하세요",
+        "claimedFeatureIds": [
+          "briefing-settings"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (not individually re-opened; copy confirmed via store_final_v3/phone_1080x1920/PlanFlow_screenshot_6.png, a separate file with a different sha256)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": false,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "이 정확한 파일은 Read로 열지 않았다(대신 store_final_v3의 동일 계열 이미지를 열어 카피만 확인). status=REJECTED는 미검증에 따른 보수적 조치."
+    },
+    {
+      "screenshotId": "iphone65-7-group",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_7.png",
+      "sha256": "ec7455f0850916266bbf0dea0a09b64e4e79779cd4101b7227a6e943b34bd41a",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "group-management-menu"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "가족·팀 일정도 함께 관리하세요",
+        "body": "초대·역할·댓글로 일정을 같이 관리해요",
+        "claimedFeatureIds": [
+          "group-management-menu"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (not individually re-opened; copy confirmed via store_final_v3/phone_1080x1920/PlanFlow_screenshot_7.png, a separate file with a different sha256)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": false,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "이 정확한 파일은 Read로 열지 않았다. status=REJECTED는 미검증에 따른 보수적 조치."
+    },
+    {
+      "screenshotId": "iphone65-8-home-briefing",
+      "slot": "IPHONE",
+      "displayClass": "6.5",
+      "path": "스크린샷 아이폰/세로/PlanFlow_screenshot_8.png",
+      "sha256": "9e28f34e8b4d704cac844bbe17ec3745d2afedc2e5cf74de8cd60405fc0c9cf7",
+      "width": 1242,
+      "height": 2688,
+      "orientation": "portrait",
+      "featureIds": [
+        "home-today-briefing"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "적지 말고, 말하세요",
+        "body": "일정 등록부터 나갈 시간까지, 플랜플로우가 챙깁니다",
+        "claimedFeatureIds": [
+          "home-today-briefing"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (not individually re-opened; copy confirmed via store_final_v3/phone_1080x1920/PlanFlow_screenshot_8.png, a separate file with a different sha256)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": false,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
+      "storeUploadState": "UNKNOWN",
+      "status": "REJECTED",
+      "notes": "이 정확한 파일은 Read로 열지 않았다. status=REJECTED는 미검증에 따른 보수적 조치."
+    },
+    {
+      "screenshotId": "android-phone-1-voice-input",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_1.png",
+      "sha256": "67a29d49cb8af9884559b8a35d5035ac9aac41a5af762e0472fbfc867a31931e",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "voice-schedule-input"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "적지 말고, 말하세요",
+        "body": "'내일 오후 3시 강남역에서 팀 미팅' 처럼 말하면 일정으로 정리돼요",
+        "claimedFeatureIds": [
+          "voice-schedule-input"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap (per docs/screenshots/store_final/final_deliverables_report.md row 1)",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "SVG text/badge overlay composited over the raw capture; canvas resized to 1080x1920"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. docs/screenshots/store_final_v3/ 는 .gitignore:63 로 전체 무시되어 git 커밋 이력이 없다 -- lastVerifiedSourceSha를 UNKNOWN으로 둔다(git log가 빈 결과를 반환함, 커밋된 적 없음을 뜻함). 실제 Play Console 업로드 여부는 확인 못 했다(readback 없음)."
+    },
+    {
+      "screenshotId": "android-phone-2-departure-alert",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_2.png",
+      "sha256": "85ddb2aacedb2d7123cf4230cf06f68db5fbda4531e0937ca7217616b1ac6910",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "smart-departure-alert"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "나갈 시간까지, 미리 알려드려요",
+        "body": "이동시간을 계산해 언제 출발해야 하는지 미리 알려드려요",
+        "claimedFeatureIds": [
+          "smart-departure-alert"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "SVG text/badge overlay composited over the raw capture; canvas resized to 1080x1920"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-phone-3-voice-edit",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_3.png",
+      "sha256": "5808db443cc23baf42a914cf20fccefacd30a8371c92d4f0706bb5356e72cdbd",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "voice-schedule-edit"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "틀리면, 말로 바로 고쳐요",
+        "body": "조회부터 수정까지, 대화하듯 말하세요",
+        "claimedFeatureIds": [
+          "voice-schedule-edit"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "SVG text/badge overlay composited over the raw capture; canvas resized to 1080x1920; per final_deliverables_report.md, 5 schedule items were image-patched to synthetic data"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-phone-4-calendar-sync",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_4.png",
+      "sha256": "72dc42fac27906e09bea5a16cb154a7897341e1155656e933bb2643ea5f1a6ef",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "calendar-sync"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "사용하던 일정도 한곳에서",
+        "body": "네이버·구글 캘린더를 연결해 자동으로 동기화하세요",
+        "claimedFeatureIds": [
+          "calendar-sync"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "status bar cropped/cleaned; SVG text overlay; canvas resized to 1080x1920; v3 revised the headline/body copy vs v2"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-phone-5-home-widget",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_5.png",
+      "sha256": "47168a7e41aeec2a35305a58635bbb7862d699875eeea911cc6b3d7732ff8782",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "home-widget"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "홈 화면에서, 바로 말하세요",
+        "body": "위젯의 마이크 버튼으로 빠르게 일정을 추가해요",
+        "claimedFeatureIds": [
+          "home-widget"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap (home-widget composite)",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "widget text and background photo image-patched to synthetic data per final_deliverables_report.md §2; canvas resized to 1080x1920"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-phone-6-briefing-settings",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_6.png",
+      "sha256": "0cd8d59ada54f1346591ba681bfd419e8561e03bb03c7c513deb6e90f323bccb",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "briefing-settings"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "원하는 시간에 브리핑을 받아보세요",
+        "body": "모닝·이브닝 브리핑 시간을 직접 설정하세요",
+        "claimedFeatureIds": [
+          "briefing-settings"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "SVG text overlay composited; canvas resized to 1080x1920; unchanged from v2 per VERIFICATION_REPORT.md"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-phone-7-group",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_7.png",
+      "sha256": "b9a10abb09bc4fb4955b10dfccd09275b2be797e61340cf365e2d1442c07055d",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "group-management-menu"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "가족·팀 일정도 함께 관리하세요",
+        "body": "초대·역할·댓글로 일정을 같이 관리해요",
+        "claimedFeatureIds": [
+          "group-management-menu"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "risk buttons (leave/delete team) cropped out per final_deliverables_report.md row 7; SVG text overlay; canvas resized to 1080x1920; v3 revised the headline/body copy vs v2"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-phone-8-home-briefing",
+      "slot": "ANDROID_PHONE",
+      "path": "docs/screenshots/store_final_v3/phone_1080x1920/PlanFlow_screenshot_8.png",
+      "sha256": "43317c92d26a92b0fe87ec3c180b9988fbf147db7cbefb47f80ac939f95911d5",
+      "width": 1080,
+      "height": 1920,
+      "orientation": "portrait",
+      "featureIds": [
+        "home-today-briefing"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "적지 말고, 말하세요",
+        "body": "일정 등록부터 나갈 시간까지, 플랜플로우가 챙깁니다",
+        "claimedFeatureIds": [
+          "home-today-briefing"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "Samsung Galaxy S23 (SM-S918N), adb screencap",
+      "sourceCapture": null,
+      "marketingTemplate": "docs/screenshots/store_final/figma_source/compose_frame.js",
+      "chromeRemoved": false,
+      "transformations": [
+        "3 image-patched synthetic schedule items per final_deliverables_report.md row 8; CTA badge changed from repeated wordmark to 'PlanFlow' brand mark per VERIFICATION_REPORT.md; canvas resized to 1080x1920"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history)."
+    },
+    {
+      "screenshotId": "android-tablet-1-calendar",
+      "slot": "ANDROID_TABLET",
+      "displayClass": "10",
+      "path": "docs/screenshots/store_final_v3/tablet_1200x1920/PlanFlow_tablet_landscape_1.png",
+      "sha256": "f3014206de4afe6ab7d231e7e3027871fa2b97ee2f51bc3b7e7ca534568c4221",
+      "width": 2560,
+      "height": 1600,
+      "orientation": "landscape",
+      "featureIds": [
+        "calendar-month"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "한 달 일정을 한눈에",
+        "body": "캘린더와 일정 상세를 함께 확인해요",
+        "claimedFeatureIds": [
+          "calendar-month"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (Android tablet, adb screencap presumed but device model not individually confirmed for this file)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": true,
+      "piiFindings": [
+        "실상호 '삼성서울병원'이 우측 개인 일정 카드에 그대로 노출됨(Read 도구로 직접 확인, 2026-09-11)",
+        "실상호 '스타벅스 강남역 지점'/'스타벅스 강남대로점'이 우측 개인 일정 카드에 그대로 노출됨(Read 도구로 직접 확인, 2026-09-11)"
+      ],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 대형화면(10인치) 정본 후보. displayClass는 두 후보('7','10') 중 spec 상 minSide/maxSide/aspectRatio 조건이 동일해 폭 기준 명확히 구분되지 않으므로 큰 화면(2560px)이라는 이유로 '10'을 선택했다 -- 확정 근거 아님, UNVERIFIED. 실상호 PII가 그대로 노출된 채 Play 자산으로 등록되어 있어 업로드 전 재작업이 필요하다. **세트 장수 경고: Google Play는 대형 화면(태블릿) 스크린샷을 세트당 최소 4장 요구한다(specs/google-graphics.2026-09-11.json의 ANDROID_TABLET.10.minCount=4). 이 슬롯에는 2장만 등록되어 있다 -- fluxstore validate/impact/plan 코드에는 minCount/maxCount를 검사하는 로직이 전혀 없음을 확인했다(grep 0건). 즉 이 부족은 기계 검증으로 잡히지 않고, 이 notes로만 기록된다.**"
+    },
+    {
+      "screenshotId": "android-tablet-2-group",
+      "slot": "ANDROID_TABLET",
+      "displayClass": "10",
+      "path": "docs/screenshots/store_final_v3/tablet_1200x1920/PlanFlow_tablet_landscape_2.png",
+      "sha256": "b8e12132d517272c3ab23db8e3177be683dd99ea596daf0017e671a507b84d29",
+      "width": 2560,
+      "height": 1600,
+      "orientation": "landscape",
+      "featureIds": [
+        "group-dashboard"
+      ],
+      "fixture": "unknown",
+      "copy": {
+        "headline": "가족과 팀, 넓게 펼쳐보세요",
+        "body": "그룹 일정을 한 화면에서 관리해요",
+        "claimedFeatureIds": [
+          "group-dashboard"
+        ]
+      },
+      "sourcePlatform": "android",
+      "sourceDevice": "unknown (Android tablet)",
+      "sourceCapture": null,
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "UNKNOWN",
+      "storeUploadState": "UNKNOWN",
+      "status": "CANDIDATE",
+      "notes": "Play 대형화면(10인치) 정본 후보. displayClass='10'은 UNVERIFIED(위 android-tablet-1과 동일 사유). 세트 최소 4장 요구 대비 2장만 존재하는 문제도 동일하게 적용된다(위 android-tablet-1의 notes 참조)."
+    }
+  ]
+}
