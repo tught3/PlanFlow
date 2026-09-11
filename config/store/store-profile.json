@@ -1,0 +1,1244 @@
+{
+  "schemaVersion": 1,
+  "profileRevision": 0,
+  "projectId": "planflow",
+  "usesPublisher": "fluxstudio",
+  "storeProfileStatus": "DRAFT",
+  "binding": {
+    "projectId": "planflow",
+    "repoRemote": "github.com/tught3/planflow",
+    "repoSubpath": "",
+    "androidApplicationId": "com.fluxstudio.planflow",
+    "iosBundleId": "com.fluxstudio.planflow",
+    "storeAppIds": {
+      "android": "com.fluxstudio.planflow",
+      "ios": null
+    }
+  },
+  "platforms": {
+    "android": {
+      "enabled": true
+    },
+    "ios": {
+      "enabled": true
+    }
+  },
+  "locales": [
+    "ko-KR"
+  ],
+  "storeMetadata": {
+    "android": {
+      "name": {
+        "value": "PlanFlow - AI 음성 일정관리",
+        "source": "STORE_READBACK",
+        "evidence": [
+          "config/store/snapshots/android-readback-2026-09-11.json"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "STORE_ACCEPTED",
+        "note": "production track 1.1.1(164) completed 상태에서 edits.insert로 읽은 현재 게시 listing (fields.listings.ko-KR.title). 이 값은 스토어 현재값을 profile의 '승인된 목표값'으로 바꾼 것이다 — 다음 릴리스에서 다르게 바꾸려면 사용자 승인이 필요하다. 참고(과거 출처): android:label=\"PlanFlow\" (android/app/src/main/AndroidManifest.xml:52), docs/play-store-listing.md:11의 문서상 마케팅명 \"플랜플로우: 말하는 일정 캘린더\"는 모두 이번 readback으로 대체됨."
+      },
+      "category": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Play category is MANUAL_ONLY — not readable via Play Developer API. docs/play-store-listing.md:14 states '생산성' but that is a doc, not a store readback."
+      },
+      "price": {
+        "value": "free",
+        "source": "USER_STATED",
+        "evidence": [
+          "pubspec.yaml:9-51"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "No in_app_purchase dependency found in pubspec.yaml dependencies block (lines 9-51), supporting a free/no-IAP listing, but actual Play Console price tier is unconfirmed."
+      },
+      "privacyPolicyUrl": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "apps-in-toss/src/features/auth/LoginScreen.tsx:27",
+          "docs/release-console-checklist.md:15",
+          "https://fluxstudio.co.kr/privacy (HTTP 200 measured 2026-09-11)",
+          "https://tught3.github.io/PlanFlow/privacy-policy.html (HTTP 200 measured 2026-09-11)"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Two candidate URLs found, both HTTP 200: (1) https://fluxstudio.co.kr/privacy — code-canonical per LoginScreen.tsx:27 and release-console-checklist.md:15, but this is a generic FluxStudio/HealthFlow homepage page that does not enumerate PlanFlow-specific data collection; (2) https://tught3.github.io/PlanFlow/privacy-policy.html — PlanFlow-specific content, last updated 2026-05-10, does not mention AdMob. The value actually entered in App Store Connect / Play Console is unknown; do not assume either is the store-registered value without readback."
+      },
+      "supportUrl": {
+        "value": "https://fluxstudio.co.kr/planflow-support",
+        "source": "DERIVED",
+        "evidence": [
+          "https://fluxstudio.co.kr/planflow-support (HTTP 200 measured 2026-09-11)"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "HTTP 200 measured 2026-09-11; 저장소 문서에 이 URL 없음; 스토어 입력값 미확인"
+      },
+      "marketingUrl": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE"
+      },
+      "copyright": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE"
+      },
+      "shortDescription": {
+        "value": "말하면 일정이 됩니다. AI가 음성을 분석해 일정을 자동 등록하고, 출발 알림까지 계산해요.",
+        "source": "STORE_READBACK",
+        "evidence": [
+          "config/store/snapshots/android-readback-2026-09-11.json"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "STORE_ACCEPTED",
+        "note": "production track 1.1.1(164) completed 상태에서 edits.insert로 읽은 현재 게시 listing (fields.listings.ko-KR.shortDescription). 이 값은 스토어 현재값을 profile의 '승인된 목표값'으로 바꾼 것이다 — 다음 릴리스에서 다르게 바꾸려면 사용자 승인이 필요하다. 참고(과거 출처, 이제 stale): docs/play-store-listing.md:20-26 (2026-07-12, v1.1.0+28)."
+      },
+      "description": {
+        "value": "🎙 말하는 순간, 일정이 완성됩니다\n\n\"다음 주 화요일 오후 3시 강남에서 팀 회의\" — 이 한 마디로 충분합니다.\nPlanFlow는 음성을 AI로 분석해 날짜, 시간, 장소, 제목을 자동으로 파악하고 일정으로 저장합니다.\n\n━━━━━━━━━━━━━━━━━━━━\n🚀 핵심 기능\n━━━━━━━━━━━━━━━━━━━━\n\n🎙 AI 음성 일정 입력\n복잡한 타이핑 없이 말 한마디로 일정 등록. AI가 날짜·시간·장소·메모를 자동 파악합니다.\n\n🗺 이동시간 계산 출발 알림\n약속 장소까지의 실제 이동 시간을 계산해, 여유 있게 출발할 수 있도록 미리 알려드립니다.\n\n☀️ 아침·저녁 브리핑\n오늘 일정을 AI가 음성으로 브리핑해드립니다. 하루를 준비하는 가장 스마트한 방법.\n\n📅 캘린더 연동\nGoogle 캘린더와 연동해 기존 일정도 함께 관리하세요.\n\n🏠 홈 위젯\n마이크 버튼 하나로 홈 화면에서 바로 일정을 추가할 수 있습니다.\n\n━━━━━━━━━━━━━━━━━━━━\n🔒 프라이버시 우선\n━━━━━━━━━━━━━━━━━━━━\n\n음성은 기기 내에서만 처리됩니다. 녹음 파일이 서버로 전송되지 않으며, 텍스트 변환 후에만 AI 분석이 이루어집니다. 내 목소리는 내 기기 안에서만 머뭅니다.\n\n━━━━━━━━━━━━━━━━━━━━\n💎 PRO 얼리버드\n━━━━━━━━━━━━━━━━━━━━\n\n지금 앱 내에서 PRO 얼리버드를 신청하시면, 유료 전환 시 특별 혜택을 드립니다.\n현재 베타 기간 동안 모든 기능을 무료로 사용하실 수 있습니다.\n\n━━━━━━━━━━━━━━━━━━━━\n📬 문의 및 피드백\n━━━━━━━━━━━━━━━━━━━━\n\n버그 신고, 기능 제안, 사용 후기는 앱 내 피드백 기능을 통해 전달해 주세요.\n소중한 의견 하나하나가 PlanFlow를 만들어갑니다.",
+        "source": "STORE_READBACK",
+        "evidence": [
+          "config/store/snapshots/android-readback-2026-09-11.json"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "STORE_ACCEPTED",
+        "note": "production track 1.1.1(164) completed 상태에서 edits.insert로 읽은 현재 게시 listing (fields.listings.ko-KR.fullDescription). 이 값은 스토어 현재값을 profile의 '승인된 목표값'으로 바꾼 것이다 — 다음 릴리스에서 다르게 바꾸려면 사용자 승인이 필요하다. 참고(과거 출처, 이제 stale): docs/play-store-listing.md:32-93 (2026-07-12, v1.1.0+28)."
+      }
+    },
+    "ios": {
+      "name": {
+        "value": "PlanFlow",
+        "source": "CODE_EVIDENCE",
+        "evidence": [
+          "ios/Runner/Info.plist:11-12",
+          "ios/Runner/Info.plist:46-47"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE"
+      },
+      "category": {
+        "value": "productivity",
+        "source": "USER_STATED",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "App Store 제출 시 설정했다고 사용자가 진술. readback으로 확인 필요."
+      },
+      "secondaryCategory": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "docs/ios/app-store-metadata.md:140"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Doc explicitly marks this PENDING_USER_INPUT."
+      },
+      "price": {
+        "value": "free",
+        "source": "USER_STATED",
+        "evidence": [
+          "pubspec.yaml:9-51"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "No in_app_purchase dependency found in pubspec.yaml dependencies block (lines 9-51), supporting a free/no-IAP listing, but actual App Store Connect price tier is unconfirmed."
+      },
+      "privacyPolicyUrl": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "apps-in-toss/src/features/auth/LoginScreen.tsx:27",
+          "docs/ios/app-store-metadata.md:150-157",
+          "https://fluxstudio.co.kr/privacy (HTTP 200 measured 2026-09-11)",
+          "https://tught3.github.io/PlanFlow/privacy-policy.html (HTTP 200 measured 2026-09-11)"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "docs/ios/app-store-metadata.md:150-152 explicitly marks this PENDING_USER_INPUT as of the doc's writing. Two live candidate URLs exist (see Android privacyPolicyUrl note) but the value actually entered for the pending-review 1.1.1(23) submission is unknown."
+      },
+      "supportUrl": {
+        "value": "https://fluxstudio.co.kr/planflow-support",
+        "source": "DERIVED",
+        "evidence": [
+          "https://fluxstudio.co.kr/planflow-support (HTTP 200 measured 2026-09-11)"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "HTTP 200 measured 2026-09-11; 저장소 문서에 이 URL 없음; 스토어 입력값 미확인"
+      },
+      "marketingUrl": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE"
+      },
+      "copyright": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE"
+      },
+      "subtitle": {
+        "value": null,
+        "source": "REPO_DOC_STALE",
+        "evidence": [
+          "docs/ios/app-store-metadata.md:45-53"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "LOW",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Draft derived from Play listing, unverified char-count/policy compliance. authoritative value from store readback (Android R01 / iOS R02)."
+      },
+      "description": {
+        "value": null,
+        "source": "REPO_DOC_STALE",
+        "evidence": [
+          "docs/ios/app-store-metadata.md:55-124"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "LOW",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Draft with author-noted TODOs (marketing review, Apple 2.3.7/2.3.10 recheck not done). authoritative value from store readback (Android R01 / iOS R02)."
+      },
+      "keywords": {
+        "value": null,
+        "source": "REPO_DOC_STALE",
+        "evidence": [
+          "docs/ios/app-store-metadata.md:125-134"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "LOW",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Doc itself flags this as TODO (100-byte limit not verified against Korean UTF-8 byte length). authoritative value from store readback (Android R01 / iOS R02)."
+      },
+      "promotionalText": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE"
+      }
+    }
+  },
+  "privacy": {
+    "android": {
+      "dataTypes": {
+        "voiceAudio": {
+          "collected": {
+            "value": false,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/stt_service.dart:718"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "SpeechListenOptions(onDevice: true) — STT runs on-device; raw audio is not sent to a server."
+          }
+        },
+        "voiceInputText": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/gpt_service.dart:60",
+              "lib/screens/voice/confirm_screen.dart:2367"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/gpt_service.dart:60"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Transcribed voice text is sent to Supabase Edge Function 'openai-proxy', which forwards to OpenAI for schedule parsing."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2366-2367"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "insertVoiceLog payload includes 'user_id': userId alongside 'raw_text', confirming linkage."
+          }
+        },
+        "location": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2353-2357"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "location_history table stores free-text location extracted from user speech ('강남역' etc.), not raw GPS coordinates."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2354"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "insertLocationHistory payload includes 'user_id': userId."
+          }
+        },
+        "preciseLocation": {
+          "collected": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [
+              "lib/services/travel_time_buffer_service.dart:54-59",
+              "docs/privacy-audit-2026-08-04.md:41"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "travel_time_buffer_service.dart takes latitude/longitude parameters and estimates travel time from coordinates; docs/privacy-audit-2026-08-04.md:41 states 'Google Maps Distance Matrix API (출발/도착 좌표만 전송)' but this repo audit doc, not a direct HTTP-call-site read, is the only evidence found for outbound coordinate transmission. decisionRequired: PRECISE_LOCATION_COLLECTION."
+          }
+        },
+        "calendar": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/naver_caldav_service.dart:1740",
+              "lib/services/naver_caldav_service.dart:1762"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "exportEvent() builds an HTTP PUT request to sync event data to Naver CalDAV when the user enables the integration."
+          },
+          "shared": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/features/groups/repositories/group_event_repository.dart:53-54"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Group feature shares calendar/event data with other group members."
+          }
+        },
+        "emailAndUserId": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/auth_service.dart:347"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Supabase Auth-based account with deleteAccount() Edge Function call."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/auth_service.dart:347"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          },
+          "deletable": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/auth_service.dart:347",
+              "lib/services/auth_service.dart:368"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "deleteAccount() invokes Edge Function 'delete-account'."
+          }
+        },
+        "crashData": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "pubspec.yaml:23"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "firebase_crashlytics: ^4.1.3 dependency present."
+          },
+          "linkedToUser": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [
+              "docs/privacy-audit-2026-08-04.md:45"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Repo audit doc claims PII (user id/email/name) is not configured for Crashlytics, but this was not independently re-verified against current Firebase console settings in this pass."
+          }
+        },
+        "groupContent": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Group event comments (group_event_comments table) are stored and shared among group members."
+          },
+          "shared": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/features/groups/repositories/group_event_comment_repository.dart:30"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          }
+        },
+        "androidAdvertisingId": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "android/app/src/main/AndroidManifest.xml:4"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "uses-permission com.google.android.gms.permission.AD_ID declared; restored by commit aaf1bfed (git log verified 2026-09-11: 'feat(rc): voice-conv keys + restore AD_ID permission')."
+          },
+          "purposes": {
+            "value": [
+              "advertising"
+            ],
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/ad_service.dart:491"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "MobileAds.instance.initialize() call in ad_service.dart."
+          },
+          "shared": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/ad_service.dart:491"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Shared with AdMob (Google) for rewarded-ad serving."
+          }
+        }
+      }
+    },
+    "ios": {
+      "dataTypes": {
+        "voiceAudio": {
+          "collected": {
+            "value": false,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/stt_service.dart:718"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "onDevice: true is set in the shared (non-platform-specific) stt_service.dart code path."
+          }
+        },
+        "voiceInputText": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/gpt_service.dart:60",
+              "lib/screens/voice/confirm_screen.dart:2367"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2366-2367"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          },
+          "usedForTracking": {
+            "value": false,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/gpt_service.dart:60"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Sent only to first-party Supabase Edge Function / OpenAI for app functionality, not for cross-app tracking."
+          }
+        },
+        "location": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2353-2357"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Same shared Dart code path as Android; free-text location, not GPS coordinates."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2354"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          }
+        },
+        "emailAndUserId": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/auth_service.dart:347"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/services/auth_service.dart:347"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          }
+        },
+        "crashData": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "pubspec.yaml:23"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          },
+          "linkedToUser": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [
+              "docs/privacy-audit-2026-08-04.md:45"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          }
+        },
+        "groupContent": {
+          "collected": {
+            "value": true,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE"
+          }
+        },
+        "advertisingData": {
+          "collected": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [
+              "lib/services/ad_runtime_policy.dart:5-8",
+              "ios/Runner/Info.plist:7"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Dart-level policy (ad_runtime_policy.dart) keeps iOS rewarded ads unconfigured/disabled, but Info.plist declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may still self-initialize on iOS regardless of the Dart gate. decisionRequired: IOS_ADS_TRACKING_ANSWER."
+          },
+          "usedForTracking": {
+            "value": false,
+            "source": "CODE_EVIDENCE",
+            "evidence": [
+              "ios/Runner/Info.plist:32"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "Grep for requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager across lib/ returned 0 matches, and no SKAdNetworkItems key exists in Info.plist. NSUserTrackingUsageDescription key is present in Info.plist but no ATT request code was found — review-risk memo: a permission string without a corresponding runtime ATT prompt can itself be flagged in App Review."
+          }
+        },
+        "photos": {
+          "collected": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [
+              "ios/Runner/Info.plist:40-42"
+            ],
+            "lastVerified": "2026-09-11",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "NSPhotoLibraryUsageDescription / NSPhotoLibraryAddUsageDescription are declared, but no image_picker or comparable photo-library API usage was found anywhere under lib/ (grep for image_picker/ImagePicker/PHPickerViewController: 0 matches). Could not determine whether photos are actually collected/uploaded without deeper native-plugin-level review."
+          }
+        }
+      }
+    },
+    "sdks": [
+      "google_mobile_ads (pubspec.yaml:49)",
+      "firebase_crashlytics (pubspec.yaml:23)",
+      "firebase_remote_config (pubspec.yaml:24)",
+      "supabase_flutter (pubspec.yaml:39)",
+      "google_sign_in (pubspec.yaml:31)",
+      "speech_to_text (pubspec.yaml:37)"
+    ],
+    "tracking": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "ios/Runner/Info.plist:32"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "MEDIUM",
+      "requiresHumanAuthority": true,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "Top-level tracking summary (iOS ATT). NSUserTrackingUsageDescription key present in Info.plist but no ATT request code found in lib/ (0 matches for requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager) and 0 SKAdNetworkItems declared — review-risk memo. Android AD_ID-based ad personalization is separately governed by UMP consent in lib/services/ad_consent_service.dart, feeding the Play Data Safety 'advertising' purpose declaration, not this iOS ATT field."
+    }
+  },
+  "content": {
+    "ageRating": {
+      "android": {
+        "value": null,
+        "source": "USER_STATED",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "사용자가 App Store 제출 시 '연령 등급 설정'을 했다고 진술. 구체 등급 값 미확인."
+      },
+      "ios": {
+        "value": null,
+        "source": "USER_STATED",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "사용자가 App Store 제출 시 '연령 등급 설정'을 했다고 진술. 구체 등급 값 미확인."
+      }
+    },
+    "contentRights": {
+      "value": "DOES_NOT_USE_THIRD_PARTY_CONTENT",
+      "source": "USER_STATED",
+      "evidence": [],
+      "lastVerified": "2026-09-11",
+      "confidence": "MEDIUM",
+      "requiresHumanAuthority": true,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "사용자가 PlanFlow는 콘텐츠 권한 질문에 '아니요'라고 진술."
+    },
+    "ugc": {
+      "value": true,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "Group event comments are user-generated content. Moderation capability (report/block) not confirmed — decisionRequired: UGC_MODERATION."
+    },
+    "chat": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "pubspec.yaml:9-51"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "MEDIUM",
+      "requiresHumanAuthority": false,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "No 1:1/group chat screens or SDKs found: pubspec.yaml dependencies block (lines 9-51) contains no chat/messaging SDK, confirmed by python -m fluxstore impact --project-root E:\\FluxStudio\\PlanFlow --json (SDK fingerprint componentCount=7, all 7 are non-chat: google_mobile_ads/firebase_crashlytics/firebase_remote_config/firebase_core/supabase_flutter/google_sign_in/speech_to_text). glob for chat*.dart under lib/ returned 0 files; grep -rli 'chat' lib/ found only lib/screens/home/home_widgets.dart:417 and lib/widgets/planflow_voice_fab.dart:70, both Icons.chat_bubble_outline icon usage, not a chat feature. Group commentary is classified under 'ugc', not chat."
+    },
+    "health": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "pubspec.yaml:9-51"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "MEDIUM",
+      "requiresHumanAuthority": true,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "No health-related SDK or feature found in pubspec.yaml/lib."
+    },
+    "finance": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "pubspec.yaml:9-51"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "MEDIUM",
+      "requiresHumanAuthority": true,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "No finance/payments SDK or feature found (no in_app_purchase dependency)."
+    },
+    "gambling": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "pubspec.yaml:9-51"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "MEDIUM",
+      "requiresHumanAuthority": true,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "No gambling-related feature or SDK found."
+    },
+    "ads": {
+      "android": {
+        "value": true,
+        "source": "CODE_EVIDENCE",
+        "evidence": [
+          "lib/services/ad_service.dart:491",
+          "android/app/src/main/AndroidManifest.xml:4"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": true,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "MobileAds.instance.initialize() (ad_service.dart:491) plus the AD_ID permission (AndroidManifest.xml:4) confirm Android rewarded ads are active."
+      },
+      "ios": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "lib/services/ad_runtime_policy.dart:5-8",
+          "ios/Runner/Info.plist:7"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": true,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "ad_runtime_policy.dart:5-8 disables the Dart-level rewarded-ad path on iOS (isAdsRuntimeSupported() only returns true for Android), but Info.plist:7 still declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may self-initialize on iOS regardless of the Dart gate. decisionRequired: IOS_ADS_TRACKING_ANSWER."
+      }
+    },
+    "childDirected": {
+      "value": null,
+      "source": "UNKNOWN",
+      "evidence": [],
+      "lastVerified": "2026-09-11",
+      "confidence": "UNKNOWN",
+      "requiresHumanAuthority": true,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "decisionRequired: CHILD_DIRECTED."
+    }
+  },
+  "monetization": {
+    "model": {
+      "android": {
+        "value": "free_with_ads",
+        "source": "CODE_EVIDENCE",
+        "evidence": [
+          "lib/services/ad_service.dart:491",
+          "android/app/src/main/AndroidManifest.xml:4"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Rewarded ads active (MobileAds.instance.initialize()) and no in_app_purchase dependency in pubspec.yaml -> free_with_ads."
+      },
+      "ios": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "lib/services/ad_runtime_policy.dart:5-8",
+          "ios/Runner/Info.plist:7"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "광고 런타임 상태 미확정(see content.ads.ios / decisionRequired IOS_ADS_TRACKING_ANSWER). App이 '무료'라는 사실 자체는 사용자 진술(USER_STATED, pubspec.yaml에 in_app_purchase 없음으로 뒷받침)이지만, 광고 유무에 따라 model이 'free' 또는 'free_with_ads'로 갈리므로 전체 monetization.model 값은 UNKNOWN."
+      }
+    },
+    "iap": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "pubspec.yaml:9-51"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "No in_app_purchase dependency declared in pubspec.yaml (grep returned 0 matches)."
+    },
+    "subscription": {
+      "value": false,
+      "source": "CODE_EVIDENCE",
+      "evidence": [
+        "pubspec.yaml:9-51"
+      ],
+      "lastVerified": "2026-09-11",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "No in_app_purchase dependency declared in pubspec.yaml (grep returned 0 matches)."
+    },
+    "ads": {
+      "android": {
+        "value": true,
+        "source": "CODE_EVIDENCE",
+        "evidence": [
+          "lib/services/ad_service.dart:491",
+          "android/app/src/main/AndroidManifest.xml:4"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": true,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Same evidence as content.ads.android."
+      },
+      "ios": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "lib/services/ad_runtime_policy.dart:5-8",
+          "ios/Runner/Info.plist:7"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": true,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "Same evidence as content.ads.ios."
+      }
+    }
+  },
+  "screenshots": {
+    "lineageFile": "config/store/screenshot-lineage.json"
+  },
+  "review": {
+    "loginRequired": true,
+    "demoAccountRequired": true,
+    "usernameRef": "gh-secret:PLANFLOW_REVIEW_DEMO_USERNAME",
+    "passwordRef": "gh-secret:PLANFLOW_REVIEW_DEMO_PASSWORD",
+    "credentialStatus": "NOT_PROVISIONED",
+    "notesTemplate": {
+      "value": "음성으로 일정을 입력하면 날짜·시간·장소가 자동 정리됩니다. 그룹 캘린더 기능은 그룹 초대 후 확인 가능합니다.",
+      "source": "DERIVED",
+      "evidence": [],
+      "lastVerified": "2026-09-11",
+      "confidence": "LOW",
+      "requiresHumanAuthority": false,
+      "approval": "NONE",
+      "storeAcceptance": "NONE",
+      "note": "오케스트레이터 초안, 사용자 미승인"
+    }
+  },
+  "releasePolicy": {
+    "ios": {
+      "submit": {
+        "value": "MANUAL",
+        "source": "USER_STATED",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "첫 제출은 사람이 함."
+      },
+      "release": {
+        "value": "AUTOMATIC_AFTER_APPROVAL",
+        "source": "USER_STATED",
+        "evidence": [],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "사용자 선호(명세 §32). ASC releaseType 실제값은 iOS readback 필요."
+      }
+    },
+    "android": {
+      "submit": {
+        "value": "MANUAL",
+        "source": "CODE_EVIDENCE",
+        "evidence": [
+          "scripts/deploy-play-production.ps1:44-49"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "MEDIUM",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "deploy-play-production.ps1은 로컬에서 사람이 직접 실행해야 하며(enabled=true인 미추적 production config 필요, 자동 트리거/CI 스케줄 없음), 업로드 자체가 수동 게이트임을 코드로 확인."
+      },
+      "release": {
+        "value": null,
+        "source": "UNKNOWN",
+        "evidence": [
+          "scripts/deploy-play-production.ps1:162-165"
+        ],
+        "lastVerified": "2026-09-11",
+        "confidence": "UNKNOWN",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "NONE",
+        "note": "scripts/deploy-play-production.ps1:162-165가 Gradle Play Publisher의 publishReleaseBundle을 track=production으로 호출한다는 사실은 CODE_EVIDENCE로 확인되나, 스크립트에 userFraction/inProgress/completed 등 명시적 릴리즈 상태 설정이 없어 MANUAL_AFTER_APPROVAL/AUTOMATIC_AFTER_APPROVAL/SCHEDULED 중 어느 release 모드인지는 코드로 확정되지 않음."
+      }
+    }
+  },
+  "binaryReleaseGate": "advisory",
+  "protectedTargets": [
+    {
+      "platform": "ios",
+      "target": "current_submission:1.1.1(23)",
+      "mode": "READ_ONLY_PROTECTED",
+      "reason": "first App Store submission pending review (user-stated 2026-09-11); no store mutation during Store Intelligence qualification"
+    },
+    {
+      "platform": "android",
+      "target": "production_track",
+      "mode": "READ_ONLY_PROTECTED",
+      "reason": "qualification: readback/dry-run only"
+    }
+  ],
+  "qualificationMode": true,
+  "blockers": [
+    {
+      "code": "ANDROID_TABLET_SET_BELOW_MIN",
+      "platform": "android",
+      "detail": "Play 대형 화면(7\"/10\") 스크린샷 세트는 최소 4장 필요(spec store/specs/google-graphics.2026-09-11.json minCount 4, 출처 https://support.google.com/googleplay/android-developer/answer/9866151 조회 2026-09-11). PlanFlow canonical 세트 docs/screenshots/store_final_v3/tablet_1200x1920/는 2장(2560x1600)만 존재(디렉터리 직접 확인: PlanFlow_tablet_landscape_1.png, PlanFlow_tablet_landscape_2.png). 스토어 readback(2026-09-11) 결과 sevenInchScreenshots 1장, tenInchScreenshots 1장 업로드됨(config/store/snapshots/android-readback-2026-09-11.json fields.images.ko-KR) — 최소 4장 요건 미달 확정.",
+      "requiresHumanAuthority": false
+    },
+    {
+      "code": "PRIVACY_POLICY_MISMATCH",
+      "platform": "both",
+      "detail": "Two live candidate privacy policy URLs exist with different content and neither is confirmed as the store-registered value: https://fluxstudio.co.kr/privacy (generic FluxStudio/HealthFlow page, code-canonical per apps-in-toss/src/features/auth/LoginScreen.tsx:27, does not enumerate PlanFlow-specific data collection) vs https://tught3.github.io/PlanFlow/privacy-policy.html (PlanFlow-specific, last updated 2026-05-10, does not mention AdMob).",
+      "requiresHumanAuthority": true
+    },
+    {
+      "code": "IPHONE_69_ASSET_MISSING",
+      "platform": "ios",
+      "detail": "6.9\" iPhone screenshots are missing. Existing '스크린샷 아이폰/세로' assets are 1242x2688 (the 6.5\" iPhone spec), not one of the Apple-approved 6.9\" dimensions (1260x2736, 1290x2796, 1320x2868 중 하나; capture plan은 1320x2868 사용 — iPhone 16 Pro Max 시뮬레이터 해상도). See docs/ios/screenshot-inventory.md:7-15.",
+      "requiresHumanAuthority": false
+    },
+    {
+      "code": "DATA_SAFETY_DOC_STALE_AD_ID",
+      "platform": "android",
+      "detail": "docs/play-console-data-safety.md contains no mention of AD_ID/Advertising ID/AdMob, but the AD_ID permission and AdMob SDK are active in code. Verified: commit aaf1bfed ('feat(rc): voice-conv keys + restore AD_ID permission') restored android/app/src/main/AndroidManifest.xml:4 (com.google.android.gms.permission.AD_ID), and lib/services/ad_service.dart:491 calls MobileAds.instance.initialize().",
+      "requiresHumanAuthority": true
+    },
+    {
+      "code": "IOS_ADMOB_NATIVE_INIT_UNKNOWN",
+      "platform": "ios",
+      "detail": "lib/services/ad_runtime_policy.dart:5-8 disables the Dart-level rewarded-ad path on iOS, but ios/Runner/Info.plist:7 still declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may auto-initialize on iOS regardless of the Dart gate.",
+      "requiresHumanAuthority": true
+    },
+    {
+      "code": "ASC_APP_ID_UNKNOWN",
+      "platform": "ios",
+      "detail": "binding.storeAppIds.ios is null pending an iOS App Store Connect readback; no store mutation is permitted during this qualification pass.",
+      "requiresHumanAuthority": false
+    },
+    {
+      "code": "STORE_BASELINE_NOT_CAPTURED",
+      "platform": "ios",
+      "detail": "Android baseline captured: acceptedSnapshots now includes config/store/snapshots/android-readback-2026-09-11.json (Play Developer API readback --live-read, edits.insert, commit 0, edit deleted). iOS baseline still not captured — no accepted App Store Connect readback exists yet.",
+      "requiresHumanAuthority": false
+    },
+    {
+      "code": "REVIEW_CREDENTIAL_NOT_PROVISIONED",
+      "platform": "ios",
+      "detail": "gh secret list --repo tught3/PlanFlow (names only, 2026-09-11) shows no PLANFLOW_REVIEW_DEMO_USERNAME / PLANFLOW_REVIEW_DEMO_PASSWORD secrets. Repo secrets do include PLANFLOW_E2E_TEST_ACCOUNT_EMAIL / PLANFLOW_E2E_TEST_ACCOUNT_PASSWORD, but these are named for E2E test automation, not explicitly for App Review demo credentials, and any demo account entered directly into App Store Connect by the user is out of scope for this repo-secret check.",
+      "requiresHumanAuthority": false
+    }
+  ],
+  "decisionsRequired": [
+    {
+      "code": "IOS_ADS_TRACKING_ANSWER",
+      "platform": "ios",
+      "question": "iOS App Privacy에서 광고 데이터·추적 답변을 어떻게 선언할 것인가 (native AdMob SDK가 GADApplicationIdentifier로 자동 초기화될 가능성 포함)",
+      "evidence": [
+        "ios/Runner/Info.plist:7",
+        "lib/services/ad_runtime_policy.dart:5-8"
+      ]
+    },
+    {
+      "code": "ANDROID_AD_ID_SHARING",
+      "platform": "android",
+      "question": "Data Safety에서 기기 ID의 광고 목적 공유를 어떻게 선언할 것인가",
+      "evidence": [
+        "android/app/src/main/AndroidManifest.xml:4",
+        "lib/services/ad_service.dart:491"
+      ]
+    },
+    {
+      "code": "PRECISE_LOCATION_COLLECTION",
+      "platform": "both",
+      "question": "GPS 좌표를 Google Maps Distance Matrix API로 외부 전송하는지 확정 필요",
+      "evidence": [
+        "lib/services/travel_time_buffer_service.dart:54-59",
+        "docs/privacy-audit-2026-08-04.md:41"
+      ]
+    },
+    {
+      "code": "CHILD_DIRECTED",
+      "platform": "both",
+      "question": "PlanFlow가 아동 대상 앱인지 여부를 확정해야 함",
+      "evidence": []
+    },
+    {
+      "code": "UGC_MODERATION",
+      "platform": "both",
+      "question": "그룹 댓글(UGC)에 신고·차단 기능이 있는지 확정 필요",
+      "evidence": [
+        "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
+      ]
+    },
+    {
+      "code": "EXPORT_COMPLIANCE_CONFIRM",
+      "platform": "ios",
+      "question": "ITSAppUsesNonExemptEncryption=false(Info.plist)를 법적 수출 규정 준수 선언으로 승인할 것인지 확정 필요",
+      "evidence": [
+        "ios/Runner/Info.plist:9"
+      ]
+    },
+    {
+      "code": "PRIVACY_POLICY_CANONICAL_URL",
+      "platform": "both",
+      "question": "https://fluxstudio.co.kr/privacy 와 https://tught3.github.io/PlanFlow/privacy-policy.html 중 어느 것을 스토어 공식 URL로 확정할 것인가",
+      "evidence": [
+        "apps-in-toss/src/features/auth/LoginScreen.tsx:27",
+        "docs/ios/app-store-metadata.md:150-157"
+      ]
+    },
+    {
+      "code": "BINARY_RELEASE_GATE_ENFORCE",
+      "platform": "both",
+      "question": "binaryReleaseGate를 'advisory'에서 'enforce'로 전환할 시점을 언제로 할 것인가",
+      "evidence": []
+    }
+  ],
+  "acceptedSnapshots": [
+    {
+      "platform": "android",
+      "path": "config/store/snapshots/android-readback-2026-09-11.json",
+      "sha256": "694358700f807f5f8a26e4244c397d761f25110a5c9b1264e3636d92b7b9b928"
+    }
+  ],
+  "acceptedFingerprints": [
+    {
+      "platform": "android",
+      "path": "config/store/baselines/android-fingerprint-2026-09-11.json",
+      "sha256": "c26d0fed394ddd9593830ca26336734645f61fc92f2863394a6f92c35f1af9f7",
+      "sourceSha": "18075eda699be7adf22f8d246b4ae1d5580f9684",
+      "releaseRef": "play production 1.1.1(164)",
+      "storeAcceptance": "STORE_ACCEPTED",
+      "note": "Play production 1.1.1(164) completed 확인(readback 2026-09-11). 소스 = 'version: 1.1.1+164' 문자열이 pubspec.yaml에 최초로 들어간 커밋(18075eda, 'chore(release): bump to 1.1.1+164 for Play production rollout', 2026-09-08)의 트리 = 업로드된 프로덕션 빌드의 소스라고 가정(오케스트레이터가 업로드 직후 버전 커밋을 남기는 구조이므로 트리 동일성 가정, 실제 빌드머신 checkout과의 byte-identical 검증은 아님). STORE_PROFILE/SCREENSHOT_FEATURE 두 카테고리는 이 커밋 트리에 config/store 디렉터리 자체가 없어 추출 트리로 계산 불가하므로, 현재(2026-09-11) profile/screenshot-lineage로 계산했다 — 즉 이 두 카테고리는 '지금부터'의 드리프트만 추적하며, 164 릴리스 시점부터 지금까지 이미 있었을 수 있는 metadata/screenshot 차이는 소급 반영되지 않는다. 이 쪽이 null 처리보다 낫다고 판단한 근거: null로 두면 이후 모든 impact 실행에서 STORE_PROFILE 해시가 영구적으로 None != 현재값이 되어 매번 무조건 METADATA_CHANGE가 뜨는 영구 노이즈가 생기고, 실제 유의미한 향후 profile 변경 감지가 이 노이즈에 묻힌다."
+    }
+  ]
+}

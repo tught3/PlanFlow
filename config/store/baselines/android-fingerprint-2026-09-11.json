@@ -1,0 +1,1465 @@
+{
+  "capturedAt": "2026-09-11T01:49:17Z",
+  "fingerprints": {
+    "DEPENDENCY": {
+      "components": [
+        {
+          "declared": "^0.1.0",
+          "name": "klc",
+          "resolvedVersion": "0.1.0"
+        },
+        {
+          "declared": "^0.11.0",
+          "name": "timezone",
+          "resolvedVersion": "0.11.0"
+        },
+        {
+          "declared": "^0.20.2",
+          "name": "intl",
+          "resolvedVersion": "0.20.2"
+        },
+        {
+          "declared": "^0.9.3",
+          "name": "home_widget",
+          "resolvedVersion": "0.9.3"
+        },
+        {
+          "declared": "^1.2.0",
+          "name": "http",
+          "resolvedVersion": "1.6.0"
+        },
+        {
+          "declared": "^1.2.0",
+          "name": "ical_parser",
+          "resolvedVersion": "1.2.0"
+        },
+        {
+          "declared": "^1.4.1",
+          "name": "googleapis_auth",
+          "resolvedVersion": "1.6.0"
+        },
+        {
+          "declared": "^1.4.4",
+          "name": "flutter_naver_map",
+          "resolvedVersion": "1.4.4"
+        },
+        {
+          "declared": "^1.8.1",
+          "name": "receive_sharing_intent",
+          "resolvedVersion": "1.8.1"
+        },
+        {
+          "declared": "^11.0.2",
+          "name": "file_picker",
+          "resolvedVersion": "11.0.2"
+        },
+        {
+          "declared": "^12.0.0",
+          "name": "googleapis",
+          "resolvedVersion": "12.0.0"
+        },
+        {
+          "declared": "^13.2.0",
+          "name": "go_router",
+          "resolvedVersion": "13.2.5"
+        },
+        {
+          "declared": "^2.0.0",
+          "name": "supabase_flutter",
+          "resolvedVersion": "2.12.4"
+        },
+        {
+          "declared": "^2.0.9",
+          "name": "in_app_review",
+          "resolvedVersion": "2.0.11"
+        },
+        {
+          "declared": "^2.10.1",
+          "name": "google_maps_flutter",
+          "resolvedVersion": "2.17.0"
+        },
+        {
+          "declared": "^2.3.3",
+          "name": "shared_preferences",
+          "resolvedVersion": "2.5.5"
+        },
+        {
+          "declared": "^2.4.9",
+          "name": "flutter_riverpod",
+          "resolvedVersion": "2.6.1"
+        },
+        {
+          "declared": "^21.0.0",
+          "name": "flutter_local_notifications",
+          "resolvedVersion": "21.0.0"
+        },
+        {
+          "declared": "^3.0.6",
+          "name": "crypto",
+          "resolvedVersion": "3.0.7"
+        },
+        {
+          "declared": "^3.6.0",
+          "name": "firebase_core",
+          "resolvedVersion": "3.15.2"
+        },
+        {
+          "declared": "^3.8.5",
+          "name": "flutter_tts",
+          "resolvedVersion": "3.8.5"
+        },
+        {
+          "declared": "^4.1.0",
+          "name": "qr_flutter",
+          "resolvedVersion": "4.1.0"
+        },
+        {
+          "declared": "^4.1.3",
+          "name": "firebase_crashlytics",
+          "resolvedVersion": "4.3.10"
+        },
+        {
+          "declared": "^4.2.3",
+          "name": "in_app_update",
+          "resolvedVersion": "4.2.5"
+        },
+        {
+          "declared": "^5.0.0",
+          "name": "android_alarm_manager_plus",
+          "resolvedVersion": "5.0.0"
+        },
+        {
+          "declared": "^5.1.0",
+          "name": "firebase_remote_config",
+          "resolvedVersion": "5.5.0"
+        },
+        {
+          "declared": "^5.2.0",
+          "name": "google_mobile_ads",
+          "resolvedVersion": "5.3.1"
+        },
+        {
+          "declared": "^6.0.0",
+          "name": "android_intent_plus",
+          "resolvedVersion": "6.0.0"
+        },
+        {
+          "declared": "^6.2.1",
+          "name": "google_sign_in",
+          "resolvedVersion": "6.3.0"
+        },
+        {
+          "declared": "^6.3.1",
+          "name": "url_launcher",
+          "resolvedVersion": "6.3.2"
+        },
+        {
+          "declared": "^6.5.0",
+          "name": "xml",
+          "resolvedVersion": "6.6.1"
+        },
+        {
+          "declared": "^7.0.0",
+          "name": "app_links",
+          "resolvedVersion": "7.0.0"
+        },
+        {
+          "declared": "^7.3.0",
+          "name": "speech_to_text",
+          "resolvedVersion": "7.3.0"
+        },
+        {
+          "declared": "^8.0.0",
+          "name": "package_info_plus",
+          "resolvedVersion": "8.3.1"
+        },
+        {
+          "declared": "^9.2.4",
+          "name": "flutter_secure_storage",
+          "resolvedVersion": "9.2.4"
+        },
+        {
+          "declared": null,
+          "name": "flutter",
+          "resolvedVersion": "0.0.0"
+        },
+        {
+          "declared": null,
+          "name": "flutter_localizations",
+          "resolvedVersion": "0.0.0"
+        }
+      ],
+      "hash": "a3664446d7510d5b32a162b141cb0637910e5bee19d6a4ea35cd4abb600ec9b9"
+    },
+    "MONETIZATION": {
+      "components": [
+        {
+          "categories": [
+            "ads"
+          ],
+          "package": "google_mobile_ads",
+          "type": "sdk"
+        }
+      ],
+      "hash": "d784e6962daca5d26671629bb1961aae779c7c577537bdf09c3c1bea51f89083"
+    },
+    "PERMISSION": {
+      "components": [
+        {
+          "name": "NSLocationWhenInUseUsageDescription",
+          "type": "ios_usage_description"
+        },
+        {
+          "name": "NSMicrophoneUsageDescription",
+          "type": "ios_usage_description"
+        },
+        {
+          "name": "NSPhotoLibraryAddUsageDescription",
+          "type": "ios_usage_description"
+        },
+        {
+          "name": "NSPhotoLibraryUsageDescription",
+          "type": "ios_usage_description"
+        },
+        {
+          "name": "NSSpeechRecognitionUsageDescription",
+          "type": "ios_usage_description"
+        },
+        {
+          "name": "NSUserTrackingUsageDescription",
+          "type": "ios_usage_description"
+        },
+        {
+          "name": "android.permission.ACCESS_ADSERVICES_AD_ID",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.ACCESS_COARSE_LOCATION",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.ACCESS_FINE_LOCATION",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.INTERNET",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.POST_NOTIFICATIONS",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.READ_CALENDAR",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.READ_EXTERNAL_STORAGE",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.RECEIVE_BOOT_COMPLETED",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.RECORD_AUDIO",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.SCHEDULE_EXACT_ALARM",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.USE_EXACT_ALARM",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.USE_FULL_SCREEN_INTENT",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.VIBRATE",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.WAKE_LOCK",
+          "type": "android_permission"
+        },
+        {
+          "name": "android.permission.WRITE_CALENDAR",
+          "type": "android_permission"
+        },
+        {
+          "name": "com.apple.security.application-groups",
+          "type": "ios_entitlement"
+        },
+        {
+          "name": "com.google.android.gms.permission.AD_ID",
+          "type": "android_permission"
+        }
+      ],
+      "hash": "2f4496f250ba3ad88011eef5668fb817119b83b38c4a0715f2f3caeea504c377"
+    },
+    "SCREENSHOT_FEATURE": {
+      "components": [
+        {
+          "featureIds": [
+            "briefing-settings"
+          ],
+          "screenshotId": "android-phone-6-briefing-settings",
+          "sourcePaths": [
+            "lib/screens/settings/settings_screen.dart"
+          ],
+          "sourcesDigest": "04cd0f854893462603ad76cfb5d13643bf2339a4ad0f3038d6b7cf48f92d3851"
+        },
+        {
+          "featureIds": [
+            "briefing-settings"
+          ],
+          "screenshotId": "iphone65-6-briefing-settings",
+          "sourcePaths": [
+            "lib/screens/settings/settings_screen.dart"
+          ],
+          "sourcesDigest": "04cd0f854893462603ad76cfb5d13643bf2339a4ad0f3038d6b7cf48f92d3851"
+        },
+        {
+          "featureIds": [
+            "calendar-month"
+          ],
+          "screenshotId": "android-tablet-1-calendar",
+          "sourcePaths": [
+            "lib/screens/calendar/calendar_screen.dart"
+          ],
+          "sourcesDigest": "f9506d0139431df25b9af378fca5cfcbd1fe2dbbfc8ed7300291a40b276acd81"
+        },
+        {
+          "featureIds": [
+            "calendar-month"
+          ],
+          "screenshotId": "ipad13-01-calendar",
+          "sourcePaths": [
+            "lib/screens/calendar/calendar_screen.dart"
+          ],
+          "sourcesDigest": "f9506d0139431df25b9af378fca5cfcbd1fe2dbbfc8ed7300291a40b276acd81"
+        },
+        {
+          "featureIds": [
+            "calendar-sync"
+          ],
+          "screenshotId": "android-phone-4-calendar-sync",
+          "sourcePaths": [
+            "lib/screens/settings/settings_screen.dart",
+            "lib/services/naver_caldav_service.dart"
+          ],
+          "sourcesDigest": "eed8204ef1951c6f9ccb2f1e9f2a2a3276118be4583f51da04991fda80971822"
+        },
+        {
+          "featureIds": [
+            "calendar-sync"
+          ],
+          "screenshotId": "iphone65-4-calendar-sync",
+          "sourcePaths": [
+            "lib/screens/settings/settings_screen.dart",
+            "lib/services/naver_caldav_service.dart"
+          ],
+          "sourcesDigest": "eed8204ef1951c6f9ccb2f1e9f2a2a3276118be4583f51da04991fda80971822"
+        },
+        {
+          "featureIds": [
+            "group-dashboard"
+          ],
+          "screenshotId": "android-tablet-2-group",
+          "sourcePaths": [
+            "lib/features/groups/screens/group_dashboard_screen.dart"
+          ],
+          "sourcesDigest": "1d4fce972015a66f085d730ef0e1191ecc90fe25ef26a3919226be82cc1010e2"
+        },
+        {
+          "featureIds": [
+            "group-dashboard"
+          ],
+          "screenshotId": "ipad13-02-group",
+          "sourcePaths": [
+            "lib/features/groups/screens/group_dashboard_screen.dart"
+          ],
+          "sourcesDigest": "1d4fce972015a66f085d730ef0e1191ecc90fe25ef26a3919226be82cc1010e2"
+        },
+        {
+          "featureIds": [
+            "group-management-menu"
+          ],
+          "screenshotId": "android-phone-7-group",
+          "sourcePaths": [
+            "lib/features/groups/screens/group_detail_screen.dart"
+          ],
+          "sourcesDigest": "c854a66244d966278291500105337423c4e3e6d1a0505c12378900e1abbd7993"
+        },
+        {
+          "featureIds": [
+            "group-management-menu"
+          ],
+          "screenshotId": "iphone65-7-group",
+          "sourcePaths": [
+            "lib/features/groups/screens/group_detail_screen.dart"
+          ],
+          "sourcesDigest": "c854a66244d966278291500105337423c4e3e6d1a0505c12378900e1abbd7993"
+        },
+        {
+          "featureIds": [
+            "home-today-briefing"
+          ],
+          "screenshotId": "android-phone-8-home-briefing",
+          "sourcePaths": [
+            "lib/screens/home/home_screen.dart",
+            "lib/services/briefing_scheduler_service.dart"
+          ],
+          "sourcesDigest": "f03e9c45f9adfda2166a667a8520a81dd530d46fd0f5a31d03100e03728dc8d2"
+        },
+        {
+          "featureIds": [
+            "home-today-briefing"
+          ],
+          "screenshotId": "iphone65-8-home-briefing",
+          "sourcePaths": [
+            "lib/screens/home/home_screen.dart",
+            "lib/services/briefing_scheduler_service.dart"
+          ],
+          "sourcesDigest": "f03e9c45f9adfda2166a667a8520a81dd530d46fd0f5a31d03100e03728dc8d2"
+        },
+        {
+          "featureIds": [
+            "home-widget"
+          ],
+          "screenshotId": "android-phone-5-home-widget",
+          "sourcePaths": [
+            "lib/screens/home/home_widgets.dart",
+            "lib/services/home_widget_service.dart"
+          ],
+          "sourcesDigest": "e1dd478fb046b0b4ba8a0e0b2f15c62dc5019c976c7627d7341d36f2f97bc74d"
+        },
+        {
+          "featureIds": [
+            "home-widget"
+          ],
+          "screenshotId": "iphone65-5-home-widget",
+          "sourcePaths": [
+            "lib/screens/home/home_widgets.dart",
+            "lib/services/home_widget_service.dart"
+          ],
+          "sourcesDigest": "e1dd478fb046b0b4ba8a0e0b2f15c62dc5019c976c7627d7341d36f2f97bc74d"
+        },
+        {
+          "featureIds": [
+            "smart-departure-alert"
+          ],
+          "screenshotId": "android-phone-2-departure-alert",
+          "sourcePaths": [
+            "lib/screens/event/event_detail_screen.dart",
+            "lib/services/travel_time_buffer_service.dart"
+          ],
+          "sourcesDigest": "9c4f3dcba0cd398557cd7d82e7443832666e4796f6df9aa13c793f84c72e2b52"
+        },
+        {
+          "featureIds": [
+            "smart-departure-alert"
+          ],
+          "screenshotId": "iphone65-2-departure-alert",
+          "sourcePaths": [
+            "lib/screens/event/event_detail_screen.dart",
+            "lib/services/travel_time_buffer_service.dart"
+          ],
+          "sourcesDigest": "9c4f3dcba0cd398557cd7d82e7443832666e4796f6df9aa13c793f84c72e2b52"
+        },
+        {
+          "featureIds": [
+            "voice-schedule-edit"
+          ],
+          "screenshotId": "android-phone-3-voice-edit",
+          "sourcePaths": [
+            "lib/screens/voice/voice_conversation_screen.dart"
+          ],
+          "sourcesDigest": "910831f7e521e9d87bf286ff17f5a6cec14d8b96564e2b59cef7e38565b42c46"
+        },
+        {
+          "featureIds": [
+            "voice-schedule-edit"
+          ],
+          "screenshotId": "iphone65-3-voice-edit",
+          "sourcePaths": [
+            "lib/screens/voice/voice_conversation_screen.dart"
+          ],
+          "sourcesDigest": "910831f7e521e9d87bf286ff17f5a6cec14d8b96564e2b59cef7e38565b42c46"
+        },
+        {
+          "featureIds": [
+            "voice-schedule-input"
+          ],
+          "screenshotId": "android-phone-1-voice-input",
+          "sourcePaths": [
+            "lib/screens/voice/confirm_screen.dart"
+          ],
+          "sourcesDigest": "1db81fd4ff41ebf9d76bce9f6c106a2dd17f7df4f8ce3c35cd0454ad786be679"
+        },
+        {
+          "featureIds": [
+            "voice-schedule-input"
+          ],
+          "screenshotId": "iphone65-1-voice-input",
+          "sourcePaths": [
+            "lib/screens/voice/confirm_screen.dart"
+          ],
+          "sourcesDigest": "1db81fd4ff41ebf9d76bce9f6c106a2dd17f7df4f8ce3c35cd0454ad786be679"
+        }
+      ],
+      "hash": "9dde540d4e50baa178c271670b524ed01884ac22876532fe80733815f386b1b6"
+    },
+    "SDK": {
+      "components": [
+        {
+          "categories": [
+            "ads"
+          ],
+          "package": "google_mobile_ads"
+        },
+        {
+          "categories": [
+            "auth",
+            "backend"
+          ],
+          "package": "supabase_flutter"
+        },
+        {
+          "categories": [
+            "auth"
+          ],
+          "package": "google_sign_in"
+        },
+        {
+          "categories": [
+            "crash"
+          ],
+          "package": "firebase_crashlytics"
+        },
+        {
+          "categories": [
+            "maps"
+          ],
+          "package": "google_maps_flutter"
+        },
+        {
+          "categories": [
+            "remote_config"
+          ],
+          "package": "firebase_remote_config"
+        },
+        {
+          "categories": [
+            "speech"
+          ],
+          "package": "speech_to_text"
+        }
+      ],
+      "hash": "6b9120d5066be742a687fff42937c8c4db285fe59564b1c83fc747aae44483cc"
+    },
+    "SOURCE": {
+      "components": [
+        {
+          "path": "lib/app.dart",
+          "sha256": "77b99074796607f30042e65cbe774f50f00f0e58d18325fb24f08737ee9424e6"
+        },
+        {
+          "path": "lib/core/analytics_service.dart",
+          "sha256": "7cc8f89080b59dd28669ad310db692be87954d211135c09d7d3d1b887d534c15"
+        },
+        {
+          "path": "lib/core/constants.dart",
+          "sha256": "48ae56029602f66802a806131e1269f58833b4f5d74ee8df025a80c1fb649d49"
+        },
+        {
+          "path": "lib/core/diag_logger.dart",
+          "sha256": "e3b25fc7fd8751d78fdb3a3edfaa26863d529dcb4dd59609cecc2084161d1300"
+        },
+        {
+          "path": "lib/core/env.dart",
+          "sha256": "145d34a6fcd366c93bee68b606c4593470ff44f48fbdd446b794df425a385908"
+        },
+        {
+          "path": "lib/core/event_metadata.dart",
+          "sha256": "94289a503f5813e8f225f837324097b066de906f69813bf95d08faba057478ae"
+        },
+        {
+          "path": "lib/core/local_time.dart",
+          "sha256": "2f77cc4242d3e78971533873d52047c4a6ef62f0c941656dac52eda853ac4d71"
+        },
+        {
+          "path": "lib/core/log_text.dart",
+          "sha256": "225507fcdf5bb89fcb7e9e16095bd55a6d92e78fc858ace8b375990b965ac79a"
+        },
+        {
+          "path": "lib/core/native_startup_diagnostics.dart",
+          "sha256": "cd63adf931495c463041fc60c04bd9ac0251151e0653a64ff8fb9b29c9078059"
+        },
+        {
+          "path": "lib/core/recurrence_expansion.dart",
+          "sha256": "3129b23bca678635396825d841d985b867ade8c9a52bbe7932c532a4fe10ac4f"
+        },
+        {
+          "path": "lib/core/region_settings.dart",
+          "sha256": "dde5285d7e277c9a70986d29734fe1008bb7a860b35d0275058fe21671b1d522"
+        },
+        {
+          "path": "lib/core/responsive.dart",
+          "sha256": "4b78352112c974617f3ca0174bd873e65eb9decd25fd969b0db60e0deaeb8848"
+        },
+        {
+          "path": "lib/core/router.dart",
+          "sha256": "3ec6fed3d816241e2083b20103415007c9b8cfbe04453de9611c435e9e602bd5"
+        },
+        {
+          "path": "lib/core/runtime_error_filter.dart",
+          "sha256": "eb0128fc633e805d14ea797321e4f3bf893bd1e468793ed8b9699e15d8813046"
+        },
+        {
+          "path": "lib/core/safe_prefs.dart",
+          "sha256": "73a51a47e76a8b69b22e79ccd9370d03966dd64bcd268cbf20380c75d382dc34"
+        },
+        {
+          "path": "lib/core/startup_route_gate.dart",
+          "sha256": "0aba4cd0cd1280093db1f3c7d35dfb6ecb5999bdbe8ba86eacfd5be4b4fdabe9"
+        },
+        {
+          "path": "lib/core/supabase_auth_options.dart",
+          "sha256": "62e17a8ae73aceeff8122d968b93d13b101084dc43f6270f87c9683251fbffef"
+        },
+        {
+          "path": "lib/core/theme.dart",
+          "sha256": "cca035de264f3c682196eeadd8974eb438dfafb332b87fb5e32b24cc8978039c"
+        },
+        {
+          "path": "lib/core/time_format_controller.dart",
+          "sha256": "a0d1025fb0f1414c8ae9b00fc47dbd27fe03d6fe496c0b1b8c31df30ba05574d"
+        },
+        {
+          "path": "lib/data/models/calendar_connection_model.dart",
+          "sha256": "9bcaed5dcf110c31a2dda96f8c80d4898de4fdc77079468971a617329848a014"
+        },
+        {
+          "path": "lib/data/models/early_bird_email_model.dart",
+          "sha256": "ad9da6ebbc5eb72577b337ce059e8f2996ce1cca8228a69c28542f35e2f3a1c3"
+        },
+        {
+          "path": "lib/data/models/event_model.dart",
+          "sha256": "5fbe4768f6754e8fa88cd0911c658d806feb3c63f7b227b58f55974c18e373d6"
+        },
+        {
+          "path": "lib/data/models/feedback_report_model.dart",
+          "sha256": "af10ee6d4557e7fc11cdb1603eb1ef89420652aaf6909d1ca116292ec84ba4da"
+        },
+        {
+          "path": "lib/data/models/pre_action_model.dart",
+          "sha256": "11a445254ac6caff7d7fa7f57cccce88757eaa8b3f229768960c3df2114ae777"
+        },
+        {
+          "path": "lib/data/models/tester_info_model.dart",
+          "sha256": "6309e33cb3d1784f6b0a0a306c17154683fd8dd86046aa8de03fab7f6f3b0116"
+        },
+        {
+          "path": "lib/data/models/user_settings_model.dart",
+          "sha256": "f730b95ced7974b303478f5009ddb814fb3f6677aa508c4df617562f939546b4"
+        },
+        {
+          "path": "lib/data/models/voice_correction_rule.dart",
+          "sha256": "44d0453987d37b249d0d3a6b67ab13b7a2db183665d624b9ad9b484844296915"
+        },
+        {
+          "path": "lib/data/repositories/calendar_connection_repository.dart",
+          "sha256": "7cfea751327ade429dffe1b227b31524da6e9819aee9f6fcfdded628f657133f"
+        },
+        {
+          "path": "lib/data/repositories/early_bird_email_repository.dart",
+          "sha256": "1605860c7ce5e38f6b5f094cbbb00fbc4cd98921be1d3251405617858df4cc58"
+        },
+        {
+          "path": "lib/data/repositories/event_repository.dart",
+          "sha256": "738d044eda7fdef2013257d727946c9ad1172b22eecf185a337bf224939b24d1"
+        },
+        {
+          "path": "lib/data/repositories/feedback_repository.dart",
+          "sha256": "9afed760b09375b20bad573c98cde07c648823f7e7d1e3fb01323488079f66da"
+        },
+        {
+          "path": "lib/data/repositories/settings_repository.dart",
+          "sha256": "80edeacec518e4a147e993661f53d6ed0fbd7e4acfd9e8e6f8ac00afdff0df92"
+        },
+        {
+          "path": "lib/data/repositories/tester_dashboard_repository.dart",
+          "sha256": "b516bfdaf9bea5029b62f4d90e1eb5e73846cb4af6ae312df510a95bef00ccce"
+        },
+        {
+          "path": "lib/data/repositories/voice_correction_rule_repository.dart",
+          "sha256": "2c65fb78576284fae827d86e3a08361c68c3dcad0041be5fc22c202f57238093"
+        },
+        {
+          "path": "lib/features/admin/admin_tester_dashboard_screen.dart",
+          "sha256": "89cccb859e526f272c66c5dc7854c815fb2793823d67968c00cc5abe6804b604"
+        },
+        {
+          "path": "lib/features/admin/tester_dashboard_provider.dart",
+          "sha256": "7ad694380ba95eecd5aa9bc6f713aaefe8c10fc8a635f210a963ca99a78ab61d"
+        },
+        {
+          "path": "lib/features/groups/models/calendar_overlay_item.dart",
+          "sha256": "9252ee2b375b6b6eabf8f54a73ba93b9e873c1594972b4d717e6a6510305c149"
+        },
+        {
+          "path": "lib/features/groups/models/group_backup_model.dart",
+          "sha256": "4518b3e6c3d48ac01aadd3d21de2a48df6af93ee4aeace999ffaabbd72130628"
+        },
+        {
+          "path": "lib/features/groups/models/group_event_comment_model.dart",
+          "sha256": "19a512ea57198c45e8fca30c5c00a56810fc4c4b5481d84f66f5ae9240218381"
+        },
+        {
+          "path": "lib/features/groups/models/group_event_model.dart",
+          "sha256": "cec9147b811b72fbf8eb7fc8c83031b040fba2cd22155fc7ca475057f1d8da54"
+        },
+        {
+          "path": "lib/features/groups/models/group_event_recurrence.dart",
+          "sha256": "f6be8a1e72c266d06959310713b6fdce1989d4e06c5e5d103ac3b4358e3b0f6a"
+        },
+        {
+          "path": "lib/features/groups/models/group_invite_model.dart",
+          "sha256": "6654c3ea887e528d50e63badb24598728138c00771e86f5bb895aae9830c15fb"
+        },
+        {
+          "path": "lib/features/groups/models/group_json.dart",
+          "sha256": "7f9c37f24c844d08692866145b8093c901d545028cd28311b62ee81362394d77"
+        },
+        {
+          "path": "lib/features/groups/models/group_member_model.dart",
+          "sha256": "40f80a6685192f2859ecdfe7523ae678f0cbb3833fd0a138789dcad4d38b35fb"
+        },
+        {
+          "path": "lib/features/groups/models/group_model.dart",
+          "sha256": "4496bd3f5683a41681c07cb70979cb98698aa6ae18d9389f4497651497b4fbed"
+        },
+        {
+          "path": "lib/features/groups/models/group_role_delegation_model.dart",
+          "sha256": "b5fbaeb946127c0992a3e31cd5fb05064b9e1eebe1ee1b25fe9cc6c7e7093a86"
+        },
+        {
+          "path": "lib/features/groups/providers/deleted_groups_provider.dart",
+          "sha256": "2652a83d836b9621416174ae494bf813af2826ca7646aa029bb7dc6971d78aa2"
+        },
+        {
+          "path": "lib/features/groups/providers/group_calendar_overlay_provider.dart",
+          "sha256": "5c4911dc72f007b0496cc93c7ace1a3d9644b899046efd72f97cb45cd2ccc654"
+        },
+        {
+          "path": "lib/features/groups/providers/group_calendar_overlay_state.dart",
+          "sha256": "818285ee4811badf8cfae96ac77562647c2ec91105a78ae57b652223635bb6ba"
+        },
+        {
+          "path": "lib/features/groups/providers/group_context_provider.dart",
+          "sha256": "231b76b32cc832b100dc3df785a4aef54ab7c6ae91789eb76ee6d603fede6744"
+        },
+        {
+          "path": "lib/features/groups/providers/group_context_state.dart",
+          "sha256": "92676ea38f465bc87945056427cc6a978164880cb243d9993b30466e673fd44e"
+        },
+        {
+          "path": "lib/features/groups/providers/group_dashboard_provider.dart",
+          "sha256": "e143ad1c609b012c2558095f7c56d88800b0c973046772ad97350ae95e7705ba"
+        },
+        {
+          "path": "lib/features/groups/providers/group_dashboard_state.dart",
+          "sha256": "009239a93245d68a9d1394fbe2635b11a41937cfff6aa646861f0f16f7197508"
+        },
+        {
+          "path": "lib/features/groups/providers/group_event_provider.dart",
+          "sha256": "1bba36aa245fbfc7790bf66e22abb35d1fa3ab822f305c850c3a72abddc61862"
+        },
+        {
+          "path": "lib/features/groups/providers/group_event_state.dart",
+          "sha256": "e4913e4e85cc24322849792e216bcd7d2ec0340b329fd7be8885be3267170483"
+        },
+        {
+          "path": "lib/features/groups/providers/group_invite_provider.dart",
+          "sha256": "bd2663d4c0423a2fe2bfe1a8841d5d54d4d1d2408978d6ea00458dd32bce76ce"
+        },
+        {
+          "path": "lib/features/groups/providers/group_invite_state.dart",
+          "sha256": "9f2f2d73df168fa9448a46dfb3f554489694075b7c79a66648d7317caa9d3131"
+        },
+        {
+          "path": "lib/features/groups/providers/group_member_provider.dart",
+          "sha256": "5fbcbaa324f1010fa6f86c17ea4ed69f6752e95e517b57d5e1900a3507633a1f"
+        },
+        {
+          "path": "lib/features/groups/providers/group_member_state.dart",
+          "sha256": "61260a705e5f4d74c66f0211998b227f3236e715f720b5e8adb27a11ed68a68e"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_backup_repository.dart",
+          "sha256": "af67725356ef087fff4cca1ad4b9772bcae6cd968a9689355a06ce54076222c4"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_dashboard_repository.dart",
+          "sha256": "eb3c3c806f0eb129cda7e883fc4a8da1e4fd531432463e328fb6102b53cd1c29"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_delegation_repository.dart",
+          "sha256": "5f6aa161cc887569350bffcfa17aec3d623c12777474deae84027f1f49c48b38"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_event_comment_repository.dart",
+          "sha256": "5e38659e7d2eac2339596912cc83722de624c2e1a9557ff7e5c95a860874f6a0"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_event_repository.dart",
+          "sha256": "6b7d134c5a456bbe63ff0fba9d84ecf02f6e08afddf1a52adf8bbd3739371f29"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_invite_repository.dart",
+          "sha256": "a14cf663b97168efc172323767a63e1e73102cae257cbd16ebdeaa407f088baf"
+        },
+        {
+          "path": "lib/features/groups/repositories/group_repository.dart",
+          "sha256": "ce0912c6246229c51e9e6aa809c17559b7af37ff496f670ba325515ae5213078"
+        },
+        {
+          "path": "lib/features/groups/screens/deleted_groups_screen.dart",
+          "sha256": "e732ca0a9aaa1b040d3c775c1a1f9566acf9616f1bca88b319ac401c4114a6b5"
+        },
+        {
+          "path": "lib/features/groups/screens/group_create_screen.dart",
+          "sha256": "a730fe188160db93a9e487c5577e99e0031ab909e2f2db173871475102e1e6d2"
+        },
+        {
+          "path": "lib/features/groups/screens/group_dashboard_screen.dart",
+          "sha256": "0e63e2e589a2be89fcda336adf747aa9681a086089c8c0069f524c22fb993041"
+        },
+        {
+          "path": "lib/features/groups/screens/group_detail_screen.dart",
+          "sha256": "7e641723855c8ac967b7ebd8c16097d4255a653de38aac716da0196fe5e625f0"
+        },
+        {
+          "path": "lib/features/groups/screens/group_event_create_screen.dart",
+          "sha256": "669ffb3f5caa85f2e105dd65fd33ab75adc1567b9b1419ac63852780bcd3ae89"
+        },
+        {
+          "path": "lib/features/groups/screens/group_event_detail_screen.dart",
+          "sha256": "bc7205629acfd988453c6d16a8f1eacdf4592d463e54719dcd90eeca0202e658"
+        },
+        {
+          "path": "lib/features/groups/screens/group_event_list_screen.dart",
+          "sha256": "6ee919667f13fc9a8b3b6424815bfececb3ec7538d981129a7fca4314b1cd0b1"
+        },
+        {
+          "path": "lib/features/groups/screens/group_invite_link_screen.dart",
+          "sha256": "ce3b2e640aaa1593c5984d1b93dfba1a0f45cd8dd7c81521001520f32a951b90"
+        },
+        {
+          "path": "lib/features/groups/screens/group_invite_screen.dart",
+          "sha256": "97f033ed87462a3a69aa71773ecfd2dbb4a0350b0cfa7c12db36ec3d20d98115"
+        },
+        {
+          "path": "lib/features/groups/screens/group_list_screen.dart",
+          "sha256": "4d1b0e13215652ba611cca7ccac5efd51f048205f3e153c7df3ab821e232360c"
+        },
+        {
+          "path": "lib/features/groups/screens/group_member_screen.dart",
+          "sha256": "0a01ad86e4d336214c95083ec8d054acdc25f865878efca5c60585c0c97dda57"
+        },
+        {
+          "path": "lib/features/groups/services/group_calendar_widget_service.dart",
+          "sha256": "aeacbe94de367e71536f80b87138cbdd176fd230b907c1b2958731947841f880"
+        },
+        {
+          "path": "lib/features/groups/services/group_cleanup_service.dart",
+          "sha256": "5282f69aadd8296c7ae856b8c9a331ec8484be98f7c13ff1390cc7a6332d9515"
+        },
+        {
+          "path": "lib/features/groups/services/group_event_share_service.dart",
+          "sha256": "655683a28a54294f2c91c29b050f5faad4a6b3b1480df1bc7c0aaa25f1256165"
+        },
+        {
+          "path": "lib/features/groups/services/group_instruction_inbox_service.dart",
+          "sha256": "d3090b6ae40d64d3d287d619c529283967686be3f5dde75bd6c16c6189f0d7df"
+        },
+        {
+          "path": "lib/features/groups/widgets/group_event_tile.dart",
+          "sha256": "9a3cf23bd3758441e486dd62eda03a7ccb5b485122b4b23771d9e35ca991a56e"
+        },
+        {
+          "path": "lib/features/groups/widgets/group_month_calendar.dart",
+          "sha256": "7f370e488b7f99edd6cdeb620196f908b1bb808b18167fd573cfe0cd1226662f"
+        },
+        {
+          "path": "lib/features/groups/widgets/group_multi_select_sheet.dart",
+          "sha256": "84fd6d1a1701c64eb1beb72c430af6f6766852b6d1369cc2ac63d3918ca588fa"
+        },
+        {
+          "path": "lib/features/groups/widgets/member_shared_events_sheet.dart",
+          "sha256": "8a69f7210bf2f152edf2eae27e622aefed7a30f8e1a488a69388745001e75427"
+        },
+        {
+          "path": "lib/firebase_options.dart",
+          "sha256": "7877edfcfebe0b8d2c9334cb303fc679a729c27996b17d37db81b2ccb43c4bfe"
+        },
+        {
+          "path": "lib/l10n/app_en.arb",
+          "sha256": "7411c7d788002995bee81752870cf3ce47f0e9a52c9dcf8ecd75adb3dcf34be2"
+        },
+        {
+          "path": "lib/l10n/app_ko.arb",
+          "sha256": "9d4414b9a9c21f5c28b7e74c1a6ad7bc67e1e88af626b6ae10917ed4d2d6ea5d"
+        },
+        {
+          "path": "lib/l10n/app_l10n.dart",
+          "sha256": "23004042a1fd1263e780039a9d1f4cb7e07e2fd33775e6e88be29e51ebe198d2"
+        },
+        {
+          "path": "lib/l10n/app_localizations.dart",
+          "sha256": "4a55015d3546371b5d16e0c00933e859c44e388d56771c0b68599fe09aea6635"
+        },
+        {
+          "path": "lib/l10n/app_localizations_en.dart",
+          "sha256": "ad26974c2e55755ac208747aef066395a4d0fa79581edb6462292d83a0d2b626"
+        },
+        {
+          "path": "lib/l10n/app_localizations_ko.dart",
+          "sha256": "bc374e92c65ffc5c055bfc8dc3ff4cb772972971605ce66cba8b08dba7d33a15"
+        },
+        {
+          "path": "lib/main.dart",
+          "sha256": "72c46ee1a572f3b4766ad8cd508438c584ae883d7b062c0ff2f6432162f01a88"
+        },
+        {
+          "path": "lib/providers/auth_provider.dart",
+          "sha256": "06665d61825422aee237b024c8d7057c21bd9e19ac082c3edb9771ac5a811773"
+        },
+        {
+          "path": "lib/providers/settings_provider.dart",
+          "sha256": "91d1b2b738f66f1bef362f92977a2666ed62b77e305d466fec591b9f1663c207"
+        },
+        {
+          "path": "lib/screens/auth/login_screen.dart",
+          "sha256": "425fcbd0ca304a336d3995d616892ad5e3f1fc8649447e17af2e7ccb31446add"
+        },
+        {
+          "path": "lib/screens/auth/reset_password_screen.dart",
+          "sha256": "72e608b409dedf29544d9548e0d6483b2136aeb8e72bf3547c76ceeb13776276"
+        },
+        {
+          "path": "lib/screens/briefing/briefing_launch_screen.dart",
+          "sha256": "25e3fc4fc4300419c426b2cd2232bff4506bdd445f00031f024cabbf033fc019"
+        },
+        {
+          "path": "lib/screens/calendar/calendar_projection.dart",
+          "sha256": "5baeb0b1c8eb58771a77146cbaec7c4116d04d2b658b224965beb1489b4917a0"
+        },
+        {
+          "path": "lib/screens/calendar/calendar_screen.dart",
+          "sha256": "6fd6d2112cc67d76c4b9823e1734854d10eba87fa5e54b44c4641fe0c651d7de"
+        },
+        {
+          "path": "lib/screens/calendar/calendar_style_contract.dart",
+          "sha256": "03221d4ba9cd40c348c469d65c9b129704107e92f853e89151f179a4baeae8d5"
+        },
+        {
+          "path": "lib/screens/calendar/calendar_widgets.dart",
+          "sha256": "1fa5bc2e3ae70f442bafbfe2b2a8e061598070e984aa22840c7742fe1d9b9696"
+        },
+        {
+          "path": "lib/screens/departure_alarm_screen.dart",
+          "sha256": "94a75b78210cc2441e60cdbd7dc68e9a5cd1de82472f6438bd243deef5be4233"
+        },
+        {
+          "path": "lib/screens/event/event_detail_screen.dart",
+          "sha256": "2a17584766255ef7b9fb7ca6700e5d433b2df23f35ec7ba01294196fa87aa93d"
+        },
+        {
+          "path": "lib/screens/event/event_edit_screen.dart",
+          "sha256": "2e2335a8ce124855de636f87bfe9dac0611349a327485058ad328f089decee41"
+        },
+        {
+          "path": "lib/screens/home/home_screen.dart",
+          "sha256": "b528b1f1cf13982331a4b8d200a0654c136a3bd2da6e41f66004fe2e512b3b1c"
+        },
+        {
+          "path": "lib/screens/home/home_widgets.dart",
+          "sha256": "48a3430c32b84e44771ec571d3685690dabf1dfb0391baa08e938035cd384672"
+        },
+        {
+          "path": "lib/screens/location/location_pick_flow.dart",
+          "sha256": "3f17f78e8abdb09ddfd7de4745e1a83469344f9e20835c2e64019d194af87f2f"
+        },
+        {
+          "path": "lib/screens/location/location_picker_screen.dart",
+          "sha256": "ccff9d0b31d596efef1901c83a31dbb7babc4d2aaf5c2f9bdd344da0c3643ba3"
+        },
+        {
+          "path": "lib/screens/onboarding/feature_tour_screen.dart",
+          "sha256": "24d7d756ce8d846836aa29a9bcf26ea20b0d24d1fbc699e5e6c1a7613c29e14d"
+        },
+        {
+          "path": "lib/screens/onboarding/permission_onboarding_screen.dart",
+          "sha256": "aa4a3c6b461d7162e1b505614fc5f6a9de127f3fc5e18e3be73159b24d3f989f"
+        },
+        {
+          "path": "lib/screens/placeholder_screen.dart",
+          "sha256": "6dd9c225d3c7b07579e2c04ce9946e2b08440fc2354bcec44b534a0a4310ce6c"
+        },
+        {
+          "path": "lib/screens/settings/beta_survey_sheet.dart",
+          "sha256": "24f62396fa81db76e1756064434187f41f83d49fb41d993a12c8128fb7c45b62"
+        },
+        {
+          "path": "lib/screens/settings/feedback_report_sheet.dart",
+          "sha256": "6c955c59d4cbd9fe7317415945bdf36dfc260958171389bdef45463d37d70836"
+        },
+        {
+          "path": "lib/screens/settings/naver_ics_import_screen.dart",
+          "sha256": "8c80f460306a87fdee122ff3f0fd1736b40157e334a459ab00c058fa95b73cfe"
+        },
+        {
+          "path": "lib/screens/settings/settings_screen.dart",
+          "sha256": "febddd2ac2da24ae6703156b8defafc58517609ca7281e1c55761126ae493805"
+        },
+        {
+          "path": "lib/screens/settings/settings_widgets.dart",
+          "sha256": "cd5a7085784556e707a19a6471860cbb0a07042d99535b3d757be9f74902057a"
+        },
+        {
+          "path": "lib/screens/shell_screen.dart",
+          "sha256": "939c156c7661bb2b72e8782dafc6530247cfa4b961878bf965aa6f7a6fe1b497"
+        },
+        {
+          "path": "lib/screens/splash/splash_screen.dart",
+          "sha256": "9db5d2a3cd6ca620f67dcbfebfb2004b0014a68fc472d34db00f722424c6d05f"
+        },
+        {
+          "path": "lib/screens/voice/confirm_screen.dart",
+          "sha256": "f720f98d238ccdb38391c9a998073624e7635071432534ae4a0f0f229d346593"
+        },
+        {
+          "path": "lib/screens/voice/confirm_widgets.dart",
+          "sha256": "39656315670fa8ebfd43e7ef79d4a63fa02dd243e8da5e3aa65489e40f93d246"
+        },
+        {
+          "path": "lib/screens/voice/voice_action_screen.dart",
+          "sha256": "067beaad2541b68250545920d9a144e7125890bc28295c325047336c4225484a"
+        },
+        {
+          "path": "lib/screens/voice/voice_action_widgets.dart",
+          "sha256": "4eb83d7f95dede3425137f92e7cbe07cfb9bc4083adf52eecf8ba080e784a321"
+        },
+        {
+          "path": "lib/screens/voice/voice_conversation_screen.dart",
+          "sha256": "12dc49359fbc2a246a1f6cb8024b33049604ab740434c70da322ab6428d59e0a"
+        },
+        {
+          "path": "lib/screens/voice/voice_input_screen.dart",
+          "sha256": "b17b999644395bea9998474371ac50a5ba6a1ed36c92d73b4ffe2f6e6024be24"
+        },
+        {
+          "path": "lib/services/activity_tracking_service.dart",
+          "sha256": "37cf29c53996d8d0f4115d01b5f58e6876297cf738a9d4e49f59c67d62a865e4"
+        },
+        {
+          "path": "lib/services/ad_consent_service.dart",
+          "sha256": "1e77a9cbfff5a6098671ae2992a2c2eab549aa63bb3f00cf29d4fa6f6efcacc9"
+        },
+        {
+          "path": "lib/services/ad_reward_state.dart",
+          "sha256": "c5f993b396e8fd00de602295a388d40e8ee2f9f9b86539643930f9acedb76e7d"
+        },
+        {
+          "path": "lib/services/ad_runtime_policy.dart",
+          "sha256": "ea5db7f47e00a18d470b49dd30c8146e5b07091c19f1e7c8ab73ac6842d140df"
+        },
+        {
+          "path": "lib/services/ad_service.dart",
+          "sha256": "8ef936a9ececdb8e485fd9c00fb4c073dd15ea04ab9d9187e289693083a59111"
+        },
+        {
+          "path": "lib/services/alarm_service.dart",
+          "sha256": "3c68964e93e07706d375f3859dd157e65b935528a3a9996a4bf02cbdd90e67be"
+        },
+        {
+          "path": "lib/services/api_usage_guard.dart",
+          "sha256": "864d0408a736f4661a3ca6a05f6e874e7c392a90e8f52881917390a5850aeef6"
+        },
+        {
+          "path": "lib/services/app_feedback_service.dart",
+          "sha256": "7d9d5a22eed2b166706df927459aad8eac312b5efb21932c6e264c21fe6a0309"
+        },
+        {
+          "path": "lib/services/app_permission_service.dart",
+          "sha256": "72c894d725f2db2f3fa71d3853dd13833e07379cddc19dc2dd71914ef9995871"
+        },
+        {
+          "path": "lib/services/auth_service.dart",
+          "sha256": "6487dc26e1b085a51f9af3f79160a63c852c88b94eaf73c6ec5c4c9a155302b9"
+        },
+        {
+          "path": "lib/services/background_task_service.dart",
+          "sha256": "8edffb71c521eb16129397b6861abe02cef78e6e7963d251e2db9ad7f2b36c01"
+        },
+        {
+          "path": "lib/services/backup_service.dart",
+          "sha256": "d7952982b4000420fdd12b995f1945c12d13456a0be25921982806af986f592c"
+        },
+        {
+          "path": "lib/services/battery_optimization_service.dart",
+          "sha256": "dbb82d0c73d6e3eee5c5743efaf4d0e66fe47fc4a5a640e492ae99940bf35f47"
+        },
+        {
+          "path": "lib/services/briefing_scheduler_service.dart",
+          "sha256": "5e84065edb82c38dc5d2dd2d2d2790a5b7f66798b7aeaed03ae0f6498b437788"
+        },
+        {
+          "path": "lib/services/calendar_auto_sync_service.dart",
+          "sha256": "bb2dc5222e149bed1e0537a7905b90e7667089b05239cbc27c723dba477585fa"
+        },
+        {
+          "path": "lib/services/calendar_sync_service.dart",
+          "sha256": "57c326d77d6e9146f94ea5e616fa12a39bdb4f7a7dca0c2504142fa5d5e5a70a"
+        },
+        {
+          "path": "lib/services/critical_alarm_channel_migration_service.dart",
+          "sha256": "5d13fcd69ebd6d484e24e4069d62e737f2ae43f9871dcc1c3cf151054420c5d0"
+        },
+        {
+          "path": "lib/services/daily_backup_scheduler_service.dart",
+          "sha256": "caa7682705996fea61a71d7f9e9ac930297a4b69f6b0e13f09ac1061b5a54c82"
+        },
+        {
+          "path": "lib/services/departure_acknowledgement_store.dart",
+          "sha256": "f457470a1a149828ddadefd0d055ffb3bf4f44a51418721e550747c3e13bdf60"
+        },
+        {
+          "path": "lib/services/departure_alarm_service.dart",
+          "sha256": "f3155aa478d113dcf00618e9fe4b5f3373dd1c662376fb4745fb475c67fa6512"
+        },
+        {
+          "path": "lib/services/device_calendar_service.dart",
+          "sha256": "ab60365f5420bc4d96f0fe8c4df68f51932c5b1aa396d6a356ba8b3fec0c4c61"
+        },
+        {
+          "path": "lib/services/event_prefetch_service.dart",
+          "sha256": "eab3acc814c63cd3a4fd848755b46a0a588632fb94b67eed06ce5e118d5786f0"
+        },
+        {
+          "path": "lib/services/event_preparation_service.dart",
+          "sha256": "97265561fc57a3ae26892669f9c133a2919ead64dbd4f588d700e21cde6a9c27"
+        },
+        {
+          "path": "lib/services/event_range_utils.dart",
+          "sha256": "7a4d52b78920bfc70365ac93043c0a828c6f065412f5bc1e426bfcd2d2240717"
+        },
+        {
+          "path": "lib/services/event_refresh_bus.dart",
+          "sha256": "89d64aacd04a8da36485d8d52d8caa1941e68c2200c39b5273700d1f2740b072"
+        },
+        {
+          "path": "lib/services/event_reminder_channel_migration_service.dart",
+          "sha256": "90cb2316a743ef6b28f90b568e6b30c09dbb89c087c52ba6f9d8e6a3a6a8801b"
+        },
+        {
+          "path": "lib/services/external_calendar_sync_guide_service.dart",
+          "sha256": "e035c2985fd07105b7d44e8ef9e6b00696a61c110904c32d696328e760c07a24"
+        },
+        {
+          "path": "lib/services/external_event_import_classifier.dart",
+          "sha256": "6eec56423cb4e933ce722518a3c8d61896629df8f3a05649245144a17bd9738e"
+        },
+        {
+          "path": "lib/services/feature_tour_service.dart",
+          "sha256": "4a8599505003b69484ba56c60bbfe3cd0519f06f71ed2bae5b6c9c2a12cefc97"
+        },
+        {
+          "path": "lib/services/gpt_service.dart",
+          "sha256": "a79b122e146a9ad7aec8932a91f37227ab9cd149085537ccb0e3a927e88bd035"
+        },
+        {
+          "path": "lib/services/group_event_share_service.dart",
+          "sha256": "b8c82bd94843b6de4c86343a8b8d4c61d9fe6c3ae567d3a0482aabec6a3148f4"
+        },
+        {
+          "path": "lib/services/home_header_summary_service.dart",
+          "sha256": "d31cf8f4b121a2dadcf58dee24e9556796ce56e504af6d868a6a9f567eee1243"
+        },
+        {
+          "path": "lib/services/home_widget_platform.dart",
+          "sha256": "4560ff27d6a0001d2bb02855585bcdbbec8dfaeec37d8af9621c307deb5c156c"
+        },
+        {
+          "path": "lib/services/home_widget_platform_io.dart",
+          "sha256": "6716a94610f307423211702b25c3e5bd5145ed10213ead25132aa3a0e5ea5da6"
+        },
+        {
+          "path": "lib/services/home_widget_platform_stub.dart",
+          "sha256": "0fed8b837f8ccb8d9d772d209068be8c8e3f5a755a2d2c066689863fdd300f03"
+        },
+        {
+          "path": "lib/services/home_widget_service.dart",
+          "sha256": "c82211470ede89088cb69a39f61506b72674456c8a9ec87a5dbd4eade5c5a6b0"
+        },
+        {
+          "path": "lib/services/interaction_idle_gate.dart",
+          "sha256": "f1e2e85f2c286e8606a6b3250339a7584bd3ee4cb9076247ca7f4987160fbc53"
+        },
+        {
+          "path": "lib/services/kasi_holiday_service.dart",
+          "sha256": "cc97495e6b1ac5463661b469330c8064e3c2e06ae8329da5a66db44613bfe5c9"
+        },
+        {
+          "path": "lib/services/korean_holidays.dart",
+          "sha256": "db6cbfb0249bf7c1deabe802c477c20e0dc954bc9dd63d2cf8cf07e26c901a77"
+        },
+        {
+          "path": "lib/services/location_lookup_service.dart",
+          "sha256": "94e7e5771f439873e01fb4e23aaa6a83b1952dce31e3d43afc393fd0253c500d"
+        },
+        {
+          "path": "lib/services/manual_event_side_effect_service.dart",
+          "sha256": "a8ae5d743d0cde36fd4ed58c87ffb41f83b824fd9508f5dc48161f24d3b2a903"
+        },
+        {
+          "path": "lib/services/map_service.dart",
+          "sha256": "42ebcdeeca11ba0ba9e7d6023fa9824696da4fab47e6a86d6ad0dc8e2a7d4f77"
+        },
+        {
+          "path": "lib/services/naver_caldav_remote_store.dart",
+          "sha256": "55df85226043eaac457693f15f38d13db1b8fbda008d701ced82b50e30d33dbc"
+        },
+        {
+          "path": "lib/services/naver_caldav_service.dart",
+          "sha256": "131bf0fe72a80ff5a1924106cc9d37dbd5fa4e35f89254b5e42d5603de035471"
+        },
+        {
+          "path": "lib/services/naver_calendar_launch_service.dart",
+          "sha256": "49ffe72060dd1a3739ac0a2244df290b9bfb6e02e5c11ef5ccb1bf3287965089"
+        },
+        {
+          "path": "lib/services/naver_calendar_permission_service.dart",
+          "sha256": "2a60524b425f338bbb4f41dc25be90ecb5e6d153671017bf38cc0e45e3be295e"
+        },
+        {
+          "path": "lib/services/naver_ics_import_service.dart",
+          "sha256": "1eb3fccca37b70526f9793396e14d39c10634ded216e33a162b1956086b3e51a"
+        },
+        {
+          "path": "lib/services/naver_ics_share_store.dart",
+          "sha256": "616f2430ff9872adf257a32c7f1b9cc38bc8fbb1bca2a17ca062d7345a3fc570"
+        },
+        {
+          "path": "lib/services/naver_open_api_calendar_service.dart",
+          "sha256": "1b621649e4b316902c1b21f579288d3e2ac0ed698a8d27efb5cb12fe98bb23f3"
+        },
+        {
+          "path": "lib/services/notification_route_contract.dart",
+          "sha256": "c6b9d5595fdc7c1ad7781b23457b1647dfddb2c790cbf1b2405e0ec2f222fff3"
+        },
+        {
+          "path": "lib/services/notification_service.dart",
+          "sha256": "af57df1e765d110c134af2a80c9510100a427bca6e61be16f2fceb4661ce6a90"
+        },
+        {
+          "path": "lib/services/oauth_callback_handler.dart",
+          "sha256": "70bc3cb7fa840bf4b2ff1065c90a38a6a2811588a22df89e6500e0f79f25afa9"
+        },
+        {
+          "path": "lib/services/onboarding_startup_gate.dart",
+          "sha256": "43a42422bb0eb13940b7d8df79d9ebe2b24bd1db300c640a02cfbbf17251dd3b"
+        },
+        {
+          "path": "lib/services/pending_departure_store.dart",
+          "sha256": "6f3e285acf79aa7420bf52f826110934890885cacb4ff2713dc8b6069c0cdf4b"
+        },
+        {
+          "path": "lib/services/recurrence_edit_scope.dart",
+          "sha256": "62b111fcdd8ca83f72b6304714f0f117a1c6050d72ba44d5d8678d597499660c"
+        },
+        {
+          "path": "lib/services/remote_config_service.dart",
+          "sha256": "01121a439d89db128d94cc0b637ee0c47bef8c5922b92f763a24fea30c2de639"
+        },
+        {
+          "path": "lib/services/review_service.dart",
+          "sha256": "60263f9cb807ccf41b259e9a30fe8b82207c87f87209ef8aeecb6b26530b5a72"
+        },
+        {
+          "path": "lib/services/schedule_parse_ad_gate.dart",
+          "sha256": "0549949c19cb70aa1030296759684644514d4702313d112f1342c30b4f9ca5ea"
+        },
+        {
+          "path": "lib/services/schedule_parse_entitlement.dart",
+          "sha256": "39d45a2882c9b153be1797d896af724b0efad4ff4e4df839df862a12ec1602ff"
+        },
+        {
+          "path": "lib/services/smart_preparation_alarm_service.dart",
+          "sha256": "82b723e4b8253e361d5cce027b7ca0c7626d5f220dd626386bef8309be7f8e24"
+        },
+        {
+          "path": "lib/services/smart_preparation_payload_migration_service.dart",
+          "sha256": "037ff1020940491763669416e18ad0ea8c85cdd34d57c8943f02de5b18871a78"
+        },
+        {
+          "path": "lib/services/stt_service.dart",
+          "sha256": "957cfc98c9294f2bd3127a25b1b4589a3671e93ac6d73879407dae180e2b3331"
+        },
+        {
+          "path": "lib/services/synced_public_holiday_visibility.dart",
+          "sha256": "e4641c725323e97bec3d1313415e6197598256973bf97e71db16ac572c6ed6cc"
+        },
+        {
+          "path": "lib/services/travel_time_buffer_service.dart",
+          "sha256": "318b512733fa5376f09956fb8c9d5c512dd1a084c5265b4190c5a9bb5ed6741d"
+        },
+        {
+          "path": "lib/services/tts_service.dart",
+          "sha256": "ccd210cccb9e0e5b5263b5086e16141fd009bd4b73e3ec0dac15745ab1160aa6"
+        },
+        {
+          "path": "lib/services/update_service.dart",
+          "sha256": "12a7b4fc2689d5cd1565a6d254ed71fed5252a6607dc2622853c2690d3eb50a1"
+        },
+        {
+          "path": "lib/services/voice_command_analysis_service.dart",
+          "sha256": "12a805abdfdba31e6bca9fc3de37b0485d6a85ff96042d3a79603fd778c8fd17"
+        },
+        {
+          "path": "lib/services/voice_command_pipeline.dart",
+          "sha256": "e330620c2b34e110cf7ca11702fb24183be60726542eb44d3787e001e8ec1d52"
+        },
+        {
+          "path": "lib/services/voice_command_router.dart",
+          "sha256": "1bb5611001c02c83b4a412ef9ac3328cf32ac60145e6cfb5a6f8924fa9e7a483"
+        },
+        {
+          "path": "lib/services/voice_conversation_ad_gate.dart",
+          "sha256": "8a28c2bf8263ec74076bfa045415841d4f4c22e310c2a2332b6b5d4fd603c364"
+        },
+        {
+          "path": "lib/services/voice_conversation_controller.dart",
+          "sha256": "95d758790cd5cf16e1b1ab081aeae39285b41cf028c73e4371779ae9b12d4728"
+        },
+        {
+          "path": "lib/services/voice_conversation_entitlement.dart",
+          "sha256": "51589e745e67b6a603ff12a062e86bdfa1a9af00b1d5bd195f697dd9c917f454"
+        },
+        {
+          "path": "lib/services/voice_conversation_launcher.dart",
+          "sha256": "49768828e9b8880473c895f313dddff55e53f4336970e360de00a981e4983e7c"
+        },
+        {
+          "path": "lib/services/voice_correction_learning_service.dart",
+          "sha256": "045742864d4c984588c7db1fb8e6731c487c892edc32e7b0af009a8e146a1f90"
+        },
+        {
+          "path": "lib/services/voice_date_range_parser.dart",
+          "sha256": "2e4b00f158277ac6b71cc889de45f6a634a4798a05e4bdeaa4ae0f84b7aed56b"
+        },
+        {
+          "path": "lib/services/voice_schedule_structure_service.dart",
+          "sha256": "e2c08f80fd6c83c99d0182894e97c8c6f270826c95d352ad244e4e4696687c12"
+        },
+        {
+          "path": "lib/services/voice_text_cleanup_service.dart",
+          "sha256": "7b4f74538d8f4a6e207329478a5dfff095e9c9a9464ca3f18ca30282eeeb5620"
+        },
+        {
+          "path": "lib/services/widget_schedule_contract.dart",
+          "sha256": "f602c434c44e97e34fc052cef2e0d0659932f9840938b9fe09ce7c4026e1ed21"
+        },
+        {
+          "path": "lib/widgets/calendar_style_event_editor.dart",
+          "sha256": "8f51c565fdf384684eec00a3ff22b01952e57607dcf8e492fea20c4b48e22410"
+        },
+        {
+          "path": "lib/widgets/location_resolution_status.dart",
+          "sha256": "223c8e0cb25baf357b0cbb97025e45156e77479d7d417c6dcca9445610d21a32"
+        },
+        {
+          "path": "lib/widgets/overlap_warning_dialog.dart",
+          "sha256": "93bc4e075864606cd462314ee36945e0a4f0ca9a36c8ce16b76218b0d49b9e51"
+        },
+        {
+          "path": "lib/widgets/planflow_action_buttons.dart",
+          "sha256": "d0e3e33799f24b00c128bf3d6959e047fda8255ef35c5182524d032b31cf2aa9"
+        },
+        {
+          "path": "lib/widgets/planflow_global_fabs.dart",
+          "sha256": "be8b103c155df3cb828f84f1294e69113517e276d75ec77eac67c7d850e482cb"
+        },
+        {
+          "path": "lib/widgets/planflow_logo.dart",
+          "sha256": "bbe596ee2741d58af7339a08a2048ac83d87d950a4f19f4ecd21de95dcfafe98"
+        },
+        {
+          "path": "lib/widgets/planflow_voice_fab.dart",
+          "sha256": "606690f83d8e01fa29e4e947eeb7771639c4d7f054891e4a9732a03bc6cc7caf"
+        },
+        {
+          "path": "lib/widgets/recurrence_selector.dart",
+          "sha256": "0736eb3cbc6edab9870c6f73f7148d40383f423c3768993a72d5b745f017d6eb"
+        },
+        {
+          "path": "lib/widgets/reminder_offset_selector.dart",
+          "sha256": "b145203fa7fdc133afe089238f323596a581814b97e3c24a37252409b20c5065"
+        },
+        {
+          "path": "lib/widgets/rewarded_ad_dialog.dart",
+          "sha256": "61f4dfd195c39ed3de23cedf209a7c0011799a5d31a761ba2df360983bc49281"
+        },
+        {
+          "path": "lib/widgets/schedule_save_scope_card.dart",
+          "sha256": "278e43d31c9085d2020f15f395accf231cdb6a771a9bc07904e15a0b4cabf180"
+        },
+        {
+          "path": "lib/widgets/voice_conversation_ad_dialog.dart",
+          "sha256": "96fff1d3a88ec2764e0222fb30ed3c0f0e3f5839822ea3a685dc328dcf6cdfa2"
+        }
+      ],
+      "hash": "e6982d10a767bf9d1885095e26c8fa124b8f35d94fa09b7760ec276cd7ddaad9"
+    },
+    "STORE_PROFILE": {
+      "components": [
+        "binaryReleaseGate",
+        "binding",
+        "blockers",
+        "content",
+        "decisionsRequired",
+        "locales",
+        "monetization",
+        "platforms",
+        "privacy",
+        "profileRevision",
+        "projectId",
+        "protectedTargets",
+        "qualificationMode",
+        "releasePolicy",
+        "review",
+        "schemaVersion",
+        "screenshots",
+        "storeMetadata",
+        "storeProfileStatus",
+        "usesPublisher"
+      ],
+      "hash": "decc814b8b6e6785dd9673bb95adefcc142f920f512e631ef9aaa7f2785227da"
+    }
+  },
+  "note": "STORE_PROFILE and SCREENSHOT_FEATURE were computed from the CURRENT project store profile / screenshot lineage at baseline-write time (project_root), not from source_root historical config/store (which may not exist in an extracted historical source tree). This means impact runs against this baseline only flag METADATA_CHANGE / SCREENSHOT_CHANGE for drift from this baseline-write moment forward, not for any drift that may already exist between the historical release and today profile.",
+  "platform": "android",
+  "projectId": "planflow",
+  "releaseRef": "play production 1.1.1(164)",
+  "schemaVersion": 1,
+  "sourceSha": "18075eda699be7adf22f8d246b4ae1d5580f9684"
+}
