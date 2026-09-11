@@ -1,0 +1,218 @@
+name: Store Screenshot Capture (Scaffold)
+
+# Store Intelligence screenshot automation scaffold (spec #43).
+#
+# THIS WORKFLOW IS A SCAFFOLD AND DOES NOT CAPTURE SCREENSHOTS YET.
+# It is blocked on three prerequisites:
+#   1. The app requires login, and no demo account secret exists yet
+#      (PLANFLOW_REVIEW_DEMO_USERNAME / PLANFLOW_REVIEW_DEMO_PASSWORD).
+#   2. A Flutter integration_test driver for deterministic navigation +
+#      status-bar-safe screenshot capture is out of scope for this change.
+#   3. Dispatching this workflow at all requires it to be pushed to main.
+#
+# Until all three prerequisites are met, the "Check capture prerequisites"
+# guard step below prints BLOCKED_ON_PREREQ and every actual capture step is
+# skipped (they are conditioned on the guard's output). No App Store /
+# Play Store upload step exists anywhere in this file, and none should ever
+# be added here -- this workflow's only job is to produce a screenshot
+# artifact for a human or a separate downstream workflow to review.
+
+on:
+  workflow_dispatch:
+    inputs:
+      capture_plan_path:
+        description: 'Path to the capture plan JSON (schemaVersion 1)'
+        required: false
+        type: string
+        default: config/store/capture-plan.json
+      driver_ready:
+        description: 'Set true only once a real Flutter integration_test driver for capture exists'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load and validate capture plan
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_path="${{ inputs.capture_plan_path }}"
+          if [[ ! -f "$plan_path" ]]; then
+            echo "::error title=BLOCKED_NO_CAPTURE_PLAN::Capture plan not found at $plan_path"
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          schema_version="$(jq -r '.schemaVersion // empty' "$plan_path")"
+          if [[ "$schema_version" != "1" ]]; then
+            echo "::error title=BLOCKED_CAPTURE_PLAN_SCHEMA::Unsupported capture plan schemaVersion: ${schema_version:-<missing>}"
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          device_count="$(jq '.devices | length' "$plan_path")"
+          shot_count="$(jq '.shots | length' "$plan_path")"
+          echo "plan_path=$plan_path" >> "$GITHUB_OUTPUT"
+          echo "device_count=$device_count" >> "$GITHUB_OUTPUT"
+          echo "shot_count=$shot_count" >> "$GITHUB_OUTPUT"
+          echo "blocked=false" >> "$GITHUB_OUTPUT"
+          echo "CAPTURE_PLAN_LOADED devices=$device_count shots=$shot_count"
+
+      # Reads the capture plan's "devices" array (slot, displayClass,
+      # simulator, width, height) and its "shots" array (screenshotId,
+      # featureIds, route, fixture) to build the devices x shots matrix that
+      # the (not-yet-implemented) capture steps below would iterate over.
+      # This step only reports the matrix size; it does not drive the app.
+      - name: Build devices x shots matrix (report only)
+        id: matrix
+        if: ${{ steps.plan.outputs.blocked != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_path="${{ steps.plan.outputs.plan_path }}"
+          jq -c '{
+            devices: [.devices[] | {slot, displayClass, simulator, width, height}],
+            shots: [.shots[] | {screenshotId, featureIds, route, fixture}],
+            determinism: .determinism
+          }' "$plan_path"
+          matrix_size=$(( ${{ steps.plan.outputs.device_count }} * ${{ steps.plan.outputs.shot_count }} ))
+          echo "MATRIX_SIZE devices=${{ steps.plan.outputs.device_count }} shots=${{ steps.plan.outputs.shot_count }} total=$matrix_size"
+
+      # Fail-closed gate. Capture only proceeds once ALL three prerequisites
+      # are met. Any missing prerequisite prints BLOCKED_ON_PREREQ and the
+      # job exits 0 (not a failure -- this scaffold is expected to be
+      # blocked today) without running any capture step.
+      - name: Check capture prerequisites
+        id: guard
+        if: ${{ steps.plan.outputs.blocked != 'true' }}
+        shell: bash
+        env:
+          DRIVER_READY: ${{ inputs.driver_ready }}
+          HAS_DEMO_USERNAME: ${{ secrets.PLANFLOW_REVIEW_DEMO_USERNAME != '' }}
+          HAS_DEMO_PASSWORD: ${{ secrets.PLANFLOW_REVIEW_DEMO_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          if [[ "$DRIVER_READY" != "true" ]]; then
+            missing+=("driver_ready input is not true (SCAFFOLD: driver not implemented)")
+          fi
+          if [[ "$HAS_DEMO_USERNAME" != "true" ]]; then
+            missing+=("secret PLANFLOW_REVIEW_DEMO_USERNAME is not configured")
+          fi
+          if [[ "$HAS_DEMO_PASSWORD" != "true" ]]; then
+            missing+=("secret PLANFLOW_REVIEW_DEMO_PASSWORD is not configured")
+          fi
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'BLOCKED_ON_PREREQ reason="%s"\n' "${missing[@]}"
+            {
+              echo '{'
+              echo '  "status": "BLOCKED_ON_PREREQ",'
+              echo '  "reasons": ['
+              for i in "${!missing[@]}"; do
+                sep=","
+                if [[ "$i" -eq $(( ${#missing[@]} - 1 )) ]]; then sep=""; fi
+                printf '    "%s"%s\n' "${missing[$i]}" "$sep"
+              done
+              echo '  ]'
+              echo '}'
+            } > "$RUNNER_TEMP/blocked-reason.json"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "CAPTURE_PREREQUISITES_PASS"
+
+      # --- Everything below is a design placeholder for once the guard
+      # --- above passes. None of it runs today.
+
+      - name: Prepare Flutter (placeholder for future capture)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Boot simulator per device slot (placeholder)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: simulator boot not implemented. Would iterate the"
+          echo "capture plan's devices[].simulator entries and run"
+          echo "'xcrun simctl create/boot' + 'xcrun simctl bootstatus -b' per slot."
+
+      - name: Set deterministic status bar (placeholder)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: status bar override not implemented. Would run:"
+          echo "  xcrun simctl status_bar <udid> override --time 9:41 --batteryLevel 100 --batteryState charged --wifiBars 3 --cellularBars 4"
+          echo "reading the values from the capture plan's determinism.statusBarOverride object."
+
+      - name: Set deterministic locale (placeholder)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: locale configuration not implemented. Would set the"
+          echo "simulator locale from the capture plan's determinism.locale value"
+          echo "(e.g. ko_KR) before any shot is captured."
+
+      - name: Drive app to each shot route (placeholder)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: driver not implemented."
+          echo "This is not a TODO for a future flutter drive call in this file --"
+          echo "it is an explicit design placeholder. A Flutter integration_test"
+          echo "driver capable of logging in with the demo account, navigating to"
+          echo "each capture plan shots[].route with shots[].fixture loaded, and"
+          echo "signalling capture-readiness is out of scope for this change."
+
+      - name: Capture screenshot per device x shot (placeholder)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: screenshot capture not implemented. Would run:"
+          echo "  xcrun simctl io <udid> screenshot <out>/<screenshotId>-<slot>.png"
+          echo "once per device x shot pair in the matrix built above."
+
+      - name: Verify captured PNG dimensions against capture plan (placeholder)
+        if: ${{ steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: dimension verification not implemented. Would compare"
+          echo "each captured PNG's pixel width/height against the matching"
+          echo "capture plan devices[].width / devices[].height entry and fail"
+          echo "the job on any mismatch."
+
+      - name: Shutdown and delete simulators (placeholder)
+        if: ${{ always() && steps.guard.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SCAFFOLD: simulator teardown not implemented. Would run"
+          echo "'xcrun simctl shutdown' and 'xcrun simctl delete' per booted udid."
+
+      - name: Upload capture artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-store-screenshot-capture-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/blocked-reason.json
+            ${{ runner.temp }}/store-screenshots
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,76 @@
+name: Store readback (App Store Connect, GET only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: "App Store Connect bundle identifier (defaults to com.fluxstudio.planflow)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-readback-asc
+  cancel-in-progress: false
+
+jobs:
+  readback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run READ-ONLY App Store Connect snapshot collector
+        id: readback
+        shell: bash
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          BUNDLE_ID_INPUT: ${{ inputs.bundle_id }}
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/store-readback"
+          mkdir -p "$out_dir"
+          if [[ -n "${BUNDLE_ID_INPUT:-}" ]]; then
+            python3 scripts/store-readback-asc.py \
+              --bundle-id "$BUNDLE_ID_INPUT" \
+              --out "$out_dir" \
+              --project-id planflow
+          else
+            python3 scripts/store-readback-asc.py \
+              --bundle-id-from-xcconfig ios/Flutter/PlanFlow-Identity.xcconfig \
+              --out "$out_dir" \
+              --project-id planflow
+          fi
+          echo "out_dir=$out_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Guard against secret material in the snapshot before upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="${{ steps.readback.outputs.out_dir }}"
+          if grep -R -E -l -- '-----BEGIN|private_key|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$out_dir" 2>/dev/null; then
+            echo "BLOCKED_SECRET_IN_SNAPSHOT: refusing to upload artifact containing secret-shaped content" >&2
+            exit 1
+          fi
+          echo "Secret-safety grep guard passed: no PEM/private_key/JWT patterns found."
+
+      - name: Upload sanitized App Store Connect snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-readback-asc-snapshot
+          path: ${{ steps.readback.outputs.out_dir }}/*
+          if-no-files-found: error
+          retention-days: 14
