@@ -40,13 +40,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Load and validate capture plan
         id: plan
         shell: bash
+        env:
+          CAPTURE_PLAN_PATH: ${{ inputs.capture_plan_path }}
         run: |
           set -euo pipefail
-          plan_path="${{ inputs.capture_plan_path }}"
+          plan_path="$CAPTURE_PLAN_PATH"
           if [[ ! -f "$plan_path" ]]; then
             echo "::error title=BLOCKED_NO_CAPTURE_PLAN::Capture plan not found at $plan_path"
             echo "blocked=true" >> "$GITHUB_OUTPUT"
@@ -75,16 +79,20 @@ jobs:
         id: matrix
         if: ${{ steps.plan.outputs.blocked != 'true' }}
         shell: bash
+        env:
+          PLAN_PATH: ${{ steps.plan.outputs.plan_path }}
+          DEVICE_COUNT: ${{ steps.plan.outputs.device_count }}
+          SHOT_COUNT: ${{ steps.plan.outputs.shot_count }}
         run: |
           set -euo pipefail
-          plan_path="${{ steps.plan.outputs.plan_path }}"
+          plan_path="$PLAN_PATH"
           jq -c '{
             devices: [.devices[] | {slot, displayClass, simulator, width, height}],
             shots: [.shots[] | {screenshotId, featureIds, route, fixture}],
             determinism: .determinism
           }' "$plan_path"
-          matrix_size=$(( ${{ steps.plan.outputs.device_count }} * ${{ steps.plan.outputs.shot_count }} ))
-          echo "MATRIX_SIZE devices=${{ steps.plan.outputs.device_count }} shots=${{ steps.plan.outputs.shot_count }} total=$matrix_size"
+          matrix_size=$(( DEVICE_COUNT * SHOT_COUNT ))
+          echo "MATRIX_SIZE devices=$DEVICE_COUNT shots=$SHOT_COUNT total=$matrix_size"
 
       # Fail-closed gate. Capture only proceeds once ALL three prerequisites
       # are met. Any missing prerequisite prints BLOCKED_ON_PREREQ and the
@@ -134,41 +142,47 @@ jobs:
       # --- above passes. None of it runs today.
 
       - name: Prepare Flutter (placeholder for future capture)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.2
           cache: true
 
       - name: Boot simulator per device slot (placeholder)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           echo "SCAFFOLD: simulator boot not implemented. Would iterate the"
           echo "capture plan's devices[].simulator entries and run"
           echo "'xcrun simctl create/boot' + 'xcrun simctl bootstatus -b' per slot."
+          echo "::error title=NOT_IMPLEMENTED::Simulator boot is not implemented. Refusing to report success for a capture run that did not actually boot a simulator."
+          exit 1
 
       - name: Set deterministic status bar (placeholder)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           echo "SCAFFOLD: status bar override not implemented. Would run:"
           echo "  xcrun simctl status_bar <udid> override --time 9:41 --batteryLevel 100 --batteryState charged --wifiBars 3 --cellularBars 4"
           echo "reading the values from the capture plan's determinism.statusBarOverride object."
+          echo "::error title=NOT_IMPLEMENTED::Status bar override is not implemented. Refusing to report success for a capture run that did not actually set a deterministic status bar."
+          exit 1
 
       - name: Set deterministic locale (placeholder)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           echo "SCAFFOLD: locale configuration not implemented. Would set the"
           echo "simulator locale from the capture plan's determinism.locale value"
           echo "(e.g. ko_KR) before any shot is captured."
+          echo "::error title=NOT_IMPLEMENTED::Locale configuration is not implemented. Refusing to report success for a capture run that did not actually set a deterministic locale."
+          exit 1
 
       - name: Drive app to each shot route (placeholder)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -178,18 +192,22 @@ jobs:
           echo "driver capable of logging in with the demo account, navigating to"
           echo "each capture plan shots[].route with shots[].fixture loaded, and"
           echo "signalling capture-readiness is out of scope for this change."
+          echo "::error title=NOT_IMPLEMENTED::Driving the app to each shot route is not implemented. Refusing to report success for a capture run that did not actually navigate the app."
+          exit 1
 
       - name: Capture screenshot per device x shot (placeholder)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           echo "SCAFFOLD: screenshot capture not implemented. Would run:"
           echo "  xcrun simctl io <udid> screenshot <out>/<screenshotId>-<slot>.png"
           echo "once per device x shot pair in the matrix built above."
+          echo "::error title=NOT_IMPLEMENTED::Screenshot capture is not implemented. Refusing to report success for a capture run that did not actually capture any screenshot."
+          exit 1
 
       - name: Verify captured PNG dimensions against capture plan (placeholder)
-        if: ${{ steps.guard.outputs.ready == 'true' }}
+        if: ${{ steps.plan.outputs.blocked != 'true' && steps.guard.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -197,6 +215,8 @@ jobs:
           echo "each captured PNG's pixel width/height against the matching"
           echo "capture plan devices[].width / devices[].height entry and fail"
           echo "the job on any mismatch."
+          echo "::error title=NOT_IMPLEMENTED::Dimension verification is not implemented. Refusing to report success for a capture run that did not actually verify any screenshot dimensions."
+          exit 1
 
       - name: Shutdown and delete simulators (placeholder)
         if: ${{ always() && steps.guard.outputs.ready == 'true' }}

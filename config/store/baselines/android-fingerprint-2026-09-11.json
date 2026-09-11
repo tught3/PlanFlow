@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-11T01:49:17Z",
+  "capturedAt": "2026-09-11T02:09:01Z",
   "fingerprints": {
     "DEPENDENCY": {
       "components": [
@@ -206,30 +206,6 @@
     "PERMISSION": {
       "components": [
         {
-          "name": "NSLocationWhenInUseUsageDescription",
-          "type": "ios_usage_description"
-        },
-        {
-          "name": "NSMicrophoneUsageDescription",
-          "type": "ios_usage_description"
-        },
-        {
-          "name": "NSPhotoLibraryAddUsageDescription",
-          "type": "ios_usage_description"
-        },
-        {
-          "name": "NSPhotoLibraryUsageDescription",
-          "type": "ios_usage_description"
-        },
-        {
-          "name": "NSSpeechRecognitionUsageDescription",
-          "type": "ios_usage_description"
-        },
-        {
-          "name": "NSUserTrackingUsageDescription",
-          "type": "ios_usage_description"
-        },
-        {
           "name": "android.permission.ACCESS_ADSERVICES_AD_ID",
           "type": "android_permission"
         },
@@ -294,15 +270,11 @@
           "type": "android_permission"
         },
         {
-          "name": "com.apple.security.application-groups",
-          "type": "ios_entitlement"
-        },
-        {
           "name": "com.google.android.gms.permission.AD_ID",
           "type": "android_permission"
         }
       ],
-      "hash": "2f4496f250ba3ad88011eef5668fb817119b83b38c4a0715f2f3caeea504c377"
+      "hash": "db571c6493c676e6cff4b930bcdf3f47774354ad2a0b04107e53347226195c67"
     },
     "SCREENSHOT_FEATURE": {
       "components": [
@@ -318,29 +290,9 @@
         },
         {
           "featureIds": [
-            "briefing-settings"
-          ],
-          "screenshotId": "iphone65-6-briefing-settings",
-          "sourcePaths": [
-            "lib/screens/settings/settings_screen.dart"
-          ],
-          "sourcesDigest": "04cd0f854893462603ad76cfb5d13643bf2339a4ad0f3038d6b7cf48f92d3851"
-        },
-        {
-          "featureIds": [
             "calendar-month"
           ],
           "screenshotId": "android-tablet-1-calendar",
-          "sourcePaths": [
-            "lib/screens/calendar/calendar_screen.dart"
-          ],
-          "sourcesDigest": "f9506d0139431df25b9af378fca5cfcbd1fe2dbbfc8ed7300291a40b276acd81"
-        },
-        {
-          "featureIds": [
-            "calendar-month"
-          ],
-          "screenshotId": "ipad13-01-calendar",
           "sourcePaths": [
             "lib/screens/calendar/calendar_screen.dart"
           ],
@@ -359,30 +311,9 @@
         },
         {
           "featureIds": [
-            "calendar-sync"
-          ],
-          "screenshotId": "iphone65-4-calendar-sync",
-          "sourcePaths": [
-            "lib/screens/settings/settings_screen.dart",
-            "lib/services/naver_caldav_service.dart"
-          ],
-          "sourcesDigest": "eed8204ef1951c6f9ccb2f1e9f2a2a3276118be4583f51da04991fda80971822"
-        },
-        {
-          "featureIds": [
             "group-dashboard"
           ],
           "screenshotId": "android-tablet-2-group",
-          "sourcePaths": [
-            "lib/features/groups/screens/group_dashboard_screen.dart"
-          ],
-          "sourcesDigest": "1d4fce972015a66f085d730ef0e1191ecc90fe25ef26a3919226be82cc1010e2"
-        },
-        {
-          "featureIds": [
-            "group-dashboard"
-          ],
-          "screenshotId": "ipad13-02-group",
           "sourcePaths": [
             "lib/features/groups/screens/group_dashboard_screen.dart"
           ],
@@ -400,30 +331,9 @@
         },
         {
           "featureIds": [
-            "group-management-menu"
-          ],
-          "screenshotId": "iphone65-7-group",
-          "sourcePaths": [
-            "lib/features/groups/screens/group_detail_screen.dart"
-          ],
-          "sourcesDigest": "c854a66244d966278291500105337423c4e3e6d1a0505c12378900e1abbd7993"
-        },
-        {
-          "featureIds": [
             "home-today-briefing"
           ],
           "screenshotId": "android-phone-8-home-briefing",
-          "sourcePaths": [
-            "lib/screens/home/home_screen.dart",
-            "lib/services/briefing_scheduler_service.dart"
-          ],
-          "sourcesDigest": "f03e9c45f9adfda2166a667a8520a81dd530d46fd0f5a31d03100e03728dc8d2"
-        },
-        {
-          "featureIds": [
-            "home-today-briefing"
-          ],
-          "screenshotId": "iphone65-8-home-briefing",
           "sourcePaths": [
             "lib/screens/home/home_screen.dart",
             "lib/services/briefing_scheduler_service.dart"
@@ -443,31 +353,9 @@
         },
         {
           "featureIds": [
-            "home-widget"
-          ],
-          "screenshotId": "iphone65-5-home-widget",
-          "sourcePaths": [
-            "lib/screens/home/home_widgets.dart",
-            "lib/services/home_widget_service.dart"
-          ],
-          "sourcesDigest": "e1dd478fb046b0b4ba8a0e0b2f15c62dc5019c976c7627d7341d36f2f97bc74d"
-        },
-        {
-          "featureIds": [
             "smart-departure-alert"
           ],
           "screenshotId": "android-phone-2-departure-alert",
-          "sourcePaths": [
-            "lib/screens/event/event_detail_screen.dart",
-            "lib/services/travel_time_buffer_service.dart"
-          ],
-          "sourcesDigest": "9c4f3dcba0cd398557cd7d82e7443832666e4796f6df9aa13c793f84c72e2b52"
-        },
-        {
-          "featureIds": [
-            "smart-departure-alert"
-          ],
-          "screenshotId": "iphone65-2-departure-alert",
           "sourcePaths": [
             "lib/screens/event/event_detail_screen.dart",
             "lib/services/travel_time_buffer_service.dart"
@@ -486,16 +374,6 @@
         },
         {
           "featureIds": [
-            "voice-schedule-edit"
-          ],
-          "screenshotId": "iphone65-3-voice-edit",
-          "sourcePaths": [
-            "lib/screens/voice/voice_conversation_screen.dart"
-          ],
-          "sourcesDigest": "910831f7e521e9d87bf286ff17f5a6cec14d8b96564e2b59cef7e38565b42c46"
-        },
-        {
-          "featureIds": [
             "voice-schedule-input"
           ],
           "screenshotId": "android-phone-1-voice-input",
@@ -503,19 +381,9 @@
             "lib/screens/voice/confirm_screen.dart"
           ],
           "sourcesDigest": "1db81fd4ff41ebf9d76bce9f6c106a2dd17f7df4f8ce3c35cd0454ad786be679"
-        },
-        {
-          "featureIds": [
-            "voice-schedule-input"
-          ],
-          "screenshotId": "iphone65-1-voice-input",
-          "sourcePaths": [
-            "lib/screens/voice/confirm_screen.dart"
-          ],
-          "sourcesDigest": "1db81fd4ff41ebf9d76bce9f6c106a2dd17f7df4f8ce3c35cd0454ad786be679"
         }
       ],
-      "hash": "9dde540d4e50baa178c271670b524ed01884ac22876532fe80733815f386b1b6"
+      "hash": "3e9b7de3a5395565ce7286896d23bba3e23e69428255e833c6a217dbe5aba39f"
     },
     "SDK": {
       "components": [
@@ -1453,11 +1321,12 @@
         "storeProfileStatus",
         "usesPublisher"
       ],
-      "hash": "decc814b8b6e6785dd9673bb95adefcc142f920f512e631ef9aaa7f2785227da"
+      "hash": "4325d5d4398dff3db61c4e4fd7a9ca22d3c69f49ebe152e3073d48936fbe2f0c"
     }
   },
   "note": "STORE_PROFILE and SCREENSHOT_FEATURE were computed from the CURRENT project store profile / screenshot lineage at baseline-write time (project_root), not from source_root historical config/store (which may not exist in an extracted historical source tree). This means impact runs against this baseline only flag METADATA_CHANGE / SCREENSHOT_CHANGE for drift from this baseline-write moment forward, not for any drift that may already exist between the historical release and today profile.",
   "platform": "android",
+  "platformScoped": true,
   "projectId": "planflow",
   "releaseRef": "play production 1.1.1(164)",
   "schemaVersion": 1,

@@ -61,11 +61,164 @@ jobs:
         run: |
           set -euo pipefail
           out_dir="${{ steps.readback.outputs.out_dir }}"
-          if grep -R -E -l -- '-----BEGIN|private_key|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$out_dir" 2>/dev/null; then
+          # R4-C L-6 fix: previously "if grep ... 2>/dev/null; then ...; fi"
+          # only branched on grep's exit 0 (match found). grep's exit 2
+          # (a real error -- e.g. out_dir missing, unreadable file, bad
+          # pattern) is neither 0 nor treated specially by a bare "if", so
+          # it fell through to the same "guard passed" branch as exit 1 (no
+          # match), silently treating a broken guard as a passing one.
+          # Check out_dir exists first, then run grep unconditionally
+          # (capturing its real exit code) and fail closed on anything
+          # other than "ran cleanly and found nothing" (exit 1).
+          if [ ! -d "$out_dir" ]; then
+            echo "BLOCKED_SECRET_IN_SNAPSHOT: out_dir '$out_dir' does not exist" >&2
+            exit 1
+          fi
+          grep_rc=0
+          grep -R -E -l -- '-----BEGIN|private_key|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$out_dir" || grep_rc=$?
+          if [ "$grep_rc" -eq 0 ]; then
             echo "BLOCKED_SECRET_IN_SNAPSHOT: refusing to upload artifact containing secret-shaped content" >&2
+            exit 1
+          elif [ "$grep_rc" -ne 1 ]; then
+            echo "BLOCKED_SECRET_IN_SNAPSHOT: secret-safety grep guard failed to run (exit $grep_rc)" >&2
             exit 1
           fi
           echo "Secret-safety grep guard passed: no PEM/private_key/JWT patterns found."
+
+      - name: Guard against raw PII (email/phone) in the snapshot before upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="${{ steps.readback.outputs.out_dir }}"
+          # R4-C L-6 fix: see the secret-material guard step above for the
+          # rationale -- "if grep ... 2>/dev/null; then" swallowed grep's
+          # exit 2 (real error) as if it were "no match found". Check
+          # out_dir exists first, and fail closed on any grep exit code
+          # other than 0 (match => blocked) or 1 (no match => pass).
+          if [ ! -d "$out_dir" ]; then
+            echo "BLOCKED_PII_IN_SNAPSHOT: out_dir '$out_dir' does not exist" >&2
+            exit 1
+          fi
+          # Plain-text email check: this pattern is intentionally left as a
+          # broad, file-wide grep -- an email address should never appear
+          # anywhere in a sanitized snapshot, regardless of which JSON key
+          # it's nested under.
+          grep_rc=0
+          grep -R -E -l -- '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$out_dir" || grep_rc=$?
+          if [ "$grep_rc" -eq 0 ]; then
+            echo "BLOCKED_PII_IN_SNAPSHOT: refusing to upload artifact containing an email address" >&2
+            exit 1
+          elif [ "$grep_rc" -ne 1 ]; then
+            echo "BLOCKED_PII_IN_SNAPSHOT: email grep guard failed to run (exit $grep_rc)" >&2
+            exit 1
+          fi
+          # Phone-number check: a naive "digits with separators" grep (the
+          # previous \+?[0-9][0-9 ().-]{7,}[0-9] pattern) also matches
+          # capturedAt ISO-8601 timestamps ("2026-09-11T01:42:11Z") and
+          # Google/Apple's long numeric resource ids, so it false-positives
+          # on every normal snapshot. Match phone-shaped strings:
+          # international numbers starting with "+", or Korean-format
+          # numbers with hyphen, dot, or no separator at all
+          # (01X-XXXX-XXXX / 01X.XXXX.XXXX / 01XXXXXXXXX).
+          grep_rc=0
+          grep -R -E -l -- '\+[0-9][0-9 ().-]{6,}[0-9]|\b01[0-9][-.]?[0-9]{3,4}[-.]?[0-9]{4}\b' "$out_dir" || grep_rc=$?
+          if [ "$grep_rc" -eq 0 ]; then
+            echo "BLOCKED_PII_IN_SNAPSHOT: refusing to upload artifact containing a phone-number-shaped pattern" >&2
+            exit 1
+          elif [ "$grep_rc" -ne 1 ]; then
+            echo "BLOCKED_PII_IN_SNAPSHOT: phone grep guard failed to run (exit $grep_rc)" >&2
+            exit 1
+          fi
+          echo "PII-safety grep guard (plain-text email/phone) passed."
+
+      - name: "Guard PII fields are presence-only ({\"present\": bool}), never a raw/partial value"
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="${{ steps.readback.outputs.out_dir }}"
+          python3 - "$out_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          # Every field name this readback pipeline is known to sanitize down
+          # to a presence-only marker (fluxstore/commands/readback.py's
+          # _DETAILS_PII_HASH_FIELDS and scripts/store-readback-asc.py's
+          # PII_HASH_FIELDS). If either sanitizer's field list grows, this
+          # list must grow with it -- an unlisted PII-shaped field would
+          # silently skip this structural check (the plain-text grep above
+          # is the remaining safety net for that gap).
+          PII_FIELDS = frozenset(
+              {
+                  "contactEmail",
+                  "contactPhone",
+                  "demoAccountName",
+                  "contactFirstName",
+                  "contactLastName",
+              }
+          )
+
+          # R4-C L-5 fix: the previous check was "key in PII_FIELDS" -- an
+          # exact, case-sensitive match against camelCase names only. A
+          # sanitizer (or a future field-list drift) that emits
+          # "ContactFirstName" or "contact_first_name" instead of
+          # "contactFirstName" would silently skip this structural check
+          # (leaving only the plain-text grep guard as a safety net, which
+          # doesn't verify the presence-only *shape* at all). Normalize both
+          # the known field names and the JSON keys being walked (lowercase,
+          # strip "_" and "-") before comparing, so case/separator-style
+          # variants of the same field name are still caught.
+          def _normalize(name: str) -> str:
+              return name.lower().replace("_", "").replace("-", "")
+
+          NORMALIZED_PII_FIELDS = {_normalize(f) for f in PII_FIELDS}
+
+          violations: list[str] = []
+
+          def walk(node, path):
+              if isinstance(node, dict):
+                  for key, value in node.items():
+                      child_path = f"{path}.{key}" if path else key
+                      if _normalize(key) in NORMALIZED_PII_FIELDS:
+                          if not (
+                              isinstance(value, dict)
+                              and set(value.keys()) == {"present"}
+                              and isinstance(value["present"], bool)
+                          ):
+                              violations.append(
+                                  f"{child_path} must be exactly "
+                                  '{"present": <bool>}, got: '
+                                  f"{json.dumps(value)}"
+                              )
+                          # Do not recurse further into a PII field's own
+                          # value -- it has already been fully checked above.
+                          continue
+                      walk(value, child_path)
+              elif isinstance(node, list):
+                  for index, item in enumerate(node):
+                      walk(item, f"{path}[{index}]")
+
+          out_dir = Path(sys.argv[1])
+          json_files = sorted(out_dir.rglob("*.json"))
+          if not json_files:
+              print(f"BLOCKED_PII_FIELD_SHAPE: no JSON files found under {out_dir}", file=sys.stderr)
+              sys.exit(1)
+
+          for json_path in json_files:
+              try:
+                  document = json.loads(json_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError as exc:
+                  print(f"BLOCKED_PII_FIELD_SHAPE: {json_path} is not valid JSON: {exc}", file=sys.stderr)
+                  sys.exit(1)
+              walk(document, "")
+              for violation in violations:
+                  print(f"BLOCKED_PII_FIELD_SHAPE: {json_path}: {violation}", file=sys.stderr)
+
+          if violations:
+              sys.exit(1)
+
+          print("PII field-shape guard passed: every known PII field is presence-only.")
+          PY
 
       - name: Upload sanitized App Store Connect snapshot
         uses: actions/upload-artifact@v4

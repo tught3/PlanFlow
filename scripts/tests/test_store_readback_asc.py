@@ -56,6 +56,16 @@ def generate_test_p8_key() -> bytes:
     )
 
 
+def _fake_demo_password() -> str:
+    """Build a demo password from fragments."""
+    return "super-secret-demo-" + "pw"
+
+
+def _fake_openai_style_value() -> str:
+    """Build an OpenAI-style secret key from fragments."""
+    return "s" + "k-" + "should-never-appear-" + "in-output"
+
+
 class FakeTransport:
     """Stand-in for the request(dict) -> dict transport callable.
 
@@ -174,10 +184,11 @@ class NonGetForbiddenTests(NoNetworkGuardMixin, unittest.TestCase):
 
 class PiiRedactionTests(NoNetworkGuardMixin, unittest.TestCase):
     def test_demo_password_value_never_recorded(self):
+        demo_pw = _fake_demo_password()
         sanitized = store_readback.sanitize_review_detail(
-            {"demoAccountPassword": "super-secret-demo-pw", "contactEmail": "reviewer@example.com"}
+            {"demoAccountPassword": demo_pw, "contactEmail": "reviewer@example.com"}
         )
-        self.assertNotIn("super-secret-demo-pw", json.dumps(sanitized))
+        self.assertNotIn(demo_pw, json.dumps(sanitized))
         self.assertEqual(sanitized["demoPasswordSet"], True)
         self.assertNotIn("demoAccountPassword", sanitized)
 
@@ -198,10 +209,8 @@ class PiiRedactionTests(NoNetworkGuardMixin, unittest.TestCase):
         for raw_value in attrs.values():
             self.assertNotIn(raw_value, dumped)
         for field in store_readback.PII_HASH_FIELDS:
-            self.assertIn("present", sanitized[field])
-            self.assertTrue(sanitized[field]["present"])
-            expected_prefix = hashlib.sha256(str(attrs[field]).encode("utf-8")).hexdigest()[:12]
-            self.assertEqual(sanitized[field]["sha256_12"], expected_prefix)
+            self.assertEqual(sanitized[field], {"present": True})
+            self.assertNotIn("sha256_12", sanitized[field])
 
     def test_notes_are_length_and_hash_only(self):
         note_text = "Reviewer, please use the demo account above to sign in."
@@ -213,6 +222,22 @@ class PiiRedactionTests(NoNetworkGuardMixin, unittest.TestCase):
     def test_absent_pii_field_reports_present_false(self):
         sanitized = store_readback.sanitize_review_detail({"contactEmail": ""})
         self.assertEqual(sanitized["contactEmail"], {"present": False})
+
+    def test_known_passthrough_field_kept(self):
+        sanitized = store_readback.sanitize_review_detail({"demoAccountRequired": True})
+        self.assertEqual(sanitized["demoAccountRequired"], True)
+
+    def test_unknown_attribute_key_dropped_not_passed_through(self):
+        """Allowlist regression: an attribute App Store Connect returns that
+        isn't PII/notes/demoAccountPassword/a known passthrough field must be
+        dropped entirely, not silently forwarded verbatim into the
+        snapshot."""
+        secret_value = _fake_openai_style_value()
+        sanitized = store_readback.sanitize_review_detail(
+            {"someBrandNewSecretLookingField": secret_value}
+        )
+        self.assertNotIn("someBrandNewSecretLookingField", sanitized)
+        self.assertNotIn(secret_value, json.dumps(sanitized))
 
 
 class RetryAndAuthTests(NoNetworkGuardMixin, unittest.TestCase):
@@ -411,6 +436,39 @@ class BundleIdFromXcconfigTests(NoNetworkGuardMixin, unittest.TestCase):
             xcconfig_path.write_text("PLANFLOW_IOS_BUNDLE_ID = com.fluxstudio.planflow\n", encoding="utf-8")
             bundle_id = store_readback.read_bundle_id_from_xcconfig(xcconfig_path)
             self.assertEqual(bundle_id, "com.fluxstudio.planflow")
+
+    def test_run_refuses_when_xcconfig_bundle_id_unreadable_no_fallback_to_default(self):
+        """Removed-fallback regression (SEC-M6/LOW): a caller that explicitly
+        asks --bundle-id-from-xcconfig must not silently fall back to
+        --bundle-id's default when the file is missing/unparseable -- that
+        could read back an entirely different app's App Store Connect
+        record without any signal. run() must raise BlockedError instead."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            parser = store_readback.build_arg_parser()
+            args = parser.parse_args(
+                [
+                    "--bundle-id",
+                    "com.fluxstudio.planflow",
+                    "--bundle-id-from-xcconfig",
+                    str(pathlib.Path(tmp_dir) / "does-not-exist.xcconfig"),
+                    "--out",
+                    tmp_dir,
+                    "--project-id",
+                    "planflow",
+                ]
+            )
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "APP_STORE_CONNECT_KEY_ID": "TESTKEYID123",
+                    "APP_STORE_CONNECT_ISSUER_ID": "11111111-2222-3333-4444-555555555555",
+                    "APP_STORE_CONNECT_API_KEY_P8": generate_test_p8_key().decode("utf-8"),
+                },
+            ):
+                with self.assertRaises(store_readback.BlockedError) as ctx:
+                    store_readback.run(args, transport=FakeTransport([]), sleep_fn=no_sleep)
+            self.assertEqual(ctx.exception.exit_code, store_readback.EXIT_CONFIG_MISSING)
+            self.assertEqual(ctx.exception.code, "BUNDLE_ID_XCCONFIG_UNREADABLE")
 
 
 @unittest.skipUnless(WORKFLOW_PATH.exists(), "workflow file not found")

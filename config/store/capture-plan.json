@@ -9,6 +9,13 @@
       "simulator": "iPhone 16 Pro Max",
       "width": 1320,
       "height": 2868
+    },
+    {
+      "slot": "IPAD",
+      "displayClass": "13",
+      "simulator": "iPad Pro 13-inch (M4)",
+      "width": 2064,
+      "height": 2752
     }
   ],
   "shots": [
@@ -57,6 +64,18 @@
     {
       "screenshotId": "iphone69-8-home-briefing",
       "featureIds": ["home-today-briefing"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "ipad13-1-calendar-month",
+      "featureIds": ["calendar-month"],
+      "route": "",
+      "fixture": "demo-default"
+    },
+    {
+      "screenshotId": "ipad13-2-group-dashboard",
+      "featureIds": ["group-dashboard"],
       "route": "",
       "fixture": "demo-default"
     }

@@ -298,6 +298,138 @@ class WorkflowTextTests(unittest.TestCase):
     def test_capture_plan_path_default_matches_orchestrator_contract(self):
         self.assertIn("config/store/capture-plan.json", self.workflow)
 
+    # -- F19 fixes: env-passed input, persist-credentials, fail-closed ready path
+
+    def test_capture_plan_path_is_passed_via_env_not_inline_substitution(self):
+        # The "Load and validate capture plan" step's run block must not
+        # directly interpolate ${{ inputs.capture_plan_path }} inside the
+        # shell script body (that's an unquoted-expression-injection risk in
+        # GitHub Actions run blocks) -- it must be passed through env: and
+        # read back as a shell variable instead.
+        load_idx = self.workflow.index("Load and validate capture plan")
+        next_idx = self.workflow.index("Build devices x shots matrix")
+        block = self.workflow[load_idx:next_idx]
+        self.assertIn("env:", block)
+        self.assertIn("CAPTURE_PLAN_PATH: ${{ inputs.capture_plan_path }}", block)
+        run_start = block.index("run: |")
+        run_block = block[run_start:]
+        self.assertNotIn("${{ inputs.capture_plan_path }}", run_block)
+        self.assertIn("$CAPTURE_PLAN_PATH", run_block)
+
+    def test_matrix_step_plan_path_is_passed_via_env_not_inline_substitution(self):
+        # Same rule as the "Load and validate capture plan" step above, now
+        # extended to "Build devices x shots matrix (report only)": its run
+        # block previously inlined ${{ steps.plan.outputs.plan_path }} (and
+        # device_count/shot_count) directly into the shell script body. All
+        # three must be passed through env: and read back as shell variables.
+        matrix_idx = self.workflow.index("Build devices x shots matrix")
+        next_idx = self.workflow.index("Check capture prerequisites", matrix_idx)
+        block = self.workflow[matrix_idx:next_idx]
+        self.assertIn("env:", block)
+        self.assertIn("PLAN_PATH: ${{ steps.plan.outputs.plan_path }}", block)
+        self.assertIn("DEVICE_COUNT: ${{ steps.plan.outputs.device_count }}", block)
+        self.assertIn("SHOT_COUNT: ${{ steps.plan.outputs.shot_count }}", block)
+        run_start = block.index("run: |")
+        run_block = block[run_start:]
+        self.assertNotIn("${{", run_block)
+        self.assertIn("$PLAN_PATH", run_block)
+        self.assertIn("DEVICE_COUNT", run_block)
+        self.assertIn("SHOT_COUNT", run_block)
+
+    def test_no_run_block_contains_inline_expression_substitution(self):
+        # Blanket guard (generalizes the two step-specific checks above): no
+        # step's `run:` shell script body may contain a literal `${{ ... }}`
+        # expression substitution anywhere in this workflow. Every value a
+        # run block needs must be threaded through that step's `env:` block
+        # and read back as a shell variable -- inlining `${{ }}` directly
+        # into a run block is an unquoted-expression-injection risk in
+        # GitHub Actions (a value containing shell metacharacters is spliced
+        # into the script text before the shell ever runs).
+        #
+        # This must scan EVERY job in the workflow, not just "capture" -- a
+        # single hardcoded job name silently stops guarding as soon as a
+        # second job is added (L5, R4-D review fix). PyYAML being absent
+        # must fail the test, not skip it: silently skipping a security
+        # guard just because a dependency is missing would let an
+        # injection-shaped run block land unnoticed.
+        if not HAVE_YAML:
+            self.fail(
+                "PyYAML is required to enforce the no-inline-'${{ }}' guard "
+                "across all jobs; install pyyaml instead of skipping this "
+                "check."
+            )
+        doc = yaml.safe_load(self.workflow)
+        jobs = doc["jobs"]
+        self.assertTrue(jobs, "workflow declares no jobs")
+        for job_name, job in jobs.items():
+            for step in job.get("steps", []):
+                run_body = step.get("run")
+                if not run_body:
+                    continue
+                name = step.get("name", "<unnamed step>")
+                with self.subTest(job=job_name, step=name):
+                    self.assertNotIn(
+                        "${{",
+                        run_body,
+                        f"Job {job_name!r} step {name!r} inlines a '${{{{ ... }}}}' "
+                        "expression directly in its run block; pass the value "
+                        "through env: instead.",
+                    )
+
+    def test_checkout_step_does_not_persist_credentials(self):
+        checkout_idx = self.workflow.index("actions/checkout@v4")
+        following = self.workflow[checkout_idx : checkout_idx + 120]
+        self.assertIn("persist-credentials: false", following)
+
+    def test_placeholder_capture_steps_fail_closed_when_ready(self):
+        # If the guard ever actually passes (driver_ready=true + both demo
+        # secrets configured), none of these still-unimplemented steps may
+        # silently succeed (exit 0) and let the job report green while doing
+        # nothing. Each must emit a NOT_IMPLEMENTED error and exit 1.
+        not_implemented_step_names = [
+            "Boot simulator per device slot (placeholder)",
+            "Set deterministic status bar (placeholder)",
+            "Set deterministic locale (placeholder)",
+            "Drive app to each shot route (placeholder)",
+            "Capture screenshot per device x shot (placeholder)",
+            "Verify captured PNG dimensions against capture plan (placeholder)",
+        ]
+        for i, name in enumerate(not_implemented_step_names):
+            with self.subTest(step=name):
+                idx = self.workflow.index(f"name: {name}")
+                end = (
+                    self.workflow.index(f"name: {not_implemented_step_names[i + 1]}")
+                    if i + 1 < len(not_implemented_step_names)
+                    else self.workflow.index(
+                        "name: Shutdown and delete simulators (placeholder)"
+                    )
+                )
+                block = self.workflow[idx:end]
+                self.assertIn("NOT_IMPLEMENTED", block)
+                self.assertIn("exit 1", block)
+
+    def test_readiness_condition_also_checks_plan_not_blocked(self):
+        # The plan-validation step (id: plan) and the prerequisite guard
+        # (id: guard) are two separate gates; downstream capture steps must
+        # be conditioned on both -- not just steps.guard.outputs.ready --
+        # so a step never runs off a stale/undefined guard output when the
+        # plan itself was invalid.
+        capture_step_names = [
+            "Prepare Flutter (placeholder for future capture)",
+            "Boot simulator per device slot (placeholder)",
+            "Set deterministic status bar (placeholder)",
+            "Set deterministic locale (placeholder)",
+            "Drive app to each shot route (placeholder)",
+            "Capture screenshot per device x shot (placeholder)",
+            "Verify captured PNG dimensions against capture plan (placeholder)",
+        ]
+        for name in capture_step_names:
+            with self.subTest(step=name):
+                idx = self.workflow.index(f"name: {name}")
+                following = self.workflow[idx : idx + 400]
+                self.assertIn("steps.plan.outputs.blocked != 'true'", following)
+                self.assertIn("steps.guard.outputs.ready == 'true'", following)
+
     def test_capture_plan_json_is_parsed_via_jq_not_hardcoded(self):
         # The scaffold must read the plan dynamically (jq against the file
         # path input), not hardcode device/shot values inline, so it stays
