@@ -159,7 +159,7 @@
         "value": "productivity",
         "source": "STORE_READBACK",
         "evidence": [
-          "GET-only workflow run 34743811582: primaryCategoryId=PRODUCTIVITY, primaryCategoryState=CONFIGURED, mutationCount=0"
+          "GET-only workflow run 34744489714 at source SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c: primaryCategoryId=PRODUCTIVITY, primaryCategoryState=CONFIGURED, mutationCount=0"
         ],
         "lastVerified": "2026-09-13",
         "confidence": "HIGH",
@@ -172,7 +172,7 @@
         "value": "utilities",
         "source": "STORE_READBACK",
         "evidence": [
-          "GET-only workflow run 34743811582: secondaryCategoryId=UTILITIES, secondaryCategoryState=CONFIGURED, mutationCount=0"
+          "GET-only workflow run 34744489714 at source SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c: secondaryCategoryId=UTILITIES, secondaryCategoryState=CONFIGURED, mutationCount=0"
         ],
         "lastVerified": "2026-09-13",
         "confidence": "HIGH",
@@ -1062,7 +1062,7 @@
           "lib/services/ad_runtime_policy.dart",
           "lib/services/remote_config_service.dart",
           "lib/services/ad_service.dart",
-          "ASC GET-only readback run 34741099757 (2026-09-13; mutationCount=0)"
+          "ASC GET-only readback run 34744489714 at source SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c (2026-09-13; mutationCount=0)"
         ],
         "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
@@ -1314,7 +1314,7 @@
     {
       "code": "PRIVACY_POLICY_MISMATCH",
       "platform": "both",
-      "detail": "ASC GET-only readback run 34741099757 confirms https://fluxstudio.co.kr/privacy as the submitted iOS privacy-policy URL. The public page does not enumerate PlanFlow-specific account, schedule/group content, precise-location provider transmission, server-processed voice text, AdMob, Firebase installation/diagnostic processing. A source-grounded draft is available at docs/store/planflow-privacy-policy-remediation.md, but it is not published or legally approved.",
+      "detail": "ASC GET-only readback run 34744489714 at source SHA c55192cb confirms https://fluxstudio.co.kr/privacy as the submitted iOS privacy-policy URL. The public page does not enumerate PlanFlow-specific account, schedule/group content, precise-location provider transmission, server-processed voice text, AdMob, Firebase installation/diagnostic processing. A source-grounded draft is available at docs/store/planflow-privacy-policy-remediation.md, but it is not published or legally approved.",
       "requiresHumanAuthority": true
     },
     {
@@ -1350,7 +1350,7 @@
     {
       "code": "IOS_STORE_READBACK_NOT_ACCEPTED",
       "platform": "ios",
-      "detail": "GET-only App Store Connect readback run 34741099757 identified app 6806790412, bundle com.fluxstudio.planflow, and Build23 WAITING_FOR_REVIEW with mutationCount=0. It is retained as operational evidence but is not added to acceptedSnapshots because the current submission is not STORE_ACCEPTED.",
+      "detail": "GET-only App Store Connect readback run 34744489714 at source SHA c55192cb identified app 6806790412, bundle com.fluxstudio.planflow, and Build23 WAITING_FOR_REVIEW with mutationCount=0. It is retained as operational evidence but is not added to acceptedSnapshots because the current submission is not STORE_ACCEPTED.",
       "requiresHumanAuthority": false
     },
     {
