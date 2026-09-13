@@ -1,0 +1,179 @@
+{
+  "task_id": "planflow-ios-rewarded-ad-enable-20260913",
+  "status": "BLOCKED",
+  "original_request": "Continue the interrupted iOS E-ADS0 investigation after the user supplied an authoritative iOS rewarded AdMob unit ID.",
+  "requirements": [
+    "Enable iOS rewarded-ad runtime only when an iOS-specific Remote Config unit ID is valid.",
+    "Keep Android configuration and behavior unchanged.",
+    "Fail closed for missing, blank, or malformed iOS configuration.",
+    "Do not persist or log the supplied production unit ID."
+  ],
+  "external_configuration": {
+    "user_supplied_ios_rewarded_unit": "received_format_valid_not_persisted",
+    "remote_config_key": "rewarded_ad_unit_id_ios",
+    "console_publish": "PENDING"
+  },
+  "allowed_files": [
+    "lib/services/ad_runtime_policy.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/ad_consent_service.dart",
+    "lib/services/remote_config_service.dart",
+    "test/services/ad_runtime_policy_test.dart",
+    "test/services/ad_service_test.dart",
+    "test/services/ad_service_unit_test.dart",
+    ".codex/tasks/planflow-ios-rewarded-ad-enable-20260913.json"
+  ],
+  "forbidden_files": [
+    "ios/Runner/Info.plist",
+    "android/**",
+    "pubspec.yaml",
+    "pubspec.lock",
+    "Firebase or AdMob console configuration"
+  ],
+  "dirty_worktree_preserved": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "AGENTS.md.before-regen.bak",
+    "ios/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png"
+  ],
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only iOS E-ADS0 path and configuration investigation.",
+      "final_report": "UNAVAILABLE: deployed mapped model is unsupported by the current ChatGPT account; no files changed."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define fail-closed iOS-only rewarded configuration plan.",
+      "final_report": "PASS: use a validated iOS-specific Remote Config key; preserve Android; do not persist or log production identifier; require source tests and independent review."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement iOS-only Remote Config unit selection, runtime policy, and focused tests.",
+      "changed_files": [
+        "lib/services/ad_runtime_policy.dart",
+        "lib/services/ad_service.dart",
+        "lib/services/remote_config_service.dart",
+        "test/services/ad_runtime_policy_test.dart",
+        "test/services/ad_service_unit_test.dart"
+      ],
+      "final_report": "PASS: iOS release requires a valid rewarded_ad_unit_id_ios; debug/profile retains test-unit behavior; no cross-platform fallback or production identifier persistence."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "Independently run focused iOS rewarded-ad verification.",
+      "final_report": "UNAVAILABLE: deployed mapped model is unsupported by the current ChatGPT account; no command ran under this named role."
+    },
+    {
+      "role": "Verification Fallback",
+      "agent": "Codex",
+      "assignment": "Run the planner-defined focused verification after named executor unavailability.",
+      "test_evidence": [
+        {
+          "command": "flutter test test/services/ad_runtime_policy_test.dart test/services/ad_service_unit_test.dart",
+          "exit_code": 0,
+          "result": "PASS: 15 tests."
+        },
+        {
+          "command": "flutter test test/services/ad_service_test.dart",
+          "exit_code": 0,
+          "result": "PASS: 36 tests."
+        },
+        {
+          "command": "flutter analyze lib/services/ad_runtime_policy.dart lib/services/ad_service.dart lib/services/remote_config_service.dart test/services/ad_runtime_policy_test.dart test/services/ad_service_unit_test.dart",
+          "exit_code": 0,
+          "result": "PASS: no issues in 5 items."
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "PASS."
+        },
+        {
+          "command": "literal production identifier absence scan over lib,test,ios",
+          "exit_code": 0,
+          "result": "PASS: zero matches; identifier omitted from task state and report."
+        }
+      ],
+      "final_report": "Focused source verification passed. Full iOS runtime/device validation was not possible on this Windows host."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independently inspect the final current diff, task state, and focused verification evidence.",
+      "final_report": "FINAL_REVIEW_REPORT: source PASS. BLOCKER=0 and source-code HIGH=0. The prior fixture MEDIUM is resolved: tests use synthetic, non-production unit values and the supplied production identifier is absent from source, tests, and task state. HIGH delivery-gate finding remains: the required named Explorer and Test Executor terminal reports are UNAVAILABLE, so fallback verification cannot satisfy the named-role completion hard gate. Firebase Remote Config publication and authenticated iOS runtime/device ad-load proof are also absent."
+    }
+  ],
+  "plan": [
+    {
+      "id": "ios-rewarded-config-and-policy",
+      "classification": "complex",
+      "role": "Complex Implementer",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "verification",
+      "classification": "read-only",
+      "role": "Test Executor",
+      "status": "COMPLETE_WITH_NAMED_EXECUTOR_UNAVAILABLE"
+    },
+    {
+      "id": "independent-review-and-integration",
+      "classification": "read-only",
+      "role": "Reviewer and Integrator",
+      "status": "COMPLETE_WITH_BLOCKERS"
+    }
+  ],
+  "integration": {
+    "role": "Integrator",
+    "agent": "flux_integrator",
+    "mapped_model": "gpt-5.6-terra",
+    "reasoning_effort": "medium",
+    "final_current_diff_inspected": true,
+    "requirements_reconciled": {
+      "ios_only_valid_remote_config_enablement": "SOURCE_PASS",
+      "android_behavior_preserved": "SOURCE_PASS",
+      "blank_or_malformed_ios_value_fails_closed": "SOURCE_PASS",
+      "production_identifier_not_persisted_or_logged": "SOURCE_PASS"
+    },
+    "scope": "Only allowed product/test files plus this task state are in the task diff; unrelated dirty files remain preserved.",
+    "fixture_medium": "RESOLVED: synthetic fixtures replaced prior production-like fixture values; source/test/task-state identifier absence check passed.",
+    "fresh_verification": [
+      "flutter test test/services/ad_runtime_policy_test.dart test/services/ad_service_unit_test.dart: exit 0, 15 passed",
+      "flutter test test/services/ad_service_test.dart: exit 0, 36 passed",
+      "flutter analyze focused 5 files: exit 0, no issues",
+      "git diff --check: exit 0",
+      "literal production identifier absence scan over lib,test,ios: exit 0, zero matches"
+    ],
+    "review": "FINAL_REVIEW_REPORT source PASS; no source-code BLOCKER or HIGH remains. Named-role hard-gate HIGH remains.",
+    "verdict": "BLOCKED",
+    "blockers": [
+      "Required named Explorer terminal report is UNAVAILABLE because its deployed mapped model is unsupported by the current account.",
+      "Required named Test Executor terminal report is UNAVAILABLE because its deployed mapped model is unsupported by the current account; Codex fallback test evidence is not equivalent to the named-role hard gate.",
+      "Firebase Remote Config key rewarded_ad_unit_id_ios has not been authenticated, set to the user-supplied unit, and published; no production identifier is stored in source or task state.",
+      "No authenticated macOS/iOS build, installed-device, consent, rewarded-ad load/show, and post-reward callback evidence exists; Windows source verification cannot prove iPhone E-ADS0 resolution."
+    ],
+    "next_authorized_steps": [
+      "Restore access to the deployed Explorer and Test Executor models, then rerun those named roles against the final current diff.",
+      "In Firebase Remote Config, set and publish rewarded_ad_unit_id_ios using the supplied value without committing it to the repository.",
+      "Run a signed iOS build on macOS and collect authenticated device evidence that the rewarded ad loads, shows, and completes after consent."
+    ]
+  },
+  "runtime_ready": false,
+  "last_updated": "2026-09-13T10:06:00+09:00"
+}
