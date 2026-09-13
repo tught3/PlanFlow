@@ -1439,7 +1439,7 @@
     {
       "platform": "android",
       "path": "config/store/snapshots/android-readback-2026-09-11.json",
-      "sha256": "0a597c86ae64028b12a2c44733f0074ec306ed3ddd7b836ab310b7070fe1a7e6"
+      "sha256": "5d3f375d5020aa049040dd6e8bf53eee57fe5e333f99a064290e135c7dca05a6"
     }
   ],
   "acceptedFingerprints": [

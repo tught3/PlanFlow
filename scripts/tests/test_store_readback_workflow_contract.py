@@ -24,6 +24,7 @@ looks right but is buggy in practice is caught.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -64,6 +65,7 @@ except ImportError:  # pragma: no cover - environment without PyYAML
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "store-readback.yml"
 LEGACY_SNAPSHOT_PATH = ROOT / "config" / "store" / "snapshots" / "android-readback-2026-09-11.json"
+STORE_PROFILE_PATH = ROOT / "config" / "store" / "store-profile.json"
 
 
 def _dedent_block_scalar(run_text: str) -> str:
@@ -366,6 +368,24 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
                 f"PII field {field!r} (known from readback sanitizers) is missing from the "
                 "field-shape guard's PII_FIELDS list",
             )
+
+
+class CommittedSnapshotReferenceTests(unittest.TestCase):
+    def test_profile_sha256_matches_committed_android_snapshot_bytes(self):
+        """The profile's accepted-snapshot fingerprint must follow a fixture
+        rewrite; otherwise a presence-only PII repair can leave a stale
+        provenance reference behind."""
+        self.assertTrue(LEGACY_SNAPSHOT_PATH.exists())
+        self.assertTrue(STORE_PROFILE_PATH.exists())
+        profile = json.loads(STORE_PROFILE_PATH.read_text(encoding="utf-8"))
+        entry = next(
+            item
+            for item in profile["acceptedSnapshots"]
+            if item["platform"] == "android"
+            and item["path"] == "config/store/snapshots/android-readback-2026-09-11.json"
+        )
+        actual = hashlib.sha256(LEGACY_SNAPSHOT_PATH.read_bytes()).hexdigest()
+        self.assertEqual(entry["sha256"], actual)
 
 
 if __name__ == "__main__":  # pragma: no cover
