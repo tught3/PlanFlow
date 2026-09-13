@@ -1,0 +1,266 @@
+{
+  "taskId": "planflow-privacy-policy-finalization-20260913",
+  "request": "Finalize the PlanFlow privacy policy from confirmed business facts and source/provider evidence, without external publication or Store mutation.",
+  "status": "COMMIT_READY",
+  "source": {
+    "originalCheckout": "E:/FluxStudio/PlanFlow",
+    "canonicalWorktree": "E:/FluxStudio-worktrees/planflow/planflow-store-baseline-remediation-20260913",
+    "branch": "codex/store-baseline-remediation-20260913",
+    "startHead": "b4b4f2b2b23575b1474fa779bd10709a9b83c70e",
+    "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "foreignDirtyPreserved": true
+  },
+  "protection": {
+    "externalPublication": "FORBIDDEN_WITHOUT_EXPLICIT_AUTHORIZATION",
+    "iosBuild23": "PROTECTED",
+    "androidProduction": "PROTECTED",
+    "rewarded": "EXTERNAL_DEPENDENCY_HOLD",
+    "storeMutations": 0
+  },
+  "confirmedFacts": {
+    "businessDisplayName": "Flux Studio",
+    "businessAddress": "경기도 성남시 광명로 75 303호",
+    "businessAddressValue": "경기도 성남시 광명로 75 303호",
+    "businessAddressValueSource": "EXISTING_OFFICIAL_WEBSITE",
+    "businessAddressUserInstruction": "USE_BUSINESS_REGISTRATION_ADDRESS",
+    "businessRegistrationCrosscheck": "NOT_YET_VERIFIED",
+    "publicationAddressCrosscheckRequired": true,
+    "businessAddressProvenance": "Existing approved public Flux Studio business artifact and live official homepage; not independently compared with the registration certificate in this task.",
+    "privacyResponsiblePerson": "대표자",
+    "officialPlanFlowSupportContact": "support@fluxstudio.co.kr",
+    "childrenTarget": false,
+    "publicUgc": false,
+    "privateGroupCollaboration": true
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Read-only ATT, data-flow, retention, processor, business-address, contact and publication-route investigation.",
+      "result": "COMPLETED_WITH_FALLBACK: the installed flux_explorer role attempted obsolete gpt-5.4-mini and was rejected. Named in-app fallback privacy_policy_finalization_explorer_fallback completed the bounded read-only investigation; root current readbacks confirmed Supabase Tokyo, public business/contact artifacts, source data flows, retention, private group RLS, and no direct ATT/IDFA calls."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "assignment": "Define requirements, non-requirements, evidence rules, allowed files, tests and completion gates.",
+      "result": "PLANNED: policy/profile source only; no external publication or Store/app mutation; evidence-ground every ATT, retention, processor and transfer statement; preserve Build23."
+    },
+    {
+      "role": "Explorer Fallback",
+      "agent": "privacy_policy_finalization_explorer_fallback",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Replace the unavailable mapped Explorer with a bounded read-only source, provider, business-artifact and live-region investigation.",
+      "result": "COMPLETED: found no direct ATT/IDFA call, documented UMP/GMA and data flows, private group RLS, deletion and backup behavior, official support/address artifacts, and current Supabase Tokyo region. Explicitly did not establish authenticated AdMob-console IDFA-message state."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Create the final privacy-policy source artifact, update Store profile evidence, and add focused contract tests.",
+      "result": "IMPLEMENTED_AND_REWORKED: created the publication-ready Korean policy, release note, privacy/profile evidence and focused tests. After independent review, restored iOS tracking to fail-closed UNKNOWN pending authenticated AdMob/UMP IDFA-message readback, added the other-leader group-backup retention exception, and updated tests."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "assignment": "Run focused policy/profile/Store/zero-mutation verification and record exit codes.",
+      "result": "COMPLETED_WITH_FALLBACK: the installed flux_test_executor role attempted obsolete gpt-5.4-mini and was rejected. Named in-app privacy_policy_finalization_test_executor_fallback verified the final rework: policy contract 4/4, JSON parse, diff check, and Store contracts 100/100 all exit 0; protected app files unchanged and no production ad-unit or unofficial-email leak. Root separately verified the central 621-test regression set."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Classify initial Store test launcher failures and define the corrected retest scope.",
+      "result": "ANALYZED: initial 3 errors and 3 failures were caused by the test process PATH omitting Git usr/mingw tools, not by the privacy changes. With the Git tool directories restored to PATH, the same Store contract set passed 100/100; central regression scope passed 621/621."
+    },
+    {
+      "role": "Test Executor Fallback",
+      "agent": "privacy_policy_finalization_test_executor_fallback",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "assignment": "Replace the unavailable mapped Test Executor and verify the final current rework, protected files and leak scans.",
+      "result": "COMPLETED_AFTER_REVIEW_REWORK: policy contract 4/4, Store contracts 100/100, JSON and diff checks all exit 0; tracking fields are fail-closed null with human authority, blocker/decision restored, group-backup exception present, protected app-file diff zero, and no production ad-unit or unofficial-email leak."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Review the final current diff for unsupported legal claims, privacy gaps, leaks and protected-state regressions.",
+      "result": "PASS_AFTER_THREE_REVIEWS: APPROVE with no BLOCKER/HIGH. ATT/IDFA remains fail-closed UNKNOWN; the policy avoids unsupported tracking claims; another leader's group backup is retained until that creator deletes it with no confirmed automatic period; fallback evidence is explicit; protected targets and zero Store mutation remain intact."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "assignment": "Inspect final diff, tests and review; issue the truthful source/publication qualification.",
+      "result": "BLOCKED_COMMIT_HOOK: source artifact APPROVED_UNCOMMITTED with no source defect and Reviewer PASS; staged task-owned files exactly match the allowlist and protected targets remain unchanged. Full completion is forbidden because normal commit, non-force push and exact-SHA zero-mutation verification were not reached after the shared hook runtime repeatedly stalled."
+    }
+  ],
+  "allowedFiles": [
+    ".codex/tasks/planflow-privacy-policy-finalization-20260913.json",
+    "docs/store/planflow-privacy-policy-remediation.md",
+    "docs/store/planflow-privacy-policy-final.md",
+    "config/store/store-profile.json",
+    "scripts/tests/test_planflow_privacy_policy_contract.py"
+  ],
+  "forbidden": [
+    "external website publication",
+    "App Store or Play Store mutation",
+    "Build23 submission change",
+    "Android production change",
+    "AdMob, Firebase, Remote Config, Rewarded, ATT, Naver Map or app-feature changes",
+    "foreign changes from the original checkout"
+  ],
+  "testEvidence": [
+    {
+      "command": "python -B -m unittest scripts.tests.test_planflow_privacy_policy_contract",
+      "exitCode": 0,
+      "result": "4/4 PASS"
+    },
+    {
+      "command": "python -B -m json.tool config/store/store-profile.json",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "python -B -m unittest scripts.tests.test_store_readback_asc scripts.tests.test_store_readback_workflow_contract scripts.tests.test_store_capture_workflow_contract",
+      "exitCode": 0,
+      "result": "100/100 PASS after restoring Git usr/mingw tools to process PATH"
+    },
+    {
+      "command": "python -B -m pytest -q -p no:cacheprovider tests/test_profile.py tests/test_privacy_verify.py tests/test_policy_gate.py tests/test_plan.py",
+      "exitCode": 0,
+      "result": "527/527 PASS"
+    },
+    {
+      "command": "python -B -m pytest -q -p no:cacheprovider tests/test_screenshot*.py tests/test_impact*.py",
+      "exitCode": 0,
+      "result": "94/94 PASS (executed as the four matching screenshot/impact files)"
+    },
+    {
+      "command": "python -B -m fluxstore privacy --json --project-root <worktree>",
+      "exitCode": 1,
+      "result": "Exit 1 from the central tool workdir. Two pre-existing blocking unmapped calendar/photos profile nodes remain outside this task. The engine also reports google_mobile_ads STORE_POLICY_DECISION_REQUIRED, consistent with the restored fail-closed UNKNOWN tracking classification; remaining evidence-drift and ATT-purpose-string items are pre-existing/advisory."
+    }
+  ],
+  "deliveryEvidence": {
+    "stagedFiles": 5,
+    "commitCreated": false,
+    "pushPerformed": false,
+    "normalHookAttempts": 3,
+    "hookEntrypoint": "shared AI_WIKI banned-pattern gate imported by the repository pre-commit hook",
+    "firstHungBoundary": "TEMPORARY_PYTHON_RUNNER_INVOCATION_AFTER_START_BEFORE_RETURN",
+    "hookRca": "NOT_REPRODUCIBLE_TRANSIENT",
+    "currentStandaloneHookExitCode": 0,
+    "currentStandaloneHookDurationSecondsApprox": 1.2,
+    "directCorrectRootGateExitCode": 0,
+    "linkedWorktreeContractDefect": "CONFIRMED_HARDCODED_ROOT_OUT_OF_SCOPE",
+    "hookBypass": false,
+    "hookFailure": "The earlier repository pre-commit hook stall was not reproducible after bounded diagnosis; the standalone exact hook path and direct correct-root gate now exit 0. No source defect was found and no hook bypass, force push, or foreign process termination was used.",
+    "nextSafeAction": "Run the normal commit from the canonical worktree, then non-force push and exact-SHA zero-mutation verification."
+  },
+  "deliveryStage": {
+    "explorerFallback": "RECORDED",
+    "planner": "RECORDED",
+    "implementer": "RECORDED",
+    "testExecutor": "COMPLETE",
+    "independentReviewer": "PASS",
+    "integrator": "PENDING_COMMIT_AND_EXACT_SHA_VERIFICATION",
+    "hookRca": {
+      "firstHungBoundary": "TEMPORARY_PYTHON_RUNNER_INVOCATION_AFTER_START_BEFORE_RETURN",
+      "rootCause": "NOT_REPRODUCIBLE_TRANSIENT",
+      "standaloneExactHook": "EXIT_0_APPROX_1_2_SECONDS",
+      "directCorrectRootGate": "EXIT_0",
+      "codeFix": false,
+      "linkedWorktreeHardcodedRootContractDefect": "CONFIRMED_OUT_OF_SCOPE",
+      "hookBypass": false
+    }
+  },
+  "deliveryRoles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "status": "UNAVAILABLE",
+      "assignment": "Read-only hook RCA and delivery-state investigation.",
+      "result": "Original mapped Explorer unavailable; no result attributed to it."
+    },
+    {
+      "role": "Explorer Fallback",
+      "agent": "hook_delivery_explorer_fallback",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "status": "COMPLETE",
+      "assignment": "Bounded read-only verification of the hook entrypoint, hang boundary, root cause and linked-worktree behavior.",
+      "result": "Final RCA recorded: transient stall not reproducible; standalone exact hook and direct correct-root gate exit 0; linked-worktree hardcoded-root defect confirmed out-of-scope."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "status": "COMPLETE",
+      "assignment": "Define the minimal ledger-only delivery update and commit/push evidence gates.",
+      "result": "Final plan recorded: update task ledger only, preserve source and external protections, then continue normal commit and verification."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "status": "COMPLETE",
+      "assignment": "Apply only the Planner-approved ledger update; do not modify source, tests, hooks or external systems.",
+      "result": "Ledger-only implementation complete; canonical address fields and hook RCA evidence recorded."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "privacy_policy_finalization_test_executor_fallback",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "status": "PENDING",
+      "assignment": "Validate the updated ledger JSON and confirm no out-of-scope file changes."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "status": "PENDING",
+      "assignment": "Review the final current diff and ledger evidence for scope, truthfulness and protection regressions."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "status": "PENDING",
+      "assignment": "Integrate after Test Executor and Independent Reviewer, then qualify commit, push and exact-SHA verification."
+    }
+  ],
+  "finalQualification": {
+    "privacyPolicySource": "APPROVED_UNCOMMITTED",
+    "privacyPolicyPublication": "BLOCKED_NOT_PUBLISHED",
+    "externalMutationApprovalRequired": true,
+    "iosBuild23Protected": true,
+    "androidProductionProtected": true,
+    "storeMutations": 0,
+    "reviewer": "PASS",
+    "integrator": "PENDING_NORMAL_COMMIT_AND_EXACT_SHA_ZERO_MUTATION"
+  }
+}

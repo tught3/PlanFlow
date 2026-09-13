@@ -853,20 +853,22 @@
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "Current source/runtime evidence proves the Google Mobile Ads SDK is invoked on iOS. Google's current disclosure says the SDK may collect advertising data, device identifiers and interactions. This is a source-plus-provider derived expected App Privacy answer; cross-app tracking/IDFA remains UNKNOWN pending ATT/runtime and business confirmation."
+            "note": "Current source/runtime evidence proves the Google Mobile Ads SDK is invoked on iOS. Google's current disclosure says the SDK may collect advertising data, device identifiers and interactions. This collection remains applicable even though the current source does not request ATT or directly access IDFA."
           },
           "usedForTracking": {
             "value": null,
-            "source": "UNKNOWN",
+            "source": "DERIVED",
             "evidence": [
-              "ios/Runner/Info.plist:32"
+              "ios/Runner/Info.plist:32",
+              "lib/services/ad_consent_service.dart:214-226",
+              "lib/services/ad_service.dart:437-516"
             ],
-            "lastVerified": "2026-09-11",
+            "lastVerified": "2026-09-13",
             "confidence": "UNKNOWN",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "ATT/IDFA tracking answer is UNKNOWN: no requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager call was found in lib/, while NSUserTrackingUsageDescription exists in Info.plist. Do not mark tracking false without product/legal confirmation."
+            "note": "No direct ATTrackingManager/requestTrackingAuthorization/AppTrackingTransparency/IDFA access was found in source. Authenticated AdMob/UMP operational configuration, including whether an IDFA message is configured, was not read back. Keep tracking disclosure unresolved until operating configuration is verified."
           },
           "storeDataTypes": [
             "ADVERTISING_DATA"
@@ -926,16 +928,20 @@
     ],
     "tracking": {
       "value": null,
-      "source": "UNKNOWN",
+      "source": "DERIVED",
       "evidence": [
-        "ios/Runner/Info.plist:32"
+        "ios/Runner/Info.plist:32",
+        "lib/services/ad_consent_service.dart:214-226",
+        "lib/services/ad_service.dart:437-516",
+        "https://developers.google.com/admob/ios/privacy/idfa (retrieved 2026-09-13)",
+        "https://developers.google.com/admob/ios/privacy/data-disclosure (retrieved 2026-09-13)"
       ],
-      "lastVerified": "2026-09-11",
+      "lastVerified": "2026-09-13",
       "confidence": "UNKNOWN",
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "Top-level tracking summary (iOS ATT). NSUserTrackingUsageDescription key is present in Info.plist (line 32) — this is a tracking SIGNAL, not proof of absence or presence. No ATT request code found in lib/ (0 matches for requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager) and 0 SKAdNetworkItems declared, but ios/Runner/Info.plist:7 also declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may auto-initialize and collect advertising identifiers on iOS regardless of the Dart-level gate — whether that constitutes ATT-scoped tracking is UNKNOWN. decisionRequired: IOS_ADS_TRACKING_ANSWER. Android AD_ID-based ad personalization is separately governed by UMP consent in lib/services/ad_consent_service.dart, feeding the Play Data Safety 'advertising' purpose declaration, not this iOS ATT field."
+      "note": "ATT_APPLICABILITY and TRACKING_DISCLOSURE remain UNKNOWN: NSUserTrackingUsageDescription is present and no direct ATT/IDFA call exists, but authenticated AdMob/UMP operational configuration and any remote IDFA message were not verified. Resolve before final App Privacy tracking answers."
     }
   },
   "content": {
@@ -975,17 +981,17 @@
       "note": "사용자가 PlanFlow는 콘텐츠 권한 질문에 '아니요'라고 진술. REBUTTAL note (this pass): the app displays third-party map content via pubspec.yaml:21 (google_maps_flutter) and lib/screens/location/location_picker_screen.dart:593 (GoogleMap widget) and imports calendar/event data from Google Calendar (lib/services/calendar_sync_service.dart:2001, events.list API call inside _fetchGoogleEventsForCalendar, feeding syncGoogleCalendar at line 404) and Naver CalDAV (lib/services/naver_caldav_service.dart:861 getEvents() issuing a REPORT request at line 950 via _queryEvents). CORRECTION (2026-09-11, MEDIUM-1): the previously cited naver_caldav_service.dart:1740,1762 are exportEvent()'s outbound PUT request (PlanFlow pushing its own events out to Naver), not an import/third-party-content-ingestion path, and have been replaced with the actual import citations above. Whether displaying/importing this third-party-sourced data counts as 'using third-party content' under the store's specific question wording was not re-litigated in this pass; confidence lowered to LOW to reflect this unresolved rebuttal. CLARIFICATION: lib/services/map_service.dart의 경로 API(Tmap, Naver, Google Distance Matrix)는 이동 소요시간(분)만 반환하는 계산 API이며, 지도 콘텐츠 표시의 근거가 아니다."
     },
     "ugc": {
-      "value": true,
-      "source": "CODE_EVIDENCE",
+      "value": false,
+      "source": "USER_STATED",
       "evidence": [
         "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
       ],
       "lastVerified": "2026-09-11",
       "confidence": "HIGH",
-      "requiresHumanAuthority": true,
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "Group event comments are user-generated content, with no moderation capability found: grep for report|block|신고|차단 across lib/features/groups (case-insensitive) returned 3 matches, all unrelated to content moderation -- group_repository.dart:41,198 and group_detail_screen.dart:734 all describe blocking the last group leader from leaving the group, not reporting/blocking users or comments. No report/block/flag UI or backend function for group_event_comments was found. This is an Apple Guideline 1.2 (UGC) risk: apps with user-generated content typically must provide a mechanism to report objectionable content and block abusive users. decisionRequired: UGC_MODERATION."
+      "note": "Public UGC/feed is not offered. Group schedules and comments are private collaboration restricted by authenticated group membership (RLS evidence: group_event_comment_repository.dart:46-48)."
     },
     "chat": {
       "value": false,
@@ -1069,19 +1075,19 @@
         "requiresHumanAuthority": true,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "iOS rewarded ads are active in source when Remote Config provides a valid rewarded_ad_unit_id_ios; the current iOS readback identifies app 6806790412. AdMob availability/processing is applicable. ATT/IDFA tracking remains a separate UNKNOWN human decision."
+        "note": "iOS rewarded ads are active in source when Remote Config provides a valid rewarded_ad_unit_id_ios; the current iOS readback identifies the submitted app. AdMob availability/processing is applicable, while the current binary does not request ATT or directly access IDFA."
       }
     },
     "childDirected": {
-      "value": null,
-      "source": "UNKNOWN",
+      "value": false,
+      "source": "USER_STATED",
       "evidence": [],
-      "lastVerified": "2026-09-11",
-      "confidence": "UNKNOWN",
-      "requiresHumanAuthority": true,
+      "lastVerified": "2026-09-13",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "decisionRequired: CHILD_DIRECTED."
+      "note": "사용자 확정: 만 14세 미만을 대상으로 설계하거나 제공하지 않음. 접근 가능성을 배제하는 표현은 사용하지 않음."
     },
     "medicalClaims": {
       "value": null,
@@ -1209,7 +1215,7 @@
         "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "iOS rewarded ads are enabled conditionally from the iOS-only Remote Config key. ATT/IDFA tracking remains a separate UNKNOWN disclosure decision."
+        "note": "iOS rewarded ads are enabled conditionally from the iOS-only Remote Config key. The current binary does not request ATT or directly access IDFA."
       }
     }
   },
@@ -1314,7 +1320,7 @@
     {
       "code": "PRIVACY_POLICY_MISMATCH",
       "platform": "both",
-      "detail": "ASC GET-only readback run 34744489714 at source SHA c55192cb confirms https://fluxstudio.co.kr/privacy as the submitted iOS privacy-policy URL. The public page does not enumerate PlanFlow-specific account, schedule/group content, precise-location provider transmission, server-processed voice text, AdMob, Firebase installation/diagnostic processing. A source-grounded draft is available at docs/store/planflow-privacy-policy-remediation.md, but it is not published or legally approved.",
+      "detail": "ASC GET-only readback run 34744489714 confirms https://fluxstudio.co.kr/privacy as the submitted iOS privacy-policy URL. The publication-ready PlanFlow-specific source is docs/store/planflow-privacy-policy-final.md; the external page has not been replaced, so this mismatch remains until separately authorized publication and readback.",
       "requiresHumanAuthority": true
     },
     {
@@ -1330,15 +1336,15 @@
       "requiresHumanAuthority": true
     },
     {
-      "code": "IOS_ADS_TRACKING_ANSWER_UNKNOWN",
-      "platform": "ios",
-      "detail": "iOS rewarded ad processing is now enabled conditionally from Remote Config and confirmed applicable by source/readback. The remaining unresolved item is whether AdMob advertising data is used for ATT/IDFA cross-app tracking; no ATT request implementation was found in lib/ and the business/legal answer is not established.",
-      "requiresHumanAuthority": true
-    },
-    {
       "code": "IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10",
       "platform": "ios",
       "detail": "All 8 current iPhone and both current iPad Store images were independently opened and matched to the GET-only readback by count/hash. The iPhone set is Android-derived; the iPad set is non-uniformly resized Android content with residual system/taskbar UI, and one image exposes real schedule/business data. They remain STORE_APPLIED/SUBMITTED evidence only and are not LOCAL_QUALIFIED or STORE_ACCEPTED. Native iOS replacements are required after the protected Build23 review state permits metadata changes.",
+      "requiresHumanAuthority": true
+    },
+    {
+      "code": "IOS_ADS_TRACKING_ANSWER_UNKNOWN",
+      "platform": "ios",
+      "detail": "No direct ATT/IDFA call is present in source, but authenticated AdMob/UMP operational configuration and any remotely configured IDFA message were not read back. The App Privacy tracking answer remains fail-closed UNKNOWN until operating configuration is verified.",
       "requiresHumanAuthority": true
     },
     {
@@ -1364,10 +1370,12 @@
     {
       "code": "IOS_ADS_TRACKING_ANSWER",
       "platform": "ios",
-      "question": "iOS App Privacy에서 광고 데이터·추적 답변을 어떻게 선언할 것인가 (native AdMob SDK가 GADApplicationIdentifier로 자동 초기화될 가능성 포함)",
+      "question": "AdMob/UMP 운영 설정에서 IDFA 메시지 및 추적 관련 처리가 활성화되어 있는지 확인한 뒤 iOS App Privacy 추적 답변을 확정해야 함",
       "evidence": [
-        "ios/Runner/Info.plist:7",
-        "lib/services/ad_runtime_policy.dart:5-8"
+        "ios/Runner/Info.plist:32",
+        "lib/services/ad_consent_service.dart:214-226",
+        "lib/services/ad_service.dart:437-516",
+        "https://developers.google.com/admob/ios/privacy/idfa (retrieved 2026-09-13)"
       ]
     },
     {
@@ -1387,20 +1395,6 @@
         "lib/screens/voice/confirm_screen.dart:2636-2647",
         "lib/services/travel_time_buffer_service.dart:222-275",
         "lib/services/map_service.dart:53-90"
-      ]
-    },
-    {
-      "code": "CHILD_DIRECTED",
-      "platform": "both",
-      "question": "PlanFlow가 아동 대상 앱인지 여부를 확정해야 함",
-      "evidence": []
-    },
-    {
-      "code": "UGC_MODERATION",
-      "platform": "both",
-      "question": "그룹 댓글(UGC)에 신고·차단 기능이 있는지 확정 필요",
-      "evidence": [
-        "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
       ]
     },
     {
@@ -1425,15 +1419,6 @@
       "platform": "both",
       "question": "binaryReleaseGate를 'advisory'에서 'enforce'로 전환할 시점을 언제로 할 것인가",
       "evidence": []
-    },
-    {
-      "code": "IOS_ATT_USAGE_STRING",
-      "platform": "ios",
-      "question": "NSUserTrackingUsageDescription 키(Info.plist:32)는 선언돼 있고 .github/workflows/ios-release.yml:245,428,577의 릴리스 게이트가 이 키의 존재를 강제하지만, 실제 ATT 프롬프트 호출(requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager)은 lib/ 전체에서 0건이다 -- 이 사용 문구를 유지할지, ATT 프롬프트 코드를 추가할지, 아니면 문구를 제거하고 워크플로우 강제도 함께 뗄지 확정 필요",
-      "evidence": [
-        "ios/Runner/Info.plist:32",
-        ".github/workflows/ios-release.yml:245"
-      ]
     },
     {
       "code": "SCREENSHOT_V3_TRACKING",
