@@ -158,13 +158,15 @@
       "category": {
         "value": "productivity",
         "source": "USER_STATED",
-        "evidence": [],
-        "lastVerified": "2026-09-11",
+        "evidence": [
+          "User-confirmed App Store Connect submission state (2026-09-13)"
+        ],
+        "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "App Store 제출 시 설정했다고 사용자가 진술. readback으로 확인 필요."
+        "approval": "USER_APPROVED",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "User confirmed Productivity is configured for the pending App Store submission. This records submitted configuration, not Apple acceptance; App Store Connect API readback remains unavailable."
       },
       "secondaryCategory": {
         "value": null,
@@ -183,43 +185,43 @@
         "value": "free",
         "source": "USER_STATED",
         "evidence": [
-          "pubspec.yaml:9-51"
+          "pubspec.yaml:9-51",
+          "User-confirmed App Store Connect submission state (2026-09-13)"
         ],
-        "lastVerified": "2026-09-11",
+        "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "No in_app_purchase dependency found in pubspec.yaml dependencies block (lines 9-51), supporting a free/no-IAP listing, but actual App Store Connect price tier is unconfirmed."
+        "approval": "USER_APPROVED",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "User confirmed the submitted App Store price is free. This is submitted configuration, not Apple acceptance."
       },
       "privacyPolicyUrl": {
-        "value": null,
-        "source": "UNKNOWN",
+        "value": "https://fluxstudio.co.kr/privacy",
+        "source": "USER_STATED",
         "evidence": [
-          "apps-in-toss/src/features/auth/LoginScreen.tsx:27",
-          "docs/ios/app-store-metadata.md:150-157",
-          "https://fluxstudio.co.kr/privacy (HTTP 200 measured 2026-09-11)",
-          "https://tught3.github.io/PlanFlow/privacy-policy.html (HTTP 200 measured 2026-09-11)"
+          "User-confirmed App Store Connect submission state (2026-09-13)",
+          "https://fluxstudio.co.kr/privacy (HTTPS public page, HTTP 200 verified 2026-09-13)"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "lastVerified": "2026-09-13",
+        "confidence": "MEDIUM",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "docs/ios/app-store-metadata.md:150-152 explicitly marks this PENDING_USER_INPUT as of the doc's writing. Two live candidate URLs exist (see Android privacyPolicyUrl note) but the value actually entered for the pending-review 1.1.1(23) submission is unknown."
+        "approval": "USER_APPROVED",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "User confirmed this is the submitted App Store URL. The reachable page is currently a generic FluxStudio/HealthFlow policy and does not enumerate PlanFlow collection or AdMob; record as submitted configuration only. POST_REVIEW_METADATA_CORRECTION_REQUIRED; no Store mutation was performed."
       },
       "supportUrl": {
         "value": "https://fluxstudio.co.kr/planflow-support",
-        "source": "DERIVED",
+        "source": "USER_STATED",
         "evidence": [
-          "https://fluxstudio.co.kr/planflow-support (HTTP 200 measured 2026-09-11)"
+          "https://fluxstudio.co.kr/planflow-support (HTTPS public page, HTTP 200 verified 2026-09-13)",
+          "User-confirmed App Store Connect submission state (2026-09-13)"
         ],
-        "lastVerified": "2026-09-11",
+        "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "HTTP 200 measured 2026-09-11; 저장소 문서에 이 URL 없음; 스토어 입력값 미확인"
+        "approval": "USER_APPROVED",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "User confirmed this is the submitted App Store support URL. This is submitted configuration, not Apple acceptance."
       },
       "marketingUrl": {
         "value": null,
