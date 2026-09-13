@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
 import 'package:planflow/services/ad_service.dart';
 
 /// [ad_service.dart]의 광고 단위 ID 순수 함수 단위 테스트 (이슈 A, F1).
@@ -15,7 +16,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const googleTestRewardedUnitId = 'ca-app-pub-3940256099942544/5224354917';
-  const validOperationalUnitId = 'ca-app-pub-3753374909078516/4571759225';
+  const validOperationalUnitId = 'ca-app-pub-1111111111111111/1111111111';
 
   group('isValidRewardedAdUnitId', () {
     test('유효한 AdMob 형식(퍼블리셔 16자리/단위 1~20자리)은 true를 반환한다', () {
@@ -25,7 +26,7 @@ void main() {
         reason: 'Google 공식 테스트 광고 단위 ID',
       );
       expect(
-        isValidRewardedAdUnitId('ca-app-pub-3753374909078516/4571759225'),
+        isValidRewardedAdUnitId('ca-app-pub-1111111111111111/1111111111'),
         isTrue,
         reason: '운영 형식 단위 ID',
       );
@@ -102,5 +103,46 @@ void main() {
         validOperationalUnitId,
       );
     });
+  });
+
+  test('platform resolution never falls back across production unit keys', () {
+    const android = 'ca-app-pub-1111111111111111/1111111111';
+    const ios = 'ca-app-pub-2222222222222222/2222222222';
+    expect(
+      resolveRewardedAdUnitIdForPlatform(
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+        androidConfigured: android,
+        iosConfigured: ios,
+      ),
+      ios,
+    );
+    expect(
+      resolveRewardedAdUnitIdForPlatform(
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+        androidConfigured: android,
+        iosConfigured: '',
+      ),
+      isEmpty,
+    );
+    expect(
+      resolveRewardedAdUnitIdForPlatform(
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+        androidConfigured: android,
+        iosConfigured: 'ca-app-pub-2222222222222222~2222222222',
+      ),
+      isEmpty,
+    );
+    expect(
+      resolveRewardedAdUnitIdForPlatform(
+        platform: TargetPlatform.iOS,
+        useTestUnit: true,
+        androidConfigured: android,
+        iosConfigured: '',
+      ),
+      'ca-app-pub-3940256099942544/5224354917',
+    );
   });
 }

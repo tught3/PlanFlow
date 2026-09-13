@@ -20,6 +20,7 @@ void main() {
   });
 
   tearDown(() {
+    adsUseTestUnitForTesting = null;
     debugDefaultTargetPlatformOverride = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       ..setMockMethodCallHandler(
@@ -37,13 +38,53 @@ void main() {
     AdService.instance.dispose();
   });
 
-  test('ads runtime policy supports Android only', () {
+  test('ads runtime policy supports Android and configured iOS only', () {
     expect(
       isAdsRuntimeSupported(isWeb: false, platform: TargetPlatform.android),
       isTrue,
     );
     expect(
-      isAdsRuntimeSupported(isWeb: false, platform: TargetPlatform.iOS),
+      isAdsRuntimeSupported(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+      ),
+      isFalse,
+    );
+    expect(
+      isAdsRuntimeSupported(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        useTestUnit: true,
+      ),
+      isTrue,
+    );
+    expect(
+      isAdsRuntimeSupported(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+        iosRewardedAdUnitId: 'ca-app-pub-1234567890123456/1234567890',
+      ),
+      isTrue,
+    );
+    expect(
+      isAdsRuntimeSupported(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+        iosRewardedAdUnitId: 'ca-app-pub-1234567890123456~1234567890',
+      ),
+      isFalse,
+    );
+    expect(
+      isAdsRuntimeSupported(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+        iosRewardedAdUnitId:
+            'ca-app-pub-1234567890123456/123456789012345678901',
+      ),
       isFalse,
     );
     expect(
@@ -118,6 +159,7 @@ void main() {
   test('unsupported iOS makes every public ads boundary a zero-call path',
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    adsUseTestUnitForTesting = false;
     var umpCalls = 0;
     var adsCalls = 0;
     var injectedInitializerCalls = 0;
@@ -181,13 +223,19 @@ void main() {
     adService.dispose();
   });
 
-  test('iOS remains configuration-required while runtime ads stay disabled', () {
+  test('iOS remains configuration-required while runtime ads stay disabled',
+      () {
     final plist = File(
         'ios${Platform.pathSeparator}Runner${Platform.pathSeparator}Info.plist');
     expect(plist.existsSync(), isTrue);
     expect(plist.readAsStringSync(), contains('GADApplicationIdentifier'));
     expect(
-        isAdsRuntimeSupported(isWeb: false, platform: TargetPlatform.iOS),
-        isFalse);
+      isAdsRuntimeSupported(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        useTestUnit: false,
+      ),
+      isFalse,
+    );
   });
 }

@@ -123,6 +123,7 @@ class RemoteConfigService {
   static const String _kMinRequiredVersion = 'min_required_version';
   static const String _kRewardedAdEnabled = 'rewarded_ad_enabled';
   static const String _kRewardedAdUnitIdAndroid = 'rewarded_ad_unit_id_android';
+  static const String _kRewardedAdUnitIdIos = 'rewarded_ad_unit_id_ios';
   static const String _kGroupBackupRetentionDays =
       'group_backup_retention_days';
   static const String _kRewardAdVoiceConversationEnabled =
@@ -206,6 +207,7 @@ class RemoteConfigService {
           _kMinRequiredVersion: 0,
           _kRewardedAdEnabled: true,
           _kRewardedAdUnitIdAndroid: '',
+          _kRewardedAdUnitIdIos: '',
           _kGroupBackupRetentionDays: 30,
           _kRewardAdVoiceConversationEnabled: true,
           _kVoiceConversationFreeTrialCount: 3,
@@ -409,6 +411,7 @@ class RemoteConfigService {
       String sourceFor(String key) => remoteConfig.getValue(key).source.name;
       return 'enabled=${sourceFor(_kRewardedAdEnabled)},'
           'unit=${sourceFor(_kRewardedAdUnitIdAndroid)},'
+          'iosUnit=${sourceFor(_kRewardedAdUnitIdIos)},'
           'voice=${sourceFor(_kRewardAdVoiceConversationEnabled)}';
     } catch (_) {
       return _lastFetchSucceeded
@@ -433,6 +436,11 @@ class RemoteConfigService {
   /// debug/profile은 항상 Google 테스트 ID 사용).
   static String get rewardedAdUnitIdAndroid =>
       _remoteConfig?.getString(_kRewardedAdUnitIdAndroid) ?? '';
+
+  /// iOS rewarded unit from Remote Config. The default is intentionally blank;
+  /// the runtime policy rejects blank and malformed values fail-closed.
+  static String get rewardedAdUnitIdIos =>
+      _remoteConfig?.getString(_kRewardedAdUnitIdIos) ?? '';
 
   /// 그룹 백업 보관 기간(일). 기본 30일.
   static int get groupBackupRetentionDays =>
