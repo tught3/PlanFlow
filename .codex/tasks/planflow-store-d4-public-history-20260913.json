@@ -1,0 +1,92 @@
+{
+  "taskId": "planflow-store-d4-public-history-20260913",
+  "originalRequest": "Resume the interrupted PlanFlow work: remove legacy contact digest exposure before the authorized public push; keep privacy-policy URL and iOS secondary category fail-closed until authoritative readback and user choice.",
+  "status": "BLOCKED_REVIEWER_UNAVAILABLE",
+  "worktree": "E:/FluxStudio-worktrees/planflow/planflow-d4-history-sanitize-20260913",
+  "base": "origin/main@4df59ab8d1ad8c4d7f05c5343dcebb83200f775a",
+  "candidateHead": "586800f1",
+  "scope": {
+    "allowed": [
+      "config/store/snapshots/android-readback-2026-09-11.json",
+      "config/store/store-profile.json",
+      "scripts/store-readback-asc.py",
+      "scripts/tests/test_store_readback_asc.py",
+      "scripts/tests/test_store_readback_workflow_contract.py"
+    ],
+    "forbidden": [
+      "unrelated dirty files in E:/FluxStudio/PlanFlow",
+      "external App Store Connect or Play Console mutation",
+      "privacy-policy publication or legal-text approval",
+      "iOS secondary-category mutation",
+      "FluxStudio repository push"
+    ]
+  },
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "result": "UNAVAILABLE: desktop account rejected the deployed model before execution. Root performed bounded current-state inspection; fallback explorer was interrupted without a terminal report."
+    },
+    {
+      "role": "Planner",
+      "agent": "fallback default in-app planner",
+      "mappedModel": "host default",
+      "reasoningEffort": "unknown",
+      "result": "Completed. Required isolated worktree history rewrite, all-commit-tree scan, non-force-only push, and fail-closed handling for policy URL/category."
+    },
+    {
+      "role": "Implementer",
+      "agent": "root fallback after flux_simple_implementer model rejection",
+      "mappedModel": "root host model",
+      "reasoningEffort": "inherited",
+      "result": "Completed in isolated worktree. Rewrote unpushed history to remove the two legacy short digests; repaired snapshot/profile hashes; updated presence-only metadata and regression contracts."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "result": "UNAVAILABLE: desktop account rejected deployed model. Root executed the required test command under a process-local Git for Windows PATH; 52 tests passed."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "result": "Completed. Initial 3 failures/2 errors were PATH resolution failures for Git Bash, grep, and openssl, not D4 regressions; PATH-scoped rerun passed."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "fallback default independent reviewer",
+      "mappedModel": "host default",
+      "reasoningEffort": "unknown",
+      "result": "Initial review found MEDIUM metadata mismatch; remediated. The final re-review and high-risk-review agents were interrupted after no terminal report, so no independent final APPROVE exists."
+    },
+    {
+      "role": "Integrator",
+      "agent": "root",
+      "mappedModel": "root host model",
+      "reasoningEffort": "inherited",
+      "result": "BLOCKED: candidate is clean and verified locally, but the delivery gate forbids integration or public push without an independent final reviewer report."
+    }
+  ],
+  "verification": [
+    {
+      "command": "PATH prefixed with Git for Windows bin/usr/bin/mingw64/bin; python -m unittest scripts.tests.test_store_readback_workflow_contract scripts.tests.test_store_readback_asc",
+      "exitCode": 0,
+      "result": "Ran 52 tests, OK"
+    },
+    {
+      "command": "Git blob SHA/profile/contentHash/exact contact-shape check; git diff --check; scan every origin/main..HEAD commit tree for legacy digests",
+      "exitCode": 0,
+      "result": "snapshot-contract=PASS; new-reachable-history=clean"
+    }
+  ],
+  "externalGates": {
+    "privacyPolicyUrl": "BLOCKED_USER_AUTHORITY: current values are UNKNOWN/PENDING_USER_INPUT; no policy URL will be selected or published without authoritative console readback and user legal approval.",
+    "iosSecondaryCategory": "BLOCKED_USER_AUTHORITY: optional value remains null/UNKNOWN; no category will be guessed or applied without readback and user choice.",
+    "push": "BLOCKED_REVIEWER_UNAVAILABLE: authorized only as a non-force fast-forward push after an independent final reviewer report and a fresh remote check."
+  }
+}
