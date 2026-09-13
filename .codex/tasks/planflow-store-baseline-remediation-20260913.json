@@ -1,7 +1,7 @@
 {
   "taskId": "planflow-store-baseline-remediation-20260913",
   "request": "Remediate the remaining PlanFlow Store profile and screenshot baseline blockers, then perform a truthful final qualification without Store mutation.",
-  "status": "FINAL_REVIEW_PENDING",
+  "status": "SOURCE_REMEDIATION_COMPLETE_EXTERNAL_BLOCKED",
   "source": {
     "originalCheckout": "E:/FluxStudio/PlanFlow",
     "originalHead": "d6f34014c4b8659eeea1f82f83e9af6aa12642e9",
@@ -73,7 +73,15 @@
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
       "assignment": "Review the entire Store remediation diff and protection/readiness semantics.",
-      "result": "REQUEST_CHANGES attempt 1: BLOCKER=0 HIGH=2 MEDIUM=4 LOW=1. REQUEST_CHANGES attempt 2: BLOCKER=0 HIGH=1 MEDIUM=2 LOW=0. REQUEST_CHANGES attempt 3: BLOCKER=0 HIGH=2 MEDIUM=0 LOW=0 because exact-SHA verification was not yet persisted. All technical and provenance findings are now addressed; final approval pending."
+      "result": "APPROVE final at HEAD aade8d28258998444934371dfdf355aa839b22ba: BLOCKER=0 HIGH=0 MEDIUM=0 LOW=0. Earlier review findings were corrected and exact implementation SHA c55192cb was bound to live readback and zero-mutation evidence."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "assignment": "Inspect the final current diff, test/readback/protection evidence, and issue the truthful source-delivery and external Store-readiness qualification.",
+      "result": "INTEGRATED: source remediation is complete once this final task-ledger commit is pushed. Operational Store readiness remains externally blocked: PRIVACY_POLICY=MISMATCH, APP_PRIVACY=PARTIAL, native iPhone/iPad baselines unavailable, and live optional Android tablet assets require separately authorized replacement/removal. PLANFLOW_STORE_PROFILE_READY=NO; PLANFLOW_SCREENSHOT_BASELINE_READY=NO; NEXT_RELEASE_AUTOMATION_READY=NO."
     }
   ],
   "plan": [
@@ -137,7 +145,7 @@
     {
       "command": "post-review rework: PATH-corrected Store readback/workflow unittest suites",
       "exitCode": 0,
-      "result": "99 passed"
+      "result": "100 passed"
     },
     {
       "command": "post-review rework: central Store profile/privacy/policy/plan/screenshot/impact pytest selection",
@@ -155,5 +163,31 @@
       "result": "PASS; mutations android=0 ios=0 submission=0; linked-worktree tooling gap bypassed without changing binding"
     }
   ],
-  "nextStep": "Commit exact-SHA evidence, push non-force, independent final re-review"
+  "finalQualification": {
+    "privacyPolicy": "MISMATCH",
+    "privacyPolicyRemediation": "BLOCKED_PENDING_BUSINESS_LEGAL_FACTS",
+    "privacyPolicyPublicationRequired": true,
+    "appPrivacy": "PARTIAL",
+    "postReviewMetadataCorrectionRequired": true,
+    "secondaryCategory": "UTILITIES",
+    "iosIphoneBaseline": "BLOCKED",
+    "iosIpadBaseline": "BLOCKED",
+    "androidPhoneBaseline": "READY",
+    "android7TabletBaseline": "NOT_REQUIRED_LIVE_ASSET_REMEDIATION_PENDING",
+    "android10TabletBaseline": "NOT_REQUIRED_LIVE_ASSET_REMEDIATION_PENDING",
+    "projectIsolation": "PASS",
+    "storeImpactDiff": "PASS",
+    "storePolicyEngine": "PASS",
+    "iosBuild23Protected": true,
+    "androidProductionProtected": true,
+    "storeMutations": 0,
+    "rewardedState": "EXTERNAL_DEPENDENCY_HOLD",
+    "reviewer": "APPROVE",
+    "blockerFindings": 0,
+    "highFindings": 0,
+    "planflowStoreProfileReady": false,
+    "planflowScreenshotBaselineReady": false,
+    "nextReleaseAutomationReady": false
+  },
+  "nextStep": "External approval and evidence: finalize/publish the PlanFlow privacy policy, correct App Privacy after Build23 review, replace/remove current optional Play tablet assets, and capture native iPhone/iPad screenshots before the next release automation."
 }
