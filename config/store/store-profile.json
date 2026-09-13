@@ -200,14 +200,16 @@
         "source": "USER_STATED",
         "evidence": [
           "User-confirmed App Store Connect submission state (2026-09-13)",
-          "https://fluxstudio.co.kr/privacy (HTTPS public page, HTTP 200 verified 2026-09-13)"
+          "https://fluxstudio.co.kr/privacy (HTTPS public PlanFlow policy, HTTP 200 and semantic contract verified 2026-09-13)",
+          "Homepage production deployment dpl_X4zgciGJUt3FNMwaW8pzTeNNaiZ4 (source commit f165fdd5f709b44f5620ecff204eb381a7828bbb)",
+          "PlanFlow final policy source SHA-256 2CFB3EFA21B5EF041E383C1CB76CA292AD255665924F115F7A1798AC9421924F"
         ],
         "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
         "requiresHumanAuthority": false,
         "approval": "USER_APPROVED",
         "storeAcceptance": "READBACK_UNCONFIRMED",
-        "note": "User confirmed this is the submitted App Store URL. The reachable page is currently a generic FluxStudio/HealthFlow policy and does not enumerate PlanFlow collection or AdMob; record as submitted configuration only. POST_REVIEW_METADATA_CORRECTION_REQUIRED; no Store mutation was performed."
+        "note": "User confirmed this is the submitted App Store URL. After Homepage production deployment dpl_X4zgciGJUt3FNMwaW8pzTeNNaiZ4, the public HTTPS page returned HTTP 200 and passed the PlanFlow semantic/negative-claim contract. This records publication and public-content alignment only; it does not mutate App Store Connect or establish Apple acceptance."
       },
       "supportUrl": {
         "value": "https://fluxstudio.co.kr/planflow-support",
@@ -1317,12 +1319,6 @@
       "code": "ANDROID_TABLET_LIVE_PII_REPLACEMENT_REQUIRED",
       "platform": "android",
       "detail": "The historical tablet-count deficiency is not a universal Google Play publishing blocker and was removed from requiredSlots. A separate real blocker remains: the current live 7-inch image exposes real schedule/business content, and both live tablet images contain system/DeX chrome and use 16:10 rather than Google's recommended large-screen 16:9/9:16 formats. Replace or remove those live optional assets in a separately authorized Play metadata change.",
-      "requiresHumanAuthority": true
-    },
-    {
-      "code": "PRIVACY_POLICY_MISMATCH",
-      "platform": "both",
-      "detail": "ASC GET-only readback run 34744489714 confirms https://fluxstudio.co.kr/privacy as the submitted iOS privacy-policy URL. The publication-ready PlanFlow-specific source is docs/store/planflow-privacy-policy-final.md; the external page has not been replaced, so this mismatch remains until separately authorized publication and readback.",
       "requiresHumanAuthority": true
     },
     {

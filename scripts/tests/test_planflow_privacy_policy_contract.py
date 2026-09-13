@@ -57,7 +57,11 @@ class PrivacyPolicyContractTest(unittest.TestCase):
         self.assertFalse(self.profile["content"]["ugc"]["value"])
         self.assertFalse(self.profile["content"]["childDirected"]["value"])
         blockers = {item["code"] for item in self.profile["blockers"]}
-        self.assertIn("PRIVACY_POLICY_MISMATCH", blockers)
+        self.assertNotIn("PRIVACY_POLICY_MISMATCH", blockers)
+        policy_url = self.profile["storeMetadata"]["ios"]["privacyPolicyUrl"]
+        self.assertEqual(policy_url["value"], "https://fluxstudio.co.kr/privacy")
+        self.assertIn("dpl_X4zgciGJUt3FNMwaW8pzTeNNaiZ4", policy_url["note"])
+        self.assertIn("2CFB3EFA21B5EF041E383C1CB76CA292AD255665924F115F7A1798AC9421924F", policy_url["evidence"][-1])
         self.assertNotIn("IOS_ADS_TRACKING_ANSWER_UNKNOWN", blockers)
         decisions = {item["code"] for item in self.profile["decisionsRequired"]}
         self.assertNotIn("IOS_ADS_TRACKING_ANSWER", decisions)

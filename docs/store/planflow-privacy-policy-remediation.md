@@ -1,6 +1,6 @@
 # PlanFlow 개인정보처리방침 보완 릴리스 노트
 
-상태: SOURCE_READY_PUBLIC_DEPLOYMENT_PENDING
+상태: PUBLICATION_VERIFIED
 
 공개용 최종 문안은 [planflow-privacy-policy-final.md](./planflow-privacy-policy-final.md)이다. Flux Studio 사업자 정보, PlanFlow의 실제 계정·일정·그룹·음성 텍스트·위치·광고·진단 흐름을 반영했으며, 내부 저장소 경로·광고 단위 ID·비공개 연락처를 포함하지 않았다.
 
@@ -24,5 +24,5 @@
 게시 경계:
 
 - 이 커밋은 공개 문안과 Store 프로필 근거만 준비한다.
-- `https://fluxstudio.co.kr/privacy` 외부 페이지를 실제로 교체하거나 스토어 메타데이터를 변경하지 않았다. 공개 URL 배포와 App Store 개인정보 답변 변경은 별도 승인·실행이 필요하다.
+- `https://fluxstudio.co.kr/privacy`는 Homepage production deployment `dpl_X4zgciGJUt3FNMwaW8pzTeNNaiZ4` 후 실제로 교체되었고, HTTP 200 및 PlanFlow 의미·금지문구 계약 readback을 통과했다. App Store Connect/Google Play 메타데이터와 App Privacy 답변에는 쓰기 변경을 하지 않았으며, Apple 수락도 주장하지 않는다.
 - 현재 제출 중인 iOS Build23, Android 설정, iOS Rewarded 원격 설정은 변경하지 않는다.
