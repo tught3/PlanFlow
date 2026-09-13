@@ -328,6 +328,21 @@ class CategoryRelationshipTests(NoNetworkGuardMixin, unittest.TestCase):
         self.assertFalse(any("primaryCategory" in url for url in transport.calls))
         self.assertEqual(result["mutationCount"], 0)
 
+    def test_malformed_embedded_relationship_is_unavailable_without_fallback(self):
+        info = {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {}, "relationships": {
+            "primaryCategory": {"data": []},
+            "secondaryCategory": {"data": {"id": 17, "type": "appCategories"}},
+        }}]}
+        result, snapshot, transport = self._collect(info)
+        item = snapshot["fields"]["appInfos"][0]
+        self.assertEqual(item["primaryCategoryState"], "UNAVAILABLE")
+        self.assertEqual(item["secondaryCategoryState"], "UNAVAILABLE")
+        self.assertIn("primaryCategory:info-1", result["unavailableSections"])
+        self.assertIn("secondaryCategory:info-1", result["unavailableSections"])
+        self.assertFalse(any("primaryCategory" in url for url in transport.calls))
+        self.assertFalse(any("secondaryCategory" in url for url in transport.calls))
+        self.assertEqual(result["mutationCount"], 0)
+
     def test_empty_and_404_relationships_are_unset(self):
         responses = [
             ("/v1/appInfos/info-1/primaryCategory", {"__http_status": 200, "data": None}),

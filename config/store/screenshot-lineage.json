@@ -293,7 +293,7 @@
         ]
       },
       "sourcePlatform": "android",
-      "sourceDevice": "unknown (not individually re-opened; inferred from the same capture set as screenshot 1/2, which show an Android-style status bar)",
+      "sourceDevice": "Android/Samsung capture family (exact hardware model not proven; exact file visually inspected 2026-09-13)",
       "sourceCapture": null,
       "marketingTemplate": null,
       "chromeRemoved": false,
@@ -359,7 +359,7 @@
         ]
       },
       "sourcePlatform": "android",
-      "sourceDevice": "unknown (not individually re-opened; copy confirmed via store_final_v3/phone_1080x1920/PlanFlow_screenshot_6.png, a separate file with a different sha256)",
+      "sourceDevice": "Android-derived capture (exact hardware model not proven; exact file visually inspected 2026-09-13)",
       "sourceCapture": null,
       "marketingTemplate": null,
       "chromeRemoved": false,
@@ -392,7 +392,7 @@
         ]
       },
       "sourcePlatform": "android",
-      "sourceDevice": "unknown (not individually re-opened; copy confirmed via store_final_v3/phone_1080x1920/PlanFlow_screenshot_7.png, a separate file with a different sha256)",
+      "sourceDevice": "Android-derived capture (exact hardware model not proven; exact file visually inspected 2026-09-13)",
       "sourceCapture": null,
       "marketingTemplate": null,
       "chromeRemoved": false,
@@ -425,7 +425,7 @@
         ]
       },
       "sourcePlatform": "android",
-      "sourceDevice": "unknown (not individually re-opened; copy confirmed via store_final_v3/phone_1080x1920/PlanFlow_screenshot_8.png, a separate file with a different sha256)",
+      "sourceDevice": "Android-derived capture (exact hardware model not proven; exact file visually inspected 2026-09-13)",
       "sourceCapture": null,
       "marketingTemplate": null,
       "chromeRemoved": false,
