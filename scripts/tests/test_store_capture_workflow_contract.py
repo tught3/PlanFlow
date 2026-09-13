@@ -134,7 +134,11 @@ class ScreenshotCaptureContractTests(unittest.TestCase):
         self.assertIn('locationLat: 37.3947', fixture)
         self.assertIn('locationLng: 127.1112', fixture)
         # banned-ok: This assertion protects deterministic Store screenshot pixels.
-        self.assertIn('nowProvider: () => DateTime(2026, 9, 21, 9)', fixture)
+        self.assertIn('nowProvider: () => DateTime.utc(2026, 9, 21, 1)', fixture)
+        self.assertIn('_FakeSmartPreparationAlarmService', fixture)
+        self.assertIn('headerSummaryOverride: const HomeHeaderSummary', fixture)
+        self.assertIn('debugShowCheckedModeBanner: false', fixture)
+        self.assertIn("parsedSchedule: <String, dynamic>{", fixture)
 
     def test_validator_accepts_exact_slot_mapping(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -16,6 +16,8 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
+import 'package:planflow/services/home_header_summary_service.dart';
+import 'package:planflow/services/smart_preparation_alarm_service.dart';
 
 import '_harness/screenshot_helper.dart';
 
@@ -67,9 +69,17 @@ Widget _fixtureFor(String id) {
       screen = HomeScreen(
         userIdOverride: 'store-fixture-user',
         loadHeaderSummary: false,
+        headerSummaryOverride: const HomeHeaderSummary(
+          weatherLabel: '맑음 22°',
+          detailLine: '오늘은 일정에 집중하기 좋은 날이에요.',
+          isReady: true,
+          locationLabel: '판교',
+          weatherIcon: Icons.wb_sunny_outlined,
+        ),
         // banned-ok: Store screenshot pixels require a fixed calendar date.
-        nowProvider: () => DateTime(2026, 9, 21, 9),
+        nowProvider: () => DateTime.utc(2026, 9, 21, 1),
         eventRepository: _OfflineEventRepository(),
+        smartPreparationAlarmService: const _FakeSmartPreparationAlarmService(),
         groupContextProvider: GroupContextProvider(
           repository: const _OfflineGroupRepository(),
         ),
@@ -78,7 +88,7 @@ Widget _fixtureFor(String id) {
     case 'iphone69-voice-confirm':
       screen = ConfirmScreen(
         userId: 'store-fixture-user',
-        parsedSchedule: const <String, dynamic>{
+        parsedSchedule: <String, dynamic>{
           'title': '팀 주간 회의',
           'date': '2026-09-21',
           'time': '10:00',
@@ -114,6 +124,7 @@ Widget _fixtureFor(String id) {
   }
 
   return MaterialApp(
+    debugShowCheckedModeBanner: false,
     locale: const Locale('ko', 'KR'),
     supportedLocales: const <Locale>[Locale('ko', 'KR'), Locale('en', 'US')],
     localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
@@ -164,6 +175,17 @@ class _OfflineConfirmBackend extends ConfirmScreenBackend {
   Future<void> insertVoiceLog(Map<String, dynamic> payload) async {}
 }
 
+class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
+  const _FakeSmartPreparationAlarmService();
+
+  @override
+  Future<Set<String>> listEventIdsWithSmartAlarms({
+    required String userId,
+    required Iterable<String> eventIds,
+  }) async =>
+      const <String>{};
+}
+
 class _OfflineEventRepository extends EventRepository {
   const _OfflineEventRepository();
 
@@ -199,9 +221,9 @@ final _fixtureEvent = EventModel(
   userId: 'store-fixture-user',
   title: '팀 주간 회의',
   // banned-ok: Store screenshot pixels require a fixed calendar date.
-  startAt: DateTime(2026, 9, 21, 10),
+  startAt: DateTime.utc(2026, 9, 21, 1),
   // banned-ok: Store screenshot pixels require a fixed calendar date.
-  endAt: DateTime(2026, 9, 21, 11),
+  endAt: DateTime.utc(2026, 9, 21, 2),
   location: '판교 회의실',
   locationLat: 37.3947,
   locationLng: 127.1112,
@@ -277,8 +299,8 @@ final _fixtureGroupEvent = GroupEventModel(
   groupId: 'store-fixture-group',
   title: '그룹 일정 공유',
   // banned-ok: Store screenshot pixels require a fixed calendar date.
-  startAt: DateTime(2026, 9, 21, 14),
+  startAt: DateTime.utc(2026, 9, 21, 5),
   // banned-ok: Store screenshot pixels require a fixed calendar date.
-  endAt: DateTime(2026, 9, 21, 15),
+  endAt: DateTime.utc(2026, 9, 21, 6),
   createdBy: 'store-fixture-user',
 );

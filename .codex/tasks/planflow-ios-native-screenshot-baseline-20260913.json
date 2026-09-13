@@ -1,6 +1,6 @@
 {
   "taskId": "planflow-ios-native-screenshot-baseline-20260913",
-  "status": "REWORKING",
+  "status": "CI_RERUN_PENDING",
   "base": {
     "head": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
     "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
@@ -41,7 +41,7 @@
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
       "status": "COMPLETE",
-      "result": "Classified seven Dart const/DateTime compile failures and provenance/readiness gaps; fixes applied and analyzer now passes."
+      "result": "Classified local const/DateTime failures, then CI run 34763175523 immutable Confirm map failure, Home SmartPreparation backend leak, timezone nondeterminism, and DEBUG banner. Scoped fixes applied."
     },
     "testExecutor": {
       "agent": "ios_screenshot_test_executor_fallback",
@@ -54,7 +54,8 @@
         "python -m py_compile scripts/ios/validate_store_screenshots.py: exit 0",
         "PyYAML workflow parse: exit 0",
         "capture plan exact mapping IPHONE=3 IPAD=2: exit 0",
-        "git diff --check: exit 0"
+        "git diff --check: exit 0",
+        "flutter test test/screens/home_screen_test.dart --no-pub: exit 0 (16 tests)"
       ],
       "gap": "macOS CI simulator capture and visual artifact review not yet run"
     },
@@ -62,8 +63,8 @@
       "agent": "ios_screenshot_source_reviewer",
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
-      "status": "SOURCE_APPROVED_PENDING_CI",
-      "result": "PASS with BLOCKER=0 and HIGH=0 after rework; only generated registrant and pycache exclusion remains. macOS assets and visual review are external pending evidence."
+      "status": "SOURCE_APPROVED_PENDING_CI_RERUN",
+      "result": "Initial source PASS. Independent CI-rework review also APPROVE with BLOCKER=0 HIGH=0; MEDIUM notes runtime CI is the meaningful fixture behavior gate."
     },
     "integrator": {
       "agent": "ios_screenshot_integrator_pretest",
@@ -74,7 +75,7 @@
     }
   },
   "capture": {
-    "ciStatus": "PARTIAL",
+    "ciStatus": "RUN_34763175523_FAILED_REWORK_APPLIED",
     "userCaptureRequired": false,
     "userManualCaptureCount": 0,
     "iphoneNativeAssets": 0,
@@ -86,7 +87,14 @@
       "https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots",
       "https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications"
     ],
-    "existingAudit": "iPhone 8/8 and iPad 2/2 REJECTED; sourcePlatform android; iPad non-uniform resize/chrome and PII findings."
+    "existingAudit": "iPhone 8/8 and iPad 2/2 REJECTED; sourcePlatform android; iPad non-uniform resize/chrome and PII findings.",
+    "ciRun1": {
+      "runId": 34763175523,
+      "sourceSha": "e8358f3aa9113d94beeab90d29c54a4a9d953a1f",
+      "result": "FAILED on immutable ConfirmScreen fixture map after one Home PNG",
+      "partialAsset": "iphone69-calendar-home-IPHONE.png 1320x2868 SHA256 1eb0520d31d162964e4a70a1de7eb7b6c412dbeaae10635bf2fc0b",
+      "qualification": "REJECTED_DEBUG_BANNER_AND_NONDETERMINISTIC_TIME"
+    }
   },
-  "nextStep": "Complete implementation, source tests, commit/push, dispatch CI, import and visually qualify five native artifacts."
+  "nextStep": "Commit and push CI failure fixes, dispatch run 2, import and visually qualify five native artifacts."
 }

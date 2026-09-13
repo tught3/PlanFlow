@@ -68,6 +68,7 @@ class HomeScreen extends StatefulWidget {
     this.smartPreparationAlarmService = const SmartPreparationAlarmService(),
     this.homeWidgetService,
     this.loadHeaderSummary = true,
+    this.headerSummaryOverride,
     this.nowProvider,
     this.locationLookupService,
     this.settingsRepository,
@@ -80,6 +81,10 @@ class HomeScreen extends StatefulWidget {
   final SmartPreparationAlarmService smartPreparationAlarmService;
   final HomeWidgetService? homeWidgetService;
   final bool loadHeaderSummary;
+
+  /// Optional deterministic summary for offline visual fixtures. Production
+  /// callers keep the network-backed default by leaving this null.
+  final HomeHeaderSummary? headerSummaryOverride;
   final DateTime Function()? nowProvider;
 
   /// 좌표 보정에 쓰는 장소 검색 서비스. 테스트에서 호출 횟수를 세는 fake를
@@ -146,6 +151,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _groupContextProvider =
         widget.groupContextProvider ?? GroupContextProvider();
     _homeWidgetService = widget.homeWidgetService ?? HomeWidgetService();
+    if (widget.headerSummaryOverride != null) {
+      _headerSummary = widget.headerSummaryOverride;
+      _headerSummaryLoading = false;
+    }
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _groupContextProvider.addListener(_handleGroupContextChanged);
@@ -663,6 +672,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         surfaceTintColor: Colors.transparent,
         title: _HomeHeader(
           onVoice: () => context.push(AppRoutes.voice),
+          nowProvider: widget.nowProvider,
           onVoiceConv: _shouldShowVoiceConvButton()
               ? () => _openVoiceConversation(context)
               : null,
