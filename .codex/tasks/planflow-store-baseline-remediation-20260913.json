@@ -1,7 +1,7 @@
 {
   "taskId": "planflow-store-baseline-remediation-20260913",
   "request": "Remediate the remaining PlanFlow Store profile and screenshot baseline blockers, then perform a truthful final qualification without Store mutation.",
-  "status": "REVIEW_REWORK",
+  "status": "FINAL_REVIEW_PENDING",
   "source": {
     "originalCheckout": "E:/FluxStudio/PlanFlow",
     "originalHead": "d6f34014c4b8659eeea1f82f83e9af6aa12642e9",
@@ -105,7 +105,7 @@
   "currentFindings": {
     "privacyPolicy": "MISMATCH",
     "appPrivacy": "PARTIAL",
-    "secondaryCategory": "UNKNOWN",
+    "secondaryCategory": "UTILITIES_CONFIGURED",
     "iosIphoneScreenshots": "REGENERATE_REQUIRED_ANDROID_DERIVED",
     "iosIpadScreenshots": "REGENERATE_REQUIRED_DISTORTED_ANDROID_DERIVED",
     "androidPhoneScreenshots": "ACCEPTABLE_BASELINE_8_OF_8",
@@ -143,7 +143,17 @@
       "command": "post-review rework: central Store profile/privacy/policy/plan/screenshot/impact pytest selection",
       "exitCode": 0,
       "result": "621 passed"
+    },
+    {
+      "command": "GitHub Actions Store readback workflow run 34743811582 on candidate branch",
+      "exitCode": 0,
+      "result": "GET-only SUCCESS; mutationCount=0; primaryCategory=PRODUCTIVITY CONFIGURED; secondaryCategory=UTILITIES CONFIGURED; Build23 WAITING_FOR_REVIEW"
+    },
+    {
+      "command": "fluxstore plan --mode dry-run --assert-zero-mutation from ordinary clone of candidate commit 9441b5a7",
+      "exitCode": 0,
+      "result": "PASS; mutations android=0 ios=0 submission=0; linked-worktree tooling gap bypassed without changing binding"
     }
   ],
-  "nextStep": "Commit and push candidate for GET-only ASC readback"
+  "nextStep": "Commit live readback evidence, push non-force, independent re-review"
 }

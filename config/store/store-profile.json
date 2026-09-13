@@ -157,29 +157,29 @@
       },
       "category": {
         "value": "productivity",
-        "source": "USER_STATED",
+        "source": "STORE_READBACK",
         "evidence": [
-          "User-confirmed App Store Connect submission state (2026-09-13)"
+          "GET-only workflow run 34743811582: primaryCategoryId=PRODUCTIVITY, primaryCategoryState=CONFIGURED, mutationCount=0"
         ],
         "lastVerified": "2026-09-13",
-        "confidence": "MEDIUM",
-        "requiresHumanAuthority": false,
-        "approval": "USER_APPROVED",
-        "storeAcceptance": "READBACK_UNCONFIRMED",
-        "note": "User confirmed Productivity is configured for the pending App Store submission. This records submitted configuration, not Apple acceptance; App Store Connect API readback remains unavailable."
-      },
-      "secondaryCategory": {
-        "value": null,
-        "source": "UNKNOWN",
-        "evidence": [
-          "docs/ios/app-store-metadata.md:140"
-        ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "confidence": "HIGH",
         "requiresHumanAuthority": false,
         "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "Doc explicitly marks this PENDING_USER_INPUT."
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "App Store Connect GET-only relationship readback confirms PRODUCTIVITY on the protected WAITING_FOR_REVIEW submission. This proves the configured value, not Apple acceptance."
+      },
+      "secondaryCategory": {
+        "value": "utilities",
+        "source": "STORE_READBACK",
+        "evidence": [
+          "GET-only workflow run 34743811582: secondaryCategoryId=UTILITIES, secondaryCategoryState=CONFIGURED, mutationCount=0"
+        ],
+        "lastVerified": "2026-09-13",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "NONE",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "App Store Connect GET-only relationship readback confirms UTILITIES on the protected WAITING_FOR_REVIEW submission. This proves the configured value, not Apple acceptance."
       },
       "price": {
         "value": "free",
