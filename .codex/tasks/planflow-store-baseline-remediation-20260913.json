@@ -1,0 +1,149 @@
+{
+  "taskId": "planflow-store-baseline-remediation-20260913",
+  "request": "Remediate the remaining PlanFlow Store profile and screenshot baseline blockers, then perform a truthful final qualification without Store mutation.",
+  "status": "REVIEW_REWORK",
+  "source": {
+    "originalCheckout": "E:/FluxStudio/PlanFlow",
+    "originalHead": "d6f34014c4b8659eeea1f82f83e9af6aa12642e9",
+    "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "aheadBehind": "12/3",
+    "originalWorktree": "DIRTY",
+    "foreignDirtyPreserved": true,
+    "canonicalWorktree": "E:/FluxStudio-worktrees/planflow/planflow-store-baseline-remediation-20260913",
+    "branch": "codex/store-baseline-remediation-20260913"
+  },
+  "protection": {
+    "iosBuild23": "PROTECTED",
+    "androidProduction": "PROTECTED",
+    "rewarded": "EXTERNAL_DEPENDENCY_HOLD",
+    "build26": "FORBIDDEN",
+    "storeMutations": 0
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "assignment": "Read-only Store profile, privacy, screenshot and ownership investigation.",
+      "result": "UNAVAILABLE: the ChatGPT account rejected the mapped gpt-5.4-mini model. Root completed the bounded read-only fallback."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "assignment": "Define remediation requirements, forbidden mutations, allowed files, classifications and completion gates.",
+      "result": "PLANNED: use an isolated clean worktree from fresh origin/main; permit only PlanFlow Store evidence/draft/readback fixes; preserve Build23, Android production, Rewarded and zero Store mutation."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Implement GET-only ASC category-state fallback, focused tests, a source-grounded privacy remediation draft, and truthful Store profile/screenshot lineage corrections in the isolated worktree.",
+      "changedFiles": [
+        "scripts/store-readback-asc.py",
+        "scripts/tests/test_store_readback_asc.py",
+        "docs/store/planflow-privacy-policy-remediation.md",
+        "config/store/store-profile.json",
+        "config/store/screenshot-lineage.json"
+      ],
+      "result": "IMPLEMENTED: category readback now distinguishes CONFIGURED, UNSET and UNAVAILABLE using GET-only relationship endpoints; privacy and screenshot evidence remains fail-closed. Root independently refined stale blocker language without expanding the allowed file set."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "assignment": "Run focused Store readback, profile, lineage, policy, impact and zero-mutation verification without editing.",
+      "result": "UNAVAILABLE: the ChatGPT account rejected the mapped gpt-5.4-mini model. Root ran the required bounded test fallback."
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Classify Windows executable-resolution failures and the linked-worktree repoSubpath isolation failure.",
+      "result": "ANALYZED: PATH-corrected readback suites pass; the dry-run failure is a pre-existing central Store-engine linked-worktree root-resolution defect. Validate the committed candidate from an ordinary clone instead of weakening repoSubpath."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Review the entire Store remediation diff and protection/readiness semantics.",
+      "result": "REQUEST_CHANGES attempt 1: BLOCKER=0 HIGH=2 MEDIUM=4 LOW=1. Required live category readback; reconciled stale iOS ad nodes; hardened malformed category responses; corrected per-image audit evidence and tablet blocker semantics; removed task-generated cache. Final re-review pending after live readback."
+    }
+  ],
+  "plan": [
+    "Create an evidence-grounded PlanFlow privacy-policy remediation draft without inventing business or legal facts.",
+    "Add GET-only App Store category relationship readback only if a concrete collector gap is proven.",
+    "Audit current Store screenshots and persist truthful platform, PII, dimensions, provenance and qualification states.",
+    "Correct Android tablet applicability semantics from current official Google Play evidence without weakening screenshot integrity checks.",
+    "Run focused tests, independent review and final integration."
+  ],
+  "allowedFiles": [
+    ".codex/tasks/planflow-store-baseline-remediation-20260913.json",
+    "config/store/store-profile.json",
+    "config/store/screenshot-lineage.json",
+    "config/store/baselines/**",
+    "config/store/snapshots/**",
+    "config/store/capture-plan.json",
+    "docs/store/**",
+    "scripts/store-readback-asc.py",
+    "scripts/tests/test_store_readback_asc.py"
+  ],
+  "forbidden": [
+    "App Store or Play Store mutation",
+    "Build23 submission change",
+    "Build26 creation",
+    "Android production change",
+    "AdMob, Firebase, Rewarded, ATT, Naver Map or app-feature changes",
+    "foreign changes from the original checkout"
+  ],
+  "currentFindings": {
+    "privacyPolicy": "MISMATCH",
+    "appPrivacy": "PARTIAL",
+    "secondaryCategory": "UNKNOWN",
+    "iosIphoneScreenshots": "REGENERATE_REQUIRED_ANDROID_DERIVED",
+    "iosIpadScreenshots": "REGENERATE_REQUIRED_DISTORTED_ANDROID_DERIVED",
+    "androidPhoneScreenshots": "ACCEPTABLE_BASELINE_8_OF_8",
+    "android7TabletScreenshots": "OPTIONAL_SLOT_CURRENT_ASSET_NOT_QUALIFIED",
+    "android10TabletScreenshots": "OPTIONAL_SLOT_CURRENT_ASSET_NOT_QUALIFIED"
+  },
+  "testEvidence": [
+    {
+      "command": "python -B -m unittest scripts.tests.test_store_readback_asc scripts.tests.test_store_readback_workflow_contract scripts.tests.test_store_capture_workflow_contract (Git for Windows openssl/bash/grep added process-locally to PATH)",
+      "exitCode": 0,
+      "result": "97 passed"
+    },
+    {
+      "command": "python -B -m pytest -q -p no:cacheprovider tests/test_profile.py tests/test_privacy_verify.py tests/test_policy_gate.py tests/test_plan.py tests/test_screenshots_validate.py tests/test_screenshots_lineage.py tests/test_screenshots_impact.py tests/test_impact.py",
+      "cwd": "E:/FluxStudio/tools/flux-release/store",
+      "exitCode": 0,
+      "result": "621 passed"
+    },
+    {
+      "command": "JSON parse, Python source compile(), git diff --check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "fluxstore plan --mode dry-run --assert-zero-mutation from linked worktree",
+      "exitCode": 3,
+      "result": "PRE_EXISTING_TOOLING_GAP: PROJECT_PROFILE_INCOMPLETE:repoSubpath; ordinary-clone retest required after commit"
+    },
+    {
+      "command": "post-review rework: PATH-corrected Store readback/workflow unittest suites",
+      "exitCode": 0,
+      "result": "99 passed"
+    },
+    {
+      "command": "post-review rework: central Store profile/privacy/policy/plan/screenshot/impact pytest selection",
+      "exitCode": 0,
+      "result": "621 passed"
+    }
+  ],
+  "nextStep": "Commit and push candidate for GET-only ASC readback"
+}

@@ -273,6 +273,42 @@ def _relationship_id(resource: dict, name: str) -> str | None:
     return data.get("id") if isinstance(data, dict) else None
 
 
+def _category_relationship(
+    client: ReadbackClient,
+    info: dict,
+    info_id: str,
+    name: str,
+    sleep_fn=time.sleep,
+) -> tuple[str | None, str]:
+    """Read a category relationship without turning missing data into a guess.
+
+    ASC sometimes omits relationship members from an ``appInfos`` response.
+    In that case the relationship endpoint is read separately.  A 404 or a
+    successful response with no data means the category is explicitly unset;
+    transport/API failure is kept distinct as UNAVAILABLE.
+    """
+    relationships = info.get("relationships") or {}
+    if name in relationships and "data" in (relationships.get(name) or {}):
+        relationship_id = _relationship_id(info, name)
+        return relationship_id, "CONFIGURED" if relationship_id else "UNSET"
+
+    document = client.request_with_retry(f"/v1/appInfos/{info_id}/{name}", sleep_fn=sleep_fn)
+    status = document.get("__http_status")
+    if status == 404:
+        return None, "UNSET"
+    if status != 200 or document.get("errors"):
+        return None, "UNAVAILABLE"
+    data = document.get("data")
+    if data is None:
+        return None, "UNSET"
+    if not isinstance(data, dict):
+        return None, "UNAVAILABLE"
+    relationship_id = data.get("id")
+    if not isinstance(relationship_id, str) or not relationship_id:
+        return None, "UNAVAILABLE"
+    return relationship_id, "CONFIGURED"
+
+
 # ---------------------------------------------------------------------------
 # PII handling
 # ---------------------------------------------------------------------------
@@ -393,8 +429,16 @@ def collect_snapshot(client: ReadbackClient, bundle_id: str, sleep_fn=time.sleep
             for loc in localizations_raw
         ]
 
-        primary_category_id = _relationship_id(info, "primaryCategory")
-        secondary_category_id = _relationship_id(info, "secondaryCategory")
+        primary_category_id, primary_category_state = _category_relationship(
+            client, info, info_id, "primaryCategory", sleep_fn=sleep_fn
+        )
+        secondary_category_id, secondary_category_state = _category_relationship(
+            client, info, info_id, "secondaryCategory", sleep_fn=sleep_fn
+        )
+        if primary_category_state == "UNAVAILABLE":
+            unavailable.append(f"primaryCategory:{info_id}")
+        if secondary_category_state == "UNAVAILABLE":
+            unavailable.append(f"secondaryCategory:{info_id}")
 
         age_rating_document = client.request_with_retry(f"/v1/appInfos/{info_id}/ageRatingDeclaration", sleep_fn=sleep_fn)
         if age_rating_document.get("__http_status") == 404:
@@ -411,7 +455,9 @@ def collect_snapshot(client: ReadbackClient, bundle_id: str, sleep_fn=time.sleep
                 "id": info_id,
                 "state": info_attrs.get("appStoreState"),
                 "primaryCategoryId": primary_category_id,
+                "primaryCategoryState": primary_category_state,
                 "secondaryCategoryId": secondary_category_id,
+                "secondaryCategoryState": secondary_category_state,
                 "localizations": localizations,
                 "ageRating": age_rating,
             }

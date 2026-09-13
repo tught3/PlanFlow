@@ -6,11 +6,19 @@
   ],
   "requiredSlots": [
     { "slot": "ANDROID_PHONE", "displayClass": "default" },
-    { "slot": "ANDROID_TABLET", "displayClass": "7" },
-    { "slot": "ANDROID_TABLET", "displayClass": "10" },
     { "slot": "IPHONE", "displayClass": "6.9" },
     { "slot": "IPAD", "displayClass": "13" }
   ],
+  "visualAudit": {
+    "lastVerified": "2026-09-13",
+    "iphone65CandidateIds": ["iphone65-1-voice-input", "iphone65-2-departure-alert", "iphone65-3-voice-edit", "iphone65-4-calendar-sync", "iphone65-5-home-widget", "iphone65-6-briefing-settings", "iphone65-7-group", "iphone65-8-home-briefing"],
+    "iphone65Result": "REJECTED",
+    "iphone65Notes": "All 8 candidate images were independently opened and inspected on 2026-09-13. Each is Android-derived, not a native iOS capture; they remain rejected and cannot satisfy the iPhone 6.9 required slot.",
+    "androidTabletResult": "STORE_APPLIED_BUT_LOCAL_QUALIFICATION_REJECTED",
+    "androidTabletNotes": "The two live Android tablet assets remain recorded for provenance, but both are 2560x1600 (16:10) with system/DeX chrome; the 7-inch asset visibly exposes real schedule/business content.",
+    "orphanedCandidateSetResult": "REJECTED",
+    "orphanedCandidateSetNotes": "All 10 store_final_v3 phone/tablet entries point to files absent from the clean origin/main checkout. They remain lineage evidence only and are not proposed upload candidates."
+  },
   "features": {
     "calendar-month": {
       "description": "월간 캘린더 뷰: 날짜 그리드, 그룹 필터 칩, 선택한 날짜의 개인/그룹 일정 목록을 함께 보여준다. (Read 도구로 IPAD 01, ANDROID_TABLET 1 직접 확인)",
@@ -290,12 +298,12 @@
       "marketingTemplate": null,
       "chromeRemoved": false,
       "transformations": [],
-      "piiReviewed": false,
+      "piiReviewed": true,
       "piiFindings": [],
       "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
       "storeUploadState": "UNKNOWN",
       "status": "REJECTED",
-      "notes": "이 파일 자체는 Read 도구로 열지 않았다(동일 폴더의 store_final_v3/phone_1080x1920/PlanFlow_screenshot_4.png -- 별개 파일, 다른 sha256 -- 을 대신 열어 카피 문구를 확인함). 화면 구성이 같은 캡처 세트에서 나온 것으로 문서화돼 있어 카피는 신뢰할 수 있으나, 이 정확한 파일의 픽셀 내용과 sourcePlatform은 UNVERIFIED로 표시하는 것이 맞다. status=REJECTED는 판단 근거 부족에 따른 보수적 조치."
+      "notes": "This exact file was independently opened on 2026-09-13. It visibly contains Android/Samsung status chrome and is not a native iOS capture. No direct personal identifier was found in the visible sample content; status remains REJECTED for platform provenance."
     },
     {
       "screenshotId": "iphone65-5-home-widget",
@@ -356,12 +364,12 @@
       "marketingTemplate": null,
       "chromeRemoved": false,
       "transformations": [],
-      "piiReviewed": false,
+      "piiReviewed": true,
       "piiFindings": [],
       "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
       "storeUploadState": "UNKNOWN",
       "status": "REJECTED",
-      "notes": "이 정확한 파일은 Read로 열지 않았다(대신 store_final_v3의 동일 계열 이미지를 열어 카피만 확인). status=REJECTED는 미검증에 따른 보수적 조치."
+      "notes": "This exact file was independently opened on 2026-09-13. It belongs to the Android-derived capture set and is not native iOS. No direct personal identifier was found; status remains REJECTED for platform provenance."
     },
     {
       "screenshotId": "iphone65-7-group",
@@ -389,12 +397,12 @@
       "marketingTemplate": null,
       "chromeRemoved": false,
       "transformations": [],
-      "piiReviewed": false,
+      "piiReviewed": true,
       "piiFindings": [],
       "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
       "storeUploadState": "UNKNOWN",
       "status": "REJECTED",
-      "notes": "이 정확한 파일은 Read로 열지 않았다. status=REJECTED는 미검증에 따른 보수적 조치."
+      "notes": "This exact file was independently opened on 2026-09-13. It is Android-derived rather than a native iOS capture. Visible group/sample content contained no direct personal identifier; status remains REJECTED for platform provenance."
     },
     {
       "screenshotId": "iphone65-8-home-briefing",
@@ -422,12 +430,12 @@
       "marketingTemplate": null,
       "chromeRemoved": false,
       "transformations": [],
-      "piiReviewed": false,
+      "piiReviewed": true,
       "piiFindings": [],
       "lastVerifiedSourceSha": "041df78296409100a85228d8858bc851b1da17cd",
       "storeUploadState": "UNKNOWN",
       "status": "REJECTED",
-      "notes": "이 정확한 파일은 Read로 열지 않았다. status=REJECTED는 미검증에 따른 보수적 조치."
+      "notes": "This exact file was independently opened on 2026-09-13. It is Android-derived rather than a native iOS capture. No direct personal identifier was found; status remains REJECTED for platform provenance."
     },
     {
       "screenshotId": "android-phone-1-voice-input",
@@ -461,7 +469,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. docs/screenshots/store_final_v3/ 는 .gitignore:63 로 전체 무시되어 git 커밋 이력이 없다 -- lastVerifiedSourceSha를 UNKNOWN으로 둔다(git log가 빈 결과를 반환함, 커밋된 적 없음을 뜻함). sha256이 이 파일과 byte-identical한 live 파일(docs/screenshots/store_final/phone_1080x1920/PlanFlow_screenshot_1.png, android-phone-1-voice-input-live 참조)이 실제 Play Console phoneScreenshots에 업로드돼 있음을 config/store/snapshots/android-readback-2026-09-11.json에서 직접 확인했다 -- 이 v3 파일 자체(경로)는 여전히 NOT_UPLOADED가 맞다(라이브 자산은 v2 경로의 별도 엔트리로 기록됨)."
     },
     {
@@ -496,7 +504,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). sha256이 이 v3 파일과 다르다 -- live phoneScreenshots의 해당 인덱스 sha256(cf141f7e...)은 store_final(v2) 경로의 파일과 일치한다(android-phone-2-departure-alert-live 참조), 즉 이 v3 개정판은 아직 업로드되지 않았다."
     },
     {
@@ -531,7 +539,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). 이 v3 개정판의 sha256은 live phoneScreenshots(41148d31...)과 다르며, 그 sha256은 store_final(v2) 파일과 일치한다(android-phone-3-voice-edit-live 참조) -- v3는 아직 미업로드."
     },
     {
@@ -566,7 +574,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). live phoneScreenshots sha256(07242739...)은 store_final(v2) 파일과 일치하며 이 v3 개정판과는 다르다(android-phone-4-calendar-sync-live 참조) -- v3는 아직 미업로드."
     },
     {
@@ -601,7 +609,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). 이 v3 파일은 store_final(v2) 파일과 sha256이 byte-identical하며(둘 다 47168a7e...), 그 sha256이 live phoneScreenshots에 실제로 업로드돼 있음을 확인했다(android-phone-5-home-widget-live 참조) -- 그러나 이 엔트리 자체(경로)는 v3이므로 NOT_UPLOADED로 둔다."
     },
     {
@@ -636,7 +644,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). live phoneScreenshots sha256(9954f5d2...)은 store_final(v2) 파일과 일치하며 이 v3 개정판과는 다르다(android-phone-6-briefing-settings-live 참조) -- v3는 아직 미업로드."
     },
     {
@@ -671,7 +679,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). live phoneScreenshots sha256(b544f31a...)은 store_final(v2) 파일과 일치하며 이 v3 개정판과는 다르다(android-phone-7-group-live 참조) -- v3는 아직 미업로드."
     },
     {
@@ -706,7 +714,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보. lastVerifiedSourceSha UNKNOWN (store_final_v3 is fully gitignored, no commit history). live phoneScreenshots sha256(6c104b54...)은 store_final(v2) 파일과 일치하며 이 v3 개정판과는 다르다(android-phone-8-home-briefing-live 참조) -- v3는 아직 미업로드."
     },
     {
@@ -742,7 +750,7 @@
       ],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 정본 후보(7인치로 정정, 2026-09-11 재검토). displayClass 정정 근거: config/store/snapshots/android-readback-2026-09-11.json의 실제 Play 라이브 세트에서, 이 v3 landscape_1과 동일 인덱스(1번)에 대응하는 docs/screenshots/store_final/tablet_1200x1920/PlanFlow_tablet_landscape_1.png의 sha256(eed8568c...)이 sevenInchScreenshots에 등록돼 있음을 직접 확인했다(반면 landscape_2의 sha256은 tenInchScreenshots에 있음) -- 이전 '큰 화면이라는 이유로 10을 선택'은 근거 없는 추측이었다. 치수는 2560x1600(16:10)으로, specs/google-graphics.2026-09-11.json의 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않아 fluxstore validate가 DIMENSION_INVALID를 낼 것으로 예상된다(이는 fail-closed 정상 동작이다). 실상호 PII가 그대로 노출된 채 등록되어 있어 업로드 전 재작업이 필요하다. 세트 최소 4장 요구(ANDROID_TABLET.7.minCount=4) 대비 2장만 존재하는 문제도 있다 -- 이전 notes의 'fluxstore에 minCount 검사 로직이 없다(grep 0건)'는 주장은 더 이상 사실이 아니다: validate.py의 validate_set()이 SET_BELOW_MIN/SET_ABOVE_MAX를 실제로 검사한다(2026-09-11 기준). storeUploadState=NOT_UPLOADED로 정정: 이 v3 파일 자체는 라이브가 아니며(라이브 파일은 store_final의 별도 sha256, android-tablet-7-calendar-live 참조), docs/screenshots/store_final_v3/는 .gitignore:63 대상이라 커밋 이력이 없다(SCREENSHOT_V3_TRACKING 관련 사용자 결정 대기, 비추적 경로)."
     },
     {
@@ -775,7 +783,7 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "UNKNOWN",
       "storeUploadState": "NOT_UPLOADED",
-      "status": "CANDIDATE",
+      "status": "REJECTED",
       "notes": "Play 대형화면(10인치) 정본 후보. displayClass='10' 정정 근거: config/store/snapshots/android-readback-2026-09-11.json에서 이 인덱스(2번)에 대응하는 docs/screenshots/store_final/tablet_1200x1920/PlanFlow_tablet_landscape_2.png의 sha256(bc64a3d3...)이 tenInchScreenshots에 등록돼 있음을 직접 확인했다(android-tablet-1-calendar의 notes 참조 -- 이전 '10 선택'은 근거 없는 추측이었으나 이번 재검토로 '10'이 우연히 맞았음이 확인됨). 치수 2560x1600(16:10)은 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않아 DIMENSION_INVALID가 예상된다(fail-closed 정상 동작). 세트 최소 4장 요구(ANDROID_TABLET.10.minCount=4) 대비 2장만 존재 -- validate.py의 validate_set()이 이제 이를 실제로 검사한다(이전 notes의 'grep 0건' 주장은 더 이상 사실이 아니다). storeUploadState=NOT_UPLOADED로 정정: 라이브 파일은 별도 sha256(store_final 경로, android-tablet-10-group-live 참조)이다. docs/screenshots/store_final_v3/는 .gitignore:63 대상이라 커밋 이력이 없다(SCREENSHOT_V3_TRACKING 관련 사용자 결정 대기, 비추적 경로)."
     },
     {
@@ -1081,7 +1089,9 @@
       ],
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
-      "status": "CANONICAL",
+      "status": "REJECTED",
+      "localQualification": "REJECTED",
+      "qualificationNotes": "STORE_APPLIED provenance retained; local audit found system/DeX chrome, 16:10 dimensions, and real schedule/business content. Do not reuse as a qualified asset.",
       "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 sevenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='7'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 specs/google-graphics.2026-09-11.json의 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- fluxstore validate가 이 라이브 엔트리에 DIMENSION_INVALID를 낼 것으로 예상되며, 이는 fail-closed 정상 동작이다(억제하지 않는다). 실상호 PII(삼성서울병원, 스타벅스 지점명)가 실제 게시된 자산에 그대로 노출돼 있음을 Read 도구로 직접 확인 -- 즉시 재작업/교체가 필요한 사용자 판단 대상. 세트 최소 4장(ANDROID_TABLET.7.minCount=4) 대비 라이브 세트에 이 슬롯은 1장뿐이다."
     },
     {
@@ -1114,7 +1124,9 @@
       "piiFindings": [],
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
-      "status": "CANONICAL",
+      "status": "REJECTED",
+      "localQualification": "REJECTED",
+      "qualificationNotes": "STORE_APPLIED provenance retained; local audit found system/DeX chrome and 16:10 dimensions. Do not reuse as a qualified asset.",
       "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 tenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='10'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- DIMENSION_INVALID가 예상되며 fail-closed 정상 동작이다. Read 도구로 직접 확인, 그룹 대시보드 화면(그룹명 '영업 1팀', '팀장님과 통화하기' 등)만 노출되며 실PII 없음. 세트 최소 4장(ANDROID_TABLET.10.minCount=4) 대비 라이브 세트에 이 슬롯도 1장뿐이다."
     }
   ]
