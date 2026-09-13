@@ -530,7 +530,7 @@ def build_snapshot(project_id: str, fields: dict, captured_at: str) -> dict:
         "contentHash": compute_content_hash(fields),
         "fields": fields,
         "redaction": {
-            "piiHashed": list(PII_HASH_FIELDS),
+            "piiPresenceOnly": list(PII_HASH_FIELDS),
             "omitted": ["demoAccountPassword"],
         },
     }
