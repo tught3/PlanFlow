@@ -53,6 +53,7 @@ jobs:
       RUNNER_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_RUNNER_PROVISIONING_PROFILE_BASE64 }}
       WIDGET_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
       FIREBASE_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+      NAVER_MAP_CLIENT_ID: ${{ secrets.PLANFLOW_NAVER_MAP_CLIENT_ID }}
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
@@ -230,7 +231,7 @@ jobs:
           missing=()
           # Team ID is derived from the signed Runner profile below. An optional
           # PLANFLOW_APPLE_TEAM_ID secret is still accepted and cross-checked.
-          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
+          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 NAVER_MAP_CLIENT_ID ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
             if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
           done
           if (( ${#missing[@]} )); then
@@ -260,7 +261,7 @@ jobs:
           fi
           echo "RUNNER_PRIVACY_SOURCE_PASS: PASS"
           echo "EXPORT_COMPLIANCE_SOURCE_PASS: PASS"
-          echo "Release gates: Apple signing, Firebase config, and App Store Connect credentials are present."
+          echo "Release gates: Apple signing, Firebase config, Naver Maps client ID, and App Store Connect credentials are present."
 
       - uses: subosito/flutter-action@v2
         with:
@@ -277,7 +278,7 @@ jobs:
           umask 077
           printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
           bash scripts/verify-ios-firebase-config.sh
-          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER"
+          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER" --dart-define=NAVER_MAP_CLIENT_ID="$NAVER_MAP_CLIENT_ID"
           rm -f ios/Runner/GoogleService-Info.plist
           trap - EXIT
 

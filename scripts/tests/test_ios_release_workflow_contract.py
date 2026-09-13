@@ -722,6 +722,41 @@ class WorkflowTextTests(unittest.TestCase):
             with self.subTest(secret_name=secret_name):
                 self.assertIn(secret_name, self.workflow)
 
+    def test_naver_maps_release_secret_is_declared_and_required(self):
+        self.assertIn(
+            "NAVER_MAP_CLIENT_ID: ${{ secrets.PLANFLOW_NAVER_MAP_CLIENT_ID }}",
+            self.workflow,
+            "The iOS release must source the Naver Maps client ID from the "
+            "protected PLANFLOW_NAVER_MAP_CLIENT_ID secret.",
+        )
+        preflight = self.workflow[self.workflow.index("- name: Preflight protected release gates") :]
+        self.assertIn(
+            "NAVER_MAP_CLIENT_ID",
+            preflight,
+            "The protected Naver Maps client ID must be included in the "
+            "fail-closed release preflight.",
+        )
+        self.assertLess(
+            preflight.index("NAVER_MAP_CLIENT_ID"),
+            preflight.index("flutter build ios") if "flutter build ios" in preflight else len(preflight),
+        )
+
+    def test_naver_maps_secret_is_injected_into_flutter_build(self):
+        self.assertIn(
+            '--dart-define=NAVER_MAP_CLIENT_ID="$NAVER_MAP_CLIENT_ID"',
+            self.workflow,
+            "The release Flutter build must receive the protected Naver Maps "
+            "client ID through the NAVER_MAP_CLIENT_ID dart define.",
+        )
+
+    def test_naver_maps_preflight_fails_closed_before_flutter_build(self):
+        preflight_start = self.workflow.index("- name: Preflight protected release gates")
+        build_start = self.workflow.index("flutter build ios")
+        preflight = self.workflow[preflight_start:build_start]
+        self.assertIn("missing protected release secrets", preflight)
+        self.assertIn("missing+=(\"$name\")", preflight)
+        self.assertIn("exit 1", preflight)
+
     # -- H. Secret safety --------------------------------------------------
 
     def test_no_hardcoded_credential_values(self):
