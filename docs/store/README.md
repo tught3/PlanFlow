@@ -26,7 +26,7 @@
 
 - 제출 상태: `STORE_APPLIED / SUBMITTED`이며 Apple 심사 통과(`STORE_ACCEPTED`)는 아닙니다.
 - 가격: Free, primary category: Productivity, support URL: `https://fluxstudio.co.kr/planflow-support`.
-- privacy policy URL: `https://fluxstudio.co.kr/privacy` (HTTPS public page, HTTP 200 확인). 다만 현재 페이지는 FluxStudio/HealthFlow 일반 정책으로 PlanFlow의 수집 항목이나 AdMob을 열거하지 않습니다. URL 도달성은 확인됐지만 정책 내용 정합화는 `POST_REVIEW_METADATA_CORRECTION_REQUIRED`입니다.
+- privacy policy URL: `https://fluxstudio.co.kr/privacy` (2026-09-13 Homepage production deployment `dpl_X4zgciGJUt3FNMwaW8pzTeNNaiZ4` 후 HTTPS HTTP 200 및 PlanFlow 의미·금지문구 계약 확인). 공개 페이지는 `planflow-privacy-policy-final.md` SHA-256 `2CFB3EFA21B5EF041E383C1CB76CA292AD255665924F115F7A1798AC9421924F`에 바인딩된 PlanFlow 정책을 제공한다. 이는 공개 콘텐츠 정합화 증거이며 Apple 수락 또는 Store 쓰기 결과는 아니다.
 - iOS secondary category는 사용자 확인이나 readback이 없어 `UNCONFIRMED`으로 유지합니다. 추정값을 입력하지 않습니다.
 - App Privacy 설문이 콘솔에서 완료됐다는 사용자 확인은 개별 데이터 유형·추적 답변의 source/SDK 검증을 대체하지 않습니다. 알려진 광고·ATT·위치 관련 의사결정은 계속 `REVIEW_REQUIRED`입니다.
 
@@ -36,12 +36,11 @@
 
 ## 차단 사유 (blockers)
 
-배포 진행 전 반드시 해결해야 할 항목입니다. (총 8건)
+배포 진행 전 반드시 해결해야 할 항목입니다. (총 7건)
 
 | Code | Platform | 내용 | 사람 결정 필요 |
 |------|----------|------|----------------|
 | ANDROID_TABLET_SET_BELOW_MIN | android | Play 대형 화면(7"/10") 스크린샷 세트는 최소 4장 필요(spec `store/specs/google-graphics.2026-09-11.json` minCount 4). PlanFlow canonical 세트 `docs/screenshots/store_final_v3/tablet_1200x1920/`는 2장(2560x1600)만 확인됨. 스토어 readback(2026-09-11) 결과 sevenInchScreenshots 1장, tenInchScreenshots 1장 업로드됨 — 최소 4장 요건 미달 확정 | N |
-| PRIVACY_POLICY_MISMATCH | both | https://fluxstudio.co.kr/privacy (FluxStudio/HealthFlow 공용 페이지, PlanFlow 데이터 수집 미명시) vs https://tught3.github.io/PlanFlow/privacy-policy.html (PlanFlow 전용, 2026-05-10 업데이트, AdMob 미언급) 두 URL이 다른 내용을 가지고 있으며 실제 스토어 등록 값 미확인 | O |
 | IPHONE_69_ASSET_MISSING | ios | 6.9" iPhone 스크린샷 누락. 기존 '스크린샷 아이폰/세로' 자산은 1242x2688 (6.5" iPhone 규격)이지 1260x2736, 1290x2796, 1320x2868 중 하나(세로; capture plan은 1320x2868 사용 — iPhone 16 Pro Max 시뮬레이터 해상도) 규격이 아님 | N |
 | DATA_SAFETY_DOC_STALE_AD_ID | android | docs/play-console-data-safety.md에 AD_ID/Advertising ID/AdMob 언급 없음. 그러나 코드의 AD_ID 권한 및 AdMob SDK 활성 상태 확인됨 (commit aaf1bfed, android/app/src/main/AndroidManifest.xml:4, lib/services/ad_service.dart:491) | O |
 | IOS_ADMOB_NATIVE_INIT_UNKNOWN | ios | lib/services/ad_runtime_policy.dart:5-8에서 Dart 레벨 iOS 보상형 광고 경로 비활성화, 하지만 ios/Runner/Info.plist:7에 GADApplicationIdentifier 존재로 인해 네이티브 Google Mobile Ads SDK가 Dart 게이트 무시하고 자동 초기화될 가능성 | O |
@@ -63,7 +62,7 @@
 | CHILD_DIRECTED | both | PlanFlow가 아동 대상 앱인지 여부를 확정해야 함 |
 | UGC_MODERATION | both | 그룹 댓글(UGC)에 신고·차단 기능이 있는지 확정 필요 |
 | EXPORT_COMPLIANCE_CONFIRM | ios | ITSAppUsesNonExemptEncryption=false(Info.plist)를 법적 수출 규정 준수 선언으로 승인할 것인지 확정 필요 |
-| PRIVACY_POLICY_CANONICAL_URL | both | https://fluxstudio.co.kr/privacy 와 https://tught3.github.io/PlanFlow/privacy-policy.html 중 어느 것을 스토어 공식 URL로 확정할 것인가 |
+| PRIVACY_POLICY_CANONICAL_URL | android | iOS 제출 URL은 사용자 확인과 공개 readback으로 `https://fluxstudio.co.kr/privacy`로 확인됨. Google Play에 실제 입력된 URL은 별도 readback이 없어 확정 필요 |
 | BINARY_RELEASE_GATE_ENFORCE | both | binaryReleaseGate를 'advisory'에서 'enforce'로 전환할 시점을 언제로 할 것인가 |
 
 ---
