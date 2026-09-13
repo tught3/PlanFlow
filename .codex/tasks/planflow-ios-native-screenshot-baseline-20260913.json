@@ -1,0 +1,92 @@
+{
+  "taskId": "planflow-ios-native-screenshot-baseline-20260913",
+  "status": "REWORKING",
+  "base": {
+    "head": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "worktree": "E:/FluxStudio-worktrees/planflow/planflow-ios-native-screenshot-baseline-20260913",
+    "branch": "codex/ios-native-screenshot-baseline-20260913"
+  },
+  "requirements": {
+    "iphoneBaselineCount": 3,
+    "ipadBaselineCount": 2,
+    "captureStrategy": "Existing macos-15 store screenshot workflow completed with a CI-only deterministic demo entrypoint and simctl native capture.",
+    "storeMutations": 0,
+    "iosBuild23Protected": true,
+    "androidProductionProtected": true
+  },
+  "roles": {
+    "explorer": {
+      "agent": "ios_screenshot_explorer_fallback",
+      "mappedModel": "fallback explorer",
+      "reasoningEffort": "inherited",
+      "result": "Existing 8 iPhone and 2 iPad candidates are Android-derived REJECTED; native assets 0; use existing CI scaffold and simulator infrastructure."
+    },
+    "planner": {
+      "agent": "ios_screenshot_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "classification": "Complex",
+      "result": "Implement and live-qualify an artifact-only iPhone 3/iPad 2 simulator baseline; do not claim READY before CI artifacts and visual review."
+    },
+    "implementer": {
+      "agent": "ios_screenshot_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "status": "COMPLETE",
+      "result": "Implemented deterministic offline native iOS screenshot fixtures, host-side integration_test capture, exact 3+2 plan, validator, and CI-only artifact workflow. Three rework rounds resolved compile, backend-isolation, readiness, and provenance findings."
+    },
+    "failureAnalyst": {
+      "agent": "ios_screenshot_failure_analyst",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "status": "COMPLETE",
+      "result": "Classified seven Dart const/DateTime compile failures and provenance/readiness gaps; fixes applied and analyzer now passes."
+    },
+    "testExecutor": {
+      "agent": "ios_screenshot_test_executor_fallback",
+      "mappedModel": "fallback default because flux_test_executor model is unsupported for this account",
+      "reasoningEffort": "inherited",
+      "status": "LOCAL_PASS",
+      "evidence": [
+        "flutter analyze integration_test/store_screenshot_capture_test.dart test_driver/store_screenshot_driver.dart lib/screens/home/home_screen.dart --no-pub: exit 0",
+        "python -m unittest scripts/tests/test_store_capture_workflow_contract.py: exit 0 (15 tests after reviewer fixes)",
+        "python -m py_compile scripts/ios/validate_store_screenshots.py: exit 0",
+        "PyYAML workflow parse: exit 0",
+        "capture plan exact mapping IPHONE=3 IPAD=2: exit 0",
+        "git diff --check: exit 0"
+      ],
+      "gap": "macOS CI simulator capture and visual artifact review not yet run"
+    },
+    "reviewer": {
+      "agent": "ios_screenshot_source_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "status": "SOURCE_APPROVED_PENDING_CI",
+      "result": "PASS with BLOCKER=0 and HIGH=0 after rework; only generated registrant and pycache exclusion remains. macOS assets and visual review are external pending evidence."
+    },
+    "integrator": {
+      "agent": "ios_screenshot_integrator_pretest",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "status": "SOURCE_APPROVED_PENDING_CI",
+      "result": "Final source integration checks pass after fixes: analyzer, 13 contracts, YAML parse, and diff check. Actual CI assets remain the qualification gate."
+    }
+  },
+  "capture": {
+    "ciStatus": "PARTIAL",
+    "userCaptureRequired": false,
+    "userManualCaptureCount": 0,
+    "iphoneNativeAssets": 0,
+    "ipadNativeAssets": 0,
+    "qualification": "PENDING"
+  },
+  "evidence": {
+    "appleRequirements": [
+      "https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots",
+      "https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications"
+    ],
+    "existingAudit": "iPhone 8/8 and iPad 2/2 REJECTED; sourcePlatform android; iPad non-uniform resize/chrome and PII findings."
+  },
+  "nextStep": "Complete implementation, source tests, commit/push, dispatch CI, import and visually qualify five native artifacts."
+}

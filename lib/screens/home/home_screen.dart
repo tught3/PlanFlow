@@ -71,6 +71,7 @@ class HomeScreen extends StatefulWidget {
     this.nowProvider,
     this.locationLookupService,
     this.settingsRepository,
+    this.groupContextProvider,
   });
 
   final ScrollController? scrollController;
@@ -88,6 +89,7 @@ class HomeScreen extends StatefulWidget {
   /// 음성대화 진입 시 '자동 시작' 설정 조회에 쓰는 저장소. 테스트에서 fake를
   /// 주입하기 위한 진입점(미주입 시 기본 SettingsRepository.supabase() 사용).
   final SettingsRepository? settingsRepository;
+  final GroupContextProvider? groupContextProvider;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -96,7 +98,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final HomeHeaderSummaryService _headerSummaryService =
       HomeHeaderSummaryService();
-  final GroupContextProvider _groupContextProvider = GroupContextProvider();
+  late final GroupContextProvider _groupContextProvider;
+  late final bool _ownsGroupContextProvider;
   late final HomeWidgetService _homeWidgetService;
   List<EventModel> _pastTodayEvents = const <EventModel>[];
   List<EventModel> _recentPastEvents = const <EventModel>[];
@@ -139,6 +142,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _ownsGroupContextProvider = widget.groupContextProvider == null;
+    _groupContextProvider =
+        widget.groupContextProvider ?? GroupContextProvider();
     _homeWidgetService = widget.homeWidgetService ?? HomeWidgetService();
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
@@ -156,7 +162,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _homeWidgetRefreshGeneration += 1;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     _groupContextProvider.removeListener(_handleGroupContextChanged);
-    _groupContextProvider.dispose();
+    if (_ownsGroupContextProvider) {
+      _groupContextProvider.dispose();
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -295,7 +303,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _loadTodayEvents() async {
     final shouldShowLoading = !_hasRenderedContent;
 
-    if (!AppEnv.isSupabaseReady) {
+    // An explicitly injected repository is an offline/test authority. Keep
+    // production fail-closed when no repository is supplied, while allowing
+    // deterministic widget/integration fixtures to render without initializing
+    // Supabase merely to satisfy this outer gate.
+    if (!AppEnv.isSupabaseReady && widget.eventRepository == null) {
       if (mounted) {
         setState(() {
           _clearHomeContent();
