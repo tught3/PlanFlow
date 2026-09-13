@@ -22,6 +22,18 @@
 
 ---
 
+## 2026-09-13 사용자 확인 iOS 제출 기준선
+
+- 제출 상태: `STORE_APPLIED / SUBMITTED`이며 Apple 심사 통과(`STORE_ACCEPTED`)는 아닙니다.
+- 가격: Free, primary category: Productivity, support URL: `https://fluxstudio.co.kr/planflow-support`.
+- privacy policy URL: `https://fluxstudio.co.kr/privacy` (HTTPS public page, HTTP 200 확인). 다만 현재 페이지는 FluxStudio/HealthFlow 일반 정책으로 PlanFlow의 수집 항목이나 AdMob을 열거하지 않습니다. URL 도달성은 확인됐지만 정책 내용 정합화는 `POST_REVIEW_METADATA_CORRECTION_REQUIRED`입니다.
+- iOS secondary category는 사용자 확인이나 readback이 없어 `UNCONFIRMED`으로 유지합니다. 추정값을 입력하지 않습니다.
+- App Privacy 설문이 콘솔에서 완료됐다는 사용자 확인은 개별 데이터 유형·추적 답변의 source/SDK 검증을 대체하지 않습니다. 알려진 광고·ATT·위치 관련 의사결정은 계속 `REVIEW_REQUIRED`입니다.
+
+이 기준선 기록은 현재 심사 제출을 변경하지 않았으며, App Store Connect 또는 Google Play에 쓰기 요청을 보내지 않았습니다.
+
+---
+
 ## 차단 사유 (blockers)
 
 배포 진행 전 반드시 해결해야 할 항목입니다. (총 8건)
@@ -64,7 +76,7 @@
 
 | Platform | Snapshot | Release | 상태 | 연락처 |
 |----------|----------|---------|------|--------|
-| Android | `config/store/snapshots/android-readback-2026-09-11.json` | production 1.1.1(164) | completed | 해시로만 저장 (`redaction.piiHashed`) |
+| Android | `config/store/snapshots/android-readback-2026-09-11.json` | production 1.1.1(164) | completed | presence-only로 저장 (`redaction.piiPresenceOnly`) |
 | iOS | 없음 | — | — | — |
 
 **의미**: 스토어 현재 게시 상태를 정본으로 등록했습니다. 다음 배포부터 이 기준선과의 diff를 계산해 스토어 영향 범위를 추적할 수 있습니다.
