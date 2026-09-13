@@ -289,8 +289,15 @@ def _category_relationship(
     """
     relationships = info.get("relationships") or {}
     if name in relationships and "data" in (relationships.get(name) or {}):
-        relationship_id = _relationship_id(info, name)
-        return relationship_id, "CONFIGURED" if relationship_id else "UNSET"
+        data = (relationships.get(name) or {}).get("data")
+        if data is None:
+            return None, "UNSET"
+        if not isinstance(data, dict):
+            return None, "UNAVAILABLE"
+        relationship_id = data.get("id")
+        if not isinstance(relationship_id, str) or not relationship_id:
+            return None, "UNAVAILABLE"
+        return relationship_id, "CONFIGURED"
 
     document = client.request_with_retry(f"/v1/appInfos/{info_id}/{name}", sleep_fn=sleep_fn)
     status = document.get("__http_status")
