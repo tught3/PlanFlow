@@ -856,19 +856,20 @@
             "note": "Current source/runtime evidence proves the Google Mobile Ads SDK is invoked on iOS. Google's current disclosure says the SDK may collect advertising data, device identifiers and interactions. This collection remains applicable even though the current source does not request ATT or directly access IDFA."
           },
           "usedForTracking": {
-            "value": null,
-            "source": "DERIVED",
+            "value": false,
+            "source": "USER_CONFIRMED_AUTHENTICATED_CONSOLE",
             "evidence": [
+              "User-confirmed authenticated AdMob Privacy & messaging CREATE page: no existing PlanFlow iOS IDFA message; no app selected/save/publish",
               "ios/Runner/Info.plist:32",
               "lib/services/ad_consent_service.dart:214-226",
               "lib/services/ad_service.dart:437-516"
             ],
             "lastVerified": "2026-09-13",
-            "confidence": "UNKNOWN",
-            "requiresHumanAuthority": true,
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "No direct ATTrackingManager/requestTrackingAuthorization/AppTrackingTransparency/IDFA access was found in source. Authenticated AdMob/UMP operational configuration, including whether an IDFA message is configured, was not read back. Keep tracking disclosure unresolved until operating configuration is verified."
+            "note": "Current authenticated AdMob state is NOT_CONFIGURED: no existing iOS IDFA message was present. This current-configuration answer does not predict future DRAFT/ACTIVE configuration or negate Google Mobile Ads processing."
           },
           "storeDataTypes": [
             "ADVERTISING_DATA"
@@ -927,21 +928,22 @@
       "speech_to_text (pubspec.yaml:37)"
     ],
     "tracking": {
-      "value": null,
-      "source": "DERIVED",
+      "value": false,
+      "source": "USER_CONFIRMED_AUTHENTICATED_CONSOLE",
       "evidence": [
         "ios/Runner/Info.plist:32",
         "lib/services/ad_consent_service.dart:214-226",
         "lib/services/ad_service.dart:437-516",
         "https://developers.google.com/admob/ios/privacy/idfa (retrieved 2026-09-13)",
-        "https://developers.google.com/admob/ios/privacy/data-disclosure (retrieved 2026-09-13)"
+        "https://developers.google.com/admob/ios/privacy/data-disclosure (retrieved 2026-09-13)",
+        "User-confirmed authenticated AdMob Privacy & messaging CREATE page: IDFA message NOT_CONFIGURED; mutationCount=0"
       ],
       "lastVerified": "2026-09-13",
-      "confidence": "UNKNOWN",
-      "requiresHumanAuthority": true,
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "ATT_APPLICABILITY and TRACKING_DISCLOSURE remain UNKNOWN: NSUserTrackingUsageDescription is present and no direct ATT/IDFA call exists, but authenticated AdMob/UMP operational configuration and any remote IDFA message were not verified. Resolve before final App Privacy tracking answers."
+      "note": "Current ATT/IDFA configuration is dormant: no direct ATT request or IDFA access exists in PlanFlow source and authenticated AdMob shows no existing IDFA message. This is scoped to the current NOT_CONFIGURED state; future message configuration requires reassessment."
     }
   },
   "content": {
@@ -1342,12 +1344,6 @@
       "requiresHumanAuthority": true
     },
     {
-      "code": "IOS_ADS_TRACKING_ANSWER_UNKNOWN",
-      "platform": "ios",
-      "detail": "No direct ATT/IDFA call is present in source, but authenticated AdMob/UMP operational configuration and any remotely configured IDFA message were not read back. The App Privacy tracking answer remains fail-closed UNKNOWN until operating configuration is verified.",
-      "requiresHumanAuthority": true
-    },
-    {
       "code": "APP_PRIVACY_COMPARE_UNAVAILABLE",
       "platform": "ios",
       "detail": "The current App Privacy data-type answers cannot be retrieved field-by-field through the available public App Store Connect API. Their current state is USER_CONFIRMED/SUBMITTED, not STORE_ACCEPTED. After Build23 review, compare the source-derived expected values in this profile against App Store Connect manually and correct any under- or over-declaration without changing the protected submission now.",
@@ -1367,17 +1363,6 @@
     }
   ],
   "decisionsRequired": [
-    {
-      "code": "IOS_ADS_TRACKING_ANSWER",
-      "platform": "ios",
-      "question": "AdMob/UMP 운영 설정에서 IDFA 메시지 및 추적 관련 처리가 활성화되어 있는지 확인한 뒤 iOS App Privacy 추적 답변을 확정해야 함",
-      "evidence": [
-        "ios/Runner/Info.plist:32",
-        "lib/services/ad_consent_service.dart:214-226",
-        "lib/services/ad_service.dart:437-516",
-        "https://developers.google.com/admob/ios/privacy/idfa (retrieved 2026-09-13)"
-      ]
-    },
     {
       "code": "ANDROID_AD_ID_SHARING",
       "platform": "android",
@@ -1428,6 +1413,21 @@
         ".gitignore:63",
         "config/store/screenshot-lineage.json"
       ]
+    }
+  ],
+  "privacyChangeContracts": [
+    {
+      "code": "IOS_IDFA_MESSAGE_STATE_CHANGE",
+      "platform": "ios",
+      "when": "AdMob Privacy & messaging IDFA state changes from NOT_CONFIGURED to DRAFT or ACTIVE",
+      "requiredActions": [
+        "PRIVACY_CHANGE_REQUIRED",
+        "ATT_REASSESSMENT_REQUIRED",
+        "APP_PRIVACY_REASSESSMENT_REQUIRED"
+      ],
+      "currentState": "NOT_CONFIGURED",
+      "mutationCount": 0,
+      "note": "Future console configuration is a new privacy state and must not be inferred from this current answer."
     }
   ],
   "acceptedSnapshots": [
