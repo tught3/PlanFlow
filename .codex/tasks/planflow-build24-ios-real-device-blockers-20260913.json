@@ -1,0 +1,110 @@
+{
+  "task_id": "planflow-build24-ios-real-device-blockers-20260913",
+  "status": "SOURCE_COMMITTED_BUILD25_BLOCKED_EXTERNAL_SECRET",
+  "scope": "Build24 iOS rewarded-ad no-show and Naver map blank real-device blockers",
+  "preflight": {
+    "head": "56f521d47c5adf929d9de378a17a97a4a4571e7d",
+    "origin_main": "d0cd6bf79aee27a93c33e15f1f5dcba9db8d2bcc",
+    "merge_base": "4df59ab8d1ad8c4d7f05c5343dcebb83200f775a",
+    "local_main_contains_origin_main": false,
+    "origin_main_contains_local_main": false,
+    "foreign_dirty_preserved": true
+  },
+  "build24": {
+    "number": 24,
+    "source_sha": "d0cd6bf79aee27a93c33e15f1f5dcba9db8d2bcc",
+    "bundle_id": "com.fluxstudio.planflow",
+    "workflow_run": "34730379927",
+    "status": "TESTFLIGHT_AVAILABLE_USER_REPORTED"
+  },
+  "rewarded": {
+    "user_observation": "adFailed-equivalent UX; no E-ADS0; no crash",
+    "root_cause": "UNKNOWN_PENDING_PERSISTED_DEVICE_DIAGNOSTICS",
+    "first_failed_boundary": "UNKNOWN; user UX proves only a non-rewarded gate outcome, not consent, load, show, or callback boundary",
+    "existing_diagnostics": "RewardedAd persisted phase, safe error metadata, responseId; Settings diagnostic-log UI"
+  },
+  "naver_map": {
+    "root_cause": "IOS_RELEASE_NAVER_MAP_CLIENT_ID_NOT_INJECTED",
+    "confidence": "HIGH_SOURCE_PROVEN",
+    "first_failed_boundary": "AppEnv.naverMapClientId empty; FlutterNaverMap.init skipped",
+    "console_state": "UNVERIFIED",
+    "external_action_after_build25": "Confirm Mobile Dynamic Map and iOS Bundle ID com.fluxstudio.planflow in the Naver Cloud application"
+  },
+  "android": "PROTECTED_UNCHANGED",
+  "app_store_build23": "UNCHANGED",
+  "commit": "30cf848dcaccc13f00a530cb6f0807026594616a",
+  "origin_main": "30cf848dcaccc13f00a530cb6f0807026594616a",
+  "build25": "BLOCKED: PLANFLOW_NAVER_MAP_CLIENT_ID GitHub Actions secret is absent; dispatch intentionally not attempted",
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "result": "UNAVAILABLE",
+      "reason": "ChatGPT account does not support mapped gpt-5.4-mini",
+      "changed_files": [],
+      "tests": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "result": "PASS",
+      "assignment": "Separate Build24 rewarded-ad and Naver-map RCA; define minimal evidence-gated plan.",
+      "changed_files": [],
+      "tests": []
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "result": "PASS",
+      "assignment": "Inject protected Naver Maps Client ID into iOS release build and fail closed when it is absent.",
+      "changed_files": [
+        ".github/workflows/ios-release.yml",
+        "scripts/tests/test_ios_release_workflow_contract.py"
+      ],
+      "tests": ["python scripts/tests/test_ios_release_workflow_contract.py (65 passed, exit 0)", "git diff --check (exit 0)"]
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "result": "PASS",
+      "assignment": "Add bounded, non-secret Naver Map authentication diagnostics.",
+      "changed_files": ["lib/main.dart", "test/main_naver_map_diagnostics_test.dart"],
+      "tests": ["flutter test test/main_naver_map_diagnostics_test.dart (2 passed, exit 0)", "flutter analyze lib/main.dart test/main_naver_map_diagnostics_test.dart (exit 0)"]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "result": "UNAVAILABLE",
+      "reason": "ChatGPT account does not support mapped gpt-5.4-mini; root executed the specified test and analysis commands.",
+      "changed_files": [],
+      "tests": [
+        "flutter targeted rewarded/consent/gate suite (78 passed, exit 0)",
+        "flutter location/map/iOS contract suite (33 passed, exit 0)",
+        "flutter analyze targeted files (exit 0)",
+        "python scripts/tests/test_ios_release_workflow_contract.py (65 passed, exit 0)",
+        "git diff --check (exit 0)",
+        "task-owned production AdMob ID scan (0 matches)"
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "result": "FINDINGS_REMEDIATED",
+      "assignment": "Independently review the final scoped diff and real-device RCA boundaries.",
+      "changed_files": [],
+      "tests": [],
+      "findings": ["MEDIUM: task state overstated the rewarded first-failure boundary; corrected to UNKNOWN pending device diagnostics."],
+      "blocker_count": 0,
+      "high_count": 0
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "result": "SOURCE_READY_TO_COMMIT_PUSH",
+      "assignment": "Reconcile final diff, reviewer finding, Git topology, external release gate, Android and Build23 protection.",
+      "changed_files": [],
+      "tests": ["reviewed current scoped diff and verification evidence"],
+      "decision": "Source commit/push allowed in isolated origin/main worktree; Build25 dispatch blocked until PLANFLOW_NAVER_MAP_CLIENT_ID exists."
+    }
+  ]
+}
