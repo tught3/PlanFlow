@@ -50,8 +50,8 @@ matrix와 교차 일치):
 | `NSMicrophoneUsageDescription` | "음성으로 일정을 입력하려면 마이크 권한이 필요합니다." | 음성으로 일정 입력(핵심 기능) |
 | `NSSpeechRecognitionUsageDescription` | "음성을 일정 내용으로 변환하려면 음성 인식 권한이 필요합니다." | STT로 음성을 텍스트 일정으로 변환(기기 내 처리) |
 | `NSLocationWhenInUseUsageDescription` | "일정 장소를 지도에서 찾고 출발지와 목적지를 확인하려면 위치 권한이 필요합니다." | 일정 장소 지도 검색, 이동시간 계산용 출발지 확인 |
-| `NSPhotoLibraryUsageDescription` | "지도 SDK가 장소 사진을 표시할 수 있도록 사진 보관함 접근 권한이 필요합니다." | 지도 SDK(Google Maps) 내부 장소 사진 표시 — 앱이 직접 사진을 읽지는 않음 |
-| `NSPhotoLibraryAddUsageDescription` | "지도 SDK가 지도 관련 이미지를 사진 보관함에 저장할 수 있도록 사진 추가 권한이 필요합니다." | 지도 SDK 내부 이미지 저장 |
+| `NSPhotoLibraryUsageDescription` | "지도 SDK가 장소 사진을 표시할 수 있도록 사진 보관함 접근 권한이 필요합니다." | Info.plist에 선언된 실제 문자열; 과거 Maps/Photos signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 직접 사진 선택·보관함 읽기·업로드·수집 경로 증거가 아님 |
+| `NSPhotoLibraryAddUsageDescription` | "지도 SDK가 지도 관련 이미지를 사진 보관함에 저장할 수 있도록 사진 추가 권한이 필요합니다." | Info.plist에 선언된 실제 문자열; 과거 signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 직접 사진 쓰기·업로드·수집 경로 증거가 아님 |
 | `NSUserTrackingUsageDescription` | "관련 광고를 제공하고 서비스 이용을 개선하기 위해 기기 식별자 사용 권한이 필요합니다." | 광고(Google Mobile Ads) 식별자 기반 맞춤 광고 동의(ATT) |
 
 심사자 안내 문구 초안:
@@ -62,8 +62,9 @@ matrix와 교차 일치):
    내에서만 처리되며 녹음 파일은 서버로 전송되지 않습니다.
 2) 위치(사용 중) — 일정 장소를 지도에서 찾고 이동 시간을 계산하는 데
    사용됩니다.
-3) 사진 보관함(읽기/추가) — 앱이 직접 사진을 열람하지 않으며, 지도 SDK가
-   내부적으로 장소 사진을 표시/저장하는 데만 사용됩니다.
+3) 사진 보관함(읽기/추가) — 현재 PlanFlow 소스에는 사용자 사진 선택,
+   사진 보관함 읽기·쓰기, 업로드 또는 수집 경로가 없습니다. 과거 Maps/Photos
+   signed-binary 심볼은 간접/진단 SDK 증거이며 직접 사용을 입증하지 않습니다.
 4) 광고 추적(ATT) — 관련성 있는 광고 제공에 사용되며, 거부해도 앱 기능에는
    영향이 없습니다.
 ```

@@ -172,8 +172,8 @@ PlanFlow는 Supabase Auth를 사용하며 이메일/비밀번호 로그인과 Go
 | `NSSpeechRecognitionUsageDescription` | 음성을 일정 내용으로 변환하려면 음성 인식 권한이 필요합니다. |
 | `NSUserTrackingUsageDescription` | 관련 광고를 제공하고 서비스 이용을 개선하기 위해 기기 식별자 사용 권한이 필요합니다. |
 | `NSLocationWhenInUseUsageDescription` | 일정 장소를 지도에서 찾고 출발지와 목적지를 확인하려면 위치 권한이 필요합니다. |
-| `NSPhotoLibraryUsageDescription` | 지도 SDK가 장소 사진을 표시할 수 있도록 사진 보관함 접근 권한이 필요합니다. |
-| `NSPhotoLibraryAddUsageDescription` | 지도 SDK가 지도 관련 이미지를 사진 보관함에 저장할 수 있도록 사진 추가 권한이 필요합니다. |
+| `NSPhotoLibraryUsageDescription` | 지도 SDK가 장소 사진을 표시할 수 있도록 사진 보관함 접근 권한이 필요합니다. (Info.plist에 선언된 실제 문자열; 과거 signed-binary의 간접/진단 SDK 증거에 대응하며 PlanFlow의 직접 사진 선택·보관함 읽기·업로드·수집 경로를 의미하지 않음) |
+| `NSPhotoLibraryAddUsageDescription` | 지도 SDK가 지도 관련 이미지를 사진 보관함에 저장할 수 있도록 사진 추가 권한이 필요합니다. (Info.plist에 선언된 실제 문자열; 과거 signed-binary의 간접/진단 SDK 증거에 대응하며 PlanFlow의 직접 사진 쓰기·업로드·수집 경로를 의미하지 않음) |
 
 이 6개 키는 `ios-release.yml`의 preflight/archive/export 단계에서 각각 빈 값이 아닌지 3중으로 게이트 검증된다(`BLOCKED_RUNNER_PRIVACY_SOURCE`, `BLOCKED_ARCHIVE_PRIVACY`, `BLOCKED_IPA_PRIVACY`).
 
