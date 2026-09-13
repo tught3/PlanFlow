@@ -381,6 +381,11 @@ class EndToEndSecretSafetyTests(NoNetworkGuardMixin, unittest.TestCase):
             snapshot = json.loads(snapshot_text)
             self.assertEqual(snapshot["fields"]["appStoreVersions"][0]["reviewDetail"]["demoPasswordSet"], True)
             self.assertTrue(snapshot["fields"]["appStoreVersions"][0]["reviewDetail"]["contactEmail"]["present"])
+            self.assertEqual(
+                snapshot["redaction"]["piiPresenceOnly"],
+                list(store_readback.PII_HASH_FIELDS),
+            )
+            self.assertNotIn("piiHashed", snapshot["redaction"])
             self.assertEqual(snapshot["schemaVersion"], 1)
             self.assertEqual(snapshot["fields"]["app"]["bundleId"], "com.fluxstudio.planflow")
             self.assertEqual(snapshot["redaction"]["omitted"], ["demoAccountPassword"])
