@@ -8,8 +8,9 @@ plist를 함께 검사한다.
 
 `PRIVACY_API_DEPENDENCY_MAP: ROOT_CAUSE_STRONGLY_NARROWED` — Run #3의
 archive/export binary evidence가 Photos API와 Google Maps photo-service 문자열을
-확인했으며, Apple의 authoritative `stateDetails`가 제공되기 전까지 최종 원인은
-확정하지 않는다.
+확인했으며, 이는 간접 SDK/진단 증거일 뿐 PlanFlow의 사용자 사진 선택,
+사진 보관함 접근, 업로드 또는 수집을 입증하지 않는다. Apple의 authoritative
+`stateDetails`가 제공되기 전까지 최종 원인은 확정하지 않는다.
 
 Run #4 authenticated evidence (`33608563745` on head `22364b0f`, artifact
 `9838418791`, digest `sha256:5d030ffc79c827c329655095ea9a8e98d1001d75bc2392804e86f6a5971d216a`)
@@ -22,7 +23,9 @@ photo-service evidence. `DKPhotoGallery`, `DKImagePickerController`, and
 `file_picker` are not found in the filtered report. Candidate-only keys remain
 unadded, and no additional `UsageDescription` key or source fix is required.
 `ROOT_CAUSE_STRONGLY_NARROWED` remains correct because Apple `stateDetails` is
-still unavailable.
+still unavailable. The linked Photos symbols and Google Maps photo-service
+strings remain indirect/diagnostic SDK evidence, not evidence of a PlanFlow
+user-photo picker, library access, upload, or collection path.
 
 ## Build 16 and Apple evidence status
 
@@ -68,9 +71,11 @@ Artifact Run `33568134813` (artifact `9824161474`, digest
 `export_privacy_exit=0`이다. `Runner`가 Photos/PhotosUI를 링크하고
 `PHPhotoLibrary`, `PHChange`/`PHFetchResultChangeDetails`,
 `UIImageWriteToSavedPhotosAlbum`를 포함하는 것이 확인되었다. 문자열에는
-`GMSMobileMapsPhotoService`와 `GMS photo service`가 포함되었다. 저장소에서도
-`lib/screens/location/location_picker_screen.dart`가 `google_maps_flutter`를
-사용하므로, Runner에는 사진 보관함 읽기와 추가 목적 문자열을 함께 선언한다.
+`GMSMobileMapsPhotoService`와 `GMS photo service`가 포함되었다. 이 과거
+signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 사용자 사진 선택,
+사진 보관함 읽기·쓰기, 업로드 또는 수집 경로의 증거가 아니다. 따라서
+현재 usage key와 release gate는 fresh signed binary/vendor evidence가
+확인될 때까지 유지한다.
 
 ## Evidence matrix
 
@@ -83,9 +88,9 @@ Artifact Run `33568134813` (artifact `9824161474`, digest
 | `file_picker` 11.0.2 | `NaverIcsImportScreen` calls `FileType.custom` for `.ics` | no additional media-picker evidence | covered by the Run #3 map SDK photo surface | no separate key | ICS import |
 | `webview_flutter_wkwebview` | no production camera/media capture call found | camera candidate only | camera key not added | no evidence | no direct production use |
 | `NSCameraUsageDescription` / `AVCaptureDevice` | not found in PlanFlow production or linked-framework evidence | camera | `NSCameraUsageDescription` | absent | no |
-| `NSPhotoLibraryUsageDescription` / `PHPhotoLibrary` | Run #3 archive/export PASS: Photos/PhotosUI, `PHPhotoLibrary`, `PHChange`/`PHFetchResultChangeDetails`; `google_maps_flutter` location picker | photos | `NSPhotoLibraryUsageDescription` | present | 지도 SDK 장소 사진 표시 |
+| `NSPhotoLibraryUsageDescription` / `PHPhotoLibrary` | Run #3 archive/export PASS의 과거 signed-binary/간접 SDK 심볼; PlanFlow 사용자 사진 선택·보관함 접근·업로드·수집 증거 아님 | photos | `NSPhotoLibraryUsageDescription` | present | PlanFlow 직접 사진 경로 없음; usage key/release gate 유지 |
 | `NSContactsUsageDescription` / `CNContactStore` | Run #3: Contacts.framework linked, but no `CNContactStore` symbol; no direct PlanFlow call | contacts | `NSContactsUsageDescription` | absent | no; SDK candidate only |
-| `NSCalendarsUsageDescription` / `EKEventStore` | not found in PlanFlow production or linked-framework evidence | calendars | `NSCalendarsUsageDescription` | absent | no |
+| `NSCalendarsUsageDescription` / `EKEventStore` | `AppDelegate.swift`가 EventKit 권한 상태 확인 및 권한 요청을 수행하지만 iOS EventKit 일정 데이터 읽기·쓰기는 없음 | calendars | `NSCalendarsUsageDescription` | present | 권한 API만 사용; iOS EventKit 일정 데이터 경로 없음 |
 | `NSRemindersUsageDescription` / `EKEventStore` | not found in PlanFlow production or linked-framework evidence | reminders | `NSRemindersUsageDescription` | absent | no |
 | `NSLocationAlwaysAndWhenInUseUsageDescription` | not found in PlanFlow production or linked-framework evidence | always location | `NSLocationAlwaysAndWhenInUseUsageDescription` | absent | no |
 | `NSBluetoothAlwaysUsageDescription` / `CBCentralManager` | not found in PlanFlow production or linked-framework evidence | Bluetooth | `NSBluetoothAlwaysUsageDescription` | absent | no |
@@ -94,10 +99,10 @@ Artifact Run `33568134813` (artifact `9824161474`, digest
 | `NSFaceIDUsageDescription` / `LAContext` | Run #3: `LAContext` symbol in Runner; no direct PlanFlow call | Face ID | `NSFaceIDUsageDescription` | absent | no; SDK candidate only |
 | `NSAppleMusicUsageDescription` / `MPMediaLibrary` | Run #3: MediaPlayer.framework linked, but no `MPMediaLibrary` symbol; no direct PlanFlow call | Apple Music | `NSAppleMusicUsageDescription` | absent | no; SDK candidate only |
 | `AVCaptureDevice` / camera APIs | no PlanFlow camera call or linked-framework proof found | camera | `NSCameraUsageDescription` | not added; no evidence | not used; dependency-only candidate |
-| `PHPhotoLibrary` / photo APIs | Run #3 archive/export PASS: `PHPhotoLibrary`, `PHChange`/`PHFetchResultChangeDetails`; `GMSMobileMapsPhotoService`, `GMS photo service` | photo read | `NSPhotoLibraryUsageDescription` | present | 지도 SDK 장소 사진 표시 |
-| photo write APIs | Run #3 archive/export PASS: `UIImageWriteToSavedPhotosAlbum`; `google_maps_flutter` is used by the location picker | photo write | `NSPhotoLibraryAddUsageDescription` | present | 지도 SDK 이미지 저장 |
+| `PHPhotoLibrary` / photo APIs | Run #3 archive/export PASS의 과거 signed-binary/간접 SDK 심볼; `GMSMobileMapsPhotoService`, `GMS photo service`도 진단 문자열 | photo read | `NSPhotoLibraryUsageDescription` | present | PlanFlow 사용자 사진 선택·보관함 접근·업로드·수집 증거 없음 |
+| photo write APIs | Run #3 archive/export PASS의 과거 `UIImageWriteToSavedPhotosAlbum` 심볼은 간접/진단 증거 | photo write | `NSPhotoLibraryAddUsageDescription` | present | PlanFlow 사진 쓰기·업로드·수집 증거 없음 |
 | `CNContactStore` / Contacts | no contacts API call or linked-framework proof found | contacts | `NSContactsUsageDescription` | not added; no evidence | not used |
-| `EKEventStore` / EventKit calendars | no EventKit call; app calendar is Supabase/local data | calendars | `NSCalendarsUsageDescription` | not added; no evidence | not used |
+| `EKEventStore` / EventKit calendars | `AppDelegate.swift`가 권한 상태 확인 및 권한 요청을 수행하지만 iOS EventKit 일정 데이터 읽기·쓰기는 없음; 앱 일정은 Supabase/local data | calendars | `NSCalendarsUsageDescription` | present | 권한 API만 사용; iOS EventKit 데이터 경로는 없음 |
 | `EKEventStore` reminders | no reminders API call or linked-framework proof found | reminders | `NSRemindersUsageDescription` | not added; no evidence | not used |
 | CoreLocation always authorization | plugin evidence is when-in-use only; no always authorization call found | location always | `NSLocationAlwaysAndWhenInUseUsageDescription` | not added; no evidence | not used |
 | `CBCentralManager` / Bluetooth | no Bluetooth API call or linked-framework proof found | Bluetooth | `NSBluetoothAlwaysUsageDescription` | not added; no evidence | not used |

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -148,6 +149,41 @@ void main() {
     expect(audit, contains('stateDetails'));
     expect(audit, contains('실제 macOS binary'));
     expect(audit, contains('archive/export release gates require'));
+    expect(audit, contains('권한 상태 확인 및 권한 요청을 수행하지만'));
+    expect(audit, contains('iOS EventKit 일정 데이터 읽기·쓰기는 없음'));
+    expect(audit, contains('AppDelegate.swift'));
+    expect(audit, contains('권한 API만 사용; iOS EventKit 일정 데이터 경로 없음'));
+    expect(
+      audit,
+      isNot(contains(
+          'NSCalendarsUsageDescription` | not added; no evidence | 권한 API만 사용')),
+    );
+    expect(audit, isNot(contains('no EventKit call; app calendar')));
+    expect(audit, contains('간접/진단 SDK 증거'));
+    expect(audit, contains('사용자 사진 선택·보관함 접근·업로드·수집 증거 없음'));
+    final profile =
+        jsonDecode(file('config/store/store-profile.json').readAsStringSync())
+            as Map<String, dynamic>;
+    final privacy = profile['privacy'] as Map<String, dynamic>;
+    final ios = privacy['ios'] as Map<String, dynamic>;
+    final dataTypes = ios['dataTypes'] as Map<String, dynamic>;
+    final calendar = dataTypes['calendar'] as Map<String, dynamic>;
+    final calendarCollected = calendar['collected'] as Map<String, dynamic>;
+    expect(calendarCollected['value'], isTrue);
+    expect(calendarCollected['note'], contains('Device calendar PERMISSION (not collection)'));
+    expect(calendarCollected['note'], contains('EventKit device-calendar READ/WRITE'));
+    final photos = dataTypes['photos'] as Map<String, dynamic>;
+    final photosCollected = photos['collected'] as Map<String, dynamic>;
+    expect(photosCollected['value'], isFalse);
+    expect(photosCollected['note'], contains('no photo-library collection path'));
+    final readiness = file('docs/ios/APP_STORE_READINESS.md').readAsStringSync();
+    final reviewNotes = file('docs/ios/review-notes.md').readAsStringSync();
+    for (final companion in <String>[readiness, reviewNotes]) {
+      expect(companion, isNot(contains('지도 SDK 장소 사진 표시')));
+      expect(companion, isNot(contains('지도 SDK 내부 이미지 저장')));
+      expect(companion, contains('간접/진단 SDK 증거'));
+      expect(companion, contains('직접 사진'));
+    }
     for (final candidate in <String>[
       'NSCameraUsageDescription',
       'NSPhotoLibraryUsageDescription',
