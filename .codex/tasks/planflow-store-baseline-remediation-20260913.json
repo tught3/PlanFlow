@@ -1,7 +1,7 @@
 {
   "taskId": "planflow-store-baseline-remediation-20260913",
   "request": "Remediate the remaining PlanFlow Store profile and screenshot baseline blockers, then perform a truthful final qualification without Store mutation.",
-  "status": "REVIEW_REWORK",
+  "status": "FINAL_REVIEW_PENDING",
   "source": {
     "originalCheckout": "E:/FluxStudio/PlanFlow",
     "originalHead": "d6f34014c4b8659eeea1f82f83e9af6aa12642e9",
@@ -73,7 +73,7 @@
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
       "assignment": "Review the entire Store remediation diff and protection/readiness semantics.",
-      "result": "REQUEST_CHANGES attempt 1: BLOCKER=0 HIGH=2 MEDIUM=4 LOW=1. REQUEST_CHANGES attempt 2: BLOCKER=0 HIGH=1 MEDIUM=2 LOW=0. Live category readback resolved; remaining rework was exact-candidate SHA evidence, embedded malformed relationship handling, and per-entry sourceDevice consistency. All are addressed for final re-review."
+      "result": "REQUEST_CHANGES attempt 1: BLOCKER=0 HIGH=2 MEDIUM=4 LOW=1. REQUEST_CHANGES attempt 2: BLOCKER=0 HIGH=1 MEDIUM=2 LOW=0. REQUEST_CHANGES attempt 3: BLOCKER=0 HIGH=2 MEDIUM=0 LOW=0 because exact-SHA verification was not yet persisted. All technical and provenance findings are now addressed; final approval pending."
     }
   ],
   "plan": [
@@ -145,15 +145,15 @@
       "result": "621 passed"
     },
     {
-      "command": "GitHub Actions Store readback workflow run 34743811582 on candidate branch",
+      "command": "GitHub Actions Store readback workflow run 34744489714 on exact implementation candidate SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c",
       "exitCode": 0,
       "result": "GET-only SUCCESS; mutationCount=0; primaryCategory=PRODUCTIVITY CONFIGURED; secondaryCategory=UTILITIES CONFIGURED; Build23 WAITING_FOR_REVIEW"
     },
     {
-      "command": "fluxstore plan --mode dry-run --assert-zero-mutation from ordinary clone of candidate commit d1715237",
+      "command": "fluxstore plan --mode dry-run --assert-zero-mutation from ordinary clone of exact implementation candidate SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c",
       "exitCode": 0,
       "result": "PASS; mutations android=0 ios=0 submission=0; linked-worktree tooling gap bypassed without changing binding"
     }
   ],
-  "nextStep": "Commit review rework, push non-force, validate exact candidate SHA, independent re-review"
+  "nextStep": "Commit exact-SHA evidence, push non-force, independent final re-review"
 }
