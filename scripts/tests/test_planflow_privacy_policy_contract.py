@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "docs/store/planflow-privacy-policy-final.md"
 PROFILE = ROOT / "config/store/store-profile.json"
-TASK = ROOT / ".codex/tasks/planflow-privacy-policy-finalization-20260913.json"
+TASK = ROOT / ".codex/tasks/planflow-privacy-final-gate-closure-20260913.json"
 
 class PrivacyPolicyContractTest(unittest.TestCase):
     @classmethod
@@ -22,7 +22,10 @@ class PrivacyPolicyContractTest(unittest.TestCase):
         self.assertIn("공개 게시판이나 공개 피드는 운영하지 않습니다", self.text)
         self.assertIn("인증된 그룹 구성원 사이", self.text)
         self.assertIn("보상형 광고", self.text)
-        self.assertIn("ATT 권한 요청이나 IDFA 직접 접근이 없습니다", self.text)
+        self.assertIn("ATT 권한 요청이나 IDFA 직접 접근이 없고", self.text)
+        self.assertIn("iOS IDFA 메시지가 구성되어 있지 않습니다", self.text)
+        self.assertIn("UMP는 동의 정보를 처리하는 SDK이며 그 존재만으로 ATT 요청이나 추적을 의미하지 않습니다", self.text)
+        self.assertIn("향후 AdMob IDFA 메시지를 새로 구성하거나 활성화하면", self.text)
         self.assertIn("그룹 백업 스냅샷", self.text)
         self.assertIn("해당 백업 생성자가 삭제할 때까지 남을 수", self.text)
         self.assertIn("그룹 백업에 대해 확인된 자동 보관기간은 없습니다", self.text)
@@ -44,19 +47,20 @@ class PrivacyPolicyContractTest(unittest.TestCase):
         )
 
     def test_profile_states_and_protected_release(self):
-        self.assertIsNone(self.profile["privacy"]["tracking"]["value"])
-        self.assertEqual(self.profile["privacy"]["tracking"]["source"], "DERIVED")
-        self.assertTrue(self.profile["privacy"]["tracking"]["requiresHumanAuthority"])
+        self.assertFalse(self.profile["privacy"]["tracking"]["value"])
+        self.assertEqual(self.profile["privacy"]["tracking"]["source"], "USER_CONFIRMED_AUTHENTICATED_CONSOLE")
+        self.assertFalse(self.profile["privacy"]["tracking"]["requiresHumanAuthority"])
         ios_ads = self.profile["privacy"]["ios"]["dataTypes"]["advertisingData"]
-        self.assertIsNone(ios_ads["usedForTracking"]["value"])
-        self.assertTrue(ios_ads["usedForTracking"]["requiresHumanAuthority"])
+        self.assertTrue(ios_ads["collected"]["value"])
+        self.assertFalse(ios_ads["usedForTracking"]["value"])
+        self.assertEqual(ios_ads["usedForTracking"]["source"], "USER_CONFIRMED_AUTHENTICATED_CONSOLE")
         self.assertFalse(self.profile["content"]["ugc"]["value"])
         self.assertFalse(self.profile["content"]["childDirected"]["value"])
         blockers = {item["code"] for item in self.profile["blockers"]}
         self.assertIn("PRIVACY_POLICY_MISMATCH", blockers)
-        self.assertIn("IOS_ADS_TRACKING_ANSWER_UNKNOWN", blockers)
+        self.assertNotIn("IOS_ADS_TRACKING_ANSWER_UNKNOWN", blockers)
         decisions = {item["code"] for item in self.profile["decisionsRequired"]}
-        self.assertIn("IOS_ADS_TRACKING_ANSWER", decisions)
+        self.assertNotIn("IOS_ADS_TRACKING_ANSWER", decisions)
         for stale in ("CHILD_DIRECTED", "UGC_MODERATION", "IOS_ATT_USAGE_STRING"):
             self.assertNotIn(stale, decisions)
         protected = {item["target"] for item in self.profile["protectedTargets"]}
@@ -66,6 +70,15 @@ class PrivacyPolicyContractTest(unittest.TestCase):
         self.assertEqual(self.task["protection"]["iosBuild23"], "PROTECTED")
         self.assertEqual(self.task["protection"]["androidProduction"], "PROTECTED")
         self.assertEqual(self.task["protection"]["rewarded"], "EXTERNAL_DEPENDENCY_HOLD")
+        contract = next(item for item in self.profile["privacyChangeContracts"] if item["code"] == "IOS_IDFA_MESSAGE_STATE_CHANGE")
+        self.assertEqual(contract["currentState"], "NOT_CONFIGURED")
+        self.assertEqual(set(contract["requiredActions"]), {
+            "PRIVACY_CHANGE_REQUIRED",
+            "ATT_REASSESSMENT_REQUIRED",
+            "APP_PRIVACY_REASSESSMENT_REQUIRED",
+        })
+        self.assertEqual(self.task["evidence"]["idfaMessageState"], "NOT_CONFIGURED")
+        self.assertEqual(self.task["evidence"]["admobIdfaMutationCount"], 0)
 
 if __name__ == "__main__":
     unittest.main()
