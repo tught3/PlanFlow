@@ -111,6 +111,16 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
         self.assertTrue(self._grep_guard_step().get("run", "").strip())
         self.assertTrue(self._field_shape_guard_step().get("run", "").strip())
 
+    def test_workflow_rejects_foreign_bundle_before_collection(self):
+        run_text = self._step_by_name_substring("run READ-ONLY").get("run", "")
+        self.assertIn('BUNDLE_ID_INPUT" != "com.fluxstudio.planflow"', run_text)
+        self.assertIn("BUNDLE_ID_NOT_ALLOWED", run_text)
+
+    def test_workflow_rejects_review_note_digest(self):
+        run_text = self.workflow_text
+        self.assertNotIn('"sha256"', run_text)
+        self.assertNotIn("hash_notes", run_text)
+
     def test_both_pii_guard_steps_run_before_artifact_upload(self):
         steps = self._steps()
         names = [(step.get("name") or "").lower() for step in steps]
@@ -252,6 +262,27 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
             result = self._run_field_shape_guard(out_path)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("BLOCKED_PII_FIELD_SHAPE", result.stderr)
+
+    def test_field_shape_guard_rejects_review_note_digest(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = pathlib.Path(out_dir)
+            (out_path / "snap.json").write_text(
+                json.dumps({"fields": {"details": {"notes": {"length": 4, "sha256": "deadbeef"}}}}),
+                encoding="utf-8",
+            )
+            result = self._run_field_shape_guard(out_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("BLOCKED_PII_FIELD_SHAPE", result.stderr)
+
+    def test_field_shape_guard_accepts_length_only_review_note(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = pathlib.Path(out_dir)
+            (out_path / "snap.json").write_text(
+                json.dumps({"fields": {"details": {"notes": {"length": 4}}}}),
+                encoding="utf-8",
+            )
+            result = self._run_field_shape_guard(out_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     @unittest.skipUnless(LEGACY_SNAPSHOT_PATH.exists(), "legacy snapshot fixture not present in this checkout")
     def test_committed_snapshot_passes_new_field_shape_guard(self):

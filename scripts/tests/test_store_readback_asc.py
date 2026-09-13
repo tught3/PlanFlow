@@ -212,12 +212,13 @@ class PiiRedactionTests(NoNetworkGuardMixin, unittest.TestCase):
             self.assertEqual(sanitized[field], {"present": True})
             self.assertNotIn("sha256_12", sanitized[field])
 
-    def test_notes_are_length_and_hash_only(self):
+    def test_notes_are_length_only_with_no_digest(self):
         note_text = "Reviewer, please use the demo account above to sign in."
         sanitized = store_readback.sanitize_review_detail({"notes": note_text})
         self.assertNotIn(note_text, json.dumps(sanitized))
         self.assertEqual(sanitized["notes"]["length"], len(note_text))
-        self.assertEqual(sanitized["notes"]["sha256"], hashlib.sha256(note_text.encode("utf-8")).hexdigest())
+        self.assertEqual(set(sanitized["notes"]), {"length"})
+        self.assertNotIn(hashlib.sha256(note_text.encode("utf-8")).hexdigest(), json.dumps(sanitized))
 
     def test_absent_pii_field_reports_present_false(self):
         sanitized = store_readback.sanitize_review_detail({"contactEmail": ""})
@@ -435,6 +436,30 @@ class ConfigMissingTests(NoNetworkGuardMixin, unittest.TestCase):
 
 
 class BundleIdFromXcconfigTests(NoNetworkGuardMixin, unittest.TestCase):
+    def test_foreign_bundle_id_is_rejected_before_collection(self):
+        with self.assertRaises(store_readback.BlockedError) as ctx:
+            store_readback.validate_bundle_id("com.foreign.other")
+        self.assertEqual(ctx.exception.exit_code, store_readback.EXIT_CONFIG_MISSING)
+        self.assertEqual(ctx.exception.code, "BUNDLE_ID_NOT_ALLOWED")
+
+    def test_foreign_xcconfig_bundle_id_is_rejected_without_network(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            xcconfig_path = pathlib.Path(tmp_dir) / "PlanFlow-Identity.xcconfig"
+            xcconfig_path.write_text("PLANFLOW_IOS_BUNDLE_ID = com.foreign.other\n", encoding="utf-8")
+            parser = store_readback.build_arg_parser()
+            args = parser.parse_args([
+                "--bundle-id-from-xcconfig", str(xcconfig_path),
+                "--out", tmp_dir, "--project-id", "planflow",
+            ])
+            with mock.patch.dict("os.environ", {
+                "APP_STORE_CONNECT_KEY_ID": "TESTKEYID123",
+                "APP_STORE_CONNECT_ISSUER_ID": "11111111-2222-3333-4444-555555555555",
+                "APP_STORE_CONNECT_API_KEY_P8": generate_test_p8_key().decode("utf-8"),
+            }):
+                with self.assertRaises(store_readback.BlockedError) as ctx:
+                    store_readback.run(args, transport=FakeTransport([]), sleep_fn=no_sleep)
+            self.assertEqual(ctx.exception.code, "BUNDLE_ID_NOT_ALLOWED")
+
     def test_reads_bundle_id_from_xcconfig(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             xcconfig_path = pathlib.Path(tmp_dir) / "PlanFlow-Identity.xcconfig"

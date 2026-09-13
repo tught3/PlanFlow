@@ -87,6 +87,8 @@ PII_HASH_FIELDS = (
     "contactLastName",
 )
 
+CANONICAL_PLANFLOW_BUNDLE_ID = "com.fluxstudio.planflow"
+
 # appStoreReviewDetail attribute keys that are neither the demo password nor
 # PII/notes and are safe to pass through verbatim (allowlist -- see
 # sanitize_review_detail). Any attribute App Store Connect returns that is
@@ -286,10 +288,11 @@ def hash_pii(value) -> dict:
 
 
 def hash_notes(value) -> dict | None:
+    """Return only a non-identifying marker; never digest free-text notes."""
     if value is None or value == "":
         return None
     text = str(value)
-    return {"length": len(text), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+    return {"length": len(text)}
 
 
 def sanitize_review_detail(attributes: dict) -> dict:
@@ -335,7 +338,18 @@ def read_bundle_id_from_xcconfig(xcconfig_path: pathlib.Path) -> str | None:
     return match.group(1) if match else None
 
 
+def validate_bundle_id(bundle_id: str) -> None:
+    """Refuse any ASC collection outside the PlanFlow canonical app."""
+    if bundle_id != CANONICAL_PLANFLOW_BUNDLE_ID:
+        raise BlockedError(
+            EXIT_CONFIG_MISSING,
+            "BUNDLE_ID_NOT_ALLOWED",
+            "refusing App Store Connect readback for non-PlanFlow bundle ID",
+        )
+
+
 def resolve_app(client: ReadbackClient, bundle_id: str) -> dict:
+    validate_bundle_id(bundle_id)
     document = client.request_with_retry("/v1/apps", params={"filter[bundleId]": bundle_id, "limit": "10"})
     if document.get("__http_status") not in (None, 200):
         raise BlockedError(EXIT_INTERNAL, "ASC_REQUEST_FAILED", redact(error_summary(document)))
@@ -586,6 +600,8 @@ def run(args: argparse.Namespace, transport=None, sleep_fn=time.sleep, captured_
                 f"could not resolve PLANFLOW_IOS_BUNDLE_ID from {args.bundle_id_from_xcconfig}",
             )
         bundle_id = xcconfig_bundle_id
+
+    validate_bundle_id(bundle_id)
 
     client = ReadbackClient(token, transport=transport)
     fields, unavailable = collect_snapshot(client, bundle_id, sleep_fn=sleep_fn)
