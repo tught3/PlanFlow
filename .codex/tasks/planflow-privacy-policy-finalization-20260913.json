@@ -1,7 +1,7 @@
 {
   "taskId": "planflow-privacy-policy-finalization-20260913",
   "request": "Finalize the PlanFlow privacy policy from confirmed business facts and source/provider evidence, without external publication or Store mutation.",
-  "status": "COMMIT_READY",
+  "status": "REPOSITORY_SOURCE_REMEDIATION_DELIVERY_COMPLETE",
   "source": {
     "originalCheckout": "E:/FluxStudio/PlanFlow",
     "canonicalWorktree": "E:/FluxStudio-worktrees/planflow/planflow-store-baseline-remediation-20260913",
@@ -160,8 +160,13 @@
   ],
   "deliveryEvidence": {
     "stagedFiles": 5,
-    "commitCreated": false,
-    "pushPerformed": false,
+    "commitCreated": true,
+    "commitSha": "4cb75703bd605a18608ebb2298f355880681394d",
+    "commitContent": "Exactly the five allowed task-owned privacy/store/ledger/test files.",
+    "pushPerformed": true,
+    "pushMode": "NON_FORCE",
+    "remoteBranchHead": "4cb75703bd605a18608ebb2298f355880681394d",
+    "localRemoteParity": true,
     "normalHookAttempts": 3,
     "hookEntrypoint": "shared AI_WIKI banned-pattern gate imported by the repository pre-commit hook",
     "firstHungBoundary": "TEMPORARY_PYTHON_RUNNER_INVOCATION_AFTER_START_BEFORE_RETURN",
@@ -169,18 +174,37 @@
     "currentStandaloneHookExitCode": 0,
     "currentStandaloneHookDurationSecondsApprox": 1.2,
     "directCorrectRootGateExitCode": 0,
+    "normalCommitHookExitCode": 0,
+    "normalCommitHookCompleted": true,
     "linkedWorktreeContractDefect": "CONFIRMED_HARDCODED_ROOT_OUT_OF_SCOPE",
     "hookBypass": false,
     "hookFailure": "The earlier repository pre-commit hook stall was not reproducible after bounded diagnosis; the standalone exact hook path and direct correct-root gate now exit 0. No source defect was found and no hook bypass, force push, or foreign process termination was used.",
-    "nextSafeAction": "Run the normal commit from the canonical worktree, then non-force push and exact-SHA zero-mutation verification."
+    "exactShaQualification": {
+      "sha": "4cb75703bd605a18608ebb2298f355880681394d",
+      "ordinaryClone": "C:/Users/tught/AppData/Local/Temp/planflow-exact-4cb75703",
+      "cloneCleanBeforeAndAfter": true,
+      "privacyContracts": "4/4 PASS",
+      "storeContracts": "100/100 PASS",
+      "centralRegressions": "621/621 PASS",
+      "jsonAndDiff": "PASS",
+      "protectedAppFilesChanged": false,
+      "productionAdUnitLeak": false,
+      "zeroMutation": {
+        "exitCode": 0,
+        "android": 0,
+        "ios": 0,
+        "submission": 0
+      }
+    },
+    "nextSafeAction": "Before external publication, crosscheck the business-registration address and obtain authenticated AdMob/UMP tracking-state readback; publication and Store changes require separate authorization."
   },
   "deliveryStage": {
     "explorerFallback": "RECORDED",
     "planner": "RECORDED",
     "implementer": "RECORDED",
-    "testExecutor": "COMPLETE",
-    "independentReviewer": "PASS",
-    "integrator": "PENDING_COMMIT_AND_EXACT_SHA_VERIFICATION",
+    "testExecutor": "EXACT_SHA_PASS",
+    "independentReviewer": "PASS_WITH_MEDIUM_LOW_FOLLOWUPS",
+    "integrator": "COMPLETE_SOURCE_DELIVERY_EXTERNAL_PUBLICATION_BLOCKED",
     "hookRca": {
       "firstHungBoundary": "TEMPORARY_PYTHON_RUNNER_INVOCATION_AFTER_START_BEFORE_RETURN",
       "rootCause": "NOT_REPRODUCIBLE_TRANSIENT",
@@ -230,37 +254,47 @@
     },
     {
       "role": "Test Executor",
-      "agent": "privacy_policy_finalization_test_executor_fallback",
+      "agent": "hook_delivery_test_executor_fallback",
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "low",
-      "status": "PENDING",
-      "assignment": "Validate the updated ledger JSON and confirm no out-of-scope file changes."
+      "status": "COMPLETE",
+      "assignment": "Validate the pushed exact SHA in a clean ordinary clone, including privacy, Store and central regressions plus zero-mutation dry-run.",
+      "result": "PASS: exact SHA 4cb75703bd605a18608ebb2298f355880681394d, clean clone, privacy 4/4, Store 100/100, central 621/621, JSON/diff PASS, protected files unchanged, no production ad-unit leak, zero mutations android=0 ios=0 submission=0."
     },
     {
       "role": "Independent Reviewer",
       "agent": "flux_reviewer",
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
-      "status": "PENDING",
-      "assignment": "Review the final current diff and ledger evidence for scope, truthfulness and protection regressions."
+      "status": "COMPLETE",
+      "assignment": "Review the final current diff and ledger evidence for scope, truthfulness and protection regressions.",
+      "result": "APPROVE: BLOCKER=0, HIGH=0. MEDIUM follow-up is the pre-existing shared linked-worktree hardcoded-root defect, mitigated here by the direct correct-root gate and out-of-scope. LOW follow-up is publication-only wording/address crosscheck. Neither blocks current repository delivery."
     },
     {
       "role": "Integrator",
       "agent": "flux_integrator",
       "mappedModel": "gpt-5.6-terra",
       "reasoningEffort": "medium",
-      "status": "PENDING",
-      "assignment": "Integrate after Test Executor and Independent Reviewer, then qualify commit, push and exact-SHA verification."
+      "status": "COMPLETE",
+      "assignment": "Integrate after Test Executor and Independent Reviewer, then qualify commit, push and exact-SHA verification.",
+      "result": "COMPLETE for repository source remediation: normal hooks and no bypass, exact five-file source commit, non-force push parity, exact-SHA tests and zero mutations, Reviewer APPROVE with BLOCKER=0/HIGH=0. External policy publication, address crosscheck, AdMob/UMP readback and pre-existing privacy mappings remain separately unresolved."
     }
   ],
   "finalQualification": {
-    "privacyPolicySource": "APPROVED_UNCOMMITTED",
+    "privacyPolicySource": "APPROVED_COMMITTED_AND_PUSHED",
     "privacyPolicyPublication": "BLOCKED_NOT_PUBLISHED",
     "externalMutationApprovalRequired": true,
     "iosBuild23Protected": true,
     "androidProductionProtected": true,
     "storeMutations": 0,
-    "reviewer": "PASS",
-    "integrator": "PENDING_NORMAL_COMMIT_AND_EXACT_SHA_ZERO_MUTATION"
+    "reviewer": "PASS_WITH_MEDIUM_LOW_FOLLOWUPS",
+    "integrator": "COMPLETE_SOURCE_DELIVERY_EXTERNAL_PUBLICATION_BLOCKED",
+    "repositorySourceRemediationDelivery": "COMPLETE",
+    "remainingPrivacyBlockers": [
+      "PRIVACY_POLICY_PUBLICATION_NOT_APPLIED",
+      "ADMOB_UMP_AUTHENTICATED_READBACK_REQUIRED",
+      "PREEXISTING_CALENDAR_PHOTOS_PROFILE_MAPPING",
+      "BUSINESS_REGISTRATION_ADDRESS_CROSSCHECK_BEFORE_PUBLICATION"
+    ]
   }
 }
