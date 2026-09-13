@@ -12,7 +12,7 @@
     "iosBundleId": "com.fluxstudio.planflow",
     "storeAppIds": {
       "android": "com.fluxstudio.planflow",
-      "ios": null
+      "ios": "6806790412"
     }
   },
   "platforms": {
@@ -394,7 +394,7 @@
         },
         "preciseLocation": {
           "collected": {
-            "value": null,
+            "value": true,
             "source": "CODE_EVIDENCE",
             "evidence": [
               "lib/screens/voice/confirm_screen.dart:2636-2647",
@@ -738,7 +738,7 @@
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "iOS shares the same Dart code path as Android for this feature: confirm_screen.dart:2636-2647 (getLastKnownLocation() -> estimateWithMapApis) -> travel_time_buffer_service.dart:222-248 -> map_service.dart:53-90, which sends raw GPS latitude/longitude to Tmap first, then Naver (via AppEnv.naverMapProxyUrl proxy, map_service.dart:38/273). See the corrected android.dataTypes.preciseLocation note: if both Tmap and Naver return null, travel_time_buffer_service.dart:264-271 falls back to estimateWithGoogleMaps with coordinate-string origin/destination (not an address), so Google Distance Matrix can also receive raw GPS coordinates in that fallback branch. No iOS-only precise-location code path was found beyond this shared logic; the vendor set is Tmap/Naver/Google (fallback) on both platforms. ENHANCED (this pass): transit mode only attempts Naver (map_service.dart:60-61, mode==transit → const <MapTravelProvider>[Naver]), skipping Tmap entirely. Additionally, estimateWithMapApis accepts a skipRemote parameter (travel_time_buffer_service.dart:233); when true, the function returns early with a local estimate (line 235-241) without making any remote API calls to any vendor. decisionRequired: PRECISE_LOCATION_COLLECTION."
+            "note": "CODE_EVIDENCE: shared iOS path sends raw GPS coordinates to Tmap/Naver and Google fallback for travel-time estimation. The decision to disclose this as precise location remains a human App Privacy/legal confirmation."
           },
           "storeDataTypes": [
             "PRECISE_LOCATION"
@@ -839,18 +839,21 @@
         },
         "advertisingData": {
           "collected": {
-            "value": null,
-            "source": "UNKNOWN",
+            "value": true,
+            "source": "DERIVED",
             "evidence": [
-              "lib/services/ad_runtime_policy.dart:5-8",
-              "ios/Runner/Info.plist:7"
+              "lib/services/ad_runtime_policy.dart",
+              "lib/services/ad_service.dart",
+              "ios/Runner/Info.plist:7",
+              "User-provided Build24 runtime evidence: rcFetch=true, iosUnit=valueRemote, RewardedAd.load called",
+              "https://developers.google.com/admob/ios/privacy/data-disclosure (retrieved 2026-09-13)"
             ],
-            "lastVerified": "2026-09-11",
-            "confidence": "UNKNOWN",
+            "lastVerified": "2026-09-13",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "Dart-level policy (ad_runtime_policy.dart) keeps iOS rewarded ads unconfigured/disabled, but Info.plist declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may still self-initialize on iOS regardless of the Dart gate. decisionRequired: IOS_ADS_TRACKING_ANSWER."
+            "note": "Current source/runtime evidence proves the Google Mobile Ads SDK is invoked on iOS. Google's current disclosure says the SDK may collect advertising data, device identifiers and interactions. This is a source-plus-provider derived expected App Privacy answer; cross-app tracking/IDFA remains UNKNOWN pending ATT/runtime and business confirmation."
           },
           "usedForTracking": {
             "value": null,
@@ -863,7 +866,7 @@
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "Grep for requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager across lib/ returned 0 matches, and no SKAdNetworkItems key exists in Info.plist. NSUserTrackingUsageDescription key (Info.plist:32) is a tracking SIGNAL, not a negative-collection proof — review-risk memo: a permission string without a corresponding runtime ATT prompt can itself be flagged in App Review. Whether native AdMob (GADApplicationIdentifier, Info.plist:7) auto-initializes and collects advertising data on iOS independent of the Dart-level ad_runtime_policy.dart gate is UNKNOWN. decisionRequired: IOS_ADS_TRACKING_ANSWER."
+            "note": "ATT/IDFA tracking answer is UNKNOWN: no requestTrackingAuthorization/AppTrackingTransparency/ATTrackingManager call was found in lib/, while NSUserTrackingUsageDescription exists in Info.plist. Do not mark tracking false without product/legal confirmation."
           },
           "storeDataTypes": [
             "ADVERTISING_DATA"
@@ -871,17 +874,18 @@
         },
         "photos": {
           "collected": {
-            "value": null,
-            "source": "UNKNOWN",
+            "value": false,
+            "source": "CODE_EVIDENCE",
             "evidence": [
-              "ios/Runner/Info.plist:40-42"
+              "lib/app.dart:648-707",
+              "lib/services/naver_ics_share_store.dart"
             ],
-            "lastVerified": "2026-09-11",
-            "confidence": "UNKNOWN",
+            "lastVerified": "2026-09-13",
+            "confidence": "HIGH",
             "requiresHumanAuthority": false,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "CORRECTION: the prior note said 'no image_picker or comparable photo-library API usage was found anywhere under lib/' based only on a grep for image_picker/ImagePicker/PHPickerViewController (0 matches) -- but pubspec.yaml DOES declare two other plugins capable of touching the photo library/files that were missed: file_picker: ^11.0.2 (pubspec.yaml:45) and receive_sharing_intent: ^1.8.1 (pubspec.yaml:44). Neither plugin's actual call sites in lib/ were audited in this pass (out of scope for this edit), so it remains UNKNOWN whether photos/files are actually collected or merely capable-of-being-picked/shared. No engine SDK vocabulary entry exists for this data type (not one of the 7 SDKs in sdk_data_types.json), so storeDataTypes is intentionally omitted rather than guessed."
+            "note": "The audited file/share path accepts ICS calendar files only; no photo-library collection path was found. Reconfirm if future imports expand beyond ICS."
           }
         },
         "firebaseInstallationId": {
@@ -1052,18 +1056,20 @@
         "note": "MobileAds.instance.initialize() (ad_service.dart:491) plus the AD_ID permission (AndroidManifest.xml:4) confirm the app is CAPABLE of running rewarded ads on Android, but ad_service.dart:423 gates that call behind `RemoteConfigService.rewardedAdEnabled`, whose live production value was not read back in this pass -- whether ads are actually active is UNKNOWN, not a confirmed true. See privacy.android.dataTypes.androidAdvertisingId for the same gating."
       },
       "ios": {
-        "value": null,
-        "source": "UNKNOWN",
+        "value": true,
+        "source": "CODE_EVIDENCE",
         "evidence": [
-          "lib/services/ad_runtime_policy.dart:5-8",
-          "ios/Runner/Info.plist:7"
+          "lib/services/ad_runtime_policy.dart",
+          "lib/services/remote_config_service.dart",
+          "lib/services/ad_service.dart",
+          "ASC GET-only readback run 34741099757 (2026-09-13; mutationCount=0)"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "lastVerified": "2026-09-13",
+        "confidence": "MEDIUM",
         "requiresHumanAuthority": true,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "ad_runtime_policy.dart:5-8 disables the Dart-level rewarded-ad path on iOS (isAdsRuntimeSupported() only returns true for Android), but Info.plist:7 still declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may self-initialize on iOS regardless of the Dart gate. decisionRequired: IOS_ADS_TRACKING_ANSWER."
+        "note": "iOS rewarded ads are active in source when Remote Config provides a valid rewarded_ad_unit_id_ios; the current iOS readback identifies app 6806790412. AdMob availability/processing is applicable. ATT/IDFA tracking remains a separate UNKNOWN human decision."
       }
     },
     "childDirected": {
@@ -1131,18 +1137,20 @@
         "note": "CORRECTION: prior value 'free_with_ads' at HIGH confidence overstated certainty. MobileAds.instance.initialize() (ad_service.dart:491) confirms the app is CAPABLE of running rewarded ads on Android, but it is gated behind ad_service.dart:423's RemoteConfigService.rewardedAdEnabled check, whose live production value was not read back in this pass -- see content.ads.android and privacy.android.dataTypes.androidAdvertisingId for the identical gating evidence. No in_app_purchase dependency exists (pubspec.yaml), so the model is either 'free' or 'free_with_ads' depending on that unread Remote Config value; the app is free either way, but the ads-bearing variant is UNKNOWN."
       },
       "ios": {
-        "value": null,
-        "source": "UNKNOWN",
+        "value": "free_with_ads",
+        "source": "DERIVED",
         "evidence": [
-          "lib/services/ad_runtime_policy.dart:5-8",
-          "ios/Runner/Info.plist:7"
+          "lib/services/ad_runtime_policy.dart",
+          "lib/services/remote_config_service.dart",
+          "lib/services/ad_service.dart",
+          "User-provided Build24 runtime evidence: rcFetch=true, iosUnit=valueRemote, RewardedAd.load called"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "lastVerified": "2026-09-13",
+        "confidence": "HIGH",
         "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "광고 런타임 상태 미확정(see content.ads.ios / decisionRequired IOS_ADS_TRACKING_ANSWER). App이 '무료'라는 사실 자체는 사용자 진술(USER_STATED, pubspec.yaml에 in_app_purchase 없음으로 뒷받침)이지만, 광고 유무에 따라 model이 'free' 또는 'free_with_ads'로 갈리므로 전체 monetization.model 값은 UNKNOWN."
+        "note": "The app is free and its iOS rewarded-ad path is active when the production Remote Config unit is valid. A no-fill response does not change the ads-supported monetization model."
       }
     },
     "iap": {
@@ -1188,18 +1196,20 @@
         "note": "CORRECTION: prior value=true/HIGH was inconsistent with content.ads.android, which was already corrected to null/UNKNOWN in this pass for the same reason. Same evidence as content.ads.android: MobileAds.instance.initialize() is gated behind ad_service.dart:423's RemoteConfigService.rewardedAdEnabled, whose live value was not read back."
       },
       "ios": {
-        "value": null,
-        "source": "UNKNOWN",
+        "value": true,
+        "source": "DERIVED",
         "evidence": [
-          "lib/services/ad_runtime_policy.dart:5-8",
-          "ios/Runner/Info.plist:7"
+          "lib/services/ad_runtime_policy.dart",
+          "lib/services/remote_config_service.dart",
+          "lib/services/ad_service.dart",
+          "User-provided Build24 runtime evidence: rcFetch=true, iosUnit=valueRemote, RewardedAd.load called"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
-        "requiresHumanAuthority": true,
+        "lastVerified": "2026-09-13",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "Same evidence as content.ads.ios."
+        "note": "iOS rewarded ads are enabled conditionally from the iOS-only Remote Config key. ATT/IDFA tracking remains a separate UNKNOWN disclosure decision."
       }
     }
   },
@@ -1296,15 +1306,15 @@
   "qualificationMode": true,
   "blockers": [
     {
-      "code": "ANDROID_TABLET_SET_BELOW_MIN",
+      "code": "ANDROID_TABLET_LIVE_PII_REPLACEMENT_REQUIRED",
       "platform": "android",
-      "detail": "Play 대형 화면(7\"/10\") 스크린샷 세트는 최소 4장 필요(spec store/specs/google-graphics.2026-09-11.json minCount 4, 출처 https://support.google.com/googleplay/android-developer/answer/9866151 조회 2026-09-11). CORRECTION: docs/screenshots/store_final_v3/tablet_1200x1920/는 'canonical' 세트가 아니라 후보(candidate) 세트다 -- 라이브 Play 정본은 v2 경로(docs/screenshots/store_final/phone_1080x1920, tablet_1200x1920)이며, config/store/screenshot-lineage.json의 UPLOADED 엔트리들이 sha256 대조로 이를 확인한다(예: android-phone-1-voice-input-live 등, v3 파일과 sha256이 다르거나 byte-identical하게 v2와 일치). v3 세트는 docs/screenshots/store_final_v3/tablet_1200x1920/에 2장(2560x1600)만 존재(디렉터리 직접 확인: PlanFlow_tablet_landscape_1.png, PlanFlow_tablet_landscape_2.png). 스토어 readback(2026-09-11) 결과 sevenInchScreenshots 1장, tenInchScreenshots 1장 업로드됨(config/store/snapshots/android-readback-2026-09-11.json fields.images.ko-KR) — v2/v3 어느 세트를 기준으로 해도 최소 4장 요건 미달 확정.",
-      "requiresHumanAuthority": false
+      "detail": "The historical tablet-count deficiency is not a universal Google Play publishing blocker and was removed from requiredSlots. A separate real blocker remains: the current live 7-inch image exposes real schedule/business content, and both live tablet images contain system/DeX chrome and use 16:10 rather than Google's recommended large-screen 16:9/9:16 formats. Replace or remove those live optional assets in a separately authorized Play metadata change.",
+      "requiresHumanAuthority": true
     },
     {
       "code": "PRIVACY_POLICY_MISMATCH",
       "platform": "both",
-      "detail": "Two live candidate privacy policy URLs exist with different content and neither is confirmed as the store-registered value: https://fluxstudio.co.kr/privacy (generic FluxStudio/HealthFlow page, code-canonical per apps-in-toss/src/features/auth/LoginScreen.tsx:27, does not enumerate PlanFlow-specific data collection) vs https://tught3.github.io/PlanFlow/privacy-policy.html (PlanFlow-specific, last updated 2026-05-10, does not mention AdMob).",
+      "detail": "ASC GET-only readback run 34741099757 confirms https://fluxstudio.co.kr/privacy as the submitted iOS privacy-policy URL. The public page does not enumerate PlanFlow-specific account, schedule/group content, precise-location provider transmission, server-processed voice text, AdMob, Firebase installation/diagnostic processing. A source-grounded draft is available at docs/store/planflow-privacy-policy-remediation.md, but it is not published or legally approved.",
       "requiresHumanAuthority": true
     },
     {
@@ -1320,33 +1330,33 @@
       "requiresHumanAuthority": true
     },
     {
-      "code": "IOS_ADMOB_NATIVE_INIT_UNKNOWN",
+      "code": "IOS_ADS_TRACKING_ANSWER_UNKNOWN",
       "platform": "ios",
-      "detail": "lib/services/ad_runtime_policy.dart:5-8 disables the Dart-level rewarded-ad path on iOS, but ios/Runner/Info.plist:7 still declares GADApplicationIdentifier, so the native Google Mobile Ads SDK may auto-initialize on iOS regardless of the Dart gate.",
+      "detail": "iOS rewarded ad processing is now enabled conditionally from Remote Config and confirmed applicable by source/readback. The remaining unresolved item is whether AdMob advertising data is used for ATT/IDFA cross-app tracking; no ATT request implementation was found in lib/ and the business/legal answer is not established.",
       "requiresHumanAuthority": true
     },
     {
       "code": "IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10",
       "platform": "ios",
-      "detail": "The 8 '스크린샷 아이폰/세로/PlanFlow_screenshot_1.png'..'_8.png' candidate 6.5\" iPhone screenshots are Android device captures, not iOS: config/store/screenshot-lineage.json documents Android-style status bars directly observed on screenshots 1-2 (line ~189, ~222) and attributes the remaining set to the same 'S23, adb screencap' capture batch (docs/screenshots/store_final/final_deliverables_report.md), recording sourcePlatform=android/status=REJECTED for these entries. CORRECTION (this pass): the iPad 13\" REJECTED candidates are NOT '스크린샷 아이폰/가로/PlanFlow_tablet_landscape_{1,2}.png' -- those two files (2064x2752, sha256 f399cd7c.../69cba06c...) are an intermediate/staged asset only, referenced from the lineage entries' 'transformations' field as the location where the (already-distorted) resized frame was saved en route to the final deliverable. The actual REJECTED final-deliverable entries recorded in the lineage file (screenshotId ipad13-01-calendar / ipad13-02-group) are docs/screenshots/app-store/ipad-13/01_ipad13_landscape_calendar.png (sha256 a1fedc32d1510a01d4b37950922a435d597a48f0d0db3ae701fb3cf20a8b1e33, directly recomputed via certutil 2026-09-11, matches the lineage file's declared sha256 exactly) and docs/screenshots/app-store/ipad-13/02_ipad13_landscape_group.png (sha256 48918b87d2a8f5cf63118465277aa55762528608a01403d20b3c159641040a1a, likewise recomputed and matched). Both are 2064x2752, PIL-measured non-uniform resizes (scale_x=0.80625, scale_y=1.72) of a Samsung/Android tablet capture (docs/screenshots/store_final_v3/tablet_1200x1920/, 2560x1600). The lineage file's path field for the ipad13 entries references docs/screenshots/app-store/ipad-13/*, while sourceCapture references docs/screenshots/store_final_v3/tablet_1200x1920/*. The final files in docs/screenshots/app-store/ipad-13/* contain a residual black taskbar band (x696–1980, y2048–2144, PIL-measured solid (0,0,0)). The intermediate staging files (스크린샷 아이폰/가로/PlanFlow_tablet_landscape_{1,2}.png) also have the same region, but at approximately 70.8% black with visible chrome/icons remaining, so they are not clean substitutes. Both final deliverable files are REJECTED in the lineage file. Apple Guideline 2.3.10 requires accurate, platform-native screenshots; using Android-captured or Android-derived images for an iOS submission is a misrepresentation risk. ACTION REQUIRED (read-only, per READ_ONLY_PROTECTED on current_submission:1.1.1(23)): confirm via App Store Connect readback whether these specific assets were used in the submission under review; do not mutate the live submission during this qualification pass.",
+      "detail": "All 8 current iPhone and both current iPad Store images were independently opened and matched to the GET-only readback by count/hash. The iPhone set is Android-derived; the iPad set is non-uniformly resized Android content with residual system/taskbar UI, and one image exposes real schedule/business data. They remain STORE_APPLIED/SUBMITTED evidence only and are not LOCAL_QUALIFIED or STORE_ACCEPTED. Native iOS replacements are required after the protected Build23 review state permits metadata changes.",
       "requiresHumanAuthority": true
     },
     {
-      "code": "ASC_APP_ID_UNKNOWN",
+      "code": "APP_PRIVACY_COMPARE_UNAVAILABLE",
       "platform": "ios",
-      "detail": "binding.storeAppIds.ios is null pending an iOS App Store Connect readback; no store mutation is permitted during this qualification pass.",
+      "detail": "The current App Privacy data-type answers cannot be retrieved field-by-field through the available public App Store Connect API. Their current state is USER_CONFIRMED/SUBMITTED, not STORE_ACCEPTED. After Build23 review, compare the source-derived expected values in this profile against App Store Connect manually and correct any under- or over-declaration without changing the protected submission now.",
+      "requiresHumanAuthority": true
+    },
+    {
+      "code": "IOS_STORE_READBACK_NOT_ACCEPTED",
+      "platform": "ios",
+      "detail": "GET-only App Store Connect readback run 34741099757 identified app 6806790412, bundle com.fluxstudio.planflow, and Build23 WAITING_FOR_REVIEW with mutationCount=0. It is retained as operational evidence but is not added to acceptedSnapshots because the current submission is not STORE_ACCEPTED.",
       "requiresHumanAuthority": false
     },
     {
-      "code": "STORE_BASELINE_NOT_CAPTURED",
+      "code": "IOS_SCREENSHOT_CAPTURE_PIPELINE_NOT_OPERATIONAL",
       "platform": "ios",
-      "detail": "Android baseline captured: acceptedSnapshots now includes config/store/snapshots/android-readback-2026-09-11.json (Play Developer API readback --live-read, edits.insert, commit 0, edit deleted). iOS baseline still not captured — no accepted App Store Connect readback exists yet.",
-      "requiresHumanAuthority": false
-    },
-    {
-      "code": "REVIEW_CREDENTIAL_NOT_PROVISIONED",
-      "platform": "ios",
-      "detail": "gh secret list --repo tught3/PlanFlow (names only, 2026-09-11) shows no PLANFLOW_REVIEW_DEMO_USERNAME / PLANFLOW_REVIEW_DEMO_PASSWORD secrets. Repo secrets do include PLANFLOW_E2E_TEST_ACCOUNT_EMAIL / PLANFLOW_E2E_TEST_ACCOUNT_PASSWORD, but these are named for E2E test automation, not explicitly for App Review demo credentials, and any demo account entered directly into App Store Connect by the user is out of scope for this repo-secret check.",
+      "detail": "The repository capture workflow is a fail-closed scaffold: capture-plan routes are empty, no integration driver is implemented, and the dedicated demo automation inputs are unavailable. No native iOS asset can be generated truthfully from this Windows qualification pass. This does not assert that App Store review credentials are absent; GET-only readback only proves their presence markers while redacting credentials.",
       "requiresHumanAuthority": false
     }
   ],

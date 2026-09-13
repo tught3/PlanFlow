@@ -304,6 +304,83 @@ class AgeRatingUnavailableTests(NoNetworkGuardMixin, unittest.TestCase):
             self.assertEqual(snapshot["fields"]["appInfos"][0]["ageRating"], "UNAVAILABLE")
 
 
+class CategoryRelationshipTests(NoNetworkGuardMixin, unittest.TestCase):
+    def _collect(self, info_response, category_responses=()):
+        responses = _full_snapshot_responses()
+        responses[1] = ("/v1/apps/app-1/appInfos", info_response)
+        responses[3:3] = list(category_responses)
+        transport = FakeTransport(responses)
+        client = store_readback.ReadbackClient("test-token", transport=transport)
+        fields, unavailable = store_readback.collect_snapshot(client, "com.fluxstudio.planflow", sleep_fn=no_sleep)
+        result = {"unavailableSections": unavailable, "mutationCount": client.mutation_count}
+        snapshot = {"fields": fields}
+        return result, snapshot, transport
+
+    def test_embedded_relationship_is_configured_without_extra_category_gets(self):
+        info = {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {}, "relationships": {
+            "primaryCategory": {"data": {"id": "cat-primary", "type": "appCategories"}},
+            "secondaryCategory": {"data": {"id": "cat-secondary", "type": "appCategories"}},
+        }}]}
+        result, snapshot, transport = self._collect(info)
+        item = snapshot["fields"]["appInfos"][0]
+        self.assertEqual(item["primaryCategoryState"], "CONFIGURED")
+        self.assertEqual(item["secondaryCategoryState"], "CONFIGURED")
+        self.assertFalse(any("primaryCategory" in url for url in transport.calls))
+        self.assertEqual(result["mutationCount"], 0)
+
+    def test_empty_and_404_relationships_are_unset(self):
+        responses = [
+            ("/v1/appInfos/info-1/primaryCategory", {"__http_status": 200, "data": None}),
+            ("/v1/appInfos/info-1/secondaryCategory", {"__http_status": 404, "errors": [{"status": "404"}]}),
+        ]
+        info = {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {}, "relationships": {}}]}
+        result, snapshot, _ = self._collect(info, responses)
+        item = snapshot["fields"]["appInfos"][0]
+        self.assertEqual(item["primaryCategoryState"], "UNSET")
+        self.assertEqual(item["secondaryCategoryState"], "UNSET")
+        self.assertEqual(result["unavailableSections"], [])
+        self.assertEqual(result["mutationCount"], 0)
+
+    def test_relationship_request_failure_is_unavailable(self):
+        responses = [
+            ("/v1/appInfos/info-1/primaryCategory", {"__http_status": None, "errors": [{"code": "ASC_REQUEST_FAILED"}]}),
+            ("/v1/appInfos/info-1/secondaryCategory", {"__http_status": 200, "data": None}),
+        ]
+        info = {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {}, "relationships": {}}]}
+        result, snapshot, _ = self._collect(info, responses)
+        item = snapshot["fields"]["appInfos"][0]
+        self.assertEqual(item["primaryCategoryState"], "UNAVAILABLE")
+        self.assertEqual(item["secondaryCategoryState"], "UNSET")
+        self.assertIn("primaryCategory:info-1", result["unavailableSections"])
+        self.assertEqual(result["mutationCount"], 0)
+
+    def test_relationship_missing_http_status_is_unavailable(self):
+        responses = [
+            ("/v1/appInfos/info-1/primaryCategory", {"data": None}),
+            ("/v1/appInfos/info-1/secondaryCategory", {"__http_status": 200, "data": None}),
+        ]
+        info = {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {}, "relationships": {}}]}
+        result, snapshot, _ = self._collect(info, responses)
+        item = snapshot["fields"]["appInfos"][0]
+        self.assertEqual(item["primaryCategoryState"], "UNAVAILABLE")
+        self.assertEqual(item["secondaryCategoryState"], "UNSET")
+        self.assertIn("primaryCategory:info-1", result["unavailableSections"])
+
+    def test_relationship_200_error_or_malformed_data_is_unavailable(self):
+        responses = [
+            ("/v1/appInfos/info-1/primaryCategory", {"__http_status": 200, "errors": [{"code": "BAD_RESPONSE"}], "data": None}),
+            ("/v1/appInfos/info-1/secondaryCategory", {"__http_status": 200, "data": {}}),
+        ]
+        info = {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {}, "relationships": {}}]}
+        result, snapshot, _ = self._collect(info, responses)
+        item = snapshot["fields"]["appInfos"][0]
+        self.assertEqual(item["primaryCategoryState"], "UNAVAILABLE")
+        self.assertEqual(item["secondaryCategoryState"], "UNAVAILABLE")
+        self.assertIn("primaryCategory:info-1", result["unavailableSections"])
+        self.assertIn("secondaryCategory:info-1", result["unavailableSections"])
+        self.assertEqual(result["mutationCount"], 0)
+
+
 def _build_args(out_dir):
     parser = store_readback.build_arg_parser()
     return parser.parse_args(["--bundle-id", "com.fluxstudio.planflow", "--out", out_dir, "--project-id", "planflow"])
@@ -319,6 +396,8 @@ def _full_snapshot_responses(age_rating_status=200):
         ("/v1/apps?", {"__http_status": 200, "data": [{"id": "app-1", "type": "apps", "attributes": {"bundleId": "com.fluxstudio.planflow", "name": "PlanFlow", "primaryLocale": "en-US"}}]}),
         ("/v1/apps/app-1/appInfos", {"__http_status": 200, "data": [{"id": "info-1", "type": "appInfos", "attributes": {"appStoreState": "READY_FOR_SALE"}, "relationships": {}}]}),
         ("/v1/appInfos/info-1/appInfoLocalizations", {"__http_status": 200, "data": [{"id": "loc-info-1", "type": "appInfoLocalizations", "attributes": {"locale": "en-US", "name": "PlanFlow"}}]}),
+        ("/v1/appInfos/info-1/primaryCategory", {"__http_status": 200, "data": None}),
+        ("/v1/appInfos/info-1/secondaryCategory", {"__http_status": 200, "data": None}),
         ("/v1/appInfos/info-1/ageRatingDeclaration", age_rating_response),
         ("/v1/apps/app-1/appStoreVersions", {"__http_status": 200, "data": [{"id": "v-1", "type": "appStoreVersions", "attributes": {"versionString": "1.1.1", "appStoreState": "READY_FOR_SALE"}}]}),
         ("/v1/appStoreVersions/v-1/build", {"__http_status": 200, "data": {"id": "build-1", "type": "builds", "attributes": {"version": "159", "usesNonExemptEncryption": False}}}),
