@@ -5,11 +5,26 @@
     "lib/core/theme.dart"
   ],
   "requiredSlots": [
-    { "slot": "ANDROID_PHONE", "displayClass": "default" },
-    { "slot": "ANDROID_TABLET", "displayClass": "7" },
-    { "slot": "ANDROID_TABLET", "displayClass": "10" },
-    { "slot": "IPHONE", "displayClass": "6.9" },
-    { "slot": "IPAD", "displayClass": "13" }
+    {
+      "slot": "ANDROID_PHONE",
+      "displayClass": "default"
+    },
+    {
+      "slot": "ANDROID_TABLET",
+      "displayClass": "7"
+    },
+    {
+      "slot": "ANDROID_TABLET",
+      "displayClass": "10"
+    },
+    {
+      "slot": "IPHONE",
+      "displayClass": "6.9"
+    },
+    {
+      "slot": "IPAD",
+      "displayClass": "13"
+    }
   ],
   "features": {
     "calendar-month": {
@@ -1116,6 +1131,288 @@
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
       "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 tenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='10'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- DIMENSION_INVALID가 예상되며 fail-closed 정상 동작이다. Read 도구로 직접 확인, 그룹 대시보드 화면(그룹명 '영업 1팀', '팀장님과 통화하기' 등)만 노출되며 실PII 없음. 세트 최소 4장(ANDROID_TABLET.10.minCount=4) 대비 라이브 세트에 이 슬롯도 1장뿐이다."
+    },
+    {
+      "screenshotId": "iphone69-calendar-home-native",
+      "slot": "IPHONE",
+      "displayClass": "6.9",
+      "path": "docs/screenshots/app-store/native-ios/iphone-6.9/01_calendar-home.png",
+      "sha256": "d565786bdca6a3464642889ae165af88466d04f6f351bfab6cf174ce9703025a",
+      "width": 1320,
+      "height": 2868,
+      "orientation": "portrait",
+      "featureIds": [
+        "calendar-month",
+        "home-today-briefing"
+      ],
+      "fixture": "demo-default",
+      "copy": {
+        "headline": "한 달 일정을 한눈에",
+        "body": "캘린더와 오늘 일정을 함께 확인해요",
+        "claimedFeatureIds": [
+          "calendar-month",
+          "home-today-briefing"
+        ]
+      },
+      "sourcePlatform": "ios",
+      "sourceDevice": "iPhone 16 Pro Max (CoreSimulator)",
+      "sourceCapture": "capture://calendar-home",
+      "sourceDimensions": [
+        1320,
+        2868
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [
+        "NATIVE_CAPTURE→COMPOSED_STORE_ASSET: alpha strip only; RGB pixels byte-equivalent; no resize/crop/frame"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "storeUploadState": "NOT_UPLOADED",
+      "status": "CANDIDATE",
+      "qualificationState": "LOCAL_QUALIFIED",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "sourceRawSha256": "8e2d3da71ff31ad9f6ca6ba6a7aae0f0aef487c77f88fd762843dc5a44809aa1",
+      "sourceLocator": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/iphone69-calendar-home-IPHONE.png",
+      "finalLocator": "docs/screenshots/app-store/native-ios/iphone-6.9/01_calendar-home.png",
+      "finalDimensions": [
+        1320,
+        2868
+      ],
+      "finalSha256": "d565786bdca6a3464642889ae165af88466d04f6f351bfab6cf174ce9703025a",
+      "captureDeviceModel": "iPhone 16 Pro Max",
+      "captureDeviceUdid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "captureRuntime": "iOS 26.2",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "visualReview": "PASS",
+      "noAndroidChrome": true,
+      "noDistortion": true,
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+    },
+    {
+      "screenshotId": "iphone69-voice-confirm-native",
+      "slot": "IPHONE",
+      "displayClass": "6.9",
+      "path": "docs/screenshots/app-store/native-ios/iphone-6.9/02_voice-confirm.png",
+      "sha256": "e231a5a03ede4527169f421e8b9a7e434c210d4227798420ca7272155bda9293",
+      "width": 1320,
+      "height": 2868,
+      "orientation": "portrait",
+      "featureIds": [
+        "voice-schedule-input"
+      ],
+      "fixture": "demo-default",
+      "copy": {
+        "headline": "말하면 일정이 됩니다",
+        "body": "날짜·시간·장소를 자동으로 정리해요",
+        "claimedFeatureIds": [
+          "voice-schedule-input"
+        ]
+      },
+      "sourcePlatform": "ios",
+      "sourceDevice": "iPhone 16 Pro Max (CoreSimulator)",
+      "sourceCapture": "capture://voice-confirm",
+      "sourceDimensions": [
+        1320,
+        2868
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [
+        "NATIVE_CAPTURE→COMPOSED_STORE_ASSET: alpha strip only; RGB pixels byte-equivalent; no resize/crop/frame"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "storeUploadState": "NOT_UPLOADED",
+      "status": "CANDIDATE",
+      "qualificationState": "LOCAL_QUALIFIED",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "sourceRawSha256": "88b47dae46999b120959a25bfbf91c86e11c803804d493c54281f641365f793c",
+      "sourceLocator": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/iphone69-voice-confirm-IPHONE.png",
+      "finalLocator": "docs/screenshots/app-store/native-ios/iphone-6.9/02_voice-confirm.png",
+      "finalDimensions": [
+        1320,
+        2868
+      ],
+      "finalSha256": "e231a5a03ede4527169f421e8b9a7e434c210d4227798420ca7272155bda9293",
+      "captureDeviceModel": "iPhone 16 Pro Max",
+      "captureDeviceUdid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "captureRuntime": "iOS 26.2",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "visualReview": "PASS",
+      "noAndroidChrome": true,
+      "noDistortion": true,
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+    },
+    {
+      "screenshotId": "iphone69-group-native",
+      "slot": "IPHONE",
+      "displayClass": "6.9",
+      "path": "docs/screenshots/app-store/native-ios/iphone-6.9/03_group.png",
+      "sha256": "e12033d3aadc3fdd189301821a5a259a067f040d96574724b6e9b0bfaae82e72",
+      "width": 1320,
+      "height": 2868,
+      "orientation": "portrait",
+      "featureIds": [
+        "group-dashboard"
+      ],
+      "fixture": "demo-default",
+      "copy": {
+        "headline": "그룹 일정을 한눈에",
+        "body": "팀과 함께 일정을 관리해요",
+        "claimedFeatureIds": [
+          "group-dashboard"
+        ]
+      },
+      "sourcePlatform": "ios",
+      "sourceDevice": "iPhone 16 Pro Max (CoreSimulator)",
+      "sourceCapture": "capture://group",
+      "sourceDimensions": [
+        1320,
+        2868
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [
+        "NATIVE_CAPTURE→COMPOSED_STORE_ASSET: alpha strip only; RGB pixels byte-equivalent; no resize/crop/frame"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "storeUploadState": "NOT_UPLOADED",
+      "status": "CANDIDATE",
+      "qualificationState": "LOCAL_QUALIFIED",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "sourceRawSha256": "e3a0256a6da81dac3db94829c3cb8c84ce724e7deec16080c1b4ed540ccc492d",
+      "sourceLocator": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/iphone69-group-IPHONE.png",
+      "finalLocator": "docs/screenshots/app-store/native-ios/iphone-6.9/03_group.png",
+      "finalDimensions": [
+        1320,
+        2868
+      ],
+      "finalSha256": "e12033d3aadc3fdd189301821a5a259a067f040d96574724b6e9b0bfaae82e72",
+      "captureDeviceModel": "iPhone 16 Pro Max",
+      "captureDeviceUdid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "captureRuntime": "iOS 26.2",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "visualReview": "PASS",
+      "noAndroidChrome": true,
+      "noDistortion": true,
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+    },
+    {
+      "screenshotId": "ipad13-calendar-native",
+      "slot": "IPAD",
+      "displayClass": "13",
+      "path": "docs/screenshots/app-store/native-ios/ipad-13/01_calendar.png",
+      "sha256": "8b9d08c159a0a1f33a4195a4fe5120b5c509e4177ba35110e3b06d35a95a8e34",
+      "width": 2064,
+      "height": 2752,
+      "orientation": "portrait",
+      "featureIds": [
+        "calendar-month"
+      ],
+      "fixture": "demo-default",
+      "copy": {
+        "headline": "한 달 일정을 한눈에",
+        "body": "캘린더와 일정 상세를 함께 확인해요",
+        "claimedFeatureIds": [
+          "calendar-month"
+        ]
+      },
+      "sourcePlatform": "ios",
+      "sourceDevice": "iPad Pro 13-inch (M4) (CoreSimulator)",
+      "sourceCapture": "capture://calendar",
+      "sourceDimensions": [
+        2064,
+        2752
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [
+        "NATIVE_CAPTURE→COMPOSED_STORE_ASSET: alpha strip only; RGB pixels byte-equivalent; no resize/crop/frame"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "storeUploadState": "NOT_UPLOADED",
+      "status": "CANDIDATE",
+      "qualificationState": "LOCAL_QUALIFIED",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "sourceRawSha256": "8a1bee11eda8933fd89372481a1620083e135e6710bd2e3819fe08c86d74bd04",
+      "sourceLocator": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/ipad13-calendar-IPAD.png",
+      "finalLocator": "docs/screenshots/app-store/native-ios/ipad-13/01_calendar.png",
+      "finalDimensions": [
+        2064,
+        2752
+      ],
+      "finalSha256": "8b9d08c159a0a1f33a4195a4fe5120b5c509e4177ba35110e3b06d35a95a8e34",
+      "captureDeviceModel": "iPad Pro 13-inch (M4)",
+      "captureDeviceUdid": "E981E79A-BFAD-42DC-A94F-0E5C7B58E555",
+      "captureRuntime": "iOS 26.2",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "visualReview": "PASS",
+      "noAndroidChrome": true,
+      "noDistortion": true,
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+    },
+    {
+      "screenshotId": "ipad13-group-native",
+      "slot": "IPAD",
+      "displayClass": "13",
+      "path": "docs/screenshots/app-store/native-ios/ipad-13/02_group.png",
+      "sha256": "0b112f3ac5fbf90302d5ada195075e7af451775e129336ce4f68d0cf69c056a8",
+      "width": 2064,
+      "height": 2752,
+      "orientation": "portrait",
+      "featureIds": [
+        "group-dashboard"
+      ],
+      "fixture": "demo-default",
+      "copy": {
+        "headline": "그룹 일정을 한눈에",
+        "body": "팀과 함께 일정을 관리해요",
+        "claimedFeatureIds": [
+          "group-dashboard"
+        ]
+      },
+      "sourcePlatform": "ios",
+      "sourceDevice": "iPad Pro 13-inch (M4) (CoreSimulator)",
+      "sourceCapture": "capture://group",
+      "sourceDimensions": [
+        2064,
+        2752
+      ],
+      "marketingTemplate": null,
+      "chromeRemoved": false,
+      "transformations": [
+        "NATIVE_CAPTURE→COMPOSED_STORE_ASSET: alpha strip only; RGB pixels byte-equivalent; no resize/crop/frame"
+      ],
+      "piiReviewed": true,
+      "piiFindings": [],
+      "lastVerifiedSourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "storeUploadState": "NOT_UPLOADED",
+      "status": "CANDIDATE",
+      "qualificationState": "LOCAL_QUALIFIED",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "sourceRawSha256": "322db9ff3c6a2bf9b47ca099f68a5ff9def09a7265f07685e04a0c0e39ccf755",
+      "sourceLocator": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/ipad13-group-IPAD.png",
+      "finalLocator": "docs/screenshots/app-store/native-ios/ipad-13/02_group.png",
+      "finalDimensions": [
+        2064,
+        2752
+      ],
+      "finalSha256": "0b112f3ac5fbf90302d5ada195075e7af451775e129336ce4f68d0cf69c056a8",
+      "captureDeviceModel": "iPad Pro 13-inch (M4)",
+      "captureDeviceUdid": "E981E79A-BFAD-42DC-A94F-0E5C7B58E555",
+      "captureRuntime": "iOS 26.2",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "visualReview": "PASS",
+      "noAndroidChrome": true,
+      "noDistortion": true,
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
     }
   ]
 }
