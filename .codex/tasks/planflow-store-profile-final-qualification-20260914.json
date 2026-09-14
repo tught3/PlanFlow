@@ -1,13 +1,13 @@
 {
   "taskId": "planflow-store-profile-final-qualification-20260914",
-  "status": "REWORK_APPLIED_PENDING_REREVIEW",
+  "status": "COMPLETE",
   "request": "Consolidate the privacy publication chain and native iOS screenshot qualification chain onto latest origin/main while preserving protected Store and Android boundaries.",
   "source": {
     "base": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
     "originMain": "5051a5f2b547ca6f3adcc4d2e8b2a274fe3fcb32",
     "worktree": "E:/FluxStudio-worktrees/planflow/planflow-store-intelligence-replay-clean-20260913-v2",
     "branch": "codex/planflow-store-profile-final-qualification-20260914",
-    "head": "729178b0b7479cd72b8e98bf0d8e3025b48a709c"
+    "head": "cebd698dd3acebb2b6f998878ef18ea8791a31ef"
   },
   "roles": {
     "explorer": {
@@ -99,8 +99,8 @@
     },
     "integrator": {
       "agent": "store_profile_final_integrator",
-      "status": "FINAL_PENDING",
-      "result": "Final Integrator must inspect the current final diff and ledger before completion."
+      "status": "FINAL_COMPLETE",
+      "result": "FINAL_INTEGRATOR_REPORT: COMPLETE. Final committed/pushed head cebd698dd3acebb2b6f998878ef18ea8791a31ef inspected with Reviewer FINAL_APPROVED and BLOCKER/HIGH/MEDIUM/LOW all zero. Readiness split: profile YES, native screenshot 3+2 YES, project isolation YES; impact/policy-engine/next-release automation NO because external linked-worktree repoSubpath resolver remains blocked. Store mutations=0, Build23 and Android production protected. Next step: FluxStore owner fixes the external resolver, reruns A-D/policy/automation evidence, then separately authorizes any Store metadata operation; no current submission mutation."
     }
   },
   "integratedChains": {
@@ -189,5 +189,5 @@
     ".codex/tasks/planflow-store-profile-final-qualification-20260914.json"
   ],
   "externalBlocker": "Linked-worktree shared generated registrant/cache changes remain foreign and must not be reverted by this task.",
-  "remainingRisk": "Independent Reviewer and parent Integrator must inspect the final current diff. This worker did not commit or push. Current Build23 Store metadata remains protected and native assets remain NOT_UPLOADED."
+  "remainingRisk": "Current Build23 Store metadata remains protected and native assets remain NOT_UPLOADED. External FluxStore repoSubpath resolver remains the only readiness blocker for impact/policy/automation gates."
 }
