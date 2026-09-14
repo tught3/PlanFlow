@@ -66,7 +66,7 @@ def png_info(path: Path) -> tuple[int, int, bool]:
     )
     if width <= 0 or height <= 0:
         raise ValueError(f"invalid PNG dimensions: {path.name}")
-    if depth != 8 or color_type not in (2, 6):
+    if depth not in (8, 16) or color_type not in (2, 6):
         raise ValueError(
             f"unsupported screenshot PNG depth/type {depth}/{color_type}: {path.name}"
         )
@@ -80,7 +80,9 @@ def png_info(path: Path) -> tuple[int, int, bool]:
     except zlib.error as error:
         raise ValueError(f"invalid IDAT stream: {path.name}: {error}") from error
 
-    bytes_per_pixel = 3 if color_type == 2 else 4
+    channels = 3 if color_type == 2 else 4
+    sample_bytes = depth // 8
+    bytes_per_pixel = channels * sample_bytes
     row_bytes = width * bytes_per_pixel
     expected_length = height * (row_bytes + 1)
     if len(decoded) != expected_length:
@@ -113,8 +115,15 @@ def png_info(path: Path) -> tuple[int, int, bool]:
             else:
                 reconstructed = value + _paeth(left, above, upper_left)
             row[index] = reconstructed & 0xFF
-        if color_type == 6 and any(row[index] != 255 for index in range(3, row_bytes, 4)):
-            opaque = False
+        if color_type == 6:
+            alpha_bytes = sample_bytes
+            alpha_offset = 3 * sample_bytes
+            opaque_value = b"\xff" * sample_bytes
+            if any(
+                row[index:index + alpha_bytes] != opaque_value
+                for index in range(alpha_offset, row_bytes, bytes_per_pixel)
+            ):
+                opaque = False
         prior = row
     return width, height, opaque
 

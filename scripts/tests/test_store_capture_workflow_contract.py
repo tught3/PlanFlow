@@ -8,6 +8,8 @@ import unittest
 import zlib
 from pathlib import Path
 
+from scripts.ios.validate_store_screenshots import png_info
+
 ROOT = Path(__file__).parents[2]
 WORKFLOW = (ROOT / '.github/workflows/store-screenshot-capture.yml').read_text()
 PLAN = json.loads((ROOT / 'config/store/capture-plan.json').read_text())
@@ -33,6 +35,81 @@ def _valid_png(width, height, marker):
         + _png_chunk(b'IDAT', zlib.compress(pixels, level=9))
         + _png_chunk(b'IEND', b'')
     )
+
+
+def _rgba16_png(alpha):
+    """Return a one-pixel RGBA PNG using 16-bit samples."""
+    pixels = b'\x00' + struct.pack('>HHHH', 0x1234, 0x5678, 0x9ABC, alpha)
+    ihdr = struct.pack('>IIBBBBB', 1, 1, 16, 6, 0, 0, 0)
+    return (
+        b'\x89PNG\r\n\x1a\n'
+        + _png_chunk(b'IHDR', ihdr)
+        + _png_chunk(b'IDAT', zlib.compress(pixels, level=9))
+        + _png_chunk(b'IEND', b'')
+    )
+
+
+def _filtered_png(depth, color_type, filter_type, alpha=None):
+    """Build a small PNG whose rows use the requested PNG filter."""
+    channels = 3 if color_type == 2 else 4
+    sample_bytes = depth // 8
+    bytes_per_pixel = channels * sample_bytes
+    row_bytes = 3 * bytes_per_pixel
+    rows = []
+    for row_number in range(2):
+        row = bytearray(row_bytes)
+        for index in range(0, row_bytes, sample_bytes):
+            value = (17 + row_number * 29 + index * 3) & 0xFF
+            row[index:index + sample_bytes] = bytes(
+                [value] * sample_bytes
+            )
+        if color_type == 6:
+            alpha_value = (1 << depth) - 1 if alpha is None else alpha
+            alpha_bytes = alpha_value.to_bytes(sample_bytes, 'big')
+            row[3 * sample_bytes:4 * sample_bytes] = alpha_bytes
+            row[7 * sample_bytes:8 * sample_bytes] = alpha_bytes
+            row[11 * sample_bytes:12 * sample_bytes] = alpha_bytes
+        rows.append(row)
+
+    encoded = bytearray()
+    prior = bytearray(row_bytes)
+    for row in rows:
+        filtered = bytearray(row_bytes)
+        for index, value in enumerate(row):
+            left = row[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            above = prior[index]
+            upper_left = prior[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            if filter_type == 0:
+                predictor = 0
+            elif filter_type == 1:
+                predictor = left
+            elif filter_type == 2:
+                predictor = above
+            elif filter_type == 3:
+                predictor = (left + above) // 2
+            else:
+                predictor = _paeth(left, above, upper_left)
+            filtered[index] = (value - predictor) & 0xFF
+        encoded.extend((filter_type,))
+        encoded.extend(filtered)
+        prior = row
+    ihdr = struct.pack('>IIBBBBB', 3, 2, depth, color_type, 0, 0, 0)
+    return (
+        b'\x89PNG\r\n\x1a\n'
+        + _png_chunk(b'IHDR', ihdr)
+        + _png_chunk(b'IDAT', zlib.compress(bytes(encoded), level=9))
+        + _png_chunk(b'IEND', b'')
+    )
+
+
+def _paeth(left, above, upper_left):
+    estimate = left + above - upper_left
+    distances = (
+        (abs(estimate - left), left),
+        (abs(estimate - above), above),
+        (abs(estimate - upper_left), upper_left),
+    )
+    return min(distances)[1]
 
 
 class ScreenshotCaptureContractTests(unittest.TestCase):
@@ -218,6 +295,70 @@ class ScreenshotCaptureContractTests(unittest.TestCase):
                 capture_output=True, text=True, check=False,
             )
             self.assertNotEqual(result.returncode, 0)
+
+    def test_validator_accepts_opaque_16_bit_rgba_png(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'opaque.png'
+            path.write_bytes(_rgba16_png(0xFFFF))
+            self.assertEqual(png_info(path), (1, 1, True))
+
+    def test_validator_rejects_partial_alpha_16_bit_rgba_png(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'partial-alpha.png'
+            path.write_bytes(_rgba16_png(0xFFFE))
+            self.assertEqual(png_info(path), (1, 1, False))
+
+    def test_png_info_decodes_all_supported_depth_types_and_filters(self):
+        for depth in (8, 16):
+            for color_type in (2, 6):
+                for filter_type in range(5):
+                    with self.subTest(depth=depth, color_type=color_type, filter=filter_type):
+                        with tempfile.TemporaryDirectory() as temp:
+                            path = Path(temp) / 'matrix.png'
+                            path.write_bytes(_filtered_png(depth, color_type, filter_type))
+                            self.assertEqual(png_info(path), (3, 2, True))
+
+    def test_png_info_rejects_nonopaque_rgba_at_both_supported_depths(self):
+        for depth, alpha in ((8, 254), (16, 0xFFFE)):
+            with self.subTest(depth=depth):
+                with tempfile.TemporaryDirectory() as temp:
+                    path = Path(temp) / 'partial-alpha.png'
+                    path.write_bytes(_filtered_png(depth, 6, 4, alpha))
+                    self.assertEqual(png_info(path), (3, 2, False))
+
+    def test_png_info_rejects_invalid_filter(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'invalid-filter.png'
+            png = bytearray(_filtered_png(8, 2, 0))
+            idat = png.index(b'IDAT')
+            payload_start = idat + 4
+            payload_length = struct.unpack('>I', png[idat - 4:idat])[0]
+            payload = zlib.decompress(png[payload_start:payload_start + payload_length])
+            replacement = zlib.compress(bytes((5,)) + payload[1:], level=9)
+            rebuilt = png[:idat - 4] + _png_chunk(b'IDAT', replacement)
+            rebuilt += _png_chunk(b'IEND', b'')
+            path.write_bytes(rebuilt)
+            with self.assertRaisesRegex(ValueError, 'invalid PNG filter'):
+                png_info(path)
+
+    def test_png_info_rejects_crc_mismatch(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'bad-crc.png'
+            png = bytearray(_filtered_png(8, 2, 0))
+            png[-1] ^= 1
+            path.write_bytes(png)
+            with self.assertRaisesRegex(ValueError, 'CRC mismatch'):
+                png_info(path)
+
+    def test_png_info_rejects_missing_or_truncated_iend(self):
+        for suffix in ('missing', 'truncated'):
+            with self.subTest(suffix=suffix):
+                with tempfile.TemporaryDirectory() as temp:
+                    path = Path(temp) / f'{suffix}.png'
+                    png = _filtered_png(8, 2, 0)
+                    path.write_bytes(png[:-12] if suffix == 'missing' else png[:-1])
+                    with self.assertRaisesRegex(ValueError, 'missing IEND|truncated PNG chunk'):
+                        png_info(path)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 {
   "taskId": "planflow-ios-native-screenshot-baseline-20260913",
-  "status": "CI_RUN3_PENDING",
+  "status": "CI_RUN3_CAPTURED_VALIDATOR_SOURCE_FIXED_RERUN_PENDING",
   "base": {
     "head": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
     "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
@@ -75,11 +75,11 @@
     }
   },
   "capture": {
-    "ciStatus": "RUN_34764613642_FAILED_AFTER_3_IPHONE_CAPTURES_REWORK_APPLIED",
+    "ciStatus": "RUN_34792486219_CAPTURED_5_NATIVE_ASSETS_VALIDATOR_SOURCE_FIX_RERUN_PENDING",
     "userCaptureRequired": false,
     "userManualCaptureCount": 0,
-    "iphoneNativeAssets": 0,
-    "ipadNativeAssets": 0,
+    "iphoneNativeAssets": 3,
+    "ipadNativeAssets": 2,
     "qualification": "PENDING"
   },
   "evidence": {
@@ -104,11 +104,17 @@
       "qualification": "PARTIAL_REJECTED"
     },
     "ciRun3": {
-      "status": "PENDING",
+      "runId": 34792486219,
+      "status": "CAPTURED_5_NATIVE_ASSETS_VALIDATOR_RERUN_PENDING",
+      "sourceSha": "pending scoped fix commit",
+      "result": "CI captured all 3 iPhone and 2 iPad native simulator PNGs; manifest present",
       "plannedFixes": "ConfirmScreen injected local nowProvider for deterministic cross-day guard; iPad personal agenda readiness uses stable event-id ValueKey",
-      "localContractTests": "PASS 18 tests",
-      "flutterAnalyze": "PASS; exit 0, no issues after latest fixes"
+      "localContractTests": "PASS 25 tests including 8/16-bit RGB/RGBA filter matrix and malformed PNG regressions",
+      "flutterAnalyze": "PASS; exit 0, no issues after latest fixes",
+      "validatorSourceFix": "Supports PNG depth 8/16 with byte-accurate filtering and 8/16-bit RGBA opacity checks",
+      "validatorArtifactResult": "PASS count=5; run3 artifact SHA256s recorded in execution output after 16-bit PNG support fix",
+      "visualReview": "PENDING independent final review"
     }
   },
-  "nextStep": "Commit and push scoped run 3 fixes, dispatch run 3, import and visually qualify five native artifacts."
+  "nextStep": "Record validator source fix and run3 artifact evidence, then import and visually qualify five native artifacts."
 }
