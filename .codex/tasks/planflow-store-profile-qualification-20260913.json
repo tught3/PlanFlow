@@ -1,0 +1,116 @@
+{
+  "taskId": "planflow-store-profile-qualification-20260913",
+  "mode": "READ_ONLY_QUALIFICATION",
+  "status": "COMPLETE_QUALIFICATION_NOT_READY",
+  "source": {
+    "currentHead": "d6f34014c4b8659eeea1f82f83e9af6aa12642e9",
+    "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "worktree": "DIRTY_AHEAD_12_BEHIND_3",
+    "foreignDirtyPreserved": true,
+    "codeChanges": "NONE"
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "assignment": "Inspect current PlanFlow Store Profile, screenshots, source and qualification risks without mutation.",
+      "result": "UNAVAILABLE: account rejected the mapped model; root performed the bounded read-only fallback."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "assignment": "Define read-only qualification requirements, evidence gates and prohibited mutations.",
+      "result": "No repository implementation item; preserve Build23, Build25, Android production and Rewarded boundary. External/store evidence is required before readiness claims."
+    },
+    {
+      "role": "Implementer",
+      "agent": "NOT_APPLICABLE",
+      "mappedModel": "NOT_APPLICABLE",
+      "reasoningEffort": "NOT_APPLICABLE",
+      "assignment": "No product-code implementation was required for this qualification.",
+      "changedFiles": []
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mappedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "assignment": "Run Store Intelligence qualification tests read-only.",
+      "result": "UNAVAILABLE: account rejected the mapped model; root performed the bounded test fallback.",
+      "evidence": [
+        "python -m unittest scripts.tests.test_store_readback_asc scripts.tests.test_store_readback_workflow_contract scripts.tests.test_store_capture_workflow_contract => exit 0, 87 passed",
+        "python -m pytest -q tests/test_impact.py tests/test_screenshots_impact.py => exit 0, 40 passed",
+        "python -m pytest -q tests/test_isolation.py tests/test_binding.py => exit 0, 32 passed",
+        "python -m pytest -q tests/test_privacy_verify.py tests/test_protection.py => exit 0, 59 passed",
+        "selected plan/policy tests => 8 passed; real-repo no-mutation integration assertion timed out while enumerating all ignored files before invoking fluxstore",
+        "fluxstore plan --mode dry-run --assert-zero-mutation => exit 0, mutations android=0 ios=0 submission=0",
+        "git diff --check => exit 0"
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "assignment": "Independently review authoritative origin/main qualification evidence and the final current diff.",
+      "result": "PASS; BLOCKER=0 HIGH=0 MEDIUM=0 LOW=0. An initial stale-local-HEAD isolation finding was withdrawn after re-reviewing origin/main a908e469, which contains both workflow and collector bundle guards."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "assignment": "Integrate the authoritative source, live readback, screenshot lineage, privacy, tests and independent review into the terminal qualification decision.",
+      "result": "PARTIAL / NOT_READY. The Store Intelligence isolation, impact diff and policy engine gates pass, but the PlanFlow source profile, privacy/App Privacy evidence and screenshot baseline remain incomplete. No product or Store mutation was authorized or performed."
+    }
+  ],
+  "currentEvidence": {
+    "ascReadbackRun": "34741099757",
+    "ascReadbackRunUrl": "https://github.com/tught3/PlanFlow/actions/runs/34741099757",
+    "ascReadbackSourceSha": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "ascMutationCount": 0,
+    "ascAppId": "6806790412",
+    "ascBundleId": "com.fluxstudio.planflow",
+    "ascBuild": "23",
+    "ascSubmissionState": "WAITING_FOR_REVIEW",
+    "ascPrivacyPolicyUrl": "https://fluxstudio.co.kr/privacy",
+    "appPrivacyReadback": "UNAVAILABLE",
+    "secondaryCategory": "UNKNOWN",
+    "storeScreenshotChecksumMatches": {
+      "iphone": "8_OF_8",
+      "ipad": "2_OF_2"
+    },
+    "cleanOriginPlan": {
+      "sourceSha": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+      "mutations": 0,
+      "blockers": 162,
+      "decisions": 111
+    },
+    "storeMutations": 0,
+    "rewardedState": "EXTERNAL_DEPENDENCY_HOLD"
+  },
+  "qualification": {
+    "planflowSourceProfile": "PARTIAL",
+    "privacyPolicy": "MISMATCH",
+    "appPrivacy": "PARTIAL",
+    "screenshotBaseline": "PARTIAL",
+    "projectIsolation": "PASS",
+    "storeImpactDiff": "PASS",
+    "storePolicyEngine": "PASS",
+    "planflowStoreProfileReady": false,
+    "planflowScreenshotBaselineReady": false,
+    "nextReleaseAutomationReady": false
+  },
+  "review": {
+    "reviewer": "APPROVE",
+    "blocker": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "integrator": "PARTIAL_NOT_READY"
+  }
+}

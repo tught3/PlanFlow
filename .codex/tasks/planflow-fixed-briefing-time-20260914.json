@@ -1,0 +1,127 @@
+{
+  "task_id": "planflow-fixed-briefing-time-20260914",
+  "status": "READY_WITH_DELIVERY_GATE_EXCEPTION",
+  "updated_at": "2026-09-14T00:31:00+09:00",
+  "request": "설정 탭에서 지정한 모닝 브리핑 시각에만 알림이 울리고, 시간 변경·앱 재개·알람 콜백 재예약도 그 시각을 정확히 따르도록 수정한다.",
+  "classification": "general",
+  "scope": {
+    "allowed": [
+      "lib/services/briefing_scheduler_service.dart",
+      "lib/screens/shell_screen.dart",
+      "test/services/briefing_scheduler_service_test.dart",
+      "test/screens/settings_screen_test.dart",
+      "test/screens/shell_screen_briefing_resume_test.dart",
+      ".codex/tasks/planflow-fixed-briefing-time-20260914.json"
+    ],
+    "forbidden": ["production data", "deployment", "unrelated dirty files"]
+  },
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "고정 시각 브리핑의 코드 경로와 위험 조사",
+      "result": "UNAVAILABLE: host rejected the deployed gpt-5.4-mini role for this ChatGPT account before it started. Root analysis was retained from the parent read-only investigation."
+    },
+    {
+      "role": "Fallback Explorer",
+      "agent": "explorer",
+      "mapped_model": "host default",
+      "reasoning_effort": "n/a",
+      "assignment": "고정 시각 브리핑의 설정, 앱 재개, 콜백 재예약 호출 경로를 읽기 전용으로 교차 확인",
+      "result": "READ_ONLY: settings -> scheduleDaily, shell resume -> saved settings, callback -> rescheduleNextBriefing을 확인했고 기존 외부 일정 선행 계산이 모닝 브리핑 시각을 덮어쓴다는 원인을 확인했다."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "요구사항, 비범위, 허용 파일, 검증 게이트 수립",
+      "result": "PLAN: morningBriefingAt을 scheduleDaily/rescheduleNextBriefing의 유일한 모닝 예약 기준으로 하고, shell resume에 briefingEnabled를 전달하며 출발/스마트 알람은 보존한다."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "예약 서비스의 고정 시각 보장 및 회귀 테스트 구현",
+      "changed_files": [
+        "lib/services/briefing_scheduler_service.dart",
+        "test/services/briefing_scheduler_service_test.dart"
+      ],
+      "result": "IMPLEMENTED: 외부 일정 준비시간 기반 모닝 시각 선행 계산을 제거하고, 신규 예약과 콜백 재예약을 설정 시각으로 통일했다. 비활성 설정/원격 플래그에서는 기존 알람을 취소하도록 보강했다.",
+      "test_evidence": "flutter test test/services/briefing_scheduler_service_test.dart (exit 0; 17 tests); flutter analyze target files (no issues)"
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "medium",
+      "assignment": "shell 재개 시 저장된 briefingEnabled 전달 독립 점검",
+      "result": "UNAVAILABLE: host rejected the deployed gpt-5.4-mini role for this ChatGPT account before it started. Parent applied and locally verified the narrowly scoped shell/test change."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "reasoning_effort": "low",
+      "assignment": "정적 분석 및 대상 테스트 실행",
+      "result": "UNAVAILABLE: host rejected the deployed gpt-5.4-mini role for this ChatGPT account before it started. Parent executed the planned commands locally and recorded their exit-code evidence below."
+    },
+    {
+      "role": "Independent Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "최종 diff의 독립 리뷰",
+      "result": "NO_REPORT: role was allowed to inspect the shared worktree for 165 seconds but did not return a report; it was stopped without source changes. Parent rechecked current diff and test evidence, but this is not a substitute for the named independent-review report."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "assignment": "최종 diff 및 작업 기록 통합 판정",
+      "result": "NO_REPORT: role was allowed to inspect the shared worktree for 105 seconds but did not return a report; it was stopped without source changes. It cannot declare COMPLETE."
+    }
+  ],
+  "plan": [
+    "모닝 브리핑 시간 계산에서 외부 일정/준비시간 선행 조정을 제거한다.",
+    "설정 변경, 앱 재개, 알람 콜백 재예약이 모두 저장된 설정 시각과 briefingEnabled를 사용하게 한다.",
+    "이른 외부 일정, 설정 시각 변경, 비활성 재예약 회귀를 테스트한다."
+  ],
+  "verification": [
+    {
+      "command": "dart format --output=none lib/services/briefing_scheduler_service.dart lib/screens/shell_screen.dart test/services/briefing_scheduler_service_test.dart test/screens/settings_screen_test.dart test/screens/shell_screen_briefing_resume_test.dart",
+      "exit_code": 0,
+      "result": "5 files formatted; 2 target files normalized"
+    },
+    {
+      "command": "flutter analyze lib/services/briefing_scheduler_service.dart lib/screens/shell_screen.dart test/services/briefing_scheduler_service_test.dart test/screens/settings_screen_test.dart test/screens/shell_screen_briefing_resume_test.dart",
+      "exit_code": 0,
+      "result": "No issues found"
+    },
+    {
+      "command": "flutter test test/services/briefing_scheduler_service_test.dart",
+      "exit_code": 0,
+      "result": "17 tests passed"
+    },
+    {
+      "command": "flutter test test/screens/settings_screen_test.dart test/screens/shell_screen_briefing_resume_test.dart",
+      "exit_code": 0,
+      "result": "31 tests passed"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "result": "No whitespace errors; pre-existing CRLF advisory warnings only"
+    }
+  ],
+  "final_verdict": {
+    "source_status": "READY",
+    "delivery_gate": "EXCEPTION: named Explorer, Simple Implementer, and Test Executor were host-rejected because their deployed gpt-5.4-mini mapping is unsupported by this ChatGPT account; Independent Reviewer and Integrator produced no report before bounded timeouts. Do not treat this as a named-role COMPLETE.",
+    "runtime_status": "UNKNOWN: no authorized Android device was attached, so current on-device alarm manager state and delivered notification time could not be inspected.",
+    "parent_recheck": "Current diff confines functional changes to the scheduler and shell setting propagation. Targeted formatting, static analysis, 17 service tests, 31 screen tests, and git diff --check passed."
+  }
+}

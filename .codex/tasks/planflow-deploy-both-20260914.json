@@ -1,0 +1,31 @@
+{
+  "task_id": "planflow-deploy-both-20260914",
+  "status": "ANDROID_UPLOAD_RUNNING",
+  "updated_at": "2026-09-14T00:40:00+09:00",
+  "request": "현재 수정된 PlanFlow를 iOS와 Google Play에 배포한다. 가능한 플랫폼부터 실행하고 불가능한 플랫폼은 억지로 진행하지 않는다.",
+  "platforms": {
+    "android_google_play": {
+      "target": "production",
+      "script": "scripts/deploy-play-production.ps1",
+      "preflight": "PASS",
+      "status": "RUNNING"
+    },
+    "ios_testflight": {
+      "target": "TestFlight",
+      "workflow": ".github/workflows/ios-release.yml",
+      "status": "PENDING_REMOTE_SOURCE"
+    }
+  },
+  "scope": {
+    "preserve_unrelated_dirty_files": true,
+    "no_destructive_recovery": true
+  },
+  "evidence": [
+    {
+      "command": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\deploy-play-production.ps1",
+      "exit_code": 0,
+      "result": "production preflight passed; no upload in preflight mode"
+    }
+  ],
+  "final_verdict": null
+}
