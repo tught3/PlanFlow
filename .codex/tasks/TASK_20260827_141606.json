@@ -1,0 +1,176 @@
+{
+  "task_id": "TASK_20260827_141606",
+  "original_request": "공휴일 굵기 해제, 중요 일정만 굵게, 반복 일정 이모지 제거, AI 일정대화 종료 버튼, 무료 소진 안내, 광고 표시 지연 개선",
+  "status": "SOURCE_COMPLETE_REVIEW_PASS_ANDROID_BUILD_BLOCKED",
+  "classification": "ADVANCED",
+  "current_commit": "ec03d8d322b3e2b4530e6b1c9a2a3d9153a926a3",
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Read-only investigation of calendar, voice conversation, entitlement, rewarded-ad, and home-widget UI paths.",
+      "result": "Identified calendar holiday/title/recurrence presentation paths, reusable safe voice-exit flow, exhausted-free ad-dialog path, and ad initialization points. No product files changed.",
+      "changed_files": [],
+      "tests": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Define scoped UI implementation and verification gates.",
+      "result": "Planned calendar typography and recurrence-marker removal, explicit safe AI-conversation exit, free-exhaustion guidance, and non-blocking rewarded-ad readiness while preserving entitlement and fail-closed reward contracts.",
+      "changed_files": [],
+      "tests": [
+        "dart format --set-exit-if-changed",
+        "scoped Flutter tests",
+        "scoped flutter analyze",
+        "git diff --check",
+        "Android compile verification"
+      ]
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement calendar presentation, home-widget alignment, and non-blocking rewarded-ad readiness/watchdog behavior.",
+      "result": "Implemented normal-weight holiday labels, critical-only title emphasis, recurrence-marker removal, and consent-gated best-effort rewarded-ad readiness/watchdog behavior while retaining fail-closed reward handling.",
+      "changed_files": [
+        "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+        "lib/screens/calendar/calendar_style_contract.dart",
+        "lib/screens/calendar/calendar_widgets.dart",
+        "lib/screens/home/home_widgets.dart",
+        "lib/services/ad_service.dart",
+        "lib/widgets/rewarded_ad_dialog.dart",
+        "test/screens/calendar_screen_test.dart",
+        "test/screens/home_screen_test.dart",
+        "test/services/ad_service_init_flow_test.dart",
+        "test/services/home_widget_service_test.dart"
+      ],
+      "tests": [
+        "targeted calendar, home-widget, and ad-service tests (exit 0)",
+        "dart format --set-exit-if-changed (exit 0)",
+        "git diff --check (exit 0)"
+      ]
+    },
+    {
+      "role": "Simple Implementer",
+      "agent": "flux_simple_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Implement explicit AI-conversation exit and exhausted-free guidance.",
+      "result": "Added an explicit disabled-while-exiting end button using the existing safe confirmation/cleanup flow, plus clear free-quota-exhaustion and rewarded-ad continuation guidance.",
+      "changed_files": [
+        "lib/screens/voice/voice_conversation_screen.dart",
+        "lib/services/voice_conversation_ad_gate.dart",
+        "lib/widgets/voice_conversation_ad_dialog.dart",
+        "test/screens/voice_conversation_screen_test.dart",
+        "test/widgets/voice_conversation_ad_dialog_test.dart"
+      ],
+      "tests": [
+        "targeted voice conversation and ad-dialog tests (exit 0)",
+        "dart format --set-exit-if-changed (exit 0)",
+        "git diff --check (exit 0)"
+      ]
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Independently execute final scoped format, Flutter test, analyzer, diff, and Android compile verification.",
+      "result": "Final scoped source verification passed: formatter exit 0 for the two final test files, 122 scoped Flutter tests exit 0, scoped analyzer exit 0 against current-equivalent source, and git diff --check exit 0. Android compile did not reach the Kotlin task graph because required android/key.properties is absent.",
+      "changed_files": [],
+      "tests": [
+        "dart format --set-exit-if-changed test/screens/voice_conversation_screen_test.dart test/services/ad_service_init_flow_test.dart (exit 0)",
+        "scoped Flutter tests (122 passed, exit 0)",
+        "scoped flutter analyze (exit 0; source-equivalent to final commit)",
+        "git diff --check (exit 0)",
+        "Android compile (exit 1 before Kotlin task graph; blocked by missing android/key.properties)"
+      ]
+    },
+    {
+      "role": "Failure Analyst",
+      "agent": "flux_failure_analyst",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "assignment": "Diagnose and bound failed verification without changing unrelated source.",
+      "result": "Confirmed the Android compile failure is environmental/configuration-bound: android/key.properties is absent, so Gradle stops before the Kotlin task graph. This is not evidence of a source regression and cannot be remediated without credential/configuration authority.",
+      "changed_files": [],
+      "tests": [
+        "Android compile failure inspection (exit 1; missing android/key.properties before Kotlin tasks)"
+      ]
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "assignment": "Independent read-only review of the final current Git diff and scoped contracts.",
+      "result": "PASS. No BLOCKER or HIGH findings. Medium residual risk: the rewarded-ad overlay watchdog has scoped coverage, but no end-to-end device/ad-SDK timing exercise in this task.",
+      "changed_files": [],
+      "tests": [
+        "final current Git diff review (PASS)",
+        "reviewed final scoped verification evidence"
+      ],
+      "findings": {
+        "blocker": [],
+        "high": [],
+        "medium": [
+          "Rewarded-ad overlay watchdog lacks end-to-end device/ad-SDK timing coverage."
+        ],
+        "low": []
+      }
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "assignment": "Reconcile final HEAD, named role reports, task scope, review outcome, and verification gates without modifying product code.",
+      "result": "Reconciled final HEAD ec03d8d322b3e2b4530e6b1c9a2a3d9153a926a3 with all named role reports. Source implementation is complete and independent review is PASS; source-level formatter, 122 scoped Flutter tests, scoped analyzer (current-equivalent source), and diff checks passed. Android build verification remains BLOCKED because android/key.properties is absent before Kotlin tasks begin.",
+      "changed_files": [
+        ".codex/tasks/TASK_20260827_141606.json"
+      ],
+      "tests": [
+        "git rev-parse HEAD (ec03d8d322b3e2b4530e6b1c9a2a3d9153a926a3)",
+        "reconciled Test Executor and Reviewer final evidence"
+      ],
+      "verdict": "SOURCE_COMPLETE_REVIEW_PASS_ANDROID_BUILD_BLOCKED"
+    }
+  ],
+  "allowed_files": [
+    "android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt",
+    "lib/screens/calendar/calendar_style_contract.dart",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "lib/screens/home/home_widgets.dart",
+    "lib/screens/voice/voice_conversation_screen.dart",
+    "lib/services/ad_service.dart",
+    "lib/services/voice_conversation_ad_gate.dart",
+    "lib/widgets/rewarded_ad_dialog.dart",
+    "lib/widgets/voice_conversation_ad_dialog.dart",
+    "test/screens/calendar_screen_test.dart",
+    "test/screens/home_screen_test.dart",
+    "test/screens/voice_conversation_screen_test.dart",
+    "test/services/ad_service_init_flow_test.dart",
+    "test/services/home_widget_service_test.dart",
+    "test/widgets/voice_conversation_ad_dialog_test.dart"
+  ],
+  "forbidden_files": [
+    "supabase/**",
+    "ios/**",
+    "deployment configuration",
+    "payment/auth configuration"
+  ],
+  "final_verdict": {
+    "source_completion": "COMPLETE",
+    "independent_review": "PASS",
+    "android_build_verification": "BLOCKED",
+    "android_build_blocker": "android/key.properties is absent; Android compile exits 1 before the Kotlin task graph.",
+    "overall": "NOT_COMPLETE"
+  },
+  "last_update": "2026-09-14T00:00:00+09:00"
+}
