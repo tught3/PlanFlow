@@ -76,4 +76,16 @@ void main() {
       reason: '출발 알람 재예약 백스톱도 함께 유지돼야 한다.',
     );
   });
+
+  test('shell 재예약은 저장된 브리핑 사용 여부를 전달한다', () {
+    final source = File('lib/screens/shell_screen.dart').readAsStringSync();
+    final schedulingStart = source.indexOf('scheduleDaily(');
+    expect(schedulingStart, greaterThan(-1));
+
+    final schedulingCall = source.substring(
+      schedulingStart,
+      source.indexOf(');', schedulingStart) + 2,
+    );
+    expect(schedulingCall, contains('briefingEnabled: settings.briefingEnabled'));
+  });
 }

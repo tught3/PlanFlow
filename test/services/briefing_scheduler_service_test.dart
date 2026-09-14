@@ -15,8 +15,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test(
-      'isAppForegroundFresh: heartbeat가 신선하면 true, 낡으면(백그라운드/종료) false',
+  test('isAppForegroundFresh: heartbeat가 신선하면 true, 낡으면(백그라운드/종료) false',
       () async {
     // 백그라운드 알람 콜백이 이 판정으로 알림 발화 여부를 정한다. 플래그가
     // true여도 heartbeat가 낡았으면(갱신 중단) 백그라운드로 봐 알림을 보내야 한다.
@@ -35,7 +34,8 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{
       BriefingSchedulerService.appForegroundKey: true,
       BriefingSchedulerService.appForegroundAtKey: now -
-          (BriefingSchedulerService.foregroundHeartbeatFreshness.inMilliseconds +
+          (BriefingSchedulerService
+                  .foregroundHeartbeatFreshness.inMilliseconds +
               5000),
     });
     final stale = await SharedPreferences.getInstance();
@@ -49,17 +49,31 @@ void main() {
     expect(BriefingSchedulerService.isAppForegroundFresh(off), isFalse);
   });
 
-  test('rescheduleNextBriefing schedules the next morning alarm', () async {
+  test(
+      'rescheduleNextBriefing keeps configured morning time despite early event',
+      () async {
     final alarm = _FakeAlarmService();
     final service = BriefingSchedulerService(
       alarmService: alarm,
-      eventRepository: _FakeEventRepository(),
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-early',
+            userId: 'user-1',
+            title: '공항 이동',
+            startAt: DateTime.utc(2026, 5, 12, 6),
+            location: '인천공항',
+          ),
+        ],
+      ),
       settingsRepository: _FakeSettingsRepository(
         settings: UserSettingsModel.defaults(userId: 'user-1').copyWith(
           morningBriefingAt: '06:40',
           eveningBriefingAt: '20:20',
+          prepTimeMin: 30,
         ),
       ),
+      now: () => DateTime(2026, 5, 12, 4),
     );
 
     final scheduled = await service.rescheduleNextBriefing(
@@ -134,7 +148,8 @@ void main() {
     expect(status.nextEveningAt?.minute, 15);
   });
 
-  test('scheduleDaily moves morning briefing before first prep alarm',
+  test(
+      'scheduleDaily keeps morning briefing at configured time despite early event',
       () async {
     final alarm = _FakeAlarmService();
     final service = BriefingSchedulerService(
@@ -164,13 +179,64 @@ void main() {
       userId: 'user-1',
     );
 
-    expect(result.morning.scheduledAt, DateTime(2026, 5, 12, 5));
-    expect(alarm.morningScheduledAt, DateTime(2026, 5, 12, 5));
+    expect(result.morning.scheduledAt, DateTime(2026, 5, 12, 7, 30));
+    expect(alarm.morningScheduledAt, DateTime(2026, 5, 12, 7, 30));
     final status = await service.loadRuntimeStatus();
-    expect(status.nextMorningAt, DateTime(2026, 5, 12, 5));
+    expect(status.nextMorningAt, DateTime(2026, 5, 12, 7, 30));
   });
 
-  test('scheduleDaily keeps morning briefing when adjusted prep time is past',
+  test('scheduleDaily applies a changed configured morning time', () async {
+    final alarm = _FakeAlarmService();
+    final service = BriefingSchedulerService(
+      alarmService: alarm,
+      eventRepository: _FakeEventRepository(),
+      now: () => DateTime(2026, 5, 12, 4),
+    );
+
+    await service.scheduleDaily(
+      morningTime: '07:30',
+      eveningTime: '21:00',
+      userId: 'user-1',
+    );
+    await service.scheduleDaily(
+      morningTime: '08:15',
+      eveningTime: '21:00',
+      userId: 'user-1',
+    );
+
+    expect(alarm.morningScheduledAt, DateTime(2026, 5, 12, 8, 15));
+    final status = await service.loadRuntimeStatus();
+    expect(status.nextMorningAt, DateTime(2026, 5, 12, 8, 15));
+  });
+
+  test('disabled settings do not re-arm a next-day morning alarm', () async {
+    final alarm = _FakeAlarmService();
+    final service = BriefingSchedulerService(
+      alarmService: alarm,
+      eventRepository: _FakeEventRepository(),
+      settingsRepository: _FakeSettingsRepository(
+        settings: UserSettingsModel.defaults(userId: 'user-1').copyWith(
+          morningBriefingAt: '06:40',
+          briefingEnabled: false,
+        ),
+      ),
+      now: () => DateTime(2026, 5, 12, 4),
+    );
+
+    final scheduled = await service.rescheduleNextBriefing(
+      isMorning: true,
+      userId: 'user-1',
+    );
+
+    expect(scheduled, isFalse);
+    expect(alarm.morningCalls, 0);
+    expect(alarm.cancelledIds, contains('briefing:morning'));
+    final status = await service.loadRuntimeStatus();
+    expect(status.morningScheduled, isFalse);
+    expect(status.nextMorningAt, DateTime(2026, 5, 12, 6, 40));
+  });
+
+  test('scheduleDaily keeps configured morning time when current time is late',
       () async {
     final alarm = _FakeAlarmService();
     final service = BriefingSchedulerService(
@@ -480,6 +546,7 @@ class _FakeAlarmService extends AlarmService {
   DateTime? eveningScheduledAt;
   DateTime? lastScheduledAt;
   String? lastUserId;
+  final List<String> cancelledIds = <String>[];
 
   @override
   Future<bool> scheduleMorningBriefing({
@@ -507,6 +574,11 @@ class _FakeAlarmService extends AlarmService {
     lastScheduledAt = scheduledAt;
     lastUserId = userId;
     return true;
+  }
+
+  @override
+  Future<void> cancelBriefing({required String id}) async {
+    cancelledIds.add(id);
   }
 }
 
