@@ -1,6 +1,6 @@
 {
   "taskId": "planflow-ios-native-screenshot-baseline-20260913",
-  "status": "CI_RERUN_PENDING",
+  "status": "CI_RUN3_PENDING",
   "base": {
     "head": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
     "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
@@ -44,27 +44,27 @@
       "result": "Classified local const/DateTime failures, then CI run 34763175523 immutable Confirm map failure, Home SmartPreparation backend leak, timezone nondeterminism, and DEBUG banner. Scoped fixes applied."
     },
     "testExecutor": {
-      "agent": "ios_screenshot_test_executor_fallback",
+      "agent": "ios_screenshot_run3_test_fallback",
       "mappedModel": "fallback default because flux_test_executor model is unsupported for this account",
       "reasoningEffort": "inherited",
-      "status": "LOCAL_PASS",
+      "status": "RUN3_LOCAL_PASS",
       "evidence": [
-        "flutter analyze integration_test/store_screenshot_capture_test.dart test_driver/store_screenshot_driver.dart lib/screens/home/home_screen.dart --no-pub: exit 0",
-        "python -m unittest scripts/tests/test_store_capture_workflow_contract.py: exit 0 (15 tests after reviewer fixes)",
-        "python -m py_compile scripts/ios/validate_store_screenshots.py: exit 0",
-        "PyYAML workflow parse: exit 0",
-        "capture plan exact mapping IPHONE=3 IPAD=2: exit 0",
+        "dart format --output=none --set-exit-if-changed on three changed Dart files: exit 0, 0 changed",
+        "flutter analyze integration_test/store_screenshot_capture_test.dart lib/screens/calendar/calendar_widgets.dart lib/screens/voice/confirm_screen.dart --no-pub: exit 0, no issues",
+        "python -m unittest scripts/tests/test_store_capture_workflow_contract.py: exit 0 (18 tests)",
+        "flutter test test/screens/confirm_screen_test.dart --no-pub: exit 0 (34 tests)",
+        "flutter test test/screens/calendar_screen_test.dart --no-pub: exit 0 (25 tests)",
         "git diff --check: exit 0",
-        "flutter test test/screens/home_screen_test.dart --no-pub: exit 0 (16 tests)"
+        "task ledger JSON parse: exit 0"
       ],
       "gap": "macOS CI simulator capture and visual artifact review not yet run"
     },
     "reviewer": {
-      "agent": "ios_screenshot_source_reviewer",
+      "agent": "ios_screenshot_run3_review",
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
-      "status": "SOURCE_APPROVED_PENDING_CI_RERUN",
-      "result": "Initial source PASS. Independent CI-rework review also APPROVE with BLOCKER=0 HIGH=0; MEDIUM notes runtime CI is the meaningful fixture behavior gate."
+      "status": "RUN3_SOURCE_APPROVED_PENDING_CI",
+      "result": "Final current-diff independent review PASS with BLOCKER=0 HIGH=0 and no remaining findings after deterministic clock and common agenda-key rework."
     },
     "integrator": {
       "agent": "ios_screenshot_integrator_pretest",
@@ -75,7 +75,7 @@
     }
   },
   "capture": {
-    "ciStatus": "RUN_34763175523_FAILED_REWORK_APPLIED",
+    "ciStatus": "RUN_34764613642_FAILED_AFTER_3_IPHONE_CAPTURES_REWORK_APPLIED",
     "userCaptureRequired": false,
     "userManualCaptureCount": 0,
     "iphoneNativeAssets": 0,
@@ -94,7 +94,21 @@
       "result": "FAILED on immutable ConfirmScreen fixture map after one Home PNG",
       "partialAsset": "iphone69-calendar-home-IPHONE.png 1320x2868 SHA256 1eb0520d31d162964e4a70a1de7eb7b6c412dbeaae10635bf2fc0b",
       "qualification": "REJECTED_DEBUG_BANNER_AND_NONDETERMINISTIC_TIME"
+    },
+    "ciRun2": {
+      "runId": 34764613642,
+      "sourceSha": "8b0a406a13a463b21dfea973673525b0a8c4df6a",
+      "result": "FAILED at iPad calendar readiness assertion because two valid labels were rendered",
+      "iphoneArtifacts": 3,
+      "visualReview": "Home and Group pass PII/debug/distortion review; Voice structurally clean but rejected because date/time fell back to runner date",
+      "qualification": "PARTIAL_REJECTED"
+    },
+    "ciRun3": {
+      "status": "PENDING",
+      "plannedFixes": "ConfirmScreen injected local nowProvider for deterministic cross-day guard; iPad personal agenda readiness uses stable event-id ValueKey",
+      "localContractTests": "PASS 18 tests",
+      "flutterAnalyze": "PASS; exit 0, no issues after latest fixes"
     }
   },
-  "nextStep": "Commit and push CI failure fixes, dispatch run 2, import and visually qualify five native artifacts."
+  "nextStep": "Commit and push scoped run 3 fixes, dispatch run 3, import and visually qualify five native artifacts."
 }

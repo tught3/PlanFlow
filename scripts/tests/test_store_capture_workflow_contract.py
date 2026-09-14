@@ -138,7 +138,34 @@ class ScreenshotCaptureContractTests(unittest.TestCase):
         self.assertIn('_FakeSmartPreparationAlarmService', fixture)
         self.assertIn('headerSummaryOverride: const HomeHeaderSummary', fixture)
         self.assertIn('debugShowCheckedModeBanner: false', fixture)
+
+    def test_confirm_fixture_uses_fixed_local_now(self):
+        fixture = (ROOT / 'integration_test/store_screenshot_capture_test.dart').read_text(encoding='utf-8')
+        self.assertIn("'start_at': '2026-09-21T01:00:00.000Z'", fixture)
+        self.assertIn("'end_at': '2026-09-21T02:00:00.000Z'", fixture)
+
+    def test_personal_agenda_cards_have_stable_event_keys(self):
+        calendar = (ROOT / 'lib/screens/calendar/calendar_widgets.dart').read_text(encoding='utf-8')
+        fixture = (ROOT / 'integration_test/store_screenshot_capture_test.dart').read_text(encoding='utf-8')
+        self.assertIn("key: ValueKey('calendar-personal-event-${event.id}')", calendar)
+        self.assertIn('find.byKey(', fixture)
+        self.assertIn("const ValueKey('calendar-personal-event-store-fixture-event')", fixture)
         self.assertIn("parsedSchedule: <String, dynamic>{", fixture)
+        self.assertIn("'parse_attempt_id': 'store-fixture-parse-attempt'", fixture)
+        self.assertIn("'start_at': '2026-09-21T01:00:00.000Z'", fixture)
+        self.assertIn("'end_at': '2026-09-21T02:00:00.000Z'", fixture)
+        self.assertIn("'location_lat': 37.3947", fixture)
+        self.assertIn("'location_lng': 127.1112", fixture)
+
+    def test_ipad_calendar_readiness_uses_personal_event_key(self):
+        fixture = (ROOT / 'integration_test/store_screenshot_capture_test.dart').read_text(encoding='utf-8')
+        ipad_case = re.search(
+            r"case 'ipad13-calendar':\s*(.*?)\s*break;", fixture, re.S,
+        )
+        self.assertIsNotNone(ipad_case)
+        self.assertIn("find.byKey(", ipad_case.group(1))
+        self.assertIn("calendar-personal-event-store-fixture-event", ipad_case.group(1))
+        self.assertIn("findsOneWidget", ipad_case.group(1))
 
     def test_validator_accepts_exact_slot_mapping(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -55,7 +55,12 @@ void main() {
         expect(find.text('PlanFlow 데모 그룹'), findsOneWidget);
         break;
       case 'ipad13-calendar':
-        expect(find.text('팀 주간 회의'), findsOneWidget);
+        expect(
+          find.byKey(
+            const ValueKey('calendar-personal-event-store-fixture-event'),
+          ),
+          findsOneWidget,
+        );
         break;
     }
     await E2eScreenshotHelper(binding).capture(screenshotId);
@@ -89,12 +94,17 @@ Widget _fixtureFor(String id) {
       screen = ConfirmScreen(
         userId: 'store-fixture-user',
         parsedSchedule: <String, dynamic>{
+          'parse_attempt_id': 'store-fixture-parse-attempt',
           'title': '팀 주간 회의',
-          'date': '2026-09-21',
-          'time': '10:00',
+          'start_at': '2026-09-21T01:00:00.000Z',
+          'end_at': '2026-09-21T02:00:00.000Z',
           'location': '판교 회의실',
+          'location_lat': 37.3947,
+          'location_lng': 127.1112,
           'memo': '결정사항을 정리해요',
         },
+        // banned-ok: Store screenshot pixels require a fixed calendar date.
+        nowProvider: () => DateTime.utc(2026, 9, 21, 1),
         backend: const _OfflineConfirmBackend(),
       );
       break;
