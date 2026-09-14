@@ -430,7 +430,8 @@ class _DelayedDeniedAdGateDelegate implements VoiceConversationAdGateDelegate {
 /// 리셋하기 때문에, 이 delegate는 reset 이후에 lastDenialReason을 다시 쓴다 —
 /// 그래야 화면의 fallback에서 `voiceConversationGateDenialMessage`가 정상적으로
 /// 호출되는 흐름이 그대로 재현된다.
-class _SilentAdGateDelegateWithReason implements VoiceConversationAdGateDelegate {
+class _SilentAdGateDelegateWithReason
+    implements VoiceConversationAdGateDelegate {
   _SilentAdGateDelegateWithReason({required this.lastDenialReason});
 
   int tryEnterCalls = 0;
@@ -1023,7 +1024,8 @@ void main() {
 
     expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsNothing);
     expect(find.text('AI 일정 대화'), findsOneWidget);
-    expect(find.byKey(const ValueKey('voice-conversation-end-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-conversation-end-button')),
+        findsOneWidget);
 
     expect(tester.takeException(), isNull);
   });
@@ -1045,8 +1047,7 @@ void main() {
             builder: (context, state) => Scaffold(
               body: Center(
                 child: TextButton(
-                  onPressed: () =>
-                      context.push(AppRoutes.voiceConversation),
+                  onPressed: () => context.push(AppRoutes.voiceConversation),
                   child: const Text('홈 화면'),
                 ),
               ),
@@ -1350,7 +1351,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다', (tester) async {
+  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다',
+      (tester) async {
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
@@ -1442,8 +1444,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다',
-      (tester) async {
+  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다', (tester) async {
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
@@ -1582,8 +1583,10 @@ void main() {
         id: 'event-resume',
         userId: 'user-1',
         title: '이동할 일정',
-        startAt: DateTime(2026, 5, 7, 9).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
-        endAt: DateTime(2026, 5, 7, 10).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        startAt: DateTime(2026, 5, 7, 9).toUtc(),
+        // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        endAt: DateTime(2026, 5, 7, 10).toUtc(),
       );
       final stt = _FakeSttService();
       final router = GoRouter(
@@ -1644,8 +1647,10 @@ void main() {
         id: 'event-no-resume',
         userId: 'user-1',
         title: '이동할 일정',
-        startAt: DateTime(2026, 5, 7, 9).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
-        endAt: DateTime(2026, 5, 7, 10).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        startAt: DateTime(2026, 5, 7, 9).toUtc(),
+        // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        endAt: DateTime(2026, 5, 7, 10).toUtc(),
       );
       final stt = _FakeSttService();
       final router = GoRouter(
@@ -1714,7 +1719,8 @@ void main() {
         id: 'event-edit-sheet',
         userId: 'user-1',
         title: '금요일 상담',
-        startAt: DateTime(2026, 5, 29, 18).toUtc(), // banned-ok: initialText('5월 29일 일정 다 보여 줘')와 매칭시키는 더미 일정(클램프 로직 미개입)
+        // banned-ok: initialText('5월 29일 일정 다 보여 줘')와 매칭시키는 더미 일정(클램프 로직 미개입)
+        startAt: DateTime(2026, 5, 29, 18).toUtc(),
       );
       final stt = _FakeSttService();
       final router = GoRouter(

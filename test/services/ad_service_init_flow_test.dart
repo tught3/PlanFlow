@@ -300,12 +300,12 @@ void main() {
         );
 
         await service.initialize().timeout(
-          const Duration(seconds: 2),
-          onTimeout: () => fail(
-            'initialize()는 리워드 광고 프리로드 완료를 기다리면 안 된다'
-            '(부팅 지연 회귀, P13)',
-          ),
-        );
+              const Duration(seconds: 2),
+              onTimeout: () => fail(
+                'initialize()는 리워드 광고 프리로드 완료를 기다리면 안 된다'
+                '(부팅 지연 회귀, P13)',
+              ),
+            );
 
         expect(service.isInitialized, isTrue);
         expect(
