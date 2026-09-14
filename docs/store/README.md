@@ -25,9 +25,8 @@
 ## 2026-09-13 사용자 확인 iOS 제출 기준선
 
 - 제출 상태: `STORE_APPLIED / SUBMITTED`이며 Apple 심사 통과(`STORE_ACCEPTED`)는 아닙니다.
-- 가격: Free, primary category: Productivity, support URL: `https://fluxstudio.co.kr/planflow-support`.
+- 가격: Free, primary category: `PRODUCTIVITY` (CONFIGURED, authenticated GET readback), secondary category: `UTILITIES` (CONFIGURED, authenticated GET readback), support URL: `https://fluxstudio.co.kr/planflow-support`.
 - privacy policy URL: `https://fluxstudio.co.kr/privacy` (2026-09-13 Homepage production deployment `dpl_X4zgciGJUt3FNMwaW8pzTeNNaiZ4` 후 HTTPS HTTP 200 및 PlanFlow 의미·금지문구 계약 확인). 공개 페이지는 `planflow-privacy-policy-final.md` SHA-256 `2CFB3EFA21B5EF041E383C1CB76CA292AD255665924F115F7A1798AC9421924F`에 바인딩된 PlanFlow 정책을 제공한다. 이는 공개 콘텐츠 정합화 증거이며 Apple 수락 또는 Store 쓰기 결과는 아니다.
-- iOS secondary category는 사용자 확인이나 readback이 없어 `UNCONFIRMED`으로 유지합니다. 추정값을 입력하지 않습니다.
 - App Privacy 설문이 콘솔에서 완료됐다는 사용자 확인은 개별 데이터 유형·추적 답변의 source/SDK 검증을 대체하지 않습니다. 알려진 광고·ATT·위치 관련 의사결정은 계속 `REVIEW_REQUIRED`입니다.
 
 이 기준선 기록은 현재 심사 제출을 변경하지 않았으며, App Store Connect 또는 Google Play에 쓰기 요청을 보내지 않았습니다.
@@ -38,21 +37,23 @@
 
 전체 task change-set의 impact는 `SCREENSHOT_IMPACT=PARTIAL`입니다. Home·calendar·voice의 screenshot-linked feature 경로가 변경되어 `SCREENSHOT_FEATURE_CHANGED`가 발생했지만, `lib/core/theme.dart` global visual path는 변경되지 않았습니다. 표준 실행 `python -m fluxstore impact --project-root E:\FluxStudio-worktrees\planflow\planflow-ios-native-screenshot-baseline-20260913 --json`은 exit 0으로 `METADATA_CHANGE`, `PRIVACY_CHANGE`, `SCREENSHOT_CHANGE`를 반환했습니다.
 
+### Rewarded production acceptance
+
+`Rewarded=EXTERNAL_DEPENDENCY_HOLD`이며 `CURRENT_PRODUCTION_FEATURE_ACCEPTANCE=BLOCKED`입니다. Build25에서 `RewardedAd.load code=1 (No ad to show)`가 관찰됐지만 광고 serving을 입증하지 않습니다. Owner는 외부 AdMob serving/fill availability이고, exact unblock은 승인된 실기기에서 production rewarded 광고의 load/show/reward를 성공 관찰한 뒤 release acceptance를 재실행하는 것입니다.
+
 ---
 
 ## 차단 사유 (blockers)
 
-배포 진행 전 반드시 해결해야 할 항목입니다. (총 7건; privacy publication으로 1건, local native baseline으로 1건 해소)
+배포 진행 전 반드시 해결해야 할 항목입니다. (총 5건; privacy publication으로 1건, local native baseline으로 2건 해소)
 
 | Code | Platform | 내용 | 사람 결정 필요 |
 |------|----------|------|----------------|
-| ANDROID_TABLET_SET_BELOW_MIN | android | Play 대형 화면(7"/10") 스크린샷 세트는 최소 4장 필요(spec `store/specs/google-graphics.2026-09-11.json` minCount 4). PlanFlow canonical 세트 `docs/screenshots/store_final_v3/tablet_1200x1920/`는 2장(2560x1600)만 확인됨. 스토어 readback(2026-09-11) 결과 sevenInchScreenshots 1장, tenInchScreenshots 1장 업로드됨 — 최소 4장 요건 미달 확정 | N |
+| ANDROID_TABLET_LIVE_PII_REPLACEMENT_REQUIRED | android | 현재 live 7-inch asset에 실제 일정/업무 내용이 노출되고 두 live tablet asset에 system/DeX chrome 및 16:10 비표준 비율이 남아 있어 별도 승인된 Play metadata 변경으로 교체/삭제 필요 | O |
 | DATA_SAFETY_DOC_STALE_AD_ID | android | docs/play-console-data-safety.md에 AD_ID/Advertising ID/AdMob 언급 없음. 그러나 코드의 AD_ID 권한 및 AdMob SDK 활성 상태 확인됨 (commit aaf1bfed, android/app/src/main/AndroidManifest.xml:4, lib/services/ad_service.dart:491) | O |
-| IOS_ADMOB_NATIVE_INIT_UNKNOWN | ios | lib/services/ad_runtime_policy.dart:5-8에서 Dart 레벨 iOS 보상형 광고 경로 비활성화, 하지만 ios/Runner/Info.plist:7에 GADApplicationIdentifier 존재로 인해 네이티브 Google Mobile Ads SDK가 Dart 게이트 무시하고 자동 초기화될 가능성 | O |
 | IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10 | ios | local native iOS baseline 3+2는 준비됐지만 업로드되지 않음. 보호된 Build23 현재 제출이 기존 Android-derived 자산을 사용했는지는 App Store Connect readback 전까지 미확인; 현재 제출 변경/교체는 범위 밖 | O |
-| ASC_APP_ID_UNKNOWN | ios | binding.storeAppIds.ios가 null — iOS App Store Connect 값 읽기 대기 중; 이 검증 단계에서 스토어 쓰기 금지 | N |
-| STORE_BASELINE_NOT_CAPTURED | ios | Android 기준선 확보됨: acceptedSnapshots에 `config/store/snapshots/android-readback-2026-09-11.json` 추가(Play Developer API readback --live-read, edits.insert, commit 0, edit 삭제 확인). iOS는 아직 App Store Connect readback 기준선 미확보 | N |
-| REVIEW_CREDENTIAL_NOT_PROVISIONED | ios | gh secret list --repo tught3/PlanFlow에서 PLANFLOW_REVIEW_DEMO_USERNAME / PLANFLOW_REVIEW_DEMO_PASSWORD 시크릿 없음 (E2E 테스트용 계정 시크릿 PLANFLOW_E2E_TEST_ACCOUNT_EMAIL/PASSWORD는 존재하나 리뷰 데모용 지정 아님) | N |
+| APP_PRIVACY_COMPARE_UNAVAILABLE | ios | 현재 App Privacy data-type 답변은 공개 API로 field-by-field readback 불가하며 USER_CONFIRMED/SUBMITTED 상태만 확인됨. Build23 review 후 source-derived expected values와 수동 비교 필요 | O |
+| IOS_STORE_READBACK_NOT_ACCEPTED | ios | GET-only readback run 34744489714에서 app 6806790412, bundle com.fluxstudio.planflow, Build23 WAITING_FOR_REVIEW, mutationCount=0 확인. STORE_ACCEPTED가 아니므로 acceptedSnapshots에 추가하지 않음 | N |
 
 ---
 
@@ -62,14 +63,12 @@
 
 | Code | Platform | 질문 |
 |------|----------|------|
-| IOS_ADS_TRACKING_ANSWER | ios | iOS App Privacy에서 광고 데이터·추적 답변을 어떻게 선언할 것인가 (네이티브 AdMob SDK가 GADApplicationIdentifier로 자동 초기화될 가능성 포함) |
 | ANDROID_AD_ID_SHARING | android | Data Safety에서 기기 ID의 광고 목적 공유를 어떻게 선언할 것인가 |
 | PRECISE_LOCATION_COLLECTION | both | GPS 좌표를 Google Maps Distance Matrix API로 외부 전송하는지 확정 필요 |
-| CHILD_DIRECTED | both | PlanFlow가 아동 대상 앱인지 여부를 확정해야 함 |
-| UGC_MODERATION | both | 그룹 댓글(UGC)에 신고·차단 기능이 있는지 확정 필요 |
 | EXPORT_COMPLIANCE_CONFIRM | ios | ITSAppUsesNonExemptEncryption=false(Info.plist)를 법적 수출 규정 준수 선언으로 승인할 것인지 확정 필요 |
 | PRIVACY_POLICY_CANONICAL_URL | android | iOS 제출 URL은 사용자 확인과 공개 readback으로 `https://fluxstudio.co.kr/privacy`로 확인됨. Google Play에 실제 입력된 URL은 별도 readback이 없어 확정 필요 |
 | BINARY_RELEASE_GATE_ENFORCE | both | binaryReleaseGate를 'advisory'에서 'enforce'로 전환할 시점을 언제로 할 것인가 |
+| SCREENSHOT_V3_TRACKING | both | `docs/screenshots/store_final_v3/` 후보 세트의 Git 추적/재생성 정책을 확정할 것인가 |
 
 ---
 
@@ -84,7 +83,7 @@
 | Android | `config/store/snapshots/android-readback-2026-09-11.json` | production 1.1.1(164) | completed | presence-only로 저장 (`redaction.piiPresenceOnly`) |
 | iOS | 없음 | — | — | — |
 
-**의미**: 스토어 현재 게시 상태를 정본으로 등록했습니다. 다음 배포부터 이 기준선과의 diff를 계산해 스토어 영향 범위를 추적할 수 있습니다.
+**의미**: 스토어 현재 게시 상태를 정본으로 등록했습니다. iOS의 `LOCAL_QUALIFIED` native screenshot baseline은 별도 계보이며, App Store Connect accepted readback은 아직 없습니다.
 
 ### 소스 Fingerprint 기준선 (acceptedFingerprints)
 
@@ -99,7 +98,7 @@
 - 스토어 메타데이터 변경 (STORE_PROFILE)
 - 스크린샷 feature 변경 (SCREENSHOT_FEATURE)
 
-iOS는 App Store 승인 후 기준선이 등록될 예정입니다. 그 전까지는 iOS 기준선이 없어(`NO_BASELINE`) 배포 영향 diff를 계산할 수 없습니다.
+iOS는 App Store 승인/readback 후 accepted fingerprint 기준선을 등록할 예정입니다. 현재는 스토어 기준선은 없지만, native screenshot baseline의 feature impact는 별도 계약으로 계산됩니다.
 
 ---
 
@@ -128,36 +127,35 @@ iOS는 App Store 승인 후 기준선이 등록될 예정입니다. 그 전까�
 
 ## 모르는 값 (UNKNOWN)
 
-**집계 규칙**: provenance 노드 중 `value is None` 또는 `source == "UNKNOWN"`인 노드를 dotted path로 나열. (위 "값 출처 요약" 표의 UNKNOWN 행(19)과 개수가 다른 이유: 이 목록은 `value is None`인 노드도 포함하므로, source가 REPO_DOC_STALE/USER_STATED이면서 value만 null인 노드 5개가 추가된다.)
+**집계 규칙**: profile의 provenance 노드 중 `value is null` 또는 `source == "UNKNOWN"`인 노드를 dotted path로 나열합니다. 값이 확인된 노드(예: iOS `UTILITIES`, privacy URL, iOS advertising collected, photos, childDirected, iOS ads/monetization)는 포함하지 않습니다.
 
-총 **24개**: `storeMetadata.android.shortDescription`/`description`은 2026-09-11 Android store readback으로 값이 채워져(STORE_READBACK, value non-null) 이 목록에서 제외됨(총 26개 → 24개).
+총 **23개**입니다. 아래 목록은 `config/store/store-profile.json`에서 현재 값과 source를 직접 계산한 결과입니다.
 
 - `storeMetadata.android.category` (source: UNKNOWN)
 - `storeMetadata.android.privacyPolicyUrl` (source: UNKNOWN)
 - `storeMetadata.android.marketingUrl` (source: UNKNOWN)
 - `storeMetadata.android.copyright` (source: UNKNOWN)
-- `storeMetadata.ios.secondaryCategory` (source: UNKNOWN)
-- `storeMetadata.ios.privacyPolicyUrl` (source: UNKNOWN)
 - `storeMetadata.ios.marketingUrl` (source: UNKNOWN)
 - `storeMetadata.ios.copyright` (source: UNKNOWN)
 - `storeMetadata.ios.subtitle` (source: REPO_DOC_STALE, value: null)
 - `storeMetadata.ios.description` (source: REPO_DOC_STALE, value: null)
 - `storeMetadata.ios.keywords` (source: REPO_DOC_STALE, value: null)
 - `storeMetadata.ios.promotionalText` (source: UNKNOWN)
-- `privacy.android.dataTypes.preciseLocation.collected` (source: UNKNOWN)
-- `privacy.android.dataTypes.crashData.linkedToUser` (source: UNKNOWN)
-- `privacy.ios.dataTypes.crashData.linkedToUser` (source: UNKNOWN)
-- `privacy.ios.dataTypes.advertisingData.collected` (source: UNKNOWN)
-- `privacy.ios.dataTypes.photos.collected` (source: UNKNOWN)
+- `privacy.android.dataTypes.androidAdvertisingId.collected` (source: CODE_EVIDENCE, value: null)
+- `privacy.android.dataTypes.androidAdvertisingId.purposes` (source: CODE_EVIDENCE, value: null)
+- `privacy.android.dataTypes.androidAdvertisingId.shared` (source: DERIVED, value: null)
+- `privacy.ios.dataTypes.preciseLocation.collected` (source: CODE_EVIDENCE, value: null)
 - `content.ageRating.android` (source: USER_STATED, value: null)
 - `content.ageRating.ios` (source: USER_STATED, value: null)
-- `content.ads.ios` (source: UNKNOWN)
-- `content.childDirected` (source: UNKNOWN)
-- `monetization.model.ios` (source: UNKNOWN)
-- `monetization.ads.ios` (source: UNKNOWN)
+- `content.ads.android` (source: CODE_EVIDENCE, value: null)
+- `content.medicalClaims` (source: UNKNOWN)
+- `content.encryption` (source: UNKNOWN)
+- `content.traderStatus` (source: UNKNOWN)
+- `monetization.model.android` (source: CODE_EVIDENCE, value: null)
+- `monetization.ads.android` (source: CODE_EVIDENCE, value: null)
 - `releasePolicy.android.release` (source: UNKNOWN)
 
-참고: `storeMetadata.ios.category`와 `content.contentRights`는 `source: USER_STATED`이지만 `value`가 non-null(각각 `"productivity"`, `"DOES_NOT_USE_THIRD_PARTY_CONTENT"`)이므로 이 규칙상 UNKNOWN 목록에 포함되지 않는다. 다만 `fluxstore resolve` 엔진은 `storeMetadata.ios.category`/`storeMetadata.android.category`를 evidence 부재로 인해 별도로 "no trustworthy provenance yet"으로 재차 플래그한다 — 이는 profile 파일의 정적 UNKNOWN 판정과는 다른, resolve 시점의 신뢰도 판정이다.
+참고: `storeMetadata.ios.category`/`secondaryCategory`와 `storeMetadata.ios.privacyPolicyUrl`은 authenticated GET readback 또는 공개 publication evidence로 확인되어 이 목록에서 제외합니다. `fluxstore resolve`의 외부 linked-worktree 결과는 별도 실행 상태이며 이 정적 profile 요약에 섞지 않습니다.
 
 ※ 전체 목록은 `config/store/store-profile.json`을 직접 참조하세요.
 

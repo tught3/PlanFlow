@@ -1,0 +1,193 @@
+{
+  "taskId": "planflow-store-profile-final-qualification-20260914",
+  "status": "REWORK_APPLIED_PENDING_REREVIEW",
+  "request": "Consolidate the privacy publication chain and native iOS screenshot qualification chain onto latest origin/main while preserving protected Store and Android boundaries.",
+  "source": {
+    "base": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "originMain": "5051a5f2b547ca6f3adcc4d2e8b2a274fe3fcb32",
+    "worktree": "E:/FluxStudio-worktrees/planflow/planflow-store-intelligence-replay-clean-20260913-v2",
+    "branch": "codex/planflow-store-profile-final-qualification-20260914",
+    "head": "729178b0b7479cd72b8e98bf0d8e3025b48a709c"
+  },
+  "roles": {
+    "explorer": {
+      "agent": "store_profile_final_explorer",
+      "status": "COMPLETE",
+      "result": "Latest origin/main is 5051a5f2. Privacy chain dae71fa6 and native screenshot chain 2f64a672 are independent descendants of a908e469 and must be integrated oldest-to-newest. Protected Build23/current Store submission and Android production must remain unchanged."
+    },
+    "planner": {
+      "agent": "store_profile_final_planner",
+      "status": "COMPLETE",
+      "classification": "Complex",
+      "allowedFiles": [
+        "config/store/store-profile.json",
+        "config/store/screenshot-lineage.json",
+        "docs/store/README.md",
+        ".codex/tasks/planflow-store-profile-final-qualification-20260914.json"
+      ],
+      "forbiddenActions": [
+        "commit",
+        "push",
+        "force push",
+        "Store API mutation",
+        "workflow dispatch",
+        "Build23 modification",
+        "Android production source changes"
+      ],
+      "result": "Create a fresh qualification branch from a908e469, rebase to 5051a5f2, cherry-pick privacy then screenshot chains, resolve evidence conflicts in favor of confirmed privacy publication and native screenshot LOCAL_QUALIFIED/NOT_UPLOADED facts, validate JSON and report exact integration state."
+    },
+    "implementer": {
+      "agent": "store_profile_final_implementer",
+      "status": "COMPLETE_PENDING_INDEPENDENT_REVIEW",
+      "result": "Branch created and rebased; all 10 privacy commits and all 6 native screenshot commits integrated. Conflicts resolved in screenshot-lineage requiredSlots, store-profile screenshot blocker detail, and store README blocker/evidence sections. Obsolete screenshot pipeline blocker removed after CI qualification. No commit or push performed by this worker."
+    },
+    "failureAnalyst": {
+      "agent": "store_profile_final_failure_analyst",
+      "status": "COMPLETE",
+      "result": "Identified schema incompatibility: authenticated-console provenance labels were not accepted by the profile schema, and top-level privacyChangeContracts was outside the canonical profile contract. Scoped remediation preserves authenticated evidence and NOT_CONFIGURED future actions in the privacy remediation document."
+    },
+    "rework": {
+      "status": "COMPLETE",
+      "result": "Changed exactly two provenance sources to USER_STATED, removed profile privacyChangeContracts, preserved current/future IDFA contract in docs/store/planflow-privacy-policy-remediation.md, updated the Python privacy contract test, and removed stale UNKNOWN wording."
+    },
+    "failureAnalystSecondPass": {
+      "agent": "store_profile_final_failure_analyst",
+      "status": "COMPLETE",
+      "finding": "The iOS release contract test still expected the removed profile privacyChangeContracts field and legacy authenticated-console provenance source.",
+      "resolution": "Updated only test/ios_release_contract_test.dart to assert USER_STATED and the exact NOT_CONFIGURED/future-action contract in the canonical remediation document."
+    },
+    "testExecutor": {
+      "agent": "store_profile_final_test_executor_fallback",
+      "mappedModel": "fallback because deployed test-executor model is unsupported",
+      "status": "FINAL_PASS",
+      "result": "Final rerun exit 0. Privacy contract 4/4 PASS; screenshot validator 3+2 native assets PASS with no findings; git diff --check exit 0; store mutation count 0.",
+      "evidence": {
+        "flutterTestDirectRun": {
+          "command": "flutter test test/ios_release_contract_test.dart",
+          "exitCode": 0,
+          "observedOutput": "All tests passed!",
+          "countReported": 22
+        },
+        "flutterTestExecutorRerun": {
+          "command": "flutter test test/ios_release_contract_test.dart",
+          "exitCode": 0,
+          "observedOutput": "All tests passed!",
+          "countReported": 21
+        },
+        "countDiscrepancy": "Direct run reported 22 tests while Test Executor rerun reported 21; both exact commands exited 0 and no count is normalized or invented.",
+        "privacyContract": {
+          "command": "python -m unittest scripts/tests/test_planflow_privacy_policy_contract.py",
+          "exitCode": 0,
+          "result": "4/4 PASS"
+        },
+        "screenshotValidator": {
+          "command": "python scripts/ios/validate_store_screenshots.py config/store/capture-plan.json .codex/artifacts/qualifier",
+          "exitCode": 0,
+          "result": "SCREENSHOT_VALIDATION_PASS count=5; iPhone 3 + iPad 2; findings-free"
+        },
+        "diffCheck": {
+          "command": "git diff --check",
+          "exitCode": 0
+        }
+      },
+      "blocked": "A-D BLOCKED: external linked-worktree repoSubpath resolver defect; not changed in this task."
+    },
+    "reviewer": {
+      "agent": "store_profile_final_reviewer",
+      "status": "FINAL_APPROVED",
+      "result": "FINAL_REVIEW_REPORT: PASS. BLOCKER=0, HIGH=0, MEDIUM=0, LOW=0. Verified Rewarded EXTERNAL_DEPENDENCY_HOLD and Build25 code=1 no-fill are not serving proof; A-D readiness remains BLOCKED on external linked-worktree repoSubpath resolver; NEXT_RELEASE_AUTOMATION_READY=NO and STORE_POLICY_ENGINE_READY=NO are truthful; README category/decision/UNKNOWN summaries match profile; native iOS 3+2 and protected Store/Android boundaries preserved."
+    },
+    "integrator": {
+      "agent": "store_profile_final_integrator",
+      "status": "FINAL_PENDING",
+      "result": "Final Integrator must inspect the current final diff and ledger before completion."
+    }
+  },
+  "integratedChains": {
+    "privacy": [
+      "9441b5a7",
+      "d1715237",
+      "c55192cb",
+      "aade8d28",
+      "b4b4f2b2",
+      "4cb75703",
+      "9462e5b6",
+      "31b43c08",
+      "58582c77",
+      "dae71fa6"
+    ],
+    "nativeScreenshots": [
+      "e8358f3a",
+      "8b0a406a",
+      "bbd53b09",
+      "7d1c71ab",
+      "9539c59a",
+      "2f64a672"
+    ]
+  },
+  "conflicts": [
+    {
+      "files": [
+        "config/store/screenshot-lineage.json",
+        "config/store/store-profile.json",
+        "docs/store/README.md"
+      ],
+      "commit": "9539c59a",
+      "resolution": "Preserved privacy-publication state from the integrated privacy chain; retained canonical Android phone/iPhone/iPad required slots; recorded native iOS 3+2 as LOCAL_QUALIFIED/NOT_UPLOADED; removed obsolete iPhone-missing and capture-pipeline blockers while retaining protected current-submission readback blocker.",
+      "status": "RESOLVED"
+    }
+  ],
+  "verification": {
+    "jsonParse": "PASS",
+    "privacyContractTest": "PASS (4 tests)",
+    "iosReleaseContractTest": "PASS (22 tests)",
+    "screenshotValidator": "PASS (run 34795713111 artifact, 5 assets)",
+    "markers": "PASS",
+    "storeMutations": 0,
+    "build23Protected": true,
+    "androidProductionChanged": false,
+    "broadRegression": "NOT_RUN_BY_ASSIGNMENT"
+  },
+  "finalReadiness": {
+    "dryRuns": {
+      "A": "BLOCKED_EXTERNAL_LINKED_WORKTREE_REPOSUBPATH_RESOLVER",
+      "B": "BLOCKED_EXTERNAL_LINKED_WORKTREE_REPOSUBPATH_RESOLVER",
+      "C": "BLOCKED_EXTERNAL_LINKED_WORKTREE_REPOSUBPATH_RESOLVER",
+      "D": "BLOCKED_EXTERNAL_LINKED_WORKTREE_REPOSUBPATH_RESOLVER",
+      "E": "PASS_PROJECT_ISOLATION"
+    },
+    "storeMutations": 0,
+    "protection": {
+      "iosBuild23": "PROTECTED",
+      "androidProduction": "PROTECTED",
+      "storeApi": "NO_WRITE",
+      "releaseWorkflow": "UNCHANGED"
+    },
+    "NEXT_RELEASE_AUTOMATION_READY": "NO",
+    "NEXT_RELEASE_AUTOMATION_OWNER": "FluxStore",
+    "NEXT_RELEASE_AUTOMATION_EXACT_UNBLOCK": "Fix external linked-worktree repoSubpath resolver, then rerun A-D dry-run CLI checks with returned evidence.",
+    "STORE_POLICY_ENGINE_READY": "NO",
+    "STORE_POLICY_ENGINE_OWNER": "FluxStore",
+    "STORE_POLICY_ENGINE_EXACT_UNBLOCK": "Fix the same external repoSubpath resolver and rerun the policy-engine qualification with authoritative project resolution; no completed simulation is claimed."
+  },
+  "rewardedAcceptance": {
+    "Rewarded": "EXTERNAL_DEPENDENCY_HOLD",
+    "Build25": "RewardedAd.load code=1 No ad to show",
+    "CURRENT_PRODUCTION_FEATURE_ACCEPTANCE": "BLOCKED",
+    "owner": "external AdMob serving/fill availability",
+    "exactUnblock": "Authorized real-device production load/show/reward success followed by release acceptance rerun",
+    "servingClaim": "NOT_ASSERTED"
+  },
+  "changedFiles": [
+    "config/store/store-profile.json",
+    "config/store/screenshot-lineage.json",
+    "docs/store/README.md",
+    "docs/screenshots/app-store/native-ios/",
+    "docs/store/planflow-privacy-policy-remediation.md",
+    "scripts/tests/test_planflow_privacy_policy_contract.py",
+    "test/ios_release_contract_test.dart",
+    ".codex/tasks/planflow-store-profile-final-qualification-20260914.json"
+  ],
+  "externalBlocker": "Linked-worktree shared generated registrant/cache changes remain foreign and must not be reverted by this task.",
+  "remainingRisk": "Independent Reviewer and parent Integrator must inspect the final current diff. This worker did not commit or push. Current Build23 Store metadata remains protected and native assets remain NOT_UPLOADED."
+}

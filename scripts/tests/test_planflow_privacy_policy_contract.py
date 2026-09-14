@@ -48,12 +48,12 @@ class PrivacyPolicyContractTest(unittest.TestCase):
 
     def test_profile_states_and_protected_release(self):
         self.assertFalse(self.profile["privacy"]["tracking"]["value"])
-        self.assertEqual(self.profile["privacy"]["tracking"]["source"], "USER_CONFIRMED_AUTHENTICATED_CONSOLE")
+        self.assertEqual(self.profile["privacy"]["tracking"]["source"], "USER_STATED")
         self.assertFalse(self.profile["privacy"]["tracking"]["requiresHumanAuthority"])
         ios_ads = self.profile["privacy"]["ios"]["dataTypes"]["advertisingData"]
         self.assertTrue(ios_ads["collected"]["value"])
         self.assertFalse(ios_ads["usedForTracking"]["value"])
-        self.assertEqual(ios_ads["usedForTracking"]["source"], "USER_CONFIRMED_AUTHENTICATED_CONSOLE")
+        self.assertEqual(ios_ads["usedForTracking"]["source"], "USER_STATED")
         self.assertFalse(self.profile["content"]["ugc"]["value"])
         self.assertFalse(self.profile["content"]["childDirected"]["value"])
         blockers = {item["code"] for item in self.profile["blockers"]}
@@ -74,13 +74,16 @@ class PrivacyPolicyContractTest(unittest.TestCase):
         self.assertEqual(self.task["protection"]["iosBuild23"], "PROTECTED")
         self.assertEqual(self.task["protection"]["androidProduction"], "PROTECTED")
         self.assertEqual(self.task["protection"]["rewarded"], "EXTERNAL_DEPENDENCY_HOLD")
-        contract = next(item for item in self.profile["privacyChangeContracts"] if item["code"] == "IOS_IDFA_MESSAGE_STATE_CHANGE")
-        self.assertEqual(contract["currentState"], "NOT_CONFIGURED")
-        self.assertEqual(set(contract["requiredActions"]), {
+        self.assertNotIn("privacyChangeContracts", self.profile)
+        remediation = (ROOT / "docs/store/planflow-privacy-policy-remediation.md").read_text(encoding="utf-8")
+        self.assertIn("현재 `NOT_CONFIGURED`", remediation)
+        for action in (
             "PRIVACY_CHANGE_REQUIRED",
             "ATT_REASSESSMENT_REQUIRED",
             "APP_PRIVACY_REASSESSMENT_REQUIRED",
-        })
+        ):
+            self.assertIn(action, remediation)
+        self.assertNotIn("STORE_ACCEPTED", remediation)
         self.assertEqual(self.task["evidence"]["idfaMessageState"], "NOT_CONFIGURED")
         self.assertEqual(self.task["evidence"]["admobIdfaMutationCount"], 0)
 

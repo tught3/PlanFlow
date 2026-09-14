@@ -859,7 +859,7 @@
           },
           "usedForTracking": {
             "value": false,
-            "source": "USER_CONFIRMED_AUTHENTICATED_CONSOLE",
+            "source": "USER_STATED",
             "evidence": [
               "User-confirmed authenticated AdMob Privacy & messaging CREATE page: no existing PlanFlow iOS IDFA message; no app selected/save/publish",
               "ios/Runner/Info.plist:32",
@@ -931,7 +931,7 @@
     ],
     "tracking": {
       "value": false,
-      "source": "USER_CONFIRMED_AUTHENTICATED_CONSOLE",
+      "source": "USER_STATED",
       "evidence": [
         "ios/Runner/Info.plist:32",
         "lib/services/ad_consent_service.dart:214-226",
@@ -1072,14 +1072,15 @@
           "lib/services/ad_runtime_policy.dart",
           "lib/services/remote_config_service.dart",
           "lib/services/ad_service.dart",
-          "ASC GET-only readback run 34744489714 at source SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c (2026-09-13; mutationCount=0)"
+          "ASC GET-only readback run 34744489714 at source SHA c55192cb645a55c764dd9ce8952650e53fbfaf2c (2026-09-13; mutationCount=0)",
+          "Build25 runtime evidence: RewardedAd.load code=1 (No ad to show)"
         ],
         "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
         "requiresHumanAuthority": true,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "iOS rewarded ads are active in source when Remote Config provides a valid rewarded_ad_unit_id_ios; the current iOS readback identifies the submitted app. AdMob availability/processing is applicable, while the current binary does not request ATT or directly access IDFA."
+        "note": "iOS rewarded ads are enabled in source when Remote Config provides a valid rewarded_ad_unit_id_ios, but production feature acceptance is currently blocked: CURRENT_PRODUCTION_FEATURE_ACCEPTANCE=BLOCKED and Rewarded=EXTERNAL_DEPENDENCY_HOLD. Build25 observed RewardedAd.load code=1 (No ad to show); this is not evidence of serving. Owner: external AdMob serving/fill availability. Exact unblock: obtain a successful production rewarded-ad load/show/reward observation from an authorized real device, then rerun release acceptance."
       }
     },
     "childDirected": {
@@ -1344,12 +1345,6 @@
       "platform": "ios",
       "detail": "GET-only App Store Connect readback run 34744489714 at source SHA c55192cb identified app 6806790412, bundle com.fluxstudio.planflow, and Build23 WAITING_FOR_REVIEW with mutationCount=0. It is retained as operational evidence but is not added to acceptedSnapshots because the current submission is not STORE_ACCEPTED.",
       "requiresHumanAuthority": false
-    },
-    {
-      "code": "IOS_SCREENSHOT_CAPTURE_PIPELINE_NOT_OPERATIONAL",
-      "platform": "ios",
-      "detail": "The repository capture workflow is a fail-closed scaffold: capture-plan routes are empty, no integration driver is implemented, and the dedicated demo automation inputs are unavailable. No native iOS asset can be generated truthfully from this Windows qualification pass. This does not assert that App Store review credentials are absent; GET-only readback only proves their presence markers while redacting credentials.",
-      "requiresHumanAuthority": false
     }
   ],
   "decisionsRequired": [
@@ -1403,21 +1398,6 @@
         ".gitignore:63",
         "config/store/screenshot-lineage.json"
       ]
-    }
-  ],
-  "privacyChangeContracts": [
-    {
-      "code": "IOS_IDFA_MESSAGE_STATE_CHANGE",
-      "platform": "ios",
-      "when": "AdMob Privacy & messaging IDFA state changes from NOT_CONFIGURED to DRAFT or ACTIVE",
-      "requiredActions": [
-        "PRIVACY_CHANGE_REQUIRED",
-        "ATT_REASSESSMENT_REQUIRED",
-        "APP_PRIVACY_REASSESSMENT_REQUIRED"
-      ],
-      "currentState": "NOT_CONFIGURED",
-      "mutationCount": 0,
-      "note": "Future console configuration is a new privacy state and must not be inferred from this current answer."
     }
   ],
   "acceptedSnapshots": [

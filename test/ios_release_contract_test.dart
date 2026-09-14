@@ -164,6 +164,9 @@ void main() {
     final profile =
         jsonDecode(file('config/store/store-profile.json').readAsStringSync())
             as Map<String, dynamic>;
+    final privacyRemediation =
+        file('docs/store/planflow-privacy-policy-remediation.md')
+            .readAsStringSync();
     final privacy = profile['privacy'] as Map<String, dynamic>;
     final ios = privacy['ios'] as Map<String, dynamic>;
     final dataTypes = ios['dataTypes'] as Map<String, dynamic>;
@@ -181,27 +184,22 @@ void main() {
     final usedForTracking = advertising['usedForTracking'] as Map<String, dynamic>;
     expect(advertisingCollected['value'], isTrue);
     expect(usedForTracking['value'], isFalse);
-    expect(usedForTracking['source'], 'USER_CONFIRMED_AUTHENTICATED_CONSOLE');
+    expect(usedForTracking['source'], 'USER_STATED');
     final tracking = privacy['tracking'] as Map<String, dynamic>;
     expect(tracking['value'], isFalse);
-    expect(tracking['source'], 'USER_CONFIRMED_AUTHENTICATED_CONSOLE');
+    expect(tracking['source'], 'USER_STATED');
     final blockers = (profile['blockers'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
     expect(blockers.any((item) => item['code'] == 'IOS_ADS_TRACKING_ANSWER_UNKNOWN'), isFalse);
     final decisions = (profile['decisionsRequired'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
     expect(decisions.any((item) => item['code'] == 'IOS_ADS_TRACKING_ANSWER'), isFalse);
-    final contracts = (profile['privacyChangeContracts'] as List<dynamic>)
-        .cast<Map<String, dynamic>>();
-    final idfaContract = contracts.singleWhere(
-      (item) => item['code'] == 'IOS_IDFA_MESSAGE_STATE_CHANGE',
-    );
-    expect(idfaContract['currentState'], 'NOT_CONFIGURED');
-    expect(idfaContract['requiredActions'], containsAll(<String>[
-      'PRIVACY_CHANGE_REQUIRED',
-      'ATT_REASSESSMENT_REQUIRED',
-      'APP_PRIVACY_REASSESSMENT_REQUIRED',
-    ]));
+    expect(profile.containsKey('privacyChangeContracts'), isFalse);
+    expect(privacyRemediation, contains('현재 `NOT_CONFIGURED`'));
+    expect(privacyRemediation, contains('PRIVACY_CHANGE_REQUIRED'));
+    expect(privacyRemediation, contains('ATT_REASSESSMENT_REQUIRED'));
+    expect(privacyRemediation, contains('APP_PRIVACY_REASSESSMENT_REQUIRED'));
+    expect(privacyRemediation, isNot(contains('STORE_ACCEPTED')));
     final readiness = file('docs/ios/APP_STORE_READINESS.md').readAsStringSync();
     final reviewNotes = file('docs/ios/review-notes.md').readAsStringSync();
     for (final companion in <String>[readiness, reviewNotes]) {

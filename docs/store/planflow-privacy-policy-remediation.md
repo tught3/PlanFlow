@@ -8,7 +8,7 @@
 
 - 사업자명 Flux Studio, 주소 경기도 성남시 광명로 75 303호, 책임자 대표자, 문의 support@fluxstudio.co.kr.
 - 만 14세 미만 대상 아님. 공개 UGC는 없고 인증된 그룹 내부 일정·댓글만 제한적으로 공유한다.
-- iOS에는 `NSUserTrackingUsageDescription`이 남아 있지만 직접 ATT 요청·IDFA 접근은 없고, UMP 광고 동의는 ATT와 별개다. AdMob/UMP 운영 설정과 원격 IDFA 메시지 구성을 읽어오지 못했으므로 추적 공개는 UNKNOWN으로 fail-closed 유지한다.
+- iOS에는 `NSUserTrackingUsageDescription`이 남아 있지만 직접 ATT 요청·IDFA 접근은 없고, UMP 광고 동의는 ATT와 별개다. 인증된 AdMob Privacy & messaging 확인에서 iOS IDFA 메시지는 현재 `NOT_CONFIGURED`이고 tracking 값은 false로 확인됐다. 향후 IDFA 메시지가 DRAFT/ACTIVE로 바뀌면 `PRIVACY_CHANGE_REQUIRED`, `ATT_REASSESSMENT_REQUIRED`, `APP_PRIVACY_REASSESSMENT_REQUIRED`를 모두 재검토한다.
 - 원시 음성은 기기 내 처리하고, 인식 텍스트만 서버/OpenAI 경로로 전달될 수 있다.
 - 계정 삭제, 그룹 리더 제약, 개인 백업·복구 스냅샷 순환, 그룹 백업의 소유자 삭제 방식, Supabase 일본 리전 및 글로벌 제공자 처리 범위를 문안에 반영했다.
 
