@@ -1,11 +1,13 @@
 """Contract tests for the CI-only iOS screenshot capture pipeline."""
 import json
+import hashlib
 import re
 import struct
 import subprocess
 import tempfile
 import unittest
 import zlib
+from PIL import Image
 from pathlib import Path
 
 from scripts.ios.validate_store_screenshots import png_info
@@ -13,6 +15,13 @@ from scripts.ios.validate_store_screenshots import png_info
 ROOT = Path(__file__).parents[2]
 WORKFLOW = (ROOT / '.github/workflows/store-screenshot-capture.yml').read_text()
 PLAN = json.loads((ROOT / 'config/store/capture-plan.json').read_text())
+
+
+def _png_color_type(path):
+    data = Path(path).read_bytes()
+    assert data[:8] == b'\x89PNG\r\n\x1a\n'
+    assert data[12:16] == b'IHDR'
+    return data[25]
 
 
 def _png_chunk(kind, payload):
@@ -113,6 +122,53 @@ def _paeth(left, above, upper_left):
 
 
 class ScreenshotCaptureContractTests(unittest.TestCase):
+    def test_native_ios_baseline_is_qualified_and_provenanced(self):
+        lineage = json.loads((ROOT / 'config/store/screenshot-lineage.json').read_text(encoding='utf-8'))
+        native = [s for s in lineage['screenshots'] if s['screenshotId'].endswith('-native')]
+        self.assertEqual(len(native), 5)
+        self.assertEqual(sum(s['slot'] == 'IPHONE' for s in native), 3)
+        self.assertEqual(sum(s['slot'] == 'IPAD' for s in native), 2)
+        for entry in native:
+            self.assertEqual(entry['status'], 'CANDIDATE')
+            self.assertEqual(entry['qualificationState'], 'LOCAL_QUALIFIED')
+            self.assertEqual(entry['storeUploadState'], 'NOT_UPLOADED')
+            self.assertEqual(entry['sourcePlatform'], 'ios')
+            self.assertFalse(entry['chromeRemoved'])
+            self.assertTrue(entry['sourceLocator'].startswith('github-actions://tught3/PlanFlow/runs/34795713111/'))
+            self.assertEqual(entry['piiReviewed'], True)
+            self.assertEqual(entry['piiFindings'], [])
+            self.assertEqual(entry['visualReview'], 'PASS')
+            self.assertTrue(entry['noAndroidChrome'])
+            self.assertTrue(entry['noDistortion'])
+            self.assertIn('NATIVE_CAPTURE', entry['transformations'][0])
+            self.assertTrue((ROOT / entry['finalLocator']).exists())
+            self.assertEqual(entry['sourceSha'], '7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c')
+            self.assertEqual(entry['width'], entry['finalDimensions'][0])
+            self.assertEqual(entry['height'], entry['finalDimensions'][1])
+            self.assertEqual(png_info(ROOT / entry['finalLocator'])[2], True)
+            final = ROOT / entry['finalLocator']
+            self.assertEqual(_png_color_type(final), 2)
+            with Image.open(final) as image:
+                self.assertEqual(image.mode, 'RGB')
+            self.assertEqual(hashlib.sha256(final.read_bytes()).hexdigest(), entry['finalSha256'])
+
+    def test_native_ios_paths_and_dimensions_are_exact(self):
+        lineage = json.loads((ROOT / 'config/store/screenshot-lineage.json').read_text(encoding='utf-8'))
+        native = [s for s in lineage['screenshots'] if s['screenshotId'].endswith('-native')]
+        self.assertEqual({(s['slot'], s['width'], s['height']) for s in native}, {
+            ('IPHONE', 1320, 2868), ('IPAD', 2064, 2752),
+        })
+        self.assertTrue(all(s['path'].startswith('docs/screenshots/app-store/native-ios/') for s in native))
+
+    def test_native_baseline_resolves_only_local_ios_screenshot_blocker(self):
+        profile = json.loads((ROOT / 'config/store/store-profile.json').read_text(encoding='utf-8'))
+        codes = {b['code'] for b in profile['blockers']}
+        self.assertNotIn('IPHONE_69_ASSET_MISSING', codes)
+        self.assertIn('IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10', codes)
+        detail = next(b['detail'] for b in profile['blockers'] if b['code'] == 'IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10')
+        self.assertIn('NOT_UPLOADED', detail)
+        self.assertIn('readback is unknown', detail)
+
     def test_workflow_is_manual_read_only_macos15(self):
         self.assertIn('workflow_dispatch:', WORKFLOW)
         self.assertNotIn('push:', WORKFLOW)

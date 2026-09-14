@@ -32,18 +32,24 @@
 
 이 기준선 기록은 현재 심사 제출을 변경하지 않았으며, App Store Connect 또는 Google Play에 쓰기 요청을 보내지 않았습니다.
 
+### iOS native screenshot qualification (2026-09-14)
+
+`docs/screenshots/app-store/native-ios/`에 iPhone 6.9" 3장(1320×2868)과 iPad 13" 2장(2064×2752)을 추가했습니다. Run `34795713111`의 iOS native simulator 산출물이며, 알파 제거만 적용한 RGB PNG입니다. 모든 자산은 `LOCAL_QUALIFIED`, `NOT_UPLOADED`, visual/PII review `PASS`입니다. Store mutation은 0건입니다.
+
+전체 task change-set의 impact는 `SCREENSHOT_IMPACT=PARTIAL`입니다. Home·calendar·voice의 screenshot-linked feature 경로가 변경되어 `SCREENSHOT_FEATURE_CHANGED`가 발생했지만, `lib/core/theme.dart` global visual path는 변경되지 않았습니다. 표준 실행 `python -m fluxstore impact --project-root E:\FluxStudio-worktrees\planflow\planflow-ios-native-screenshot-baseline-20260913 --json`은 exit 0으로 `METADATA_CHANGE`, `PRIVACY_CHANGE`, `SCREENSHOT_CHANGE`를 반환했습니다.
+
 ---
 
 ## 차단 사유 (blockers)
 
-배포 진행 전 반드시 해결해야 할 항목입니다. (총 7건)
+배포 진행 전 반드시 해결해야 할 항목입니다. (총 7건; privacy publication으로 1건, local native baseline으로 1건 해소)
 
 | Code | Platform | 내용 | 사람 결정 필요 |
 |------|----------|------|----------------|
 | ANDROID_TABLET_SET_BELOW_MIN | android | Play 대형 화면(7"/10") 스크린샷 세트는 최소 4장 필요(spec `store/specs/google-graphics.2026-09-11.json` minCount 4). PlanFlow canonical 세트 `docs/screenshots/store_final_v3/tablet_1200x1920/`는 2장(2560x1600)만 확인됨. 스토어 readback(2026-09-11) 결과 sevenInchScreenshots 1장, tenInchScreenshots 1장 업로드됨 — 최소 4장 요건 미달 확정 | N |
-| IPHONE_69_ASSET_MISSING | ios | 6.9" iPhone 스크린샷 누락. 기존 '스크린샷 아이폰/세로' 자산은 1242x2688 (6.5" iPhone 규격)이지 1260x2736, 1290x2796, 1320x2868 중 하나(세로; capture plan은 1320x2868 사용 — iPhone 16 Pro Max 시뮬레이터 해상도) 규격이 아님 | N |
 | DATA_SAFETY_DOC_STALE_AD_ID | android | docs/play-console-data-safety.md에 AD_ID/Advertising ID/AdMob 언급 없음. 그러나 코드의 AD_ID 권한 및 AdMob SDK 활성 상태 확인됨 (commit aaf1bfed, android/app/src/main/AndroidManifest.xml:4, lib/services/ad_service.dart:491) | O |
 | IOS_ADMOB_NATIVE_INIT_UNKNOWN | ios | lib/services/ad_runtime_policy.dart:5-8에서 Dart 레벨 iOS 보상형 광고 경로 비활성화, 하지만 ios/Runner/Info.plist:7에 GADApplicationIdentifier 존재로 인해 네이티브 Google Mobile Ads SDK가 Dart 게이트 무시하고 자동 초기화될 가능성 | O |
+| IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10 | ios | local native iOS baseline 3+2는 준비됐지만 업로드되지 않음. 보호된 Build23 현재 제출이 기존 Android-derived 자산을 사용했는지는 App Store Connect readback 전까지 미확인; 현재 제출 변경/교체는 범위 밖 | O |
 | ASC_APP_ID_UNKNOWN | ios | binding.storeAppIds.ios가 null — iOS App Store Connect 값 읽기 대기 중; 이 검증 단계에서 스토어 쓰기 금지 | N |
 | STORE_BASELINE_NOT_CAPTURED | ios | Android 기준선 확보됨: acceptedSnapshots에 `config/store/snapshots/android-readback-2026-09-11.json` 추가(Play Developer API readback --live-read, edits.insert, commit 0, edit 삭제 확인). iOS는 아직 App Store Connect readback 기준선 미확보 | N |
 | REVIEW_CREDENTIAL_NOT_PROVISIONED | ios | gh secret list --repo tught3/PlanFlow에서 PLANFLOW_REVIEW_DEMO_USERNAME / PLANFLOW_REVIEW_DEMO_PASSWORD 시크릿 없음 (E2E 테스트용 계정 시크릿 PLANFLOW_E2E_TEST_ACCOUNT_EMAIL/PASSWORD는 존재하나 리뷰 데모용 지정 아님) | N |

@@ -1,6 +1,6 @@
 {
   "taskId": "planflow-ios-native-screenshot-baseline-20260913",
-  "status": "CI_RUN3_CAPTURED_VALIDATOR_SOURCE_FIXED_RERUN_PENDING",
+  "status": "SCREENSHOT_IMPACT_PARTIAL_FINAL_PENDING",
   "base": {
     "head": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
     "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
@@ -47,40 +47,45 @@
       "agent": "ios_screenshot_run3_test_fallback",
       "mappedModel": "fallback default because flux_test_executor model is unsupported for this account",
       "reasoningEffort": "inherited",
-      "status": "RUN3_LOCAL_PASS",
+      "status": "RUN4_LOCAL_PASS",
       "evidence": [
-        "dart format --output=none --set-exit-if-changed on three changed Dart files: exit 0, 0 changed",
-        "flutter analyze integration_test/store_screenshot_capture_test.dart lib/screens/calendar/calendar_widgets.dart lib/screens/voice/confirm_screen.dart --no-pub: exit 0, no issues",
-        "python -m unittest scripts/tests/test_store_capture_workflow_contract.py: exit 0 (18 tests)",
-        "flutter test test/screens/confirm_screen_test.dart --no-pub: exit 0 (34 tests)",
-        "flutter test test/screens/calendar_screen_test.dart --no-pub: exit 0 (25 tests)",
-        "git diff --check: exit 0",
-        "task ledger JSON parse: exit 0"
+        "Local contract: python -m unittest scripts/tests/test_store_capture_workflow_contract.py: exit 0 (28/28 tests)",
+        "CI asset validation: run 34795713111 (run4) PASS, five native assets validated",
+        "JSON parse: exit 0",
+        "git diff --check: exit 0"
       ],
-      "gap": "macOS CI simulator capture and visual artifact review not yet run"
+      "gap": "Independent Reviewer and Integrator final decision pending"
     },
     "reviewer": {
       "agent": "ios_screenshot_run3_review",
       "mappedModel": "gpt-5.6-luna",
       "reasoningEffort": "high",
-      "status": "RUN3_SOURCE_APPROVED_PENDING_CI",
-      "result": "Final current-diff independent review PASS with BLOCKER=0 HIGH=0 and no remaining findings after deterministic clock and common agenda-key rework."
+      "status": "FINAL_APPROVED",
+      "result": "Current task state PASS; BLOCKER=0 HIGH=0 MEDIUM=0 LOW=0; lifecycle final_emitted YES."
     },
     "integrator": {
       "agent": "ios_screenshot_integrator_pretest",
       "mappedModel": "gpt-5.6-terra",
       "reasoningEffort": "medium",
-      "status": "SOURCE_APPROVED_PENDING_CI",
-      "result": "Final source integration checks pass after fixes: analyzer, 13 contracts, YAML parse, and diff check. Actual CI assets remain the qualification gate."
+      "status": "FINAL_PENDING",
+      "result": "Final integration pending independent review; current submission remains protected."
     }
   },
   "capture": {
-    "ciStatus": "RUN_34792486219_CAPTURED_5_NATIVE_ASSETS_VALIDATOR_SOURCE_FIX_RERUN_PENDING",
+    "ciStatus": "PASS_RUN_34795713111",
     "userCaptureRequired": false,
     "userManualCaptureCount": 0,
     "iphoneNativeAssets": 3,
     "ipadNativeAssets": 2,
-    "qualification": "PENDING"
+    "qualification": "LOCAL_QUALIFIED",
+    "localBaselineRemainingBlockers": [],
+    "currentSubmission": {
+      "replacementOrReadback": "OUT_OF_SCOPE",
+      "status": "UNCHANGED_PROTECTED_BUILD23",
+      "androidDerivedAssetUsage": "UNKNOWN_PENDING_APP_STORE_CONNECT_READBACK"
+    },
+    "screenshotImpact": "PARTIAL",
+    "screenshotImpactBasis": "Home/calendar/voice feature paths changed; no global visual path changed."
   },
   "evidence": {
     "appleRequirements": [
@@ -103,18 +108,29 @@
       "visualReview": "Home and Group pass PII/debug/distortion review; Voice structurally clean but rejected because date/time fell back to runner date",
       "qualification": "PARTIAL_REJECTED"
     },
-    "ciRun3": {
-      "runId": 34792486219,
-      "status": "CAPTURED_5_NATIVE_ASSETS_VALIDATOR_RERUN_PENDING",
-      "sourceSha": "pending scoped fix commit",
-      "result": "CI captured all 3 iPhone and 2 iPad native simulator PNGs; manifest present",
-      "plannedFixes": "ConfirmScreen injected local nowProvider for deterministic cross-day guard; iPad personal agenda readiness uses stable event-id ValueKey",
-      "localContractTests": "PASS 25 tests including 8/16-bit RGB/RGBA filter matrix and malformed PNG regressions",
-      "flutterAnalyze": "PASS; exit 0, no issues after latest fixes",
-      "validatorSourceFix": "Supports PNG depth 8/16 with byte-accurate filtering and 8/16-bit RGBA opacity checks",
-      "validatorArtifactResult": "PASS count=5; run3 artifact SHA256s recorded in execution output after 16-bit PNG support fix",
-      "visualReview": "PENDING independent final review"
+    "ciRun4": {
+      "runId": 34795713111,
+      "status": "PASS_5_NATIVE_ASSETS",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "result": "CI captured and validated all 3 iPhone and 2 iPad native simulator PNGs; manifest present",
+      "artifact": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/manifest.json",
+      "visualReview": "PASS all 5; PII findings empty; no Android chrome; no distortion",
+      "alphaNormalization": "RGBA 16-bit opaque to RGB PNG; alpha strip only; RGB pixels byte-equivalent; dimensions preserved",
+      "qualification": "LOCAL_QUALIFIED"
+    },
+    "impact": {
+      "command": "python -m fluxstore impact --project-root E:\\FluxStudio-worktrees\\planflow\\planflow-ios-native-screenshot-baseline-20260913 --json",
+      "exitCode": 0,
+      "toolCategories": [
+        "METADATA_CHANGE",
+        "PRIVACY_CHANGE",
+        "SCREENSHOT_CHANGE"
+      ],
+      "classification": "SCREENSHOT_IMPACT=PARTIAL",
+      "basis": "Home, calendar, and voice screenshot-linked feature paths changed; lib/core/theme.dart global visual path did not change.",
+      "screenshotFeatureReason": "SCREENSHOT_FEATURE_CHANGED: one or more screenshot-linked feature source files changed.",
+      "globalVisualPathChanged": false
     }
   },
-  "nextStep": "Record validator source fix and run3 artifact evidence, then import and visually qualify five native artifacts."
+  "nextStep": "Independent Reviewer re-review and Integrator final decision pending; local native baseline is qualified, current Build23 submission remains unchanged."
 }
