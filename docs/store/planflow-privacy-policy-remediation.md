@@ -1,0 +1,28 @@
+# PlanFlow 개인정보처리방침 보완 릴리스 노트
+
+상태: SOURCE_READY_PUBLIC_DEPLOYMENT_PENDING
+
+공개용 최종 문안은 [planflow-privacy-policy-final.md](./planflow-privacy-policy-final.md)이다. Flux Studio 사업자 정보, PlanFlow의 실제 계정·일정·그룹·음성 텍스트·위치·광고·진단 흐름을 반영했으며, 내부 저장소 경로·광고 단위 ID·비공개 연락처를 포함하지 않았다.
+
+확정·반영 사항:
+
+- 사업자명 Flux Studio, 주소 경기도 성남시 광명로 75 303호, 책임자 대표자, 문의 support@fluxstudio.co.kr.
+- 만 14세 미만 대상 아님. 공개 UGC는 없고 인증된 그룹 내부 일정·댓글만 제한적으로 공유한다.
+- iOS에는 `NSUserTrackingUsageDescription`이 남아 있지만 직접 ATT 요청·IDFA 접근은 없고, UMP 광고 동의는 ATT와 별개다. AdMob/UMP 운영 설정과 원격 IDFA 메시지 구성을 읽어오지 못했으므로 추적 공개는 UNKNOWN으로 fail-closed 유지한다.
+- 원시 음성은 기기 내 처리하고, 인식 텍스트만 서버/OpenAI 경로로 전달될 수 있다.
+- 계정 삭제, 그룹 리더 제약, 개인 백업·복구 스냅샷 순환, 그룹 백업의 소유자 삭제 방식, Supabase 일본 리전 및 글로벌 제공자 처리 범위를 문안에 반영했다.
+
+주요 외부 근거:
+
+- [Apple App privacy details](https://developer.apple.com/app-store/app-privacy-details/)
+- [Google Mobile Ads iOS IDFA/ATT](https://developers.google.com/admob/ios/privacy/idfa)
+- [Google Mobile Ads iOS data disclosure](https://developers.google.com/admob/ios/privacy/data-disclosure)
+- [Firebase privacy and security](https://firebase.google.com/support/privacy/)
+- [Supabase regions](https://supabase.com/docs/guides/platform/regions)
+- [OpenAI API data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint)
+
+게시 경계:
+
+- 이 커밋은 공개 문안과 Store 프로필 근거만 준비한다.
+- `https://fluxstudio.co.kr/privacy` 외부 페이지를 실제로 교체하거나 스토어 메타데이터를 변경하지 않았다. 공개 URL 배포와 App Store 개인정보 답변 변경은 별도 승인·실행이 필요하다.
+- 현재 제출 중인 iOS Build23, Android 설정, iOS Rewarded 원격 설정은 변경하지 않는다.

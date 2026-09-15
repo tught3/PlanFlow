@@ -1,0 +1,90 @@
+{
+  "taskId": "planflow-privacy-final-gate-20260913",
+  "status": "BLOCKED",
+  "classification": "Complex: privacy contract evidence spans iOS source, store-facing documentation, remote AdMob state, and release protections.",
+  "worktree": "E:/FluxStudio-worktrees/planflow/planflow-privacy-final-gate-20260913",
+  "branch": "codex/privacy-final-gate-20260913",
+  "baseHead": "9462e5b6214b0899a47f8b88d6b1b830f14fc51e",
+  "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+  "requirements": [
+    "Classify ATT, UMP/AdMob, IDFA, SKAdNetwork, Calendar, and Photos from current source evidence.",
+    "Keep remote AdMob state separate from source evidence and make no AdMob, Firebase, ASC, or Store mutation.",
+    "Correct stale PlanFlow-specific calendar/photos privacy documentation and guard it with focused tests.",
+    "Protect Build23 and preserve Android rewarded-ad configuration."
+  ],
+  "allowedFiles": [
+    "docs/ios/APP_STORE_READINESS.md",
+    "docs/ios/privacy-surface-audit.md",
+    "docs/ios/review-notes.md",
+    "test/ios_release_contract_test.dart",
+    ".codex/tasks/planflow-privacy-final-gate-20260913.json"
+  ],
+  "changedFiles": [
+    "docs/ios/APP_STORE_READINESS.md",
+    "docs/ios/privacy-surface-audit.md",
+    "docs/ios/review-notes.md",
+    "test/ios_release_contract_test.dart",
+    ".codex/tasks/planflow-privacy-final-gate-20260913.json"
+  ],
+  "routing": {
+    "explorer": {"agent": "flux_explorer", "model": "gpt-5.4-mini", "reasoning": "medium"},
+    "planner": {"agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning": "high"},
+    "implementer": {"agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning": "medium"},
+    "testExecutor": {"agent": "flux_test_executor", "model": "gpt-5.4-mini", "reasoning": "low"},
+    "failureAnalyst": {"agent": "flux_failure_analyst", "model": "gpt-5.6-luna", "reasoning": "high"},
+    "reviewer": {"agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning": "high"},
+    "integrator": {"agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning": "medium"}
+  },
+  "stages": {
+    "explorer": {"status": "completed", "agent": "flux_explorer then default fallback", "report": "The mapped gpt-5.4-mini explorer was unsupported; fallback completed source and contract exploration."},
+    "planner": {"status": "completed", "agent": "flux_planner", "report": "Defined documentation/test-only correction scope and the external remote-readback gate."},
+    "implementer": {"status": "completed", "agent": "flux_complex_implementer", "report": "Corrected stale Calendar/EventKit and Photos evidence wording in the allowed docs and added focused release-contract assertions."},
+    "testExecutor": {"status": "completed", "agent": "flux_test_executor then default fallback", "report": "The mapped gpt-5.4-mini test executor was unsupported; fallback completed all focused commands."},
+    "failureAnalyst": {"status": "completed", "agent": "flux_failure_analyst", "report": "Narrowed an over-broad calendar assertion and rechecked the fix."},
+    "reviewer": {"status": "completed", "agent": "flux_reviewer", "report": "Source changes approved after rework; BLOCKER=0, HIGH=0. One external authenticated AdMob/UMP readback blocker remains."},
+    "integrator": {"status": "completed", "agent": "flux_integrator", "report": "Final diff is limited to the allowed docs/tests and this ledger. Overall status remains BLOCKED only for the external remote readback."}
+  },
+  "privacyClassification": {
+    "attFrameworkPresent": false,
+    "attUsageDescriptionPresent": true,
+    "attRequestCallPresent": false,
+    "directIdfaAccessPresent": false,
+    "umpPresent": true,
+    "admobPresent": true,
+    "skadnetworkSourceConfigPresent": false,
+    "admobUmpAuthenticatedReadback": "UNAVAILABLE: browser/computer-use session runtime failed; no account state was mutated.",
+    "idfaMessageState": "UNKNOWN",
+    "attApplicability": "UNKNOWN pending authenticated AdMob Privacy & messaging IDFA-message state.",
+    "trackingDisclosure": "UNKNOWN pending authenticated remote state.",
+    "calendar": {
+      "eventKitPermission": "YES",
+      "eventKitRead": "NO",
+      "eventKitWrite": "NO",
+      "googleNaverTransmissionAndStorage": "YES, conditional on linked integrations",
+      "appPrivacyCollection": "YES"
+    },
+    "photos": {
+      "plistPermissionKeys": "YES",
+      "directPickerLibraryUpload": "NO",
+      "appPrivacyCollection": "NO",
+      "staleProfileMappingConfirmed": "NO",
+      "staleAuditEvidence": "FIXED"
+    }
+  },
+  "verification": [
+    "flutter test test/ios_release_contract_test.dart: 21/21 passed, exit 0",
+    "privacy policy focused tests: 4/4 passed, exit 0",
+    "Android ad runtime policy tests: 4/4 passed, exit 0",
+    "git diff --check: exit 0"
+  ],
+  "protection": {
+    "storeMutations": 0,
+    "admobMutations": 0,
+    "firebaseMutations": 0,
+    "build23": "PROTECTED/UNCHANGED",
+    "rewardedState": "EXTERNAL_DEPENDENCY_HOLD"
+  },
+  "review": {"verdict": "SOURCE_APPROVED", "blocker": 0, "high": 0, "externalBlocker": 1},
+  "remainingPrivacyBlockers": ["ADMOB_UMP_AUTHENTICATED_READBACK_REQUIRED"],
+  "nextAction": "Provide only the PlanFlow iOS AdMob Privacy & messaging IDFA message status: configured/published, draft, or absent. Do not provide IDs or secrets."
+}

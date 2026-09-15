@@ -1,0 +1,73 @@
+{
+  "taskId": "planflow-privacy-final-gate-closure-20260913",
+  "request": "Close the PlanFlow iOS privacy gate from authenticated AdMob IDFA state without Store or AdMob mutation.",
+  "status": "COMPLETE",
+  "result": "PASS: the authenticated IDFA/ATT source-and-contract closure gate is complete; it does not publish or apply App Store metadata.",
+  "source": {
+    "canonicalWorktree": "E:/FluxStudio-worktrees/planflow/planflow-privacy-final-gate-closure-20260913",
+    "branch": "codex/privacy-final-gate-closure-20260913",
+    "baseCommit": "31b43c08202a13fb513eb2f81e6cea5653432682",
+    "foreignDirtyPreserved": true
+  },
+  "evidence": {
+    "idfaMessageState": "NOT_CONFIGURED",
+    "idfaMessageExisting": "NO",
+    "provenance": "USER_CONFIRMED_AUTHENTICATED_CONSOLE",
+    "admobIdfaMutationCount": 0,
+    "appSelected": false,
+    "saved": false,
+    "published": false
+  },
+  "protection": {
+    "storeMutations": 0,
+    "admobMutations": 0,
+    "iosBuild23": "PROTECTED",
+    "androidProduction": "PROTECTED",
+    "rewarded": "EXTERNAL_DEPENDENCY_HOLD"
+  },
+  "allowedFiles": [
+    "config/store/store-profile.json",
+    "docs/store/planflow-privacy-policy-final.md",
+    "scripts/tests/test_planflow_privacy_policy_contract.py",
+    "test/ios_release_contract_test.dart",
+    ".codex/tasks/planflow-privacy-final-gate-closure-20260913.json"
+  ],
+  "roles": {
+    "Explorer": "COMPLETED_FALLBACK: mapped flux_explorer/gpt-5.4-mini was unsupported; default fallback completed prior authenticated-readback boundary and source evidence.",
+    "Planner": "COMPLETED_NARROW_CURRENT_STATE_SCOPE",
+    "Complex Implementer": "IMPLEMENTED_ASSIGNED_FILES_ONLY",
+    "Test Executor": "COMPLETED_FALLBACK: mapped flux_test_executor/gpt-5.4-mini was unavailable, then default fallback ran fresh focused tests.",
+    "Independent Reviewer": "APPROVE_FALLBACK: a new mapped flux_reviewer could not be dispatched because of agent thread capacity; existing default independent reviewer issued FINAL_REVIEW_REPORT APPROVE, BLOCKER=0, HIGH=0.",
+    "Integrator": "COMPLETE/PASS: final scope, test, review, and no-mutation evidence verified."
+  },
+  "requiredFutureContract": [
+    "PRIVACY_CHANGE_REQUIRED",
+    "ATT_REASSESSMENT_REQUIRED",
+    "APP_PRIVACY_REASSESSMENT_REQUIRED"
+  ],
+  "externalActions": {
+    "storeMutations": 0,
+    "admobMutations": 0,
+    "firebaseMutations": 0,
+    "publication": "NOT_PERFORMED"
+  },
+  "verification": {
+    "pythonPrivacyPolicyContract": "4/4 PASS",
+    "iosReleaseContract": "21/21 PASS",
+    "iosAdmobUmpRuntimeContract": "10/10 PASS",
+    "diffCheck": "PASS",
+    "secretScanAndAttIdfaApiCheck": "PASS: no changed-file secrets and no direct ATT/IDFA APIs"
+  },
+  "review": {
+    "verdict": "APPROVE",
+    "blocker": 0,
+    "high": 0,
+    "mode": "independent default-agent fallback because thread capacity prevented dispatching a new mapped reviewer"
+  },
+  "remainingPostReviewStoreConditions": [
+    "App Privacy metadata comparison/application remains an external Store action and was not performed.",
+    "Privacy policy public publication remains an external action and was not performed.",
+    "iOS Store readback acceptance remains separate from this source-and-contract closure."
+  ],
+  "nextAction": "No source gate remains. If desired, separately compare and apply App Privacy metadata and publish the reviewed privacy policy through the authorized Store/publication workflow."
+}
