@@ -42,15 +42,18 @@
         "note": "production track 1.1.1(164) completed 상태에서 edits.insert로 읽은 현재 게시 listing (fields.listings.ko-KR.title). 이 값은 스토어 현재값을 profile의 '스토어 readback 수락값'으로 바꾼 것이다 — 다음 릴리스에서 다르게 바꾸려면 사용자 승인이 필요하다. 참고(과거 출처): android:label=\"PlanFlow\" (android/app/src/main/AndroidManifest.xml:52), docs/play-store-listing.md:11의 문서상 마케팅명 \"플랜플로우: 말하는 일정 캘린더\"는 모두 이번 readback으로 대체됨."
       },
       "category": {
-        "value": null,
-        "source": "UNKNOWN",
-        "evidence": [],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "value": "productivity",
+        "source": "USER_STATED",
+        "evidence": [
+          "Goal §6 PRIMARY_CATEGORY=PRODUCTIVITY (user authority 2026-09-15)",
+          "storeMetadata.ios.category (STORE_READBACK)"
+        ],
+        "lastVerified": "2026-09-15",
+        "confidence": "HIGH",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "Play category is MANUAL_ONLY — not readable via Play Developer API. docs/play-store-listing.md:14 states '생산성' but that is a doc, not a store readback."
+        "approval": "USER_APPROVED",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "[decision-path: C] Play Console 실제 값은 API readback 불가 — 사용자 확정값. Play category is MANUAL_ONLY — not independently readable via Play Developer API. docs/play-store-listing.md:14 also states '생산성' (productivity), consistent with this value and with iOS's confirmed PRODUCTIVITY category."
       },
       "price": {
         "value": "free",
@@ -360,7 +363,59 @@
           },
           "storeDataTypes": [
             "other_user_generated_content"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety deletion answer applies (docs/play-console-data-safety.md:13)."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:28"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] voiceInputText maps to storeDataTypes='other_user_generated_content'; Play Console prep table row '기타 사용자 제작 콘텐츠': 데이터수집 필수여부=필수."
+          },
+          "shared": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:28"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '기타 사용자 제작 콘텐츠': 공유됨 여부=아니요."
+          }
         },
         "location": {
           "collected": {
@@ -391,7 +446,74 @@
           },
           "storeDataTypes": [
             "approximate_location"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety deletion answer applies (docs/play-console-data-safety.md:13)."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:24"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '대략적인 위치': 데이터수집 필수여부=선택."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:24"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '대략적인 위치': 수집되는 이유=앱 기능."
+          },
+          "shared": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:24"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '대략적인 위치': 공유됨 여부=아니요."
+          }
         },
         "preciseLocation": {
           "collected": {
@@ -411,7 +533,85 @@
           },
           "storeDataTypes": [
             "precise_location"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety deletion answer applies (docs/play-console-data-safety.md:13)."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:25"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '정확한 위치': 데이터수집 필수여부=선택."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:25"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '정확한 위치': 수집되는 이유=앱 기능."
+          },
+          "shared": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:25"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '정확한 위치': 공유됨 여부=아니요."
+          },
+          "linkedToUser": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Unlike android.location's insertLocationHistory (which explicitly includes user_id, confirm_screen.dart:2354), the Tmap/Naver/Google travel-time API calls (map_service.dart:53-90) send raw coordinates without an attached user identifier in the reviewed evidence -- no safe D basis to assert true or false."
+          }
         },
         "calendar": {
           "collected": {
@@ -446,7 +646,75 @@
           },
           "storeDataTypes": [
             "other_user_generated_content"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety answer: partial/full data deletion supported without account deletion (docs/play-console-data-safety.md:13), applies to all collected Android data types."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety answer: all collected data is encrypted in transit (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:26"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '캘린더 일정': 데이터수집 필수여부=선택 (optional)."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:26"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '캘린더 일정': 수집되는 이유=앱 기능."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/data/repositories/event_repository.dart:535",
+              "lib/services/naver_caldav_service.dart:1740"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Calendar events are persisted per-authenticated-user in Supabase (event_repository.dart, RLS-scoped by user) and synced via user-specific Naver CalDAV credentials -- same account-linkage pattern as emailAndUserId/crashData. requiresHumanAuthority kept true per this profile's existing convention for identity-linkage leaves."
+          }
         },
         "emailAndUserId": {
           "collected": {
@@ -491,7 +759,65 @@
           "storeDataTypes": [
             "email_address",
             "user_ids"
-          ]
+          ],
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:22",
+              "docs/play-console-data-safety.md:23"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table rows '이메일 주소'/'사용자 ID': 데이터수집 필수여부=필수."
+          },
+          "purposes": {
+            "value": [
+              "app functionality",
+              "account management"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:22",
+              "docs/play-console-data-safety.md:23"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table rows '이메일 주소'/'사용자 ID': 수집되는 이유=앱 기능, 계정 관리."
+          },
+          "shared": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:22",
+              "docs/play-console-data-safety.md:23"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table rows '이메일 주소'/'사용자 ID': 공유됨 여부=아니요."
+          }
         },
         "crashData": {
           "collected": {
@@ -523,7 +849,78 @@
           "storeDataTypes": [
             "crash_logs",
             "diagnostics"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety deletion answer applies (docs/play-console-data-safety.md:13)."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:29",
+              "docs/play-console-data-safety.md:30"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table rows '비정상 종료 로그' / '진단': 데이터수집 필수여부=필수 (required, i.e. not optional)."
+          },
+          "purposes": {
+            "value": [
+              "analytics",
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:29",
+              "docs/play-console-data-safety.md:30"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table: '비정상 종료 로그' purposes=애널리틱스; '진단' purposes=앱 기능, 애널리틱스 (crashData maps to both crash_logs and diagnostics storeDataTypes)."
+          },
+          "shared": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:29",
+              "docs/play-console-data-safety.md:30"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table: both '비정상 종료 로그' and '진단' rows answer 공유됨 여부=아니요."
+          }
         },
         "groupContent": {
           "collected": {
@@ -554,7 +951,74 @@
           },
           "storeDataTypes": [
             "other_user_generated_content"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety deletion answer applies (docs/play-console-data-safety.md:13)."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "optional": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:28"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '기타 사용자 제작 콘텐츠': 데이터수집 필수여부=필수."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:28"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '기타 사용자 제작 콘텐츠': 수집되는 이유=앱 기능."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Group comments are authored/stored per-user (group_event_comments table records the commenting user), same account-linkage pattern as emailAndUserId/crashData. requiresHumanAuthority kept true per this profile's convention."
+          }
         },
         "androidAdvertisingId": {
           "collected": {
@@ -602,7 +1066,51 @@
           },
           "storeDataTypes": [
             "ad_id"
-          ]
+          ],
+          "deletable": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: deletable. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+          },
+          "encryptedInTransit": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: encryptedInTransit. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+          },
+          "linkedToUser": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+          },
+          "optional": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: optional. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+          }
         },
         "firebaseInstallationId": {
           "collected": {
@@ -628,7 +1136,89 @@
           },
           "storeDataTypes": [
             "device_or_other_ids"
-          ]
+          ],
+          "deletable": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:13"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety deletion answer applies (docs/play-console-data-safety.md:13)."
+          },
+          "encryptedInTransit": {
+            "value": true,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:10"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Global Play Data Safety encryption-in-transit answer applies (docs/play-console-data-safety.md:10)."
+          },
+          "purposes": {
+            "value": [
+              "app functionality",
+              "analytics"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:32"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '기기 또는 기타 ID': 수집되는 이유=앱 기능, 애널리틱스."
+          },
+          "shared": {
+            "value": false,
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:32"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Play Console prep table row '기기 또는 기타 ID': 공유됨 여부=아니요."
+          },
+          "optional": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/remote_config_service.dart:58",
+              "lib/services/remote_config_service.dart:225"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Firebase Installation ID is auto-generated by the SDK at init/fetch time (per Firebase vendor docs); it is not exposed as a user-facing opt-out toggle in this codebase, so it is not optional."
+          },
+          "linkedToUser": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/remote_config_service.dart:58"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Firebase Installation ID is a per-install, anonymous token generated independently of PlanFlow's own auth/user_id (per Firebase's own architecture docs); no code path in this repo attaches it to email/user_id. requiresHumanAuthority kept true (identity-adjacent leaf) per this profile's convention."
+          }
         }
       }
     },
@@ -693,7 +1283,22 @@
           },
           "storeDataTypes": [
             "OTHER_USER_CONTENT"
-          ]
+          ],
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/gpt_service.dart:60"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Same evidence and value as android.voiceInputText.purposes (shared Dart gpt_service.dart code path, cross-platform parity)."
+          }
         },
         "location": {
           "collected": {
@@ -723,7 +1328,36 @@
           },
           "storeDataTypes": [
             "COARSE_LOCATION"
-          ]
+          ],
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6), same basis as ios.calendar.usedForTracking. requiresHumanAuthority kept true per convention."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:24",
+              "docs/ios/app-privacy-answers.md:35"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Cross-platform reuse of Android location purposes answer plus docs/ios/app-privacy-answers.md Sec.1 table row 'Location — Precise / Coarse': 목적 후보=App Functionality."
+          }
         },
         "preciseLocation": {
           "collected": {
@@ -739,25 +1373,102 @@
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "CODE_EVIDENCE: shared iOS path sends raw GPS coordinates to Tmap/Naver and Google fallback for travel-time estimation. The decision to disclose this as precise location remains a human App Privacy/legal confirmation."
+            "note": "CODE_EVIDENCE: shared iOS path sends raw GPS coordinates to Tmap/Naver and Google fallback for travel-time estimation. The decision to disclose this as precise location remains a human App Privacy/legal confirmation. [decision-path: F] question-group: collected. Left null intentionally by a prior pass pending human App Privacy/legal confirmation of whether shared-code GPS-to-Tmap/Naver/Google calls constitute a declarable 'Precise Location' collection on iOS -- not re-decided in this pass."
           },
           "storeDataTypes": [
             "PRECISE_LOCATION"
-          ]
+          ],
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6) -- independent of whether 'collected' is formally declared, tracking is false because no ATT/IDFA access exists anywhere in this app. requiresHumanAuthority kept true per convention."
+          },
+          "purposes": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: purposes. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Moot pending the same unresolved 'collected' human decision (see collected leaf's note) -- purposes cannot be meaningfully declared before that is settled."
+          },
+          "linkedToUser": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Same reasoning as android.preciseLocation.linkedToUser -- no direct evidence of a user identifier attached to the Tmap/Naver/Google travel-time API calls, and additionally moot pending the unresolved 'collected' decision."
+          }
         },
         "calendar": {
           "collected": {
             "value": true,
             "source": "CODE_EVIDENCE",
             "evidence": [
-              "lib/data/repositories/event_repository.dart:535"
+              "lib/data/repositories/event_repository.dart:535",
+              "USER_AUTHORITY:2026-09-15 policy-compression (Goal Sec.6, CALENDAR_COLLECTION=YES)"
             ],
             "lastVerified": "2026-09-11",
             "confidence": "HIGH",
             "requiresHumanAuthority": true,
-            "approval": "NONE",
+            "approval": "USER_APPROVED",
             "storeAcceptance": "NONE",
             "note": "CORRECTION (prior note in this node was wrong): two distinct things need to be kept separate. (1) Device calendar PERMISSION (not collection): AppDelegate.swift's 'requestCalendarPermission' channel handler (line 93 dispatch, 190-209 implementation) calls EKEventStore().requestFullAccessToEvents on iOS 17+ (or requestAccess(to: .event) pre-17) -- a real runtime EventKit permission prompt, invoked from lib/screens/onboarding/permission_onboarding_screen.dart:358 via app_permission_service.dart's 'planflow/ios_permissions' channel. This justifies the NSCalendarsFullAccessUsageDescription/NSCalendarsUsageDescription Info.plist strings but is NOT itself data collection. (2) Actual EventKit device-calendar READ/WRITE: lib/services/device_calendar_service.dart's MethodChannelDeviceCalendarGateway (checkCalendarPermission line 237, requestCalendarPermission line 246, upsertDeviceCalendarEvent line 280) all early-return false/no-op unless defaultTargetPlatform == TargetPlatform.android -- it talks to the Android-only 'planflow/android_permissions' MethodChannel (MainActivity.kt CalendarContract), so on iOS no code path actually reads or writes the device's EventKit calendar events. What IS collected on iOS: the app's own schedules (created via voice/manual entry) are persisted server-side in Supabase's 'events' table (event_repository.dart:535, SupabaseEventRepository, platform-shared code), which is collection of user-generated event content, not device-calendar access. collected=true reflects this server-side event storage, not EventKit reads. Note: iOS permission request (AppDelegate.swift:93, 190-209) and Android device-calendar access (device_calendar_service.dart:237, 246, 280) are documented separately in the iOS and Android private notes, not in collected.evidence."
+          },
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false (USER_CONFIRMED_AUTHENTICATED_CONSOLE, IDFA NOT_CONFIGURED, Goal Sec.6) -- with no ATT/IDFA access anywhere in this app, no data type collected by first-party code is used for cross-app tracking. requiresHumanAuthority kept true per this profile's convention for usedForTracking leaves (see privacy.ios.dataTypes.voiceInputText.usedForTracking)."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/data/repositories/event_repository.dart:535"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Same shared Dart event_repository.dart persistence path as android.calendar.linkedToUser -- events are stored per-authenticated-user. requiresHumanAuthority kept true per convention."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/ios/app-privacy-answers.md:36"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] docs/ios/app-privacy-answers.md Sec.1 table row '연동 동의한 Google/Naver/기기 캘린더 일정': 목적 후보=App Functionality."
           }
         },
         "emailAndUserId": {
@@ -788,7 +1499,38 @@
           "storeDataTypes": [
             "EMAIL_ADDRESS",
             "USER_ID"
-          ]
+          ],
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6), same basis as ios.calendar.usedForTracking. requiresHumanAuthority kept true per convention."
+          },
+          "purposes": {
+            "value": [
+              "app functionality",
+              "account management"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:22",
+              "docs/play-console-data-safety.md:23",
+              "docs/ios/app-privacy-answers.md:32"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Cross-platform reuse of the Android emailAndUserId purposes answer (Play Console prep table rows) plus docs/ios/app-privacy-answers.md Sec.1 table row 'Contact Info — Email Address': 목적 후보=App Functionality."
+          }
         },
         "crashData": {
           "collected": {
@@ -819,7 +1561,38 @@
           "storeDataTypes": [
             "CRASH_DATA",
             "PERFORMANCE_DATA"
-          ]
+          ],
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6), same basis as ios.calendar.usedForTracking. requiresHumanAuthority kept true per convention."
+          },
+          "purposes": {
+            "value": [
+              "analytics",
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:29",
+              "docs/play-console-data-safety.md:30",
+              "docs/ios/app-privacy-answers.md:58"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Cross-platform reuse of the Android crashData purposes answer (Play Console prep table '비정상 종료 로그'/'진단' rows) plus docs/ios/app-privacy-answers.md Sec.1.2's confirmation that firebase_crashlytics is declared for Crash logs/Diagnostics."
+          }
         },
         "groupContent": {
           "collected": {
@@ -836,7 +1609,48 @@
           },
           "storeDataTypes": [
             "OTHER_USER_CONTENT"
-          ]
+          ],
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6), same basis as ios.calendar.usedForTracking. requiresHumanAuthority kept true per convention."
+          },
+          "linkedToUser": {
+            "value": true,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/features/groups/repositories/group_event_comment_repository.dart:46-48"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Same shared Dart group_event_comment_repository.dart path as android.groupContent.linkedToUser -- comments are authored/stored per-user. requiresHumanAuthority kept true per convention."
+          },
+          "purposes": {
+            "value": [
+              "app functionality"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:28"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Cross-platform reuse of Android groupContent purposes answer (Play Console prep table row '기타 사용자 제작 콘텐츠')."
+          }
         },
         "advertisingData": {
           "collected": {
@@ -874,7 +1688,29 @@
           },
           "storeDataTypes": [
             "ADVERTISING_DATA"
-          ]
+          ],
+          "linkedToUser": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). AdMob SDK's own internal identity-linkage behavior is not observable from this repo's source (same 'UNVERIFIED -- SDK 자체 동작 미확인' stance as docs/ios/app-privacy-answers.md:85-88,120 for the sibling tracking question); no direct evidence of a user_id being passed into MobileAds.instance.initialize()/AdRequest calls, but absence of evidence is not proof of absence for a third-party SDK's server-side behavior."
+          },
+          "purposes": {
+            "value": null,
+            "source": "UNKNOWN",
+            "evidence": [],
+            "lastVerified": "2026-09-15",
+            "confidence": "UNKNOWN",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: F] question-group: purposes (ads). No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). App Store Connect purpose category for ad-SDK data (e.g. 'Third-Party Advertising' vs 'Developer's Advertising or Marketing') requires a legal/business declaration choice, same UNVERIFIED gap flagged in docs/ios/app-privacy-answers.md Sec.2/4 for AdMob data types; no repo doc gives a settled answer."
+          }
         },
         "photos": {
           "collected": {
@@ -916,7 +1752,49 @@
           },
           "storeDataTypes": [
             "DEVICE_ID"
-          ]
+          ],
+          "usedForTracking": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "config/store/store-profile.json#privacy.tracking"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6), same basis as ios.calendar.usedForTracking. requiresHumanAuthority kept true per convention."
+          },
+          "linkedToUser": {
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/remote_config_service.dart:58"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "MEDIUM",
+            "requiresHumanAuthority": true,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: D] Same reasoning as android.firebaseInstallationId.linkedToUser -- per-install anonymous FID, not tied to PlanFlow's own auth/user_id in any code path reviewed. requiresHumanAuthority kept true (identity-adjacent leaf) per convention."
+          },
+          "purposes": {
+            "value": [
+              "app functionality",
+              "analytics"
+            ],
+            "source": "REPO_DOC",
+            "evidence": [
+              "docs/play-console-data-safety.md:32"
+            ],
+            "lastVerified": "2026-09-15",
+            "confidence": "HIGH",
+            "requiresHumanAuthority": false,
+            "approval": "NONE",
+            "storeAcceptance": "NONE",
+            "note": "[decision-path: C] Cross-platform reuse of Android firebaseInstallationId purposes answer (Play Console prep table row '기기 또는 기타 ID')."
+          }
         }
       }
     },
@@ -958,7 +1836,7 @@
         "requiresHumanAuthority": true,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "CORRECTION: the prior note here was copied from content.ageRating.ios ('사용자가 App Store 제출 시 연령 등급 설정을 했다고 진술') -- that is an App Store (iOS) statement and has no bearing on Google Play's separate IARC content-rating questionnaire. No Play-specific age-rating statement or readback exists for android; value is UNKNOWN pending a Play Console IARC questionnaire readback."
+        "note": "[decision-path: F] question-group: ageRating. CORRECTION: the prior note here was copied from content.ageRating.ios ('사용자가 App Store 제출 시 연령 등급 설정을 했다고 진술') -- that is an App Store (iOS) statement and has no bearing on Google Play's separate IARC content-rating questionnaire. No Play-specific age-rating statement or readback exists for android; value is UNKNOWN pending a Play Console IARC questionnaire readback."
       },
       "ios": {
         "value": null,
@@ -969,19 +1847,25 @@
         "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "CORRECTION: confidence was MEDIUM while value is null -- inconsistent. 사용자가 App Store 제출 시 '연령 등급 설정'을 했다고 진술했으나 구체 등급 값 자체는 미확인이므로 value=null과 일관되게 confidence=UNKNOWN으로 정정."
+        "note": "[decision-path: F] question-group: ageRating. CORRECTION: confidence was MEDIUM while value is null -- inconsistent. 사용자가 App Store 제출 시 '연령 등급 설정'을 했다고 진술했으나 구체 등급 값 자체는 미확인이므로 value=null과 일관되게 confidence=UNKNOWN으로 정정."
       }
     },
     "contentRights": {
-      "value": "DOES_NOT_USE_THIRD_PARTY_CONTENT",
+      "value": "USES_THIRD_PARTY_CONTENT",
       "source": "USER_STATED",
-      "evidence": [],
-      "lastVerified": "2026-09-11",
-      "confidence": "LOW",
+      "evidence": [
+        "Apple App Store Connect Content Rights declaration covers apps that contain, show, or access third-party content (apps.contentRightsDeclaration, enum DOES_NOT_USE_THIRD_PARTY_CONTENT / USES_THIRD_PARTY_CONTENT) -- per fluxstore/adapters/capability.py's capability-table comment (LOW-confidence hand-transcription of Apple's spec, not independently re-verified against a live Apple page in this session)",
+        "PlanFlow displays Google Maps content: pubspec.yaml:21 (google_maps_flutter), lib/screens/location/location_picker_screen.dart:593 (GoogleMap widget)",
+        "PlanFlow imports Google Calendar content: lib/services/calendar_sync_service.dart:2001 (events.list API call inside _fetchGoogleEventsForCalendar, feeding syncGoogleCalendar at line 404)",
+        "PlanFlow imports Naver CalDAV content: lib/services/naver_caldav_service.dart:861 (getEvents() issuing a REPORT request at line 950 via _queryEvents)",
+        "2026-09-16: user re-judged from first Apple-definition principles after the prior DOES_NOT_USE_THIRD_PARTY_CONTENT/USER_APPROVED value was revoked for having unresolved rebuttal evidence. USES_THIRD_PARTY_CONTENT does not mean the app infringes rights -- it declares the app uses third-party content and must hold the necessary rights/permissions to do so. This value is now the user-confirmed final judgment, superseding the prior approval."
+      ],
+      "lastVerified": "2026-09-16",
+      "confidence": "HIGH",
       "requiresHumanAuthority": true,
-      "approval": "NONE",
+      "approval": "USER_APPROVED",
       "storeAcceptance": "NONE",
-      "note": "사용자가 PlanFlow는 콘텐츠 권한 질문에 '아니요'라고 진술. REBUTTAL note (this pass): the app displays third-party map content via pubspec.yaml:21 (google_maps_flutter) and lib/screens/location/location_picker_screen.dart:593 (GoogleMap widget) and imports calendar/event data from Google Calendar (lib/services/calendar_sync_service.dart:2001, events.list API call inside _fetchGoogleEventsForCalendar, feeding syncGoogleCalendar at line 404) and Naver CalDAV (lib/services/naver_caldav_service.dart:861 getEvents() issuing a REPORT request at line 950 via _queryEvents). CORRECTION (2026-09-11, MEDIUM-1): the previously cited naver_caldav_service.dart:1740,1762 are exportEvent()'s outbound PUT request (PlanFlow pushing its own events out to Naver), not an import/third-party-content-ingestion path, and have been replaced with the actual import citations above. Whether displaying/importing this third-party-sourced data counts as 'using third-party content' under the store's specific question wording was not re-litigated in this pass; confidence lowered to LOW to reflect this unresolved rebuttal. CLARIFICATION: lib/services/map_service.dart의 경로 API(Tmap, Naver, Google Distance Matrix)는 이동 소요시간(분)만 반환하는 계산 API이며, 지도 콘텐츠 표시의 근거가 아니다."
+      "note": "value re-judged 2026-09-16 from USES_THIRD_PARTY_CONTENT's real Apple definition (contain/show/access third-party content) against PlanFlow's actual Maps/Calendar/CalDAV integrations; supersedes the prior DOES_NOT_USE_THIRD_PARTY_CONTENT/USER_APPROVED value which had unresolved rebuttal evidence; USES_THIRD_PARTY_CONTENT is a rights/permissions declaration, not an infringement admission; storeAcceptance remains NONE -- this is a canonical local profile change only, no App Store Connect submission was mutated; if this profile's current live ASC submission (Build 23, WAITING_FOR_REVIEW) has a different contentRightsDeclaration value on file, that mismatch must go through the store mutation gate separately, not be auto-applied by this edit."
     },
     "ugc": {
       "value": false,
@@ -1000,69 +1884,76 @@
       "value": false,
       "source": "CODE_EVIDENCE",
       "evidence": [
-        "pubspec.yaml:9-51"
+        "pubspec.yaml:9-49",
+        "lib/screens/home/home_widgets.dart:417",
+        "lib/widgets/planflow_voice_fab.dart:70",
+        "grep -rli 'chat' lib/ (2026-09-15, re-run): 2 matches, both Icons.chat_bubble_outline icon usage, no chat feature/SDK"
       ],
-      "lastVerified": "2026-09-11",
-      "confidence": "MEDIUM",
-      "requiresHumanAuthority": true,
+      "lastVerified": "2026-09-15",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "No 1:1/group chat screens or SDKs found: pubspec.yaml dependencies block (lines 9-51) contains no chat/messaging SDK, confirmed by python -m fluxstore impact --project-root E:\\FluxStudio\\PlanFlow --json (SDK fingerprint componentCount=7, all 7 are non-chat: google_mobile_ads/firebase_crashlytics/firebase_remote_config/firebase_core/supabase_flutter/google_sign_in/speech_to_text). glob for chat*.dart under lib/ returned 0 files; grep -rli 'chat' lib/ found only lib/screens/home/home_widgets.dart:417 and lib/widgets/planflow_voice_fab.dart:70, both Icons.chat_bubble_outline icon usage, not a chat feature. Group commentary is classified under 'ugc', not chat. requiresHumanAuthority=true: this negative finding rests on absence of evidence (no dedicated chat SDK/screens), not a positive rule-out -- supabase_flutter is a general-purpose backend and could in principle carry an ad-hoc user-to-user messaging table this pass did not enumerate every table for. A human should confirm no such Supabase table exists before treating this as final."
+      "note": "[decision-path: A] 소스 스캔으로 결정되는 기능 존재 여부 -- 사업/법률 선택이 아님(Goal §7/§9). requiresHumanAuthority=false로 정정: 부재 판정은 매 릴리스마다 저장소 스캔으로 기계적으로 재확인 가능한 사실이며 1회성 사업 승인이 필요한 사안이 아니다. No 1:1/group chat screens or SDKs found: pubspec.yaml dependencies block (lines 9-49) contains no chat/messaging SDK, confirmed by python -m fluxstore impact --project-root E:\\FluxStudio\\PlanFlow --json (SDK fingerprint componentCount=7, all 7 are non-chat: google_mobile_ads/firebase_crashlytics/firebase_remote_config/firebase_core/supabase_flutter/google_sign_in/speech_to_text). glob for chat*.dart under lib/ returned 0 files; grep -rli 'chat' lib/ found only lib/screens/home/home_widgets.dart:417 and lib/widgets/planflow_voice_fab.dart:70, both Icons.chat_bubble_outline icon usage, not a chat feature. Group commentary is classified under 'ugc', not chat. Residual caveat (kept from prior note): this negative finding rests on absence of evidence (no dedicated chat SDK/screens), not a positive rule-out -- supabase_flutter is a general-purpose backend and could in principle carry an ad-hoc user-to-user messaging table this pass did not enumerate every table for."
     },
     "health": {
       "value": false,
       "source": "CODE_EVIDENCE",
       "evidence": [
-        "pubspec.yaml:9-51"
+        "pubspec.yaml:9-49",
+        "lib/core/event_metadata.dart:8"
       ],
-      "lastVerified": "2026-09-11",
-      "confidence": "MEDIUM",
-      "requiresHumanAuthority": true,
+      "lastVerified": "2026-09-15",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "No health-related SDK or feature found in pubspec.yaml/lib."
+      "note": "[decision-path: A] 소스 스캔으로 결정되는 기능 존재 여부 -- 사업/법률 선택이 아님(Goal §7/§9). requiresHumanAuthority=false로 정정: 부재 판정은 매 릴리스마다 저장소 스캔으로 기계적으로 재확인 가능한 사실이며 1회성 사업 승인이 필요한 사안이 아니다. No health-related SDK (no HealthKit/Google Fit dependency in pubspec.yaml:9-49) or feature found in lib/. lib/core/event_metadata.dart:8 is a schedule-event category label ('건강') for user-created calendar events, not a health-data collection feature or SDK integration."
     },
     "finance": {
       "value": false,
       "source": "CODE_EVIDENCE",
       "evidence": [
-        "pubspec.yaml:9-51"
+        "pubspec.yaml:9-49",
+        "lib/services/gpt_service.dart:891"
       ],
-      "lastVerified": "2026-09-11",
-      "confidence": "MEDIUM",
-      "requiresHumanAuthority": true,
+      "lastVerified": "2026-09-15",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "No finance/payments SDK or feature found (no in_app_purchase dependency)."
+      "note": "[decision-path: A] 소스 스캔으로 결정되는 기능 존재 여부 -- 사업/법률 선택이 아님(Goal §7/§9). requiresHumanAuthority=false로 정정: 부재 판정은 매 릴리스마다 저장소 스캔으로 기계적으로 재확인 가능한 사실이며 1회성 사업 승인이 필요한 사안이 아니다. No finance/payments SDK or feature found (no in_app_purchase/stripe/billing dependency in pubspec.yaml:9-49). lib/services/gpt_service.dart:891's '_stripExplicitMemoClause' is a substring false-positive for a 'stripe' grep, not a payment SDK call."
     },
     "gambling": {
       "value": false,
       "source": "CODE_EVIDENCE",
       "evidence": [
-        "pubspec.yaml:9-51"
+        "pubspec.yaml:9-49",
+        "grep -rli 'gambl|casino|bet\\b' lib/ pubspec.yaml (2026-09-15): 0 matches"
       ],
-      "lastVerified": "2026-09-11",
-      "confidence": "MEDIUM",
-      "requiresHumanAuthority": true,
+      "lastVerified": "2026-09-15",
+      "confidence": "HIGH",
+      "requiresHumanAuthority": false,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "No gambling-related feature or SDK found."
+      "note": "[decision-path: A] 소스 스캔으로 결정되는 기능 존재 여부 -- 사업/법률 선택이 아님(Goal §7/§9). requiresHumanAuthority=false로 정정: 부재 판정은 매 릴리스마다 저장소 스캔으로 기계적으로 재확인 가능한 사실이며 1회성 사업 승인이 필요한 사안이 아니다. No gambling-related feature or SDK found in pubspec.yaml:9-49 or lib/."
     },
     "ads": {
       "android": {
-        "value": null,
+        "value": true,
         "source": "CODE_EVIDENCE",
         "evidence": [
+          "android/app/src/main/AndroidManifest.xml:149-151 (real AdMob App ID ca-app-pub-3753374909078516~3814311401 hardcoded as native meta-data, comment states it cannot be replaced by Remote Config and is always read at process start)",
           "lib/services/ad_service.dart:491",
           "lib/services/ad_service.dart:423",
           "android/app/src/main/AndroidManifest.xml:4"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
-        "requiresHumanAuthority": true,
+        "lastVerified": "2026-09-15",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "MobileAds.instance.initialize() (ad_service.dart:491) plus the AD_ID permission (AndroidManifest.xml:4) confirm the app is CAPABLE of running rewarded ads on Android, but ad_service.dart:423 gates that call behind `RemoteConfigService.rewardedAdEnabled`, whose live production value was not read back in this pass -- whether ads are actually active is UNKNOWN, not a confirmed true. See privacy.android.dataTypes.androidAdvertisingId for the same gating."
+        "note": "[decision-path: A] AdMob SDK integration on Android is a source fact, not a business/legal choice (Goal §7/§9). AndroidManifest.xml:149-151 hardcodes a real production AdMob App ID as native meta-data (with a code comment explicitly stating it is read before Remote Config fetch and cannot be replaced by it), which is unconditional evidence the Android AdMob SDK is integrated and active regardless of the RemoteConfigService.rewardedAdEnabled gate on the rewarded-unit call (ad_service.dart:423,491) -- that gate affects which ad unit loads, not whether the AdMob SDK itself is present. requiresHumanAuthority=false: SDK presence is machine-reconfirmable every release by manifest/dependency scan."
       },
       "ios": {
         "value": true,
@@ -1075,22 +1966,25 @@
         ],
         "lastVerified": "2026-09-13",
         "confidence": "MEDIUM",
-        "requiresHumanAuthority": true,
+        "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "iOS rewarded ads are active in source when Remote Config provides a valid rewarded_ad_unit_id_ios; the current iOS readback identifies the submitted app. AdMob availability/processing is applicable, while the current binary does not request ATT or directly access IDFA."
+        "note": "[decision-path: A] AdMob SDK integration/availability is a source fact, not a business/legal choice (Goal §7/§9); requiresHumanAuthority=false. iOS rewarded ads are active in source when Remote Config provides a valid rewarded_ad_unit_id_ios; the current iOS readback identifies the submitted app. AdMob availability/processing is applicable, while the current binary does not request ATT or directly access IDFA."
       }
     },
     "childDirected": {
       "value": false,
       "source": "USER_STATED",
-      "evidence": [],
-      "lastVerified": "2026-09-13",
+      "evidence": [
+        "Goal §6 CHILDREN_TARGET=NO (user authority 2026-09-15)",
+        "docs/store/planflow-privacy-policy-final.md:35 (\"서비스는 만 14세 미만 아동을 대상으로 설계하거나 제공하지 않습니다\")"
+      ],
+      "lastVerified": "2026-09-15",
       "confidence": "HIGH",
       "requiresHumanAuthority": false,
-      "approval": "NONE",
+      "approval": "USER_APPROVED",
       "storeAcceptance": "NONE",
-      "note": "사용자 확정: 만 14세 미만을 대상으로 설계하거나 제공하지 않음. 접근 가능성을 배제하는 표현은 사용하지 않음."
+      "note": "[decision-path: C] 사용자 확정(Goal §6): 만 14세 미만을 대상으로 설계하거나 제공하지 않음. 접근 가능성을 배제하는 표현은 사용하지 않음. docs/store/planflow-privacy-policy-final.md:35의 게시 예정 개인정보처리방침 문구와 일치."
     },
     "medicalClaims": {
       "value": null,
@@ -1101,7 +1995,7 @@
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "PlanFlow is a scheduling/calendar app; no medical/health-claims feature or copy was checked in this pass. Left UNKNOWN rather than assumed false pending an explicit review of store-listing copy for any health/medical claims language."
+      "note": "[decision-path: F] question-group: console-declarations. PlanFlow is a scheduling/calendar app; no medical/health-claims feature or copy was checked in this pass. Left UNKNOWN rather than assumed false pending an explicit review of store-listing copy for any health/medical claims language."
     },
     "encryption": {
       "value": null,
@@ -1114,7 +2008,7 @@
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "ios/Runner/Info.plist:9 declares the ITSAppUsesNonExemptEncryption key (value not independently re-read in this pass; see decisionsRequired.EXPORT_COMPLIANCE_CONFIRM which already cites this same key as false). Whether that declared value is an accurate, human-confirmed export-compliance statement (vs. an unreviewed default) is UNKNOWN -- linked to decisionRequired: EXPORT_COMPLIANCE_CONFIRM. SCOPE NOTE (this pass): the store-profile.v1 schema's content.encryption node has no per-platform (android/ios) split (unlike content.ads/monetization.model which do) -- it is a single value for the whole app. The only evidence gathered is iOS-specific (Info.plist's ITSAppUsesNonExemptEncryption has no Android/Play equivalent; Play's Data Safety encryption-in-transit question is answered per data type, not as one binary app-level flag). This node should be read as an iOS-export-compliance-only judgment; it does not represent an Android finding, and confidence/value should not be assumed to generalize to Android's separate encryption-in-transit declarations (see the per-data-type encryptedInTransit field in androidDataType, currently unused/unset for any Android data type in this profile)."
+      "note": "[decision-path: F] question-group: console-declarations. ios/Runner/Info.plist:9 declares the ITSAppUsesNonExemptEncryption key (value not independently re-read in this pass; see decisionsRequired.EXPORT_COMPLIANCE_CONFIRM which already cites this same key as false). Whether that declared value is an accurate, human-confirmed export-compliance statement (vs. an unreviewed default) is UNKNOWN -- linked to decisionRequired: EXPORT_COMPLIANCE_CONFIRM. SCOPE NOTE (this pass): the store-profile.v1 schema's content.encryption node has no per-platform (android/ios) split (unlike content.ads/monetization.model which do) -- it is a single value for the whole app. The only evidence gathered is iOS-specific (Info.plist's ITSAppUsesNonExemptEncryption has no Android/Play equivalent; Play's Data Safety encryption-in-transit question is answered per data type, not as one binary app-level flag). This node should be read as an iOS-export-compliance-only judgment; it does not represent an Android finding, and confidence/value should not be assumed to generalize to Android's separate encryption-in-transit declarations (see the per-data-type encryptedInTransit field in androidDataType, currently unused/unset for any Android data type in this profile)."
     },
     "traderStatus": {
       "value": null,
@@ -1125,25 +2019,24 @@
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "No trader/consumer status declaration (EU DSA trader status, Apple/Play trader disclosure) was found in this repo or read back from either store console in this pass. requiresHumanAuthority=true: this is a legal/business classification, not something code evidence can answer."
+      "note": "[decision-path: F] question-group: console-declarations. No trader/consumer status declaration (EU DSA trader status, Apple/Play trader disclosure) was found in this repo or read back from either store console in this pass. requiresHumanAuthority=true: this is a legal/business classification, not something code evidence can answer."
     }
   },
   "monetization": {
     "model": {
       "android": {
-        "value": null,
-        "source": "CODE_EVIDENCE",
+        "value": "free_with_ads",
+        "source": "USER_STATED",
         "evidence": [
-          "lib/services/ad_service.dart:491",
-          "lib/services/ad_service.dart:423",
-          "android/app/src/main/AndroidManifest.xml:4"
+          "monetization.model.ios (value=free_with_ads, source=DERIVED, confidence=HIGH)",
+          "Goal §6 (app is FREE; androidAdMob App ID hardcoded in AndroidManifest.xml:149-151, same rewarded-ads BM as iOS)"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
-        "requiresHumanAuthority": true,
-        "approval": "NONE",
+        "lastVerified": "2026-09-15",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
+        "approval": "USER_APPROVED",
         "storeAcceptance": "NONE",
-        "note": "CORRECTION: prior value 'free_with_ads' at HIGH confidence overstated certainty. MobileAds.instance.initialize() (ad_service.dart:491) confirms the app is CAPABLE of running rewarded ads on Android, but it is gated behind ad_service.dart:423's RemoteConfigService.rewardedAdEnabled check, whose live production value was not read back in this pass -- see content.ads.android and privacy.android.dataTypes.androidAdvertisingId for the identical gating evidence. No in_app_purchase dependency exists (pubspec.yaml), so the model is either 'free' or 'free_with_ads' depending on that unread Remote Config value; the app is free either way, but the ads-bearing variant is UNKNOWN."
+        "note": "[decision-path: C] iOS monetization.model.ios와 동일한 enum 값(free_with_ads)을 Android에도 적용 -- 기존 FREE pricing + rewarded-ads BM은 이번 세션에서 새로 만든 사업 판단이 아니라 이미 존재하는 사용자 결정(Goal §6, §9 '기존 FREE pricing')을 두 플랫폼에 일관되게 반영하는 것. requiresHumanAuthority는 iOS 항목과 동일하게 false로 정정 -- 매 릴리스 재확인이 필요한 새 결정이 아님. CORRECTION (kept context): prior value was null/UNKNOWN because ad_service.dart:423's RemoteConfigService.rewardedAdEnabled gate makes the *specific ad unit activation* runtime-dependent, but that gate does not change which monetization *model* the app declares -- content.ads.android confirms the AdMob SDK itself is unconditionally integrated (android/app/src/main/AndroidManifest.xml:149-151)."
       },
       "ios": {
         "value": "free_with_ads",
@@ -1190,19 +2083,20 @@
     },
     "ads": {
       "android": {
-        "value": null,
+        "value": true,
         "source": "CODE_EVIDENCE",
         "evidence": [
+          "android/app/src/main/AndroidManifest.xml:149-151 (real AdMob App ID ca-app-pub-3753374909078516~3814311401 hardcoded as native meta-data, comment states it cannot be replaced by Remote Config and is always read at process start)",
           "lib/services/ad_service.dart:491",
           "lib/services/ad_service.dart:423",
           "android/app/src/main/AndroidManifest.xml:4"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
-        "requiresHumanAuthority": true,
+        "lastVerified": "2026-09-15",
+        "confidence": "HIGH",
+        "requiresHumanAuthority": false,
         "approval": "NONE",
         "storeAcceptance": "NONE",
-        "note": "CORRECTION: prior value=true/HIGH was inconsistent with content.ads.android, which was already corrected to null/UNKNOWN in this pass for the same reason. Same evidence as content.ads.android: MobileAds.instance.initialize() is gated behind ad_service.dart:423's RemoteConfigService.rewardedAdEnabled, whose live value was not read back."
+        "note": "[decision-path: A] AdMob SDK integration on Android is a source fact, not a business/legal choice (Goal §7/§9); requiresHumanAuthority=false. Same evidence as content.ads.android: AndroidManifest.xml:149-151 hardcodes a real production AdMob App ID as native meta-data, unconditional evidence the SDK is integrated regardless of the RemoteConfigService.rewardedAdEnabled gate on the rewarded-unit call (ad_service.dart:423,491), which affects unit activation, not SDK presence."
       },
       "ios": {
         "value": true,
