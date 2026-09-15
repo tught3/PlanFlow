@@ -66,20 +66,21 @@
         "note": "No in_app_purchase dependency found in pubspec.yaml dependencies block (lines 9-51), supporting a free/no-IAP listing, but actual Play Console price tier is unconfirmed."
       },
       "privacyPolicyUrl": {
-        "value": null,
-        "source": "UNKNOWN",
+        "value": "https://fluxstudio.co.kr/privacy",
+        "source": "USER_STATED",
         "evidence": [
           "apps-in-toss/src/features/auth/LoginScreen.tsx:27",
           "docs/release-console-checklist.md:15",
           "https://fluxstudio.co.kr/privacy (HTTP 200 measured 2026-09-11)",
-          "https://tught3.github.io/PlanFlow/privacy-policy.html (HTTP 200 measured 2026-09-11)"
+          "https://tught3.github.io/PlanFlow/privacy-policy.html (HTTP 200 measured 2026-09-11)",
+          "USER_STATED via Claude session 2026-09-15: CEO 직접 지정, iOS와 동일 URL"
         ],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "lastVerified": "2026-09-15",
+        "confidence": "HIGH",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
-        "storeAcceptance": "NONE",
-        "note": "Two candidate URLs found, both HTTP 200: (1) https://fluxstudio.co.kr/privacy — code-canonical per LoginScreen.tsx:27 and release-console-checklist.md:15, but this is a generic FluxStudio/HealthFlow homepage page that does not enumerate PlanFlow-specific data collection; (2) https://tught3.github.io/PlanFlow/privacy-policy.html — PlanFlow-specific content, last updated 2026-05-10, does not mention AdMob. The value actually entered in App Store Connect / Play Console is unknown; do not assume either is the store-registered value without readback."
+        "approval": "USER_APPROVED",
+        "storeAcceptance": "READBACK_UNCONFIRMED",
+        "note": "Android와 iOS가 같은 개인정보처리방침 URL을 쓰기로 사용자가 확정함. Two candidate URLs found, both HTTP 200: (1) https://fluxstudio.co.kr/privacy — code-canonical per LoginScreen.tsx:27 and release-console-checklist.md:15, but this is a generic FluxStudio/HealthFlow homepage page that does not enumerate PlanFlow-specific data collection; (2) https://tught3.github.io/PlanFlow/privacy-policy.html — PlanFlow-specific content, last updated 2026-05-10, does not mention AdMob. User confirmed (1) as the value to use, matching iOS; the actual value entered in Play Console is unconfirmed without readback."
       },
       "supportUrl": {
         "value": "https://fluxstudio.co.kr/planflow-support",
