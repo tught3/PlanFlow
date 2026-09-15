@@ -1851,18 +1851,19 @@
       }
     },
     "contentRights": {
-      "value": "DOES_NOT_USE_THIRD_PARTY_CONTENT",
-      "source": "USER_STATED",
+      "value": null,
+      "source": "UNKNOWN",
       "evidence": [
         "Goal §6 UGC=NOT_APPLICABLE (user authority 2026-09-15)",
-        "first-release user statement 2026-09-15: PlanFlow does not license/display third-party licensed content; Google Maps/Calendar and Naver CalDAV are the user's own linked-account API integrations, not third-party licensed content ingestion, per this same field's existing REBUTTAL note below"
+        "first-release user statement 2026-09-15: PlanFlow does not license/display third-party licensed content; Google Maps/Calendar and Naver CalDAV are the user's own linked-account API integrations, not third-party licensed content ingestion, per this same field's existing REBUTTAL note below",
+        "2026-09-16: USER_APPROVED revoked by explicit user instruction -- unresolved rebuttal evidence (google_maps_flutter map display, Google Calendar import, Naver CalDAV import) means the approved DOES_NOT_USE_THIRD_PARTY_CONTENT answer cannot stand as authoritative. Reassessment blocked pending confirmation of the exact Google Play Console declaration this field maps to (its precise wording/options/policy meaning) from an authoritative/current source, followed by re-judgment against PlanFlow's actual behavior. Do not re-approve this field by re-presenting the same question to the user -- a new judgment based on the confirmed question meaning is required."
       ],
-      "lastVerified": "2026-09-15",
-      "confidence": "HIGH",
+      "lastVerified": "2026-09-16",
+      "confidence": "UNKNOWN",
       "requiresHumanAuthority": true,
-      "approval": "USER_APPROVED",
+      "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "[decision-path: C] 사용자가 PlanFlow는 콘텐츠 권한 질문에 '아니요'라고 진술하고 이번 세션(2026-09-15)에서 재확인/승인함. REBUTTAL note (kept from prior pass): the app displays third-party map content via pubspec.yaml:21 (google_maps_flutter) and lib/screens/location/location_picker_screen.dart:593 (GoogleMap widget) and imports calendar/event data from Google Calendar (lib/services/calendar_sync_service.dart:2001, events.list API call inside _fetchGoogleEventsForCalendar, feeding syncGoogleCalendar at line 404) and Naver CalDAV (lib/services/naver_caldav_service.dart:861 getEvents() issuing a REPORT request at line 950 via _queryEvents). CORRECTION (2026-09-11, MEDIUM-1): the previously cited naver_caldav_service.dart:1740,1762 are exportEvent()'s outbound PUT request (PlanFlow pushing its own events out to Naver), not an import/third-party-content-ingestion path, and have been replaced with the actual import citations above. Whether displaying/importing this third-party-sourced data counts as 'using third-party content' under the store's specific question wording was not re-litigated in this pass; the user has directly approved DOES_NOT_USE_THIRD_PARTY_CONTENT as the answer for this release, treating own-account API integrations (Maps rendering, Calendar/CalDAV sync of the user's own data) as distinct from licensed third-party content. requiresHumanAuthority kept true (legal/store declaration), approval=USER_APPROVED. CLARIFICATION: lib/services/map_service.dart의 경로 API(Tmap, Naver, Google Distance Matrix)는 이동 소요시간(분)만 반환하는 계산 API이며, 지도 콘텐츠 표시의 근거가 아니다."
+      "note": "FAIL-CLOSED (2026-09-16): value/approval reset pending confirmation of the real Play Console question this field represents. Prior REBUTTAL evidence preserved below for context. [decision-path: C] 사용자가 PlanFlow는 콘텐츠 권한 질문에 '아니요'라고 진술하고 이번 세션(2026-09-15)에서 재확인/승인함. REBUTTAL note (kept from prior pass): the app displays third-party map content via pubspec.yaml:21 (google_maps_flutter) and lib/screens/location/location_picker_screen.dart:593 (GoogleMap widget) and imports calendar/event data from Google Calendar (lib/services/calendar_sync_service.dart:2001, events.list API call inside _fetchGoogleEventsForCalendar, feeding syncGoogleCalendar at line 404) and Naver CalDAV (lib/services/naver_caldav_service.dart:861 getEvents() issuing a REPORT request at line 950 via _queryEvents). CORRECTION (2026-09-11, MEDIUM-1): the previously cited naver_caldav_service.dart:1740,1762 are exportEvent()'s outbound PUT request (PlanFlow pushing its own events out to Naver), not an import/third-party-content-ingestion path, and have been replaced with the actual import citations above. Whether displaying/importing this third-party-sourced data counts as 'using third-party content' under the store's specific question wording was not re-litigated in this pass; the user has directly approved DOES_NOT_USE_THIRD_PARTY_CONTENT as the answer for this release, treating own-account API integrations (Maps rendering, Calendar/CalDAV sync of the user's own data) as distinct from licensed third-party content. requiresHumanAuthority kept true (legal/store declaration), approval=USER_APPROVED. CLARIFICATION: lib/services/map_service.dart의 경로 API(Tmap, Naver, Google Distance Matrix)는 이동 소요시간(분)만 반환하는 계산 API이며, 지도 콘텐츠 표시의 근거가 아니다."
     },
     "ugc": {
       "value": false,
