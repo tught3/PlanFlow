@@ -28,7 +28,6 @@ import 'services/activity_tracking_service.dart';
 import 'services/smart_preparation_payload_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
-import 'services/notification_route_contract.dart';
 import 'services/interaction_idle_gate.dart';
 import 'services/oauth_callback_handler.dart';
 import 'services/update_service.dart';
@@ -556,17 +555,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     final type = isMorning ? 'morning' : 'evening';
-                    // 브리핑은 별도 결과 화면으로 이동하지 않고, 일정 탭의
-                    // 동일한 달력 위에서 실행한다. 일정 목록을 보면서 들을 수
-                    // 있고, 기존 달력/바텀시트 상태도 그대로 유지된다.
-                    // 모달 pop과 go를 같은 동기 콜백에서 호출하면 Navigator가
-                    // 아직 모달 route를 정리하는 중이라 이동 요청이 유실될 수
-                    // 있다. 모달이 실제로 닫힌 다음 프레임에 브리핑 route를
-                    // 열어 일정 탭과 선택 날짜 상세 시트를 보장한다.
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      appRouter.go('${AppRoutes.briefing}?type=$type');
-                    });
+                    appRouter.go('${AppRoutes.briefing}?type=$type');
                   },
                   type: ActionButtonType.primary,
                   flex: 1,
@@ -1239,15 +1228,6 @@ String? resolveHomeWidgetRoute(Uri? uri) {
 
   final query = uri.hasQuery ? '?${uri.query}' : '';
   switch (uri.host) {
-    case 'schedule':
-      final scheduleId = uri.pathSegments.isNotEmpty
-          ? uri.pathSegments.first.trim()
-          : '';
-      return scheduleId.isNotEmpty
-          ? '${AppRoutes.eventDetail}/$scheduleId'
-          : AppRoutes.calendar;
-    case 'day':
-      return NotificationRouteContract.canonicalPath(uri);
     case 'voice-launcher':
       return '${AppRoutes.voice}?autoStart=1';
     case 'voice':
@@ -1296,10 +1276,6 @@ String? resolveHomeWidgetRoute(Uri? uri) {
   }
   if (uri.path == '/calendar') {
     return '${AppRoutes.calendar}$query';
-  }
-  final canonicalPath = NotificationRouteContract.canonicalPath(uri);
-  if (canonicalPath != null) {
-    return canonicalPath;
   }
   return null;
 }

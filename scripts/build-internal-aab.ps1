@@ -11,10 +11,6 @@
   [switch]$SkipVersionBump,
   [switch]$SkipTests,
   [switch]$SkipFluxOsSession,
-  # Analyze production code directly. The default Flutter package-wide scan
-  # also walks the large test tree and can exceed the bounded release window;
-  # the release gate runs the focused test targets separately below.
-  [string[]]$AnalyzeTargets = @('lib'),
   [ValidateRange(60, 900)]
   [int]$AnalyzeTimeoutSeconds = 900,
   [ValidateRange(60, 900)]
@@ -29,7 +25,6 @@ $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $FlutterLocal = Join-Path $PSScriptRoot 'flutter-local.ps1'
 $PubspecPath = Join-Path $WorkspaceRoot 'pubspec.yaml'
 $AabPath = Join-Path $WorkspaceRoot 'build\app\outputs\bundle\release\app-release.aab'
-$MapArtifactMarkerPath = "$AabPath.map-marker"
 $DeployLogDir = Join-Path $WorkspaceRoot '.deploy-logs'
 $PreviousPlanFlowSkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION
 if ($SkipFluxOsSession) {
@@ -423,8 +418,7 @@ function Invoke-BoundedAnalyze {
   $previousSkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION
   try {
     $env:PLANFLOW_SKIP_FLUXOS_SESSION = '1'
-    $flutterAnalyzeArgs = @('analyze') + $AnalyzeTargets + @('--no-pub')
-    $flutterResult = Invoke-OwnedProcess -FilePath 'powershell.exe' -ArgumentList (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FlutterLocal) + $flutterAnalyzeArgs) -OutputPath $PrimaryLogPath -TimeoutSeconds $AnalyzeTimeoutSeconds -Stage 'flutter'
+    $flutterResult = Invoke-OwnedProcess -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FlutterLocal, 'analyze', '--no-pub') -OutputPath $PrimaryLogPath -TimeoutSeconds $AnalyzeTimeoutSeconds -Stage 'flutter'
   } finally {
     if ($null -eq $previousSkipFluxOsSession) {
       Remove-Item Env:PLANFLOW_SKIP_FLUXOS_SESSION -ErrorAction SilentlyContinue
@@ -446,8 +440,7 @@ function Invoke-BoundedAnalyze {
     Write-AnalyzeAudit -Event 'fallback_unavailable' -Details @{ dart_path = $dart }
     throw "Flutter SDK Dart analyzer not found: $dart"
   }
-  $dartAnalyzeArgs = @('analyze') + $AnalyzeTargets
-  $dartResult = Invoke-OwnedProcess -FilePath $dart -ArgumentList $dartAnalyzeArgs -OutputPath $fallbackLogPath -TimeoutSeconds $AnalyzeFallbackTimeoutSeconds -Stage 'dart-fallback'
+  $dartResult = Invoke-OwnedProcess -FilePath $dart -ArgumentList @('analyze') -OutputPath $fallbackLogPath -TimeoutSeconds $AnalyzeFallbackTimeoutSeconds -Stage 'dart-fallback'
 
   if (Test-Path -LiteralPath $fallbackLogPath) {
     Add-Content -LiteralPath $PrimaryLogPath -Value ("`n[direct-dart-analyze]`n" + (Get-Content -LiteralPath $fallbackLogPath -Raw)) -Encoding utf8
@@ -469,54 +462,6 @@ function Read-PubspecVersion {
   return "$($match.Groups[1].Value)+$($match.Groups[2].Value)"
 }
 
-function Assert-ReleaseMapDefines {
-  # A release built without env/local.json still compiles successfully, but
-  # leaves both map providers without credentials.  Fail before version bump
-  # or Gradle work so an invalid AAB cannot be uploaded accidentally.  Values
-  # are intentionally never printed.
-  $definePath = Join-Path $WorkspaceRoot 'env\local.json'
-  if (-not (Test-Path -LiteralPath $definePath -PathType Leaf)) {
-    throw "Release preflight failed: env/local.json is missing. Restore the local define file before building."
-  }
-
-  try {
-    $defines = Get-Content -LiteralPath $definePath -Raw -Encoding utf8 | ConvertFrom-Json
-  } catch {
-    throw "Release preflight failed: env/local.json is not valid JSON."
-  }
-
-  $requiredMapKeys = @(
-    'GOOGLE_MAPS_API_KEY',
-    'TMAP_API_KEY',
-    'NAVER_MAP_CLIENT_ID'
-  )
-  $placeholderPatterns = @(
-    '^your-',
-    'your-google-maps-api-key',
-    'your-tmap-api-key',
-    'your-naver-map-client-id'
-  )
-  $missing = @()
-  foreach ($key in $requiredMapKeys) {
-    $property = $defines.PSObject.Properties[$key]
-    $value = if ($null -ne $property) { [string]$property.Value } else { '' }
-    $isPlaceholder = $false
-    foreach ($pattern in $placeholderPatterns) {
-      if ($value.Trim().ToLowerInvariant() -match $pattern) {
-        $isPlaceholder = $true
-        break
-      }
-    }
-    if ([string]::IsNullOrWhiteSpace($value) -or $isPlaceholder) {
-      $missing += $key
-    }
-  }
-  if ($missing.Count -gt 0) {
-    throw "Release preflight failed: required map define(s) are missing or placeholders ($($missing -join ', '))."
-  }
-  Write-Host ("Release map define preflight passed: {0} required keys present." -f $requiredMapKeys.Count)
-}
-
 try {
   if ([string]::IsNullOrWhiteSpace($AnalyzeAuditPath)) {
     $AnalyzeAuditPath = New-DeployLogPath -Stage 'analyze-audit'
@@ -526,8 +471,6 @@ try {
   }
 
   Write-Stage "PlanFlow internal test AAB build"
-
-  Assert-ReleaseMapDefines
 
   $versionInfo = $null
   if (-not $SkipVersionBump) {
@@ -581,16 +524,8 @@ try {
 
   Write-DeployStatus 'build'
   Write-Stage "Building release appbundle"
-  Remove-Item -LiteralPath $MapArtifactMarkerPath -Force -ErrorAction SilentlyContinue
   $buildLogPath = New-DeployLogPath -Stage 'build'
-  # --no-pub intentionally omitted: the focused-test stage above runs `flutter test`,
-  # which regenerates GeneratedPluginRegistrant.java in non-release mode (dev-only
-  # plugins like integration_test included). Skipping pub here would build against
-  # that stale non-release registrant and fail release Java/Kotlin compilation with
-  # "package dev.flutter.plugins.integration_test does not exist". Running pub get
-  # here re-injects plugins in release mode (dev dependencies excluded) right before
-  # the Gradle build, at negligible extra cost since no dependency actually changed.
-  $buildOutput = & $FlutterLocal build appbundle --release 2>&1 | Tee-Object -FilePath $buildLogPath
+  $buildOutput = & $FlutterLocal build appbundle --release --no-pub 2>&1 | Tee-Object -FilePath $buildLogPath
   if ($LASTEXITCODE -ne 0) {
     $buildDetails = Get-BuildFailureExcerpt -Path $buildLogPath
     Write-Host ''
@@ -609,24 +544,6 @@ try {
   }
 
   $resolvedAabPath = (Resolve-Path -LiteralPath $AabPath).Path
-  $sha256 = [System.Security.Cryptography.SHA256]::Create()
-  try {
-    $aabHash = [System.BitConverter]::ToString(
-      $sha256.ComputeHash([System.IO.File]::ReadAllBytes($resolvedAabPath))
-    ).Replace('-', '').ToLowerInvariant()
-  } finally {
-    $sha256.Dispose()
-  }
-  $markerContent = @(
-    "aabPath=$resolvedAabPath"
-    "sha256=$aabHash"
-  ) -join "`n"
-  [System.IO.File]::WriteAllText(
-    $MapArtifactMarkerPath,
-    $markerContent + "`n",
-    [System.Text.UTF8Encoding]::new($false)
-  )
-  $resolvedMapArtifactMarkerPath = (Resolve-Path -LiteralPath $MapArtifactMarkerPath).Path
   $finalVersion = $null
   if ($versionInfo -is [System.Management.Automation.PSObject]) {
     if ($versionInfo.PSObject.Properties.Name -contains 'NewVersion') {
@@ -664,7 +581,6 @@ try {
     OldVersion = if ($versionInfo -and $versionInfo.PSObject.Properties.Name -contains 'OldVersion') { [string]$versionInfo.OldVersion } else { $null }
     NewVersion = $finalVersion
     AabPath    = $resolvedAabPath
-    MapArtifactMarkerPath = $resolvedMapArtifactMarkerPath
   }
 } catch {
   Write-Error $_

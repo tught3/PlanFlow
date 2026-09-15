@@ -6,7 +6,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env.dart';
-import '../../core/diag_logger.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../services/app_permission_service.dart';
@@ -143,10 +142,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       _mapLoadMessage = _mapUnavailableTimeoutMessage;
       _mapRenderState = _MapRenderState.unavailable;
     } else {
-      DiagLogger.log(
-        'MapScreen',
-        'config naver=${AppEnv.naverMapClientId.trim().isNotEmpty} google=${AppEnv.googleMapsApiKey.trim().isNotEmpty}',
-      );
       _mapRenderState = _canUseInAppMap
           ? _MapRenderState.loading
           : _MapRenderState.unavailable;
@@ -393,7 +388,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           }
           timer.cancel();
           if (_canUseGoogleMap) {
-            DiagLogger.log('MapScreen', 'google fallback after naver timeout');
             setState(() {
               _mapLoadMessage =
                   '네이버 지도를 불러오지 못해서 Google 지도로 전환하고 있어요.';
@@ -404,7 +398,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             return;
           }
           if (_mapRenderState == _MapRenderState.loading) {
-            DiagLogger.log('MapScreen', 'unavailable after naver timeout');
             setState(() {
               _mapLoadMessage = _mapUnavailableTimeoutMessage;
               _mapRenderState = _MapRenderState.unavailable;
@@ -424,7 +417,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       }
       final hasController = _mapController != null || _googleMapController != null;
       if (!hasController) {
-        DiagLogger.log('MapScreen', 'unavailable no controller');
         setState(() {
           _mapLoadMessage =
               '지도를 불러올 수 없어요. 아래 후보 목록에서 장소를 선택하거나 직접 검색해 주세요.';
@@ -572,7 +564,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         onMapReady: (controller) async {
           _mapController = controller;
           if (mounted) {
-            DiagLogger.log('MapScreen', 'naver ready');
             setState(() {
               _mapLoadMessage = null;
               _mapRenderState = _MapRenderState.ready;
@@ -614,7 +605,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       onMapCreated: (controller) async {
         _googleMapController = controller;
         if (mounted) {
-          DiagLogger.log('MapScreen', 'google ready');
           setState(() {
             _mapLoadMessage = null;
             _mapRenderState = _MapRenderState.ready;

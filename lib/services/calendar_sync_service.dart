@@ -1085,40 +1085,14 @@ class CalendarSyncService {
     return filtered.take(_naverExportLimit).toList(growable: false);
   }
 
-  /// 읽기 전용 조회의 실제 fetch. 예외를 그대로 전파한다(스왈로 없음) —
-  /// 호출자가 "row 없음(null)"과 "조회 실패(예외)"를 구분해야 하는 경우
-  /// (예: `_saveConnection`의 read-modify-write read)에 이 메서드를 쓴다.
-  ///
-  /// `timeout`이 null이면 무제한 대기한다. read-modify-write의 read는
-  /// 데이터 무결성이 응답성보다 중요하므로 타임아웃을 걸지 않는다 — 여기서
-  /// 타임아웃이 나면 기존 값을 모르는 채로 upsert하게 되어 accessToken 등
-  /// 필드를 NULL로 덮어쓰는 사고로 이어지기 때문이다(2026-09 리뷰 HIGH-1).
-  Future<CalendarConnectionModel?> _fetchConnectionRaw(
-    CalendarProvider provider, {
-    Duration? timeout,
-  }) {
-    final future = _calendarConnectionRepository.fetchConnection(
-      userId: _currentUserId(),
-      provider: _providerKey(provider),
-    );
-    return timeout == null ? future : future.timeout(timeout);
-  }
-
-  /// UI 상태 조회 등 읽기 전용 목적의 헬퍼. 예외를 삼켜 null로 반환한다
-  /// (기존 동작 유지) — 이 결과를 저장 경로의 read-modify-write read로
-  /// 재사용하지 말 것. 그 경우 타임아웃/오류가 "row 없음"과 구분되지 않아
-  /// `_saveConnection`이 기존 accessToken/refreshToken 등을 NULL로
-  /// 덮어쓸 수 있다(2026-09 리뷰 HIGH-1로 확인된 버그).
   Future<CalendarConnectionModel?> _fetchConnection(
-    CalendarProvider provider, {
-    Duration? timeout = const Duration(seconds: 6),
-  }) async {
+    CalendarProvider provider,
+  ) async {
     try {
-      // 로그인 온보딩 체인(외부 캘린더 연동 안내) 안에서 호출되므로, 그 체인
-      // 전체 상한(수 초~10초대)보다 확실히 짧게 끊어 무한 대기를 막는다.
-      // :1013의 Naver Calendar API 호출 타임아웃(10초)과 다른 값을 쓰는 이유는
-      // 이 호출이 Supabase 단일 row 조회로 훨씬 가볍기 때문이다.
-      return await _fetchConnectionRaw(provider, timeout: timeout);
+      return await _calendarConnectionRepository.fetchConnection(
+        userId: _currentUserId(),
+        provider: _providerKey(provider),
+      );
     } catch (error, stackTrace) {
       debugPrint('Calendar connection fetch skipped: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
@@ -1136,11 +1110,7 @@ class CalendarSyncService {
     String? lastError,
   }) async {
     try {
-      // read-modify-write의 read: 타임아웃을 걸지 않는다(무제한 대기).
-      // 여기서 타임아웃이 나면 예외가 아래 catch로 전파되어 upsert
-      // 자체를 건너뛴다 — existing이 null로 대체돼 accessToken 등을
-      // 조용히 NULL로 덮어쓰는 사고를 막기 위함이다(2026-09 리뷰 HIGH-1).
-      final existing = await _fetchConnectionRaw(provider);
+      final existing = await _fetchConnection(provider);
       final logTag = provider == CalendarProvider.google
           ? _googleAuthLogTag
           : 'PlanFlowNaverCalendar';
@@ -1627,11 +1597,8 @@ class CalendarSyncService {
             targets: existing.targets,
             isCritical: existing.isCritical,
             recurrenceRule: existing.recurrenceRule,
-            // Google is the source of truth for these flags during import.
-            // In particular, an old row may retain isMultiDay=true after a
-            // provider fixes a birthday's exclusive date-only end.
-            isAllDay: model.isAllDay,
-            isMultiDay: model.isMultiDay,
+            isAllDay: existing.isAllDay,
+            isMultiDay: existing.isMultiDay,
             parentEventId: existing.parentEventId,
             category: existing.category,
             source: existing.source,
@@ -1745,18 +1712,12 @@ class CalendarSyncService {
     required String externalId,
     required String externalCalendarId,
   }) {
-    final startAt = _googleEventDateTime(event.start);
-    final endAt = _googleEventDateTime(event.end);
-    final isAllDay = event.start?.date != null;
-    final isMultiDay = startAt != null &&
-        endAt != null &&
-        planflowLocalDay(startAt) != _googleDisplayEndDay(startAt, endAt);
     return EventModel(
       id: '',
       userId: _currentUserId(),
       title: _googleEventTitle(event),
-      startAt: startAt,
-      endAt: endAt,
+      startAt: _googleEventDateTime(event.start),
+      endAt: _googleEventDateTime(event.end, isEnd: true),
       location: _googleStringValue(event.location),
       memo: _googleStringValue(event.description),
       supplies: const <String>[],
@@ -1769,8 +1730,6 @@ class CalendarSyncService {
         status: event.status,
       ),
       source: 'google',
-      isAllDay: isAllDay,
-      isMultiDay: isMultiDay,
       externalId: externalId,
       externalCalendarId: externalCalendarId,
       externalUpdatedAt: event.updated?.toUtc(),
@@ -1792,7 +1751,10 @@ class CalendarSyncService {
     return 'Google Calendar 일정';
   }
 
-  DateTime? _googleEventDateTime(gcal.EventDateTime? value) {
+  DateTime? _googleEventDateTime(
+    gcal.EventDateTime? value, {
+    bool isEnd = false,
+  }) {
     if (value == null) {
       return null;
     }
@@ -1807,28 +1769,11 @@ class CalendarSyncService {
       return null;
     }
 
-    // Google supplies a calendar date without a time zone. Store it as
-    // PlanFlow's local-midnight UTC instant so the existing exclusive-end
-    // display helpers interpret Oct 3..Oct 4 as one local day.
-    final dateOnly = DateTime(date.year, date.month, date.day);
-    // Google Calendar date-only DTEND is exclusive. Keep that boundary as
-    // midnight of the following day; display-day helpers subtract the
-    // exclusive boundary when deciding which dates are covered. Adding a
-    // second day here made one-day birthdays appear as two-day bands.
-    return planflowLocalDateTimeToUtc(dateOnly);
-  }
-
-  DateTime _googleDisplayEndDay(DateTime startAt, DateTime endAt) {
-    var localEnd = planflowLocal(endAt);
-    if (endAt.isAfter(startAt) &&
-        localEnd.hour == 0 &&
-        localEnd.minute == 0 &&
-        localEnd.second == 0 &&
-        localEnd.millisecond == 0 &&
-        localEnd.microsecond == 0) {
-      localEnd = localEnd.subtract(const Duration(microseconds: 1));
+    final dateOnly = DateTime.utc(date.year, date.month, date.day);
+    if (isEnd) {
+      return dateOnly.add(const Duration(days: 1));
     }
-    return planflowLocalDay(localEnd);
+    return dateOnly;
   }
 
   String _googleStringValue(Object? value) {

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,18 +17,12 @@ import '../../features/groups/models/calendar_overlay_item.dart';
 import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_refresh_bus.dart';
-import '../../services/event_prefetch_service.dart';
-import '../../services/briefing_scheduler_service.dart';
 import '../../services/korean_holidays.dart';
 import '../../services/synced_public_holiday_visibility.dart';
 import '../../services/voice_conversation_launcher.dart';
 import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
-import 'calendar_projection.dart' as calendar_projection;
-import 'calendar_style_contract.dart';
-// Keep the calendar screen library as the public source for the canonical
-// calendar style tokens. Existing screens/tests import this library directly.
-export 'calendar_style_contract.dart';
+import 'calendar_projection.dart';
 part 'calendar_widgets.dart';
 
 enum _CalendarLoadState {
@@ -42,6 +35,21 @@ enum _CalendarLoadState {
 
 // Calendar semantic palette. Weekday colors are applied only to date numbers;
 // event colors never inherit the weekday color.
+const calendarCriticalEventMarkerColor = Color(0xFF7A5AC8);
+const calendarCriticalEventTextColor = Color(0xFF6B46C1);
+const calendarCriticalEventBackgroundColor = Color(0xFFF3EEFF);
+const calendarNormalEventTextColor = Color(0xFF38516B);
+const calendarNormalEventBackgroundColor = Color(0xFFEDF2F7);
+const calendarMultiDayEventBackgroundColor = Color(0xFFE8EEF5);
+const calendarMultiDayEventTextColor = Color(0xFF334E68);
+const calendarMultiDayEventBorderColor = Color(0xFF1F3B57);
+const calendarCriticalMultiDayAccentColor = Color(0xFF7A5AC8);
+const calendarGroupEventColor = Color(0xFF9A5B00);
+const calendarGroupEventBackgroundColor = Color(0xFFFFF1C2);
+const calendarRecurringEventColor = Color(0xFF00838F);
+const calendarRecurringEventBackgroundColor = Color(0xFFDCF0F2);
+const calendarHolidayColor = Color(0xFFC62828);
+const calendarSaturdayColor = Color(0xFF1E64B7);
 
 @visibleForTesting
 List<EventModel> mergeCalendarEventsAfterReload({
@@ -66,10 +74,21 @@ List<EventModel> mergeCalendarEventsAfterReload({
 }
 
 @visibleForTesting
-// Kept as the public testing/source-compatible entry point; the projection
-// helper is also consumed by HomeWidgetSchedulePayloadBuilder.
-int compareCalendarEventsForDisplay(EventModel a, EventModel b) =>
-    calendar_projection.compareCalendarEventsForDisplay(a, b);
+int compareCalendarEventsForDisplay(EventModel a, EventModel b) {
+  final aStart = a.startAt;
+  final bStart = b.startAt;
+  if (aStart == null && bStart == null) {
+    return a.title.compareTo(b.title);
+  }
+  if (aStart == null) {
+    return 1;
+  }
+  if (bStart == null) {
+    return -1;
+  }
+  final byTime = aStart.compareTo(bStart);
+  return byTime == 0 ? a.title.compareTo(b.title) : byTime;
+}
 
 @visibleForTesting
 bool calendarEventSpansMultipleLocalDays(EventModel event) {
@@ -147,7 +166,6 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
 }
 
 const _calendarMiniMonthEventRows = 4;
-const _calendarMiniEventRowHeight = 10.0;
 
 const _holidayTitleKeywords = <String>[
   '공휴일',
@@ -223,7 +241,6 @@ class CalendarMiniMonthCellData {
     required this.overflowCount,
     required this.isHoliday,
     this.holidayName,
-    this.leadingEventRowCount = 0,
   });
 
   final int index;
@@ -235,10 +252,6 @@ class CalendarMiniMonthCellData {
   final int overflowCount;
   final bool isHoliday;
   final String? holidayName;
-
-  /// Empty rows reserved before a multi-day band so it stays aligned with a
-  /// holiday row on another day in the same span.
-  final int leadingEventRowCount;
 }
 
 @visibleForTesting
@@ -337,14 +350,8 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       continue;
     }
 
-    final spanContainsHoliday = cellIndices.any((index) {
-      final day = cellDates[index];
-      return day != null && KoreanHolidays.holidayName(day) != null;
-    });
     var reserved = false;
-    for (var slot = spanContainsHoliday ? 1 : 0;
-        slot < _calendarMiniMonthEventRows;
-        slot += 1) {
+    for (var slot = 0; slot < _calendarMiniMonthEventRows; slot += 1) {
       if (cellIndices.every((index) => slotMap[index][slot] == null)) {
         for (final index in cellIndices) {
           slotMap[index][slot] = event;
@@ -377,11 +384,7 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     }).toList(growable: false);
     for (final event in singleEvents) {
       var placed = false;
-      final firstAvailableSlot =
-          KoreanHolidays.holidayName(day) != null ? 1 : 0;
-      for (var slot = firstAvailableSlot;
-          slot < _calendarMiniMonthEventRows;
-          slot += 1) {
+      for (var slot = 0; slot < _calendarMiniMonthEventRows; slot += 1) {
         if (slotMap[index][slot] == null) {
           slotMap[index][slot] = event;
           placed = true;
@@ -408,9 +411,6 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     final day = cellDates[index];
     final visibleEvents =
         slotMap[index].whereType<EventModel>().toList(growable: false);
-    final holidayName = day == null ? null : KoreanHolidays.holidayName(day);
-    final firstOccupiedSlot =
-        slotMap[index].indexWhere((event) => event != null);
     return CalendarMiniMonthCellData(
       index: index,
       date: day,
@@ -425,9 +425,7 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
           (KoreanHolidays.isDayOff(day) ||
               _eventsForLocalDay(sortedEvents, day)
                   .any((event) => _looksLikeHolidayTitle(event.title))),
-      holidayName: holidayName,
-      leadingEventRowCount:
-          holidayName == null && firstOccupiedSlot > 0 ? firstOccupiedSlot : 0,
+      holidayName: day == null ? null : KoreanHolidays.holidayName(day),
     );
   }, growable: false);
 }
@@ -436,19 +434,12 @@ class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
     super.key,
     this.initialDate,
-    this.suppressInitialDaySheet = false,
-    this.briefingIsMorning,
     this.eventRepository,
     this.userId,
     this.groupCalendarOverlayProvider,
   });
 
   final DateTime? initialDate;
-  final bool suppressInitialDaySheet;
-
-  /// When set, open the selected-day agenda sheet and run the briefing over
-  /// that sheet. The monthly grid remains the underlying calendar projection.
-  final bool? briefingIsMorning;
   final EventRepository? eventRepository;
   final String? userId;
   final GroupCalendarOverlayProvider? groupCalendarOverlayProvider;
@@ -496,11 +487,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   int _calendarInputRevision = 0;
   DateTime? _pendingFocusDate;
   DateTime? _pendingOpenDaySheetDate;
-  final ValueNotifier<bool> _briefingRunning = ValueNotifier<bool>(false);
-  final ValueNotifier<int> _briefingSheetRevision = ValueNotifier<int>(0);
-  bool _briefingStarted = false;
-  bool _briefingCancelled = false;
-  bool _briefingSheetShown = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -509,46 +495,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final initialDate = widget.initialDate ?? DateTime.now();
     _selectedDate = initialDate;
     _focusedMonth = DateTime(initialDate.year, initialDate.month);
-    _miniMonthCellsCache = buildCalendarMiniMonthCells(
-      events: const <EventModel>[],
-      focusedMonth: _focusedMonth,
-    );
-    _pendingOpenDaySheetDate =
-        widget.suppressInitialDaySheet || widget.briefingIsMorning != null
-            ? null
-            : widget.initialDate;
-    if (widget.briefingIsMorning != null) {
-      _briefingRunning.value = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _briefingSheetShown || widget.initialDate == null) {
-          return;
-        }
-        _briefingSheetShown = true;
-        _showDayEventsSheet(
-          widget.initialDate!,
-          briefingIsMorning: widget.briefingIsMorning,
-        );
-        unawaited(_runBriefing());
-      });
-    }
+    _pendingOpenDaySheetDate = widget.initialDate;
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _searchController.addListener(_handleSearchChanged);
-    _seedPrefetchedEvents();
     _loadEvents(focusDate: widget.initialDate);
-  }
-
-  void _seedPrefetchedEvents() {
-    final userId = _resolveCalendarUserId();
-    if (userId == null || userId.isEmpty) return;
-    final cached = EventPrefetchService().getCached(userId);
-    if (cached == null) return;
-    _allEvents = cached;
-    _loadState = _CalendarLoadState.ready;
-    final projection = _projectionForMonth(_focusedMonth);
-    _visibleEventsCache = projection.visibleEvents;
-    _miniMonthCellsCache = projection.cells;
-    _selectedDateEventsCache =
-        projection.dayEvents[_selectedDate.day] ?? const <EventModel>[];
   }
 
   @override
@@ -567,17 +517,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _refreshCalendarViewCache();
       return;
     }
-    _pendingOpenDaySheetDate = widget.suppressInitialDaySheet ? null : nextDate;
+    _pendingOpenDaySheetDate = nextDate;
     unawaited(_loadEvents(focusDate: nextDate));
   }
 
   @override
   void dispose() {
-    _briefingCancelled = true;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     _groupOverlayProvider?.dispose();
-    _briefingRunning.dispose();
-    _briefingSheetRevision.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -608,7 +555,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         events: visibleEvents,
         focusedMonth: month,
       ),
-      dayEvents: calendar_projection.buildCalendarDayEventIndex(
+      dayEvents: buildCalendarDayEventIndex(
         events: visibleEvents,
         focusedMonth: month,
       ),
@@ -669,7 +616,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (!isCurrent()) return null;
     await Future<void>.delayed(Duration.zero);
     if (!isCurrent()) return null;
-    final dayEvents = calendar_projection.buildCalendarDayEventIndex(
+    final dayEvents = buildCalendarDayEventIndex(
       events: visible,
       focusedMonth: month,
     );
@@ -865,17 +812,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final repository = repositoryOverride ?? EventRepository.supabase();
       final events = await repository.listEvents(userId: userId);
-      // Apply the same suspiciously-small-response protection used by the
-      // visible calendar before publishing a new prefetch snapshot. A
-      // transient empty/partial response must never poison the cache that a
-      // later CalendarScreen instance uses for its first frame.
-      final displayEvents = _eventsForDisplayAfterReload(events);
-      EventPrefetchService().store(userId, displayEvents);
       var shouldOpenDaySheet = false;
       var daySheetDate = focusDate;
       if (mounted) {
         setState(() {
-          _allEvents = displayEvents;
+          _allEvents = _eventsForDisplayAfterReload(events);
           _calendarInputRevision += 1;
           // Loaded data changes the projection inputs; never reuse a month
           // computed from the previous repository snapshot.
@@ -895,40 +836,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
       _refreshCalendarViewCache(includeOverlayEvents: false);
-      _briefingSheetRevision.value++;
-      // Personal events are the critical path. Group overlays and badges are
-      // independent decorations and must not delay the first useful calendar
-      // frame or each other.
-      final groupOverlayFuture = _loadGroupOverlay(userId: userId);
-      unawaited(groupOverlayFuture);
+      await _loadGroupOverlay(userId: userId);
       unawaited(_loadGroupInstructionBadges(userId));
-      if (shouldOpenDaySheet &&
-          daySheetDate != null &&
-          mounted &&
-          !_briefingSheetShown) {
-        // The calendar frame is already visible. Briefing entry must not wait
-        // on the optional group overlay; the sheet opens with personal events
-        // immediately and AnimatedBuilder fills group events as they arrive.
-        if (widget.briefingIsMorning == null) {
-          await groupOverlayFuture;
-        }
-        if (!mounted) return;
+      if (shouldOpenDaySheet && daySheetDate != null && mounted) {
         final personalEvents = List<EventModel>.of(_selectedDateEventsCache);
         final groupEvents = List<CalendarOverlayItem>.of(
           _selectedDateGroupEventsCache,
         );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            _briefingSheetShown = true;
             _showDayEventsSheet(
               daySheetDate!,
               personalEvents: personalEvents,
               groupEvents: groupEvents,
-              briefingIsMorning: widget.briefingIsMorning,
             );
-            if (widget.briefingIsMorning != null) {
-              unawaited(_runBriefing());
-            }
           }
         });
       }
@@ -940,10 +861,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
       debugPrint('CalendarScreen load failed: $error');
-      if (widget.briefingIsMorning != null) {
-        _briefingRunning.value = false;
-        _briefingSheetRevision.value++;
-      }
     } finally {
       if (mounted) {
         setState(() {
@@ -1041,7 +958,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           widget.groupCalendarOverlayProvider == null) {
         _groupOverlayProvider?.clear();
         _refreshCalendarViewCache(includeOverlayEvents: false);
-        _briefingSheetRevision.value++;
         return;
       }
       _groupOverlayProvider ??=
@@ -1050,7 +966,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (resolvedUserId == null || resolvedUserId.isEmpty) {
         await _groupOverlayProvider!.clear();
         _refreshCalendarViewCache(includeOverlayEvents: false);
-        _briefingSheetRevision.value++;
         return;
       }
       await _groupOverlayProvider!.loadForMonth(resolvedUserId, loadMonth);
@@ -1061,7 +976,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return;
       }
       _refreshCalendarViewCache();
-      _briefingSheetRevision.value++;
     } catch (error, stackTrace) {
       // 그룹 오버레이 로드 실패가 개인 일정 로드 흐름(_loadEvents의 재시도
       // 로직)에 영향을 주지 않도록 여기서 흡수한다.
@@ -1074,12 +988,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final explicitUserId = widget.userId?.trim();
     if (explicitUserId != null && explicitUserId.isNotEmpty) {
       return explicitUserId;
-    }
-    // CalendarScreen is also used in isolated widget tests and during the
-    // pre-auth shell. Supabase.instance asserts before initialization, so do
-    // not touch the singleton until the app environment says it is ready.
-    if (!AppEnv.isSupabaseReady) {
-      return null;
     }
     return Supabase.instance.client.auth.currentUser?.id;
   }
@@ -1154,12 +1062,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     DateTime day, {
     List<EventModel>? personalEvents,
     List<CalendarOverlayItem>? groupEvents,
-    bool? briefingIsMorning,
   }) {
     final events = personalEvents ?? _selectedDateEventsCache;
     final resolvedGroupEvents = groupEvents ?? _selectedDateGroupEventsCache;
     final groupOverlayProvider = _groupOverlayProvider;
-    final sheetFuture = showModalBottomSheet<void>(
+    showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -1182,16 +1089,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
               scrollController: scrollController,
               holidayName: KoreanHolidays.holidayName(day),
               isDayOff: KoreanHolidays.isDayOff(day),
-              briefingIsMorning: briefingIsMorning,
-              briefingRunning: _briefingRunning,
-              dataRevision:
-                  briefingIsMorning == null ? null : _briefingSheetRevision,
-              personalEventsBuilder: briefingIsMorning == null
-                  ? null
-                  : () => _selectedDateEventsCache,
-              groupEventsBuilder: briefingIsMorning == null
-                  ? null
-                  : () => _selectedDateGroupEventsCache,
               onAdd: () {
                 Navigator.of(context).pop();
                 context.push(_eventEditRouteForDay(day));
@@ -1226,36 +1123,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         },
       ),
     );
-    if (briefingIsMorning != null) {
-      sheetFuture.whenComplete(() {
-        _briefingCancelled = true;
-        if (mounted) {
-          _briefingRunning.value = false;
-        }
-      });
-    }
-  }
-
-  Future<void> _runBriefing() async {
-    if (_briefingStarted || !mounted || widget.briefingIsMorning == null) {
-      return;
-    }
-    _briefingStarted = true;
-    if (_briefingCancelled) return;
-    try {
-      await BriefingSchedulerService().executeBriefing(
-        isMorning: widget.briefingIsMorning!,
-        userId: _resolveCalendarUserId(),
-        isManualTrigger: true,
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Calendar day sheet briefing failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    } finally {
-      if (mounted && !_briefingCancelled) {
-        _briefingRunning.value = false;
-      }
-    }
   }
 
   void _changeMonth(int delta) {
@@ -1271,10 +1138,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _visibleGroupOverlayEventsCache = const <CalendarOverlayItem>[];
       _selectedDateGroupEventsCache = const <CalendarOverlayItem>[];
       _selectedDateEventsCache = const <EventModel>[];
-      _miniMonthCellsCache = buildCalendarMiniMonthCells(
-        events: const <EventModel>[],
-        focusedMonth: nextMonth,
-      );
+      _miniMonthCellsCache = const <CalendarMiniMonthCellData>[];
     });
     // Yield the month-transition frame before recurrence expansion and slot
     // allocation. This keeps rapid month taps responsive even with thousands

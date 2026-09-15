@@ -1727,18 +1727,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       return;
     }
     _inputTurnGeneration += 1;
-    _interruptVoiceForManualEntry();
-  }
-
-  void _handleInputFocus() {
-    _interruptVoiceForManualEntry();
-  }
-
-  void _interruptVoiceForManualEntry() {
-    if (!_isListening &&
-        !_keepListening &&
-        !_isRestartPending &&
-        !_voiceUnstable) {
+    if (!_isListening && !_keepListening && !_isRestartPending) {
       return;
     }
     _restartListenTimer?.cancel();
@@ -1891,16 +1880,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             onPressed: _handleConversationBack,
           ),
           actions: [
-            TextButton(
-              onPressed: _handleConversationBack,
-              style: TextButton.styleFrom(
-                foregroundColor: PlanFlowColors.primary,
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
-              child: const Text('종료'),
+            IconButton(
+              tooltip: '일정 새로고침',
+              onPressed: _isLoading ? null : _loadEvents,
+              icon: const Icon(Icons.refresh),
             ),
           ],
         ),
@@ -1968,7 +1951,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                   onStopListening: _pauseVoiceInput,
                   onSubmit: () => _submitText(null),
                   onChanged: _handleInputChanged,
-                  onInputFocus: _handleInputFocus,
                 ),
               ),
             ],
@@ -2274,7 +2256,7 @@ class _ConversationEventCard extends StatelessWidget {
   }
 }
 
-class _ConversationInputBar extends StatefulWidget {
+class _ConversationInputBar extends StatelessWidget {
   const _ConversationInputBar({
     required this.controller,
     required this.isSubmitting,
@@ -2286,7 +2268,6 @@ class _ConversationInputBar extends StatefulWidget {
     required this.onStopListening,
     required this.onSubmit,
     required this.onChanged,
-    required this.onInputFocus,
   });
 
   final TextEditingController controller;
@@ -2299,45 +2280,6 @@ class _ConversationInputBar extends StatefulWidget {
   final VoidCallback onStopListening;
   final VoidCallback onSubmit;
   final ValueChanged<String> onChanged;
-  final VoidCallback onInputFocus;
-
-  @override
-  State<_ConversationInputBar> createState() => _ConversationInputBarState();
-}
-
-class _ConversationInputBarState extends State<_ConversationInputBar> {
-  late final FocusNode _inputFocusNode;
-  bool _hasInputFocus = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _inputFocusNode = FocusNode()..addListener(_handleFocusChanged);
-  }
-
-  @override
-  void dispose() {
-    _inputFocusNode
-      ..removeListener(_handleFocusChanged)
-      ..dispose();
-    super.dispose();
-  }
-
-  void _handleFocusChanged() {
-    if (!mounted || _hasInputFocus == _inputFocusNode.hasFocus) {
-      return;
-    }
-    setState(() => _hasInputFocus = _inputFocusNode.hasFocus);
-  }
-
-  void _dismissKeyboard() {
-    _inputFocusNode.unfocus();
-  }
-
-  void _submitAndDismissKeyboard() {
-    _dismissKeyboard();
-    widget.onSubmit();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2352,12 +2294,12 @@ class _ConversationInputBarState extends State<_ConversationInputBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _VoiceConversationControl(
-              isListening: widget.isListening,
-              keepListening: widget.keepListening,
-              voicePausedByUser: widget.voicePausedByUser,
-              isRestartPending: widget.isRestartPending,
-              onListen: widget.onListen,
-              onStopListening: widget.onStopListening,
+              isListening: isListening,
+              keepListening: keepListening,
+              voicePausedByUser: voicePausedByUser,
+              isRestartPending: isRestartPending,
+              onListen: onListen,
+              onStopListening: onStopListening,
             ),
             const SizedBox(height: 8),
             // 인식된 텍스트는 입력창에 실시간으로 채워지므로 입력창 하나가
@@ -2370,39 +2312,24 @@ class _ConversationInputBarState extends State<_ConversationInputBar> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: widget.controller,
-                      focusNode: _inputFocusNode,
+                      controller: controller,
                       minLines: 1,
                       maxLines: 5,
                       style: const TextStyle(fontSize: 17, height: 1.4),
                       textInputAction: TextInputAction.send,
                       decoration: InputDecoration(
                         hintText: '예: 5월 7일 일정 보여줘',
-                        suffixIcon: _hasInputFocus
-                            ? IconButton(
-                                onPressed: _dismissKeyboard,
-                                tooltip: '키보드 닫기',
-                                icon: Semantics(
-                                  label: '키보드 닫기',
-                                  button: true,
-                                  child: const Icon(Icons.keyboard_hide),
-                                ),
-                              )
-                            : null,
-                        filled: widget.isListening,
-                        fillColor: widget.isListening
-                            ? PlanFlowColors.primaryFaint
-                            : null,
+                        filled: isListening,
+                        fillColor:
+                            isListening ? PlanFlowColors.primaryFaint : null,
                       ),
-                      onTap: widget.onInputFocus,
-                      onChanged: widget.onChanged,
-                      onSubmitted: (_) => _submitAndDismissKeyboard(),
+                      onChanged: onChanged,
+                      onSubmitted: (_) => onSubmit(),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed:
-                        widget.isSubmitting ? null : _submitAndDismissKeyboard,
+                    onPressed: isSubmitting ? null : onSubmit,
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(64, 48),
                       padding: const EdgeInsets.symmetric(horizontal: 14),

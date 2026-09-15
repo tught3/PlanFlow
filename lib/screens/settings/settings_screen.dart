@@ -22,11 +22,10 @@ import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/calendar_connection_repository.dart';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/repositories/settings_repository.dart';
-import '../../features/groups/models/group_backup_model.dart';
 import '../../features/groups/providers/group_context_provider.dart';
-import '../../features/groups/repositories/group_backup_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../core/analytics_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/ad_consent_service.dart';
 import '../../services/auth_service.dart';
@@ -142,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _use24HourFormat = false;
   bool _voiceAutoStart = false;
   bool _voiceCorrectionLearningEnabled = true;
-  bool _voiceCommonLearningOptIn = true;
+  bool _voiceCommonLearningOptIn = false;
   bool _hideWidgetWeekends = false;
   String _preferredMapProvider = 'naver';
   String _countryCode = PlanFlowRegions.korea.countryCode;
@@ -171,8 +170,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _settingsSaveQueued = false;
   String? _queuedSettingsSuccessMessage;
   int _settingsSaveVersion = 0;
-  final bool _isTestingMorningBriefing = false;
-  final bool _isTestingEveningBriefing = false;
+  bool _isTestingMorningBriefing = false;
+  bool _isTestingEveningBriefing = false;
   bool _isBackupActionRunning = false;
   bool _ownsNaverCalDavService = false;
   bool _ownsNaverImportService = false;
@@ -710,9 +709,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     // 실패해도 사용자에게 노출하지 않는다. 정식 동기화 때 다시 정상 호출된다.
     if (hasCalDavCredentials) {
       unawaited(
-        _naverCalDavService
-            .getCalendars()
-            .catchError((_) => <NaverCalDavCalendar>[]),
+        _naverCalDavService.getCalendars().catchError((_) => <NaverCalDavCalendar>[]),
       );
     }
   }
@@ -975,7 +972,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             });
           }
           // OAuth 화면을 열지 못했으면 CalDAV 앱 비밀번호 다이얼로그로 폴백
-          return await _connectNaverCalDavFallbackAndImport();
+          return _connectNaverCalDavFallbackAndImport();
         }
         if (mounted) {
           setState(() {
@@ -2239,7 +2236,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  void _testBriefing({required bool isMorning}) {
+  Future<void> _testBriefing({required bool isMorning}) async {
     if (!RemoteConfigService.briefingEnabled) {
       _showSnack('브리핑 기능이 현재 비활성화되어 있습니다.');
       return;
@@ -2250,9 +2247,42 @@ class _SettingsScreenState extends State<SettingsScreen>
       _showSnack('로그인 후 브리핑을 테스트할 수 있습니다.');
       return;
     }
-    final type = isMorning ? 'morning' : 'evening';
-    // 브리핑 실행과 로딩 표시는 일정 탭 상세 바텀시트에서 통합 처리한다.
-    context.go('${AppRoutes.briefing}?type=$type');
+    if (_isTestingMorningBriefing || _isTestingEveningBriefing) {
+      return;
+    }
+
+    setState(() {
+      if (isMorning) {
+        _isTestingMorningBriefing = true;
+      } else {
+        _isTestingEveningBriefing = true;
+      }
+    });
+
+    try {
+      unawaited(
+        AnalyticsService.logBriefingTestPlayed(isMorning: isMorning),
+      );
+      final result = await _briefingSchedulerService.executeBriefing(
+        isMorning: isMorning,
+        userId: userId,
+      );
+      _showSnack(result.message);
+    } catch (error, stackTrace) {
+      debugPrint('Briefing test failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('브리핑 테스트 재생에 실패했습니다. 알림/TTS 설정을 확인해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (isMorning) {
+            _isTestingMorningBriefing = false;
+          } else {
+            _isTestingEveningBriefing = false;
+          }
+        });
+      }
+    }
   }
 
   Future<UserSettingsModel> _settingsForSave(String userId) async {
@@ -2522,7 +2552,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _travelMode = 'car';
       _voiceAutoStart = false;
       _voiceCorrectionLearningEnabled = true;
-      _voiceCommonLearningOptIn = true;
+      _voiceCommonLearningOptIn = false;
       _hideWidgetWeekends = false;
       _preferredMapProvider = 'naver';
       _countryCode = PlanFlowRegions.korea.countryCode;
@@ -3027,10 +3057,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               AppConstants.defaultPadding,
               AppConstants.defaultPadding,
               AppConstants.defaultPadding,
-              // Keep the last settings controls above the two global FABs.
-              // Without this extra scroll extent the 12-hour toggle is
-              // partially covered when the list reaches its end.
-              AppConstants.defaultPadding + 220,
+              AppConstants.defaultPadding + 80,
             ),
             children: [
               _AccountSection(

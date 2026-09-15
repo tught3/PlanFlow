@@ -599,13 +599,7 @@ class AuthProvider extends ChangeNotifier {
     _setSessionStatus(sessionStatus, notify: false);
     _applyUser(user);
     try {
-      // ensureProfile is a best-effort users-table upsert; it must not be
-      // allowed to hang the splash screen indefinitely on a slow/stalled
-      // network. 6s balances giving a slow connection a real chance to
-      // respond against not stalling initial session resolution for too
-      // long (see lib/services/calendar_sync_service.dart:1013 for a
-      // similar network-call timeout precedent in this codebase).
-      await service.ensureProfile(user).timeout(const Duration(seconds: 6));
+      await service.ensureProfile(user);
     } catch (error) {
       debugPrint('Profile sync skipped: $error');
     } finally {

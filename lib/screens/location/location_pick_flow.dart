@@ -103,7 +103,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
     }
 
     if (results.isEmpty) {
-      return await Navigator.of(context).push<LocationLookupResult>(
+      return Navigator.of(context).push<LocationLookupResult>(
         MaterialPageRoute(
           builder: (_) => LocationPickerScreen(
             initialQuery: trimmed,
@@ -122,7 +122,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
       );
     }
 
-    return await Navigator.of(context).push<LocationLookupResult>(
+    return Navigator.of(context).push<LocationLookupResult>(
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,

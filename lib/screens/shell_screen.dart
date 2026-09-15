@@ -64,122 +64,17 @@ class _ShellDestination {
   final IconData selectedIcon;
 }
 
-/// 온보딩 단계 하나(이름 + 실행 함수).
-@visibleForTesting
-class OnboardingStage {
-  const OnboardingStage(this.name, this.run);
-
-  final String name;
-  final Future<void> Function() run;
-}
-
-/// 상호작용 화면(라우트 push / 다이얼로그)을 띄운 **직후**, 화면이 닫히기를
-/// 기다리지 않고 [releaseGate]를 호출한다.
-///
-/// `context.push`/`showDialog`는 라우트를 동기적으로 네비게이터 스택에 올리고
-/// Future만 나중에 완료시킨다. 따라서 [present] 호출 직후에 게이트를 내려도
-///  - push가 먹혔으면 다음 프레임에 새 라우트가 로딩 화면 위를 덮으므로 홈이
-///    깜빡이지 않고,
-///  - push가 먹히지 않았으면(라우트를 렌더하지 못한 채 Future를 영영 돌려주지
-///    않는 실패 경로) 사용자는 "로딩 중" 대신 즉시 홈을 본다.
-///
-/// "사용자가 화면을 읽는 중"과 "'로딩 중'이 보이는 중"은 상호배타이므로, 이
-/// 실패 경로를 presentation timeout(분 단위)에 맡기면 신고된 무한로딩과 사실상
-/// 같은 체감이 된다. 그래서 대기 상한이 아니라 게이트 해제 **시점**으로 푼다.
-/// [present]가 동기적으로 던지더라도 게이트는 풀린다.
-@visibleForTesting
-Future<T> presentInteractiveOnboardingScreen<T>(
-  Future<T> Function() present,
-  void Function() releaseGate,
-) {
-  try {
-    return present();
-  } finally {
-    releaseGate();
-  }
-}
-
-/// 온보딩 단계들을 선언 순서대로(앞 단계가 끝나야 다음 단계 시작) 실행하고,
-/// 어떤 경로로 끝나든 [releaseGate]를 반드시 호출한다.
-///
-/// 반환값은 "모든 단계가 중단 없이 끝났는가"(= 세션 완료로 표시해도 되는가)다.
-/// 게이트 해제는 이 반환값과 무관하게 보장되므로, UI 잠금 해제와 완료 판정이
-/// 분리된다.
-@visibleForTesting
-Future<bool> runOnboardingStageChain({
-  required List<OnboardingStage> stages,
-  required bool Function() shouldContinue,
-  required void Function() releaseGate,
-  required Duration presentationTimeout,
-  void Function(String message)? log,
-}) async {
-  void writeLog(String message) {
-    if (log != null) {
-      log(message);
-      return;
-    }
-    DiagLogger.log('Onboarding', message);
-  }
-
-  try {
-    for (final stage in stages) {
-      if (!shouldContinue()) {
-        return false;
-      }
-      await _runIsolatedOnboardingStage(stage, presentationTimeout, writeLog);
-    }
-    return true;
-  } catch (error, stackTrace) {
-    writeLog('stage chain failed: $error');
-    debugPrintStack(stackTrace: stackTrace);
-    return false;
-  } finally {
-    releaseGate();
-  }
-}
-
-/// 온보딩 단계 하나를 상한 시간·예외로부터 격리해 실행한다.
-///
-/// 타임아웃이든 예외든 다음 단계로 넘어가고, 어느 경우에도 호출부의 게이트
-/// 해제(finally)에 반드시 도달한다. 릴리즈 빌드 logcat에서 어느 단계가 멈췄는지
-/// 구분할 수 있도록 start/done/timeout/error를 남긴다.
-Future<void> _runIsolatedOnboardingStage(
-  OnboardingStage stage,
-  Duration timeout,
-  void Function(String message) log,
-) async {
-  log('stage=${stage.name} start');
-  var timedOut = false;
-  try {
-    await stage.run().timeout(
-      timeout,
-      onTimeout: () {
-        timedOut = true;
-      },
-    );
-    log('stage=${stage.name} ${timedOut ? 'timeout' : 'done'}');
-  } catch (error, stackTrace) {
-    log('stage=${stage.name} error: $error');
-    debugPrintStack(stackTrace: stackTrace);
-  }
-}
-
 class ShellScreen extends StatefulWidget {
   const ShellScreen({
     super.key,
     this.initialIndex = 0,
     this.initialCalendarDate,
     this.initialSettingsAction,
-    this.briefingIsMorning,
   });
 
   final int initialIndex;
   final DateTime? initialCalendarDate;
   final SettingsInitialAction? initialSettingsAction;
-
-  /// When set, the calendar tab runs the briefing inline instead of opening a
-  /// separate result page. Null keeps the normal shell behavior.
-  final bool? briefingIsMorning;
 
   @override
   State<ShellScreen> createState() => _ShellScreenState();
@@ -229,19 +124,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
   bool _onboardingDecisionPending = false;
-
-  // 온보딩 단계의 "표시 여부 판단" I/O(prefs·네트워크) 상한.
-  // 정상 경로에서는 수십~수백 ms면 끝나고, 이 구간이 멈추면 화면에는 아무것도
-  // 뜨지 않은 채 "로딩 중"만 남는다. 느린 기기의 콜드스타트 여유까지 감안해
-  // 6초로 잡고, 초과하면 "표시하지 않음"으로 안전하게 판정해 다음 단계로 간다.
-  static const Duration _onboardingProbeTimeout = Duration(seconds: 6);
-
-  // 온보딩 단계의 "사용자 상호작용 화면"(투어·권한 온보딩·안내 다이얼로그)
-  // 상한. 이 구간은 사용자가 직접 읽고 조작하는 시간이라 초 단위로 끊으면
-  // 정상 흐름이 깨진다(투어를 읽는 도중 다음 단계 화면이 위에 push된다).
-  // 따라서 라우터/다이얼로그가 결과를 영영 돌려주지 않는 hang만 끊기 위한
-  // 최후 상한으로만 쓴다.
-  static const Duration _onboardingPresentationTimeout = Duration(minutes: 5);
 
   @override
   void initState() {
@@ -385,15 +267,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     final inFlight = _sessionOnboardingFlow;
     if (inFlight != null) {
-      // 먼저 시작한 인스턴스의 flow가 던지더라도, 이 인스턴스는 반드시 아래
-      // 게이트 해제까지 도달해야 한다. 여기서 예외가 새면 "로딩 중" 화면이
-      // 영구히 남는다.
-      try {
-        await inFlight;
-      } catch (error, stackTrace) {
-        DiagLogger.log('Onboarding', 'shared onboarding flow failed: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
+      await inFlight;
       if (mounted && _onboardingDecisionPending) {
         setState(() => _onboardingDecisionPending = false);
       }
@@ -418,71 +292,31 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     final startedAt = DateTime.now();
     var flowCompleted = false;
     try {
-      // 단계는 선언 순서대로 순차 실행된다(투어가 끝나야 권한 온보딩이 뜬다).
-      // 게이트 해제(UI 잠금 해제)와 완료 판정(세션 캐시 기록)은 분리돼 있다:
-      // 해제는 상호작용 화면을 띄우는 순간(_presentInteractive) 또는 체인이
-      // 끝나는 순간 중 먼저 오는 쪽에서 일어나고, 완료 판정은 아래 finally에서
-      // 체인 전체가 중단 없이 끝났을 때만 한다.
-      flowCompleted = await runOnboardingStageChain(
-        stages: [
-          OnboardingStage(
-            'feature_tour',
-            () => _maybeOpenFeatureTour(),
-          ),
-          OnboardingStage(
-            'permission_onboarding',
-            () => _maybeOpenPermissionOnboarding(),
-          ),
-          OnboardingStage(
-            'external_calendar_guide',
-            () => _maybeShowExternalCalendarSyncGuide(),
-          ),
-        ],
-        // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
-        // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
-        // 게이트는 그래도 풀린다.
-        shouldContinue: () => mounted,
-        releaseGate: _clearOnboardingGate,
-        presentationTimeout: _onboardingPresentationTimeout,
-      );
-    } catch (error, stackTrace) {
-      // 어떤 예외도 게이트 해제를 막아선 안 된다. 호출부가 unawaited라
-      // 여기서 새면 예외가 그대로 삼켜지고 "로딩 중"만 남는다.
-      DiagLogger.log('Onboarding', 'startup tasks failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      await _maybeOpenFeatureTour();
+      if (!mounted) {
+        return;
+      }
+      await _maybeOpenPermissionOnboarding();
+      if (!mounted) {
+        return;
+      }
+      await _maybeShowExternalCalendarSyncGuide();
+      flowCompleted = true;
     } finally {
       // Always release the route gate, including onboarding/prefs exceptions.
       // Nonessential platform work has its own settled-idle permit, so this
       // cannot strand the app behind a permanent startup lock.
       startupRouteGate.completeStartupWorkDeferral();
-      // 이 finally는 mounted와 무관하게 끝까지 실행된다. 그 효과를 정확히
-      // 적어 둔다.
-      //
-      // 실제로 해결되는 것:
-      //  - 조기 return으로 이 블록의 뒷부분(세션 완료 표시·진단 로그·후속
-      //    작업 큐잉)이 통째로 스킵되지 않는다. 특히 static인
-      //    _sessionOnboardingUserId 기록은 인스턴스가 교체돼도 남으므로,
-      //    새 인스턴스가 온보딩을 처음부터 다시 돌리는 루프를 끊는다.
-      //  - 살아 있는 인스턴스에서는 _clearOnboardingGate() 호출 자체가
-      //    스킵되지 않는다(setState만 mounted로 가드).
-      //
-      // 해결되지 않는 것:
-      //  - _onboardingDecisionPending은 인스턴스 필드라, 이미 죽은 인스턴스에서
-      //    내려봐야 새 인스턴스의 "로딩 중" 화면에는 영향이 없다(그 경우
-      //    _clearOnboardingGate는 사실상 no-op이다). 인스턴스 교체 시나리오를
-      //    실제로 끊는 것은 교차 인스턴스 복구가 아니라 "유한 시간 종료 보장"
-      //    이다: 단계별 타임아웃 + 단계/체인 catch + _sessionOnboardingFlow를
-      //    await하는 쪽의 try/catch가 새 인스턴스도 반드시 자기 게이트 해제
-      //    지점에 도달하게 만든다.
-      _clearOnboardingGate();
-      if (flowCompleted && authProvider.userId == userId) {
-        _sessionOnboardingUserId = userId;
+      if (mounted) {
+        _clearOnboardingGate();
+        if (flowCompleted && authProvider.userId == userId) {
+          _sessionOnboardingUserId = userId;
+        }
+        DiagLogger.log(
+          'Onboarding',
+          'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms',
+        );
       }
-      DiagLogger.log(
-        'Onboarding',
-        'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms '
-            '(completed=$flowCompleted, mounted=$mounted)',
-      );
       if (flowCompleted) {
         _queuePostOnboardingStartupTasks(
           reason: reason,
@@ -490,13 +324,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         );
       }
     }
-  }
-
-  /// 상호작용 화면(라우트 push / 다이얼로그)을 띄우면서, 그 화면이 닫히기를
-  /// 기다리지 않고 로딩 게이트를 즉시 내린다. 자세한 근거는
-  /// [presentInteractiveOnboardingScreen] 문서 참고.
-  Future<T> _presentInteractive<T>(Future<T> Function() present) {
-    return presentInteractiveOnboardingScreen(present, _clearOnboardingGate);
   }
 
   void _queuePostOnboardingStartupTasks({
@@ -566,12 +393,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     // be recreated when navigation changes, so starting it here caused each
     // recreation to compete for the UI isolate and CalDAV parser.
     Future<bool> runWhenIdle(Future<void> Function() work) async {
-      final idleGeneration = _interactionIdleGate.generation;
+      final token = _interactionIdleGate.generation; // banned-ok: 시크릿 아님, idle-gate 세대 카운터(int)
       await _interactionIdleGate.waitForIdle();
       if (!mounted ||
           generation != _startupWorkGeneration ||
           authProvider.userId != userId ||
-          idleGeneration != _interactionIdleGate.generation) {
+          token != _interactionIdleGate.generation) {
         DiagLogger.log('Onboarding', 'deferred startup task cancelled');
         throw StateError('deferred startup cancelled by interaction');
       }
@@ -591,14 +418,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   Future<void> _maybeOpenFeatureTour() async {
     if (_checkedFeatureTour || !mounted) return;
     _checkedFeatureTour = true;
-    // prefs 읽기가 멈추면 화면엔 "로딩 중"만 남는다. 상한을 넘기면 투어를
-    // 건너뛴다(다음 실행에서 다시 판정된다).
-    final shouldShow = await const SharedPreferencesFeatureTourStore()
-        .shouldShow()
-        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
+    final shouldShow =
+        await const SharedPreferencesFeatureTourStore().shouldShow();
     if (shouldShow && mounted) {
-      // push 호출 즉시 로딩 게이트를 내린다(화면이 닫히기를 기다리지 않는다).
-      await _presentInteractive(() => context.push(AppRoutes.featureTour));
+      await context.push(AppRoutes.featureTour);
     }
   }
 
@@ -780,23 +603,15 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
 
     try {
-      // 조회가 멈추면 온보딩을 띄우지 않고 넘어간다(completed=true로 판정).
-      // 권한 온보딩은 설정 화면에서 다시 진입할 수 있고, 다음 실행에서 재판정
-      // 되므로 "로딩 중"에 갇히는 쪽보다 안전하다.
-      final completed = await _permissionService
-          .isOnboardingCompleted(userId)
-          .timeout(_onboardingProbeTimeout, onTimeout: () => true);
+      final completed = await _permissionService.isOnboardingCompleted(userId);
       if (!mounted) {
         return;
       }
-      // 게이트는 push **직전**이 아니라 **직후**에 내린다. 직전에 내리면 온보딩이
-      // 올라오기 전에 홈이 1~2 프레임 깜빡인다(2026-08-12 회귀). 직후에는 이미
-      // 라우트가 스택에 올라가 있어 깜빡임이 없고, push가 렌더되지 못한 실패
-      // 경로에서도 "로딩 중"이 분 단위로 남지 않는다.
+      // 게이트 해제(_clearOnboardingGate)는 이제 _runSignedInStartupTasks의
+      // finally에서 담당한다 — 여기서 해제하면 온보딩 push 직전에 홈이
+      // 1~2 프레임 깜빡이는 원인이 된다(2026-08-12 회귀).
       if (!completed && mounted) {
-        await _presentInteractive(
-          () => context.push(AppRoutes.permissionOnboarding),
-        );
+        await context.push(AppRoutes.permissionOnboarding);
       }
     } catch (error, stackTrace) {
       debugPrint('Permission onboarding check failed: $error');
@@ -805,15 +620,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   void _clearOnboardingGate() {
-    if (!_onboardingDecisionPending) {
+    if (!mounted || !_onboardingDecisionPending) {
       return;
     }
-    // 플래그 자체는 mounted와 무관하게 항상 내린다. dispose된 위젯에 setState를
-    // 부르면 크래시하므로 리빌드 트리거만 mounted로 가드한다.
-    _onboardingDecisionPending = false;
-    if (mounted) {
-      setState(() {});
-    }
+    setState(() {
+      _onboardingDecisionPending = false;
+    });
   }
 
   Future<void> _maybeShowExternalCalendarSyncGuide() async {
@@ -827,52 +639,45 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // 이 판정은 prefs + 연동 캘린더 조회를 타므로 네트워크에 걸릴 수 있다.
-    // 상한을 넘기면 안내를 건너뛴다.
-    final shouldShow = await _externalCalendarGuideService
-        .shouldShowForUser(userId)
-        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
+    final shouldShow =
+        await _externalCalendarGuideService.shouldShowForUser(userId);
     if (!shouldShow || !mounted) {
       return;
     }
 
-    // showDialog도 라우트를 동기적으로 올린다 — 띄우는 즉시 게이트를 내린다.
-    final openSettings = await _presentInteractive(() => showDialog<bool>(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text('외부 캘린더 동기화 안내'),
-              content: const Text(
-                '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
-                '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
-              ),
-              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-              actions: [
-                PlanFlowActionButtons(
-                  buttons: [
-                    PlanFlowActionButton(
-                      label: '동기화 안 함',
-                      onPressed: () => Navigator.of(context).pop(false),
-                      type: ActionButtonType.secondary,
-                      flex: 1,
-                    ),
-                    PlanFlowActionButton(
-                      label: '동기화 설정',
-                      onPressed: () => Navigator.of(context).pop(true),
-                      type: ActionButtonType.primary,
-                      flex: 1,
-                    ),
-                  ],
+    final openSettings = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('외부 캘린더 동기화 안내'),
+          content: const Text(
+            '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
+            '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          actions: [
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '동기화 안 함',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '동기화 설정',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.primary,
+                  flex: 1,
                 ),
               ],
-            );
-          },
-        ));
-
-    await _externalCalendarGuideService.markSeen(userId).timeout(
-          _onboardingProbeTimeout,
-          onTimeout: () {},
+            ),
+          ],
         );
+      },
+    );
+
+    await _externalCalendarGuideService.markSeen(userId);
     if (!mounted) {
       return;
     }
@@ -955,16 +760,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       case 0:
         return HomeScreen(scrollController: _homeScrollController);
       case 1:
-        final briefingIsMorning = widget.briefingIsMorning;
-        final calendar = CalendarScreen(
-          initialDate: widget.initialCalendarDate,
-          // The briefing route opens the selected-day agenda sheet itself;
-          // the loader lives inside that sheet rather than over the month
-          // grid. Normal CalendarScreen callers may still use
-          // suppressInitialDaySheet for non-briefing flows.
-          briefingIsMorning: briefingIsMorning,
-        );
-        return calendar;
+        return CalendarScreen(initialDate: widget.initialCalendarDate);
       case 2:
         return SettingsScreen(
           key: ValueKey<String?>(

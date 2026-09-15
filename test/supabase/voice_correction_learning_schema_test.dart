@@ -88,42 +88,19 @@ void main() {
   test('user settings includes correction learning toggles', () {
     final schema = File('supabase/schema.sql').readAsStringSync();
     final migration = File(
-      'supabase/migrations/20260823000000_voice_common_learning_default_on.sql',
+      'supabase/migrations/20260528000000_voice_correction_learning.sql',
     ).readAsStringSync();
 
     for (final sql in <String>[schema, migration]) {
-      if (sql == schema) {
-        expect(
-            sql,
-            contains(
-                'voice_correction_learning_enabled boolean not null default true'));
-        expect(
-            sql,
-            contains(
-                'voice_common_learning_opt_in boolean not null default true'));
-      } else {
-        expect(
-            sql,
-            contains(
-                'alter column voice_common_learning_opt_in set default true'));
-      }
+      expect(
+          sql,
+          contains(
+              'voice_correction_learning_enabled boolean not null default true'));
+      expect(
+          sql,
+          contains(
+              'voice_common_learning_opt_in boolean not null default false'));
     }
-  });
-
-  test('legacy voice correction migration remains covered separately', () {
-    final migration = File(
-      'supabase/migrations/20260528000000_voice_correction_learning.sql',
-    ).readAsStringSync();
-    expect(migration,
-        contains('create table if not exists public.voice_correction_rules'));
-    expect(
-        migration,
-        contains(
-            'alter table public.voice_correction_rules enable row level security'));
-    expect(
-        migration,
-        contains(
-            'voice_common_learning_opt_in boolean not null default false'));
   });
 }
 

@@ -7,25 +7,6 @@ import 'package:planflow/services/remote_config_service.dart';
 /// (resolveInitialFreeCount / resolveDailyFreeCount)로 분리해뒀으므로 그
 /// 함수만 직접 검증한다.
 void main() {
-  group('Remote Config attempt generation guard', () {
-    test('accepts only the latest completion', () {
-      expect(
-        shouldAcceptRemoteConfigAttempt(
-          completionAttempt: 4,
-          currentAttempt: 4,
-        ),
-        isTrue,
-      );
-      expect(
-        shouldAcceptRemoteConfigAttempt(
-          completionAttempt: 3,
-          currentAttempt: 4,
-        ),
-        isFalse,
-      );
-    });
-  });
-
   group('RemoteConfigService.resolveInitialFreeCount', () {
     test('신규 키가 콘솔에서 fetch됐으면 신규 키 값을 채택한다', () {
       final result = RemoteConfigService.resolveInitialFreeCount(
@@ -97,28 +78,6 @@ void main() {
         newKeyValue: 0,
       );
       expect(result, 0);
-    });
-  });
-
-  group('RemoteConfigService.resolveScheduleParseDailyFreeCount', () {
-    test('AI 일정 정리는 콘솔 미설정 시 하루 2회 무료다', () {
-      expect(
-        RemoteConfigService.resolveScheduleParseDailyFreeCount(
-          newKeySet: false,
-          newKeyValue: 0,
-        ),
-        2,
-      );
-    });
-
-    test('콘솔에서 명시한 AI 일정 정리 무료 횟수는 그대로 사용한다', () {
-      expect(
-        RemoteConfigService.resolveScheduleParseDailyFreeCount(
-          newKeySet: true,
-          newKeyValue: 4,
-        ),
-        4,
-      );
     });
   });
 

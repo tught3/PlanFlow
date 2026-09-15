@@ -8,6 +8,7 @@ import '../screens/onboarding/feature_tour_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
 import '../features/groups/models/group_event_model.dart';
+import '../screens/briefing/briefing_launch_screen.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
@@ -156,20 +157,7 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.briefing,
       builder: (context, state) {
         final type = state.uri.queryParameters['type'] ?? 'morning';
-        final isMorning = type != 'evening';
-        final now = DateTime.now();
-        final briefingDate = DateTime(
-          now.year,
-          now.month,
-          now.day + (isMorning ? 0 : 1),
-        );
-        return ShellScreen(
-          key:
-              ValueKey<String>('briefing-${isMorning ? 'morning' : 'evening'}'),
-          initialIndex: 1,
-          initialCalendarDate: briefingDate,
-          briefingIsMorning: isMorning,
-        );
+        return BriefingLaunchScreen(isMorning: type != 'evening');
       },
     ),
     GoRoute(

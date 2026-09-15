@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,13 +12,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/analytics_service.dart';
-import 'core/diag_logger.dart';
 import 'core/env.dart';
 import 'core/local_time.dart';
-import 'core/native_startup_diagnostics.dart';
 import 'core/runtime_error_filter.dart';
 import 'core/startup_route_gate.dart';
 import 'core/supabase_auth_options.dart';
+import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
@@ -27,33 +27,20 @@ import 'services/ad_service.dart';
 import 'features/groups/services/group_cleanup_service.dart';
 
 Future<void> main() async {
-  await runPlanFlowApp();
-}
-
-/// integration_test 진입점. main()과 100% 동일 로직이며, 테스트에서
-/// Riverpod provider를 override할 수 있도록 overrides만 추가로 받는다.
-@visibleForTesting
-Future<void> runPlanFlowApp({List<Override> overrides = const []}) async {
   WidgetsFlutterBinding.ensureInitialized();
-  NativeStartupDiagnostics.dartMainEnter();
   startupRouteGate.beginStartupWorkDeferral();
   ensureTimeZonesInitialized();
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
-  // Use Flutter's supported edge-to-edge mode instead of legacy system-bar
-  // color/visibility APIs. SafeArea widgets keep interactive content clear of
-  // the system insets while Android 15+ enforces edge-to-edge by default.
-  NativeStartupDiagnostics.systemUiModeBegin();
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  NativeStartupDiagnostics.systemUiModeComplete();
+  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   FlutterError.onError = FlutterError.presentError;
 
-  runApp(ProviderScope(overrides: overrides, child: const PlanFlowApp()));
-  NativeStartupDiagnostics.runAppReached();
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    NativeStartupDiagnostics.firstFrame();
-  });
+  runApp(const ProviderScope(child: PlanFlowApp()));
   unawaited(_initializePlatformServices());
   unawaited(_scheduleStaleGroupAlarmReconcile());
 }
@@ -221,9 +208,9 @@ Future<void> _primeHolidayCache() async {
 
 Future<void> _initializeFirebaseServices() async {
   try {
-    // Firebase Core has one shared, recoverable startup path. Remote Config
-    // owns its separate 10s fetch timeout and retry state.
-    if (!await RemoteConfigService.ensureFirebaseInitialized()) return;
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 8));
     await RemoteConfigService.initialize();
     FlutterError.onError = (FlutterErrorDetails details) {
       // 오프라인/네트워크 단절은 사용자 환경 문제라 Crashlytics 이슈로 보내지 않는다.
@@ -262,22 +249,13 @@ Future<void> _initializeFirebaseServices() async {
 }
 
 Future<void> _initializeNaverMap() async {
-  final naverConfigured = AppEnv.naverMapClientId.trim().isNotEmpty;
-  final googleConfigured = AppEnv.googleMapsApiKey.trim().isNotEmpty;
-  final tmapConfigured = AppEnv.tmapApiKey.trim().isNotEmpty;
-  DiagLogger.log(
-    'MapInit',
-    'config naver=$naverConfigured google=$googleConfigured tmap=$tmapConfigured',
-  );
-
-  if (naverConfigured) {
+  if (AppEnv.naverMapClientId.trim().isNotEmpty) {
     var naverMapAuthFailed = false;
     developer.log(
       'Naver Map init start',
       name: 'PlanFlow',
       error: 'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
     );
-    DiagLogger.log('MapInit', 'naver start');
     try {
       await FlutterNaverMap()
           .init(
@@ -285,23 +263,18 @@ Future<void> _initializeNaverMap() async {
             onAuthFailed: (error) {
               naverMapAuthFailed = true;
               debugPrint('Naver Map auth failed: $error');
-              DiagLogger.log('MapInit', 'naver auth_failed');
             },
           )
           .timeout(const Duration(seconds: 8));
       if (!naverMapAuthFailed) {
         AppEnv.markNaverMapInitialized();
-        DiagLogger.log('MapInit', 'naver success');
         developer.log(
           'Naver Map init success',
           name: 'PlanFlow',
           error: 'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
         );
       }
-    } on TimeoutException {
-      DiagLogger.log('MapInit', 'naver timeout');
     } catch (error) {
-      DiagLogger.log('MapInit', 'naver failed type=${error.runtimeType}');
       developer.log(
         'Naver Map init failed: $error',
         name: 'PlanFlow',
@@ -309,12 +282,6 @@ Future<void> _initializeNaverMap() async {
         stackTrace: StackTrace.current,
       );
     }
-  }
-
-  if (!AppEnv.isNaverMapReady && googleConfigured) {
-    DiagLogger.log('MapInit', 'google fallback available');
-  } else if (!AppEnv.isNaverMapReady && !googleConfigured) {
-    DiagLogger.log('MapInit', 'unavailable naver=false google=false');
   }
 }
 

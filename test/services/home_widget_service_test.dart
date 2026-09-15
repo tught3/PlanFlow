@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
-import 'package:planflow/screens/calendar/calendar_style_contract.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -13,64 +12,12 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  test('calendar style contract contains the app calendar source-of-truth', () {
-    final payload = calendarStyleContractPayload();
-    expect(payload['calendar_style_contract_version'],
-        calendarStyleContractVersion);
-    expect(payload['calendar_style_critical_text'],
-        calendarCriticalEventTextColor.toARGB32());
-    expect(payload['calendar_style_critical_marker'],
-        calendarCriticalEventMarkerColor.toARGB32());
-    expect(payload['calendar_style_critical_background'],
-        calendarCriticalEventBackgroundColor.toARGB32());
-    expect(payload['calendar_style_normal_background'],
-        calendarNormalEventBackgroundColor.toARGB32());
-    expect(payload['calendar_style_multiday_background'],
-        calendarMultiDayEventBackgroundColor.toARGB32());
-    expect(payload['calendar_style_multiday_border'],
-        calendarMultiDayEventBorderColor.toARGB32());
-    expect(payload['calendar_style_normal_text'],
-        calendarNormalEventTextColor.toARGB32());
-    expect(payload['calendar_style_team_text'],
-        calendarGroupEventColor.toARGB32());
-    expect(payload['calendar_style_team_background'],
-        calendarGroupEventBackgroundColor.toARGB32());
-    expect(payload['calendar_style_recurring_text'],
-        calendarRecurringEventColor.toARGB32());
-    expect(payload['calendar_style_recurring_background'],
-        calendarRecurringEventBackgroundColor.toARGB32());
-    expect(payload['calendar_style_holiday_text'],
-        calendarHolidayColor.toARGB32());
-    expect(payload['calendar_style_saturday_text'],
-        calendarSaturdayColor.toARGB32());
-    expect(payload['calendar_style_event_font_sp10'], 83);
-    expect(payload['calendar_style_date_font_sp10'], 130);
-    expect(payload['calendar_style_holiday_font_sp10'], 88);
-    expect(payload['calendar_style_group_member_font_sp10'], 100);
-    expect(payload['calendar_style_recurring_marker_sp10'], 105);
-    expect(payload['calendar_style_strong_alarm_marker_sp10'], 58);
-  });
-
-  test(
-      'event rows render text-only with an enlarged, bold repeat marker',
-      () {
+  test('marker styling keeps markers separate from semantic title color', () {
     final calendarSource =
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
     expect(calendarSource, contains('_calendarEventTitleSpan'));
     expect(calendarSource, contains('FontWeight.w900'));
-    expect(calendarSource,
-        contains('markerFontSize: calendarRecurringMarkerFontSize'));
-    expect(calendarSource, contains('markerFontSize: 16'));
-    expect(calendarSource, contains('calendarStrongAlarmMarkerFontSize'));
-    expect(calendarSource, contains('strongAlarmMarkerFontSize: 12'));
-    expect(calendarSource, contains('fontSize: calendarEventFontSize'));
-    expect(calendarSource, contains("text: '🔔\\u200A'"));
-    expect(calendarSource, contains("text: '↻\\u200A'"));
-    expect(calendarSource, contains('fontWeight: FontWeight.w700'));
     expect(calendarSource, contains('semanticColor'));
-    // Text-only: the mini calendar row must not paint any fill.
-    expect(calendarSource, isNot(contains('final recurringBackground')));
-    expect(calendarSource, isNot(contains('color: recurringBackground')));
     expect(calendarSource, contains('left: segment.\$1'));
     expect(calendarSource, contains('right: segment.\$2'));
     final homeSource =
@@ -80,143 +27,9 @@ void main() {
     final widgetSource = File(
       'android/app/src/main/kotlin/com/fluxstudio/planflow/PlanFlowHomeWidgetProvider.kt',
     ).readAsStringSync();
-    final monthLayoutSource = File(
-      'android/app/src/main/res/layout/planflow_monthly_widget.xml',
-    ).readAsStringSync();
-    expect(
-        monthLayoutSource, contains('android:id="@+id/widget_month_dow_sun"'));
-    expect(
-        monthLayoutSource, contains('android:id="@+id/widget_month_dow_sat"'));
-    expect(widgetSource, contains('bindMonthWeekdayHeader(views)'));
-    expect(widgetSource, contains('widgetStyle.holidayTextColor'));
-    expect(widgetSource, contains('widgetStyle.saturdayTextColor'));
-    // Canonical resources retain their rounded/multi-day shape. RemoteViews
-    // must not flatten a LayerDrawable when a future token differs; the
-    // provider deliberately keeps the resource and waits for a matching XML
-    // drawable instead.
-    final applyBackgroundStart =
-        widgetSource.indexOf('protected fun applyMonthEventBackground(');
-    final applyBackgroundEnd = widgetSource.indexOf(
-      '\n    protected fun bindMonthWeekdayHeader',
-      applyBackgroundStart,
-    );
-    expect(applyBackgroundStart, isNonNegative);
-    expect(applyBackgroundEnd, greaterThan(applyBackgroundStart));
-    final applyBackground =
-        widgetSource.substring(applyBackgroundStart, applyBackgroundEnd);
-    expect(applyBackground, contains('setBackgroundResource'));
-    // Text-only: no fill tint is applied to a month event row.
-    expect(applyBackground, isNot(contains('setBackgroundTintList')));
-    expect(applyBackground, contains('borderColor'));
-    expect(applyBackground, isNot(contains('setBackgroundColor')));
     expect(widgetSource, contains('displayWidgetTitleSpanned'));
     expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
     expect(widgetSource, contains('ForegroundColorSpan'));
-    expect(widgetSource, contains("builder.append(marker).append('\\u200A')"));
-    expect(widgetSource, contains('strongAlarmMarkerFontSizeSp.roundToInt()'));
-    expect(widgetSource, contains('recurringMarkerFontSizeSp.roundToInt()'));
-    expect(widgetSource, contains('calendar_style_recurring_marker_sp10'));
-    expect(widgetSource, contains('appendMarker("↻"'));
-    expect(widgetSource, contains('calendar_style_event_font_sp10'));
-    expect(widgetSource, contains('StyleSpan(Typeface.BOLD)'));
-
-    final widgetStylesSource =
-        File('android/app/src/main/res/values/styles.xml').readAsStringSync();
-    final monthEventStyleStart = widgetStylesSource.indexOf(
-      '<style name="PlanFlowWidgetMonthCellEvent">',
-    );
-    final monthEventStyleEnd = widgetStylesSource.indexOf(
-      '</style>',
-      monthEventStyleStart,
-    );
-    expect(monthEventStyleStart, isNonNegative);
-    expect(monthEventStyleEnd, greaterThan(monthEventStyleStart));
-    final monthEventStyle = widgetStylesSource.substring(
-      monthEventStyleStart,
-      monthEventStyleEnd,
-    );
-    expect(
-      monthEventStyle,
-      contains('<item name="android:textSize">8.3sp</item>'),
-    );
-    expect(
-      monthEventStyle,
-      contains('<item name="android:textStyle">normal</item>'),
-    );
-    final groupWidgetSource = File(
-      'android/app/src/main/res/layout/planflow_group_calendar_widget.xml',
-    ).readAsStringSync();
-    expect(groupWidgetSource, isNot(contains('android:textSize="8.5sp"')));
-    expect(groupWidgetSource, contains('android:textSize="10.5sp"'));
-    final listStyleStart = widgetStylesSource.indexOf(
-      '<style name="PlanFlowWidgetListText">',
-    );
-    final listStyleEnd = widgetStylesSource.indexOf(
-      '</style>',
-      listStyleStart,
-    );
-    expect(listStyleStart, isNonNegative);
-    expect(listStyleEnd, greaterThan(listStyleStart));
-    final listStyle =
-        widgetStylesSource.substring(listStyleStart, listStyleEnd);
-    expect(listStyle, contains('<item name="android:textStyle">bold</item>'));
-
-    final homeLayoutSource =
-        File('android/app/src/main/res/layout/planflow_home_widget.xml')
-            .readAsStringSync();
-    final timeStart = homeLayoutSource.indexOf('android:id="@+id/widget_time"');
-    final timeEnd = homeLayoutSource.indexOf('/>', timeStart);
-    expect(timeStart, isNonNegative);
-    expect(timeEnd, greaterThan(timeStart));
-    final timeView = homeLayoutSource.substring(timeStart, timeEnd);
-    expect(timeView, contains('android:textStyle="bold"'));
-
-    for (final drawableName in <String>[
-      'widget_month_event_single.xml',
-      'widget_month_event_start.xml',
-      'widget_month_event_middle.xml',
-      'widget_month_event_end.xml',
-      'widget_month_event_critical_single.xml',
-      'widget_month_event_team_single.xml',
-      'widget_month_event_team_start.xml',
-      'widget_month_event_team_middle.xml',
-      'widget_month_event_team_end.xml',
-      'widget_month_event_holiday.xml',
-      'widget_month_event_critical_start.xml',
-      'widget_month_event_critical_middle.xml',
-      'widget_month_event_critical_end.xml',
-      'widget_month_event_recurring_single.xml',
-      'widget_month_event_recurring_start.xml',
-      'widget_month_event_recurring_middle.xml',
-      'widget_month_event_recurring_end.xml',
-      'widget_month_event_recurring_critical_single.xml',
-      'widget_month_event_recurring_critical_start.xml',
-      'widget_month_event_recurring_critical_middle.xml',
-      'widget_month_event_recurring_critical_end.xml',
-    ]) {
-      final drawableSource = File(
-        'android/app/src/main/res/drawable/$drawableName',
-      ).readAsStringSync();
-      expect(drawableSource, contains('transparent'));
-    }
-    // Multi-day geometry survives text-only rendering: the segment drawables
-    // keep their border strokes even though every fill is transparent.
-    for (final entry in <String, String>{
-      'widget_month_event_critical_start.xml': '#8051B2',
-      'widget_month_event_critical_middle.xml': '#8051B2',
-      'widget_month_event_critical_end.xml': '#8051B2',
-      'widget_month_event_recurring_start.xml': '#126E68',
-      'widget_month_event_recurring_middle.xml': '#126E68',
-      'widget_month_event_recurring_end.xml': '#126E68',
-      'widget_month_event_recurring_critical_start.xml': '#8051B2',
-      'widget_month_event_recurring_critical_middle.xml': '#8051B2',
-      'widget_month_event_recurring_critical_end.xml': '#8051B2',
-    }.entries) {
-      final drawableSource = File(
-        'android/app/src/main/res/drawable/${entry.key}',
-      ).readAsStringSync();
-      expect(drawableSource, contains(entry.value));
-    }
   });
 
   test('HomeWidgetService updates next-event widget payload', () async {
@@ -511,23 +324,6 @@ void main() {
     expect(platform.savedValues['month_cell_1_overflow_count'], 2);
     expect(platform.savedValues['month_cell_42_day'], isNull);
     expect(platform.savedValues['month_cell_42_in_month'], isFalse);
-    expect(platform.savedValues['widget_payload_generation_pending'],
-        isA<String>());
-    expect(
-      platform.savedValues['widget_payload_generation_complete'],
-      platform.savedValues['widget_payload_generation_pending'],
-    );
-    expect(platform.savedValues['month_cell_row_count'], 1);
-    expect(platform.savedValues['month_cell_holiday_calendar_json'],
-        isA<String>());
-    final holidayPayload = jsonDecode(
-      platform.savedValues['month_cell_holiday_calendar_json'] as String,
-    ) as Map<String, dynamic>;
-    expect(holidayPayload, isA<Map<String, dynamic>>());
-    expect(
-      holidayPayload.values.every((value) => value is Map<String, dynamic>),
-      isTrue,
-    );
     expect(platform.savedValues['month_title_offset_-1'], '2026.04');
     expect(platform.savedValues['month_title_offset_1'], '2026.06');
     expect(platform.savedValues['schedule_events_json'], isA<String>());
@@ -536,12 +332,6 @@ void main() {
     ) as List<dynamic>;
     expect(rawEvents.length, 6);
     expect(rawEvents.first['title'], 'Past event');
-    expect(platform.savedValues['widget_schedule_payload_v1'], isA<String>());
-    final canonicalPayload = jsonDecode(
-      platform.savedValues['widget_schedule_payload_v1'] as String,
-    ) as Map<String, dynamic>;
-    expect(canonicalPayload['schemaVersion'], 1);
-    expect(canonicalPayload['events'], isA<List<dynamic>>());
     expect(platform.savedValues['month_offset_-1_cell_6_day'], 30);
     expect(
       platform.savedValues['month_offset_-1_cell_6_event_1_title'],
@@ -714,105 +504,6 @@ void main() {
     ]);
   });
 
-  test('HomeWidget same-start monthly ordering matches calendar semantics', () {
-    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime.utc(2026, 9, 1),
-      events: <EventModel>[
-        EventModel(
-          id: 'normal',
-          userId: 'user-1',
-          title: '가장 먼저일 제목',
-          startAt: DateTime.utc(2026, 9, 2, 9),
-        ),
-        EventModel(
-          id: 'critical',
-          userId: 'user-1',
-          title: '중요 일정',
-          startAt: DateTime.utc(2026, 9, 2, 9),
-          isCritical: true,
-        ),
-      ],
-    );
-
-    final cell = payload.monthCells.firstWhere((item) => item.day == 2);
-    expect(cell.events.map((event) => event.eventId), <String>[
-      'critical',
-      'normal',
-    ]);
-  });
-
-  test('HomeWidget keeps the app five-row shape for September 2026', () {
-    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime.utc(2026, 9, 1),
-      events: const <EventModel>[],
-    );
-    final lastInMonth = payload.monthCells.lastWhere((cell) => cell.inMonth);
-    expect(lastInMonth.cellIndex, 32);
-    expect(payload.monthCells.skip(32).every((cell) => !cell.inMonth), isTrue);
-  });
-
-  test('HomeWidget reserves the holiday row before four user events', () {
-    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime.utc(2026, 8, 15),
-      events: [
-        for (var index = 1; index <= 4; index += 1)
-          EventModel(
-            id: 'holiday-event-$index',
-            userId: 'user-1',
-            title: '일정 $index',
-            startAt: DateTime.utc(2026, 8, 15, 8 + index),
-          ),
-      ],
-    );
-
-    final august15 = payload.monthCells.firstWhere((cell) => cell.day == 15);
-    expect(august15.holidayName, '광복절');
-    expect(august15.events.length, 3);
-    expect(august15.overflowCount, 1);
-  });
-
-  test('HomeWidget keeps a multi-day event below the holiday row', () {
-    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime.utc(2026, 9, 23),
-      events: <EventModel>[
-        EventModel(
-          id: 'birthday-range',
-          userId: 'user-1',
-          title: '생일 축하합니다',
-          startAt: DateTime.utc(2026, 9, 23),
-          endAt: DateTime.utc(2026, 9, 27),
-          isAllDay: true,
-          isMultiDay: true,
-        ),
-      ],
-    );
-
-    for (final day in <int>[23, 24, 25, 26]) {
-      final cell = payload.monthCells.firstWhere((item) => item.day == day);
-      expect(cell.events.map((event) => event.eventId),
-          contains('birthday-range'));
-    }
-    // The span crosses Chuseok on the 24th. The app calendar reserves the
-    // holiday row for the entire band, so the widget payload must retain the
-    // same leading blank row on the non-holiday days too.
-    expect(
-      payload.monthCells
-          .firstWhere((item) => item.day == 23)
-          .leadingEventRowCount,
-      1,
-    );
-    expect(
-      payload.monthCells
-          .firstWhere((item) => item.day == 24)
-          .leadingEventRowCount,
-      1,
-    );
-    final holidayCell = payload.monthCells.firstWhere(
-      (item) => item.holidayName != null,
-    );
-    expect(holidayCell.holidayName, isNotNull);
-  });
-
   test('HomeWidget raw payload preserves team and recurring semantic flags',
       () {
     final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
@@ -907,15 +598,6 @@ void main() {
         julyPayload.monthCells.firstWhere((cell) => cell.day == 17);
     expect(jeheonjeolCell.holidayName, '제헌절');
     expect(jeheonjeolCell.isDayOff, isTrue);
-
-    final priorJulyPayload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime.parse('2025-07-05T04:00:00Z'),
-      events: const <EventModel>[],
-    );
-    final priorJeheonjeolCell =
-        priorJulyPayload.monthCells.firstWhere((cell) => cell.day == 17);
-    expect(priorJeheonjeolCell.holidayName, '제헌절');
-    expect(priorJeheonjeolCell.isDayOff, isFalse);
   });
 
   test('HomeWidgetSchedulePayloadBuilder uses local day for tomorrow fallback',

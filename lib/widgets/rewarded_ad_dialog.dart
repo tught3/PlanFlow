@@ -5,23 +5,20 @@ import '../core/theme.dart';
 class RewardedAdDialog extends StatelessWidget {
   const RewardedAdDialog({
     super.key,
-    this.freeTrialCount,
     this.onWatchAd,
     this.onCancel,
   });
 
-  final int? freeTrialCount;
   final VoidCallback? onWatchAd;
   final VoidCallback? onCancel;
 
-  static Future<bool?> show(BuildContext context, {int? freeTrialCount}) {
+  static Future<bool?> show(BuildContext context) {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => RewardedAdDialog(
         onWatchAd: () => Navigator.of(dialogContext).pop(true),
         onCancel: () => Navigator.of(dialogContext).pop(false),
-        freeTrialCount: freeTrialCount,
       ),
     );
   }
@@ -41,9 +38,7 @@ class RewardedAdDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${freeTrialCount == null ? '오늘 무료 AI 일정 정리' : '무료 횟수($freeTrialCount회)'}를 '
-            '모두 사용했어요.\n'
-            '광고를 시청하면 AI 자동 정리를 1회 더 사용할 수 있어요.',
+            '음성에서 일정·시간·장소를 자동으로 추출하려면 짧은 광고를 시청해주세요.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: PlanFlowColors.textSecondary,
             ),

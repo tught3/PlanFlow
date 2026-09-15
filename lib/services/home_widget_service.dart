@@ -11,10 +11,7 @@ import 'home_widget_platform.dart';
 import 'kasi_holiday_service.dart';
 import 'korean_holidays.dart';
 import 'synced_public_holiday_visibility.dart';
-import '../screens/calendar/calendar_style_contract.dart';
-import '../screens/calendar/calendar_projection.dart';
 import 'travel_time_buffer_service.dart';
-import 'widget_schedule_contract.dart';
 
 class HomeWidgetNextEventData {
   const HomeWidgetNextEventData({
@@ -113,7 +110,6 @@ class HomeWidgetMonthCellData {
     this.overflowPreviewTitle,
     this.holidayName,
     this.isDayOff = false,
-    this.leadingEventRowCount = 0,
   });
 
   final int cellIndex;
@@ -129,10 +125,6 @@ class HomeWidgetMonthCellData {
 
   /// 실제 "쉬는 날"(휴무)이면 true. 제헌절처럼 이름은 있어도 평일이면 false.
   final bool isDayOff;
-
-  /// Empty rows reserved before a multi-day band. This preserves the exact
-  /// slot chosen by the app calendar when a span crosses a holiday cell.
-  final int leadingEventRowCount;
 }
 
 class HomeWidgetSchedulePayload {
@@ -200,7 +192,7 @@ class HomeWidgetSchedulePayloadBuilder {
         .where((event) => event.startAt != null)
         .where((event) => includeWeekends || !_startsOnWeekend(event))
         .toList(growable: false)
-      ..sort(compareCalendarEventsForDisplay);
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     final futureEvents = sortedEvents
         .where((event) => !event.startAt!.isBefore(now))
         .toList(growable: false);
@@ -371,7 +363,7 @@ class HomeWidgetSchedulePayloadBuilder {
       final ld = _displayEndDay(e);
       return ld.isAfter(fd);
     }).toList()
-      ..sort(compareCalendarEventsForDisplay);
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
 
     for (final event in multiDayEvents) {
       final fd = planflowLocalDay(event.startAt!);
@@ -384,12 +376,7 @@ class HomeWidgetSchedulePayloadBuilder {
       if (cellIndices.isEmpty) continue;
       // 이 기간 전체에서 비어있는 첫 번째 slot 예약
       var reserved = false;
-      final spanContainsHoliday = cellIndices.any(
-        (index) => KoreanHolidays.holidayName(cellDays[index]) != null,
-      );
-      for (var slot = spanContainsHoliday ? 1 : 0;
-          slot < monthlyWidgetEventRows;
-          slot++) {
+      for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
         if (cellIndices.every((i) => slotMap[i][slot] == null)) {
           for (final i in cellIndices) {
             slotMap[i][slot] = event;
@@ -415,14 +402,19 @@ class HomeWidgetSchedulePayloadBuilder {
         final ld = _displayEndDay(e);
         return !ld.isAfter(fd) && fd == day;
       }).toList()
-        ..sort(compareCalendarEventsForDisplay);
+        ..sort((a, b) {
+          final aStart = a.startAt;
+          final bStart = b.startAt;
+          if (aStart == null && bStart == null) {
+            return a.title.compareTo(b.title);
+          }
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          return aStart.compareTo(bStart);
+        });
       for (final event in singleEvents) {
         var placed = false;
-        final firstAvailableSlot =
-            KoreanHolidays.holidayName(day) != null ? 1 : 0;
-        for (var slot = firstAvailableSlot;
-            slot < monthlyWidgetEventRows;
-            slot++) {
+        for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
           if (slotMap[i][slot] == null) {
             slotMap[i][slot] = event;
             placed = true;
@@ -461,9 +453,6 @@ class HomeWidgetSchedulePayloadBuilder {
                 : hiddenEvents.first.title.trim(),
         holidayName: KoreanHolidays.holidayName(day),
         isDayOff: KoreanHolidays.isDayOff(day),
-        leadingEventRowCount: slotMap[i]
-            .indexWhere((event) => event != null)
-            .clamp(0, monthlyWidgetEventRows),
       );
     });
   }
@@ -952,19 +941,12 @@ class HomeWidgetService {
   HomeWidgetService({
     HomeWidgetPlatform? platform,
     TravelTimeBufferService? travelTimeBufferService,
-    this.iOSAppGroupId = _provisionalIOSAppGroupId,
+    this.iOSAppGroupId,
   })  : _platform = platform ?? createHomeWidgetPlatform(),
         _travelTimeBufferService =
             travelTimeBufferService ?? TravelTimeBufferService();
 
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
-
-  /// Provisional source default shared with the WidgetKit target. Override it
-  /// with --dart-define when a deployment uses a different App Group.
-  static const String _provisionalIOSAppGroupId = String.fromEnvironment(
-    'PLANFLOW_IOS_APP_GROUP',
-    defaultValue: 'group.com.fluxstudio.planflow',
-  );
   static const String hideWeekendsKey = 'widget_hide_weekends';
   static const String _localHideWeekendsKey =
       'planflow.home_widget.hide_weekends';
@@ -1163,20 +1145,6 @@ class HomeWidgetService {
     }
 
     var success = true;
-    // A pending/completed pair prevents a stale complete month projection
-    // from winning while a newer schedule payload is being written.
-    final payloadGeneration = DateTime.now().microsecondsSinceEpoch.toString();
-    success = await _saveValue(
-          'widget_payload_generation_pending',
-          payloadGeneration,
-        ) &&
-        success;
-    // The native monthly/weekly/daily renderers read this versioned contract.
-    // Persist it alongside every complete schedule payload so widgets never
-    // retain an older palette after an app update or refresh.
-    for (final entry in calendarStyleContractPayload().entries) {
-      success = await _saveValue(entry.key, entry.value) && success;
-    }
     success =
         await _saveValue('next_event_title', nextEvent.title.trim()) && success;
     success =
@@ -1224,26 +1192,6 @@ class HomeWidgetService {
           jsonEncode(rawEvents),
         ) &&
         success;
-    try {
-      final canonicalWidgetPayload = WidgetSchedulePayload.fromLegacyRawEvents(
-        rawEvents: rawEvents,
-        generatedAt: DateTime.now().toUtc(),
-        dayCounts: _dayCountsForWidget(monthCells),
-        holidays: _holidaysForWidget(monthCells),
-        holidayDates: _holidayDatesForWidget(monthCells),
-      );
-      success = await _saveValue(
-            'widget_schedule_payload_v1',
-            canonicalWidgetPayload.encode(),
-          ) &&
-          success;
-    } catch (e, st) {
-      success = false;
-      debugPrint(
-        'HomeWidgetService: fromLegacyRawEvents failed, skipping widget_schedule_payload_v1: $e',
-      );
-      debugPrintStack(stackTrace: st, maxFrames: 8);
-    }
     success = await _saveMonthData(month: month, days: monthDays) && success;
     success = await _saveMonthCalendarData(monthCells) && success;
     success = await _saveMonthCalendarData(
@@ -1296,14 +1244,6 @@ class HomeWidgetService {
         success;
     success = await _saveDayOffsetEvents(1, tomorrowEvents) && success;
 
-    if (success) {
-      success = await _saveValue(
-            'widget_payload_generation_complete',
-            payloadGeneration,
-          ) &&
-          success;
-    }
-
     final refreshed = await _refreshWidgets(
       widgetName: widgetName,
       androidName: androidName,
@@ -1312,45 +1252,6 @@ class HomeWidgetService {
     );
 
     return success && refreshed;
-  }
-
-  static Map<String, int> _dayCountsForWidget(
-    List<HomeWidgetMonthCellData> cells,
-  ) {
-    final counts = <String, int>{};
-    for (final cell in cells) {
-      final date = cell.date;
-      if (date == null || !cell.inMonth) continue;
-      counts['${date.year.toString().padLeft(4, '0')}-'
-          '${date.month.toString().padLeft(2, '0')}-'
-          '${date.day.toString().padLeft(2, '0')}'] = cell.events.length;
-    }
-    return counts;
-  }
-
-  static List<String> _holidaysForWidget(
-    List<HomeWidgetMonthCellData> cells,
-  ) =>
-      cells
-          .where((cell) => cell.inMonth && cell.holidayName != null)
-          .map((cell) => cell.holidayName!)
-          .toList(growable: false);
-
-  static Map<String, String> _holidayDatesForWidget(
-    List<HomeWidgetMonthCellData> cells,
-  ) {
-    final result = <String, String>{};
-    for (final cell in cells) {
-      final date = cell.date;
-      final name = cell.holidayName;
-      if (!cell.inMonth || date == null || name == null || name.isEmpty) {
-        continue;
-      }
-      result['${date.year.toString().padLeft(4, '0')}-'
-          '${date.month.toString().padLeft(2, '0')}-'
-          '${date.day.toString().padLeft(2, '0')}'] = name;
-    }
-    return result;
   }
 
   Future<bool> updateSchedulePayload(
@@ -1551,33 +1452,6 @@ class HomeWidgetService {
     String keyPrefix = 'month_cell',
   }) async {
     var success = true;
-    final lastInMonthIndex = cells.lastIndexWhere((cell) => cell.inMonth);
-    final rowCount = lastInMonthIndex < 0
-        ? 6
-        : ((lastInMonthIndex + 1 + 6) ~/ 7).clamp(1, 6);
-    success = await _saveValue('${keyPrefix}_row_count', rowCount) && success;
-    // Keep a compact, schedule-free holiday map so the native fallback can
-    // preserve the app's KASI/klc holiday rules even when a legacy month-cell
-    // payload is incomplete. This is intentionally limited to date/name and
-    // never contains event or user data.
-    final holidayMap = <String, Map<String, Object>>{};
-    for (final cell in cells) {
-      final date = cell.date;
-      if (date == null || (!cell.isDayOff && cell.holidayName == null)) {
-        continue;
-      }
-      holidayMap[_localDateKey(planflowLocal(date))] = {
-        'name': cell.holidayName?.trim().isNotEmpty == true
-            ? cell.holidayName!.trim()
-            : '공휴일',
-        'isDayOff': cell.isDayOff,
-      };
-    }
-    success = await _saveValue(
-          '${keyPrefix}_holiday_calendar_json',
-          jsonEncode(holidayMap),
-        ) &&
-        success;
     final byCell = <int, HomeWidgetMonthCellData>{
       for (final cell in cells)
         if (cell.cellIndex >= 1 && cell.cellIndex <= 42) cell.cellIndex: cell,
@@ -1619,11 +1493,6 @@ class HomeWidgetService {
       success = await _saveValue(
             '${keyPrefix}_${cellIndex}_is_day_off',
             cell?.isDayOff ?? false,
-          ) &&
-          success;
-      success = await _saveValue(
-            '${keyPrefix}_${cellIndex}_leading_event_row_count',
-            cell?.leadingEventRowCount ?? 0,
           ) &&
           success;
       final events = cell?.events
@@ -1849,16 +1718,14 @@ class HomeWidgetService {
     String? iOSName,
     String? qualifiedAndroidName,
   }) async {
-    final resolvedIOSName = iOSName ??
-        (defaultTargetPlatform == TargetPlatform.iOS ? 'PlanFlowWidget' : null);
     if (widgetName != defaultWidgetName ||
         androidName != null ||
-        resolvedIOSName != null ||
+        iOSName != null ||
         qualifiedAndroidName != null) {
       return _platform.updateWidget(
         name: widgetName,
         androidName: androidName,
-        iOSName: resolvedIOSName,
+        iOSName: iOSName,
         qualifiedAndroidName: qualifiedAndroidName,
       );
     }

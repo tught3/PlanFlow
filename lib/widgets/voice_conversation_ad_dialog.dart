@@ -11,24 +11,17 @@ const Key voiceConversationIntroTextKey =
 ///
 /// - true  : 사용자가 "광고 보고 시작하기" 선택
 /// - false : 사용자가 "취소" 선택 또는 바깥 탭으로 닫음
-Future<bool> showVoiceConversationAdDialog(
-  BuildContext context, {
-  int? freeTrialCount,
-}) async {
+Future<bool> showVoiceConversationAdDialog(BuildContext context) async {
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: true,
-    builder: (dialogContext) => _VoiceConversationAdDialog(
-      freeTrialCount: freeTrialCount,
-    ),
+    builder: (dialogContext) => const _VoiceConversationAdDialog(),
   );
   return result ?? false;
 }
 
 class _VoiceConversationAdDialog extends StatelessWidget {
-  const _VoiceConversationAdDialog({this.freeTrialCount});
-
-  final int? freeTrialCount;
+  const _VoiceConversationAdDialog();
 
   @override
   Widget build(BuildContext context) {
@@ -53,16 +46,6 @@ class _VoiceConversationAdDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (freeTrialCount != null) ...[
-            Text(
-              '무료 횟수($freeTrialCount회)를 모두 소진하였습니다.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
           Text(
             '짧은 광고를 시청하면 AI와 대화하며 일정을 관리할 수 있어요.',
             key: voiceConversationIntroTextKey,

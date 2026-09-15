@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,7 +27,7 @@ void main() {
     // Reset the singleton so later tests cannot inherit a simulated mobile
     // consent result and attempt the real MobileAds channel.
     debugDefaultTargetPlatformOverride = TargetPlatform.linux;
-    AdConsentService.instance.resetForTesting();
+    await AdConsentService.instance.retryAfterUserAction();
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -66,58 +63,6 @@ void main() {
 
       expect(consent.isAvailable, isTrue);
       expect(consent.canRequestAds, isTrue);
-    });
-
-    test('a retryable UMP failure can be retried by the next user action',
-        () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      final channel = MethodChannel(
-        'plugins.flutter.io/google_mobile_ads/ump',
-        StandardMethodCodec(UserMessagingCodec()),
-      );
-      var updateCalls = 0;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'ConsentInformation#requestConsentInfoUpdate') {
-          updateCalls += 1;
-          if (updateCalls == 1) {
-            throw PlatformException(code: 'temporary');
-          }
-        }
-        if (call.method == 'ConsentInformation#canRequestAds') return true;
-        return null;
-      });
-
-      final consent = AdConsentService.instance;
-      await consent.retryAfterUserAction();
-      expect(consent.readiness, ConsentReadiness.retryableFailure);
-
-      await consent.retryAfterUserAction();
-      expect(updateCalls, 2);
-      expect(consent.isAvailable, isTrue);
-      expect(consent.canRequestAds, isTrue);
-    });
-
-    test('live UMP consent remains usable after a transient update failure',
-        () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      final channel = MethodChannel(
-        'plugins.flutter.io/google_mobile_ads/ump',
-        StandardMethodCodec(UserMessagingCodec()),
-      );
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'ConsentInformation#requestConsentInfoUpdate') {
-          throw PlatformException(code: 'temporary');
-        }
-        if (call.method == 'ConsentInformation#canRequestAds') return true;
-        return null;
-      });
-
-      final consent = AdConsentService.instance;
-      await consent.retryAfterUserAction();
-      expect(await consent.canRequestAdsLive, isTrue);
-      expect(consent.readiness, ConsentReadiness.ready);
     });
   });
 
@@ -205,63 +150,6 @@ void main() {
       // 'shown' 단계는 _loadRewardedAd 성공 이후에만 발화한다. 초기화
       // 재시도가 실패하면 'loading' -> 'failed'로 바로 끝나야 한다.
       expect(stages, <String>['loading', 'failed']);
-    });
-  });
-
-  group('rewarded 단위 ID 보강 재시도 경로 동등성(구조 가드)', () {
-    // 실기기(Alpha 141) 진단에서 확인된 실패 단계는 "RC fetch 실패 ->
-    // rewarded_ad_unit_id_android 기본값('') -> unit_id_invalid"였다.
-    // 음성 대화 경로에는 사용자 요청 시점 1회 강제 재fetch 보강이 있었지만
-    // AI 일정분석(showForParseSchedule) 경로에는 없어 같은 원인으로 계속
-    // 죽었다. kDebugMode 테스트 환경에서는 항상 테스트 단위 ID가 해석되어
-    // 이 release 전용 분기에 런타임으로 도달할 수 없으므로, 두 경로가 같은
-    // 보강을 갖고 있는지 소스 구조로 고정한다.
-    String bodyOf(String source, String signature) {
-      final start = source.indexOf(signature);
-      expect(start, isNot(-1), reason: '$signature 를 찾지 못했다');
-      // 이름있는 파라미터 목록도 중괄호를 쓰므로, 괄호 깊이가 0으로 돌아온
-      // 뒤(=시그니처가 닫힌 뒤)의 첫 '{'부터를 본문으로 본다.
-      var parenDepth = 0;
-      var braceDepth = 0;
-      var inBody = false;
-      for (var i = start; i < source.length; i++) {
-        final ch = source[i];
-        if (!inBody) {
-          if (ch == '(') parenDepth++;
-          if (ch == ')') parenDepth--;
-          if (ch == '{' && parenDepth == 0) {
-            inBody = true;
-            braceDepth = 1;
-          }
-          continue;
-        }
-        if (ch == '{') {
-          braceDepth++;
-        } else if (ch == '}') {
-          braceDepth--;
-          if (braceDepth == 0) {
-            return source.substring(start, i + 1);
-          }
-        }
-      }
-      fail('$signature 본문의 끝을 찾지 못했다');
-    }
-
-    test('showForParseSchedule도 RC 재fetch 보강을 수행한다', () {
-      final source = File('lib/services/ad_service.dart').readAsStringSync();
-      final parseBody = bodyOf(source, 'Future<bool> showForParseSchedule(');
-      final voiceBody = bodyOf(
-        source,
-        'Future<VoiceConversationAdOutcome> showForVoiceConversationWithOutcome(',
-      );
-
-      for (final body in <String>[parseBody, voiceBody]) {
-        expect(body.contains('shouldRetryRemoteConfigForRewardedUnit('), isTrue);
-        expect(
-          body.contains('RemoteConfigService.retryFetchIfFailed()'),
-          isTrue,
-        );
-      }
     });
   });
 
@@ -429,53 +317,6 @@ void main() {
   });
 
   group('AdService rewarded lifecycle production seam', () {
-    test('missing SDK callbacks time out and release lifecycle state',
-        () async {
-      final stopwatch = Stopwatch()..start();
-      final outcome = await runRewardedAdLifecycle(
-        lifecycleTimeout: const Duration(milliseconds: 20),
-        drive: ({
-          required void Function() onUserEarnedReward,
-          required void Function() onAdDismissed,
-          required void Function() onAdFailedToShow,
-        }) async {
-          // Simulate an SDK show() that never returns and emits no callback.
-          await Future<void>.delayed(const Duration(seconds: 1));
-        },
-      );
-      stopwatch.stop();
-
-      expect(outcome, isFalse);
-      expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 250)));
-    });
-
-    test('late SDK callbacks after timeout cannot revive a completed attempt',
-        () async {
-      void Function()? reward;
-      void Function()? dismiss;
-      void Function()? failure;
-
-      final outcome = await runRewardedAdLifecycle(
-        lifecycleTimeout: const Duration(milliseconds: 10),
-        drive: ({
-          required void Function() onUserEarnedReward,
-          required void Function() onAdDismissed,
-          required void Function() onAdFailedToShow,
-        }) async {
-          reward = onUserEarnedReward;
-          dismiss = onAdDismissed;
-          failure = onAdFailedToShow;
-        },
-      );
-
-      expect(outcome, isFalse);
-      // Simulate a platform callback arriving after the ad was disposed.
-      reward?.call();
-      dismiss?.call();
-      failure?.call();
-      expect(outcome, isFalse);
-    });
-
     test('dismiss-before-reward resolves successfully within grace period',
         () async {
       final outcome = runRewardedAdLifecycle(
@@ -529,104 +370,7 @@ void main() {
     });
   });
 
-  group('Remote Config rewarded unit retry guard', () {
-    test('retries only for release mode after a failed fetch and empty unit',
-        () {
-      expect(
-        shouldRetryRemoteConfigForRewardedUnit(
-          useTestUnit: false,
-          fetchSucceeded: false,
-          configured: '',
-        ),
-        isTrue,
-      );
-      expect(
-        shouldRetryRemoteConfigForRewardedUnit(
-          useTestUnit: true,
-          fetchSucceeded: false,
-          configured: '',
-        ),
-        isFalse,
-      );
-      expect(
-        shouldRetryRemoteConfigForRewardedUnit(
-          useTestUnit: false,
-          fetchSucceeded: true,
-          configured: '',
-        ),
-        isFalse,
-      );
-      expect(
-        shouldRetryRemoteConfigForRewardedUnit(
-          useTestUnit: false,
-          fetchSucceeded: false,
-          configured: 'ca-app-pub-1234567890123456/123',
-        ),
-        isFalse,
-      );
-    });
-
-    test('re-checking after retry disables voice ads when either switch is off',
-        () {
-      expect(
-        shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
-          rewardedAdEnabled: false,
-          rewardAdVoiceConversationEnabled: true,
-        ),
-        isTrue,
-      );
-      expect(
-        shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
-          rewardedAdEnabled: true,
-          rewardAdVoiceConversationEnabled: false,
-        ),
-        isTrue,
-      );
-      expect(
-        shouldDisableVoiceConversationAdsAfterRemoteConfigRetry(
-          rewardedAdEnabled: true,
-          rewardAdVoiceConversationEnabled: true,
-        ),
-        isFalse,
-      );
-    });
-  });
-
   group('AdService.initialize UMP timeout', () {
-    test('concurrent initialize calls share one in-flight future', () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-
-      final channel = MethodChannel(
-        'plugins.flutter.io/google_mobile_ads/ump',
-        StandardMethodCodec(UserMessagingCodec()),
-      );
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'ConsentInformation#canRequestAds') {
-          return true;
-        }
-        return null;
-      });
-
-      final initializer = Completer<void>();
-      var initializerCalls = 0;
-      final service = AdService(
-        dynamicAdsInitializer: () {
-          initializerCalls += 1;
-          return initializer.future;
-        },
-      );
-
-      final first = service.initialize();
-      final second = service.initialize();
-
-      initializer.complete();
-      await Future.wait([first, second]);
-
-      expect(initializerCalls, 1);
-      expect(service.isInitialized, isTrue);
-    });
-
     test('6s UMP request is bounded by the 5s boot deadline', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
 

@@ -17,13 +17,11 @@ import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/screens/calendar/calendar_projection.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
-import 'package:planflow/services/event_prefetch_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    EventPrefetchService().invalidate();
   });
 
   testWidgets('CalendarScreen does not show a loading panel while loading', (
@@ -98,69 +96,6 @@ void main() {
     },
   );
 
-  testWidgets(
-    'CalendarScreen renders a prefetched event before the reload completes',
-    (tester) async {
-      final selectedDay = DateTime(DateTime.now().year + 1, 5, 15, 9);
-      final prefetched = _event(
-        'prefetched-1',
-        '프리패치 일정',
-        selectedDay,
-      );
-      EventPrefetchService().store('prefetched-user', [prefetched]);
-      final reload = Completer<List<EventModel>>();
-      final repository = _AsyncEventRepository([reload.future]);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CalendarScreen(
-            eventRepository: repository,
-            userId: 'prefetched-user',
-            initialDate: selectedDay,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(find.text('프리패치 일정'), findsWidgets);
-      expect(repository.listCalls, 1);
-
-      reload.complete([prefetched]);
-      await tester.pumpAndSettle();
-    },
-  );
-
-  testWidgets(
-    'CalendarScreen stores the protected merged snapshot for the next first frame',
-    (tester) async {
-      final now = DateTime(DateTime.now().year + 1, 5, 15, 9);
-      final previous = [
-        _event('cached-1', '캐시 일정 1', now),
-        _event('cached-2', '캐시 일정 2', now.add(const Duration(hours: 1))),
-      ];
-      EventPrefetchService().store('protected-user', previous);
-      final repository = _AsyncEventRepository([
-        Future.value(const <EventModel>[]),
-      ]);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CalendarScreen(
-            eventRepository: repository,
-            userId: 'protected-user',
-            initialDate: now,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        EventPrefetchService().getCached('protected-user')!.map((e) => e.id),
-        ['cached-1', 'cached-2'],
-      );
-    },
-  );
-
   testWidgets('CalendarScreen opens selected day sheet from initialDate', (
     tester,
   ) async {
@@ -200,38 +135,6 @@ void main() {
     );
   });
 
-  testWidgets(
-    'briefing opens the selected-day sheet before a delayed event load completes',
-    (tester) async {
-      // banned-ok: 고정 날짜 fixture로 선택 시트 로딩 순서를 검증합니다.
-      final selectedDay = DateTime(2026, 5, 15, 9);
-      final delayedLoad = Completer<List<EventModel>>();
-      final repository = _AsyncEventRepository([delayedLoad.future]);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CalendarScreen(
-            eventRepository: repository,
-            userId: 'briefing-user',
-            initialDate: selectedDay,
-            briefingIsMorning: true,
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-
-      expect(
-        find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
-        findsOneWidget,
-      );
-      expect(find.text('오전 브리핑 중입니다.'), findsOneWidget);
-
-      delayedLoad.complete(const <EventModel>[]);
-      await tester.pump();
-    },
-  );
-
   test('calendar day projection indexes many events without a scan per tap',
       () {
     // banned-ok: 고정 월 fixture, now() 상대 클램프/만료 없음(시한폭탄 아님)
@@ -241,8 +144,7 @@ void main() {
       (index) => _event(
         'projection-$index',
         '일정 $index',
-        DateTime(
-            2026, 8, (index % 28) + 1, 9), // banned-ok: 고정 월 fixture(위와 동일 사유)
+        DateTime(2026, 8, (index % 28) + 1, 9), // banned-ok: 고정 월 fixture(위와 동일 사유)
       ),
     );
     final index = buildCalendarDayEventIndex(
@@ -270,8 +172,7 @@ void main() {
           home: CalendarScreen(
             eventRepository: repository,
             userId: 'user-1',
-            initialDate: DateTime(
-                2026, 5, 12), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
+            initialDate: DateTime(2026, 5, 12), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
           ),
         ),
       );
@@ -289,7 +190,7 @@ void main() {
       final selectedDayLabel = tester.widget<Text>(
         find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
       );
-      expect(selectedDayLabel.style?.color, calendarNormalEventTextColor);
+      expect(selectedDayLabel.style?.color, Colors.white);
       expect(selectedDayLabel.style?.fontWeight, FontWeight.w700);
     },
   );
@@ -437,35 +338,6 @@ void main() {
     ]);
   });
 
-  test('calendar keeps a continuous band in the holiday-following row', () {
-    final cells = buildCalendarMiniMonthCells(
-      focusedMonth: DateTime(2026, 9), // banned-ok: fixed 2026 Chuseok fixture
-      events: <EventModel>[
-        EventModel(
-          id: 'birthday-range',
-          userId: 'user-1',
-          title: '생일 축하합니다',
-          startAt:
-              DateTime(2026, 9, 23), // banned-ok: fixed 2026 Chuseok fixture
-          // Google date-only DTEND is exclusive: Sep 27 covers Sep 23-26.
-          endAt: DateTime(2026, 9, 27), // banned-ok: fixed 2026 Chuseok fixture
-          isAllDay: true,
-          isMultiDay: true,
-        ),
-      ],
-    );
-
-    for (final day in <int>[23, 24, 25, 26]) {
-      final cell = cells.firstWhere((item) => item.dayNumber == day);
-      expect(cell.events.map((event) => event.id), contains('birthday-range'));
-    }
-    final holidayCell = cells.firstWhere(
-      (item) => item.dayNumber != null && item.holidayName != null,
-    );
-    expect(holidayCell.holidayName, isNotNull);
-    expect(holidayCell.leadingEventRowCount, 0);
-  });
-
   testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {
     final repository = _AsyncEventRepository([
       Future.value([_event('holiday', '현충일', DateTime(2026, 6, 6, 9))]),
@@ -547,7 +419,7 @@ void main() {
   );
 
   testWidgets(
-    'CalendarScreen keeps a Constitution Day holiday label above user events',
+    'CalendarScreen aligns a Constitution Day range before its holiday label',
     (tester) async {
       final repository = _AsyncEventRepository([
         Future.value(<EventModel>[
@@ -595,8 +467,8 @@ void main() {
         tester.getTopLeft(constitutionRangeEnd).dy,
       );
       expect(
-        tester.getTopLeft(holidayLabel).dy,
-        lessThan(tester.getTopLeft(constitutionRangeStart).dy),
+        tester.getTopLeft(constitutionRangeStart).dy,
+        lessThan(tester.getTopLeft(holidayLabel).dy),
       );
     },
   );
