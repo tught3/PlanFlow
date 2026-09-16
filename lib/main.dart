@@ -284,8 +284,9 @@ Future<void> _initializeNaverMap() async {
             clientId: AppEnv.naverMapClientId,
             onAuthFailed: (error) {
               naverMapAuthFailed = true;
-              debugPrint('Naver Map auth failed: $error');
-              DiagLogger.log('MapInit', 'naver auth_failed');
+              final diagnostic = naverMapAuthFailureDiagnostic(error);
+              debugPrint('Naver Map auth failed: $diagnostic');
+              DiagLogger.log('MapInit', 'naver auth_failed $diagnostic');
             },
           )
           .timeout(const Duration(seconds: 8));
@@ -316,6 +317,23 @@ Future<void> _initializeNaverMap() async {
   } else if (!AppEnv.isNaverMapReady && !googleConfigured) {
     DiagLogger.log('MapInit', 'unavailable naver=false google=false');
   }
+}
+
+/// Returns only the bounded, non-secret portion of a Naver Maps auth failure.
+///
+/// The plugin's typed exception already separates the documented auth classes
+/// and exposes a short native code. Keep this mapping pure so it can be
+/// regression-tested without starting a platform map view.
+String naverMapAuthFailureDiagnostic(NAuthFailedException error) {
+  final classification = switch (error) {
+    NUnauthorizedClientException() => 'unauthorized_client',
+    NQuotaExceededException() => 'quota_exceeded',
+    NClientUnspecifiedException() => 'client_unspecified',
+    _ => 'auth_failed',
+  };
+  final code =
+      RegExp(r'^[0-9]{3}$').hasMatch(error.code) ? error.code : 'unknown';
+  return 'class=$classification code=$code';
 }
 
 Future<void> _initializeSupabase() async {

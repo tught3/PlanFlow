@@ -24,6 +24,7 @@ looks right but is buggy in practice is caught.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -64,6 +65,7 @@ except ImportError:  # pragma: no cover - environment without PyYAML
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "store-readback.yml"
 LEGACY_SNAPSHOT_PATH = ROOT / "config" / "store" / "snapshots" / "android-readback-2026-09-11.json"
+STORE_PROFILE_PATH = ROOT / "config" / "store" / "store-profile.json"
 
 
 def _dedent_block_scalar(run_text: str) -> str:
@@ -108,6 +110,16 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
     def test_both_pii_guard_steps_exist(self):
         self.assertTrue(self._grep_guard_step().get("run", "").strip())
         self.assertTrue(self._field_shape_guard_step().get("run", "").strip())
+
+    def test_workflow_rejects_foreign_bundle_before_collection(self):
+        run_text = self._step_by_name_substring("run READ-ONLY").get("run", "")
+        self.assertIn('BUNDLE_ID_INPUT" != "com.fluxstudio.planflow"', run_text)
+        self.assertIn("BUNDLE_ID_NOT_ALLOWED", run_text)
+
+    def test_workflow_rejects_review_note_digest(self):
+        run_text = self.workflow_text
+        self.assertNotIn('"sha256"', run_text)
+        self.assertNotIn("hash_notes", run_text)
 
     def test_both_pii_guard_steps_run_before_artifact_upload(self):
         steps = self._steps()
@@ -243,7 +255,7 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
             out_path = pathlib.Path(out_dir)
             (out_path / "snap.json").write_text(
                 json.dumps(
-                    {"fields": {"details": {"contactEmail": {"present": True, "sha256_12": "25dcd93b0d34"}}}}
+                    {"fields": {"details": {"contactEmail": {"present": True, "sha256_12": "000000000000"}}}}
                 ),
                 encoding="utf-8",
             )
@@ -251,29 +263,42 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("BLOCKED_PII_FIELD_SHAPE", result.stderr)
 
+    def test_field_shape_guard_rejects_review_note_digest(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = pathlib.Path(out_dir)
+            (out_path / "snap.json").write_text(
+                json.dumps({"fields": {"details": {"notes": {"length": 4, "sha256": "deadbeef"}}}}),
+                encoding="utf-8",
+            )
+            result = self._run_field_shape_guard(out_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("BLOCKED_PII_FIELD_SHAPE", result.stderr)
+
+    def test_field_shape_guard_accepts_length_only_review_note(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = pathlib.Path(out_dir)
+            (out_path / "snap.json").write_text(
+                json.dumps({"fields": {"details": {"notes": {"length": 4}}}}),
+                encoding="utf-8",
+            )
+            result = self._run_field_shape_guard(out_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     @unittest.skipUnless(LEGACY_SNAPSHOT_PATH.exists(), "legacy snapshot fixture not present in this checkout")
-    def test_KNOWN_LIMITATION_legacy_snapshot_with_sha256_12_fails_new_field_shape_guard(self):
-        """Documents, rather than hides, a known incompatibility: the
-        committed snapshot config/store/snapshots/android-readback-2026-09-11.json
-        pre-dates this guard and still carries the legacy sha256_12 digest
-        alongside "present" for contactEmail/contactPhone. Applying the new
-        field-shape guard to it *fails* -- this snapshot would need to be
-        regenerated (dropping sha256_12) before a future readback run could
-        pass this guard against it. This is reported honestly rather than
-        weakening the guard or excluding the file from the check."""
+    def test_committed_snapshot_passes_new_field_shape_guard(self):
+        """The committed snapshot keeps contact fields as exact presence-only
+        markers, so it is accepted by the same guard used for new readbacks."""
         with tempfile.TemporaryDirectory() as out_dir:
             out_path = pathlib.Path(out_dir)
             (out_path / "android.json").write_text(
                 LEGACY_SNAPSHOT_PATH.read_text(encoding="utf-8"), encoding="utf-8"
             )
             result = self._run_field_shape_guard(out_path)
-            self.assertNotEqual(
+            self.assertEqual(
                 result.returncode,
                 0,
-                "expected the legacy snapshot's sha256_12 field to be rejected by the new guard "
-                "(if this now passes, the legacy snapshot has been regenerated/fixed -- update this test)",
+                result.stderr,
             )
-            self.assertIn("BLOCKED_PII_FIELD_SHAPE", result.stderr)
 
     def test_grep_guard_catches_hyphenless_and_dot_separated_korean_phone_numbers(self):
         """R4-C L-5: the phone pattern used to only match hyphenated Korean
@@ -374,6 +399,24 @@ class StoreReadbackPiiGuardContractTests(unittest.TestCase):
                 f"PII field {field!r} (known from readback sanitizers) is missing from the "
                 "field-shape guard's PII_FIELDS list",
             )
+
+
+class CommittedSnapshotReferenceTests(unittest.TestCase):
+    def test_profile_sha256_matches_committed_android_snapshot_bytes(self):
+        """The profile's accepted-snapshot fingerprint must follow a fixture
+        rewrite; otherwise a presence-only PII repair can leave a stale
+        provenance reference behind."""
+        self.assertTrue(LEGACY_SNAPSHOT_PATH.exists())
+        self.assertTrue(STORE_PROFILE_PATH.exists())
+        profile = json.loads(STORE_PROFILE_PATH.read_text(encoding="utf-8"))
+        entry = next(
+            item
+            for item in profile["acceptedSnapshots"]
+            if item["platform"] == "android"
+            and item["path"] == "config/store/snapshots/android-readback-2026-09-11.json"
+        )
+        actual = hashlib.sha256(LEGACY_SNAPSHOT_PATH.read_bytes()).hexdigest()
+        self.assertEqual(entry["sha256"], actual)
 
 
 if __name__ == "__main__":  # pragma: no cover

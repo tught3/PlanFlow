@@ -1016,6 +1016,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         morningTime: settings.morningBriefingAt,
         eveningTime: settings.eveningBriefingAt,
         userId: userId,
+        briefingEnabled: settings.briefingEnabled,
       );
       debugPrint(
         'Briefing schedule ensured ($reason): '

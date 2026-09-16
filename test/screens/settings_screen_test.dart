@@ -461,6 +461,7 @@ void main() {
       expect(settingsRepository.savedSettings!.eveningBriefingAt, '21:20');
       expect(scheduler.lastMorningTime, '07:10');
       expect(scheduler.lastEveningTime, '21:20');
+      expect(scheduler.lastBriefingEnabled, isTrue);
       expect(scheduler.callCount, 2);
     },
   );
@@ -1682,6 +1683,7 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   int callCount = 0;
   String? lastMorningTime;
   String? lastEveningTime;
+  bool? lastBriefingEnabled;
 
   @override
   Future<BriefingDailyScheduleResult> scheduleDaily({
@@ -1693,6 +1695,7 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
     callCount += 1;
     lastMorningTime = morningTime;
     lastEveningTime = eveningTime;
+    lastBriefingEnabled = briefingEnabled;
     return BriefingDailyScheduleResult(
       morning: BriefingScheduleEntry(
         scheduledAt: DateTime(2026, 5, 7, 7, 30),

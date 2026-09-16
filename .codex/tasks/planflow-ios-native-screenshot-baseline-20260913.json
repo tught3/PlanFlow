@@ -1,0 +1,136 @@
+{
+  "taskId": "planflow-ios-native-screenshot-baseline-20260913",
+  "status": "COMPLETE",
+  "base": {
+    "head": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "originMain": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+    "worktree": "E:/FluxStudio-worktrees/planflow/planflow-ios-native-screenshot-baseline-20260913",
+    "branch": "codex/ios-native-screenshot-baseline-20260913"
+  },
+  "requirements": {
+    "iphoneBaselineCount": 3,
+    "ipadBaselineCount": 2,
+    "captureStrategy": "Existing macos-15 store screenshot workflow completed with a CI-only deterministic demo entrypoint and simctl native capture.",
+    "storeMutations": 0,
+    "iosBuild23Protected": true,
+    "androidProductionProtected": true
+  },
+  "roles": {
+    "explorer": {
+      "agent": "ios_screenshot_explorer_fallback",
+      "mappedModel": "fallback explorer",
+      "reasoningEffort": "inherited",
+      "result": "Existing 8 iPhone and 2 iPad candidates are Android-derived REJECTED; native assets 0; use existing CI scaffold and simulator infrastructure."
+    },
+    "planner": {
+      "agent": "ios_screenshot_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "classification": "Complex",
+      "result": "Implement and live-qualify an artifact-only iPhone 3/iPad 2 simulator baseline; do not claim READY before CI artifacts and visual review."
+    },
+    "implementer": {
+      "agent": "ios_screenshot_implementer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "status": "COMPLETE",
+      "result": "Implemented deterministic offline native iOS screenshot fixtures, host-side integration_test capture, exact 3+2 plan, validator, and CI-only artifact workflow. Three rework rounds resolved compile, backend-isolation, readiness, and provenance findings."
+    },
+    "failureAnalyst": {
+      "agent": "ios_screenshot_failure_analyst",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "status": "COMPLETE",
+      "result": "Classified local const/DateTime failures, then CI run 34763175523 immutable Confirm map failure, Home SmartPreparation backend leak, timezone nondeterminism, and DEBUG banner. Scoped fixes applied."
+    },
+    "testExecutor": {
+      "agent": "ios_screenshot_run3_test_fallback",
+      "mappedModel": "fallback default because flux_test_executor model is unsupported for this account",
+      "reasoningEffort": "inherited",
+      "status": "RUN4_LOCAL_PASS",
+      "evidence": [
+        "Local contract: python -m unittest scripts/tests/test_store_capture_workflow_contract.py: exit 0 (28/28 tests)",
+        "CI asset validation: run 34795713111 (run4) PASS, five native assets validated",
+        "JSON parse: exit 0",
+        "git diff --check: exit 0"
+      ],
+      "gap": "None for the local screenshot baseline; App Store upload remains intentionally out of scope."
+    },
+    "reviewer": {
+      "agent": "ios_screenshot_run3_review",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "status": "FINAL_APPROVED",
+      "result": "Current task state PASS; BLOCKER=0 HIGH=0 MEDIUM=0 LOW=0; lifecycle final_emitted YES."
+    },
+    "integrator": {
+      "agent": "ios_screenshot_final_integrator",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "status": "FINAL_COMPLETE",
+      "result": "COMPLETE against committed diff through 9539c59a5d877e087bab0777b37db0534dfbc1e2; origin branch SHA matched, local baseline blockers are empty, Build23 and Store mutation boundaries remain protected."
+    }
+  },
+  "capture": {
+    "ciStatus": "PASS_RUN_34795713111",
+    "userCaptureRequired": false,
+    "userManualCaptureCount": 0,
+    "iphoneNativeAssets": 3,
+    "ipadNativeAssets": 2,
+    "qualification": "LOCAL_QUALIFIED",
+    "localBaselineRemainingBlockers": [],
+    "currentSubmission": {
+      "replacementOrReadback": "OUT_OF_SCOPE",
+      "status": "UNCHANGED_PROTECTED_BUILD23",
+      "androidDerivedAssetUsage": "UNKNOWN_PENDING_APP_STORE_CONNECT_READBACK"
+    },
+    "screenshotImpact": "PARTIAL",
+    "screenshotImpactBasis": "Home/calendar/voice feature paths changed; no global visual path changed."
+  },
+  "evidence": {
+    "appleRequirements": [
+      "https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots",
+      "https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications"
+    ],
+    "existingAudit": "iPhone 8/8 and iPad 2/2 REJECTED; sourcePlatform android; iPad non-uniform resize/chrome and PII findings.",
+    "ciRun1": {
+      "runId": 34763175523,
+      "sourceSha": "e8358f3aa9113d94beeab90d29c54a4a9d953a1f",
+      "result": "FAILED on immutable ConfirmScreen fixture map after one Home PNG",
+      "partialAsset": "iphone69-calendar-home-IPHONE.png 1320x2868 SHA256 1eb0520d31d162964e4a70a1de7eb7b6c412dbeaae10635bf2fc0b",
+      "qualification": "REJECTED_DEBUG_BANNER_AND_NONDETERMINISTIC_TIME"
+    },
+    "ciRun2": {
+      "runId": 34764613642,
+      "sourceSha": "8b0a406a13a463b21dfea973673525b0a8c4df6a",
+      "result": "FAILED at iPad calendar readiness assertion because two valid labels were rendered",
+      "iphoneArtifacts": 3,
+      "visualReview": "Home and Group pass PII/debug/distortion review; Voice structurally clean but rejected because date/time fell back to runner date",
+      "qualification": "PARTIAL_REJECTED"
+    },
+    "ciRun4": {
+      "runId": 34795713111,
+      "status": "PASS_5_NATIVE_ASSETS",
+      "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+      "result": "CI captured and validated all 3 iPhone and 2 iPad native simulator PNGs; manifest present",
+      "artifact": "github-actions://tught3/PlanFlow/runs/34795713111/artifacts/planflow-store-screenshot-capture-4/manifest.json",
+      "visualReview": "PASS all 5; PII findings empty; no Android chrome; no distortion",
+      "alphaNormalization": "RGBA 16-bit opaque to RGB PNG; alpha strip only; RGB pixels byte-equivalent; dimensions preserved",
+      "qualification": "LOCAL_QUALIFIED"
+    },
+    "impact": {
+      "command": "python -m fluxstore impact --project-root E:\\FluxStudio-worktrees\\planflow\\planflow-ios-native-screenshot-baseline-20260913 --json",
+      "exitCode": 0,
+      "toolCategories": [
+        "METADATA_CHANGE",
+        "PRIVACY_CHANGE",
+        "SCREENSHOT_CHANGE"
+      ],
+      "classification": "SCREENSHOT_IMPACT=PARTIAL",
+      "basis": "Home, calendar, and voice screenshot-linked feature paths changed; lib/core/theme.dart global visual path did not change.",
+      "screenshotFeatureReason": "SCREENSHOT_FEATURE_CHANGED: one or more screenshot-linked feature source files changed.",
+      "globalVisualPathChanged": false
+    }
+  },
+  "nextStep": "Local native screenshot baseline qualification is complete; keep Build23 unchanged and apply the NOT_UPLOADED assets only in a separately authorized future Store metadata update."
+}

@@ -15,7 +15,6 @@ import '../data/repositories/settings_repository.dart';
 import 'alarm_service.dart';
 import 'notification_service.dart';
 import 'remote_config_service.dart';
-import 'smart_preparation_alarm_service.dart';
 import 'travel_time_buffer_service.dart';
 import 'tts_service.dart';
 
@@ -64,6 +63,7 @@ class BriefingExecutionResult {
   final bool usedFallback;
   final String message;
   final String? failureReason;
+
   /// 브리핑에 사용된 일정 목록. 캐시 히트 시 캐시에서 복원된 일정을 포함한다.
   final List<EventModel> events;
 }
@@ -140,8 +140,6 @@ class BriefingSchedulerService {
   // IsolateNameServer는 같은 VM 내에서만 작동하므로 SharedPreferences를 사용한다.
   static const String appForegroundKey = 'briefing:app_foreground';
   static const String pendingModalKey = 'briefing:pending_modal';
-  static const Duration _briefingLeadBeforePrepStart = Duration(minutes: 30);
-
   static final StreamController<bool> _foregroundBriefingController =
       StreamController<bool>.broadcast();
 
@@ -214,8 +212,8 @@ class BriefingSchedulerService {
     if (at == null) {
       return false;
     }
-    final age = DateTime.now()
-        .difference(DateTime.fromMillisecondsSinceEpoch(at));
+    final age =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(at));
     return !age.isNegative && age < foregroundHeartbeatFreshness;
   }
 
@@ -226,18 +224,20 @@ class BriefingSchedulerService {
     bool briefingEnabled = true,
   }) async {
     final resolvedUserId = _resolveUserId(userId);
-    final settings = await _loadSettings(resolvedUserId);
-    final morningAt = await _resolveMorningScheduleTime(
-      baseMorningAt: _nextOccurrence(morningTime),
-      userId: resolvedUserId,
-      settings: settings.copyWith(morningBriefingAt: morningTime),
-    );
+    final morningAt = _nextOccurrence(morningTime);
     final eveningAt = _nextOccurrence(eveningTime);
 
     if (!RemoteConfigService.briefingEnabled) {
       debugPrint(
         'Briefing schedule skipped: remote config disabled, '
         'userId=${resolvedUserId ?? 'none'}',
+      );
+      await _cancelBriefingAlarms();
+      await _recordScheduleStatus(
+        morningAt: morningAt,
+        morningScheduled: false,
+        eveningAt: eveningAt,
+        eveningScheduled: false,
       );
       return BriefingDailyScheduleResult(
         morning: BriefingScheduleEntry(
@@ -256,8 +256,13 @@ class BriefingSchedulerService {
         'Briefing',
         'schedule_cancelled: user disabled briefing alarms',
       );
-      await _alarmService.cancelBriefing(id: _morningAlarmId);
-      await _alarmService.cancelBriefing(id: _eveningAlarmId);
+      await _cancelBriefingAlarms();
+      await _recordScheduleStatus(
+        morningAt: morningAt,
+        morningScheduled: false,
+        eveningAt: eveningAt,
+        eveningScheduled: false,
+      );
       return BriefingDailyScheduleResult(
         morning: BriefingScheduleEntry(
           scheduledAt: morningAt,
@@ -401,9 +406,7 @@ class BriefingSchedulerService {
           usedFallback: cachedResult.usedFallback,
           message: cachedResult.usedFallback
               ? '캐시(OpenAI 폴백)에서 브리핑을 재생했습니다.'
-              : (isMorning
-                  ? '캐시에서 모닝 브리핑을 재생했습니다.'
-                  : '캐시에서 이브닝 브리핑을 재생했습니다.'),
+              : (isMorning ? '캐시에서 모닝 브리핑을 재생했습니다.' : '캐시에서 이브닝 브리핑을 재생했습니다.'),
           events: cachedResult.events,
         );
         await _recordExecutionStatus(isMorning: isMorning, result: result);
@@ -871,13 +874,24 @@ class BriefingSchedulerService {
     final nextTime =
         isMorning ? settings.morningBriefingAt : settings.eveningBriefingAt;
 
-    final scheduledAt = isMorning
-        ? await _resolveMorningScheduleTime(
-            baseMorningAt: _nextOccurrence(nextTime),
-            userId: resolvedUserId,
-            settings: settings,
-          )
-        : _nextOccurrence(nextTime);
+    final scheduledAt = _nextOccurrence(nextTime);
+    if (!RemoteConfigService.briefingEnabled || !settings.briefingEnabled) {
+      await _cancelBriefingAlarm(
+        isMorning ? _morningAlarmId : _eveningAlarmId,
+      );
+      await _recordSingleScheduleStatus(
+        isMorning: isMorning,
+        scheduledAt: scheduledAt,
+        scheduled: false,
+      );
+      DiagLogger.log(
+        'Briefing',
+        'reschedule_cancelled type=${isMorning ? 'morning' : 'evening'} '
+            'remote=${RemoteConfigService.briefingEnabled} '
+            'user=${settings.briefingEnabled}',
+      );
+      return false;
+    }
     if (isMorning) {
       final scheduled = await _alarmService.scheduleMorningBriefing(
         id: _morningAlarmId,
@@ -902,6 +916,23 @@ class BriefingSchedulerService {
       scheduled: scheduled,
     );
     return scheduled;
+  }
+
+  Future<void> _cancelBriefingAlarms() async {
+    await Future.wait(<Future<void>>[
+      _cancelBriefingAlarm(_morningAlarmId),
+      _cancelBriefingAlarm(_eveningAlarmId),
+    ]);
+  }
+
+  Future<void> _cancelBriefingAlarm(String id) async {
+    try {
+      await _alarmService.cancelBriefing(id: id);
+    } catch (error, stackTrace) {
+      DiagLogger.log('Briefing', 'cancel failed id=$id error=$error');
+      debugPrint('Briefing cancel failed: id=$id error=$error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _recordScheduleStatus({
@@ -975,79 +1006,6 @@ class BriefingSchedulerService {
     } catch (_) {
       return UserSettingsModel.defaults(userId: userId);
     }
-  }
-
-  Future<DateTime> _resolveMorningScheduleTime({
-    required DateTime baseMorningAt,
-    required String? userId,
-    required UserSettingsModel settings,
-  }) async {
-    if (userId == null || userId.isEmpty) {
-      return baseMorningAt;
-    }
-
-    try {
-      final firstExternalEvent = await _firstExternalEventOn(
-        userId: userId,
-        targetDate: baseMorningAt,
-      );
-      if (firstExternalEvent == null || firstExternalEvent.startAt == null) {
-        return baseMorningAt;
-      }
-
-      final prepStartAt = _prepStartAtFor(
-        firstExternalEvent,
-        settings: settings,
-      );
-      final adjusted = prepStartAt.subtract(_briefingLeadBeforePrepStart);
-      if (adjusted.isAfter(_now()) && adjusted.isBefore(baseMorningAt)) {
-        return adjusted;
-      }
-    } catch (error, stackTrace) {
-      debugPrint('Morning briefing smart schedule skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }
-
-    return baseMorningAt;
-  }
-
-  Future<EventModel?> _firstExternalEventOn({
-    required String userId,
-    required DateTime targetDate,
-  }) async {
-    final repository = _eventRepository ?? EventRepository.supabase();
-    final events = await repository.listEvents(userId: userId);
-    final smartPreparation = const SmartPreparationAlarmService();
-    final externalEvents = events.where((event) {
-      final startAt = event.startAt;
-      if (startAt == null || !planflowIsSameLocalDay(startAt, targetDate)) {
-        return false;
-      }
-      return smartPreparation.isExternalEvent(
-        title: event.title,
-        location: event.location,
-      );
-    }).toList(growable: false)
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-    return externalEvents.isEmpty ? null : externalEvents.first;
-  }
-
-  DateTime _prepStartAtFor(
-    EventModel event, {
-    required UserSettingsModel settings,
-  }) {
-    final startAt = planflowLocal(event.startAt!);
-    final prepMinutes = settings.prepTimeMin.clamp(5, 240).toInt();
-    final travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin
-        .clamp(0, 360)
-        .toInt();
-    final departureAt = startAt.subtract(
-      Duration(
-        minutes: travelMinutes +
-            SmartPreparationAlarmService.externalScheduleSlackMin,
-      ),
-    );
-    return departureAt.subtract(Duration(minutes: prepMinutes));
   }
 
   String? _resolveUserId(String? userId) {

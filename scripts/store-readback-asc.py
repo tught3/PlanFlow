@@ -87,6 +87,8 @@ PII_HASH_FIELDS = (
     "contactLastName",
 )
 
+CANONICAL_PLANFLOW_BUNDLE_ID = "com.fluxstudio.planflow"
+
 # appStoreReviewDetail attribute keys that are neither the demo password nor
 # PII/notes and are safe to pass through verbatim (allowlist -- see
 # sanitize_review_detail). Any attribute App Store Connect returns that is
@@ -271,6 +273,49 @@ def _relationship_id(resource: dict, name: str) -> str | None:
     return data.get("id") if isinstance(data, dict) else None
 
 
+def _category_relationship(
+    client: ReadbackClient,
+    info: dict,
+    info_id: str,
+    name: str,
+    sleep_fn=time.sleep,
+) -> tuple[str | None, str]:
+    """Read a category relationship without turning missing data into a guess.
+
+    ASC sometimes omits relationship members from an ``appInfos`` response.
+    In that case the relationship endpoint is read separately.  A 404 or a
+    successful response with no data means the category is explicitly unset;
+    transport/API failure is kept distinct as UNAVAILABLE.
+    """
+    relationships = info.get("relationships") or {}
+    if name in relationships and "data" in (relationships.get(name) or {}):
+        data = (relationships.get(name) or {}).get("data")
+        if data is None:
+            return None, "UNSET"
+        if not isinstance(data, dict):
+            return None, "UNAVAILABLE"
+        relationship_id = data.get("id")
+        if not isinstance(relationship_id, str) or not relationship_id:
+            return None, "UNAVAILABLE"
+        return relationship_id, "CONFIGURED"
+
+    document = client.request_with_retry(f"/v1/appInfos/{info_id}/{name}", sleep_fn=sleep_fn)
+    status = document.get("__http_status")
+    if status == 404:
+        return None, "UNSET"
+    if status != 200 or document.get("errors"):
+        return None, "UNAVAILABLE"
+    data = document.get("data")
+    if data is None:
+        return None, "UNSET"
+    if not isinstance(data, dict):
+        return None, "UNAVAILABLE"
+    relationship_id = data.get("id")
+    if not isinstance(relationship_id, str) or not relationship_id:
+        return None, "UNAVAILABLE"
+    return relationship_id, "CONFIGURED"
+
+
 # ---------------------------------------------------------------------------
 # PII handling
 # ---------------------------------------------------------------------------
@@ -286,10 +331,11 @@ def hash_pii(value) -> dict:
 
 
 def hash_notes(value) -> dict | None:
+    """Return only a non-identifying marker; never digest free-text notes."""
     if value is None or value == "":
         return None
     text = str(value)
-    return {"length": len(text), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+    return {"length": len(text)}
 
 
 def sanitize_review_detail(attributes: dict) -> dict:
@@ -335,7 +381,18 @@ def read_bundle_id_from_xcconfig(xcconfig_path: pathlib.Path) -> str | None:
     return match.group(1) if match else None
 
 
+def validate_bundle_id(bundle_id: str) -> None:
+    """Refuse any ASC collection outside the PlanFlow canonical app."""
+    if bundle_id != CANONICAL_PLANFLOW_BUNDLE_ID:
+        raise BlockedError(
+            EXIT_CONFIG_MISSING,
+            "BUNDLE_ID_NOT_ALLOWED",
+            "refusing App Store Connect readback for non-PlanFlow bundle ID",
+        )
+
+
 def resolve_app(client: ReadbackClient, bundle_id: str) -> dict:
+    validate_bundle_id(bundle_id)
     document = client.request_with_retry("/v1/apps", params={"filter[bundleId]": bundle_id, "limit": "10"})
     if document.get("__http_status") not in (None, 200):
         raise BlockedError(EXIT_INTERNAL, "ASC_REQUEST_FAILED", redact(error_summary(document)))
@@ -379,8 +436,16 @@ def collect_snapshot(client: ReadbackClient, bundle_id: str, sleep_fn=time.sleep
             for loc in localizations_raw
         ]
 
-        primary_category_id = _relationship_id(info, "primaryCategory")
-        secondary_category_id = _relationship_id(info, "secondaryCategory")
+        primary_category_id, primary_category_state = _category_relationship(
+            client, info, info_id, "primaryCategory", sleep_fn=sleep_fn
+        )
+        secondary_category_id, secondary_category_state = _category_relationship(
+            client, info, info_id, "secondaryCategory", sleep_fn=sleep_fn
+        )
+        if primary_category_state == "UNAVAILABLE":
+            unavailable.append(f"primaryCategory:{info_id}")
+        if secondary_category_state == "UNAVAILABLE":
+            unavailable.append(f"secondaryCategory:{info_id}")
 
         age_rating_document = client.request_with_retry(f"/v1/appInfos/{info_id}/ageRatingDeclaration", sleep_fn=sleep_fn)
         if age_rating_document.get("__http_status") == 404:
@@ -397,7 +462,9 @@ def collect_snapshot(client: ReadbackClient, bundle_id: str, sleep_fn=time.sleep
                 "id": info_id,
                 "state": info_attrs.get("appStoreState"),
                 "primaryCategoryId": primary_category_id,
+                "primaryCategoryState": primary_category_state,
                 "secondaryCategoryId": secondary_category_id,
+                "secondaryCategoryState": secondary_category_state,
                 "localizations": localizations,
                 "ageRating": age_rating,
             }
@@ -530,7 +597,7 @@ def build_snapshot(project_id: str, fields: dict, captured_at: str) -> dict:
         "contentHash": compute_content_hash(fields),
         "fields": fields,
         "redaction": {
-            "piiHashed": list(PII_HASH_FIELDS),
+            "piiPresenceOnly": list(PII_HASH_FIELDS),
             "omitted": ["demoAccountPassword"],
         },
     }
@@ -586,6 +653,8 @@ def run(args: argparse.Namespace, transport=None, sleep_fn=time.sleep, captured_
                 f"could not resolve PLANFLOW_IOS_BUNDLE_ID from {args.bundle_id_from_xcconfig}",
             )
         bundle_id = xcconfig_bundle_id
+
+    validate_bundle_id(bundle_id)
 
     client = ReadbackClient(token, transport=transport)
     fields, unavailable = collect_snapshot(client, bundle_id, sleep_fn=sleep_fn)

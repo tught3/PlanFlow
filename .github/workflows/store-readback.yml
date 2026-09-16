@@ -44,6 +44,10 @@ jobs:
           out_dir="$RUNNER_TEMP/store-readback"
           mkdir -p "$out_dir"
           if [[ -n "${BUNDLE_ID_INPUT:-}" ]]; then
+            if [[ "$BUNDLE_ID_INPUT" != "com.fluxstudio.planflow" ]]; then
+              echo "BUNDLE_ID_NOT_ALLOWED: refusing readback for non-PlanFlow bundle ID" >&2
+              exit 3
+            fi
             python3 scripts/store-readback-asc.py \
               --bundle-id "$BUNDLE_ID_INPUT" \
               --out "$out_dir" \
@@ -179,6 +183,20 @@ jobs:
               if isinstance(node, dict):
                   for key, value in node.items():
                       child_path = f"{path}.{key}" if path else key
+                      if _normalize(key) == "notes":
+                          if value is not None and not (
+                              isinstance(value, dict)
+                              and set(value.keys()) == {"length"}
+                              and isinstance(value["length"], int)
+                              and not isinstance(value["length"], bool)
+                              and value["length"] >= 0
+                          ):
+                              violations.append(
+                                  f"{child_path} must be null or exactly "
+                                  '{"length": <non-negative int>}, got: '
+                                  f"{json.dumps(value)}"
+                              )
+                          continue
                       if _normalize(key) in NORMALIZED_PII_FIELDS:
                           if not (
                               isinstance(value, dict)

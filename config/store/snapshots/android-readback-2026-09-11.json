@@ -1,15 +1,13 @@
 {
   "capturedAt": "2026-09-11T01:42:11Z",
-  "contentHash": "521a033170c5e0720ee54b825ad0ef4494271cabc47728c4dcf8ea0dae13a3de",
+  "contentHash": "afaf53bcd859585624b995fdfb0dbe36308b0f2f8258d89c2365a9787c369efc",
   "fields": {
     "details": {
       "contactEmail": {
-        "present": true,
-        "sha256_12": "25dcd93b0d34"
+        "present": true
       },
       "contactPhone": {
-        "present": true,
-        "sha256_12": "5d986c140057"
+        "present": true
       },
       "contactWebsite": "https://fluxstudio.co.kr/",
       "defaultLanguage": "ko-KR"
@@ -103,7 +101,7 @@
   "projectId": "planflow",
   "redaction": {
     "omitted": [],
-    "piiHashed": [
+    "piiPresenceOnly": [
       "contactEmail",
       "contactPhone"
     ]
