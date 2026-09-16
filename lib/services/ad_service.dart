@@ -244,6 +244,31 @@ String resolveRewardedAdUnitIdFor({
   return trimmed;
 }
 
+String _configuredRewardedAdUnitId() =>
+    defaultTargetPlatform == TargetPlatform.iOS
+        ? RemoteConfigService.rewardedAdUnitIdIos
+        : RemoteConfigService.rewardedAdUnitIdAndroid;
+
+/// Resolves a unit without allowing one platform's production configuration
+/// to leak into another platform's request path.
+@visibleForTesting
+String resolveRewardedAdUnitIdForPlatform({
+  required TargetPlatform platform,
+  required bool useTestUnit,
+  required String androidConfigured,
+  required String iosConfigured,
+}) {
+  if (useTestUnit) {
+    return resolveRewardedAdUnitIdFor(useTestUnit: true, configured: '');
+  }
+  final configured = platform == TargetPlatform.iOS
+      ? iosConfigured
+      : platform == TargetPlatform.android
+          ? androidConfigured
+          : '';
+  return resolveRewardedAdUnitIdFor(useTestUnit: false, configured: configured);
+}
+
 /// Release에서 Remote Config fetch 실패로 광고 단위 ID가 비어 있을 때만
 /// 사용자 요청 경로의 1회 재시도를 허용한다. Debug/Profile은 항상 공식
 /// 테스트 단위 ID를 사용하므로 이 조건에 들어오지 않는다.
@@ -513,9 +538,11 @@ class AdService {
 
   /// Debug/Profile 모드에서는 테스트 ID, Release에서는 Remote Config ID 사용.
   String _resolveAdUnitId() {
-    return resolveRewardedAdUnitIdFor(
+    return resolveRewardedAdUnitIdForPlatform(
+      platform: defaultTargetPlatform,
       useTestUnit: kDebugMode || kProfileMode,
-      configured: RemoteConfigService.rewardedAdUnitIdAndroid,
+      androidConfigured: RemoteConfigService.rewardedAdUnitIdAndroid,
+      iosConfigured: RemoteConfigService.rewardedAdUnitIdIos,
     );
   }
 
@@ -581,7 +608,7 @@ class AdService {
           shouldRetryRemoteConfigForRewardedUnit(
             useTestUnit: kDebugMode || kProfileMode,
             fetchSucceeded: RemoteConfigService.lastFetchSucceeded,
-            configured: RemoteConfigService.rewardedAdUnitIdAndroid,
+            configured: _configuredRewardedAdUnitId(),
           )) {
         await RemoteConfigService.retryFetchIfFailed();
         if (!RemoteConfigService.rewardedAdEnabled) {
@@ -753,7 +780,7 @@ class AdService {
           shouldRetryRemoteConfigForRewardedUnit(
             useTestUnit: kDebugMode || kProfileMode,
             fetchSucceeded: RemoteConfigService.lastFetchSucceeded,
-            configured: RemoteConfigService.rewardedAdUnitIdAndroid,
+            configured: _configuredRewardedAdUnitId(),
           )) {
         // A failed startup fetch can leave the fail-safe enabled default true
         // while the unit ID default remains empty. Retry only for this explicit
@@ -777,7 +804,7 @@ class AdService {
         adUnitId = _resolveAdUnitId();
       }
       if (adUnitId.isEmpty) {
-        final configured = RemoteConfigService.rewardedAdUnitIdAndroid.trim();
+        final configured = _configuredRewardedAdUnitId().trim();
         final missing = configured.isEmpty;
         _recordVoiceAttempt(
           requestId,

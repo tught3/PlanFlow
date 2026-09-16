@@ -268,7 +268,7 @@ void main() {
   group('isValidRewardedAdUnitId', () {
     test('운영 형식(16자리 숫자/최대 20자리 숫자)은 통과한다', () {
       expect(
-        isValidRewardedAdUnitId('ca-app-pub-3753374909078516/4571759225'),
+        isValidRewardedAdUnitId('ca-app-pub-1111111111111111/1111111111'),
         isTrue,
       );
     });
@@ -326,7 +326,7 @@ void main() {
       expect(
         resolveRewardedAdUnitIdFor(
           useTestUnit: true,
-          configured: 'ca-app-pub-3753374909078516/4571759225',
+          configured: 'ca-app-pub-1111111111111111/1111111111',
         ),
         'ca-app-pub-3940256099942544/5224354917',
       );
@@ -336,9 +336,9 @@ void main() {
       expect(
         resolveRewardedAdUnitIdFor(
           useTestUnit: false,
-          configured: 'ca-app-pub-3753374909078516/4571759225',
+          configured: 'ca-app-pub-1111111111111111/1111111111',
         ),
-        'ca-app-pub-3753374909078516/4571759225',
+        'ca-app-pub-1111111111111111/1111111111',
       );
     });
 
@@ -371,9 +371,9 @@ void main() {
       expect(
         resolveRewardedAdUnitIdFor(
           useTestUnit: false,
-          configured: '  ca-app-pub-3753374909078516/4571759225  ',
+          configured: '  ca-app-pub-1111111111111111/1111111111  ',
         ),
-        'ca-app-pub-3753374909078516/4571759225',
+        'ca-app-pub-1111111111111111/1111111111',
       );
     });
   });
