@@ -1,19 +1,29 @@
 {
   "task_id": "planflow-deploy-both-20260914",
-  "status": "ANDROID_UPLOAD_RUNNING",
-  "updated_at": "2026-09-14T00:40:00+09:00",
+  "status": "COMPLETE",
+  "updated_at": "2026-09-14T00:55:00+09:00",
   "request": "현재 수정된 PlanFlow를 iOS와 Google Play에 배포한다. 가능한 플랫폼부터 실행하고 불가능한 플랫폼은 억지로 진행하지 않는다.",
   "platforms": {
     "android_google_play": {
       "target": "production",
       "script": "scripts/deploy-play-production.ps1",
       "preflight": "PASS",
-      "status": "RUNNING"
+      "status": "UPLOADED",
+      "version": "1.1.1+165",
+      "track": "production",
+      "upload_evidence": "App Bundle upload complete; Updating completed release [165]; BUILD SUCCESSFUL; exit 0",
+      "aab_sha256": "e9777546f04a246e8350dd480504723cf1b7edf354ce1bc9b7dedbca24badfa0"
     },
     "ios_testflight": {
       "target": "TestFlight",
       "workflow": ".github/workflows/ios-release.yml",
-      "status": "PENDING_REMOTE_SOURCE"
+      "status": "DEPLOYED",
+      "head_sha": "5051a5f2b547ca6f3adcc4d2e8b2a274fe3fcb32",
+      "run_id": 34793024050,
+      "run_url": "https://github.com/tught3/PlanFlow/actions/runs/34793024050",
+      "version": "1.1.1",
+      "build_number": "26",
+      "upload_evidence": "TESTFLIGHT_TRANSPORT_UPLOAD_PASS and TESTFLIGHT_AVAILABLE passed; workflow conclusion success"
     }
   },
   "scope": {
@@ -22,10 +32,15 @@
   },
   "evidence": [
     {
-      "command": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\deploy-play-production.ps1",
+      "command": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\deploy-play-production.ps1 -ConfirmProductionRollout -ReuseExistingAab",
       "exit_code": 0,
-      "result": "production preflight passed; no upload in preflight mode"
+      "result": "production rollout uploaded for com.fluxstudio.planflow, track=production, versionCode=165"
+    },
+    {
+      "command": "gh workflow run ios-release.yml --ref main --field dry_run=false --field allow_version_train_change=false",
+      "exit_code": 0,
+      "result": "iOS signed-release workflow completed successfully against fix commit 5051a5f2; TestFlight ingestion verified"
     }
   ],
-  "final_verdict": null
+  "final_verdict": "BOTH_PLATFORMS_DEPLOYED"
 }

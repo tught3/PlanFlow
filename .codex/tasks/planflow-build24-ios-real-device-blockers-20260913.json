@@ -1,10 +1,10 @@
 {
   "task_id": "planflow-build24-ios-real-device-blockers-20260913",
-  "status": "SOURCE_COMMITTED_BUILD25_BLOCKED_EXTERNAL_SECRET",
+  "status": "BUILD25_TESTFLIGHT_AVAILABLE_PENDING_DEVICE",
   "scope": "Build24 iOS rewarded-ad no-show and Naver map blank real-device blockers",
   "preflight": {
     "head": "56f521d47c5adf929d9de378a17a97a4a4571e7d",
-    "origin_main": "d0cd6bf79aee27a93c33e15f1f5dcba9db8d2bcc",
+    "origin_main": "30cf848dcaccc13f00a530cb6f0807026594616a",
     "merge_base": "4df59ab8d1ad8c4d7f05c5343dcebb83200f775a",
     "local_main_contains_origin_main": false,
     "origin_main_contains_local_main": false,
@@ -34,7 +34,28 @@
   "app_store_build23": "UNCHANGED",
   "commit": "30cf848dcaccc13f00a530cb6f0807026594616a",
   "origin_main": "30cf848dcaccc13f00a530cb6f0807026594616a",
-  "build25": "BLOCKED: PLANFLOW_NAVER_MAP_CLIENT_ID GitHub Actions secret is absent; dispatch intentionally not attempted",
+  "origin_main_after_dispatch": "a908e469d1a8f46c410cb6abdf96ea5baac24818",
+  "build25": {
+    "status": "TESTFLIGHT_AVAILABLE",
+    "workflow_run": "34734160361",
+    "workflow_url": "https://github.com/tught3/PlanFlow/actions/runs/34734160361",
+    "job_id": "103662409110",
+    "source_sha": "30cf848dcaccc13f00a530cb6f0807026594616a",
+    "bundle_id": "com.fluxstudio.planflow",
+    "version": "1.1.1",
+    "number": 25,
+    "archive": "PASS",
+    "dsym": "PASS",
+    "ipa": "PASS",
+    "apple_upload": "PASS",
+    "delivery_uuid": "ae722c6b-4fd5-4bb9-922c-ae0265ab297f",
+    "ingestion": "PASS",
+    "testflight": "AVAILABLE",
+    "artifacts": [
+      "planflow-ios-privacy-audit-27",
+      "planflow-ios-build25-symbols-27"
+    ]
+  },
   "reports": [
     {
       "role": "Explorer",
@@ -105,6 +126,25 @@
       "changed_files": [],
       "tests": ["reviewed current scoped diff and verification evidence"],
       "decision": "Source commit/push allowed in isolated origin/main worktree; Build25 dispatch blocked until PLANFLOW_NAVER_MAP_CLIENT_ID exists."
+    },
+    {
+      "role": "Deployment",
+      "agent": "root",
+      "result": "PASS_TESTFLIGHT_AVAILABLE",
+      "assignment": "Dispatch canonical ios-release.yml for Build25 and verify archive, symbols, IPA, Apple transport, ingestion, and TestFlight availability.",
+      "changed_files": [],
+      "tests": [
+        "workflow 34734160361 completed success",
+        "APP_STORE_BUILD_INGESTED: PASS",
+        "TESTFLIGHT_BUILD_AVAILABLE: PASS",
+        "TESTFLIGHT_AVAILABLE: PASS"
+      ],
+      "evidence": {
+        "transport": "accepted",
+        "processing_state": "VALID",
+        "build": "1.1.1 (25)",
+        "bundle_id": "com.fluxstudio.planflow"
+      }
     }
   ]
 }

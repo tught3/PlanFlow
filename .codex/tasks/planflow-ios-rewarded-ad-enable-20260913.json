@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-rewarded-ad-enable-20260913",
-  "status": "BLOCKED",
+  "status": "BUILD24_AVAILABLE_PENDING_USER_DEVICE",
   "original_request": "Continue the interrupted iOS E-ADS0 investigation after the user supplied an authoritative iOS rewarded AdMob unit ID.",
   "requirements": [
     "Enable iOS rewarded-ad runtime only when an iOS-specific Remote Config unit ID is valid.",
@@ -11,7 +11,7 @@
   "external_configuration": {
     "user_supplied_ios_rewarded_unit": "received_format_valid_not_persisted",
     "remote_config_key": "rewarded_ad_unit_id_ios",
-    "console_publish": "PENDING"
+    "console_publish": "USER_ASSERTED_PUBLISHED_UNVERIFIED"
   },
   "allowed_files": [
     "lib/services/ad_runtime_policy.dart",
@@ -175,5 +175,30 @@
     ]
   },
   "runtime_ready": false,
-  "last_updated": "2026-09-13T10:06:00+09:00"
+  "release": {
+    "commit": "d0cd6bf79aee27a93c33e15f1f5dcba9db8d2bcc",
+    "origin_main": "d0cd6bf79aee27a93c33e15f1f5dcba9db8d2bcc",
+    "workflow_run": "34730379927",
+    "workflow_url": "https://github.com/tught3/PlanFlow/actions/runs/34730379927",
+    "build_name": "1.1.1",
+    "build_number": "24",
+    "archive": "PASS: Runner archive contained PlanFlowWidgetExtension.appex; canonical metadata verified.",
+    "dSYM": "PASS: arm64 symbols verified and artifact uploaded as planflow-ios-build24-symbols-26 (artifact 10308229537).",
+    "ipa": "PASS: signed IPA exported and canonical metadata/privacy gates passed; IPA is not retained after upload cleanup.",
+    "apple_upload": "PASS: App Store Connect transport accepted; delivery UUID recorded in GitHub log only.",
+    "ingestion": "PASS: processingState=VALID; APP_STORE_BUILD_INGESTED and TESTFLIGHT_AVAILABLE markers emitted.",
+    "testflight": "AVAILABLE: workflow success and TESTFLIGHT_AVAILABLE: PASS."
+  },
+  "device_verification": {
+    "status": "PENDING_USER",
+    "required": [
+      "cold launch and login",
+      "UMP consent/readiness",
+      "rewarded ad load/show",
+      "reward callback and entitlement persistence",
+      "dismissal recovery and second-attempt throttle"
+    ],
+    "sensitive_diagnostics": "Record error code/domain/message, responseId, consent readiness, and Remote Config fetch result without the full unit ID."
+  },
+  "last_updated": "2026-09-13T10:40:00+09:00"
 }
