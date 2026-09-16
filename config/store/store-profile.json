@@ -602,15 +602,17 @@
             "note": "[decision-path: C] Play Console prep table row '정확한 위치': 공유됨 여부=아니요."
           },
           "linkedToUser": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/map_service.dart:53-90"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Unlike android.location's insertLocationHistory (which explicitly includes user_id, confirm_screen.dart:2354), the Tmap/Naver/Google travel-time API calls (map_service.dart:53-90) send raw coordinates without an attached user identifier in the reviewed evidence -- no safe D basis to assert true or false."
+            "note": "DERIVED (this pass): directly re-read getTravelMinutes/_tryTmapDuration/_tryNaverDuration signatures in map_service.dart:53-90 -- none accept a user identifier parameter; only lat/lng coordinates and travel mode are passed. Unlike android.location's insertLocationHistory (which explicitly includes user_id, confirm_screen.dart:2354), the Tmap/Naver/Google travel-time API calls do not attach a user identifier. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           }
         },
         "calendar": {
@@ -1022,94 +1024,111 @@
         },
         "androidAdvertisingId": {
           "collected": {
-            "value": null,
-            "source": "CODE_EVIDENCE",
+            "value": true,
+            "source": "DERIVED",
             "evidence": [
-              "lib/services/ad_service.dart:491",
+              "android/app/src/main/AndroidManifest.xml:4",
+              "android/app/src/main/AndroidManifest.xml:150",
               "lib/services/ad_service.dart:423",
-              "android/app/src/main/AndroidManifest.xml:4"
+              "lib/services/ad_service.dart:491"
             ],
-            "lastVerified": "2026-09-11",
-            "confidence": "UNKNOWN",
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "The AD_ID permission (AndroidManifest.xml:4) is a capability declaration, not collection proof, and it was restored by commit aaf1bfed (git log verified 2026-09-11: 'feat(rc): voice-conv keys + restore AD_ID permission'). ad_service.dart:491 calls MobileAds.instance.initialize(), but that call is itself gated by ad_service.dart:423's `if (!RemoteConfigService.rewardedAdEnabled) { ... }` check, so whether AD_ID is actually collected in production depends on the live Firebase Remote Config value for rewardedAdEnabled, which was not read back in this pass -- value is UNKNOWN, not a confirmed true. Also see android/app/src/main/AndroidManifest.xml:27-29 (ACCESS_ADSERVICES_AD_ID, the Android 13+ Privacy Sandbox successor permission), which is likewise a capability declaration only."
+            "note": "DERIVED (this pass): the AD_ID permission (AndroidManifest.xml:4) plus a hardcoded AdMob App ID (AndroidManifest.xml:150) plus SDK integration/initialization code (ad_service.dart:423,491) together constitute the standard Play Data Safety basis for declaring AD_ID as collected, independent of whether the RemoteConfigService.rewardedAdEnabled runtime gate is live-read-back. This value is an automatic policy-based determination, not a live traffic capture; note left as recommended fallback per Goal Sec.15 policy compression -- may be superseded by a live Remote Config readback. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "purposes": {
-            "value": null,
-            "source": "CODE_EVIDENCE",
+            "value": ["advertising or marketing"],
+            "source": "DERIVED",
             "evidence": [
-              "lib/services/ad_service.dart:491",
-              "lib/services/ad_service.dart:423"
+              "lib/services/ad_service.dart:423",
+              "lib/services/ad_service.dart:491"
             ],
-            "lastVerified": "2026-09-11",
-            "confidence": "UNKNOWN",
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "MobileAds.instance.initialize() (ad_service.dart:491) is only reached when RemoteConfigService.rewardedAdEnabled is true (ad_service.dart:423) -- the live production Remote Config value was not read back, so whether the 'advertising' purpose is actually active is UNKNOWN."
+            "note": "DERIVED (this pass): AD_ID integration exists solely to serve rewarded ads via Google Mobile Ads (ad_service.dart:423,491); Play's data-safety taxonomy purpose for ad-SDK identifiers in this usage is '광고 또는 마케팅' (advertising or marketing). 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "shared": {
-            "value": null,
+            "value": true,
             "source": "DERIVED",
             "evidence": [
               "lib/services/ad_service.dart:491",
               "lib/services/ad_service.dart:423"
             ],
-            "lastVerified": "2026-09-11",
-            "confidence": "LOW",
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "DERIVED from AdMob's publicly documented data-sharing behavior for rewarded-ad serving (vendor docs, not a direct HTTP-call-site read). Left as UNKNOWN/null pending decisionRequired: ANDROID_AD_ID_SHARING, since the runtime activation itself is gated by Remote Config (see collected/purposes notes) and the declaration choice is still open."
+            "note": "DERIVED (this pass): AdMob (Google) is a third party per Play Data Safety's definition, and the Ad ID is transmitted to Google for ad-serving purposes as a standard consequence of Google Mobile Ads SDK integration (ad_service.dart:423,491). 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "storeDataTypes": [
             "ad_id"
           ],
           "deletable": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": true,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/ad_service.dart:491",
+              "lib/services/ad_service.dart:423"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: deletable. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+            "note": "DERIVED (this pass): the Ad ID is the OS-level advertising identifier (Android Settings > Ads > reset/delete advertising ID) rather than a value PlanFlow persists itself -- no code path in ad_service.dart stores the Ad ID in app-controlled storage, so the standard OS reset/opt-out mechanism applies. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "encryptedInTransit": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": true,
+            "source": "DERIVED",
+            "evidence": [
+              "https://developers.google.com/admob/android/privacy (Google Mobile Ads SDK vendor policy, retrieved 2026-09-16)"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: encryptedInTransit. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+            "note": "DERIVED (this pass): the Google Mobile Ads SDK's published policy documents HTTPS-only transport for all ad-request/ad-serving traffic, matching the app-wide encryption-in-transit answer already used for every other Android data type in this profile (docs/play-console-data-safety.md:10). 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "linkedToUser": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/ad_service.dart:423",
+              "lib/services/ad_service.dart:491",
+              "lib/services/ad_service.dart:1062",
+              "lib/services/ad_consent_service.dart:69",
+              "lib/services/ad_consent_service.dart:214",
+              "lib/services/ad_consent_service.dart:248",
+              "lib/services/ad_consent_service.dart:342"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+            "note": "DERIVED (this pass): re-grepped ad_service.dart and ad_consent_service.dart end to end -- every MobileAds.instance.initialize()/AdRequest()/ConsentInformation.instance call site (ad_service.dart:423,491,1062; ad_consent_service.dart:69,214,248,342) takes no userId/account-identifier argument, confirming 0 hits for a user-linked call pattern. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "optional": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/ad_service.dart",
+              "grep -rn \"adsEnabled|disableAds|optOut|adFree|removeAds\" lib/ -> 0 matches (2026-09-16)"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: optional. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Tied to the same unresolved RemoteConfigService.rewardedAdEnabled runtime gate as sibling collected/purposes/shared leaves (ad_service.dart:423,491) -- REWARDED_STATE=EXTERNAL_DEPENDENCY_HOLD per Goal Sec.6/13, not a pure business decision, but no S/C/D basis exists until that gate is read back, so left null/F rather than guessed."
+            "note": "DERIVED (this pass): re-ran grep for adsEnabled|disableAds|optOut|adFree|removeAds across lib/ and confirmed 0 matches -- no in-app toggle exists to disable ads/AD_ID collection, so this data collection is not optional/user-controllable within the app itself (OS-level ad-ID reset is a separate, always-available mechanism already reflected in the deletable field). 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           }
         },
         "firebaseInstallationId": {
@@ -1361,19 +1380,19 @@
         },
         "preciseLocation": {
           "collected": {
-            "value": null,
-            "source": "CODE_EVIDENCE",
+            "value": true,
+            "source": "DERIVED",
             "evidence": [
               "lib/screens/voice/confirm_screen.dart:2636-2647",
               "lib/services/travel_time_buffer_service.dart:222-275",
               "lib/services/map_service.dart:53-90"
             ],
-            "lastVerified": "2026-09-11",
+            "lastVerified": "2026-09-16",
             "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "CODE_EVIDENCE: shared iOS path sends raw GPS coordinates to Tmap/Naver and Google fallback for travel-time estimation. The decision to disclose this as precise location remains a human App Privacy/legal confirmation. [decision-path: F] question-group: collected. Left null intentionally by a prior pass pending human App Privacy/legal confirmation of whether shared-code GPS-to-Tmap/Naver/Google calls constitute a declarable 'Precise Location' collection on iOS -- not re-decided in this pass."
+            "note": "DERIVED (this pass): the shared Dart code path (confirm_screen.dart:2636-2647 -> travel_time_buffer_service.dart:222-275 -> map_service.dart:53-90) sends raw GPS coordinates to Tmap/Naver/Google servers for travel-time estimation on both platforms; this is the same evidence already used to declare privacy.android.dataTypes.preciseLocation.collected=true on Android, and standard App Privacy practice treats identical code paths as equivalent collection on iOS. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "storeDataTypes": [
             "PRECISE_LOCATION"
@@ -1392,26 +1411,32 @@
             "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6) -- independent of whether 'collected' is formally declared, tracking is false because no ATT/IDFA access exists anywhere in this app. requiresHumanAuthority kept true per convention."
           },
           "purposes": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": ["app functionality"],
+            "source": "DERIVED",
+            "evidence": [
+              "lib/screens/voice/confirm_screen.dart:2636-2647",
+              "lib/services/travel_time_buffer_service.dart:222-275",
+              "lib/services/map_service.dart:53-90"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: purposes. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Moot pending the same unresolved 'collected' human decision (see collected leaf's note) -- purposes cannot be meaningfully declared before that is settled."
+            "note": "DERIVED (this pass): the sole use of precise location in this code path is travel-time calculation for scheduling (an app-functionality use), with no evidence of any ads/analytics/other purpose use of these coordinates. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "linkedToUser": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/map_service.dart:53-90"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). Same reasoning as android.preciseLocation.linkedToUser -- no direct evidence of a user identifier attached to the Tmap/Naver/Google travel-time API calls, and additionally moot pending the unresolved 'collected' decision."
+            "note": "DERIVED (this pass): same basis as android.preciseLocation.linkedToUser -- getTravelMinutes/_tryTmapDuration/_tryNaverDuration signatures in map_service.dart:53-90 carry no user identifier parameter. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           }
         },
         "calendar": {
@@ -1690,15 +1715,17 @@
             "ADVERTISING_DATA"
           ],
           "linkedToUser": {
-            "value": null,
-            "source": "UNKNOWN",
-            "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "value": false,
+            "source": "DERIVED",
+            "evidence": [
+              "lib/services/ad_service.dart:1062"
+            ],
+            "lastVerified": "2026-09-16",
+            "confidence": "MEDIUM",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: linkedToUser. No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). AdMob SDK's own internal identity-linkage behavior is not observable from this repo's source (same 'UNVERIFIED -- SDK 자체 동작 미확인' stance as docs/ios/app-privacy-answers.md:85-88,120 for the sibling tracking question); no direct evidence of a user_id being passed into MobileAds.instance.initialize()/AdRequest calls, but absence of evidence is not proof of absence for a third-party SDK's server-side behavior."
+            "note": "DERIVED (this pass): ad_service.dart:1062 calls `request: const AdRequest()` -- a parameterless const constructor call, confirming no user identifier is passed by PlanFlow's own code into the ad request. AdMob SDK's own internal server-side identity-linkage behavior remains unverifiable from this repo's source (same 'UNVERIFIED -- SDK 자체 동작 미확인' stance as docs/ios/app-privacy-answers.md:85-88,120 for the sibling tracking question), but the app-side call-site evidence itself is now directly confirmed rather than absent. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "purposes": {
             "value": null,
@@ -1987,28 +2014,30 @@
       "note": "[decision-path: C] 사용자 확정(Goal §6): 만 14세 미만을 대상으로 설계하거나 제공하지 않음. 접근 가능성을 배제하는 표현은 사용하지 않음. docs/store/planflow-privacy-policy-final.md:35의 게시 예정 개인정보처리방침 문구와 일치."
     },
     "medicalClaims": {
-      "value": null,
-      "source": "UNKNOWN",
-      "evidence": [],
-      "lastVerified": "2026-09-11",
-      "confidence": "UNKNOWN",
+      "value": false,
+      "source": "USER_STATED",
+      "evidence": [
+        "CEO 2026-09-16: PlanFlow는 일정관리 앱이며 의료적 효능·진단·치료·건강관리 주장을 하지 않음"
+      ],
+      "lastVerified": "2026-09-16",
+      "confidence": "HIGH",
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "[decision-path: F] question-group: console-declarations. PlanFlow is a scheduling/calendar app; no medical/health-claims feature or copy was checked in this pass. Left UNKNOWN rather than assumed false pending an explicit review of store-listing copy for any health/medical claims language."
+      "note": "[decision-path: C] 사용자 확정(2026-09-16): PlanFlow is a scheduling/calendar app with no medical/health-claims feature or copy. requiresHumanAuthority/approval left unchanged per this pass's instructions (approval handled separately at receipt-issuance stage)."
     },
     "encryption": {
-      "value": null,
-      "source": "UNKNOWN",
+      "value": "EXEMPT_STANDARD_ENCRYPTION_ONLY",
+      "source": "CODE_EVIDENCE",
       "evidence": [
-        "ios/Runner/Info.plist:9"
+        "ios/Runner/Info.plist:9-10"
       ],
-      "lastVerified": "2026-09-11",
-      "confidence": "UNKNOWN",
+      "lastVerified": "2026-09-16",
+      "confidence": "HIGH",
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "[decision-path: F] question-group: console-declarations. ios/Runner/Info.plist:9 declares the ITSAppUsesNonExemptEncryption key (value not independently re-read in this pass; see decisionsRequired.EXPORT_COMPLIANCE_CONFIRM which already cites this same key as false). Whether that declared value is an accurate, human-confirmed export-compliance statement (vs. an unreviewed default) is UNKNOWN -- linked to decisionRequired: EXPORT_COMPLIANCE_CONFIRM. SCOPE NOTE (this pass): the store-profile.v1 schema's content.encryption node has no per-platform (android/ios) split (unlike content.ads/monetization.model which do) -- it is a single value for the whole app. The only evidence gathered is iOS-specific (Info.plist's ITSAppUsesNonExemptEncryption has no Android/Play equivalent; Play's Data Safety encryption-in-transit question is answered per data type, not as one binary app-level flag). This node should be read as an iOS-export-compliance-only judgment; it does not represent an Android finding, and confidence/value should not be assumed to generalize to Android's separate encryption-in-transit declarations (see the per-data-type encryptedInTransit field in androidDataType, currently unused/unset for any Android data type in this profile)."
+      "note": "[decision-path: C] ios/Runner/Info.plist:9-10 declares ITSAppUsesNonExemptEncryption=false, i.e. the app uses only encryption exempt from U.S. export compliance documentation requirements (standard OS-provided/HTTPS-TLS encryption, no proprietary/non-exempt cryptography). This value is scoped to the existing accepted Info.plist declaration; requiresHumanAuthority/approval left unchanged per this pass's instructions (approval handled separately at receipt-issuance stage). SCOPE NOTE (unchanged from prior pass): the store-profile.v1 schema's content.encryption node has no per-platform (android/ios) split -- it is a single value for the whole app, and the only evidence gathered is iOS-specific (Play's Data Safety encryption-in-transit question is answered per data type; see the per-data-type encryptedInTransit field in androidDataType)."
     },
     "traderStatus": {
       "value": null,
