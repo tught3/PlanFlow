@@ -819,7 +819,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. config/store/snapshots/android-readback-2026-09-11.json의 images.ko-KR.phoneScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 이미지를 직접 열어 확인, 실상호 등 PII 없음(일반 지명 '강남역'만 노출). lastVerifiedSourceSha는 이 파일이 저장소에 존재하는 마지막 커밋(git log -1)."
+      "notes": "LIVE. config/store/snapshots/android-readback-2026-09-11.json의 images.ko-KR.phoneScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 이미지를 직접 열어 확인, 실상호 등 PII 없음(일반 지명 '강남역'만 노출). lastVerifiedSourceSha는 이 파일이 저장소에 존재하는 마지막 커밋(git log -1).",
+      "featureFingerprints": {
+        "voice-schedule-input": "ad68933e3e70c2a1f75741d00483c6307ca55fc6677ff9e3202b9f3df950ddb7"
+      }
     },
     {
       "screenshotId": "android-phone-2-departure-alert-live",
@@ -854,7 +857,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[1]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 실상호 등 PII 없음(일반 지명 '강남역'만 노출)."
+      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[1]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 실상호 등 PII 없음(일반 지명 '강남역'만 노출).",
+      "featureFingerprints": {
+        "smart-departure-alert": "86d92eeead29397f31030067962394853899e57d3b338e57db35c740ef3cba3c"
+      }
     },
     {
       "screenshotId": "android-phone-3-voice-edit-live",
@@ -887,7 +893,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[2]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 예시 일정(정기 집 청소 예약, 거래처 담당자 미팅 등)만 노출되며 실PII 없음. headline/body는 이 이미지에서 직접 읽은 문구(v3의 android-phone-3-voice-edit와 카피가 다름)."
+      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[2]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 예시 일정(정기 집 청소 예약, 거래처 담당자 미팅 등)만 노출되며 실PII 없음. headline/body는 이 이미지에서 직접 읽은 문구(v3의 android-phone-3-voice-edit와 카피가 다름).",
+      "featureFingerprints": {
+        "voice-schedule-edit": "6c8269afa55654fde3b84b08d7b1ae383651312652056e75210e94469e94fc67"
+      }
     },
     {
       "screenshotId": "android-phone-4-calendar-sync-live",
@@ -920,7 +929,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[3]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 설정 화면(캘린더 연동)만 노출되며 PII 없음. headline/body는 이 이미지에서 직접 읽은 문구."
+      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[3]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 설정 화면(캘린더 연동)만 노출되며 PII 없음. headline/body는 이 이미지에서 직접 읽은 문구.",
+      "featureFingerprints": {
+        "calendar-sync": "9110eb51229a66766172a8f6b6f5f5de4a74553318cf03d7ff6e75c8e31629b5"
+      }
     },
     {
       "screenshotId": "android-phone-5-home-widget-live",
@@ -955,7 +967,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[4]와 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11); 이 파일은 v3의 android-phone-5-home-widget과도 byte-identical (동일 sha256) 이다 -- v2/v3에서 이 한 장은 변경되지 않았다."
+      "notes": "LIVE. config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[4]와 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11); 이 파일은 v3의 android-phone-5-home-widget과도 byte-identical (동일 sha256) 이다 -- v2/v3에서 이 한 장은 변경되지 않았다.",
+      "featureFingerprints": {
+        "home-widget": "d2201e8d8d555ec0f068b804ef08060d4d68e3b54f53031e0828357b5da32ba0"
+      }
     },
     {
       "screenshotId": "android-phone-6-briefing-settings-live",
@@ -988,7 +1003,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[5]와 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 설정 화면(브리핑 시간)만 노출되며 PII 없음. headline/body는 이 이미지에서 직접 읽은 문구."
+      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[5]와 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 설정 화면(브리핑 시간)만 노출되며 PII 없음. headline/body는 이 이미지에서 직접 읽은 문구.",
+      "featureFingerprints": {
+        "briefing-settings": "5921f1892ee8696a2a251961648358b9ffa5d209a9a143a8d5f672547ca285f7"
+      }
     },
     {
       "screenshotId": "android-phone-7-group-live",
@@ -1021,7 +1039,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[6]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 그룹명 '본부1팀' 등 일반 텍스트만 노출되며 PII 없음. headline/body는 이 이미지에서 직접 읽은 문구."
+      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[6]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, 그룹명 '본부1팀' 등 일반 텍스트만 노출되며 PII 없음. headline/body는 이 이미지에서 직접 읽은 문구.",
+      "featureFingerprints": {
+        "group-management-menu": "2c903c9465ed441faf5f7b1891b493ba504a0d5fbf15c06402a3237305f4a2d2"
+      }
     },
     {
       "screenshotId": "android-phone-8-home-briefing-live",
@@ -1054,7 +1075,10 @@
       "lastVerifiedSourceSha": "361a951cc397a4ff42ed210a2de620f6b30aca4f",
       "storeUploadState": "UPLOADED",
       "status": "CANONICAL",
-      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[7]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, '코엑스 컨벤션센터' 등 공개 장소명만 노출되며 실PII 없음."
+      "notes": "LIVE. sha256이 config/store/snapshots/android-readback-2026-09-11.json의 phoneScreenshots[7]과 정확히 일치함을 직접 계산해 확인했다(2026-09-11). Read 도구로 직접 확인, '코엑스 컨벤션센터' 등 공개 장소명만 노출되며 실PII 없음.",
+      "featureFingerprints": {
+        "home-today-briefing": "883105c6f7b2712af4e4af6ad134613cd681101c41f7948a5b5223dc801d26b6"
+      }
     },
     {
       "screenshotId": "android-tablet-7-calendar-live",
@@ -1092,7 +1116,10 @@
       "status": "REJECTED",
       "localQualification": "REJECTED",
       "qualificationNotes": "STORE_APPLIED provenance retained; local audit found system/DeX chrome, 16:10 dimensions, and real schedule/business content. Do not reuse as a qualified asset.",
-      "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 sevenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='7'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 specs/google-graphics.2026-09-11.json의 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- fluxstore validate가 이 라이브 엔트리에 DIMENSION_INVALID를 낼 것으로 예상되며, 이는 fail-closed 정상 동작이다(억제하지 않는다). 실상호 PII(삼성서울병원, 스타벅스 지점명)가 실제 게시된 자산에 그대로 노출돼 있음을 Read 도구로 직접 확인 -- 즉시 재작업/교체가 필요한 사용자 판단 대상. 세트 최소 4장(ANDROID_TABLET.7.minCount=4) 대비 라이브 세트에 이 슬롯은 1장뿐이다."
+      "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 sevenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='7'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 specs/google-graphics.2026-09-11.json의 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- fluxstore validate가 이 라이브 엔트리에 DIMENSION_INVALID를 낼 것으로 예상되며, 이는 fail-closed 정상 동작이다(억제하지 않는다). 실상호 PII(삼성서울병원, 스타벅스 지점명)가 실제 게시된 자산에 그대로 노출돼 있음을 Read 도구로 직접 확인 -- 즉시 재작업/교체가 필요한 사용자 판단 대상. 세트 최소 4장(ANDROID_TABLET.7.minCount=4) 대비 라이브 세트에 이 슬롯은 1장뿐이다.",
+      "featureFingerprints": {
+        "calendar-month": "e555cb1915055d7d8903210316acbc91e953691f1c68d76e605a34572a71fa40"
+      }
     },
     {
       "screenshotId": "android-tablet-10-group-live",
@@ -1127,7 +1154,10 @@
       "status": "REJECTED",
       "localQualification": "REJECTED",
       "qualificationNotes": "STORE_APPLIED provenance retained; local audit found system/DeX chrome and 16:10 dimensions. Do not reuse as a qualified asset.",
-      "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 tenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='10'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- DIMENSION_INVALID가 예상되며 fail-closed 정상 동작이다. Read 도구로 직접 확인, 그룹 대시보드 화면(그룹명 '영업 1팀', '팀장님과 통화하기' 등)만 노출되며 실PII 없음. 세트 최소 4장(ANDROID_TABLET.10.minCount=4) 대비 라이브 세트에 이 슬롯도 1장뿐이다."
+      "notes": "LIVE (실제 Play 게시 자산). config/store/snapshots/android-readback-2026-09-11.json의 tenInchScreenshots[0].sha256과 이 파일의 sha256이 정확히 일치함을 직접 계산해 확인했다(2026-09-11). displayClass='10'은 이 readback 매핑에 직접 근거한다. 치수 2560x1600(16:10)은 aspectRatios(16:9, 9:16) 어느 쪽과도 일치하지 않는다 -- DIMENSION_INVALID가 예상되며 fail-closed 정상 동작이다. Read 도구로 직접 확인, 그룹 대시보드 화면(그룹명 '영업 1팀', '팀장님과 통화하기' 등)만 노출되며 실PII 없음. 세트 최소 4장(ANDROID_TABLET.10.minCount=4) 대비 라이브 세트에 이 슬롯도 1장뿐이다.",
+      "featureFingerprints": {
+        "group-dashboard": "5f294b4f2c48c1d741366294d380d46c943279dab3887f0d8b41b91700ddd23d"
+      }
     },
     {
       "screenshotId": "iphone69-calendar-home-native",
@@ -1185,7 +1215,11 @@
       "visualReview": "PASS",
       "noAndroidChrome": true,
       "noDistortion": true,
-      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS.",
+      "featureFingerprints": {
+        "calendar-month": "f9506d0139431df25b9af378fca5cfcbd1fe2dbbfc8ed7300291a40b276acd81",
+        "home-today-briefing": "0b730246540e1057b191503015ceb98be1c880982c9130d8a4c8d441a97cb00d"
+      }
     },
     {
       "screenshotId": "iphone69-voice-confirm-native",
@@ -1241,7 +1275,10 @@
       "visualReview": "PASS",
       "noAndroidChrome": true,
       "noDistortion": true,
-      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS.",
+      "featureFingerprints": {
+        "voice-schedule-input": "5bd0ed290a9094791e731857da15fb838b1a0bf6ec715cc6af95eb03d9317c07"
+      }
     },
     {
       "screenshotId": "iphone69-group-native",
@@ -1297,7 +1334,10 @@
       "visualReview": "PASS",
       "noAndroidChrome": true,
       "noDistortion": true,
-      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS.",
+      "featureFingerprints": {
+        "group-dashboard": "1d4fce972015a66f085d730ef0e1191ecc90fe25ef26a3919226be82cc1010e2"
+      }
     },
     {
       "screenshotId": "ipad13-calendar-native",
@@ -1353,7 +1393,10 @@
       "visualReview": "PASS",
       "noAndroidChrome": true,
       "noDistortion": true,
-      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS.",
+      "featureFingerprints": {
+        "calendar-month": "f9506d0139431df25b9af378fca5cfcbd1fe2dbbfc8ed7300291a40b276acd81"
+      }
     },
     {
       "screenshotId": "ipad13-group-native",
@@ -1409,7 +1452,10 @@
       "visualReview": "PASS",
       "noAndroidChrome": true,
       "noDistortion": true,
-      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS."
+      "notes": "Run 34795713111 native simulator capture; visual/PII review PASS.",
+      "featureFingerprints": {
+        "group-dashboard": "1d4fce972015a66f085d730ef0e1191ecc90fe25ef26a3919226be82cc1010e2"
+      }
     }
   ]
 }
