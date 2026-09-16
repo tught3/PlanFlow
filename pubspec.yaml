@@ -47,6 +47,7 @@ dependencies:
   klc: ^0.1.0
   # PlanFlow 1차 BM: GPT 일정 파싱용 리워드 광고. 운영 ID는 Remote Config.
   google_mobile_ads: ^5.2.0
+  sign_in_with_apple: ^8.1.0
 
 dev_dependencies:
   flutter_test:

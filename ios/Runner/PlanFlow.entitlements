@@ -7,5 +7,9 @@
 	<array>
 		<string>$(PLANFLOW_IOS_APP_GROUP)</string>
 	</array>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>
