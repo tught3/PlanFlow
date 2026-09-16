@@ -333,8 +333,9 @@ void main() {
       );
     });
 
-    test('important alarm actions either open the event or schedule tomorrow',
-        () async {
+    test(
+        '확인(출발) 액션은 라우팅하지 않는다 (앱을 강제로 열지 않기 위해 '
+        'showsUserInterface: false로 변경됨)', () async {
       // M1: criticalAck는 강한알람(critical alarm) payload에만 붙는다.
       // criticalAcknowledgedActionId/criticalRemindTomorrowActionId는 실제
       // 스케줄링에서 항상 강한알람 채널(scheduleCriticalAlarmWithResult)의
@@ -355,9 +356,11 @@ void main() {
       );
       final notifications = _FakeNotificationService();
 
+      // 확인(출발) 액션은 이제 showsUserInterface: false라 시스템이 앱을
+      // 강제로 열지 않는다. 그에 맞춰 라우팅도 하지 않는다(null 반환).
       expect(
         NotificationService.routeForNotificationResponse(acknowledged),
-        '${AppRoutes.eventDetail}/event-1?criticalAck=1',
+        isNull,
       );
       expect(
         NotificationService.routeForNotificationResponse(tomorrow),
@@ -439,6 +442,59 @@ void main() {
         notifications.cancelledEventIds,
         containsAll(<String>['event-ack', 'event-body']),
       );
+    });
+
+    test(
+        'critical action showsUserInterface: 확인(출발)만 false로 바뀌고 '
+        '내일 오전 9시는 기존 그대로다 (회귀 방지)', () {
+      final actions = NotificationService.criticalActionsForTest;
+
+      final ackAction = actions.firstWhere(
+        (action) => action.id == NotificationService.criticalAcknowledgedActionId,
+      );
+      final remindTomorrowAction = actions.firstWhere(
+        (action) =>
+            action.id == NotificationService.criticalRemindTomorrowActionId,
+      );
+
+      expect(ackAction.showsUserInterface, isFalse);
+      expect(remindTomorrowAction.showsUserInterface, isFalse);
+    });
+
+    test(
+        'M1/R4 회귀 방지: 강한알람 본문 탭(actionId == null)은 여전히 '
+        'criticalAck=1이 붙은 라우트를 반환한다', () {
+      final bodyTap = NotificationResponse(
+        notificationResponseType: NotificationResponseType.selectedNotification,
+        payload:
+            'event:event-body-tap${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+
+      expect(bodyTap.actionId, isNull);
+      expect(
+        NotificationService.routeForNotificationResponse(bodyTap),
+        '${AppRoutes.eventDetail}/event-body-tap?criticalAck=1',
+      );
+    });
+
+    test(
+        '확인(출발) 액션은 라우팅과 무관하게 알림 취소 로직이 여전히 '
+        '호출된다 (정지 로직 회귀 방지)', () async {
+      final ack = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload:
+            'event:event-stop-check${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+      final notifications = _FakeNotificationService();
+
+      await handleNotificationResponseAction(
+        ack,
+        notificationService: notifications,
+      );
+
+      expect(notifications.cancelledEventIds, contains('event-stop-check'));
     });
 
     test('important alarm tomorrow reminder is scheduled for 9 AM next day',
