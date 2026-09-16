@@ -167,7 +167,12 @@ class ScreenshotCaptureContractTests(unittest.TestCase):
         self.assertIn('IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10', codes)
         detail = next(b['detail'] for b in profile['blockers'] if b['code'] == 'IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10')
         self.assertIn('NOT_UPLOADED', detail)
-        self.assertIn('readback is unknown', detail)
+        # Updated 2026-09-16 (integration): main's commit 9441b5a7 performed a
+        # live ASC readback that confirmed the current submission is
+        # Android-derived, so this detail no longer says "readback is
+        # unknown" -- it now records the confirmed fact plus the local
+        # native baseline's readiness.
+        self.assertIn('LOCAL_QUALIFIED', detail)
 
     def test_workflow_is_manual_read_only_macos15(self):
         self.assertIn('workflow_dispatch:', WORKFLOW)
