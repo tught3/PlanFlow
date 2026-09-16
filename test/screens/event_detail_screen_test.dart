@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/env.dart';
+import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
@@ -13,6 +14,7 @@ import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/screens/event/event_detail_screen.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
+import 'package:planflow/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -273,11 +275,74 @@ void main() {
     expect(find.text('확인(출발)'), findsOneWidget);
 
     // FilledButton이 렌더되는지 확인
-    expect(find.byType(FilledButton), findsWidgets);
+    final buttonFinder = find.ancestor(
+      of: find.text('확인(출발)'),
+      matching: find.byType(FilledButton),
+    );
+    expect(buttonFinder, findsOneWidget);
 
-    // 버튼을 탭할 수 있는지 확인 (onPressed가 호출됨)
+    // 실제 강조 스타일(배경색/테두리색/테두리두께)이 적용됐는지 단언한다.
+    // 이 값이 되돌려지면(예: backgroundColor/borderColor/borderWidth 제거)
+    // 아래 expect가 실패해야 한다.
+    final filledButton = tester.widget<FilledButton>(buttonFinder);
+    final style = filledButton.style;
+    expect(style, isNotNull);
+    expect(
+      style!.backgroundColor?.resolve(<WidgetState>{}),
+      PlanFlowColors.active,
+    );
+    final shape = style.shape?.resolve(<WidgetState>{});
+    expect(shape, isA<RoundedRectangleBorder>());
+    final side = (shape as RoundedRectangleBorder).side;
+    expect(side.width, 2.0);
+    expect(side.color, PlanFlowColors.primary);
+
+    // 버튼을 탭하면 알림 취소가 실제로 호출되고, 버튼이 사라지며,
+    // 확인 스낵바가 뜨는지 검증한다.
     await tester.tap(find.text('확인(출발)'));
     await tester.pumpAndSettle();
+
+    expect(find.text('확인(출발)'), findsNothing);
+    expect(find.text('알림을 확인했어요.'), findsOneWidget);
+  });
+
+  testWidgets(
+      'EventDetailScreen critical ack cancels event reminder notifications',
+      (tester) async {
+    final event = EventModel(
+      id: 'event-6',
+      userId: 'user-1',
+      title: '중요 출발 확인 알림취소',
+      startAt: DateTime.utc(2026, 5, 13, 0),
+      endAt: DateTime.utc(2026, 5, 13, 1),
+      isCritical: true,
+    );
+    final notificationService = _FakeNotificationService();
+    final router = GoRouter(
+      initialLocation: '${AppRoutes.eventDetail}/${event.id}',
+      routes: [
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, __) => EventDetailScreen(
+            event: event,
+            eventRepository: _FakeEventRepository(event),
+            showCriticalAckButton: true,
+            notificationService: notificationService,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+
+    expect(
+      notificationService.cancelledReminderEventIds,
+      ['event-6'],
+    );
   });
 }
 
@@ -413,5 +478,14 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   @override
   Future<void> acknowledgeDeparture(String eventId) async {
     acknowledgedEventIds.add(eventId);
+  }
+}
+
+class _FakeNotificationService extends NotificationService {
+  final cancelledReminderEventIds = <String>[];
+
+  @override
+  Future<void> cancelEventReminderNotifications(String eventId) async {
+    cancelledReminderEventIds.add(eventId);
   }
 }
