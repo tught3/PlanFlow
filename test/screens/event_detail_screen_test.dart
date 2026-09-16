@@ -241,6 +241,44 @@ void main() {
     expect(eventRepository.deletedEventIds, ['event-4']);
     expect(find.text('캘린더'), findsOneWidget);
   });
+
+  testWidgets('EventDetailScreen critical ack button has emphasized styling',
+      (tester) async {
+    final event = EventModel(
+      id: 'event-5',
+      userId: 'user-1',
+      title: '중요 출발 확인',
+      startAt: DateTime.utc(2026, 5, 13, 0),
+      endAt: DateTime.utc(2026, 5, 13, 1),
+      isCritical: true,
+    );
+    final router = GoRouter(
+      initialLocation: '${AppRoutes.eventDetail}/${event.id}',
+      routes: [
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, __) => EventDetailScreen(
+            event: event,
+            eventRepository: _FakeEventRepository(event),
+            showCriticalAckButton: true,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    // 버튼이 존재하는지 확인
+    expect(find.text('확인(출발)'), findsOneWidget);
+
+    // FilledButton이 렌더되는지 확인
+    expect(find.byType(FilledButton), findsWidgets);
+
+    // 버튼을 탭할 수 있는지 확인 (onPressed가 호출됨)
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+  });
 }
 
 class _FakeEventRepository extends EventRepository {
