@@ -13,6 +13,7 @@ import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
+import '../../widgets/planflow_action_buttons.dart';
 
 class PermissionOnboardingScreen extends StatefulWidget {
   const PermissionOnboardingScreen({
@@ -163,6 +164,21 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           }
           return;
         }
+        if (defaultTargetPlatform == TargetPlatform.iOS) {
+          final confirmed = await _confirmOpenSettings(
+            label: _permissionLabelForKey(key),
+            message: deniedMessage,
+          );
+          if (!mounted) {
+            return;
+          }
+          if (!confirmed) {
+            setState(() {
+              _message = deniedMessage;
+            });
+            return;
+          }
+        }
         await _withPermissionTimeout(openSettings);
         if (!mounted) {
           return;
@@ -185,7 +201,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         return;
       }
       setState(() {
-        _message = '권한 요청이 완료되지 않았습니다. Android 앱 설정에서 PlanFlow 권한을 직접 확인해 주세요.';
+        _message = defaultTargetPlatform == TargetPlatform.iOS
+            ? '권한 요청이 완료되지 않았습니다. 설정 앱에서 PlanFlow 권한을 직접 확인해 주세요.'
+            : '권한 요청이 완료되지 않았습니다. Android 앱 설정에서 PlanFlow 권한을 직접 확인해 주세요.';
       });
     } finally {
       if (mounted) {
@@ -296,7 +314,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           : warningParts.isNotEmpty && failures.isEmpty
               ? '필수 권한은 준비되었습니다. ${warningParts.join(', ')}이 꺼져 있어 일부 알람이 늦게 울릴 수 있어요.'
               : failures.isEmpty
-                  ? '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.'
+                  ? (defaultTargetPlatform == TargetPlatform.iOS
+                      ? '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 설정 앱에서 다시 켤 수 있어요.'
+                      : '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.')
                   : '일부 권한을 아직 확인하지 못했습니다: ${failures.join(', ')}. 설정에서 켠 뒤 돌아오면 다음 단계부터 이어집니다.';
     });
   }
@@ -478,6 +498,24 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           failures.add(step.label);
           return false;
         }
+        if (defaultTargetPlatform == TargetPlatform.iOS) {
+          final confirmed = await _confirmOpenSettings(
+            label: step.label,
+            message: step.deniedMessage,
+          );
+          if (!mounted) {
+            return false;
+          }
+          if (!confirmed) {
+            setState(() {
+              _message = step.deniedMessage;
+            });
+            if (step.blocksOnboarding) {
+              failures.add(step.label);
+            }
+            return true;
+          }
+        }
         final opened = await _withPermissionTimeout(step.openSettings!);
         if (opened) {
           _resumeRequestAll = true;
@@ -485,7 +523,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _resumeRequestLabel = step.label;
           if (mounted) {
             setState(() {
-              _message = '${step.label} 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = defaultTargetPlatform == TargetPlatform.iOS
+                  ? '${step.label} 권한이 아직 꺼져 있습니다. 설정 화면으로 이동합니다.'
+                  : '${step.label} 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -622,6 +662,40 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     return '${step.label} 권한은 $reason 자동으로 요청하지 않습니다. 나중에 설정에서 상태를 확인해 주세요.';
   }
 
+  /// 설정 화면으로 이동하기 전, 사용자에게 명시적으로 확인을 받는다.
+  /// 시스템 권한 프롬프트를 한 번 거부한 뒤 앱이 자동으로 설정 화면을 여는
+  /// 것은 Apple 심사(Guideline 5.1.1(iv)) 위반으로 지적된 패턴이다. 사용자가
+  /// "설정 열기"를 직접 눌러야만 [true]를 반환하고, 그 경우에만 호출부에서
+  /// openSettings를 실행한다. (참고: location_pick_flow.dart의
+  /// `_showLocationPermissionGuide`와 동일한 확인 패턴)
+  Future<bool> _confirmOpenSettings({
+    required String label,
+    required String message,
+  }) async {
+    if (!mounted) {
+      return false;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('$label 권한이 필요해요'),
+          content: Text(message),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          actions: [
+            planflowCancelConfirmButtons(
+              onCancel: () => Navigator.of(dialogContext).pop(false),
+              onConfirm: () => Navigator.of(dialogContext).pop(true),
+              cancelLabel: '나중에',
+              confirmLabel: '설정 열기',
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
   Future<AppPermissionSnapshot?> _safeCheckAll() async {
     try {
       return await _permissionService.checkAll();
@@ -715,7 +789,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                     ? '권한 요청 중...'
                     : ready
                         ? '시작하기'
-                        : '필수 권한 차례대로 요청',
+                        : '권한 설정하기',
               ),
             ),
             const SizedBox(height: 6),
@@ -755,7 +829,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               const _SectionHeader(
                 label: '필수 권한',
                 subtitle:
-                    '위에서부터 하나씩 허용하면 바로 시작할 수 있어요. 폴드/플립에서는 전체 화면 알림도 함께 켜 주세요.',
+                    '아래 항목을 필요한 만큼 허용해 주세요. 폴드/플립에서는 전체 화면 알림도 선택할 수 있어요.',
               ),
               const SizedBox(height: 9),
               _PermissionTile(
@@ -768,8 +842,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 onRequest: () => _requestOne(
                   key: 'microphone',
                   grantedMessage: '마이크 권한이 허용되었습니다.',
-                  deniedMessage:
-                      '마이크 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+                  deniedMessage: defaultTargetPlatform == TargetPlatform.iOS
+                      ? '마이크 권한을 허용하려면 설정에서 PlanFlow의 마이크 접근을 켜 주세요.'
+                      : '마이크 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
                   isGranted: (snapshot) => snapshot.microphoneGranted,
                   request: _permissionService.requestMicrophonePermission,
                   openSettings: defaultTargetPlatform == TargetPlatform.iOS
@@ -815,8 +890,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 onRequest: () => _requestOne(
                   key: 'notification',
                   grantedMessage: '앱 알림 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '앱 알림이 아직 꺼져 있습니다. Android 알림 설정에서 PlanFlow 알림을 허용해 주세요. 잠금화면과 겉화면 노출도 이 설정의 영향을 받습니다.',
+                  deniedMessage: defaultTargetPlatform == TargetPlatform.iOS
+                      ? '앱 알림을 허용하려면 설정에서 PlanFlow 알림을 켜 주세요.'
+                      : '앱 알림이 아직 꺼져 있습니다. Android 알림 설정에서 PlanFlow 알림을 허용해 주세요. 잠금화면과 겉화면 노출도 이 설정의 영향을 받습니다.',
                   isGranted: (snapshot) => snapshot.notificationsGranted,
                   request: _permissionService.requestNotificationPermission,
                   openSettings: _permissionService.openNotificationSettings,
@@ -833,8 +909,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 onRequest: () => _requestOne(
                   key: 'location',
                   grantedMessage: '위치 권한이 허용되었습니다.',
-                  deniedMessage:
-                      '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+                  deniedMessage: defaultTargetPlatform == TargetPlatform.iOS
+                      ? '위치 권한을 허용하려면 설정에서 PlanFlow의 위치 접근을 켜 주세요.'
+                      : '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
                   isGranted: (snapshot) => snapshot.locationGranted,
                   request: _permissionService.requestLocationPermission,
                   openSettings: defaultTargetPlatform == TargetPlatform.iOS
@@ -855,8 +932,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 onRequest: () => _requestOne(
                   key: 'calendar',
                   grantedMessage: '기기 캘린더 권한을 허용했습니다.',
-                  deniedMessage:
-                      '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
+                  deniedMessage: defaultTargetPlatform == TargetPlatform.iOS
+                      ? '기기 캘린더를 사용하려면 설정에서 PlanFlow의 캘린더 접근을 켜 주세요.'
+                      : '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
                   isGranted: (snapshot) => snapshot.calendarGranted,
                   request: _permissionService.requestCalendarPermission,
                   openSettings: defaultTargetPlatform == TargetPlatform.iOS
