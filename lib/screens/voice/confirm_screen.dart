@@ -76,6 +76,7 @@ class ConfirmScreen extends StatefulWidget {
     this.voiceCorrectionRuleRepository,
     VoiceCorrectionLearningService? voiceCorrectionLearningService,
     TravelTimeBufferService? travelTimeBufferService,
+    this.nowProvider,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
         gptService = gptService ?? GptService(),
         notificationService = notificationService ?? NotificationService(),
@@ -106,6 +107,7 @@ class ConfirmScreen extends StatefulWidget {
   final VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository;
   final VoiceCorrectionLearningService voiceCorrectionLearningService;
   final TravelTimeBufferService travelTimeBufferService;
+  final DateTime Function()? nowProvider;
 
   @override
   State<ConfirmScreen> createState() => _ConfirmScreenState();
@@ -301,6 +303,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   final Set<String> _selectedGroupIds = <String>{};
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
+
+  DateTime _localNow() {
+    final now = widget.nowProvider?.call();
+    return now == null ? planflowNow() : (now.isUtc ? planflowLocal(now) : now);
+  }
 
   String _scheduleParseBinding(String rawText) => sha256
       .convert(utf8.encode('$_parseAttemptId\n${rawText.trim()}'))
@@ -1199,12 +1206,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       );
       await AdService.instance.clearReward(feature: 'schedule_parse');
     }
-    final pendingConsume = pendingBinding == null || pendingBinding != parseBinding
-        ? null
-        : await AdRewardState.instance.pendingConsumeRequestId(
-            binding: parseBinding,
-            feature: 'schedule_parse',
-          );
+    final pendingConsume =
+        pendingBinding == null || pendingBinding != parseBinding
+            ? null
+            : await AdRewardState.instance.pendingConsumeRequestId(
+                binding: parseBinding,
+                feature: 'schedule_parse',
+              );
     if (pendingConsume != null) {
       _scheduleParseGrant = ScheduleParseEntryGrant(
         sessionId: pendingConsume,
@@ -1330,9 +1338,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
-    if (!_parseAuthorized ||
-        rawText == null ||
-        rawText.trim().isEmpty) {
+    if (!_parseAuthorized || rawText == null || rawText.trim().isEmpty) {
       return;
     }
     _adGateHandled = true;
@@ -1361,14 +1367,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       });
     }
     final grant = _scheduleParseGrant!;
-    final consumed = await ScheduleParseEntitlementService.instance
-        .consume(grant.sessionId);
+    final consumed =
+        await ScheduleParseEntitlementService.instance.consume(grant.sessionId);
     if (consumed == null) {
       if (mounted) {
         setState(() {
           _isHydratingParsedSchedule = false;
-          _hydrateMessage =
-              'AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.';
+          _hydrateMessage = 'AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.';
         });
       }
       return;
@@ -1452,8 +1457,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               widget.parsedSchedule['parse_failed'] = true;
               _isHydratingParsedSchedule = false;
               _showInitialHydrationLoader = false;
-              _hydrateMessage =
-                  'AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.';
+              _hydrateMessage = 'AI 정리는 완료됐지만 사용량 반영에 실패했어요. 잠시 후 다시 시도해 주세요.';
             });
           }
           return;
@@ -3284,7 +3288,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   DateTime _safeStartAt(Object? value) {
-    final now = planflowNow();
+    final now = _localNow();
     final parsed = _dateTimeValue(value);
     if (parsed == null) {
       return DateTime(now.year, now.month, now.day, 9);
@@ -3296,6 +3300,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   DateTime? _safeEndAt(Object? value, DateTime startAt, {String? rawText}) {
+    final now = _localNow();
     final parsed = _dateTimeValue(value);
     if (parsed == null || parsed.isBefore(startAt)) {
       return null;
@@ -3308,7 +3313,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!DateUtils.isSameDay(startAt, parsed) &&
         !const VoiceScheduleStructureService().hasExplicitCrossDayIntent(
           source,
-          now: planflowNow(),
+          now: now,
         )) {
       return null;
     }

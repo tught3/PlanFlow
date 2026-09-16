@@ -1,29 +1,26 @@
 # PlanFlow iOS 스크린샷 인벤토리 (실측)
 
-이 문서는 저장소에 실재하는 이미지 파일의 경로·픽셀 치수만 기록한다. 값은 전부
-`ls`로 파일 존재를 확인하고 PNG 헤더(IHDR)를 파싱해 얻었다 — **픽셀 내용(화면에
-찍힌 UI/텍스트)은 판독하지 않았다.**
+이 문서는 저장소에 실재하는 이미지 파일의 경로·픽셀 치수와 검수 상태를 기록한다.
+신규 native baseline 5장은 화면을 육안 검수하고 PII를 확인했다. 기존 후보 자산은
+역사적 기록으로 PNG 헤더(IHDR)와 치수만 측정했으며 화면 내용은 판독하지 않았다.
 
-## 1. App Store 6.9" iPhone 후보 (Required, 1260×2736)
-
-| 파일 | 치수 | Apple 요구사항 충족 여부 |
-|---|---|---|
-| `스크린샷 아이폰/세로/PlanFlow_screenshot_1.png` ~ `_8.png` (8장) | 1242×2688 | **결손** — 6.5" iPhone 규격이지 6.9" 규격이 아니다 |
-
-`.agents/skills/aso-audit/references/apple-specs.md:29`에 따르면 6.9" iPhone
-스크린샷은 **Required**, 요구 치수는 **1260×2736**이다. 저장소에 있는 8장은
-1242×2688로, 이는 iPhone 11 Pro Max/XS Max 세대의 6.5" 규격이다. **6.9" 규격
-스크린샷은 저장소에 존재하지 않는다 → 신규 캡처 또는 리사이즈 작업 필요.**
-
-## 2. App Store 13" iPad 후보 (Required, 2064×2752)
+## 1. App Store 6.9" iPhone native baseline (Required)
 
 | 파일 | 치수 | Apple 요구사항 충족 여부 |
 |---|---|---|
-| `스크린샷 아이폰/가로/PlanFlow_tablet_landscape_1.png`, `_2.png` (2장) | 2064×2752 | **정확히 일치** |
+| `docs/screenshots/app-store/native-ios/iphone-6.9/` (3장) | 1320×2868 | **LOCAL_QUALIFIED** — iPhone 16 Pro Max native simulator capture |
 
-`apple-specs.md:30`의 13" iPad 요구 치수(2064×2752)와 픽셀 단위로 정확히
-일치한다. 단, 파일명이 `_landscape_`인데 실측 치수(2064×2752)는 세로가 긴
-**portrait 방향**이다 — 파일명과 실제 방향이 어긋난다(이름의 신뢰성에 주의).
+Apple 허용 해상도 중 1320×2868을 사용했다. 기존 1242×2688 Android-derived
+8장은 REJECTED로 보존한다.
+
+## 2. App Store 13" iPad native baseline (Required, 2064×2752)
+
+| 파일 | 치수 | Apple 요구사항 충족 여부 |
+|---|---|---|
+| `docs/screenshots/app-store/native-ios/ipad-13/` (2장) | 2064×2752 | **LOCAL_QUALIFIED** — iPad Pro 13-inch (M4) native simulator capture |
+
+13" iPad baseline은 2064×2752와 픽셀 단위로 일치하는 portrait native capture다.
+기존 Android-derived 후보는 REJECTED로 보존한다.
 
 ## 3. Play Store 전용 (App Store 미사용)
 
@@ -60,16 +57,9 @@ Android 캡처를 단순 리사이즈한 파생물이라는 근거는 이번 조
 확인했다. 이 항목은 App Store 제출 관점에서 **READY**로 판단한다(개별 규격별
 치수 재검증은 이번 조사 범위 밖 — 파일 존재만 확인).
 
-## 6. 미확인/사람 확인 필요 (TODO)
+## 6. 검수 및 운영 상태
 
-- **픽셀 내용 미검사**: 이 조사는 PNG 헤더만 읽었다. 스크린샷 안에 Android
-  전용 UI(예: 뒤로가기 버튼, 상태바 아이콘 모양)나 PII(실제 사용자 이메일·
-  전화번호·이름)가 노출되는지는 **육안으로 반드시 재확인해야 한다.**
-- **6.9" iPhone 스크린샷 부재**: 현재 1242×2688(6.5") 8장만 있고 1260×2736
-  (6.9") 세트가 없다. App Store Connect가 6.5" 자산을 6.9" 슬롯에 그대로
-  받아줄지, 신규 캡처가 필요한지는 Apple 정책 확인이 필요하다(Apple은
-  "auto-scales from required base sizes to smaller devices"라고만 명시하며
-  6.5"→6.9" 업스케일을 보장한다는 근거는 이번 조사에서 찾지 못했다).
-- **`가로` 폴더 명명 오류**: `PlanFlow_tablet_landscape_*.png`가 실제로는
-  portrait 치수(2064×2752)다. 업로드 시 슬롯 오분류 위험이 있으니 파일명
-  정정 또는 업로드 담당자에게 별도 안내 필요.
+Run 34795713111 native simulator capture에서 5장 모두 runtime/widget 검증,
+visualReview PASS, PII review PASS로 확인했다. PNG는 raw RGBA(알파 255)에서
+RGB로 알파만 제거했으며 resize/crop/frame은 없고 RGB 픽셀은 byte-equivalent다.
+`storeUploadState=NOT_UPLOADED`이며 App Store Connect mutation은 수행하지 않았다.

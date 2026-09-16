@@ -1249,6 +1249,7 @@ class _EventAgendaCard extends StatelessWidget {
                 : calendarNormalEventTextColor;
 
     return Card(
+      key: ValueKey('calendar-personal-event-${event.id}'),
       color: accentColor.withValues(alpha: 0.08),
       elevation: 0,
       shape: RoundedRectangleBorder(

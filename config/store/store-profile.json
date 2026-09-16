@@ -2221,12 +2221,6 @@
       "requiresHumanAuthority": true
     },
     {
-      "code": "IPHONE_69_ASSET_MISSING",
-      "platform": "ios",
-      "detail": "6.9\" iPhone screenshots are missing. Existing '스크린샷 아이폰/세로' assets are 1242x2688 (the 6.5\" iPhone spec), not one of the Apple-approved 6.9\" dimensions (1260x2736, 1290x2796, 1320x2868 중 하나; capture plan은 1320x2868 사용 — iPhone 16 Pro Max 시뮬레이터 해상도). See docs/ios/screenshot-inventory.md:7-15.",
-      "requiresHumanAuthority": false
-    },
-    {
       "code": "DATA_SAFETY_DOC_STALE_AD_ID",
       "platform": "android",
       "detail": "docs/play-console-data-safety.md contains no mention of AD_ID/Advertising ID/AdMob, but the AD_ID permission and AdMob SDK are active in code. Verified: commit aaf1bfed ('feat(rc): voice-conv keys + restore AD_ID permission') restored android/app/src/main/AndroidManifest.xml:4 (com.google.android.gms.permission.AD_ID), and lib/services/ad_service.dart:491 calls MobileAds.instance.initialize(). EXPANDED (this pass, same doc, two more staleness issues found): (1) docs/play-console-data-safety.md:51 answers 'no' to \"앱이 음성 통신, 텍스트, 이미지, 오디오 공유를 통해 다른 사용자와 상호 작용하거나 콘텐츠를 교환하도록 허용하나요?\" but the app has a group-comment feature (lib/features/groups/repositories/group_event_comment_repository.dart:46-48, group_event_comments table shared among members) that directly contradicts a 'no' answer. (2) docs/play-console-data-safety.md:27 declares 'app 상호작용' data is collected 'for 애널리틱스 (analytics)' purpose, but no firebase_analytics dependency exists in pubspec.yaml (grep returned 0 matches) and it is not one of the 7 SDKs enumerated in privacy.sdks -- the doc appears to declare an analytics purpose for an SDK that is not actually present in the app.",
@@ -2235,7 +2229,7 @@
     {
       "code": "IOS_SCREENSHOTS_ANDROID_CAPTURE_2_3_10",
       "platform": "ios",
-      "detail": "All 8 current iPhone and both current iPad Store images were independently opened and matched to the GET-only readback by count/hash. The iPhone set is Android-derived; the iPad set is non-uniformly resized Android content with residual system/taskbar UI, and one image exposes real schedule/business data. They remain STORE_APPLIED/SUBMITTED evidence only and are not LOCAL_QUALIFIED or STORE_ACCEPTED. Native iOS replacements are required after the protected Build23 review state permits metadata changes.",
+      "detail": "All 8 current iPhone and both current iPad Store images were independently opened and matched to the GET-only readback by count/hash. The iPhone set is Android-derived; the iPad set is non-uniformly resized Android content with residual system/taskbar UI, and one image exposes real schedule/business data. They remain STORE_APPLIED/SUBMITTED evidence only and are not LOCAL_QUALIFIED or STORE_ACCEPTED. UPDATE (2026-09-16 integration): a local native iOS baseline is now ready (3 iPhone 6.9-inch + 2 iPad 13-inch, LOCAL_QUALIFIED, NOT_UPLOADED) as documented in screenshot-lineage.json. The protected current Build23/App Store submission has not been changed and still uses the Android-derived assets confirmed above; replacement remains out of scope until the protected review state permits metadata changes.",
       "requiresHumanAuthority": true
     },
     {

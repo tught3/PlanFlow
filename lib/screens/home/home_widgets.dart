@@ -55,7 +55,8 @@ class _HomeGroupChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? PlanFlowColors.primaryFaint : PlanFlowColors.surface,
+          color:
+              isSelected ? PlanFlowColors.primaryFaint : PlanFlowColors.surface,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
@@ -367,14 +368,18 @@ class _HomeInfoChip extends StatelessWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.onVoice, this.onVoiceConv});
+  const _HomeHeader(
+      {required this.onVoice, this.onVoiceConv, this.nowProvider});
 
   final VoidCallback onVoice;
   final VoidCallback? onVoiceConv;
+  final DateTime Function()? nowProvider;
 
   @override
   Widget build(BuildContext context) {
-    final todayLabel = _koreanDateLabel(DateTime.now());
+    final todayLabel = _koreanDateLabel(
+      planflowLocal(nowProvider?.call() ?? DateTime.now()),
+    );
 
     return Row(
       children: [
