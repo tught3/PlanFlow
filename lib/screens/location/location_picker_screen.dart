@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
@@ -1031,11 +1032,15 @@ enum _MapRenderState {
 enum _ExternalMapTarget {
   google('Google 지도'),
   naver('네이버 지도'),
-  tmap('TMAP');
+  tmap('TMAP'),
+  apple('Apple 지도');
 
   const _ExternalMapTarget(this.label);
 
   final String label;
+
+  /// iOS 전용 지도 옵션인지 여부. Apple 지도는 Android에는 노출하지 않는다.
+  bool get isIosOnly => this == _ExternalMapTarget.apple;
 
   Uri uri(String query) {
     final trimmed = query.trim();
@@ -1049,6 +1054,8 @@ enum _ExternalMapTarget {
       _ExternalMapTarget.naver =>
         Uri.parse('https://map.naver.com/p/search/$encoded'),
       _ExternalMapTarget.tmap => Uri.parse('tmap://search?name=$encoded'),
+      _ExternalMapTarget.apple =>
+        Uri.https('maps.apple.com', '/', <String, String>{'q': trimmed}),
     };
   }
 }
@@ -1090,9 +1097,12 @@ class _ExternalMapButtons extends StatelessWidget {
       null => null,
     };
 
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+
     if (preferred != null) {
       final others = _ExternalMapTarget.values
           .where((t) => t != preferred)
+          .where((t) => isIos || !t.isIosOnly)
           .toList();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1147,13 +1157,19 @@ class _ExternalMapButtons extends StatelessWidget {
       );
     }
 
+    final defaultTargets = <_ExternalMapTarget>[
+      _ExternalMapTarget.google,
+      _ExternalMapTarget.naver,
+      _ExternalMapTarget.tmap,
+      if (isIos) _ExternalMapTarget.apple,
+    ];
+
     return Row(
       children: [
-        button(_ExternalMapTarget.google),
-        const SizedBox(width: 6),
-        button(_ExternalMapTarget.naver),
-        const SizedBox(width: 6),
-        button(_ExternalMapTarget.tmap),
+        for (int i = 0; i < defaultTargets.length; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          button(defaultTargets[i]),
+        ],
       ],
     );
   }
