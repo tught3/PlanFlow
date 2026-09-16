@@ -85,4 +85,48 @@ void main() {
     expect(
         script, isNot(contains(r'''printf '%s\n' "$E2E_ADMOB_TEST_APP_ID"''')));
   });
+
+  test('ATT (App Tracking Transparency) is not integrated', () {
+    // Verify no app_tracking_transparency package dependency
+    final pubspec = read('pubspec.yaml');
+    expect(pubspec, isNot(contains('app_tracking_transparency')));
+
+    // Verify no ATT API calls in codebase
+    final dartFiles = Directory('${root.path}${Platform.pathSeparator}lib')
+        .listSync(recursive: true, followLinks: false)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .toList();
+
+    for (final dartFile in dartFiles) {
+      final content = dartFile.readAsStringSync();
+      expect(content, isNot(contains('ATTrackingManager')),
+          reason:
+              'ATTrackingManager found in ${dartFile.path}; ATT must not be used');
+      expect(content, isNot(contains('requestTrackingAuthorization')),
+          reason:
+              'requestTrackingAuthorization found in ${dartFile.path}; ATT must not be used');
+    }
+
+    // Verify Info.plist has all required permission purpose strings
+    final plist = read('ios/Runner/Info.plist');
+    final requiredKeys = [
+      'NSMicrophoneUsageDescription',
+      'NSSpeechRecognitionUsageDescription',
+      'NSUserTrackingUsageDescription',
+      'NSLocationWhenInUseUsageDescription',
+      'NSCalendarsUsageDescription',
+      'NSCalendarsFullAccessUsageDescription',
+      'NSPhotoLibraryUsageDescription',
+      'NSPhotoLibraryAddUsageDescription',
+    ];
+
+    for (final key in requiredKeys) {
+      final value = plistValue(plist, key);
+      expect(value, isNotNull,
+          reason: '$key is missing from ios/Runner/Info.plist');
+      expect(value!.isNotEmpty, isTrue,
+          reason: '$key in Info.plist is empty or malformed');
+    }
+  });
 }
