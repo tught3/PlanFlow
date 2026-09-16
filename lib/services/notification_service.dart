@@ -112,7 +112,7 @@ class NotificationService {
       criticalAcknowledgedActionId,
       '확인(출발)',
       cancelNotification: true,
-      showsUserInterface: true,
+      showsUserInterface: false,
       semanticAction: SemanticAction.none,
     ),
     AndroidNotificationAction(
@@ -123,6 +123,9 @@ class NotificationService {
       semanticAction: SemanticAction.none,
     ),
   ];
+  @visibleForTesting
+  static List<AndroidNotificationAction> get criticalActionsForTest =>
+      _criticalActions;
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -1273,6 +1276,9 @@ class NotificationService {
 
     if (payload.startsWith('event:')) {
       if (response.actionId == criticalRemindTomorrowActionId) {
+        return null;
+      }
+      if (response.actionId == criticalAcknowledgedActionId) {
         return null;
       }
       final eventId = _eventIdFromEventPayload(payload);
