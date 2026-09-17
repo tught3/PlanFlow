@@ -48,7 +48,7 @@ void main() {
       // the CI-decoded Runner profile against the locally verified
       // regenerated profile, to catch stale/mangled secret delivery.
       '.github/workflows/ios-release.yml':
-          '25671a12b3c1bbb71b2d5c1ae61825af796f9b2371a59feb6b71657b34148fcb',
+          'd8e327f74535f3d153e6a9acfd226b804d7e5f963a812ce66b63ee7b8c4ac9f3',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':

@@ -364,8 +364,13 @@ jobs:
             echo "::error title=BLOCKED_PROFILE_TEAM::Runner and Widget provisioning profiles do not share one TeamIdentifier."
             exit 1
           fi
-          runner_signin_apple="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin' "$runner_plist" 2>/dev/null || true)"
-          if [[ "$runner_signin_apple" == "Default" ]]; then
+          # Entitlements are not secret; dump the decoded profile as XML and
+          # verify SIWA via grep — PlistBuddy single-key Print on this
+          # array-typed key returned empty on the hosted macOS runner
+          # (run 35287761504) even for a SHA-256-verified profile.
+          echo "Decoded runner profile SIWA entitlement XML:"
+          plutil -convert xml1 -o - "$runner_plist" | grep -A3 'com\.apple\.developer\.applesignin' || true
+          if plutil -convert xml1 -o - "$runner_plist" 2>/dev/null | grep -A3 'com\.apple\.developer\.applesignin' | grep -q '<string>Default</string>'; then
             echo "Runner provisioning profile includes Sign In with Apple capability: yes"
           else
             echo "::error title=BLOCKED_RUNNER_PROFILE_SIWA::Runner provisioning profile lacks com.apple.developer.applesignin=Default. Regenerate the profile after enabling Sign In with Apple on the App ID and update the secret."
