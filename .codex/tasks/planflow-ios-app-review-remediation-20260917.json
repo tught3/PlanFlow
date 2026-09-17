@@ -135,8 +135,24 @@
   "release": {
     "workflow": ".github/workflows/ios-release.yml",
     "build_number": "NOT_CREATED",
-    "workflow_run": "NOT_DISPATCHED",
-    "testflight": "BLOCKED_NAMED_REVIEW_AND_INTEGRATION_GATE",
+    "workflow_runs": [
+      {
+        "run": "35170881593",
+        "source_sha": "ebb67f712dc7b502321ecb13300d4fb5dc4990c0",
+        "requested_build": "auto (resolved before Flutter setup)",
+        "status": "cancelled",
+        "evidence": "Runner remained in Run subosito/flutter-action@v2 with no timestamp/log update for more than 10 minutes; no upload step was reached."
+      },
+      {
+        "run": "35171288814",
+        "source_sha": "ebb67f712dc7b502321ecb13300d4fb5dc4990c0",
+        "requested_build": "27",
+        "status": "cancelled",
+        "evidence": "Second macOS runner remained in Run subosito/flutter-action@v2 with no timestamp/log update for more than 10 minutes; no upload step was reached."
+      }
+    ],
+    "workflow_run": "NOT_COMPLETED",
+    "testflight": "BLOCKED_RUNNER_STALL_AND_EXTERNAL_PRIVACY_CORRECTION",
     "archive": "NOT_CREATED",
     "ipa": "NOT_CREATED",
     "apple_upload": "NOT_ATTEMPTED",
@@ -147,7 +163,7 @@
     "blockers": [
       "Required named Explorer, Planner, Implementer, Test Executor, Reviewer, and Integrator terminal reports are unavailable because of the account usage limit.",
       "No independent Reviewer or Integrator inspected the final diff, so the delivery gate forbids COMPLETE.",
-      "No macOS signed archive, IPA, Apple transport, ingestion, or TestFlight AVAILABLE evidence exists for this recovery run.",
+      "Canonical macOS release runs 35170881593 and 35171288814 stalled in Flutter setup and were cancelled before archive/upload; no Build27 archive, IPA, Apple transport, ingestion, or TestFlight AVAILABLE evidence exists for this recovery run.",
       "App Store Connect tracking declaration correction is external and has not been authenticated/read back in this run."
     ],
     "next_action": "Restore named-agent capacity, run independent Reviewer and Integrator on the current diff, then commit task-owned files, push non-force, dispatch the canonical iOS release workflow, and verify Apple ingestion/TestFlight before resubmission."
