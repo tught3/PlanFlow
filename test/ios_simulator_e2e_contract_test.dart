@@ -40,8 +40,12 @@ void main() {
       // 2026-09-18: updated deliberately — NSUserTrackingUsageDescription
       // removed from all three privacy-key gates. The app does not use ATT
       // (no ATTrackingManager / IDFA access), so the key must be absent.
+      // 2026-09-18 (later same day): updated deliberately — new fail-closed
+      // gate verifying the Runner provisioning profile carries
+      // com.apple.developer.applesignin=Default (Build23 rejection fix;
+      // archive previously failed because the profile lacked the capability).
       '.github/workflows/ios-release.yml':
-          '2c6c4d8f4e84dd33b568168aeae4f4b510194ec1c469c829378e1805b1709056',
+          '679191c6fc7b46f21f7738fcb7c73f9c3a2dcbd87d3a1ca01b0b63370fdaada7',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':
