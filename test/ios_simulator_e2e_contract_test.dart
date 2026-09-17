@@ -44,8 +44,11 @@ void main() {
       // gate verifying the Runner provisioning profile carries
       // com.apple.developer.applesignin=Default (Build23 rejection fix;
       // archive previously failed because the profile lacked the capability).
+      // 2026-09-18 (same day): added fail-closed SHA-256/UUID pins comparing
+      // the CI-decoded Runner profile against the locally verified
+      // regenerated profile, to catch stale/mangled secret delivery.
       '.github/workflows/ios-release.yml':
-          '679191c6fc7b46f21f7738fcb7c73f9c3a2dcbd87d3a1ca01b0b63370fdaada7',
+          '25671a12b3c1bbb71b2d5c1ae61825af796f9b2371a59feb6b71657b34148fcb',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':

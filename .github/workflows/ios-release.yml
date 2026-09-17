@@ -322,6 +322,16 @@ jobs:
           printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$widget_profile"
           widget_profile_sha256="$(shasum -a 256 "$widget_profile" | awk '{print $1}')"
           echo "Decoded widget mobileprovision SHA-256: $widget_profile_sha256"
+          # Fail closed on stale/mismatched secret delivery: these values were
+          # verified locally against the regenerated Runner profile that now
+          # carries com.apple.developer.applesignin=Default (Build23 fix).
+          expected_runner_profile_sha256="093eccc9a4387b10d4b7698e94246b18ee513f31a5013b486a961724aaebdf49"
+          runner_profile_sha256="$(shasum -a 256 "$runner_profile" | awk '{print $1}')"
+          echo "Decoded runner mobileprovision SHA-256: $runner_profile_sha256"
+          if [[ "$runner_profile_sha256" != "$expected_runner_profile_sha256" ]]; then
+            echo "::error title=BLOCKED_RUNNER_PROFILE_SECRET_MISMATCH::Decoded Runner profile SHA-256 does not match the locally verified regenerated profile ($expected_runner_profile_sha256). The secret is stale or was mangled in transit; do not archive."
+            exit 1
+          fi
           keychain_password="$(uuidgen)"
           security create-keychain -p "$keychain_password" "$keychain" >/dev/null
           security set-keychain-settings -lut 21600 "$keychain"
@@ -377,6 +387,12 @@ jobs:
           APPLE_TEAM_ID="$profile_team_id"
           echo "APPLE_TEAM_ID=$profile_team_id" >> "$GITHUB_ENV"
           runner_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$runner_plist")
+          expected_runner_profile_uuid="4386a143-5efb-420e-a143-ec52d02f8ba8"
+          if [[ "$runner_uuid" != "$expected_runner_profile_uuid" ]]; then
+            echo "::error title=BLOCKED_RUNNER_PROFILE_UUID_MISMATCH::Decoded Runner profile UUID $runner_uuid does not match the locally verified regenerated profile ($expected_runner_profile_uuid). The secret is stale or was mangled in transit; do not archive."
+            exit 1
+          fi
+          echo "Decoded runner profile UUID matches locally verified value: yes"
           widget_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_plist")
           cp "$runner_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$runner_uuid.mobileprovision"
           cp "$widget_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$widget_uuid.mobileprovision"
