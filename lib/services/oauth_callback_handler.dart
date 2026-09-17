@@ -69,6 +69,7 @@ class OAuthCallbackHandler {
       PlanFlowOAuthProvider.google => 'google',
       PlanFlowOAuthProvider.kakao => 'kakao',
       PlanFlowOAuthProvider.naver => 'naver',
+      PlanFlowOAuthProvider.apple => 'apple',
     };
     _pendingStartedAt = DateTime.now();
     unawaited(persistCurrentPendingCallback());
@@ -81,6 +82,7 @@ class OAuthCallbackHandler {
       PlanFlowOAuthProvider.google => 'google',
       PlanFlowOAuthProvider.kakao => 'kakao',
       PlanFlowOAuthProvider.naver => 'naver',
+      PlanFlowOAuthProvider.apple => 'apple',
     };
     _pendingStartedAt = DateTime.now();
     if (provider == PlanFlowOAuthProvider.naver) {
@@ -712,7 +714,9 @@ class OAuthCallbackHandler {
           ? '카카오'
           : pendingMethod == 'naver'
               ? '네이버'
-              : '소셜';
+              : pendingMethod == 'apple'
+                  ? 'Apple'
+                  : '소셜';
       return '$method 동의 화면에서 권한을 취소했거나 필수 동의가 완료되지 않았습니다. 다시 시도해 주세요.';
     }
     if (combined.contains('manual_linking_disabled')) {

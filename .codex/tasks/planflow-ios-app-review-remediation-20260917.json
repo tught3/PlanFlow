@@ -1,0 +1,155 @@
+{
+  "task_id": "planflow-ios-app-review-remediation-20260917",
+  "status": "BLOCKED_NAMED_ROLES_AND_RELEASE_GATE",
+  "original_request": "Recover the interrupted PlanFlow iOS App Review remediation, add the missing Sign in with Apple path, verify the existing permission/maps/ATT/widget fixes, and continue toward a new TestFlight build without changing the rejected Build23.",
+  "scope": {
+    "in_scope": [
+      "Guideline 4.8 Sign in with Apple source integration",
+      "Guideline 5.1.1(iv) permission UX verification",
+      "Guideline 4 Apple Maps option verification",
+      "Guideline 2.1 ATT/App Privacy source verification",
+      "Guideline 2.1 Widget source and release-contract verification",
+      "Canonical iOS release workflow inspection"
+    ],
+    "out_of_scope": [
+      "FluxStore policy/receipt compression work",
+      "Build23 cancellation, replacement, modification, or resubmission",
+      "Direct App Store Connect metadata mutation without an authenticated canonical workflow"
+    ]
+  },
+  "recovered_state": {
+    "checkout": "E:/FluxStudio/PlanFlow",
+    "branch": "main",
+    "head_before_task": "7d4d571ef634b7d71e5eb63e96817cd227d50a5d",
+    "origin_main_before_task": "9f36f2e8",
+    "foreign_dirty_preserved": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+      "ios/Runner/GeneratedPluginRegistrant.m",
+      "macos/Flutter/GeneratedPluginRegistrant.swift",
+      "AGENTS.md.before-regen.bak",
+      "ios/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png"
+    ],
+    "build23": "historical rejected binary; not mutated"
+  },
+  "changed_files": [
+    "lib/services/auth_service.dart",
+    "lib/services/oauth_callback_handler.dart",
+    "lib/screens/auth/login_screen.dart",
+    "lib/l10n/app_ko.arb",
+    "lib/l10n/app_en.arb",
+    "lib/l10n/app_localizations.dart",
+    "lib/l10n/app_localizations_ko.dart",
+    "lib/l10n/app_localizations_en.dart",
+    "test/services/auth_service_test.dart",
+    "test/ios_e2e_flow05_fake_test.dart",
+    ".codex/tasks/planflow-ios-app-review-remediation-20260917.json"
+  ],
+  "findings": {
+    "sign_in_with_apple": "SOURCE_FIXED: existing dependency and entitlement were present; PlanFlowOAuthProvider.apple, Supabase OAuthProvider.apple, callback persistence/messages, iOS-only Apple button, and localized labels are now connected.",
+    "permission_ux": "SOURCE_PRESENT: iOS settings navigation requires explicit confirmation and denied/terminal states remain neutral.",
+    "apple_maps_option": "SOURCE_PRESENT: Apple Maps target is iOS-only and uses maps.apple.com; external map query schemes are configured.",
+    "app_privacy_tracking": "SOURCE_PRESENT: no ATT API/package/direct IDFA access; current profile records NOT_CONFIGURED/non-tracking evidence. App Store Connect tracking declaration correction remains external and unverified here.",
+    "widget_extension": "SOURCE_PRESENT: widget target, embed, entitlements, bundle identity, and release-contract checks are present. Signed archive proof requires macOS workflow.",
+    "release_workflow": "CANONICAL_PRESENT: .github/workflows/ios-release.yml is workflow_dispatch-only and validates build identity, signing, widget embed, privacy, upload, and ingestion. No run was dispatched because named review/integration gates are unavailable."
+  },
+  "reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mapped_model": "gpt-5.4-mini",
+      "assignment": "Recover current rejection-remediation state and identify unfinished source paths.",
+      "final_report": "UNAVAILABLE: usage limit prevented named Explorer execution; root read-only recovery inspection completed and is recorded above."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mapped_model": "gpt-5.6-terra",
+      "assignment": "Define bounded implementation and verification plan for the five Apple review findings.",
+      "final_report": "UNAVAILABLE: usage limit prevented named Planner execution; root followed the attached bounded recovery scope and preserved foreign work."
+    },
+    {
+      "role": "Complex Implementer",
+      "agent": "flux_complex_implementer",
+      "mapped_model": "gpt-5.6-luna",
+      "assignment": "Complete only the missing Sign in with Apple source path and focused tests.",
+      "changed_files": [
+        "lib/services/auth_service.dart",
+        "lib/services/oauth_callback_handler.dart",
+        "lib/screens/auth/login_screen.dart",
+        "lib/l10n/app_ko.arb",
+        "lib/l10n/app_en.arb",
+        "lib/l10n/app_localizations.dart",
+        "lib/l10n/app_localizations_ko.dart",
+        "lib/l10n/app_localizations_en.dart",
+        "test/services/auth_service_test.dart",
+        "test/ios_e2e_flow05_fake_test.dart"
+      ],
+      "final_report": "UNAVAILABLE: named implementer could not run because the account usage limit was reached; root applied the narrow implementation and did not touch foreign dirty files."
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "mapped_model": "gpt-5.4-mini",
+      "assignment": "Run focused source and release-contract verification.",
+      "final_report": "UNAVAILABLE: named Test Executor could not run because the account usage limit was reached; root fallback evidence is recorded below."
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "mapped_model": "gpt-5.6-luna",
+      "assignment": "Independently inspect final current diff and verification evidence.",
+      "final_report": "UNAVAILABLE: no independent named Reviewer terminal report exists. This is a completion blocker."
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "mapped_model": "gpt-5.6-terra",
+      "assignment": "Reconcile final diff, tests, review, commit, push, and release evidence.",
+      "final_report": "UNAVAILABLE: no named Integrator terminal report exists. This is a completion blocker."
+    }
+  ],
+  "fallback_verification": [
+    {
+      "command": "dart format lib/services/auth_service.dart lib/services/oauth_callback_handler.dart lib/screens/auth/login_screen.dart lib/l10n/app_localizations.dart lib/l10n/app_localizations_ko.dart lib/l10n/app_localizations_en.dart test/services/auth_service_test.dart test/ios_e2e_flow05_fake_test.dart",
+      "exit_code": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "flutter test --no-pub test/services/auth_service_test.dart test/ios_e2e_flow05_fake_test.dart test/ios_permission_onboarding_contract_test.dart test/ios_admob_contract_test.dart test/ios_widget_version_contract_test.dart test/ios_phase2_contract_test.dart test/ios_phase3_native_contract_test.dart test/ios_phase4_identity_contract_test.dart test/ios_release_contract_test.dart",
+      "exit_code": 0,
+      "result": "PASS: all tests passed"
+    },
+    {
+      "command": "dart analyze lib/services/auth_service.dart lib/services/oauth_callback_handler.dart lib/screens/auth/login_screen.dart test/services/auth_service_test.dart test/ios_e2e_flow05_fake_test.dart",
+      "exit_code": 0,
+      "result": "PASS: no issues found"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "result": "PASS; only pre-existing line-ending warnings on dirty files"
+    }
+  ],
+  "release": {
+    "workflow": ".github/workflows/ios-release.yml",
+    "build_number": "NOT_CREATED",
+    "workflow_run": "NOT_DISPATCHED",
+    "testflight": "BLOCKED_NAMED_REVIEW_AND_INTEGRATION_GATE",
+    "archive": "NOT_CREATED",
+    "ipa": "NOT_CREATED",
+    "apple_upload": "NOT_ATTEMPTED",
+    "ingestion": "NOT_VERIFIED"
+  },
+  "completion": {
+    "verdict": "BLOCKED",
+    "blockers": [
+      "Required named Explorer, Planner, Implementer, Test Executor, Reviewer, and Integrator terminal reports are unavailable because of the account usage limit.",
+      "No independent Reviewer or Integrator inspected the final diff, so the delivery gate forbids COMPLETE.",
+      "No macOS signed archive, IPA, Apple transport, ingestion, or TestFlight AVAILABLE evidence exists for this recovery run.",
+      "App Store Connect tracking declaration correction is external and has not been authenticated/read back in this run."
+    ],
+    "next_action": "Restore named-agent capacity, run independent Reviewer and Integrator on the current diff, then commit task-owned files, push non-force, dispatch the canonical iOS release workflow, and verify Apple ingestion/TestFlight before resubmission."
+  }
+}

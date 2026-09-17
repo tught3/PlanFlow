@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/analytics_service.dart';
@@ -257,6 +258,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       'naver' => '네이버',
       'kakao' => '카카오',
       'google' => 'Google',
+      'apple' => 'Apple',
       _ => '소셜',
     };
     OAuthCallbackHandler.clearPendingCallback();
@@ -448,6 +450,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                 onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
                 onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
                 onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
+                showApple: defaultTargetPlatform == TargetPlatform.iOS,
+                onApple: () => _socialLogin(PlanFlowOAuthProvider.apple),
               ),
             ],
           ],
@@ -694,12 +698,16 @@ class _SocialLoginCard extends StatelessWidget {
     required this.onGoogle,
     required this.onKakao,
     required this.onNaver,
+    required this.showApple,
+    required this.onApple,
   });
 
   final bool isLoading;
   final VoidCallback onGoogle;
   final VoidCallback onKakao;
   final VoidCallback onNaver;
+  final bool showApple;
+  final VoidCallback onApple;
 
   @override
   Widget build(BuildContext context) {
@@ -752,6 +760,17 @@ class _SocialLoginCard extends StatelessWidget {
               borderColor: const Color(0xFF03C75A),
               onPressed: isLoading ? null : onNaver,
             ),
+            if (showApple) ...[
+              const SizedBox(height: 8),
+              _BrandLoginButton(
+                label: appL10n(context).appleContinue,
+                mark: '',
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                borderColor: Colors.black,
+                onPressed: isLoading ? null : onApple,
+              ),
+            ],
           ],
         ),
       ),

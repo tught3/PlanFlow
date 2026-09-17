@@ -24,6 +24,7 @@
   "googleContinue": "Continue with Google",
   "kakaoContinue": "Continue with Kakao",
   "naverContinue": "Continue with Naver",
+  "appleContinue": "Continue with Apple",
   "supabaseLoginMissing": "Supabase build settings are required before login.",
   "supabaseSocialMissing": "Supabase build settings are required before social login.",
   "invalidEmail": "Please enter a valid email.",

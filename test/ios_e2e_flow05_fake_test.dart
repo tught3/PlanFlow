@@ -143,6 +143,7 @@ void main() {
         PlanFlowOAuthProvider.google,
         PlanFlowOAuthProvider.kakao,
         PlanFlowOAuthProvider.naver,
+        PlanFlowOAuthProvider.apple,
       ]) {
         expect(
           OAuthCallbackHandler.callbackErrorMessageFor(
@@ -173,10 +174,15 @@ void main() {
         deniedUri,
         pendingMethod: PlanFlowOAuthProvider.naver.name,
       );
+      final appleMessage = OAuthCallbackHandler.callbackErrorMessageFor(
+        deniedUri,
+        pendingMethod: PlanFlowOAuthProvider.apple.name,
+      );
 
       expect(googleMessage, isNotNull);
       expect(kakaoMessage, isNotNull);
       expect(naverMessage, isNotNull);
+      expect(appleMessage, isNotNull);
 
       expect(googleMessage, contains('소셜'));
       expect(googleMessage, isNot(contains('카카오')));
@@ -184,6 +190,7 @@ void main() {
 
       expect(kakaoMessage, contains('카카오'));
       expect(naverMessage, contains('네이버'));
+      expect(appleMessage, contains('Apple'));
     });
   });
 }

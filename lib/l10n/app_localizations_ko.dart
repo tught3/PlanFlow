@@ -81,6 +81,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get naverContinue => '네이버로 계속하기';
 
   @override
+  String get appleContinue => 'Apple로 계속하기';
+
+  @override
   String get supabaseLoginMissing => 'Supabase 빌드 설정값을 먼저 주입해야 로그인할 수 있습니다.';
 
   @override

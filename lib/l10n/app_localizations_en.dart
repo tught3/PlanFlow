@@ -84,6 +84,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get naverContinue => 'Continue with Naver';
 
   @override
+  String get appleContinue => 'Continue with Apple';
+
+  @override
   String get supabaseLoginMissing =>
       'Supabase build settings are required before login.';
 

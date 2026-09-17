@@ -242,6 +242,12 @@ abstract class AppLocalizations {
   /// **'네이버로 계속하기'**
   String get naverContinue;
 
+  /// No description provided for @appleContinue.
+  ///
+  /// In ko, this message translates to:
+  /// **'Apple로 계속하기'**
+  String get appleContinue;
+
   /// No description provided for @supabaseLoginMissing.
   ///
   /// In ko, this message translates to:

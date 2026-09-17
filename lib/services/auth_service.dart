@@ -14,6 +14,7 @@ enum PlanFlowOAuthProvider {
   google,
   kakao,
   naver,
+  apple,
 }
 
 abstract class AuthSessionClient {
@@ -276,6 +277,7 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.google => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
+      PlanFlowOAuthProvider.apple => LaunchMode.inAppBrowserView,
     };
     final forCalendar = purpose == 'calendar-link';
     final effectiveScopes =
@@ -475,6 +477,7 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.kakao => OAuthProvider.kakao,
       PlanFlowOAuthProvider.naver =>
         const OAuthProvider('custom:planflow-naver'),
+      PlanFlowOAuthProvider.apple => OAuthProvider.apple,
     };
   }
 
@@ -496,6 +499,7 @@ class AuthService implements AuthSessionClient {
       // or permission verification does not complete.
       PlanFlowOAuthProvider.naver when forCalendar => 'email,calendar',
       PlanFlowOAuthProvider.naver => 'email',
+      PlanFlowOAuthProvider.apple => null,
     };
   }
 

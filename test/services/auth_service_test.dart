@@ -49,5 +49,13 @@ void main() {
         isNull,
       );
     });
+
+    test('Apple login uses the native Supabase Apple provider contract', () {
+      expect(AuthService.oauthScopesFor(PlanFlowOAuthProvider.apple), isNull);
+      expect(
+        AuthService.oauthQueryParamsFor(PlanFlowOAuthProvider.apple),
+        isNull,
+      );
+    });
   });
 }
