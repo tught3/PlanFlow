@@ -1,15 +1,18 @@
-# PlanFlow — App Store 심사 노트 초안
+# PlanFlow — App Store 심사 노트 + 반려 대응 초안
 
 이 문서는 App Store Connect "심사 정보(App Review Information)" 섹션에 입력할
-심사자용 노트 초안이다. **계정 자격증명·API 키·비밀번호·실제 이메일 주소는
-이 저장소 어디에도 절대 기재하지 않는다** — 아래 검증 명령으로 확인했다.
+심사자용 노트와, 반려(submission 40f5613b-336b-4de8-9c92-b8741b5cf132,
+Build23)에 대한 재제출 대응 초안을 담는다. **계정 자격증명·API 키·비밀번호·
+실제 이메일 주소는 이 저장소 어디에도 절대 기재하지 않는다.**
 
 ## 1. 로그인/데모 계정
 
-`lib/services/auth_service.dart:13-16`에서 확인: PlanFlow는 로그인 필수 앱이며
-지원하는 로그인 방식은 Supabase OAuth 경유 **Google, Kakao, Naver** 3종이다
-(`PlanFlowOAuthProvider` enum). 게스트/비로그인 사용 경로는 이번 조사에서
-확인되지 않았다(UNVERIFIED — 별도 로컬 전용 모드가 있는지는 미조사).
+`lib/services/auth_service.dart`에서 확인: PlanFlow는 로그인 필수 앱이며
+지원하는 로그인 방식은 Supabase OAuth 경유 **Google, Kakao, Naver,
+Apple** 4종이다(`PlanFlowOAuthProvider` enum에 `apple` 포함,
+commit ebb67f71에서 Sign in with Apple 심사 대응 완료).
+`ios/Runner/PlanFlow.entitlements`에 `com.apple.developer.applesignin`이
+선언되어 있다.
 
 App Store 심사자는 이 앱을 실행하려면 로그인이 필요하므로 **심사용 데모 계정이
 필수**다. 계정 아이디/비밀번호 값은:
@@ -22,28 +25,13 @@ App Store Connect 제출 직전 운영자가 직접 테스트 계정을 생성�
 Connect의 "Sign-In required" 섹션에 입력해야 한다(이 문서·저장소에는 넣지
 않는다).
 
-## 2. Sign in with Apple 미구현 — 가이드라인 4.8 리스크
-
-`docs/ios/app-store-metadata.md`의 "로그인 정책 결정" 섹션과 동일한 근거:
-현재 Supabase OAuth provider는 Google·Kakao·Naver뿐이고 **Sign in with Apple은
-구현되어 있지 않다**(`auth_service.dart` 전수 확인, `OAuthProvider.apple`
-참조 없음).
-
-Apple App Store Review Guideline 4.8("Sign in with Apple")은 제3자 소셜
-로그인(Google 등)을 제공하는 앱은 원칙적으로 Sign in with Apple도 동등하게
-제공해야 한다고 요구한다. 예외 조건(예: 기업 전용 계정, 특정 교육/기업
-백엔드 전용 앱 등)에 해당하지 않는 한 **이 상태로 제출하면 4.8 사유로
-반려될 위험이 있다.**
-
-이번 작업 범위에서는 Sign in with Apple을 구현하지 않는다(오케스트레이터
-지시 범위 밖 — Apple/Firebase 설정 변경 금지). 심사 노트에는 이 리스크를
-명시적으로 남기고, 필요 시 운영자가 제출 전 구현 여부를 별도 결정해야 한다.
-
-## 3. 권한 요청과 실제 기능 매핑 (심사자 설명용)
+## 2. 권한 요청과 실제 기능 매핑 (심사자 설명용)
 
 `ios/Runner/Info.plist`에 선언된 권한 문구와 그 권한이 실제로 쓰이는 기능을
-1:1로 매핑한다(파일 직접 확인, `docs/ios/privacy-surface-audit.md`의 Evidence
-matrix와 교차 일치):
+1:1로 매핑한다(commit 8efb6d46에서 `NSUserTrackingUsageDescription`가
+Info.plist에서 **제거**되었으므로 이 표에 없다). 앱은 ATT
+(`ATTrackingManager.requestTrackingAuthorization`)를 요청하지 않고 IDFA에
+직접 접근하지 않는다(`lib/` 및 `ios/Runner` 전수 확인, 매치 없음).
 
 | Info.plist 키 | 문구(원문) | 실제 사용 기능 |
 |---|---|---|
@@ -52,7 +40,6 @@ matrix와 교차 일치):
 | `NSLocationWhenInUseUsageDescription` | "일정 장소를 지도에서 찾고 출발지와 목적지를 확인하려면 위치 권한이 필요합니다." | 일정 장소 지도 검색, 이동시간 계산용 출발지 확인 |
 | `NSPhotoLibraryUsageDescription` | "지도 SDK가 장소 사진을 표시할 수 있도록 사진 보관함 접근 권한이 필요합니다." | Info.plist에 선언된 실제 문자열; 과거 Maps/Photos signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 직접 사진 선택·보관함 읽기·업로드·수집 경로 증거가 아님 |
 | `NSPhotoLibraryAddUsageDescription` | "지도 SDK가 지도 관련 이미지를 사진 보관함에 저장할 수 있도록 사진 추가 권한이 필요합니다." | Info.plist에 선언된 실제 문자열; 과거 signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 직접 사진 쓰기·업로드·수집 경로 증거가 아님 |
-| `NSUserTrackingUsageDescription` | "관련 광고를 제공하고 서비스 이용을 개선하기 위해 기기 식별자 사용 권한이 필요합니다." | 광고(Google Mobile Ads) 식별자 기반 맞춤 광고 동의(ATT) |
 
 심사자 안내 문구 초안:
 
@@ -65,11 +52,15 @@ matrix와 교차 일치):
 3) 사진 보관함(읽기/추가) — 현재 PlanFlow 소스에는 사용자 사진 선택,
    사진 보관함 읽기·쓰기, 업로드 또는 수집 경로가 없습니다. 과거 Maps/Photos
    signed-binary 심볼은 간접/진단 SDK 증거이며 직접 사용을 입증하지 않습니다.
-4) 광고 추적(ATT) — 관련성 있는 광고 제공에 사용되며, 거부해도 앱 기능에는
-   영향이 없습니다.
 ```
 
-## 4. 홈 화면 위젯 사용법 (심사자용 안내)
+### 권한 거부 처리 (Guideline 5.1.1(iv))
+
+commit 75504afe에서 반영: 권한이 거부되면 앱이 이를 존중하며, **설정 앱으로
+자동 리다이렉트하지 않는다**. 설정 앱을 열기 전에는 반드시 사용자에게 명시적
+확인을 받는다. 온보딩도 중립적(neutral)으로, 권한 허용을 강요하지 않는다.
+
+## 3. 홈 화면 위젯 사용법 (심사자용 안내)
 
 `ios/PlanFlowWidget/`(WidgetKit extension, `.entitlements` 포함)가 저장소에
 존재함을 확인했다. 위젯의 정확한 표시 데이터·상호작용 로직(`PlanFlowWidget.swift`
@@ -88,10 +79,63 @@ matrix와 교차 일치):
   화면으로 연결)
 ```
 
-**TODO(사람 확인 필요)**: 위 사용법은 Android 버전 설명 문구를 참고한
-일반적 서술이며, iOS WidgetKit 구현이 정확히 어떤 위젯 크기/타임라인을
-제공하는지는 `PlanFlowWidget.swift`를 직접 열어 재검증해야 한다(이번 조사는
-파일 존재만 확인).
+**PENDING(새 빌드 검증 필요)**: 위젯 extension의 아카이브 레벨 embedding/
+signing은 새 빌드에서 확인 전이다. 위 사용법도 `PlanFlowWidget.swift`를 직접
+열어 위젯 크기/타임라인이 정확히 일치하는지 재검증해야 한다.
+
+## 4. Rejection response draft (submission 40f5613b-336b-4de8-9c92-b8741b5cf132, Build23 → new build)
+
+영문 그대로 App Review에 제출할 항목별 응답 초안. **[PENDING BUILD VERIFICATION]
+표시 항목은 새 빌드 아카이브에서 확인되기 전까지 제출 금지** — 운영자가
+readback 후 표시를 제거해야 한다.
+
+### Guideline 4.8 — Sign in with Apple
+
+> Sign in with Apple is now implemented. The app offers Google, Kakao, Naver,
+> and Apple as equivalent sign-in options on the login screen. Sign in with
+> Apple is fully supported on iOS using the native flow, and the
+> `com.apple.developer.applesignin` entitlement is included in the app.
+
+### Guideline 5.1.1(iv) — Permission denial / Settings redirection
+
+> The app respects permission denials and remains fully functional with
+> reduced functionality when a permission is declined. The app never
+> automatically redirects the user to the Settings app; opening Settings
+> requires an explicit user confirmation step each time. The onboarding flow
+> is neutral and does not pressure users into granting permissions.
+
+### Guideline 4 (Design) — Maps
+
+> On iOS the app now offers Apple Maps as an option in the external map
+> picker (in addition to the existing map provider), so map launching follows
+> the native iOS experience.
+
+### ATT / Guideline 2.1 — Tracking
+
+> The app does not request App Tracking Transparency authorization
+> (`ATTrackingManager.requestTrackingAuthorization` is never called) and does
+> not access the IDFA. The `NSUserTrackingUsageDescription` key has been
+> removed from Info.plist in the new build. App Privacy declarations in App
+> Store Connect are being updated accordingly (Device ID / Advertising Data
+> — tracking purpose: No) to match actual app behavior.
+>
+> **[PENDING — operator action in App Store Connect, until readback]**:
+> App Privacy 변경은 아직 완료로 표기하지 않는다. 운영자가 App Store Connect에서
+> 선언을 수정하고 readback으로 확인한 후에야 "corrected"로 말할 수 있다.
+
+### Widget / Guideline 2.1
+
+> The app includes a home screen widget (WidgetKit extension). Reviewer steps:
+>
+> 1. Long-press the home screen to enter edit mode.
+> 2. Tap the "+" button in the top-left corner to open the widget gallery.
+> 3. Search for "PlanFlow" and add the widget in the desired size.
+>
+> The widget shows upcoming schedules / a monthly calendar view, per the
+> widget size.
+>
+> **[PENDING BUILD VERIFICATION]**: 새 빌드 아카이브에서 widget extension의
+> embedding/signing이 확인되기 전까지 이 문단을 제출하지 않는다.
 
 ## 5. 검증
 
