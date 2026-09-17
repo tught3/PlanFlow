@@ -20,11 +20,11 @@
 - 결정 로그: `05_Decisions/planflow-decisions.md`
 
 ## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 96개). 작업과 관련 있어 보이면 열람할 것.
+전체 목록: `04_Memory/Preference/` (status: confirmed, 총 97개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
-- **context_compaction_before_instruction**: 모든 도구(Claude Code/Desktop, Codex Desktop/CLI, OpenCode) 공통 규칙. 각 세션에서 새 지시가 내려올 때마다(단순 조회·... (`04_Memory/Preference/context_compaction_before_instruction.md`)
-- **push_default_after_commit_policy_reversal**: 커밋이 성공(exit 0)하면 기본적으로 즉시 push한다. "push까지 해달라"는 매번 확인·매번 지시를 기다리지 않는다. CEO가 그 자리에서 명시적으로 "... (`04_Memory/Preference/push_default_after_commit_policy_reversal.md`)
-- **audit_then_stop_handoff_for_cheaper_implementation**: 비단순 작업에서 고성능(고비용) 모델이 감사·조사·설계를 끝내면 구현에 들어가기 직전에 반드시 멈추고 CEO에게 인계 보고한다. CEO가 모델을 바꿔(더 저렴한... (`04_Memory/Preference/audit_then_stop_handoff_for_cheaper_implementation.md`)
-- **stage_handoff_with_model_recommendation**: 鍮꾨떒???묒뾽??紐⑤뱺 ?④퀎 寃쎄퀎(議곗궗?믨뎄?? 援ы쁽?믩━酉? 由щ럭?믪옱?묒뾽, ?ъ옉?끸넂?꾨즺)?먯꽌 諛섎뱶??硫덉텛怨?CEO?먭쾶 ?ㅼ쓬 ?④퀎?... (`04_Memory/Preference/stage_handoff_with_model_recommendation.md`)
-- **하던거_게속해줘**: 하던거 게속해줘 (`04_Memory/Preference/하던거_게속해줘.md`)
+- **계속해**: 계속해 (`04_Memory/Preference/계속해.md`)
+- **auto-finish-after-each-task**: 각 작업 단위가 다 끝나면 (세션 종료뿐 아니라 매 작업 완료 시점마다) 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든, 컴퓨터가 껐다 켜져도. (`04_Memory/Preference/auto-finish-after-each-task.md`)
+- **workspace-hygiene-main-checkout**: 기존 프로젝트 메인 체크아웃과 현재 대화 내 난이도별 서브에이전트를 기본 작업 방식으로 사용한다. 새 worktree, runtime/session 디렉터리 또는... (`04_Memory/Preference/workspace-hygiene-main-checkout.md`)
+- **Independent_review_only_in_E_FluxStudio_PlanFlow**: Independent review only in E:\FluxStudio\PlanFlow. Do not edit/create worktree/session/rev... (`04_Memory/Preference/Independent_review_only_in_E_FluxStudio_PlanFlow.md`)
+- **glm-worker-pipeline-auto**: CEO가 비단순 작업(개발·수정·리팩토링·분석·리뷰)을 지시하면, GLM은 자동으로 worker pipeline 루프를 실행한다. CEO가 모델을 지정하지 않아도... (`04_Memory/Preference/glm-worker-pipeline-auto.md`)
