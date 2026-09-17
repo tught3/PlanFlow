@@ -20,10 +20,14 @@ from pathlib import Path
 REQUIRED = {
     "NSMicrophoneUsageDescription",
     "NSSpeechRecognitionUsageDescription",
-    "NSUserTrackingUsageDescription",
     "NSLocationWhenInUseUsageDescription",
     "NSPhotoLibraryUsageDescription",
     "NSPhotoLibraryAddUsageDescription",
+}
+# App does not use ATT (no ATTrackingManager / IDFA access): the tracking
+# purpose string must stay ABSENT from Runner and Widget plists.
+FORBIDDEN = {
+    "NSUserTrackingUsageDescription",
 }
 FRAMEWORK_KEYS = {
     "AVFoundation": "NSMicrophoneUsageDescription",
@@ -291,6 +295,9 @@ def main() -> int:
         missing = sorted(key for key in REQUIRED if not str(runner.get(key, "")).strip())
         if missing:
             raise SystemExit("BLOCKED_RUNNER_PRIVACY: missing required usage descriptions: " + ", ".join(missing))
+        forbidden_present = sorted(key for key in FORBIDDEN if str(runner.get(key, "")).strip())
+        if forbidden_present:
+            raise SystemExit("BLOCKED_RUNNER_PRIVACY: forbidden usage descriptions present (ATT not integrated): " + ", ".join(forbidden_present))
         if report["widgetForbiddenKeys"]:
             raise SystemExit("BLOCKED_WIDGET_PRIVACY: Widget contains Runner-only usage descriptions: " + ", ".join(report["widgetForbiddenKeys"]))
         print("IOS_PRIVACY_PLIST_GATE: PASS")

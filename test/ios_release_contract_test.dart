@@ -90,8 +90,9 @@ void main() {
     expect(plist, contains('<string>planflow</string>'));
     expect(plist, contains('NSMicrophoneUsageDescription'));
     expect(plist, contains('NSSpeechRecognitionUsageDescription'));
-    expect(plist, contains('NSUserTrackingUsageDescription'));
     expect(plist, contains('NSLocationWhenInUseUsageDescription'));
+    // App does not use ATT (no ATTrackingManager / IDFA), key must be absent.
+    expect(plist, isNot(contains('NSUserTrackingUsageDescription')));
     expect(plist, contains('NSPhotoLibraryUsageDescription'));
     expect(plist, contains('NSPhotoLibraryAddUsageDescription'));
     expect(plist, contains('UIApplicationSceneManifest'));
@@ -255,7 +256,6 @@ void main() {
       final keys = <String, String>{
         'NSMicrophoneUsageDescription': 'mic',
         'NSSpeechRecognitionUsageDescription': 'speech',
-        'NSUserTrackingUsageDescription': 'tracking',
         'NSLocationWhenInUseUsageDescription': 'location',
         'NSPhotoLibraryUsageDescription': 'photos',
         'NSPhotoLibraryAddUsageDescription': 'photo add',
@@ -320,7 +320,6 @@ void main() {
       final keys = <String, String>{
         'NSMicrophoneUsageDescription': 'mic',
         'NSSpeechRecognitionUsageDescription': 'speech',
-        'NSUserTrackingUsageDescription': 'tracking',
         'NSLocationWhenInUseUsageDescription': 'location',
         'NSPhotoLibraryUsageDescription': 'photos',
         'NSPhotoLibraryAddUsageDescription': 'photo add',
@@ -510,7 +509,6 @@ void main() {
       final keys = <String, String>{
         'NSMicrophoneUsageDescription': 'mic',
         'NSSpeechRecognitionUsageDescription': 'speech',
-        'NSUserTrackingUsageDescription': 'tracking',
         'NSLocationWhenInUseUsageDescription': 'location',
         'NSPhotoLibraryUsageDescription': 'photos',
         'NSPhotoLibraryAddUsageDescription': 'photo add',
@@ -563,7 +561,7 @@ void main() {
       final runnerPlist =
           File('${bundle.path}${Platform.pathSeparator}Info.plist');
       runnerPlist.writeAsStringSync(
-        '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Runner</string><key>NSMicrophoneUsageDescription</key><string>mic</string><key>NSSpeechRecognitionUsageDescription</key><string>speech</string><key>NSUserTrackingUsageDescription</key><string>tracking</string><key>NSLocationWhenInUseUsageDescription</key><string>location</string><key>NSPhotoLibraryUsageDescription</key><string>photos</string><key>NSPhotoLibraryAddUsageDescription</key><string>photo add</string></dict></plist>''',
+        '''<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Runner</string><key>NSMicrophoneUsageDescription</key><string>mic</string><key>NSSpeechRecognitionUsageDescription</key><string>speech</string><key>NSLocationWhenInUseUsageDescription</key><string>location</string><key>NSPhotoLibraryUsageDescription</key><string>photos</string><key>NSPhotoLibraryAddUsageDescription</key><string>photo add</string></dict></plist>''',
       );
       final widgetPlist =
           File('${temp.path}${Platform.pathSeparator}widget.plist');
@@ -703,7 +701,6 @@ echo AVFoundation.framework
     final requiredPrivacyKeys = <String>{
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
-      'NSUserTrackingUsageDescription',
       'NSLocationWhenInUseUsageDescription',
       'NSPhotoLibraryUsageDescription',
       'NSPhotoLibraryAddUsageDescription',
@@ -1056,7 +1053,6 @@ xcode_version="${xcode_version_output%%$'\n'*}"
         '<key>CFBundleExecutable</key><string>Runner</string>'
         '<key>NSMicrophoneUsageDescription</key><string>mic</string>'
         '<key>NSSpeechRecognitionUsageDescription</key><string>speech</string>'
-        '<key>NSUserTrackingUsageDescription</key><string>tracking</string>'
         '<key>NSLocationWhenInUseUsageDescription</key><string>location</string>'
         '<key>NSPhotoLibraryUsageDescription</key><string>photos</string>'
         '<key>NSPhotoLibraryAddUsageDescription</key><string>photo-add</string>'

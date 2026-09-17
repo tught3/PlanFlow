@@ -113,7 +113,6 @@ void main() {
     final requiredKeys = [
       'NSMicrophoneUsageDescription',
       'NSSpeechRecognitionUsageDescription',
-      'NSUserTrackingUsageDescription',
       'NSLocationWhenInUseUsageDescription',
       'NSCalendarsUsageDescription',
       'NSCalendarsFullAccessUsageDescription',
@@ -128,5 +127,11 @@ void main() {
       expect(value!.isNotEmpty, isTrue,
           reason: '$key in Info.plist is empty or malformed');
     }
+
+    // App does not use ATT (no ATTrackingManager / IDFA access), so the
+    // tracking purpose string must be absent, not present.
+    expect(plistValue(plist, 'NSUserTrackingUsageDescription'), isNull,
+        reason:
+            'NSUserTrackingUsageDescription must not appear in ios/Runner/Info.plist; ATT is not integrated');
   });
 }

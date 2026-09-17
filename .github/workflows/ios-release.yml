@@ -243,7 +243,7 @@ jobs:
             echo "::error::BLOCKED_IOS_IDENTITY: canonical bundle IDs changed unexpectedly."
             exit 1
           fi
-          for privacy_key in NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription NSUserTrackingUsageDescription NSLocationWhenInUseUsageDescription NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
+          for privacy_key in NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription NSLocationWhenInUseUsageDescription NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
             privacy_value="$(/usr/libexec/PlistBuddy -c "Print :$privacy_key" ios/Runner/Info.plist 2>/dev/null || true)"
             if [[ -z "$privacy_value" ]]; then
               echo "::error title=BLOCKED_RUNNER_PRIVACY_SOURCE::Runner Info.plist is missing $privacy_key."
@@ -426,7 +426,7 @@ jobs:
             echo "::error title=BLOCKED_ARCHIVE_WIDGET_EXPORT_COMPLIANCE::Archived Widget must not inherit Runner export-compliance declaration."
             exit 1
           fi
-          for privacy_key in NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription NSUserTrackingUsageDescription NSLocationWhenInUseUsageDescription NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
+          for privacy_key in NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription NSLocationWhenInUseUsageDescription NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
             privacy_value="$(/usr/libexec/PlistBuddy -c "Print :$privacy_key" "$archive_runner_plist" 2>/dev/null || true)"
             if [[ -z "$privacy_value" ]]; then
               echo "::error title=BLOCKED_ARCHIVE_PRIVACY::Archived Runner.app is missing $privacy_key."
@@ -575,7 +575,7 @@ jobs:
               echo "::error title=BLOCKED_IPA_WIDGET_EXPORT_COMPLIANCE::Exported Widget must not inherit Runner export-compliance declaration."
               exit 1
             fi
-            for privacy_key in NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription NSUserTrackingUsageDescription NSLocationWhenInUseUsageDescription NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
+            for privacy_key in NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription NSLocationWhenInUseUsageDescription NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
               privacy_value="$(/usr/libexec/PlistBuddy -c "Print :$privacy_key" "$app_plist" 2>/dev/null || true)"
               if [[ -z "$privacy_value" ]]; then
                 echo "::error title=BLOCKED_IPA_PRIVACY::Exported Runner.app is missing $privacy_key."

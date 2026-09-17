@@ -535,7 +535,8 @@ class WorkflowTextTests(unittest.TestCase):
     # test (test/ios_release_contract_test.dart) asserted an exact 6-key
     # list that omitted NSCalendarsUsageDescription and
     # NSCalendarsFullAccessUsageDescription, so it always failed against
-    # this 8-key workflow and never actually guarded the calendar keys.
+    # this 8-key workflow (now 7-key after the ATT key removal) and never
+    # actually guarded the calendar keys.
     # Build 22's on-device fix for EKEventStore.requestFullAccessToEvents
     # (see commit bc05df2f) depends on
     # NSCalendarsFullAccessUsageDescription being present on iOS 17+; if it
@@ -554,7 +555,6 @@ class WorkflowTextTests(unittest.TestCase):
         {
             "NSMicrophoneUsageDescription",
             "NSSpeechRecognitionUsageDescription",
-            "NSUserTrackingUsageDescription",
             "NSLocationWhenInUseUsageDescription",
             "NSCalendarsUsageDescription",
             "NSCalendarsFullAccessUsageDescription",
@@ -562,6 +562,9 @@ class WorkflowTextTests(unittest.TestCase):
             "NSPhotoLibraryAddUsageDescription",
         }
     )
+    # App does not use ATT (no ATTrackingManager / IDFA access): the tracking
+    # key must not appear in any privacy-key gate list.
+    FORBIDDEN_PRIVACY_KEYS = frozenset({"NSUserTrackingUsageDescription"})
 
     def _privacy_key_for_loops(self):
         # Returns the ordered list of privacy keys declared in each
@@ -602,6 +605,14 @@ class WorkflowTextTests(unittest.TestCase):
         for layer_name, keys in zip(layer_names, loops):
             with self.subTest(layer=layer_name):
                 actual = set(keys)
+                forbidden_present = self.FORBIDDEN_PRIVACY_KEYS & actual
+                self.assertFalse(
+                    forbidden_present,
+                    f"The {layer_name} privacy-key gate lists forbidden "
+                    f"key(s) {sorted(forbidden_present)!r}; ATT is not "
+                    f"integrated so NSUserTrackingUsageDescription must be "
+                    f"absent everywhere.",
+                )
                 missing = self.REQUIRED_PRIVACY_KEYS - actual
                 self.assertFalse(
                     missing,

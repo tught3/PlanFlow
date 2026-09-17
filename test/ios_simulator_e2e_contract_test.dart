@@ -37,8 +37,11 @@ void main() {
       // that exactly one of its two branches always runs; it now also notes
       // that an earlier-step failure skips both, per GitHub's implicit
       // success() on step-level `if:`).
+      // 2026-09-18: updated deliberately — NSUserTrackingUsageDescription
+      // removed from all three privacy-key gates. The app does not use ATT
+      // (no ATTrackingManager / IDFA access), so the key must be absent.
       '.github/workflows/ios-release.yml':
-          'f189c8fda2f4108926c6104c533dbe9f173d7d6991e8256c6b07d52e661b7d85',
+          '2c6c4d8f4e84dd33b568168aeae4f4b510194ec1c469c829378e1805b1709056',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':
