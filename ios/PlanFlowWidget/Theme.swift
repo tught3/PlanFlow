@@ -12,8 +12,8 @@ enum PlanFlowTheme {
   static func color(_ hexLight: String, dark darkHex: String) -> Color {
     Color(uiColor: UIColor { trait in
       trait.userInterfaceStyle == .dark
-        ? UIColor(PlanFlowTheme.rgba(darkHex))
-        : UIColor(PlanFlowTheme.rgba(hexLight))
+        ? PlanFlowTheme.rgba(darkHex)
+        : PlanFlowTheme.rgba(hexLight)
     })
   }
 
