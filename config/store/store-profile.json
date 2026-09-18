@@ -2027,7 +2027,7 @@
       "note": "[decision-path: C] 사용자 확정(2026-09-16): PlanFlow is a scheduling/calendar app with no medical/health-claims feature or copy. requiresHumanAuthority/approval left unchanged per this pass's instructions (approval handled separately at receipt-issuance stage)."
     },
     "encryption": {
-      "value": "EXEMPT_STANDARD_ENCRYPTION_ONLY",
+      "value": false,
       "source": "CODE_EVIDENCE",
       "evidence": [
         "ios/Runner/Info.plist:9-10"
