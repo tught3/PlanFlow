@@ -25,7 +25,12 @@ void main() {
       holidayDates: const {'2026-09-03': '개천절'},
     );
     final restored = WidgetSchedulePayload.decode(payload.encode());
-    expect(restored.schemaVersion, 1);
+    expect(
+      restored.schemaVersion,
+      WidgetSchedulePayload.currentSchemaVersion,
+      reason: 'Decoded payloads keep the current schema version (v2 adds '
+          'optional month/week projections on top of v1).',
+    );
     expect(restored.events.single.toJson(), event.toJson());
     expect(restored.dayCounts['2026-09-01'], 1);
     expect(restored.holidayDates['2026-09-03'], '개천절');

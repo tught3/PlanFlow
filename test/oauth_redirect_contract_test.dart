@@ -83,4 +83,43 @@ void main() {
         reason:
             'Info.plist CFBundleURLTypes 블록 안에 env.dart scheme(${parsed.scheme})이 없다');
   });
+
+  test('iOS Apple login uses native sign_in_with_apple path, not browser', () {
+    final source = file('lib/services/auth_service.dart').readAsStringSync();
+
+    // signInWithOAuth가 iOS에서 Apple provider를 네이티브 경로로 우회하는지.
+    expect(source, contains('_signInWithAppleNativeIos'),
+        reason: 'iOS Apple 네이티브 분기 메서드가 없다');
+    final nativeBranch = RegExp(
+      'provider == PlanFlowOAuthProvider\\.apple[\\s\\S]{0,120}'
+      'Platform\\.isIOS',
+    ).firstMatch(source);
+    expect(nativeBranch, isNotNull,
+        reason: 'signInWithOAuth에서 apple && Platform.isIOS 분기가 없다');
+
+    // 네이티브 경로는 Supabase signInWithIdToken(apple) + raw nonce 규약.
+    expect(source, contains('signInWithIdToken'),
+        reason: 'Apple 네이티브 경로가 signInWithIdToken을 사용하지 않는다');
+    expect(source, contains('nonce: rawNonce'),
+        reason: 'Supabase에는 raw nonce를 전달해야 한다(해시 nonce는 Apple 요청에만)');
+    expect(source, contains('nonce: hashedNonce'),
+        reason: 'Apple credential 요청에는 해시 nonce를 전달해야 한다');
+    expect(source, contains('AuthorizationErrorCode.canceled'),
+        reason: '사용자 취소를 일반 실패와 구분해야 한다');
+  });
+
+  test('iOS browser-based OAuth providers use externalApplication', () {
+    final source = file('lib/services/auth_service.dart').readAsStringSync();
+
+    final launchModeDecision = RegExp(
+      r'final launchMode = !kIsWeb[\s\S]{0,20}?&&\s+Platform\.isIOS[\s\S]{0,200}?'
+      r'LaunchMode\.externalApplication\s*\n\s*:\s*LaunchMode\.inAppBrowserView',
+    ).firstMatch(source);
+    expect(launchModeDecision, isNotNull,
+        reason:
+            'launchMode 결정이 iOS + 브라우저 provider에 대해 '
+            'externalApplication / 그 외 inAppBrowserView 삼항이 아니다');
+    // Apple은 iOS 네이티브 경로로 우회되므로 제외 조건이 있어야 한다.
+    expect(launchModeDecision!.group(0), contains('apple'));
+  });
 }

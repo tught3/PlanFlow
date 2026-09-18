@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -9,6 +14,12 @@ import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
 import 'activity_tracking_service.dart';
 import 'oauth_callback_handler.dart';
+
+/// iOS 네이티브 Apple 로그인에서 사용자가 시트를 취소한 경우.
+/// UI에서는 일반 실패가 아니라 조용히 로딩만 해제해야 한다.
+class AppleSignInCanceledException implements Exception {
+  const AppleSignInCanceledException();
+}
 
 enum PlanFlowOAuthProvider {
   google,
@@ -116,6 +127,15 @@ class AuthService implements AuthSessionClient {
         'sessionPresent=${_client.auth.currentSession != null}',
       );
     }
+    // iOS Apple 로그인은 브라우저 리다이렉트 대신 네이티브 시트를 사용한다.
+    // Supabase 브라우저 OAuth 경로는 Apple provider가 대시보드에서 비활성이면
+    // 400("Unsupported provider")을 뱉고, 네이티브 경로는 Sign in with Apple
+    // 자체(capability + entitlement)만 있으면 되므로 Supabase 설정과 무관하다.
+    if (provider == PlanFlowOAuthProvider.apple &&
+        !kIsWeb &&
+        Platform.isIOS) {
+      return _signInWithAppleNativeIos();
+    }
     final uri = await buildOAuthSignInUri(
       provider,
       forceConsent: forceConsent,
@@ -140,6 +160,86 @@ class AuthService implements AuthSessionClient {
       queryParams: queryParams,
       purpose: forCalendar ? 'calendar-link' : 'sign-in',
     );
+  }
+
+  /// iOS 네이티브 Apple 로그인: sign_in_with_apple 시트 → Supabase
+  /// signInWithIdToken. 브라우저 launchUrl과 pending-callback 마킹을 우회한다.
+  ///
+  /// nonce 규약: 해시된 nonce를 Apple credential 요청에 넣고, **raw nonce**를
+  /// Supabase signInWithIdToken에 전달한다(Supabase가 서버에서 sha256으로
+  /// 대조한다).
+  Future<bool> _signInWithAppleNativeIos() async {
+    final rawNonce = generateRawNonce();
+    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: const [
+          AppleIDAuthorizationScopes.fullName,
+          AppleIDAuthorizationScopes.email,
+        ],
+        nonce: hashedNonce,
+      );
+      // banned-ok: runtime Apple credential token from sign_in_with_apple, not a hardcoded secret
+      final idToken = credential.identityToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw const AuthException('Apple identityToken is missing');
+      }
+      final response = await _client.auth.signInWithIdToken(
+        provider: OAuthProvider.apple,
+        idToken: idToken,
+        nonce: rawNonce,
+      );
+      unawaited(_tryEnsureProfile(response.user));
+      // Apple은 이름을 첫 로그인 1회만 전달하므로, 오는 즉시 프로필에 기록한다.
+      unawaited(_captureAppleProfileName(credential, response.user));
+      return true;
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code == AuthorizationErrorCode.canceled) {
+        debugPrint('Apple native sign-in canceled by user');
+        OAuthCallbackHandler.clearPendingCallback();
+        throw const AppleSignInCanceledException();
+      }
+      rethrow;
+    }
+  }
+
+  /// Supabase signInWithIdToken용 raw nonce (32바이트 → base64).
+  @visibleForTesting
+  static String generateRawNonce([Random? random]) {
+    final bytes = List<int>.generate(
+      32,
+      (_) => (random ?? Random.secure()).nextInt(256),
+    );
+    return base64.encode(bytes);
+  }
+
+  /// 첫 Apple 로그인 시 1회만 전달되는 이름을 users 프로필에 기록한다.
+  /// 실패해도 로그인 흐름은 유지된다.
+  Future<void> _captureAppleProfileName(
+    AuthorizationCredentialAppleID credential,
+    User? user,
+  ) async {
+    final givenName = credential.givenName?.trim() ?? '';
+    final familyName = credential.familyName?.trim() ?? '';
+    final displayName = [familyName, givenName]
+        .where((part) => part.isNotEmpty)
+        .join(' ')
+        .trim();
+    if (user == null || displayName.isEmpty) {
+      return;
+    }
+    try {
+      await _client.from('users').upsert(
+        <String, dynamic>{
+          'id': user.id,
+          if (user.email != null) 'email': user.email,
+          'name': displayName,
+        },
+        onConflict: 'id',
+      );
+    } catch (error) {
+      debugPrint('Apple profile name capture skipped: ${logSafeText(error)}');
+    }
   }
 
   Future<Uri> buildOAuthSignInUri(
@@ -273,12 +373,17 @@ class AuthService implements AuthSessionClient {
     // 드러나는 문제가 있었다. Custom Tab(inAppBrowserView)은 앱과 같은
     // 태스크 안에 머물러 이 문제가 없고, Google의 WebView 로그인 차단 정책도
     // Custom Tab은 허용 대상이라 카카오/네이버와 동일하게 통일한다.
-    final launchMode = switch (appProvider) {
-      PlanFlowOAuthProvider.google => LaunchMode.inAppBrowserView,
-      PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
-      PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
-      PlanFlowOAuthProvider.apple => LaunchMode.inAppBrowserView,
-    };
+    // iOS는 반대: inAppBrowserView(SFSafariViewController)는 planflow://
+    // 리다이렉트를 감지해도 스스로 닫히지 않아 로그인 후 브라우저 시트가
+    // 남는다. 외부 Safari는 커스텀 스킴 리다이렉트에서 자동으로 닫히므로
+    // 브라우저 기반 provider(google/kakao/naver)는 iOS에서
+    // externalApplication을 사용한다. Apple은 iOS에서 네이티브 시트 경로로
+    // 우회되므로 여기까지 오지 않는다.
+    final launchMode = !kIsWeb &&
+            Platform.isIOS &&
+            appProvider != PlanFlowOAuthProvider.apple
+        ? LaunchMode.externalApplication
+        : LaunchMode.inAppBrowserView;
     final forCalendar = purpose == 'calendar-link';
     final effectiveScopes =
         oauthScopesFor(appProvider, forCalendar: forCalendar) ?? 'default';

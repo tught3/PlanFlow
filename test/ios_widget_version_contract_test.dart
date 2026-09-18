@@ -200,4 +200,100 @@ void main() {
         pubspecVersion!.group(1));
     expect(settings['PLANFLOW_WIDGET_BUILD_NUMBER'], pubspecVersion.group(2));
   });
+
+  group('widget schedule payload v2 contract', () {
+    String contract() => readFile(
+        'lib${Platform.pathSeparator}services${Platform.pathSeparator}'
+        'widget_schedule_contract.dart');
+
+    test('schema version is bumped to 2', () {
+      expect(
+        contract(),
+        contains('static const int currentSchemaVersion = 2;'),
+        reason: 'widget_schedule_payload_v2 requires the Dart contract to '
+            'declare schemaVersion 2.',
+      );
+    });
+
+    test('v2 adds month/week projections without removing v1 keys', () {
+      final source = contract();
+      // v1 keys stay.
+      expect(source, contains("'holidayDates'"));
+      expect(source, contains("'dayCounts'"));
+      // v2 additive keys.
+      expect(source, contains('WidgetMonthPayload'));
+      expect(source, contains('WidgetMonthCellPayload'));
+      expect(source, contains('WidgetWeekPayload'));
+      expect(source, contains('WidgetWeekDayPayload'));
+      expect(source, contains("'segment'"));
+      expect(source, contains("'showTitle'"));
+    });
+
+    test('home widget service dual-writes v2 alongside v1', () {
+      final service = readFile('lib${Platform.pathSeparator}services'
+          '${Platform.pathSeparator}home_widget_service.dart');
+      expect(service, contains("'widget_schedule_payload_v1'"));
+      expect(service, contains("'widget_schedule_payload_v2'"),
+          reason: 'The v2 key must be written from the same Dart schedule '
+              'truth, never a second source.');
+    });
+  });
+
+  group('WidgetKit bundle lists all seven Android widget counterparts', () {
+    /// (Swift kind, Android provider class) pairs.
+    const expectedKinds = <(String, String)>[
+      ('PlanFlowWidget', 'PlanFlowHomeWidgetProvider'),
+      ('PlanFlowMonthlyWidget', 'PlanFlowMonthlyWidgetProvider'),
+      ('PlanFlowVerticalScheduleWidget', 'PlanFlowVerticalScheduleWidgetProvider'),
+      ('PlanFlowWeeklyWidget', 'PlanFlowWeeklyWidgetProvider'),
+      ('PlanFlowWeeklyListWidget', 'PlanFlowWeeklyListWidgetProvider'),
+      ('PlanFlowMicWidget', 'PlanFlowMicWidgetProvider'),
+      ('PlanFlowGroupCalendarWidget', 'PlanFlowGroupCalendarWidgetProvider'),
+    ];
+
+    String widgetSources() {
+      final dir = Directory(
+          '$root${Platform.pathSeparator}ios'
+          '${Platform.pathSeparator}PlanFlowWidget');
+      return dir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.swift'))
+          .map((file) => file.readAsStringSync().replaceAll('\r\n', '\n'))
+          .join('\n');
+    }
+
+    test('bundle registers exactly the seven widget kinds', () {
+      final source = widgetSources();
+      for (final kind in expectedKinds.map((pair) => pair.$1)) {
+        expect(
+          source,
+          contains('kind: "$kind"'),
+          reason: '$kind must be registered in the PlanFlowWidgetBundle so '
+              'the iOS widget gallery offers all seven Android counterparts.',
+        );
+      }
+      // Dart writes the iOS kind for the group widget refresh.
+      final groupService = readFile('lib${Platform.pathSeparator}features'
+          '${Platform.pathSeparator}groups${Platform.pathSeparator}services'
+          '${Platform.pathSeparator}group_calendar_widget_service.dart');
+      expect(groupService, contains("'PlanFlowGroupCalendarWidget'"));
+    });
+
+    test('payload decoder keeps the v1 fallback and deep-link hosts', () {
+      final source = widgetSources();
+      expect(source, contains('widget_schedule_payload_v1'),
+          reason: 'The decoder must fall back to the v1 payload key so old '
+              'data keeps rendering.');
+      expect(source, contains('widget_schedule_payload_v2'));
+      expect(source, contains('planflow://voice-launcher'));
+      expect(source, contains('planflow://calendar'));
+      expect(source, contains('planflow://event/'));
+      expect(source, contains('planflow://day/'));
+      expect(source, contains('planflow://group-calendar'));
+      expect(source, contains('containerBackground(for: .widget)'),
+          reason: 'iOS 17+ widgets must declare a container background '
+              '(fixes the accidental black container).');
+    });
+  });
 }

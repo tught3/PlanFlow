@@ -540,8 +540,14 @@ void main() {
     final canonicalPayload = jsonDecode(
       platform.savedValues['widget_schedule_payload_v1'] as String,
     ) as Map<String, dynamic>;
-    expect(canonicalPayload['schemaVersion'], 1);
+    expect(canonicalPayload['schemaVersion'], 2);
     expect(canonicalPayload['events'], isA<List<dynamic>>());
+    // v2 dual-writes the same canonical JSON (plus month/week projections)
+    // under widget_schedule_payload_v2 from the same Dart schedule truth.
+    expect(platform.savedValues['widget_schedule_payload_v2'],
+        platform.savedValues['widget_schedule_payload_v1']);
+    expect(canonicalPayload['month'], isA<Map<String, dynamic>>());
+    expect(canonicalPayload['week'], isA<Map<String, dynamic>>());
     expect(platform.savedValues['month_offset_-1_cell_6_day'], 30);
     expect(
       platform.savedValues['month_offset_-1_cell_6_event_1_title'],

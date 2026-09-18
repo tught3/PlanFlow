@@ -192,6 +192,10 @@ class LocationLookupService {
     // 유효한 캐시 항목이 있으면 즉시 반환.
     final cached = _resultCache[cacheKey];
     if (cached != null && !cached.isExpired) {
+      debugPrint(
+        'LocationLookup search query="$normalized" cacheHit=true '
+        'results=${cached.result.results.length}',
+      );
       return cached.result;
     }
 
@@ -234,6 +238,10 @@ class LocationLookupService {
     GeoPoint? origin,
     LocationLookupProvider? preferredProvider,
   }) async {
+    debugPrint(
+      'LocationLookup search query="$normalized" cacheHit=false '
+      'preferredProvider=${preferredProvider?.name}',
+    );
     if (_isBroadGenericPlaceQuery(normalized)) {
       return LocationLookupSearchResult(
         originalQuery: normalized,
@@ -848,33 +856,147 @@ class LocationLookupService {
     required GeoPoint? origin,
     required LocationLookupProvider? preferredProvider,
   }) {
-    if (results.length < 2) {
+    if (results.isEmpty) {
       return results;
     }
+
+    // 진단 로그 — 개인정보/시크릿 없음. 쿼리·provider·좌표·점수만 출력.
+    debugPrint(
+      'LocationLookup rank query="$query" count=${results.length} '
+      'origin=${origin != null}',
+    );
+
     final originalIndex = <LocationLookupResult, int>{
       for (var index = 0; index < results.length; index++) results[index]: index,
     };
-    final ranked = List<LocationLookupResult>.of(results);
-    ranked.sort((a, b) {
-      final scoreCompare = _relevanceScore(
-        query,
-        b,
-        origin: origin,
-        preferredProvider: preferredProvider,
-      ).compareTo(
-        _relevanceScore(
-          query,
-          a,
-          origin: origin,
-          preferredProvider: preferredProvider,
+
+    // tier: 1 = 이름 강매칭(정확/접두/포함/오탈자 근접), 0 = 그 외(주소/지역 힌트만).
+    // 강한 이름 매칭 POI는 점수가 어떻든 geocode/주소-only 결과보다 위에 온다.
+    final entries = <({LocationLookupResult result, double score, int tier})>[
+      for (final result in results)
+        (
+          result: result,
+          score: _relevanceScore(
+            query,
+            result,
+            origin: origin,
+            preferredProvider: preferredProvider,
+          ),
+          tier: _hasStrongNameMatch(query, result) ? 1 : 0,
         ),
+    ];
+    for (final entry in entries) {
+      debugPrint(
+        'LocationLookup candidate provider=${entry.result.provider.name} '
+        'tier=${entry.tier} score=${entry.score.toStringAsFixed(1)} '
+        'name="${entry.result.name}" address="${entry.result.address}" '
+        'lat=${entry.result.latitude} lng=${entry.result.longitude}',
       );
+    }
+
+    // 무관 결과 가드: 어떤 후보도 검색어와 텍스트적 친화력(이름/주소 유사,
+    // 토큰 겹침, 지역 접두사, 로마자 지명)이 없으면 전부 무관하다고 보고
+    // 엉뚱한 마커를 자신 있게 보여주지 않는다. 일부라도 관련 후보가 있으면
+    // 목록은 유지한다(정렬로 관련 후보가 위로 옴).
+    final hasRelevant = entries.any((e) => _hasSearchAffinity(query, e.result));
+    if (!hasRelevant) {
+      debugPrint(
+        'LocationLookup all ${entries.length} candidates irrelevant for '
+        'query="$query" → returning empty',
+      );
+      return const <LocationLookupResult>[];
+    }
+
+    entries.sort((a, b) {
+      final tierCompare = b.tier.compareTo(a.tier);
+      if (tierCompare != 0) {
+        return tierCompare;
+      }
+      final scoreCompare = b.score.compareTo(a.score);
       if (scoreCompare != 0) {
         return scoreCompare;
       }
-      return (originalIndex[a] ?? 0).compareTo(originalIndex[b] ?? 0);
+      return (originalIndex[a.result] ?? 0)
+          .compareTo(originalIndex[b.result] ?? 0);
     });
-    return ranked;
+    return <LocationLookupResult>[
+      for (final entry in entries) entry.result,
+    ];
+  }
+
+  /// 이름 수준의 강한 매칭 여부 — 정확/접두/포함/역포함/오탈자 근접.
+  /// 주소(label) 매칭은 포함하지 않는다(주소-only 결과는 tier 0).
+  bool _hasStrongNameMatch(String query, LocationLookupResult result) {
+    final normalizedQuery = _compactSearchText(query);
+    final nameCompact = _compactSearchText(result.name);
+    if (normalizedQuery.isEmpty || nameCompact.isEmpty) {
+      return false;
+    }
+    if (nameCompact == normalizedQuery ||
+        nameCompact.startsWith(normalizedQuery) ||
+        nameCompact.contains(normalizedQuery) ||
+        normalizedQuery.contains(nameCompact)) {
+      return true;
+    }
+    final maxLen = math.max(nameCompact.length, normalizedQuery.length);
+    return maxLen >= 3 &&
+        _editDistance(nameCompact, normalizedQuery) <=
+            _nearMatchMaxDistance(maxLen);
+  }
+
+  /// 결과가 검색어와 텍스트적으로 조금이라도 연관이 있는지.
+  /// 점수와 무관하게 "전혀 연관 없음"을 판정하기 위한 게이트.
+  bool _hasSearchAffinity(String query, LocationLookupResult result) {
+    final normalizedQuery = _compactSearchText(query);
+    if (normalizedQuery.isEmpty) {
+      return true;
+    }
+    if (_hasStrongNameMatch(query, result)) {
+      return true;
+    }
+    final nameCompact = _compactSearchText(result.name);
+    final label = _compactSearchText('${result.name} ${result.address}');
+    if (nameCompact.contains(normalizedQuery) ||
+        normalizedQuery.contains(nameCompact) ||
+        label.contains(normalizedQuery) ||
+        normalizedQuery.contains(label)) {
+      return true;
+    }
+    // 토큰 단위 겹침
+    final queryTokens = _tokenize(query)
+        .map(_removeKoreanParticleSuffix)
+        .map(_removeLocationSuffix)
+        .map(_compactSearchText)
+        .where((token) => token.length >= 2)
+        .toList(growable: false);
+    for (final token in queryTokens) {
+      if (label.contains(token)) {
+        return true;
+      }
+    }
+    // 지역 힌트 겹침
+    for (final region in _matchedKoreanRegionHints(query)) {
+      if (_containsAlias(nameCompact, region) ||
+          _containsAlias(_compactSearchText(result.address), region)) {
+        return true;
+      }
+    }
+    // 쿼리 앞 2글자(지역 접두사, 예: "강릉아산병원"의 "강릉")가 이름/주소에
+    // 있으면 같은 지역 후보 — 무관 판정 금지 (단, tier 0이라 강한 POI에 밀림).
+    if (normalizedQuery.length >= 2) {
+      final regionPrefix = normalizedQuery.substring(0, 2);
+      if (label.contains(regionPrefix)) {
+        return true;
+      }
+    }
+    // 로마자 지명(한글 쿼리 vs 영문 geocode 결과)은 텍스트 비교 자체가
+    // 불가능하므로 무관 판정을 보류한다 (예: "강남역" → "Gangnam Station").
+    final hasHangul = RegExp(r'[가-힣]').hasMatch(result.name);
+    final hasLatin = RegExp(r'[A-Za-z]').hasMatch(result.name);
+    if (hasLatin && !hasHangul) {
+      return true;
+    }
+    return false;
   }
 
   double _relevanceScore(

@@ -6,6 +6,11 @@ import 'notification_route_contract.dart';
 ///
 /// The Android renderer remains the source of current behaviour. This contract
 /// is additive: an iOS WidgetKit target can consume the same JSON later.
+///
+/// v2 adds the `month` / `week` projections so the iOS monthly, weekly and
+/// vertical widgets can mirror the Android cell-by-cell layout without
+/// re-deriving a schedule source natively. All v1 keys are unchanged and the
+/// iOS decoder falls back to v1 behaviour when these keys are absent.
 class WidgetSchedulePayload {
   const WidgetSchedulePayload({
     required this.schemaVersion,
@@ -14,9 +19,11 @@ class WidgetSchedulePayload {
     required this.dayCounts,
     required this.holidays,
     this.holidayDates = const <String, String>{},
+    this.month,
+    this.week,
   });
 
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   final int schemaVersion;
   final DateTime generatedAt;
@@ -28,15 +35,25 @@ class WidgetSchedulePayload {
   /// list remains for backward compatibility with existing consumers.
   final Map<String, String> holidayDates;
 
-  /// Projects the legacy Android raw-event shape into the additive v1
+  /// Current-month projection (v2, optional). Same truth as the Android
+  /// `month_cell_*` keys.
+  final WidgetMonthPayload? month;
+
+  /// Current-week projection (v2, optional). Same truth as the Android
+  /// `week_day_*` keys.
+  final WidgetWeekPayload? week;
+
+  /// Projects the legacy Android raw-event shape into the additive
   /// contract. The legacy keys remain untouched; this is a dual-write helper
-  /// for future WidgetKit consumers.
+  /// for WidgetKit consumers.
   factory WidgetSchedulePayload.fromLegacyRawEvents({
     required List<Map<String, Object?>> rawEvents,
     required DateTime generatedAt,
     Map<String, int> dayCounts = const <String, int>{},
     List<String> holidays = const <String>[],
     Map<String, String> holidayDates = const <String, String>{},
+    WidgetMonthPayload? month,
+    WidgetWeekPayload? week,
   }) {
     return WidgetSchedulePayload(
       schemaVersion: currentSchemaVersion,
@@ -45,6 +62,8 @@ class WidgetSchedulePayload {
       dayCounts: dayCounts,
       holidays: holidays,
       holidayDates: holidayDates,
+      month: month,
+      week: week,
     );
   }
 
@@ -55,6 +74,8 @@ class WidgetSchedulePayload {
         'dayCounts': dayCounts,
         'holidays': holidays,
         'holidayDates': holidayDates,
+        if (month != null) 'month': month!.toJson(),
+        if (week != null) 'week': week!.toJson(),
       };
 
   String encode() => jsonEncode(toJson());
@@ -94,6 +115,14 @@ class WidgetSchedulePayload {
         }
       }
     }
+    final rawMonth = json['month'];
+    final month = rawMonth is Map
+        ? WidgetMonthPayload.fromJson(Map<String, Object?>.from(rawMonth))
+        : null;
+    final rawWeek = json['week'];
+    final week = rawWeek is Map
+        ? WidgetWeekPayload.fromJson(Map<String, Object?>.from(rawWeek))
+        : null;
     return WidgetSchedulePayload(
       schemaVersion: version,
       generatedAt: generatedAt,
@@ -106,6 +135,8 @@ class WidgetSchedulePayload {
       dayCounts: Map.unmodifiable(counts),
       holidays: List.unmodifiable(holidays),
       holidayDates: Map.unmodifiable(holidayDates),
+      month: month,
+      week: week,
     );
   }
 
@@ -127,6 +158,8 @@ class WidgetScheduleEvent {
     required this.team,
     required this.displayColor,
     required this.route,
+    this.segment,
+    this.showTitle,
   });
 
   final String id;
@@ -140,6 +173,13 @@ class WidgetScheduleEvent {
   final String displayColor;
   final String route;
 
+  /// 월간 달력 셀 segment 타입: 'single' | 'start' | 'middle' | 'end'.
+  /// v2 월간 셀 이벤트에서만 의미가 있다.
+  final String? segment;
+
+  /// 월간 달력에서 제목 표시 여부 (start/single=true, middle/end=false).
+  final bool? showTitle;
+
   Map<String, Object?> toJson() => {
         'id': id,
         'title': title,
@@ -151,6 +191,8 @@ class WidgetScheduleEvent {
         'team': team,
         'displayColor': displayColor,
         'route': route,
+        if (segment != null) 'segment': segment,
+        if (showTitle != null) 'showTitle': showTitle,
       };
 
   factory WidgetScheduleEvent.fromJson(Map<String, Object?> json) {
@@ -181,6 +223,8 @@ class WidgetScheduleEvent {
       team: flag('team'),
       displayColor: requiredString('displayColor'),
       route: requiredString('route'),
+      segment: json['segment'] is String ? json['segment'] as String : null,
+      showTitle: json['showTitle'] is bool ? json['showTitle'] as bool : null,
     );
   }
 
@@ -225,6 +269,171 @@ class WidgetScheduleEvent {
       team: team,
       displayColor: displayColor,
       route: NotificationRouteContract.schedule(id).toString(),
+    );
+  }
+}
+
+/// v2 월간 투영. Android `month_cell_*` 키와 동일한 Dart 진실에서 직렬화된다.
+class WidgetMonthPayload {
+  const WidgetMonthPayload({
+    required this.title,
+    required this.year,
+    required this.month,
+    required this.cells,
+  });
+
+  final String title;
+  final int year;
+  final int month;
+  final List<WidgetMonthCellPayload> cells;
+
+  Map<String, Object?> toJson() => {
+        'title': title,
+        'year': year,
+        'month': month,
+        'cells': cells.map((cell) => cell.toJson()).toList(),
+      };
+
+  factory WidgetMonthPayload.fromJson(Map<String, Object?> json) {
+    final rawCells = json['cells'];
+    return WidgetMonthPayload(
+      title: json['title'] is String ? json['title'] as String : '',
+      year: json['year'] is int ? json['year'] as int : 0,
+      month: json['month'] is int ? json['month'] as int : 0,
+      cells: rawCells is List
+          ? rawCells
+              .whereType<Map>()
+              .map((cell) => WidgetMonthCellPayload.fromJson(
+                    Map<String, Object?>.from(cell),
+                  ))
+              .toList(growable: false)
+          : const <WidgetMonthCellPayload>[],
+    );
+  }
+}
+
+class WidgetMonthCellPayload {
+  const WidgetMonthCellPayload({
+    required this.date,
+    required this.day,
+    required this.inMonth,
+    this.holidayName,
+    this.isDayOff = false,
+    this.overflowCount = 0,
+    this.events = const <WidgetScheduleEvent>[],
+  });
+
+  /// yyyy-MM-dd (로컬 날짜)
+  final String date;
+  final int day;
+  final bool inMonth;
+  final String? holidayName;
+  final bool isDayOff;
+  final int overflowCount;
+  final List<WidgetScheduleEvent> events;
+
+  Map<String, Object?> toJson() => {
+        'date': date,
+        'day': day,
+        'inMonth': inMonth,
+        if (holidayName != null) 'holidayName': holidayName,
+        'isDayOff': isDayOff,
+        'overflowCount': overflowCount,
+        'events': events.map((event) => event.toJson()).toList(),
+      };
+
+  factory WidgetMonthCellPayload.fromJson(Map<String, Object?> json) {
+    final rawEvents = json['events'];
+    return WidgetMonthCellPayload(
+      date: json['date'] is String ? json['date'] as String : '',
+      day: json['day'] is int ? json['day'] as int : 0,
+      inMonth: json['inMonth'] == true,
+      holidayName:
+          json['holidayName'] is String ? json['holidayName'] as String : null,
+      isDayOff: json['isDayOff'] == true,
+      overflowCount:
+          json['overflowCount'] is int ? json['overflowCount'] as int : 0,
+      events: rawEvents is List
+          ? rawEvents
+              .whereType<Map>()
+              .map((event) => WidgetScheduleEvent.fromJson(
+                    Map<String, Object?>.from(event),
+                  ))
+              .toList(growable: false)
+          : const <WidgetScheduleEvent>[],
+    );
+  }
+}
+
+/// v2 주간 투영. Android `week_day_*` 키와 동일한 Dart 진실에서 직렬화된다.
+class WidgetWeekPayload {
+  const WidgetWeekPayload({
+    required this.title,
+    required this.days,
+  });
+
+  final String title;
+  final List<WidgetWeekDayPayload> days;
+
+  Map<String, Object?> toJson() => {
+        'title': title,
+        'days': days.map((day) => day.toJson()).toList(),
+      };
+
+  factory WidgetWeekPayload.fromJson(Map<String, Object?> json) {
+    final rawDays = json['days'];
+    return WidgetWeekPayload(
+      title: json['title'] is String ? json['title'] as String : '',
+      days: rawDays is List
+          ? rawDays
+              .whereType<Map>()
+              .map((day) => WidgetWeekDayPayload.fromJson(
+                    Map<String, Object?>.from(day),
+                  ))
+              .toList(growable: false)
+          : const <WidgetWeekDayPayload>[],
+    );
+  }
+}
+
+class WidgetWeekDayPayload {
+  const WidgetWeekDayPayload({
+    required this.date,
+    required this.label,
+    this.events = const <WidgetScheduleEvent>[],
+    this.overflowCount = 0,
+  });
+
+  /// yyyy-MM-dd (로컬 날짜)
+  final String date;
+
+  /// 요일 라벨 (예: '월')
+  final String label;
+  final List<WidgetScheduleEvent> events;
+  final int overflowCount;
+
+  Map<String, Object?> toJson() => {
+        'date': date,
+        'label': label,
+        'events': events.map((event) => event.toJson()).toList(),
+        'overflowCount': overflowCount,
+      };
+
+  factory WidgetWeekDayPayload.fromJson(Map<String, Object?> json) {
+    final rawEvents = json['events'];
+    return WidgetWeekDayPayload(
+      date: json['date'] is String ? json['date'] as String : '',
+      label: json['label'] is String ? json['label'] as String : '',
+      events: rawEvents is List
+          ? rawEvents
+              .whereType<Map>()
+              .map((event) => WidgetScheduleEvent.fromJson(
+                    Map<String, Object?>.from(event),
+                  ))
+              .toList(growable: false)
+          : const <WidgetScheduleEvent>[],
+      overflowCount:
+          json['overflowCount'] is int ? json['overflowCount'] as int : 0,
     );
   }
 }

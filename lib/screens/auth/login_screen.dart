@@ -219,6 +219,10 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       } else {
         keepLoadingForCallback = true;
       }
+    } on AppleSignInCanceledException {
+      // iOS 네이티브 Apple 로그인에서 사용자가 시트를 닫은 경우.
+      // 실패가 아니므로 안내 문구 없이 조용히 로딩만 해제한다.
+      OAuthCallbackHandler.clearPendingCallback();
     } catch (error) {
       OAuthCallbackHandler.clearPendingCallback();
       _setMessage(_friendlyAuthMessage(error));

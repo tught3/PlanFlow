@@ -46,6 +46,10 @@ class GroupCalendarWidgetService {
         _platformOverride = platform;
 
   static const String _widgetName = 'PlanFlowGroupCalendarWidgetProvider';
+
+  /// iOS WidgetKit kind (ios/PlanFlowWidget/Providers.swift의
+  /// PlanFlowGroupCalendarWidget kind와 동일해야 한다).
+  static const String _iosWidgetName = 'PlanFlowGroupCalendarWidget';
   static const String _selectedGroupKeyPrefix =
       'planflow:group_context:selected_group_id:v1:';
 
@@ -78,11 +82,13 @@ class GroupCalendarWidgetService {
     required String userId,
     bool force = false,
   }) async {
-    // web 또는 플랫폼 미지원 시 no-op
+    // web 또는 플랫폼 미지원 시 no-op.
+    // iOS는 PlanFlowWidgetExtension의 그룹 달력 위젯이 동일한 gw_* 계약 키를
+    // App Group UserDefaults로 읽으므로 Android와 함께 기록한다.
     if (kIsWeb) {
       return;
     }
-    if (!Platform.isAndroid) {
+    if (!Platform.isAndroid && !Platform.isIOS) {
       return;
     }
     if (!_platform.isSupported) {
@@ -126,7 +132,10 @@ class GroupCalendarWidgetService {
       // 그룹이 없어도 gw_groups_json을 "[]"로 명시 저장해 위젯 상태를
       // 결정적으로 만든다(전이적 빈 응답으로 잔상/미정의 상태 방지).
       await _platform.saveWidgetData('gw_groups_json', '[]');
-      await _platform.updateWidget(androidName: _widgetName);
+      await _platform.updateWidget(
+        androidName: _widgetName,
+        iOSName: _iosWidgetName,
+      );
       return;
     }
 
@@ -163,7 +172,10 @@ class GroupCalendarWidgetService {
     );
 
     // 7) 위젯 갱신
-    await _platform.updateWidget(androidName: _widgetName);
+    await _platform.updateWidget(
+        androidName: _widgetName,
+        iOSName: _iosWidgetName,
+      );
   }
 
   Future<void> _writeGroupOccurrencesData(

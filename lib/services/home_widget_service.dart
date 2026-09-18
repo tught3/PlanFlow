@@ -10,6 +10,7 @@ import '../data/repositories/event_repository.dart';
 import 'home_widget_platform.dart';
 import 'kasi_holiday_service.dart';
 import 'korean_holidays.dart';
+import 'notification_route_contract.dart';
 import 'synced_public_holiday_visibility.dart';
 import '../screens/calendar/calendar_style_contract.dart';
 import '../screens/calendar/calendar_projection.dart';
@@ -1231,9 +1232,18 @@ class HomeWidgetService {
         dayCounts: _dayCountsForWidget(monthCells),
         holidays: _holidaysForWidget(monthCells),
         holidayDates: _holidayDatesForWidget(monthCells),
+        month: _monthPayloadForWidget(monthCells, month),
+        week: _weekPayloadForWidget(weekDays),
       );
       success = await _saveValue(
             'widget_schedule_payload_v1',
+            canonicalWidgetPayload.encode(),
+          ) &&
+          success;
+      // v2는 v1에 month/week 투영을 추가한 것으로, iOS 월간/주간/세로형
+      // 위젯이 Android 셀 배치를 그대로 재현할 수 있게 한다.
+      success = await _saveValue(
+            'widget_schedule_payload_v2',
             canonicalWidgetPayload.encode(),
           ) &&
           success;
@@ -1351,6 +1361,119 @@ class HomeWidgetService {
           '${date.day.toString().padLeft(2, '0')}'] = name;
     }
     return result;
+  }
+
+  /// v2 월간 투영: Android `month_cell_*` 렌더러가 쓰는 것과 동일한
+  /// [HomeWidgetMonthCellData] 목록에서 직렬화한다. 제목은 `month_title`
+  /// 키와 같은 `yyyy.MM` 형식을 쓴다.
+  static WidgetMonthPayload? _monthPayloadForWidget(
+    List<HomeWidgetMonthCellData> cells,
+    DateTime? month,
+  ) {
+    final payloadCells = <WidgetMonthCellPayload>[];
+    int? year;
+    int? monthOfYear;
+    for (final cell in cells) {
+      final date = cell.date;
+      if (date == null) continue;
+      year ??= date.year;
+      monthOfYear ??= date.month;
+      final events = cell.events
+          .map(_widgetEventFor)
+          .whereType<WidgetScheduleEvent>()
+          .toList(growable: false);
+      payloadCells.add(WidgetMonthCellPayload(
+        date: _formatYmdForWidget(date),
+        day: cell.day ?? date.day,
+        inMonth: cell.inMonth,
+        holidayName: cell.holidayName,
+        isDayOff: cell.isDayOff,
+        overflowCount: cell.overflowCount,
+        events: events,
+      ));
+    }
+    if (payloadCells.isEmpty) {
+      return null;
+    }
+    final resolvedMonth = month ??
+        (year != null && monthOfYear != null ? DateTime(year, monthOfYear) : null);
+    final title = resolvedMonth == null
+        ? ''
+        : '${resolvedMonth.year}.'
+            '${resolvedMonth.month.toString().padLeft(2, '0')}';
+    return WidgetMonthPayload(
+      title: title,
+      year: resolvedMonth?.year ?? year ?? 0,
+      month: resolvedMonth?.month ?? monthOfYear ?? 0,
+      cells: payloadCells,
+    );
+  }
+
+  /// v2 주간 투영: `week_day_*` 키와 동일한 [HomeWidgetWeekDayData] 목록.
+  static WidgetWeekPayload? _weekPayloadForWidget(
+    List<HomeWidgetWeekDayData> days,
+  ) {
+    if (days.isEmpty) {
+      return null;
+    }
+    final payloadDays = <WidgetWeekDayPayload>[];
+    for (final day in days.take(7)) {
+      final events = day.events
+          .map(_widgetEventFor)
+          .whereType<WidgetScheduleEvent>()
+          .toList(growable: false);
+      final eventCount = day.eventCount ?? day.events.length;
+      payloadDays.add(WidgetWeekDayPayload(
+        date: _formatYmdForWidget(day.date),
+        label: _weekdayLabelKo(day.date),
+        events: events,
+        overflowCount:
+            eventCount > events.length ? eventCount - events.length : 0,
+      ));
+    }
+    return WidgetWeekPayload(title: '주간 일정', days: payloadDays);
+  }
+
+  static WidgetScheduleEvent? _widgetEventFor(HomeWidgetListEventData event) {
+    final title = event.title.trim();
+    if (title.isEmpty) {
+      return null;
+    }
+    final id = event.eventId?.trim() ?? '';
+    final start = event.startAt ?? DateTime.now().toUtc();
+    return WidgetScheduleEvent(
+      id: id.isEmpty ? 'slot_${title.hashCode}' : id,
+      title: title,
+      start: start,
+      end: start,
+      important: event.isCritical,
+      continuous: event.monthSegment != null && event.monthSegment != 'single',
+      recurring: event.isRecurring,
+      team: event.isTeam,
+      displayColor: event.isCritical
+          ? '#633B8E'
+          : event.isTeam
+              ? '#7B560B'
+              : event.isRecurring
+                  ? '#126E68'
+                  : '#435A70',
+      route: id.isEmpty
+          ? NotificationRouteContract.day(start.toLocal()).toString()
+          : NotificationRouteContract.schedule(id).toString(),
+      segment: event.monthSegment,
+      showTitle: event.showTitleInMonth,
+    );
+  }
+
+  static String _formatYmdForWidget(DateTime day) {
+    return '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+  }
+
+  static String _weekdayLabelKo(DateTime day) {
+    const labels = ['월', '화', '수', '목', '금', '토', '일'];
+    return labels[day.weekday - 1];
   }
 
   Future<bool> updateSchedulePayload(

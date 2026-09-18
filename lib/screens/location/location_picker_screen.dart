@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -54,6 +55,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   late List<LocationLookupResult> _results;
   late List<String> _fallbackQueries;
   LocationLookupResult? _selected;
+  /// 현재 선택이 수동(지도 탭)인지 여부 — 새 검색 시 재판정에 사용.
+  bool _selectedIsManual = false;
+  /// 현재 선택이 유효한 검색어. 쿼리가 바뀌면 이전 선택은 무효가 된다.
+  String? _selectedForQuery;
   NaverMapController? _mapController;
   google_maps.GoogleMapController? _googleMapController;
   bool _isSearching = false;
@@ -139,6 +144,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     _resolvedInitialMapCenter = widget.initialMapCenter;
     if (_results.isNotEmpty) {
       _selected = _results.first;
+      _selectedForQuery = widget.initialQuery.trim();
     }
     if (widget.debugForceMapUnavailableTimeout) {
       _mapLoadMessage = _mapUnavailableTimeoutMessage;
@@ -217,7 +223,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         _fallbackQueries = results.isEmpty
             ? searchResult.fallbackQueries.take(4).toList()
             : const <String>[];
-        _selected = results.isEmpty ? _selected : results.first;
+        _selected = resolveSelectionAfterSearch(
+          currentSelected: _selected,
+          currentSelectedIsManual: _selectedIsManual,
+          currentSelectedForQuery: _selectedForQuery,
+          query: query,
+          results: results,
+        );
+        _selectedIsManual = results.isEmpty && _selected != null;
+        _selectedForQuery = _selected != null ? query : null;
         _message = results.isEmpty
             ? (_canUseInAppMap
                 ? '검색 결과가 없어요. 지도에서 직접 위치를 눌러 지정할 수 있습니다.'
@@ -324,6 +338,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   Future<void> _selectResult(LocationLookupResult result) async {
     setState(() {
       _selected = result;
+      _selectedIsManual = false;
+      _selectedForQuery = result.name;
       _queryController.text = result.name;
       _hasUserChosenMapTarget = true;
     });
@@ -344,6 +360,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     );
     setState(() {
       _selected = result;
+      _selectedIsManual = true;
+      _selectedForQuery = query;
       _hasUserChosenMapTarget = true;
       _message = longPressed
           ? '길게 누른 위치로 바꿨어요. 아래 버튼으로 확정해 주세요.'
@@ -557,36 +575,46 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
 
     if (_shouldUseNaverMap) {
-      return NaverMap(
-        forceGesture: true,
-        // ignore: invalid_use_of_visible_for_testing_member
-        forceHybridComposition: true,
-        options: NaverMapViewOptions(
-          initialCameraPosition: NCameraPosition(
-            target: _initialTarget,
-            zoom: 15,
+      return Stack(
+        children: [
+          NaverMap(
+            forceGesture: true,
+            // ignore: invalid_use_of_visible_for_testing_member
+            forceHybridComposition: true,
+            options: NaverMapViewOptions(
+              initialCameraPosition: NCameraPosition(
+                target: _initialTarget,
+                zoom: 15,
+              ),
+              locationButtonEnable: false,
+              compassEnable: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onMapReady: (controller) async {
+              _mapController = controller;
+              if (mounted) {
+                DiagLogger.log('MapScreen', 'naver ready');
+                setState(() {
+                  _mapLoadMessage = null;
+                  _mapRenderState = _MapRenderState.ready;
+                });
+              }
+              final selected = _selected;
+              if (selected != null) {
+                await _moveMapTo(selected);
+              }
+            },
+            onMapTapped: (_, latLng) => _selectMapPoint(latLng),
+            onMapLongTapped: (_, latLng) =>
+                _selectMapPoint(latLng, longPressed: true),
           ),
-          locationButtonEnable: false,
-          compassEnable: true,
-          contentPadding: EdgeInsets.zero,
-        ),
-        onMapReady: (controller) async {
-          _mapController = controller;
-          if (mounted) {
-            DiagLogger.log('MapScreen', 'naver ready');
-            setState(() {
-              _mapLoadMessage = null;
-              _mapRenderState = _MapRenderState.ready;
-            });
-          }
-          final selected = _selected;
-          if (selected != null) {
-            await _moveMapTo(selected);
-          }
-        },
-        onMapTapped: (_, latLng) => _selectMapPoint(latLng),
-        onMapLongTapped: (_, latLng) =>
-            _selectMapPoint(latLng, longPressed: true),
+          if (_mapRenderState == _MapRenderState.ready)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _AppleMapsShortcut(query: _queryController.text),
+            ),
+        ],
       );
     }
 
@@ -941,6 +969,33 @@ enum LocationPickerInAppMapProvider {
   google,
 }
 
+/// 검색 직후 선택 상태를 재판정하는 순수 함수.
+///
+/// 규칙:
+/// - 새 검색에 결과가 있으면 첫 번째 후보를 선택한다.
+/// - 결과가 없으면, "현재 쿼리에 대해 사용자가 지도에서 직접 찍은" 선택만
+///   살아남는다. 이전 쿼리의 결과/선택은 쿼리가 바뀐 시점에 무효다
+///   (옛 좌표에 새 검색어 라벨이 붙는 것을 금지).
+LocationLookupResult? resolveSelectionAfterSearch({
+  required LocationLookupResult? currentSelected,
+  required bool currentSelectedIsManual,
+  required String? currentSelectedForQuery,
+  required String query,
+  required List<LocationLookupResult> results,
+}) {
+  if (results.isNotEmpty) {
+    return results.first;
+  }
+  final manualForCurrentQuery =
+      currentSelected != null && currentSelectedIsManual &&
+          currentSelectedForQuery != null &&
+          currentSelectedForQuery == query;
+  if (manualForCurrentQuery) {
+    return currentSelected;
+  }
+  return null;
+}
+
 class _MapUnavailablePanel extends StatelessWidget {
   const _MapUnavailablePanel({
     required this.message,
@@ -1060,6 +1115,72 @@ enum _ExternalMapTarget {
   }
 }
 
+/// 외부 지도 앱/웹으로 [query] 검색을 연다. 버튼 위젯들에서 공용 사용.
+Future<void> _openExternalMap(
+  BuildContext context,
+  String query,
+  _ExternalMapTarget target,
+) async {
+  final trimmed = query.trim();
+  if (trimmed.isEmpty) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('외부 지도에서 검색할 장소명을 먼저 입력해 주세요.')),
+    );
+    return;
+  }
+  final opened = await launchUrl(
+    target.uri(trimmed),
+    mode: LaunchMode.externalApplication,
+  );
+  if (!opened && context.mounted) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text('${target.label}를 열지 못했어요.')),
+    );
+  }
+}
+
+/// 네이버 지도가 정상 로드된 흐름에서도 Apple 지도를 발견할 수 있게 하는
+/// iOS 전용 작은 버튼. Android에서는 아무것도 렌더링하지 않는다.
+class _AppleMapsShortcut extends StatelessWidget {
+  const _AppleMapsShortcut({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!Platform.isIOS) {
+      return const SizedBox.shrink();
+    }
+    return Material(
+      color: PlanFlowColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () =>
+            _openExternalMap(context, query, _ExternalMapTarget.apple),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.open_in_new, size: 14, color: PlanFlowColors.primary),
+              SizedBox(width: 4),
+              Text(
+                '외부 지도에서 열기',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: PlanFlowColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ExternalMapButtons extends StatelessWidget {
   const _ExternalMapButtons({
     required this.query,
@@ -1069,24 +1190,8 @@ class _ExternalMapButtons extends StatelessWidget {
   final String query;
   final LocationPickerInAppMapProvider? preferredProvider;
 
-  Future<void> _open(BuildContext context, _ExternalMapTarget target) async {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('외부 지도에서 검색할 장소명을 먼저 입력해 주세요.')),
-      );
-      return;
-    }
-    final opened = await launchUrl(
-      target.uri(trimmed),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!opened && context.mounted) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('${target.label}를 열지 못했어요.')),
-      );
-    }
-  }
+  Future<void> _open(BuildContext context, _ExternalMapTarget target) =>
+      _openExternalMap(context, query, target);
 
   @override
   Widget build(BuildContext context) {

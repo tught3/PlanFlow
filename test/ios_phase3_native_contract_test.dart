@@ -58,8 +58,18 @@ void main() {
   });
 
   test('WidgetKit source supports canonical payload, fallback and routes', () {
-    final source =
-        file('ios/PlanFlowWidget/PlanFlowWidget.swift').readAsStringSync();
+    // The widget extension is split across several Swift files (Payload,
+    // Theme, Views, Providers, bundle); contract strings may live in any of
+    // them, so scan the whole target directory.
+    final widgetDir = Directory(
+        '${root.path}${Platform.pathSeparator}ios'
+        '${Platform.pathSeparator}PlanFlowWidget');
+    final source = widgetDir
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.swift'))
+        .map((file) => file.readAsStringSync().replaceAll('\r\n', '\n'))
+        .join('\n');
     expect(source, contains('widget_schedule_payload_v1'));
     expect(source, contains('schemaVersion'));
     expect(source, contains('isFallback'));

@@ -17,6 +17,10 @@
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A31F00000000000000000001 /* PlanFlowWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000011 /* PlanFlowWidget.swift */; };
+		A31F00000000000000000002 /* Payload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000021 /* Payload.swift */; };
+		A31F00000000000000000026 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000022 /* Theme.swift */; };
+		A31F00000000000000000027 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000023 /* Views.swift */; };
+		A31F00000000000000000028 /* Providers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000024 /* Providers.swift */; };
 		A31F00000000000000000003 /* PlanFlowWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000012 /* PlanFlowWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -85,6 +89,10 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A31F00000000000000000011 /* PlanFlowWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFlowWidget.swift; sourceTree = "<group>"; };
+		A31F00000000000000000021 /* Payload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Payload.swift; sourceTree = "<group>"; };
+		A31F00000000000000000022 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		A31F00000000000000000023 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		A31F00000000000000000024 /* Providers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Providers.swift; sourceTree = "<group>"; };
 		A31F00000000000000000012 /* PlanFlowWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlanFlowWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A31F00000000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A31F00000000000000000014 /* PlanFlowWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PlanFlowWidget.entitlements; sourceTree = "<group>"; };
@@ -174,6 +182,10 @@
 			isa = PBXGroup;
 			children = (
 				A31F00000000000000000011 /* PlanFlowWidget.swift */,
+				A31F00000000000000000021 /* Payload.swift */,
+				A31F00000000000000000022 /* Theme.swift */,
+				A31F00000000000000000023 /* Views.swift */,
+				A31F00000000000000000024 /* Providers.swift */,
 				A31F00000000000000000013 /* Info.plist */,
 				A31F00000000000000000014 /* PlanFlowWidget.entitlements */,
 			);
@@ -369,6 +381,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				A31F00000000000000000001 /* PlanFlowWidget.swift in Sources */,
+				A31F00000000000000000002 /* Payload.swift in Sources */,
+				A31F00000000000000000026 /* Theme.swift in Sources */,
+				A31F00000000000000000027 /* Views.swift in Sources */,
+				A31F00000000000000000028 /* Providers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
