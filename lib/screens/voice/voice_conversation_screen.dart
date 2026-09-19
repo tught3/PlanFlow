@@ -567,16 +567,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       if (!fromVoiceFinal) {
         _listenGeneration += 1;
       }
-    } else {
-      // 리스닝을 끊지 않고 계속 듣게 두는 경우, 화면 입력창만 비우는 것으로는
-      // 부족하다 — STT 서비스 내부에 남아있는 이번 발화의 누적 트랜스크립트를
-      // 지우지 않으면, 사용자가 전송 직후 이어 말할 때 방금 제출한 문구가
-      // 다음 결과 앞에 그대로 이어붙거나(committed 텍스트 병합), 아무 말도
-      // 안 해도 침묵 타임아웃으로 옛 텍스트가 그대로 재제출될 수 있다.
-      // 자매 화면(voice_input_screen.dart의 _clearTranscript)이 동일 상황에서
-      // 쓰는 것과 같은 API로 리셋한다.
-      await widget.sttService.clearActiveTranscript();
     }
+    // 리스닝을 끊지 않고 계속 듣게 두는 경우뿐 아니라, 최종 결과(fromVoiceFinal)
+    // 처리 후 자동 재시작되는 경로에서도 화면 입력창만 비우는 것으로는
+    // 부족하다 — STT 서비스 내부에 남아있는 이번 발화의 누적 트랜스크립트를
+    // 지우지 않으면, 재시작된 리스닝 세션이 옛 문구를 partial/final로 다시
+    // 내보내(_applyVoiceTranscriptToInput 경유) 입력창에 되살아나고, 다음
+    // 발화 앞에 이어붙거나(committed 텍스트 병합), 침묵 타임아웃으로 옛
+    // 텍스트가 그대로 재제출될 수 있다. 자매 화면(voice_input_screen.dart의
+    // _clearTranscript)이 동일 상황에서 쓰는 것과 같은 API로 모든 제출
+    // 경로에서 리셋한다. 제출 직후 재시작 타이머(700ms)보다 먼저 실행되므로
+    // 새 발화의 트랜스크립트를 지울 위험은 없다.
+    await widget.sttService.clearActiveTranscript();
     _setConversationInputText('');
     setState(() {
       _isSubmitting = true;

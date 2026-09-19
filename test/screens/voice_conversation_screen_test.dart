@@ -656,6 +656,34 @@ void main() {
     expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsNothing);
   });
 
+  testWidgets(
+    'AI 일정 대화는 최종 음성 결과 제출 경로에서도 STT 누적 트랜스크립트를 지운다',
+    (tester) async {
+      final stt = _FakeSttService();
+      await pumpConversation(
+        tester,
+        VoiceConversationScreen(sttService: stt),
+      );
+
+      await tester.tap(find.text('음성으로 명령하기'));
+      await tester.pump();
+
+      // fromVoiceFinal 경로: listen()이 최종 결과로 완료된 뒤 제출된다.
+      // 제출 후 _keepListening이 유지돼 자동 재시작되는데, 이때 STT 서비스에
+      // 방금 제출한 문구가 남아 있으면 재시작 세션의 partial이 옛 문구를
+      // 입력창에 되살린다(iOS 실기기 재현 버그). 모든 제출 경로에서 지워야 한다.
+      stt.completeSuccess('이번주 일정 보여줘');
+      await tester.pumpAndSettle();
+
+      expect(find.text('이번주 일정 보여줘'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        isEmpty,
+      );
+      expect(stt.clearActiveTranscriptCalls, 1);
+    },
+  );
+
   testWidgets('AI 일정 대화 input bar follows the keyboard inset', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(
@@ -777,7 +805,7 @@ void main() {
     },
   );
   testWidgets(
-    'AI 일정 대화는 리스닝 중이 아닐 때 제출해도 STT 트랜스크립트를 지우지 않는다',
+    'AI 일정 대화는 리스닝 중이 아닐 때 제출해도 STT 트랜스크립트를 지운다',
     (tester) async {
       final stt = _FakeSttService();
       await pumpConversation(
@@ -786,14 +814,14 @@ void main() {
       );
 
       // 마이크를 켠 적이 없으므로 _isListening/_keepListening 둘 다 false다 —
-      // 이 경로는 기존 동작(제출 시 generation 증가) 그대로 유지되고,
-      // clearActiveTranscript는 이 케이스와 무관하므로 호출되면 안 된다.
+      // STT 세션이 없어도 모든 제출 경로에서 누적 트랜스크립트 리셋을 통일해
+      // 실행한다(세션 배열만 지우고 활성 리스닝은 건드리지 않는다).
       await tester.enterText(find.byType(TextField), '이번주 일정 보여줘');
       await tester.pump();
       await tester.tap(find.text('전송'));
       await tester.pumpAndSettle();
 
-      expect(stt.clearActiveTranscriptCalls, 0);
+      expect(stt.clearActiveTranscriptCalls, 1);
     },
   );
 
