@@ -360,105 +360,126 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       _AuthMode.reset => l10n.passwordResetSubtitle,
     };
 
-    return Scaffold(
-      backgroundColor: PlanFlowColors.background,
-      body: SafeArea(
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          children: [
-            const SizedBox(height: 10),
-            const Center(
-              child: Text(
-                'PlanFlow',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                  color: PlanFlowColors.primaryMid,
-                  letterSpacing: -1.2,
+    return PopScope(
+      canPop: _mode != _AuthMode.reset,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _mode == _AuthMode.reset) {
+          _setMode(_AuthMode.login);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: PlanFlowColors.background,
+        body: SafeArea(
+          child: ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            children: [
+              if (_mode == _AuthMode.reset) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('password-reset-back-to-login'),
+                    onPressed:
+                        _isLoading ? null : () => _setMode(_AuthMode.login),
+                    icon: const Icon(Icons.arrow_back_ios_new, size: 16),
+                    label: const Text('로그인으로 돌아가기'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              const Center(
+                child: Text(
+                  'PlanFlow',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    color: PlanFlowColors.primaryMid,
+                    letterSpacing: -1.2,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: PlanFlowColors.primaryMid,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 22,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.82),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Supabase 초기화가 실패했으면 일반 안내 대신 실제 실패 원인을
-            // 표시한다(초기화 실패는 세션 해석 완료 여부와 무관하게 즉시 알림).
-            if (AppEnv.isSupabaseInitializationFailed)
-              _MessageBox(
-                message: AppEnv.supabaseInitializationErrorMessage ??
-                    '로그인 서비스를 초기화하지 못했습니다. 잠시 후 다시 시도해 주세요.',
-                isError: true,
-              )
-            else if (authProvider.hasResolvedInitialSession &&
-                !AppEnv.isSupabaseReady)
-              _MessageBox(
-                message: l10n.supabaseLoginMissing,
-                isError: true,
-              ),
-            if (_message != null) ...[
-              _MessageBox(
-                key: _messageKey,
-                message: _message!,
-                isError: _isError,
-              ),
               const SizedBox(height: 10),
-            ],
-            _EmailLoginCard(
-              mode: _mode,
-              isLoading: _isLoading,
-              emailController: _emailController,
-              passwordController: _passwordController,
-              confirmPasswordController: _confirmPasswordController,
-              nameController: _nameController,
-              nameFocusNode: _nameFocusNode,
-              emailFocusNode: _emailFocusNode,
-              passwordFocusNode: _passwordFocusNode,
-              confirmPasswordFocusNode: _confirmPasswordFocusNode,
-              onModeChanged: _setMode,
-              onSubmit: _submit,
-            ),
-            if (_mode != _AuthMode.reset) ...[
-              const SizedBox(height: 12),
-              _SocialLoginCard(
-                isLoading: _isLoading,
-                onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
-                onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
-                onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
-                showApple: defaultTargetPlatform == TargetPlatform.iOS,
-                onApple: () => _socialLogin(PlanFlowOAuthProvider.apple),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: PlanFlowColors.primaryMid,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(height: 12),
+              // Supabase 초기화가 실패했으면 일반 안내 대신 실제 실패 원인을
+              // 표시한다(초기화 실패는 세션 해석 완료 여부와 무관하게 즉시 알림).
+              if (AppEnv.isSupabaseInitializationFailed)
+                _MessageBox(
+                  message: AppEnv.supabaseInitializationErrorMessage ??
+                      '로그인 서비스를 초기화하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+                  isError: true,
+                )
+              else if (authProvider.hasResolvedInitialSession &&
+                  !AppEnv.isSupabaseReady)
+                _MessageBox(
+                  message: l10n.supabaseLoginMissing,
+                  isError: true,
+                ),
+              if (_message != null) ...[
+                _MessageBox(
+                  key: _messageKey,
+                  message: _message!,
+                  isError: _isError,
+                ),
+                const SizedBox(height: 10),
+              ],
+              _EmailLoginCard(
+                mode: _mode,
+                isLoading: _isLoading,
+                emailController: _emailController,
+                passwordController: _passwordController,
+                confirmPasswordController: _confirmPasswordController,
+                nameController: _nameController,
+                nameFocusNode: _nameFocusNode,
+                emailFocusNode: _emailFocusNode,
+                passwordFocusNode: _passwordFocusNode,
+                confirmPasswordFocusNode: _confirmPasswordFocusNode,
+                onModeChanged: _setMode,
+                onSubmit: _submit,
+              ),
+              if (_mode != _AuthMode.reset) ...[
+                const SizedBox(height: 12),
+                _SocialLoginCard(
+                  isLoading: _isLoading,
+                  onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
+                  onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
+                  onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
+                  showApple: defaultTargetPlatform == TargetPlatform.iOS,
+                  onApple: () => _socialLogin(PlanFlowOAuthProvider.apple),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

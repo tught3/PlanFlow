@@ -108,7 +108,10 @@ class LocationLookupService {
         _clientSecret = clientSecret ?? '',
         _proxyUrl = proxyUrl ?? AppEnv.naverMapProxyUrl,
         _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
-        _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleMapsApiKey,
+        _googleMapsApiKey = googleMapsApiKey ??
+            (defaultTargetPlatform == TargetPlatform.iOS
+                ? AppEnv.googleGeocodingApiKey
+                : AppEnv.googleMapsApiKey),
         _httpClientFactory = httpClientFactory ?? http.Client.new,
         _usageGuard = usageGuard;
 
@@ -551,7 +554,8 @@ class LocationLookupService {
       final response = await (useProxy
               ? client.get(proxyUri, headers: <String, String>{
                   'accept': 'application/json',
-                  if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+                  if (accessToken != null)
+                    'Authorization': 'Bearer $accessToken',
                   'apikey': AppEnv.supabaseAnonKey,
                 })
               : client.get(
@@ -867,7 +871,8 @@ class LocationLookupService {
     );
 
     final originalIndex = <LocationLookupResult, int>{
-      for (var index = 0; index < results.length; index++) results[index]: index,
+      for (var index = 0; index < results.length; index++)
+        results[index]: index,
     };
 
     // tier: 1 = 이름 강매칭(정확/접두/포함/오탈자 근접), 0 = 그 외(주소/지역 힌트만).
@@ -1048,7 +1053,8 @@ class LocationLookupService {
         // 완전 무관한 결과와 동일하게(0점) 취급되면 실제로 찾던 곳이 밀려난다.
         final nameDistance = _editDistance(nameCompact, normalizedQuery);
         final nameMaxLen = math.max(nameCompact.length, normalizedQuery.length);
-        if (nameMaxLen >= 3 && nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
+        if (nameMaxLen >= 3 &&
+            nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
           score += (70 - nameDistance * 15).clamp(0, 70).toDouble();
         }
       }
@@ -1139,8 +1145,7 @@ class LocationLookupService {
       for (var j = 0; j < b.length; j++) {
         final deletionCost = previousRow[j + 1] + 1;
         final insertionCost = currentRow[j] + 1;
-        final substitutionCost =
-            previousRow[j] + (a[i] == b[j] ? 0 : 1);
+        final substitutionCost = previousRow[j] + (a[i] == b[j] ? 0 : 1);
         currentRow[j + 1] =
             [deletionCost, insertionCost, substitutionCost].reduce(math.min);
       }

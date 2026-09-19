@@ -119,6 +119,28 @@ void main() {
     expect(find.textContaining('앱 초기화가 지연되고 있습니다'), findsOneWidget);
   });
 
+  testWidgets('password reset mode has an explicit back-to-login action',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(420, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('비밀번호를 잊으셨나요?'));
+    await tester.pumpAndSettle();
+
+    final backButton =
+        find.byKey(const ValueKey('password-reset-back-to-login'));
+    expect(backButton, findsOneWidget);
+
+    await tester.tap(backButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('이메일 로그인'), findsOneWidget);
+    expect(find.text('비밀번호를 잊으셨나요?'), findsOneWidget);
+  });
+
   testWidgets('LoginScreen shows safer email sign-up guidance', (tester) async {
     await tester.binding.setSurfaceSize(const Size(420, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));

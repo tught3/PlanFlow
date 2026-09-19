@@ -57,8 +57,12 @@ void main() {
       // wrapping `xcodebuild archive` (backup + trap-restore). The archive
       // recompiles Info.plist from source, so injecting before the unsigned
       // prepare build left the release artifact without the key.
+      // 2026-09-19 Build32: iOS location lookup also receives the existing
+      // Naver geocode proxy URL and TMAP POI key so candidate search remains
+      // functional without reusing the iOS-restricted native Maps key for a
+      // Google Geocoding REST request.
       '.github/workflows/ios-release.yml':
-          '9d1093c679bb225c8fbbb2f60b32eb7b6c6a9ad55884fb75bae9ec98f45274f5',
+          'e5002804336745a8d1be5a1f438003564738e74f006a0d5ef5fc051e9ef671b9',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':

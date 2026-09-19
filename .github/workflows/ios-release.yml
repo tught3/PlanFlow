@@ -54,6 +54,8 @@ jobs:
       WIDGET_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
       FIREBASE_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
       NAVER_MAP_CLIENT_ID: ${{ secrets.PLANFLOW_NAVER_MAP_CLIENT_ID }}
+      NAVER_MAP_PROXY_URL: ${{ secrets.PLANFLOW_NAVER_MAP_PROXY_URL }}
+      TMAP_API_KEY: ${{ secrets.PLANFLOW_TMAP_API_KEY }}
       GOOGLE_MAPS_API_KEY: ${{ secrets.PLANFLOW_GOOGLE_MAPS_API_KEY }}
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -232,7 +234,7 @@ jobs:
           missing=()
           # Team ID is derived from the signed Runner profile below. An optional
           # PLANFLOW_APPLE_TEAM_ID secret is still accepted and cross-checked.
-          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 NAVER_MAP_CLIENT_ID GOOGLE_MAPS_API_KEY ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
+          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 NAVER_MAP_CLIENT_ID NAVER_MAP_PROXY_URL TMAP_API_KEY GOOGLE_MAPS_API_KEY ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
             if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
           done
           # Google Maps release key (Build30): the Dart side reads
@@ -271,7 +273,7 @@ jobs:
           fi
           echo "RUNNER_PRIVACY_SOURCE_PASS: PASS"
           echo "EXPORT_COMPLIANCE_SOURCE_PASS: PASS"
-          echo "Release gates: Apple signing, Firebase config, Naver Maps client ID, Google Maps API key, and App Store Connect credentials are present."
+          echo "Release gates: Apple signing, Firebase config, Naver Maps client/proxy, TMAP POI key, Google Maps iOS key, and App Store Connect credentials are present."
 
       - uses: subosito/flutter-action@v2
         with:
@@ -294,7 +296,7 @@ jobs:
           # present immediately before archiving. The intermediate unsigned
           # build below does not need the native key (Dart receives it via
           # --dart-define).
-          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER" --dart-define=NAVER_MAP_CLIENT_ID="$NAVER_MAP_CLIENT_ID" --dart-define=GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"
+          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER" --dart-define=NAVER_MAP_CLIENT_ID="$NAVER_MAP_CLIENT_ID" --dart-define=NAVER_MAP_PROXY_URL="$NAVER_MAP_PROXY_URL" --dart-define=TMAP_API_KEY="$TMAP_API_KEY" --dart-define=GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"
           rm -f ios/Runner/GoogleService-Info.plist
           trap - EXIT
 

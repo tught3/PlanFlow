@@ -12,6 +12,8 @@ class AppEnv {
   static String get supabaseUrl => _envValue('SUPABASE_URL');
   static String get supabaseAnonKey => _envValue('SUPABASE_ANON_KEY');
   static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
+  static String get googleGeocodingApiKey =>
+      _envValue('GOOGLE_GEOCODING_API_KEY');
   static String get tmapApiKey => _envValue('TMAP_API_KEY');
   static String get naverMapClientId => _envValue('NAVER_MAP_CLIENT_ID');
   static String get naverMapProxyUrl =>
@@ -114,6 +116,8 @@ class AppEnv {
         const String.fromEnvironment('GOOGLE_ANDROID_CLIENT_ID'),
       'GOOGLE_MAPS_API_KEY' =>
         const String.fromEnvironment('GOOGLE_MAPS_API_KEY'),
+      'GOOGLE_GEOCODING_API_KEY' =>
+        const String.fromEnvironment('GOOGLE_GEOCODING_API_KEY'),
       'TMAP_API_KEY' => const String.fromEnvironment('TMAP_API_KEY'),
       'NAVER_MAP_CLIENT_ID' =>
         const String.fromEnvironment('NAVER_MAP_CLIENT_ID'),
@@ -139,6 +143,7 @@ class AppEnv {
         normalized.contains('your-google-android-client-id') ||
         normalized.contains('your-google-server-client-id') ||
         normalized.contains('your-google-maps-api-key') ||
+        normalized.contains('your-google-geocoding-api-key') ||
         normalized.contains('your-tmap-api-key') ||
         normalized.contains('your-naver-map-client-id') ||
         normalized.contains('your-naver-map-client-secret') ||
