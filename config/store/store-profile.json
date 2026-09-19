@@ -1040,7 +1040,9 @@
             "note": "DERIVED (this pass): the AD_ID permission (AndroidManifest.xml:4) plus a hardcoded AdMob App ID (AndroidManifest.xml:150) plus SDK integration/initialization code (ad_service.dart:423,491) together constitute the standard Play Data Safety basis for declaring AD_ID as collected, independent of whether the RemoteConfigService.rewardedAdEnabled runtime gate is live-read-back. This value is an automatic policy-based determination, not a live traffic capture; note left as recommended fallback per Goal Sec.15 policy compression -- may be superseded by a live Remote Config readback. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "purposes": {
-            "value": ["advertising or marketing"],
+            "value": [
+              "advertising or marketing"
+            ],
             "source": "DERIVED",
             "evidence": [
               "lib/services/ad_service.dart:423",
@@ -1411,7 +1413,9 @@
             "note": "[decision-path: D] Derived from privacy.tracking=false / IDFA NOT_CONFIGURED (Goal Sec.6) -- independent of whether 'collected' is formally declared, tracking is false because no ATT/IDFA access exists anywhere in this app. requiresHumanAuthority kept true per convention."
           },
           "purposes": {
-            "value": ["app functionality"],
+            "value": [
+              "app functionality"
+            ],
             "source": "DERIVED",
             "evidence": [
               "lib/screens/voice/confirm_screen.dart:2636-2647",
@@ -1728,15 +1732,17 @@
             "note": "DERIVED (this pass): ad_service.dart:1062 calls `request: const AdRequest()` -- a parameterless const constructor call, confirming no user identifier is passed by PlanFlow's own code into the ad request. AdMob SDK's own internal server-side identity-linkage behavior remains unverifiable from this repo's source (same 'UNVERIFIED -- SDK 자체 동작 미확인' stance as docs/ios/app-privacy-answers.md:85-88,120 for the sibling tracking question), but the app-side call-site evidence itself is now directly confirmed rather than absent. 이 값은 표준 업계 관행/공개 정책 해석에 기반한 자동판정이며 사업자 최종 확인 시 변경될 수 있음."
           },
           "purposes": {
-            "value": null,
-            "source": "UNKNOWN",
+            "value": [
+              "Third-Party Advertising"
+            ],
+            "source": "USER_CONFIRMED_AUTHENTICATED_CONSOLE",
             "evidence": [],
-            "lastVerified": "2026-09-15",
-            "confidence": "UNKNOWN",
+            "lastVerified": "2026-09-19",
+            "confidence": "HIGH",
             "requiresHumanAuthority": true,
             "approval": "NONE",
             "storeAcceptance": "NONE",
-            "note": "[decision-path: F] question-group: purposes (ads). No safe S/C/D basis found in repo docs/code in this pass; left for human policy compression (Goal Sec.15). App Store Connect purpose category for ad-SDK data (e.g. 'Third-Party Advertising' vs 'Developer's Advertising or Marketing') requires a legal/business declaration choice, same UNVERIFIED gap flagged in docs/ios/app-privacy-answers.md Sec.2/4 for AdMob data types; no repo doc gives a settled answer."
+            "note": "[CEO approved 2026-09-19] AdMob (third-party ad network) serves ads in-app — ADMOB_CONSOLE_CONFIRMED active unit ca-app-pub-3753374909078516~8690428631. PlanFlow has no own analytics/attribution (AnalyticsService no-op) and usedForTracking=false (receipt-backed). Apple taxonomy: Third-Party Advertising. Approved in CEO decision batch item 2."
           }
         },
         "photos": {
@@ -2040,15 +2046,15 @@
       "note": "[decision-path: C] ios/Runner/Info.plist:9-10 declares ITSAppUsesNonExemptEncryption=false, i.e. the app uses only encryption exempt from U.S. export compliance documentation requirements (standard OS-provided/HTTPS-TLS encryption, no proprietary/non-exempt cryptography). This value is scoped to the existing accepted Info.plist declaration; requiresHumanAuthority/approval left unchanged per this pass's instructions (approval handled separately at receipt-issuance stage). SCOPE NOTE (unchanged from prior pass): the store-profile.v1 schema's content.encryption node has no per-platform (android/ios) split -- it is a single value for the whole app, and the only evidence gathered is iOS-specific (Play's Data Safety encryption-in-transit question is answered per data type; see the per-data-type encryptedInTransit field in androidDataType)."
     },
     "traderStatus": {
-      "value": null,
-      "source": "UNKNOWN",
+      "value": "TRADER",
+      "source": "USER_STATED",
       "evidence": [],
-      "lastVerified": "2026-09-11",
-      "confidence": "UNKNOWN",
+      "lastVerified": "2026-09-19",
+      "confidence": "HIGH",
       "requiresHumanAuthority": true,
       "approval": "NONE",
       "storeAcceptance": "NONE",
-      "note": "[decision-path: F] question-group: console-declarations. No trader/consumer status declaration (EU DSA trader status, Apple/Play trader disclosure) was found in this repo or read back from either store console in this pass. requiresHumanAuthority=true: this is a legal/business classification, not something code evidence can answer."
+      "note": "[CEO confirmed 2026-09-19] PlanFlow is operated as part of FluxStudio business activity with advertising revenue intent. Apple DSA guidance lists paid/ad-sponsored apps operated by a business as trader. ASC declaration: 'This is a trader account.' Approved in CEO decision batch item 2 (2026-09-19)."
     }
   },
   "monetization": {
