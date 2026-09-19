@@ -20,11 +20,11 @@
 - 결정 로그: `05_Decisions/planflow-decisions.md`
 
 ## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 97개). 작업과 관련 있어 보이면 열람할 것.
+전체 목록: `04_Memory/Preference/` (status: confirmed, 총 98개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
+- **auto-finish-after-each-task**: 모든 프로젝트·모든 세션·모든 코딩 프로그램에서, 작업 단위가 실제로 완료될 때마다 "마무리해" 지시 없이 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든,... (`04_Memory/Preference/auto-finish-after-each-task.md`)
+- **global_autonomy_senior_judgement**: E:\FluxStudio 내 모든 작업·모든 세션에서 AI(OpenCode/Claude/Codex/GLM)는 일일이 사용자에게 묻지 않고 스스로 진행한다. 권한은... (`04_Memory/Preference/global_autonomy_senior_judgement.md`)
+- **instruction_md_auto_optimize**: 모든 세션·모든 도구에서 AGENTS.md·CLAUDE.md·preference 등 지시 문서를 추가/변경/삭제할 때, CEO에게 요청받지 않아도 자동으로 최적화... (`04_Memory/Preference/instruction_md_auto_optimize.md`)
 - **계속해**: 계속해 (`04_Memory/Preference/계속해.md`)
-- **auto-finish-after-each-task**: 각 작업 단위가 다 끝나면 (세션 종료뿐 아니라 매 작업 완료 시점마다) 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든, 컴퓨터가 껐다 켜져도. (`04_Memory/Preference/auto-finish-after-each-task.md`)
 - **workspace-hygiene-main-checkout**: 기존 프로젝트 메인 체크아웃과 현재 대화 내 난이도별 서브에이전트를 기본 작업 방식으로 사용한다. 새 worktree, runtime/session 디렉터리 또는... (`04_Memory/Preference/workspace-hygiene-main-checkout.md`)
-- **Independent_review_only_in_E_FluxStudio_PlanFlow**: Independent review only in E:\FluxStudio\PlanFlow. Do not edit/create worktree/session/rev... (`04_Memory/Preference/Independent_review_only_in_E_FluxStudio_PlanFlow.md`)
-- **glm-worker-pipeline-auto**: CEO가 비단순 작업(개발·수정·리팩토링·분석·리뷰)을 지시하면, GLM은 자동으로 worker pipeline 루프를 실행한다. CEO가 모델을 지정하지 않아도... (`04_Memory/Preference/glm-worker-pipeline-auto.md`)
