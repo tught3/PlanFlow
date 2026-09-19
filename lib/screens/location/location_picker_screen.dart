@@ -557,7 +557,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 queryController: _queryController,
                 isSearching: _isSearching,
                 isMapLoading: _mapRenderState == _MapRenderState.loading &&
-                    _canUseInAppMap,
+                    _canUseInAppMap &&
+                    _selected == null &&
+                    _results.isEmpty,
                 message: _mapLoadMessage ?? _message,
                 onSearch: _submitSearch,
               ),

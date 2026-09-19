@@ -204,7 +204,27 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 3. 무료 사용 소진(또는 peek 실패) → 광고가 실제로 요청 가능한지 확인.
+    // 3. 무료 사용을 모두 소진했다면 광고 SDK 준비 여부와 무관하게 먼저
+    // 사용자에게 '광고 보고 시작하기' 선택창을 보여준다. 이전에는 광고 동의/
+    // 요청 가능 여부를 먼저 확인해 canRequestAds=false인 기기에서는 이 창 자체가
+    // 나타나지 않았다. 사용자는 광고 시청 여부를 선택할 기회도 없이 차단되어
+    // '광고가 안 뜨는 것'과 '광고 진입 UI가 안 뜨는 것'을 구분할 수 없었다.
+    if (!context.mounted) {
+      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
+      return;
+    }
+    final confirmed = await showVoiceConversationAdDialog(
+      context,
+      freeTrialCount: RemoteConfigService.voiceConversationDailyFreeCount,
+    );
+    if (!confirmed) {
+      await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
+      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
+      return;
+    }
+
+    // 4. 사용자가 실제로 광고 시청을 선택한 뒤에만 광고 동의/요청 가능 여부를
+    // 확인한다. 불가하면 다이얼로그가 사라진 뒤 명시적 E-ADS0 안내를 보여준다.
     await AdConsentService.instance.ensureReady(userInitiated: true);
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
@@ -223,29 +243,13 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 4. 광고 다이얼로그. 동의 확인이 끝난 사용자 명시 흐름에서는
-    // 다이얼로그가 열리는 동안 광고를 미리 로드해 확인 직후 캐시/인플라이트
-    // 결과를 재사용한다. 보상은 showForVoiceConversation에서만 부여된다.
+    // 5. 광고를 준비하고 표시한다. 보상은
+    // showForVoiceConversationWithOutcome에서 실제 시청 완료 후에만 부여된다.
     final requestId = _requestId();
     unawaited(
       AdService.instance
           .preloadForUserInitiatedRewardedAd(requestId: requestId),
     );
-    if (!context.mounted) {
-      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
-      return;
-    }
-    final confirmed = await showVoiceConversationAdDialog(
-      context,
-      freeTrialCount: freeTrialLimit(),
-    );
-    if (!confirmed) {
-      await AnalyticsService.logVoiceConvGateBlocked(reason: 'user_canceled');
-      _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
-      return;
-    }
-
-    // 5. 광고 표시.
     final outcome =
         await AdService.instance.showForVoiceConversationWithOutcome(
       requestId: requestId,

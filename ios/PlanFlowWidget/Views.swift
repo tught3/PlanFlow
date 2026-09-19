@@ -285,6 +285,10 @@ struct PlanFlowMonthlyWidgetView: View {
       WeekdayHeaderRow()
       // 6 rows x 7 columns; on small heights later rows clip, matching the
       // Android rowCount budget.
+      // 남은 세로 공간을 6주가 균등하게 나눠 쓰게 한다. 기존에는 각
+      // 주 행이 내용 높이만큼만 차지하고 아래에 Spacer가 붙어 날짜가 위쪽에
+      // 몰렸다. 위젯 높이에 맞춰 6행이 유연하게 늘어나도록 각 행/셀을 모두
+      // maxHeight까지 확장한다.
       VStack(spacing: 1) {
         ForEach(0..<6, id: \.self) { row in
           HStack(spacing: 1) {
@@ -292,14 +296,17 @@ struct PlanFlowMonthlyWidgetView: View {
               let index = row * 7 + column
               if index < cells.count {
                 monthCell(cells[index])
+                  .frame(maxHeight: .infinity, alignment: .topLeading)
               } else {
-                Color.clear.frame(maxWidth: .infinity)
+                Color.clear
+                  .frame(maxWidth: .infinity, maxHeight: .infinity)
               }
             }
           }
+          .frame(maxHeight: .infinity)
         }
       }
-      Spacer(minLength: 0)
+      .frame(maxHeight: .infinity)
     }
     .padding(8)
     .planFlowWidgetBackground()

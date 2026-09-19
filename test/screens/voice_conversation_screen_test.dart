@@ -100,6 +100,16 @@ class _HangingCancelSttService extends _FakeSttService {
   }
 }
 
+class _BlockingClearSttService extends _FakeSttService {
+  final Completer<String> clearCompleter = Completer<String>();
+
+  @override
+  Future<String> clearActiveTranscript() {
+    clearActiveTranscriptCalls += 1;
+    return clearCompleter.future;
+  }
+}
+
 class _FakeEventRepository extends EventRepository {
   _FakeEventRepository(this.events);
 
@@ -681,6 +691,38 @@ void main() {
         isEmpty,
       );
       expect(stt.clearActiveTranscriptCalls, 1);
+    },
+  );
+
+  testWidgets(
+    'AI 일정 대화는 final 확정 즉시 입력창을 비우고 STT 정리를 기다리지 않는다',
+    (tester) async {
+      final stt = _BlockingClearSttService();
+      await pumpConversation(
+        tester,
+        VoiceConversationScreen(sttService: stt),
+      );
+
+      await tester.tap(find.text('음성으로 명령하기'));
+      await tester.pump();
+      stt.emitPartial('다음주 일정 보여줘');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        '다음주 일정 보여줘',
+      );
+
+      stt.completeSuccess('다음주 일정 보여줘');
+      await tester.pump();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        isEmpty,
+      );
+      expect(stt.clearActiveTranscriptCalls, 1);
+
+      stt.clearCompleter.complete('');
+      await tester.pumpAndSettle();
     },
   );
 

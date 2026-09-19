@@ -516,6 +516,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   Future<void> _submitText(
     String? overrideText, {
     bool fromVoiceFinal = false,
+    bool inputGenerationAlreadyInvalidated = false,
   }) async {
     // self-gate(딥링크 등 entryGrant 미보유 진입)가 아직 끝나지 않았는데
     // 사용자가 입력창의 전송 버튼을 직접 눌러 이 함수가 먼저 호출될 수
@@ -563,7 +564,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     final keepVoiceInputActive =
         !fromVoiceFinal && (_isListening || _keepListening);
     if (!keepVoiceInputActive) {
-      _inputTurnGeneration += 1;
+      if (!inputGenerationAlreadyInvalidated) {
+        _inputTurnGeneration += 1;
+      }
       if (!fromVoiceFinal) {
         _listenGeneration += 1;
       }
@@ -804,12 +807,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             _voicePhase = _VoiceConversationPhase.finalizing;
           });
         }
-        _applyVoiceTranscriptToInput(
+        // 최종 음성 결과가 확정된 순간 입력창을 즉시 비운다. 이전에는
+        // final 텍스트를 한 번 더 입력창에 넣은 뒤 _submitText 내부에서
+        // 비워서, iOS에서 다음 STT partial이 겹칠 때 이전 문장이 잠깐
+        // 남거나 몇 글자씩 섞여 보였다. 여기서 generation을 먼저 넘겨
+        // 현재 listen의 늦은 partial도 동시에 무효화한다.
+        _inputTurnGeneration += 1;
+        _setConversationInputText('');
+        await _submitText(
           submitText,
-          listenGeneration: listenGeneration,
-          inputGeneration: inputGeneration,
+          fromVoiceFinal: true,
+          inputGenerationAlreadyInvalidated: true,
         );
-        await _submitText(submitText, fromVoiceFinal: true);
       } else if (_shouldRetryEarlyListen(result) &&
           !_didRetryConversationEarlyFailure &&
           !_manualEditInterruptedListening &&
