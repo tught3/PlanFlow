@@ -99,5 +99,20 @@
   "suppliesField": "준비물",
   "dateTimePickerTitle": "날짜와 시간 선택",
   "hourLabel": "시",
-  "minuteLabel": "분"
+  "minuteLabel": "분",
+  "groupEventReportSheetTitle": "일정 신고",
+  "groupEventReportSheetSubtitle": "공유된 일정에 문제가 있으면 운영자에게 신고해 주세요.",
+  "reportReasonInappropriate": "부적절한 콘텐츠",
+  "reportReasonSpam": "스팸/광고",
+  "reportReasonHarassment": "괴롭힘 또는 피해 유발",
+  "reportReasonOther": "기타",
+  "groupEventReportDetailLabel": "상세 내용(선택)",
+  "groupEventReportDetailHint": "어떤 문제가 있는지 적어 주세요. (최대 500자)",
+  "groupEventReportSubmit": "신고하기",
+  "groupEventReportSubmitting": "신고 중...",
+  "groupEventReportSuccess": "신고가 접수되었어요.",
+  "groupEventReportAlreadyReported": "이미 신고 접수됨",
+  "groupEventReportFailed": "신고를 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+  "groupEventReportActionTooltip": "일정 신고",
+  "groupEventReportPolicyLink": "신고 정책 및 이용약관"
 }

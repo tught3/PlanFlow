@@ -310,4 +310,52 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get minuteLabel => 'Minute';
+
+  @override
+  String get groupEventReportSheetTitle => 'Report event';
+
+  @override
+  String get groupEventReportSheetSubtitle =>
+      'Report a problem with this shared event to the operators.';
+
+  @override
+  String get reportReasonInappropriate => 'Inappropriate content';
+
+  @override
+  String get reportReasonSpam => 'Spam/Ads';
+
+  @override
+  String get reportReasonHarassment => 'Harassment or harm';
+
+  @override
+  String get reportReasonOther => 'Other';
+
+  @override
+  String get groupEventReportDetailLabel => 'Details (optional)';
+
+  @override
+  String get groupEventReportDetailHint =>
+      'Describe the problem. (max 500 characters)';
+
+  @override
+  String get groupEventReportSubmit => 'Report';
+
+  @override
+  String get groupEventReportSubmitting => 'Reporting...';
+
+  @override
+  String get groupEventReportSuccess => 'Your report has been submitted.';
+
+  @override
+  String get groupEventReportAlreadyReported => 'Already reported';
+
+  @override
+  String get groupEventReportFailed =>
+      'Could not submit the report. Please try again later.';
+
+  @override
+  String get groupEventReportActionTooltip => 'Report event';
+
+  @override
+  String get groupEventReportPolicyLink => 'Report policy & terms';
 }

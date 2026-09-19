@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import '../../../core/env.dart';
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
+import '../../../l10n/app_l10n.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_comment_model.dart';
 import '../models/group_event_model.dart';
 import '../providers/group_event_provider.dart';
 import '../repositories/group_event_comment_repository.dart';
+import '../repositories/group_event_report_repository.dart';
 import '../repositories/group_repository.dart';
+import '../widgets/group_event_report_sheet.dart';
 
 class GroupEventDetailScreen extends StatefulWidget {
   const GroupEventDetailScreen({
@@ -21,10 +24,12 @@ class GroupEventDetailScreen extends StatefulWidget {
     String? currentUserIdOverride,
     GroupRepository? groupRepository,
     GroupEventCommentRepository? commentRepository,
+    GroupEventReportRepository? reportRepository,
   })  : _provider = provider,
         _currentUserIdOverride = currentUserIdOverride,
         _groupRepository = groupRepository,
-        _commentRepository = commentRepository;
+        _commentRepository = commentRepository,
+        _reportRepository = reportRepository;
 
   final String eventId;
   final GroupEventModel? event;
@@ -32,6 +37,7 @@ class GroupEventDetailScreen extends StatefulWidget {
   final String? _currentUserIdOverride;
   final GroupRepository? _groupRepository;
   final GroupEventCommentRepository? _commentRepository;
+  final GroupEventReportRepository? _reportRepository;
 
   @override
   State<GroupEventDetailScreen> createState() => _GroupEventDetailScreenState();
@@ -48,6 +54,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
   GroupEventCommentRepository? _commentRepositoryCache;
   GroupEventCommentRepository get _commentRepository => _commentRepositoryCache ??=
       widget._commentRepository ?? GroupEventCommentRepository.supabase();
+  GroupEventReportRepository? _reportRepositoryCache;
+  GroupEventReportRepository get _reportRepository => _reportRepositoryCache ??=
+      widget._reportRepository ?? GroupEventReportRepository.supabase();
 
   GroupEventModel? _event;
   bool _isLoading = false;
@@ -303,6 +312,14 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                 onPressed: _isLoading ? null : _load,
                 icon: const Icon(Icons.refresh_outlined),
               ),
+              // 남이 공유한 활성 일정만 신고 가능(본인 일정은 신고 대상 아님).
+              if (event != null && _canReportEvent(event))
+                IconButton(
+                  key: const ValueKey('group-event-report-action'),
+                  tooltip: appL10n(context).groupEventReportActionTooltip,
+                  onPressed: () => _openReportSheet(event),
+                  icon: const Icon(Icons.flag_outlined),
+                ),
             ],
           ),
           body: RefreshIndicator(
@@ -471,6 +488,31 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 다른 사용자가 공유한 활성 일정인지 (신고 버튼 노출 조건)
+  bool _canReportEvent(GroupEventModel? event) {
+    if (event == null || !event.isActive) {
+      return false;
+    }
+    // 로그아웃 상태에서는 신고할 수 없으므로 액션 자체를 숨긴다.
+    if (_currentUserId.isEmpty) {
+      return false;
+    }
+    return event.createdBy != null && _currentUserId != event.createdBy;
+  }
+
+  void _openReportSheet(GroupEventModel event) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => GroupEventReportSheet(
+        groupEventId: event.id,
+        groupId: event.groupId,
+        contentOwnerId: event.createdBy,
+        repository: _reportRepository,
       ),
     );
   }

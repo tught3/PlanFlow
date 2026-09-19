@@ -72,3 +72,5 @@ create policy "group_event_reports_update_status_admin"
   );
 
 grant insert on table public.group_event_reports to authenticated;
+-- 운영자(admin email) triage 경로: select/status update grant (feedback_reports 패턴과 동일)
+grant select, update (reason, detail, status) on table public.group_event_reports to authenticated;

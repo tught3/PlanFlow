@@ -655,6 +655,96 @@ abstract class AppLocalizations {
   /// In ko, this message translates to:
   /// **'분'**
   String get minuteLabel;
+
+  /// No description provided for @groupEventReportSheetTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'일정 신고'**
+  String get groupEventReportSheetTitle;
+
+  /// No description provided for @groupEventReportSheetSubtitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'공유된 일정에 문제가 있으면 운영자에게 신고해 주세요.'**
+  String get groupEventReportSheetSubtitle;
+
+  /// No description provided for @reportReasonInappropriate.
+  ///
+  /// In ko, this message translates to:
+  /// **'부적절한 콘텐츠'**
+  String get reportReasonInappropriate;
+
+  /// No description provided for @reportReasonSpam.
+  ///
+  /// In ko, this message translates to:
+  /// **'스팸/광고'**
+  String get reportReasonSpam;
+
+  /// No description provided for @reportReasonHarassment.
+  ///
+  /// In ko, this message translates to:
+  /// **'괴롭힘 또는 피해 유발'**
+  String get reportReasonHarassment;
+
+  /// No description provided for @reportReasonOther.
+  ///
+  /// In ko, this message translates to:
+  /// **'기타'**
+  String get reportReasonOther;
+
+  /// No description provided for @groupEventReportDetailLabel.
+  ///
+  /// In ko, this message translates to:
+  /// **'상세 내용(선택)'**
+  String get groupEventReportDetailLabel;
+
+  /// No description provided for @groupEventReportDetailHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'어떤 문제가 있는지 적어 주세요. (최대 500자)'**
+  String get groupEventReportDetailHint;
+
+  /// No description provided for @groupEventReportSubmit.
+  ///
+  /// In ko, this message translates to:
+  /// **'신고하기'**
+  String get groupEventReportSubmit;
+
+  /// No description provided for @groupEventReportSubmitting.
+  ///
+  /// In ko, this message translates to:
+  /// **'신고 중...'**
+  String get groupEventReportSubmitting;
+
+  /// No description provided for @groupEventReportSuccess.
+  ///
+  /// In ko, this message translates to:
+  /// **'신고가 접수되었어요.'**
+  String get groupEventReportSuccess;
+
+  /// No description provided for @groupEventReportAlreadyReported.
+  ///
+  /// In ko, this message translates to:
+  /// **'이미 신고 접수됨'**
+  String get groupEventReportAlreadyReported;
+
+  /// No description provided for @groupEventReportFailed.
+  ///
+  /// In ko, this message translates to:
+  /// **'신고를 보내지 못했어요. 잠시 후 다시 시도해 주세요.'**
+  String get groupEventReportFailed;
+
+  /// No description provided for @groupEventReportActionTooltip.
+  ///
+  /// In ko, this message translates to:
+  /// **'일정 신고'**
+  String get groupEventReportActionTooltip;
+
+  /// No description provided for @groupEventReportPolicyLink.
+  ///
+  /// In ko, this message translates to:
+  /// **'신고 정책 및 이용약관'**
+  String get groupEventReportPolicyLink;
 }
 
 class _AppLocalizationsDelegate

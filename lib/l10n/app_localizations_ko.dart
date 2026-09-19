@@ -290,4 +290,49 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get minuteLabel => '분';
+
+  @override
+  String get groupEventReportSheetTitle => '일정 신고';
+
+  @override
+  String get groupEventReportSheetSubtitle => '공유된 일정에 문제가 있으면 운영자에게 신고해 주세요.';
+
+  @override
+  String get reportReasonInappropriate => '부적절한 콘텐츠';
+
+  @override
+  String get reportReasonSpam => '스팸/광고';
+
+  @override
+  String get reportReasonHarassment => '괴롭힘 또는 피해 유발';
+
+  @override
+  String get reportReasonOther => '기타';
+
+  @override
+  String get groupEventReportDetailLabel => '상세 내용(선택)';
+
+  @override
+  String get groupEventReportDetailHint => '어떤 문제가 있는지 적어 주세요. (최대 500자)';
+
+  @override
+  String get groupEventReportSubmit => '신고하기';
+
+  @override
+  String get groupEventReportSubmitting => '신고 중...';
+
+  @override
+  String get groupEventReportSuccess => '신고가 접수되었어요.';
+
+  @override
+  String get groupEventReportAlreadyReported => '이미 신고 접수됨';
+
+  @override
+  String get groupEventReportFailed => '신고를 보내지 못했어요. 잠시 후 다시 시도해 주세요.';
+
+  @override
+  String get groupEventReportActionTooltip => '일정 신고';
+
+  @override
+  String get groupEventReportPolicyLink => '신고 정책 및 이용약관';
 }

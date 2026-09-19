@@ -46,7 +46,13 @@
   "voiceListenIdle": "Tap the button below to speak, or type directly.",
   "voiceListenActive": "Listening on-device. You can keep speaking until you tap Done.",
   "voiceListenRestarted": "Voice recognition continued {count} times. Previous speech is kept.",
-  "@voiceListenRestarted": {"placeholders": {"count": {"type": "int"}}},
+  "@voiceListenRestarted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "voiceTranscriptTitle": "Voice text / direct input",
   "voiceInputHint": "Type here",
   "voiceListeningContinue": "Still listening.",
@@ -93,5 +99,20 @@
   "suppliesField": "Supplies",
   "dateTimePickerTitle": "Choose date and time",
   "hourLabel": "Hour",
-  "minuteLabel": "Minute"
+  "minuteLabel": "Minute",
+  "groupEventReportSheetTitle": "Report event",
+  "groupEventReportSheetSubtitle": "Report a problem with this shared event to the operators.",
+  "reportReasonInappropriate": "Inappropriate content",
+  "reportReasonSpam": "Spam/Ads",
+  "reportReasonHarassment": "Harassment or harm",
+  "reportReasonOther": "Other",
+  "groupEventReportDetailLabel": "Details (optional)",
+  "groupEventReportDetailHint": "Describe the problem. (max 500 characters)",
+  "groupEventReportSubmit": "Report",
+  "groupEventReportSubmitting": "Reporting...",
+  "groupEventReportSuccess": "Your report has been submitted.",
+  "groupEventReportAlreadyReported": "Already reported",
+  "groupEventReportFailed": "Could not submit the report. Please try again later.",
+  "groupEventReportActionTooltip": "Report event",
+  "groupEventReportPolicyLink": "Report policy & terms"
 }
