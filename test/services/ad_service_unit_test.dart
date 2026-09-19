@@ -142,6 +142,15 @@ void main() {
         androidConfigured: android,
         iosConfigured: '',
       ),
+      'ca-app-pub-3940256099942544/1712485313',
+    );
+    expect(
+      resolveRewardedAdUnitIdForPlatform(
+        platform: TargetPlatform.android,
+        useTestUnit: true,
+        androidConfigured: '',
+        iosConfigured: ios,
+      ),
       'ca-app-pub-3940256099942544/5224354917',
     );
   });

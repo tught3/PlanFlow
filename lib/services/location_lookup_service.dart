@@ -108,10 +108,10 @@ class LocationLookupService {
         _clientSecret = clientSecret ?? '',
         _proxyUrl = proxyUrl ?? AppEnv.naverMapProxyUrl,
         _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
-        _googleMapsApiKey = googleMapsApiKey ??
-            (defaultTargetPlatform == TargetPlatform.iOS
-                ? AppEnv.googleGeocodingApiKey
-                : AppEnv.googleMapsApiKey),
+        // Native Maps SDK 키(Android/iOS 앱 제한)는 Google Geocoding REST에
+        // 재사용할 수 없다. 별도 Geocoding 키가 명시적으로 주입된 경우에만
+        // Google REST 검색을 사용하고, 아니면 Naver/TMAP 후보를 사용한다.
+        _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleGeocodingApiKey,
         _httpClientFactory = httpClientFactory ?? http.Client.new,
         _usageGuard = usageGuard;
 
@@ -189,8 +189,11 @@ class LocationLookupService {
       );
     }
 
-    // 캐시 key: query 정규화(소문자 trim). origin/preferredProvider는 제외.
-    final cacheKey = normalized.toLowerCase();
+    // 캐시 key는 검색어 + 선호 provider를 함께 묶는다. 과거에는 provider를
+    // 빼서 TMAP으로 검색한 결과가 그대로 캐시된 뒤 사용자가 Naver/Google로
+    // 설정을 바꿔도 같은 TMAP 순서가 재사용되는 문제가 있었다.
+    final cacheKey =
+        '${normalized.toLowerCase()}|provider=${preferredProvider?.name ?? 'any'}';
 
     // 유효한 캐시 항목이 있으면 즉시 반환.
     final cached = _resultCache[cacheKey];
@@ -549,8 +552,18 @@ class LocationLookupService {
 
     final client = _httpClientFactory();
     try {
-      final accessToken =
-          Supabase.instance.client.auth.currentSession?.accessToken;
+      String? accessToken;
+      if (useProxy) {
+        try {
+          accessToken =
+              Supabase.instance.client.auth.currentSession?.accessToken;
+        } catch (_) {
+          // Direct-key tests/local tooling may intentionally run without a
+          // Supabase singleton. Proxy mode can still return its own auth error;
+          // direct Naver mode must not be blocked by unrelated Supabase state.
+          accessToken = null;
+        }
+      }
       final response = await (useProxy
               ? client.get(proxyUri, headers: <String, String>{
                   'accept': 'application/json',

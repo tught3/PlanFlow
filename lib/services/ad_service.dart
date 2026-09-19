@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -259,7 +260,9 @@ String resolveRewardedAdUnitIdForPlatform({
   required String iosConfigured,
 }) {
   if (useTestUnit) {
-    return resolveRewardedAdUnitIdFor(useTestUnit: true, configured: '');
+    return platform == TargetPlatform.iOS
+        ? 'ca-app-pub-3940256099942544/1712485313'
+        : 'ca-app-pub-3940256099942544/5224354917';
   }
   final configured = platform == TargetPlatform.iOS
       ? iosConfigured
@@ -316,6 +319,10 @@ class AdService {
 
   bool _initialized = false;
   Future<void>? _initializeFuture;
+  bool _isTestFlightRuntime = false;
+  bool _didResolveIosDistributionRuntime = false;
+  static const MethodChannel _iosRuntimeChannel =
+      MethodChannel('planflow/ios_permissions');
   bool _showingAd = false;
   int _promptShown = 0;
   int _optIn = 0;
@@ -438,6 +445,7 @@ class AdService {
     if (_initialized) {
       return;
     }
+    await _resolveIosDistributionRuntimeIfNeeded();
     if (!isAdsRuntimeSupported()) {
       DiagLogger.log(
         'RewardedAd',
@@ -536,11 +544,43 @@ class AdService {
     _loadingAd = false;
   }
 
-  /// Debug/Profile 모드에서는 테스트 ID, Release에서는 Remote Config ID 사용.
+  Future<void> _resolveIosDistributionRuntimeIfNeeded() async {
+    if (_didResolveIosDistributionRuntime ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.iOS ||
+        kDebugMode ||
+        kProfileMode) {
+      _didResolveIosDistributionRuntime = true;
+      return;
+    }
+    _didResolveIosDistributionRuntime = true;
+    try {
+      _isTestFlightRuntime =
+          await _iosRuntimeChannel.invokeMethod<bool>('isTestFlight') ?? false;
+      DiagLogger.log(
+        'RewardedAd',
+        'phase=runtime_mode testFlight=$_isTestFlightRuntime',
+      );
+    } catch (error) {
+      // 감지 실패 시 운영 단위 ID로 fail-closed. 테스트 광고를 실수로
+      // App Store 운영 사용자에게 노출하는 것보다 안전한 방향이다.
+      _isTestFlightRuntime = false;
+      DiagLogger.log('RewardedAd', 'phase=runtime_mode testFlight=unknown');
+    }
+  }
+
+  bool get _useTestRewardedUnit =>
+      kDebugMode ||
+      kProfileMode ||
+      (defaultTargetPlatform == TargetPlatform.iOS && _isTestFlightRuntime);
+
+  /// Debug/Profile과 iOS TestFlight/App Review sandbox에서는 Google 공식
+  /// 테스트 단위를 사용한다. App Store 운영 배포에서는 Remote Config의
+  /// 플랫폼 전용 운영 단위를 사용한다.
   String _resolveAdUnitId() {
     return resolveRewardedAdUnitIdForPlatform(
       platform: defaultTargetPlatform,
-      useTestUnit: kDebugMode || kProfileMode,
+      useTestUnit: _useTestRewardedUnit,
       androidConfigured: RemoteConfigService.rewardedAdUnitIdAndroid,
       iosConfigured: RemoteConfigService.rewardedAdUnitIdIos,
     );

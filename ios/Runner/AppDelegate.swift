@@ -105,6 +105,8 @@ final class PlanFlowPermissionChannel: NSObject, CLLocationManagerDelegate {
       requestCalendar { status in result(status) }
     case "openAppSettings":
       openSettings(result: result)
+    case "isTestFlight":
+      result(isTestFlightBuild())
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -219,6 +221,11 @@ final class PlanFlowPermissionChannel: NSObject, CLLocationManagerDelegate {
         DispatchQueue.main.async { completion(self?.calendarStatus() ?? "error") }
       }
     }
+  }
+
+  private func isTestFlightBuild() -> Bool {
+    guard let receiptURL = Bundle.main.appStoreReceiptURL else { return false }
+    return receiptURL.lastPathComponent == "sandboxReceipt"
   }
 
   private func openSettings(result: @escaping FlutterResult) {

@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
@@ -21,8 +22,7 @@ const Duration kLocationSearchTimeout = Duration(seconds: 12);
 
 /// 검색이 상한 시간을 초과해 중단됐을 때의 안내 문구. 재시도가 가능함을
 /// 함께 알려준다.
-const String _searchTimeoutMessage =
-    '장소 검색이 오래 걸려 중단했어요. 잠시 후 다시 시도해 주세요.';
+const String _searchTimeoutMessage = '장소 검색이 오래 걸려 중단했어요. 잠시 후 다시 시도해 주세요.';
 
 class LocationPickerScreen extends StatefulWidget {
   LocationPickerScreen({
@@ -64,13 +64,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   late List<LocationLookupResult> _results;
   late List<String> _fallbackQueries;
   LocationLookupResult? _selected;
+
   /// 현재 선택이 수동(지도 탭)인지 여부 — 새 검색 시 재판정에 사용.
   bool _selectedIsManual = false;
+
   /// 현재 선택이 유효한 검색어. 쿼리가 바뀌면 이전 선택은 무효가 된다.
   String? _selectedForQuery;
   NaverMapController? _mapController;
   google_maps.GoogleMapController? _googleMapController;
   bool _isSearching = false;
+
   /// 검색 세대 번호. 늦게 도착한 이전 쿼리의 응답이 새 쿼리 상태를
   /// 덮어쓰지 못하게 하는 stale-async 가드.
   int _searchGeneration = 0;
@@ -102,7 +105,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       : (_canUseNaverMap || _canUseGoogleMap);
 
   bool get _prefersNaverMap =>
-      widget.preferredInAppMapProvider == LocationPickerInAppMapProvider.naver ||
+      widget.preferredInAppMapProvider ==
+          LocationPickerInAppMapProvider.naver ||
       (widget.preferredInAppMapProvider == null &&
           AppEnv.naverMapClientId.trim().isNotEmpty);
 
@@ -222,11 +226,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
     final generation = ++_searchGeneration;
     try {
-      final searchResult =
-          await widget.locationLookupService.searchWithFallback(
-        query,
-        origin: _resolvedInitialMapCenter,
-      ).timeout(kLocationSearchTimeout);
+      final searchResult = await widget.locationLookupService
+          .searchWithFallback(
+            query,
+            origin: _resolvedInitialMapCenter,
+            preferredProvider: switch (widget.preferredInAppMapProvider) {
+              LocationPickerInAppMapProvider.naver =>
+                LocationLookupProvider.naver,
+              LocationPickerInAppMapProvider.google =>
+                LocationLookupProvider.google,
+              null => null,
+            },
+          )
+          .timeout(kLocationSearchTimeout);
       // 응답 도중 더 새 검색이 시작됐다면 이 응답은 폐기한다.
       if (generation != _searchGeneration) {
         return;
@@ -441,8 +453,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           if (_canUseGoogleMap) {
             DiagLogger.log('MapScreen', 'google fallback after naver timeout');
             setState(() {
-              _mapLoadMessage =
-                  '네이버 지도를 불러오지 못해서 Google 지도로 전환하고 있어요.';
+              _mapLoadMessage = '네이버 지도를 불러오지 못해서 Google 지도로 전환하고 있어요.';
               _mapRenderState = _MapRenderState.loading;
               _isWaitingForNaverMapReady = false;
               _useGoogleFallbackForMap = true;
@@ -468,12 +479,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       if (_mapRenderState != _MapRenderState.loading) {
         return;
       }
-      final hasController = _mapController != null || _googleMapController != null;
+      final hasController =
+          _mapController != null || _googleMapController != null;
       if (!hasController) {
         DiagLogger.log('MapScreen', 'unavailable no controller');
         setState(() {
-          _mapLoadMessage =
-              '지도를 불러올 수 없어요. 아래 후보 목록에서 장소를 선택하거나 직접 검색해 주세요.';
+          _mapLoadMessage = '지도를 불러올 수 없어요. 아래 후보 목록에서 장소를 선택하거나 직접 검색해 주세요.';
           _mapRenderState = _MapRenderState.unavailable;
         });
       }
@@ -654,45 +665,45 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     return Stack(
       children: [
         google_maps.GoogleMap(
-      initialCameraPosition: google_maps.CameraPosition(
-        target: _googleInitialTarget,
-        zoom: 15,
-      ),
-      myLocationButtonEnabled: false,
-      myLocationEnabled: false,
-      markers: {
-        if (_selected != null)
-          google_maps.Marker(
-            markerId: const google_maps.MarkerId('selected'),
-            position: google_maps.LatLng(
-              _selected!.latitude,
-              _selected!.longitude,
-            ),
-            infoWindow: google_maps.InfoWindow(
-              title: _selected!.name,
-              snippet: _selected!.address,
-            ),
+          initialCameraPosition: google_maps.CameraPosition(
+            target: _googleInitialTarget,
+            zoom: 15,
           ),
-      },
-      onMapCreated: (controller) async {
-        _googleMapController = controller;
-        if (mounted) {
-          DiagLogger.log('MapScreen', 'google ready');
-          setState(() {
-            _mapLoadMessage = null;
-            _mapRenderState = _MapRenderState.ready;
-          });
-        }
-        final selected = _selected;
-        if (selected != null) {
-          await _moveGoogleMapTo(selected);
-        }
-      },
-      onTap: (latLng) =>
-          _selectMapPoint(NLatLng(latLng.latitude, latLng.longitude)),
-      onLongPress: (latLng) => _selectMapPoint(
-          NLatLng(latLng.latitude, latLng.longitude),
-          longPressed: true),
+          myLocationButtonEnabled: false,
+          myLocationEnabled: false,
+          markers: {
+            if (_selected != null)
+              google_maps.Marker(
+                markerId: const google_maps.MarkerId('selected'),
+                position: google_maps.LatLng(
+                  _selected!.latitude,
+                  _selected!.longitude,
+                ),
+                infoWindow: google_maps.InfoWindow(
+                  title: _selected!.name,
+                  snippet: _selected!.address,
+                ),
+              ),
+          },
+          onMapCreated: (controller) async {
+            _googleMapController = controller;
+            if (mounted) {
+              DiagLogger.log('MapScreen', 'google ready');
+              setState(() {
+                _mapLoadMessage = null;
+                _mapRenderState = _MapRenderState.ready;
+              });
+            }
+            final selected = _selected;
+            if (selected != null) {
+              await _moveGoogleMapTo(selected);
+            }
+          },
+          onTap: (latLng) =>
+              _selectMapPoint(NLatLng(latLng.latitude, latLng.longitude)),
+          onLongPress: (latLng) => _selectMapPoint(
+              NLatLng(latLng.latitude, latLng.longitude),
+              longPressed: true),
         ),
         if (_mapRenderState == _MapRenderState.ready)
           Positioned(
@@ -926,27 +937,13 @@ class _MapControlSheet extends StatelessWidget {
                         final r = results[i];
                         final isSel = r == selected;
                         return ChoiceChip(
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                r.providerLabel,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: isSel
-                                      ? PlanFlowColors.surface
-                                      : PlanFlowColors.textSecondary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  r.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                          // 검색 제공자(TMAP/Naver/Google)는 후보 품질을 높이기
+                          // 위한 내부 정보다. 앱 안에 표시되는 지도 제공자와
+                          // 혼동되지 않도록 칩에는 장소명만 보여준다.
+                          label: Text(
+                            r.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           selected: isSel,
                           onSelected: (_) => onSelect(r),
@@ -1031,10 +1028,10 @@ LocationLookupResult? resolveSelectionAfterSearch({
   if (results.isNotEmpty) {
     return results.first;
   }
-  final manualForCurrentQuery =
-      currentSelected != null && currentSelectedIsManual &&
-          currentSelectedForQuery != null &&
-          currentSelectedForQuery == query;
+  final manualForCurrentQuery = currentSelected != null &&
+      currentSelectedIsManual &&
+      currentSelectedForQuery != null &&
+      currentSelectedForQuery == query;
   if (manualForCurrentQuery) {
     return currentSelected;
   }
@@ -1069,7 +1066,8 @@ class _MapUnavailablePanel extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 14),
-            _ExternalMapButtons(query: query, preferredProvider: preferredProvider),
+            _ExternalMapButtons(
+                query: query, preferredProvider: preferredProvider),
           ],
         ),
       ),
@@ -1171,7 +1169,8 @@ Uri buildAppleMapsUri({
   if (selected != null && name != null && name.isNotEmpty) {
     final ll =
         '${selected.latitude.toStringAsFixed(6)},${selected.longitude.toStringAsFixed(6)}';
-    return Uri.https('maps.apple.com', '/', <String, String>{'q': name, 'll': ll});
+    return Uri.https(
+        'maps.apple.com', '/', <String, String>{'q': name, 'll': ll});
   }
   return Uri.https('maps.apple.com', '/', <String, String>{'q': trimmed});
 }

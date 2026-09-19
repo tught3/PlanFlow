@@ -797,6 +797,8 @@ void main() {
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
         isEmpty,
       );
+      expect(find.text('음성 입력 정지'), findsOneWidget);
+      expect(find.text('음성으로 명령하기'), findsNothing);
       // 리스닝을 끊지 않고 계속 듣는 경로이므로, STT 서비스 내부에 남은
       // 이전 발화의 누적 트랜스크립트를 지워야 한다 — 안 그러면 다음 결과에
       // 방금 제출한 문구가 이어붙거나, 침묵 타임아웃으로 재제출될 수 있다.

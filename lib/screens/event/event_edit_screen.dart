@@ -232,40 +232,47 @@ class _EventEditScreenState extends State<EventEditScreen> {
   ///
   /// 정확한 알람 권한 또는 배터리 최적화 예외가 꺼져 있을 때만 표시.
   /// 저장 자체를 막지 않으며, 다이얼로그는 권한 화면으로 이동하는 버튼을 제공.
-  Future<void> _showAlarmPermissionGuardIfNeeded() async {
+  Future<_AlarmPermissionGuardAction>
+      _showAlarmPermissionGuardIfNeeded() async {
     if (!mounted) {
-      return;
+      return _AlarmPermissionGuardAction.none;
     }
     try {
       final snapshot = await _permissionService.checkAll();
       if (!mounted) {
-        return;
+        return _AlarmPermissionGuardAction.none;
       }
       // 둘 다 허용된 경우 다이얼로그 없이 조용히 진행.
       if (snapshot.alarmWillFire) {
-        return;
+        return _AlarmPermissionGuardAction.none;
       }
 
       final missingExact = !snapshot.exactAlarmsGranted;
       final missingBattery = !snapshot.batteryOptimizationIgnored;
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => _AlarmPermissionGuardDialog(
-          missingExactAlarm: missingExact,
-          missingBatteryOptimization: missingBattery,
-          onFixExactAlarm: () async {
-            Navigator.of(dialogContext).pop();
-            await _permissionService.openAlarmSettings();
-          },
-          onFixBatteryOptimization: () async {
-            Navigator.of(dialogContext).pop();
-            await _permissionService.requestIgnoreBatteryOptimizations();
-          },
-        ),
-      );
+      final action = await showDialog<_AlarmPermissionGuardAction>(
+            context: context,
+            builder: (_) => _AlarmPermissionGuardDialog(
+              missingExactAlarm: missingExact,
+              missingBatteryOptimization: missingBattery,
+            ),
+          ) ??
+          _AlarmPermissionGuardAction.none;
+      if (!mounted) {
+        return action;
+      }
+      switch (action) {
+        case _AlarmPermissionGuardAction.exactAlarmSettings:
+          await _permissionService.openAlarmSettings();
+          return action;
+        case _AlarmPermissionGuardAction.batteryOptimizationSettings:
+          await _permissionService.requestIgnoreBatteryOptimizations();
+          return action;
+        case _AlarmPermissionGuardAction.none:
+          return action;
+      }
     } catch (error) {
       debugPrint('Alarm permission guard check failed (non-blocking): $error');
+      return _AlarmPermissionGuardAction.none;
     }
   }
 
@@ -1313,9 +1320,20 @@ class _EventEditScreenState extends State<EventEditScreen> {
           startAt: savedEvent?.startAt ?? updatedEvent.startAt,
         );
         if (savedEvent != null) {
-          // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
-          // 저장 자체는 항상 성공 처리. 다이얼로그 dismiss 후 캘린더로 이동.
-          await _showAlarmPermissionGuardIfNeeded();
+          // 저장은 이미 성공했으므로 설정 화면으로 이동했다가 돌아와 다시
+          // 저장을 눌러도 신규 생성으로 오인하지 않게 현재 화면의 기준 이벤트를
+          // 즉시 방금 저장된 행으로 승격한다.
+          _loadedEvent = savedEvent;
+          final alarmGuardAction = await _showAlarmPermissionGuardIfNeeded();
+          if (!mounted) {
+            return;
+          }
+          // OS 권한 화면을 연 경우에는 이 화면을 그대로 유지한다. 예전에는
+          // 다이얼로그 pop 직후 calendar로 라우팅해 설정 Intent와 경쟁했고,
+          // 사용자가 돌아와 다시 저장하면 이미 생성된 일정과 중복되기도 했다.
+          if (alarmGuardAction != _AlarmPermissionGuardAction.none) {
+            return;
+          }
         }
         if (mounted) {
           context.go(AppRoutes.calendar);
@@ -2317,23 +2335,26 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 }
 
+enum _AlarmPermissionGuardAction {
+  none,
+  exactAlarmSettings,
+  batteryOptimizationSettings,
+}
+
 /// 알람 권한이 부족할 때 저장 직후 표시하는 안내 다이얼로그.
 ///
 /// 정확한 알람 권한 누락 / 배터리 최적화 예외 미적용 여부에 따라
 /// 해당 설정 화면으로 이동하는 버튼을 표시한다.
-/// [저장을 막지 않으며] dismiss 후 캘린더로 이동한다.
+/// 저장 자체는 막지 않는다. 사용자가 권한 설정으로 이동하면 현재 편집 화면을 유지하고,
+/// '나중에'를 고른 경우에만 기존처럼 캘린더로 이동한다.
 class _AlarmPermissionGuardDialog extends StatelessWidget {
   const _AlarmPermissionGuardDialog({
     required this.missingExactAlarm,
     required this.missingBatteryOptimization,
-    required this.onFixExactAlarm,
-    required this.onFixBatteryOptimization,
   });
 
   final bool missingExactAlarm;
   final bool missingBatteryOptimization;
-  final VoidCallback onFixExactAlarm;
-  final VoidCallback onFixBatteryOptimization;
 
   @override
   Widget build(BuildContext context) {
@@ -2367,7 +2388,9 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           if (missingExactAlarm) ...[
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: onFixExactAlarm,
+              onPressed: () => Navigator.of(context).pop(
+                _AlarmPermissionGuardAction.exactAlarmSettings,
+              ),
               icon: const Icon(Icons.alarm_outlined, size: 18),
               label: const Text('정확한 알람 설정으로 이동'),
               style: OutlinedButton.styleFrom(
@@ -2380,7 +2403,9 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           if (missingBatteryOptimization) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: onFixBatteryOptimization,
+              onPressed: () => Navigator.of(context).pop(
+                _AlarmPermissionGuardAction.batteryOptimizationSettings,
+              ),
               icon: const Icon(Icons.battery_saver_outlined, size: 18),
               label: const Text('절전 예외 설정으로 이동'),
               style: OutlinedButton.styleFrom(
@@ -2397,7 +2422,9 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           buttons: [
             PlanFlowActionButton(
               label: '나중에',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(context).pop(
+                _AlarmPermissionGuardAction.none,
+              ),
               type: ActionButtonType.secondary,
             ),
           ],

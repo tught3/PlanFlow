@@ -560,7 +560,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
-    _isRestartPending = false;
+    // final 음성 한 턴이 제출된 뒤에도 사용자가 '계속 듣기'를 켜 둔
+    // 세션이면 음성 입력 상태 자체는 유지한다. 실제 native listen은 현재
+    // 명령 처리가 끝난 직후 재시작하지만, UI가 매 턴마다 꺼졌다 켜지는
+    // 것처럼 보이지 않게 restart-pending 상태를 즉시 유지한다.
+    _isRestartPending = fromVoiceFinal && _keepListening && !_voicePausedByUser;
     final keepVoiceInputActive =
         !fromVoiceFinal && (_isListening || _keepListening);
     if (!keepVoiceInputActive) {
@@ -2449,7 +2453,9 @@ class _VoiceConversationControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isVoiceActive = isListening || isRestartPending;
+    final isVoiceActive = isListening ||
+        isRestartPending ||
+        (keepListening && !voicePausedByUser);
     // 실제 인식 상태(듣는 중/준비 중/재시작)는 대화 영역의 음성 상태 버블이
     // 보여주므로, 여기는 시작/정지 동작 하나만 하는 단일 버튼으로 둔다.
     // (이전엔 상태 아이콘·문구 + 별도 정지 버튼이 버블과 중복 표시됐음.)

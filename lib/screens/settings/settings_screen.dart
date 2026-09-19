@@ -2553,7 +2553,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     _voiceAutoStart = settings.voiceAutoStart;
     _voiceCorrectionLearningEnabled = settings.voiceCorrectionLearningEnabled;
     _voiceCommonLearningOptIn = settings.voiceCommonLearningOptIn;
-    _preferredMapProvider = settings.preferredMapProvider;
+    // 앱 안 지도는 실제 렌더러가 있는 Naver/Google만 지원한다.
+    // 과거 'tmap' 값은 POI 검색/외부 열기용 옵션이었는데 '기본 지도'로
+    // 노출되어 사용자가 TMAP 지도가 앱 안에 뜰 것으로 오해할 수 있었다.
+    _preferredMapProvider =
+        settings.preferredMapProvider == 'google' ? 'google' : 'naver';
     final region = PlanFlowRegions.byLocaleAndTimeZone(
       countryCode: settings.countryCode,
       localeCode: settings.localeCode,
@@ -3138,8 +3142,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 16),
               _SectionCard(
-                title: '기본 지도',
-                subtitle: '위치 검색과 외부 지도 열기에서 먼저 사용할 지도를 정합니다.',
+                title: '앱 안 지도',
+                subtitle: '장소 확인 화면에 표시할 지도를 정합니다. 장소 후보는 여러 검색 제공자를 함께 활용합니다.',
                 child: SegmentedButton<String>(
                   key: const ValueKey(
                       'settings-preferred-map-provider-selector'),
@@ -3153,11 +3157,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                       value: 'google',
                       icon: Icon(Icons.public_outlined),
                       label: Text('Google 지도'),
-                    ),
-                    ButtonSegment<String>(
-                      value: 'tmap',
-                      icon: Icon(Icons.route_outlined),
-                      label: Text('TMAP'),
                     ),
                   ],
                   selected: <String>{_preferredMapProvider},

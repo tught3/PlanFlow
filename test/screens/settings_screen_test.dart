@@ -514,12 +514,20 @@ void main() {
     expect(settingsRepository.savedSettings, isNotNull);
     expect(settingsRepository.savedSettings!.preferredMapProvider, 'google');
 
-    await tester.tap(
+    expect(
       find.descendant(of: preferredMapSelector, matching: find.text('TMAP')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: preferredMapSelector,
+        matching: find.text('네이버 지도'),
+      ),
     );
     await tester.pumpAndSettle();
 
-    expect(settingsRepository.savedSettings!.preferredMapProvider, 'tmap');
+    expect(settingsRepository.savedSettings!.preferredMapProvider, 'naver');
   });
 
   testWidgets('SettingsScreen saves smart departure alarm settings', (

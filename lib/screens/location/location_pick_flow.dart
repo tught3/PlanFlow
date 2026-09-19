@@ -291,7 +291,11 @@ Future<String> _loadPreferredMapProvider() async {
 String? _normalizePreferredMapProvider(String? value) {
   final normalized = value?.trim().toLowerCase();
   return switch (normalized) {
-    'google' || 'tmap' || 'naver' => normalized,
+    'google' => 'google',
+    'naver' => 'naver',
+    // legacy: TMAP은 앱 안 지도 렌더러가 없으므로 과거 저장값은 Naver로
+    // 승격한다. TMAP은 외부 지도 열기/보조 POI 검색 제공자로 계속 사용한다.
+    'tmap' => 'naver',
     _ => null,
   };
 }
@@ -304,11 +308,6 @@ LocationPickerInAppMapProvider? _inAppMapProviderFor(String provider) {
         : AppEnv.googleMapsApiKey.trim().isNotEmpty
             ? LocationPickerInAppMapProvider.google
             : LocationPickerInAppMapProvider.naver,
-    'tmap' => AppEnv.naverMapClientId.trim().isNotEmpty
-        ? LocationPickerInAppMapProvider.naver
-        : AppEnv.googleMapsApiKey.trim().isNotEmpty
-            ? LocationPickerInAppMapProvider.google
-            : null,
     _ => null,
   };
 }
