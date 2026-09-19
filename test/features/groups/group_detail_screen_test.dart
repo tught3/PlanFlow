@@ -9,6 +9,7 @@ import 'package:planflow/features/groups/repositories/group_backup_repository.da
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_detail_screen.dart';
 import 'package:planflow/features/groups/services/group_cleanup_service.dart';
+import 'package:planflow/features/groups/widgets/terms_acceptance_gate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -35,7 +36,12 @@ void main() {
   });
 
   setUp(() {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    // 이용약관 동의 게이트는 별도 전용 테스트
+    // (test/features/groups/widgets/terms_acceptance_gate_test.dart)에서
+    // 검증하므로, 여기서는 이미 동의한 상태로 시드해 게이트를 무력화한다.
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      termsAcceptedUrlKey: termsOfServiceUrl,
+    });
   });
 
   testWidgets('push 이력 없이 그룹 상세로 바로 들어와 팀을 나가도 GoError 없이 그룹 목록으로 이동한다',

@@ -114,5 +114,10 @@
   "groupEventReportAlreadyReported": "이미 신고 접수됨",
   "groupEventReportFailed": "신고를 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
   "groupEventReportActionTooltip": "일정 신고",
-  "groupEventReportPolicyLink": "신고 정책 및 이용약관"
+    "groupEventReportPolicyLink": "신고 정책 및 이용약관",
+  "termsGateTitle": "이용약관 동의",
+  "termsGateBody": "그룹에 공유된 일정은 초대된 멤버 모두에게 표시됩니다. 계속하려면 이용약관에 동의해 주세요.",
+  "termsGateViewTerms": "이용약관 보기",
+  "termsGateAccept": "동의하고 계속하기",
+  "termsGateLater": "나중에"
 }

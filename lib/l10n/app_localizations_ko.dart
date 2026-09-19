@@ -335,4 +335,20 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get groupEventReportPolicyLink => '신고 정책 및 이용약관';
+
+  @override
+  String get termsGateTitle => '이용약관 동의';
+
+  @override
+  String get termsGateBody =>
+      '그룹에 공유된 일정은 초대된 멤버 모두에게 표시됩니다. 계속하려면 이용약관에 동의해 주세요.';
+
+  @override
+  String get termsGateViewTerms => '이용약관 보기';
+
+  @override
+  String get termsGateAccept => '동의하고 계속하기';
+
+  @override
+  String get termsGateLater => '나중에';
 }

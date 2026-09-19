@@ -16,6 +16,7 @@ import '../repositories/group_repository.dart';
 import '../repositories/group_backup_repository.dart';
 import '../services/group_cleanup_service.dart';
 import '../services/group_event_share_service.dart';
+import '../widgets/terms_acceptance_gate.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   const GroupDetailScreen({
@@ -74,6 +75,21 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     _ownsProvider = widget.contextProvider == null;
     unawaited(_load());
     unawaited(_loadAutoSharePref());
+    unawaited(_ensureTermsAccepted());
+  }
+
+  /// UGC 정책 대응: 그룹(공유 일정) 기능 진입 전 이용약관 동의를 보장한다.
+  /// "나중에" 선택 시 로그아웃 없이 그룹 화면 진입만 취소하며,
+  /// 다음 그룹 진입 시 게이트가 다시 표시된다.
+  Future<void> _ensureTermsAccepted() async {
+    final accepted =
+        await showTermsAcceptanceGate(context, preferences: widget.preferences);
+    if (accepted || !mounted) return;
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(AppRoutes.home);
+    }
   }
 
   @override

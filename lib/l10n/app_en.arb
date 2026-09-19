@@ -114,5 +114,10 @@
   "groupEventReportAlreadyReported": "Already reported",
   "groupEventReportFailed": "Could not submit the report. Please try again later.",
   "groupEventReportActionTooltip": "Report event",
-  "groupEventReportPolicyLink": "Report policy & terms"
+    "groupEventReportPolicyLink": "Report policy & terms",
+  "termsGateTitle": "Terms of Service",
+  "termsGateBody": "Schedules shared to a group are visible to all invited members. Please agree to the Terms of Service to continue.",
+  "termsGateViewTerms": "View Terms of Service",
+  "termsGateAccept": "Agree and continue",
+  "termsGateLater": "Later"
 }

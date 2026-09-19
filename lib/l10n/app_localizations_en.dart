@@ -358,4 +358,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupEventReportPolicyLink => 'Report policy & terms';
+
+  @override
+  String get termsGateTitle => 'Terms of Service';
+
+  @override
+  String get termsGateBody =>
+      'Schedules shared to a group are visible to all invited members. Please agree to the Terms of Service to continue.';
+
+  @override
+  String get termsGateViewTerms => 'View Terms of Service';
+
+  @override
+  String get termsGateAccept => 'Agree and continue';
+
+  @override
+  String get termsGateLater => 'Later';
 }

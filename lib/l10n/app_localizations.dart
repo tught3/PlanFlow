@@ -745,6 +745,36 @@ abstract class AppLocalizations {
   /// In ko, this message translates to:
   /// **'신고 정책 및 이용약관'**
   String get groupEventReportPolicyLink;
+
+  /// No description provided for @termsGateTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'이용약관 동의'**
+  String get termsGateTitle;
+
+  /// No description provided for @termsGateBody.
+  ///
+  /// In ko, this message translates to:
+  /// **'그룹에 공유된 일정은 초대된 멤버 모두에게 표시됩니다. 계속하려면 이용약관에 동의해 주세요.'**
+  String get termsGateBody;
+
+  /// No description provided for @termsGateViewTerms.
+  ///
+  /// In ko, this message translates to:
+  /// **'이용약관 보기'**
+  String get termsGateViewTerms;
+
+  /// No description provided for @termsGateAccept.
+  ///
+  /// In ko, this message translates to:
+  /// **'동의하고 계속하기'**
+  String get termsGateAccept;
+
+  /// No description provided for @termsGateLater.
+  ///
+  /// In ko, this message translates to:
+  /// **'나중에'**
+  String get termsGateLater;
 }
 
 class _AppLocalizationsDelegate
