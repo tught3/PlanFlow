@@ -47,8 +47,18 @@ void main() {
       // 2026-09-18 (same day): added fail-closed SHA-256/UUID pins comparing
       // the CI-decoded Runner profile against the locally verified
       // regenerated profile, to catch stale/mangled secret delivery.
+      // 2026-09-19: updated deliberately for the Build30 Google Maps release
+      // fix — new fail-closed GOOGLE_MAPS_API_KEY (PLANFLOW_GOOGLE_MAPS_API_KEY
+      // secret) preflight gate, --dart-define=GOOGLE_MAPS_API_KEY on the
+      // flutter build ios command, and build-time injection of the key into
+      // Runner Info.plist so AppDelegate can call GMSServices.provideAPIKey.
+      // 2026-09-19 (same day): updated deliberately — the Google Maps native
+      // key injection moved from the Prepare step to the Archive step,
+      // wrapping `xcodebuild archive` (backup + trap-restore). The archive
+      // recompiles Info.plist from source, so injecting before the unsigned
+      // prepare build left the release artifact without the key.
       '.github/workflows/ios-release.yml':
-          'd8e327f74535f3d153e6a9acfd226b804d7e5f963a812ce66b63ee7b8c4ac9f3',
+          '9d1093c679bb225c8fbbb2f60b32eb7b6c6a9ad55884fb75bae9ec98f45274f5',
       '.github/workflows/ios-privacy-audit.yml':
           '3307f3b190feffe65d2e0f4696044fd935e6924a3cbd33c33a562034bb615a60',
       '.github/workflows/ios-readiness.yml':

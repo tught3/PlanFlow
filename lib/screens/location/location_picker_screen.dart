@@ -15,6 +15,15 @@ import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/feature_tour_service.dart';
 
+/// 장소 검색 상한 시간. 화면 내 재검색과 pickLocationFromQuery 초기 검색이
+/// 같은 상한을 공유해 한쪽만 무한 대기에 빠지는 일이 없도록 한다.
+const Duration kLocationSearchTimeout = Duration(seconds: 12);
+
+/// 검색이 상한 시간을 초과해 중단됐을 때의 안내 문구. 재시도가 가능함을
+/// 함께 알려준다.
+const String _searchTimeoutMessage =
+    '장소 검색이 오래 걸려 중단했어요. 잠시 후 다시 시도해 주세요.';
+
 class LocationPickerScreen extends StatefulWidget {
   LocationPickerScreen({
     super.key,
@@ -62,6 +71,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   NaverMapController? _mapController;
   google_maps.GoogleMapController? _googleMapController;
   bool _isSearching = false;
+  /// 검색 세대 번호. 늦게 도착한 이전 쿼리의 응답이 새 쿼리 상태를
+  /// 덮어쓰지 못하게 하는 stale-async 가드.
+  int _searchGeneration = 0;
   bool _hasUserChosenMapTarget = false;
   bool _isWaitingForNaverMapReady = false;
   bool _useGoogleFallbackForMap = false;
@@ -208,12 +220,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       _message = null;
     });
 
+    final generation = ++_searchGeneration;
     try {
       final searchResult =
           await widget.locationLookupService.searchWithFallback(
         query,
         origin: _resolvedInitialMapCenter,
-      );
+      ).timeout(kLocationSearchTimeout);
+      // 응답 도중 더 새 검색이 시작됐다면 이 응답은 폐기한다.
+      if (generation != _searchGeneration) {
+        return;
+      }
       final results = searchResult.results;
       if (!mounted) {
         return;
@@ -247,15 +264,24 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         await _moveMapTo(selected);
       }
     } on LocationLookupException catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _searchGeneration) {
         return;
       }
       setState(() {
         _fallbackQueries = const <String>[];
         _message = error.message;
       });
+    } on TimeoutException {
+      // 상한 초과: 스피너는 finally에서 지워지고, 재시도 안내만 남긴다.
+      // 이전 선택/마커는 그대로 둔다(부분 상태로 덮어쓰지 않는다).
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      setState(() {
+        _message = _searchTimeoutMessage;
+      });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _searchGeneration) {
         return;
       }
       setState(() {
@@ -264,7 +290,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             : '장소 검색에 실패했어요. API 키와 네트워크를 확인하거나 외부 지도에서 먼저 확인해 주세요.';
       });
     } finally {
-      if (mounted) {
+      // 오래된 세대의 finally가 새 검색의 스피너을 끄지 않도록 세대를 확인한다.
+      if (mounted && generation == _searchGeneration) {
         setState(() {
           _isSearching = false;
         });
@@ -612,14 +639,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             Positioned(
               top: 8,
               right: 8,
-              child: _AppleMapsShortcut(query: _queryController.text),
+              child: _AppleMapsShortcut(
+                query: _queryController.text,
+                selected: _selected,
+              ),
             ),
         ],
       );
     }
 
     // 구글 지도 (loading → ready 모두 GoogleMap 위젯 유지)
-    return google_maps.GoogleMap(
+    return Stack(
+      children: [
+        google_maps.GoogleMap(
       initialCameraPosition: google_maps.CameraPosition(
         target: _googleInitialTarget,
         zoom: 15,
@@ -659,6 +691,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       onLongPress: (latLng) => _selectMapPoint(
           NLatLng(latLng.latitude, latLng.longitude),
           longPressed: true),
+        ),
+        if (_mapRenderState == _MapRenderState.ready)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: _AppleMapsShortcut(
+              query: _queryController.text,
+              selected: _selected,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1115,12 +1158,29 @@ enum _ExternalMapTarget {
   }
 }
 
+/// Apple 지도 URL을 만든다. 좌표가 있는 선택 장소는 q=장소명&ll=위도,경도
+/// 형태로, 그렇지 않으면 q=검색어 형태로 연다. (테스트 가능한 순수 함수)
+Uri buildAppleMapsUri({
+  required String queryText,
+  LocationLookupResult? selected,
+}) {
+  final trimmed = queryText.trim();
+  final name = selected?.name.trim();
+  if (selected != null && name != null && name.isNotEmpty) {
+    final ll =
+        '${selected.latitude.toStringAsFixed(6)},${selected.longitude.toStringAsFixed(6)}';
+    return Uri.https('maps.apple.com', '/', <String, String>{'q': name, 'll': ll});
+  }
+  return Uri.https('maps.apple.com', '/', <String, String>{'q': trimmed});
+}
+
 /// 외부 지도 앱/웹으로 [query] 검색을 연다. 버튼 위젯들에서 공용 사용.
 Future<void> _openExternalMap(
   BuildContext context,
   String query,
-  _ExternalMapTarget target,
-) async {
+  _ExternalMapTarget target, {
+  LocationLookupResult? selected,
+}) async {
   final trimmed = query.trim();
   if (trimmed.isEmpty) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -1128,8 +1188,11 @@ Future<void> _openExternalMap(
     );
     return;
   }
+  final uri = target == _ExternalMapTarget.apple
+      ? buildAppleMapsUri(queryText: trimmed, selected: selected)
+      : target.uri(trimmed);
   final opened = await launchUrl(
-    target.uri(trimmed),
+    uri,
     mode: LaunchMode.externalApplication,
   );
   if (!opened && context.mounted) {
@@ -1139,12 +1202,13 @@ Future<void> _openExternalMap(
   }
 }
 
-/// 네이버 지도가 정상 로드된 흐름에서도 Apple 지도를 발견할 수 있게 하는
-/// iOS 전용 작은 버튼. Android에서는 아무것도 렌더링하지 않는다.
+/// 앱 안 지도(네이버/구글 어느 쪽이든)가 정상 로드된 흐름에서도 Apple 지도를
+/// 발견할 수 있게 하는 iOS 전용 작은 버튼. Android에서는 아무것도 렌더링하지 않는다.
 class _AppleMapsShortcut extends StatelessWidget {
-  const _AppleMapsShortcut({required this.query});
+  const _AppleMapsShortcut({required this.query, this.selected});
 
   final String query;
+  final LocationLookupResult? selected;
 
   @override
   Widget build(BuildContext context) {
@@ -1156,8 +1220,12 @@ class _AppleMapsShortcut extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () =>
-            _openExternalMap(context, query, _ExternalMapTarget.apple),
+        onTap: () => _openExternalMap(
+          context,
+          query,
+          _ExternalMapTarget.apple,
+          selected: selected,
+        ),
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
@@ -1166,7 +1234,7 @@ class _AppleMapsShortcut extends StatelessWidget {
               Icon(Icons.open_in_new, size: 14, color: PlanFlowColors.primary),
               SizedBox(width: 4),
               Text(
-                '외부 지도에서 열기',
+                'Apple 지도에서 열기',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,

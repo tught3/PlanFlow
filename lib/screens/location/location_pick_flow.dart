@@ -73,7 +73,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
             preferredProvider:
                 _lookupProviderForPreference(resolvedMapProvider),
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(kLocationSearchTimeout);
   final initialMapCenterFuture = permissionMessage == null
       ? _startInitialMapCenterLoad(permissionService)
       : null;

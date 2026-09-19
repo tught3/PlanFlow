@@ -450,7 +450,7 @@ String voiceConversationGateDenialMessage(
     case VoiceConversationGateDenialReason.userCanceled:
       return '광고를 취소해 AI일정대화를 시작하지 않았어요.';
     case VoiceConversationGateDenialReason.adFailed:
-      return '광고가 완료되지 않아 AI일정대화를 시작하지 못했어요. 다시 시도해 주세요.';
+      return '광고가 완료되지 않아 AI일정대화를 시작하지 못했어요. 다시 시도해 주세요. (E-ADFAIL)';
   }
 }
 

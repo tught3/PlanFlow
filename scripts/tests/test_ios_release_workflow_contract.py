@@ -768,6 +768,113 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("missing+=(\"$name\")", preflight)
         self.assertIn("exit 1", preflight)
 
+    # Build30: without the Google Maps key the Dart side (AppEnv
+    # .googleMapsApiKey) is empty in production, so preferredMapProvider=google
+    # silently falls back to Naver. These tests pin the same fail-closed
+    # guarantees the Naver Maps key already has.
+    def test_google_maps_release_secret_is_declared_and_required(self):
+        self.assertIn(
+            "GOOGLE_MAPS_API_KEY: ${{ secrets.PLANFLOW_GOOGLE_MAPS_API_KEY }}",
+            self.workflow,
+            "The iOS release must source the Google Maps API key from the "
+            "protected PLANFLOW_GOOGLE_MAPS_API_KEY secret.",
+        )
+        preflight = self.workflow[self.workflow.index("- name: Preflight protected release gates") :]
+        self.assertIn(
+            "GOOGLE_MAPS_API_KEY",
+            preflight,
+            "The protected Google Maps API key must be included in the "
+            "fail-closed release preflight.",
+        )
+        self.assertLess(
+            preflight.index("GOOGLE_MAPS_API_KEY"),
+            preflight.index("flutter build ios") if "flutter build ios" in preflight else len(preflight),
+        )
+
+    def test_google_maps_key_is_injected_into_flutter_build(self):
+        self.assertIn(
+            '--dart-define=GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"',
+            self.workflow,
+            "The release Flutter build must receive the protected Google Maps "
+            "API key through the GOOGLE_MAPS_API_KEY dart define.",
+        )
+
+    def test_google_maps_key_preflight_fails_closed_before_flutter_build(self):
+        preflight_start = self.workflow.index("- name: Preflight protected release gates")
+        build_start = self.workflow.index("flutter build ios")
+        preflight = self.workflow[preflight_start:build_start]
+        # Presence-only gate with its own ::error title; the key value itself
+        # must never be echoed or logged anywhere in the workflow.
+        self.assertIn("BLOCKED_GOOGLE_MAPS_KEY", preflight)
+        self.assertIn('[[ -z "${GOOGLE_MAPS_API_KEY:-}" ]]', preflight)
+        self.assertIn("exit 1", preflight)
+        self.assertNotRegex(
+            self.workflow,
+            r'echo "\$GOOGLE_MAPS_API_KEY',
+            "The Google Maps API key value must never be echoed to the "
+            "workflow log.",
+        )
+
+    def test_google_maps_key_is_injected_into_runner_info_plist_for_native_sdk(self):
+        # google_maps_flutter on iOS needs GMSServices.provideAPIKey before any
+        # map view is created; AppDelegate reads the GoogleMapsApiKey entry
+        # from Runner Info.plist. xcodebuild archive recompiles Info.plist
+        # from source, so the injection must wrap the archive step (not the
+        # earlier unsigned flutter build) with a backup/restore so the tracked
+        # source file is never mutated.
+        archive_start = self.workflow.index(
+            "- name: Archive Runner with embedded WidgetKit extension"
+        )
+        next_step = self.workflow.index("- name:", archive_start + 10)
+        archive_step = self.workflow[archive_start:next_step]
+        self.assertIn("GoogleMapsApiKey", archive_step)
+        self.assertIn("/usr/libexec/PlistBuddy", archive_step)
+        self.assertIn("cp ios/Runner/Info.plist", archive_step)
+        self.assertIn("xcodebuild archive -workspace", archive_step)
+        # Fail-closed: backup is taken before injection and restored after the
+        # archive gates (and via trap if anything fails mid-step).
+        self.assertLess(
+            archive_step.index("cp ios/Runner/Info.plist"),
+            archive_step.index("xcodebuild archive -workspace"),
+            "The Info.plist backup must be taken before xcodebuild archive.",
+        )
+        self.assertIn("trap", archive_step)
+        self.assertIn("'Set :GoogleMapsApiKey '", archive_step)
+        self.assertIn("'Add :GoogleMapsApiKey string '", archive_step)
+
+    def test_google_maps_key_injection_happens_at_archive_not_prepare_step(self):
+        # Regression guard: the Prepare step's pre-archive restore used to
+        # strip the key before xcodebuild archive recompiled from source, so
+        # the archived Runner.app shipped without GoogleMapsApiKey.
+        prepare_start = self.workflow.index(
+            "- name: Prepare Flutter and protected Firebase plist"
+        )
+        prepare_end = self.workflow.index("- name:", prepare_start + 10)
+        prepare_step = self.workflow[prepare_start:prepare_end]
+        self.assertNotIn(
+            "GoogleMapsApiKey",
+            prepare_step,
+            "The Prepare step must not inject or restore GoogleMapsApiKey; "
+            "the injection must wrap xcodebuild archive.",
+        )
+        prepare_restore_pos = prepare_step.find('cp "$plist_backup"')
+        self.assertEqual(
+            prepare_restore_pos,
+            -1,
+            "The Prepare step must not restore an Info.plist backup before "
+            "the archive step runs.",
+        )
+        archive_start = self.workflow.index(
+            "- name: Archive Runner with embedded WidgetKit extension"
+        )
+        inject_pos = self.workflow.index("Add :GoogleMapsApiKey string", archive_start)
+        archive_pos = self.workflow.index("xcodebuild archive -workspace", archive_start)
+        self.assertLess(
+            inject_pos,
+            archive_pos,
+            "GoogleMapsApiKey must be injected before xcodebuild archive.",
+        )
+
     # -- H. Secret safety --------------------------------------------------
 
     def test_no_hardcoded_credential_values(self):

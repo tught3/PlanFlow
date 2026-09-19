@@ -54,6 +54,7 @@ jobs:
       WIDGET_PROFILE_BASE64: ${{ secrets.PLANFLOW_IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
       FIREBASE_PLIST_BASE64: ${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
       NAVER_MAP_CLIENT_ID: ${{ secrets.PLANFLOW_NAVER_MAP_CLIENT_ID }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.PLANFLOW_GOOGLE_MAPS_API_KEY }}
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
@@ -231,9 +232,18 @@ jobs:
           missing=()
           # Team ID is derived from the signed Runner profile below. An optional
           # PLANFLOW_APPLE_TEAM_ID secret is still accepted and cross-checked.
-          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 NAVER_MAP_CLIENT_ID ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
+          for name in DISTRIBUTION_CERTIFICATE_BASE64 DISTRIBUTION_CERTIFICATE_PASSWORD RUNNER_PROFILE_BASE64 WIDGET_PROFILE_BASE64 FIREBASE_PLIST_BASE64 NAVER_MAP_CLIENT_ID GOOGLE_MAPS_API_KEY ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_P8; do
             if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
           done
+          # Google Maps release key (Build30): the Dart side reads
+          # --dart-define=GOOGLE_MAPS_API_KEY and the native google_maps_flutter
+          # SDK needs GMSServices.provideAPIKey. Without it, preferredMapProvider
+          # =google silently falls back to Naver in production. Presence-only
+          # check: the value itself is never echoed or logged.
+          if [[ -z "${GOOGLE_MAPS_API_KEY:-}" ]]; then
+            echo "::error title=BLOCKED_GOOGLE_MAPS_KEY::GOOGLE_MAPS_API_KEY (PLANFLOW_GOOGLE_MAPS_API_KEY secret) must be present for Google map rendering in release."
+            exit 1
+          fi
           if (( ${#missing[@]} )); then
             echo "::error title=BLOCKED_APPLE_SIGNING::BLOCKED_APPLE_SIGNING: missing protected release secrets: ${missing[*]}"
             echo "Unsigned readiness remains available through ios-readiness.yml; no signed artifact was produced."
@@ -261,7 +271,7 @@ jobs:
           fi
           echo "RUNNER_PRIVACY_SOURCE_PASS: PASS"
           echo "EXPORT_COMPLIANCE_SOURCE_PASS: PASS"
-          echo "Release gates: Apple signing, Firebase config, Naver Maps client ID, and App Store Connect credentials are present."
+          echo "Release gates: Apple signing, Firebase config, Naver Maps client ID, Google Maps API key, and App Store Connect credentials are present."
 
       - uses: subosito/flutter-action@v2
         with:
@@ -278,7 +288,13 @@ jobs:
           umask 077
           printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
           bash scripts/verify-ios-firebase-config.sh
-          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER" --dart-define=NAVER_MAP_CLIENT_ID="$NAVER_MAP_CLIENT_ID"
+          # Note: the Google Maps native key injection lives in the Archive
+          # step, not here — the signed archive recompiles Runner Info.plist
+          # from source, so the release artifact only gets the key when it is
+          # present immediately before archiving. The intermediate unsigned
+          # build below does not need the native key (Dart receives it via
+          # --dart-define).
+          flutter build ios --release --no-codesign --build-name "$IOS_BUILD_NAME" --build-number "$IOS_BUILD_NUMBER" --dart-define=NAVER_MAP_CLIENT_ID="$NAVER_MAP_CLIENT_ID" --dart-define=GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"
           rm -f ios/Runner/GoogleService-Info.plist
           trap - EXIT
 
@@ -425,6 +441,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Google Maps native key injection (Build30): xcodebuild archive
+          # recompiles Runner Info.plist from source, so the key must be
+          # present immediately before archiving or GMSServices.provideAPIKey
+          # never fires in the release artifact. Fail-closed backup +
+          # trap-restore; the key value is never echoed.
+          plist_backup="$RUNNER_TEMP/Runner-Info.plist.backup"
+          cp ios/Runner/Info.plist "$plist_backup"
+          trap 'cp "$plist_backup" ios/Runner/Info.plist; rm -f "$plist_backup"' EXIT
+          /usr/libexec/PlistBuddy -c 'Set :GoogleMapsApiKey '"$GOOGLE_MAPS_API_KEY" ios/Runner/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c 'Add :GoogleMapsApiKey string '"$GOOGLE_MAPS_API_KEY" ios/Runner/Info.plist
           xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
             -archivePath "$RUNNER_TEMP/PlanFlow.xcarchive" \
             -destination 'generic/platform=iOS' \
@@ -474,6 +500,9 @@ jobs:
           echo "ARCHIVE_EXPORT_COMPLIANCE_PASS: PASS"
           echo "ARCHIVE_PRIVACY_PREFLIGHT_PASS: PASS"
           echo "Archive gates: Runner and embedded WidgetKit extension present."
+          cp "$plist_backup" ios/Runner/Info.plist
+          rm -f "$plist_backup"
+          trap - EXIT
 
       - name: Verify and retain exact arm64 Runner symbols
         shell: bash

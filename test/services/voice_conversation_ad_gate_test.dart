@@ -272,6 +272,7 @@ void main() {
         VoiceConversationGateDenialReason.rewardedDisabled: 'E-RC1',
         VoiceConversationGateDenialReason.remoteDisabled: 'E-RC2',
         VoiceConversationGateDenialReason.adsUnavailable: 'E-ADS0',
+        VoiceConversationGateDenialReason.adFailed: 'E-ADFAIL',
       };
 
       expectations.forEach((reason, code) {
@@ -287,7 +288,6 @@ void main() {
       const noCodeReasons = <VoiceConversationGateDenialReason>{
         VoiceConversationGateDenialReason.inFlight,
         VoiceConversationGateDenialReason.userCanceled,
-        VoiceConversationGateDenialReason.adFailed,
       };
 
       for (final reason in noCodeReasons) {

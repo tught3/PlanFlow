@@ -2,6 +2,7 @@ import AVFoundation
 import CoreLocation
 import EventKit
 import Flutter
+import GoogleMaps
 import Speech
 import UIKit
 
@@ -22,6 +23,16 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     StartupDiagnostics.shared.mark("APPDELEGATE_ENTER")
+    // Build30: google_maps_flutter on iOS requires the native API key before
+    // any map view is created. The key is injected into Runner Info.plist at
+    // build time (ios-release.yml, mirroring the Firebase plist pattern) and
+    // is only forwarded here when present, so debug/local builds without the
+    // plist entry keep working.
+    if let googleMapsApiKey = Bundle.main.object(forInfoDictionaryKey: "GoogleMapsApiKey") as? String,
+       !googleMapsApiKey.isEmpty {
+      GMSServices.provideAPIKey(googleMapsApiKey)
+      StartupDiagnostics.shared.mark("GOOGLE_MAPS_API_KEY_PROVIDED")
+    }
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     if let controller = window?.rootViewController as? FlutterViewController {
       StartupDiagnostics.shared.attach(to: controller.binaryMessenger)
