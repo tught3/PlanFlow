@@ -16,6 +16,7 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		B18D00000000000000000004 /* planflow_critical_alarm.wav in Resources */ = {isa = PBXBuildFile; fileRef = B18D00000000000000000003 /* planflow_critical_alarm.wav */; };
 		A31F00000000000000000001 /* PlanFlowWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000011 /* PlanFlowWidget.swift */; };
 		A31F00000000000000000002 /* Payload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000021 /* Payload.swift */; };
 		A31F00000000000000000026 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31F00000000000000000022 /* Theme.swift */; };
@@ -75,6 +76,7 @@
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B18D00000000000000000001 /* StartupDiagnostics.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = StartupDiagnostics.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		B18D00000000000000000003 /* planflow_critical_alarm.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = planflow_critical_alarm.wav; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		A31F00000000000000000082 /* RunnerTests-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = RunnerTests-Debug.xcconfig; path = Flutter/RunnerTests-Debug.xcconfig; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				B18D00000000000000000001 /* StartupDiagnostics.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
+				B18D00000000000000000003 /* planflow_critical_alarm.wav */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -310,6 +313,7 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+				B18D00000000000000000004 /* planflow_critical_alarm.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

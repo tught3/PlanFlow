@@ -106,6 +106,29 @@ class NotificationService {
       semanticAction: SemanticAction.none,
     ),
   ];
+  /// iOS 강한알람 커스텀 사운드. Runner 타겟 번들에 포함된 파일명(확장자 포함).
+  /// Android와 동일한 wav를 ios/Runner/planflow_critical_alarm.wav 로 복사해
+  /// Xcode Resources에 추가했다. UNNotificationSound는 파일명만 지정하면 된다.
+  static const String criticalAlarmIosSoundName = 'planflow_critical_alarm.wav';
+
+  /// iOS 강한알람 알림 카테고리 identifier. Android의 critical 액션 버튼과
+  /// 동일한 "확인(출발)" 액션을 달아 준다.
+  static const String criticalAlarmCategoryId = 'critical_alarm_category';
+
+  /// Darwin 알림 카테고리. 액션 identifier를 [criticalAcknowledgedActionId]로
+  /// 맞춰 [handleNotificationResponseAction]의 취소 로직을 그대로 재사용한다.
+  @visibleForTesting
+  static final DarwinNotificationCategory criticalAlarmDarwinCategory =
+      DarwinNotificationCategory(
+    criticalAlarmCategoryId,
+    actions: <DarwinNotificationAction>[
+      DarwinNotificationAction.plain(
+        criticalAcknowledgedActionId,
+        '확인(출발)',
+      ),
+    ],
+  );
+
   static const List<AndroidNotificationAction> _criticalActions =
       <AndroidNotificationAction>[
     AndroidNotificationAction(
@@ -818,8 +841,8 @@ class NotificationService {
   }
 
   Future<void> _initializeInternal() async {
-    const initializationSettings = InitializationSettings(
-      android: AndroidInitializationSettings('ic_stat_planflow'),
+    final initializationSettings = InitializationSettings(
+      android: const AndroidInitializationSettings('ic_stat_planflow'),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: false,
         requestSoundPermission: false,
@@ -829,6 +852,9 @@ class NotificationService {
         defaultPresentBadge: true,
         defaultPresentBanner: true,
         defaultPresentList: true,
+        notificationCategories: <DarwinNotificationCategory>[
+          criticalAlarmDarwinCategory,
+        ],
       ),
       macOS: DarwinInitializationSettings(
         requestAlertPermission: true,
@@ -839,8 +865,11 @@ class NotificationService {
         defaultPresentBadge: true,
         defaultPresentBanner: true,
         defaultPresentList: true,
+        notificationCategories: <DarwinNotificationCategory>[
+          criticalAlarmDarwinCategory,
+        ],
       ),
-      linux: LinuxInitializationSettings(defaultActionName: '알림 열기'),
+      linux: const LinuxInitializationSettings(defaultActionName: '알림 열기'),
     );
 
     await _plugin.initialize(
@@ -1187,15 +1216,23 @@ class NotificationService {
             ? AudioAttributesUsage.alarm
             : AudioAttributesUsage.notification,
       ),
+      // 강한알람 iOS: 커스텀 사운드(Runner 번들 wav)를 지정하지 않으면 기본
+      // 짧은 알림음만 울린다. critical-alerts entitlement가 없으므로
+      // InterruptionLevel.critical은 무시/거부될 수 있어 timeSensitive로
+      // 요청한다 (entitlement 없이 허용되는 최상위 수준).
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
-        interruptionLevel: InterruptionLevel.critical,
+        sound: criticalAlarmIosSoundName,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+        categoryIdentifier: criticalAlarmCategoryId,
       ),
       macOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
-        interruptionLevel: InterruptionLevel.critical,
+        sound: criticalAlarmIosSoundName,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+        categoryIdentifier: criticalAlarmCategoryId,
       ),
       linux: const LinuxNotificationDetails(
         urgency: LinuxNotificationUrgency.critical,
