@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-app-review-remediation-20260917",
-  "status": "BLOCKED_NAMED_ROLES_AND_RELEASE_GATE",
+  "status": "BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE",
   "original_request": "Recover the interrupted PlanFlow iOS App Review remediation, add the missing Sign in with Apple path, verify the existing permission/maps/ATT/widget fixes, and continue toward a new TestFlight build without changing the rejected Build23.",
   "scope": {
     "in_scope": [
@@ -52,7 +52,7 @@
     "apple_maps_option": "SOURCE_PRESENT: Apple Maps target is iOS-only and uses maps.apple.com; external map query schemes are configured.",
     "app_privacy_tracking": "SOURCE_PRESENT: no ATT API/package/direct IDFA access; current profile records NOT_CONFIGURED/non-tracking evidence. App Store Connect tracking declaration correction remains external and unverified here.",
     "widget_extension": "SOURCE_PRESENT: widget target, embed, entitlements, bundle identity, and release-contract checks are present. Signed archive proof requires macOS workflow.",
-    "release_workflow": "CANONICAL_PRESENT: .github/workflows/ios-release.yml is workflow_dispatch-only and validates build identity, signing, widget embed, privacy, upload, and ingestion. No run was dispatched because named review/integration gates are unavailable."
+    "release_workflow": "CANONICAL_PRESENT_AND_EXECUTED: .github/workflows/ios-release.yml completed current-source Build39/TestFlight qualification with archive, signing, privacy, upload, ingestion, and availability gates passing."
   },
   "reports": [
     {
@@ -134,7 +134,7 @@
   ],
   "release": {
     "workflow": ".github/workflows/ios-release.yml",
-    "build_number": "NOT_CREATED",
+    "build_number": "39",
     "workflow_runs": [
       {
         "run": "35170881593",
@@ -151,22 +151,22 @@
         "evidence": "Second macOS runner remained in Run subosito/flutter-action@v2 with no timestamp/log update for more than 10 minutes; no upload step was reached."
       }
     ],
-    "workflow_run": "NOT_COMPLETED",
-    "testflight": "BLOCKED_RUNNER_STALL_AND_EXTERNAL_PRIVACY_CORRECTION",
-    "archive": "NOT_CREATED",
-    "ipa": "NOT_CREATED",
-    "apple_upload": "NOT_ATTEMPTED",
-    "ingestion": "NOT_VERIFIED"
+    "workflow_run": "35486089409",
+    "source_sha": "3ece3f64f9327c615b68344c649e119c1ef5985c",
+    "testflight": "AVAILABLE: build 1.1.1 (39)",
+    "archive": "PASS",
+    "ipa": "PASS",
+    "apple_upload": "PASS: delivery UUID 79aa7ddd-32a9-4787-91f6-226472c914c4",
+    "ingestion": "PASS: processingState=VALID"
   },
   "completion": {
-    "verdict": "BLOCKED",
+    "verdict": "BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE",
     "blockers": [
-      "Required named Explorer, Planner, Implementer, Test Executor, Reviewer, and Integrator terminal reports are unavailable because of the account usage limit.",
-      "No independent Reviewer or Integrator inspected the final diff, so the delivery gate forbids COMPLETE.",
-      "Canonical macOS release runs 35170881593 and 35171288814 stalled in Flutter setup and were cancelled before archive/upload; no Build27 archive, IPA, Apple transport, ingestion, or TestFlight AVAILABLE evidence exists for this recovery run.",
-      "App Store Connect tracking declaration correction is external and has not been authenticated/read back in this run."
+      "Authenticated App Store Connect readback verifying the final privacy/tracking declaration is not available in this run.",
+      "Real iPhone runtime evidence is absent for cold launch, Apple sign-in, permissions, maps, widget behavior, and rewarded-ad consent/load/show/reward callback.",
+      "Independent Reviewer must issue a focused terminal re-review after the current-source Build39 evidence; prior blocker cannot be silently treated as cleared."
     ],
-    "next_action": "Restore named-agent capacity, run independent Reviewer and Integrator on the current diff, then commit task-owned files, push non-force, dispatch the canonical iOS release workflow, and verify Apple ingestion/TestFlight before resubmission."
+    "next_action": "Obtain authenticated App Store Connect privacy/tracking readback and real iPhone/TestFlight runtime evidence, then record the focused Reviewer closure; source and Build39 delivery gates are complete."
   },
   "continuation_20260920": {
     "routing_receipt": {
@@ -208,8 +208,9 @@
       "Explorer": "PASS: current remediation lineage and dirty ownership inspected.",
       "Planner": "PASS: source gates present; two existing release runs must be monitored without a third dispatch.",
       "Test Executor": "INITIAL_FAIL then PASS after identity correction; no files changed by executor.",
-      "Reviewer": "FINAL_REVIEW_REPORT FINDINGS: blocker remains until release, ASC readback, and Integrator evidence are complete.",
+      "Reviewer": "FINAL_REVIEW_REPORT: FINDINGS / BLOCKER. Current-SHA Build39 release and source checks pass; authenticated App Store Connect privacy/tracking readback and real iPhone/TestFlight runtime evidence remain absent. This current terminal report is persisted here.",
       "Implementer": "FINAL_IMPLEMENTER_REPORT: PASS / ALREADY COMPLETE; focused widget contract 14 tests passed; no changes made."
+      ,"Integrator": "FINAL_INTEGRATION_REPORT: BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE; named Implementer evidence confirmed; Build39 current-SHA release fully qualified; ASC authenticated privacy/tracking readback, real iPhone evidence, and focused Reviewer closure remain."
     },
     "release_runs": [
       {
@@ -219,22 +220,32 @@
       },
       {
         "run": "35485387350",
-        "status": "in_progress",
-        "result": "Build38 candidate; archive/dSYM/IPA and upload step reached, ingestion pending."
+        "status": "success",
+        "source_sha": "adfd8aea",
+        "result": "Build38 archive/dSYM/IPA passed; Apple transport delivery UUID 80af74a0-bc44-4392-8ba6-edfbe937c05b; ingestion processingState=VALID; TESTFLIGHT_AVAILABLE=PASS. This run predates the current source fix."
       },
       {
         "run": "35485535469",
-        "status": "in_progress",
-        "result": "Concurrent same-SHA auto-number run; do not launch another run."
+        "status": "failure",
+        "source_sha": "adfd8aea",
+        "result": "Expected duplicate Build38 rejection after the successful Build38 transport; no new binary was uploaded."
       },
       {
         "run": "35486089409",
-        "status": "in_progress",
+        "status": "success",
         "source_sha": "3ece3f64f9327c615b68344c649e119c1ef5985c",
-        "result": "Canonical current-SHA release dispatched after prior Build38 ingestion; auto build number pending."
+        "build_name": "1.1.1",
+        "build_number": "39",
+        "archive": "PASS: Runner archive contains embedded PlanFlowWidgetExtension.appex and privacy/export-compliance gates passed.",
+        "dsym": "PASS: exact arm64 Runner/dSYM UUID match E34FD18C-BB63-33BA-87C1-F7B94175B017; retained artifact uploaded.",
+        "ipa": "PASS: app com.fluxstudio.planflow 1.1.1 (39); widget com.fluxstudio.planflow.PlanFlowWidget 1.1.1 (39).",
+        "apple_upload": "PASS: Apple transport delivery UUID 79aa7ddd-32a9-4787-91f6-226472c914c4.",
+        "ingestion": "PASS: App Store Connect build resource found with processingState=VALID.",
+        "testflight": "PASS: TESTFLIGHT_BUILD_AVAILABLE and TESTFLIGHT_AVAILABLE.",
+        "result": "Canonical current-SHA release completed successfully for build 39."
       }
     ],
     "foreign_dirty_preserved": true,
-    "integrator_status": "RUNNING; terminal verdict pending current-SHA release completion"
+    "integrator_status": "BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE; current-SHA Build39 release complete and named Implementer evidence confirmed."
   }
 }
