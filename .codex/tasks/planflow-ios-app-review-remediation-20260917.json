@@ -176,10 +176,10 @@
       "roles": {
         "Explorer": "flux_explorer/gpt-5.6-luna/medium",
         "Planner": "flux_planner/gpt-5.6-terra/high",
-        "Implementer": "NOT_RUN; direct evidence justified a one-line identity correction",
+        "Implementer": "PASS: flux_complex_implementer confirmed pubspec 1.1.1+171 and PLANFLOW_WIDGET_BUILD_NUMBER=171 already match; no further edit required.",
         "Test Executor": "flux_test_executor/gpt-5.6-luna/low",
         "Reviewer": "flux_reviewer/gpt-5.6-luna/high",
-        "Integrator": "NOT_RUN"
+        "Integrator": "BLOCKED: current final-SHA release run was dispatched; final integration verdict pending release completion and external evidence."
       }
     },
     "changed_files": [
@@ -208,7 +208,8 @@
       "Explorer": "PASS: current remediation lineage and dirty ownership inspected.",
       "Planner": "PASS: source gates present; two existing release runs must be monitored without a third dispatch.",
       "Test Executor": "INITIAL_FAIL then PASS after identity correction; no files changed by executor.",
-      "Reviewer": "FINAL_REVIEW_REPORT FINDINGS: blocker remains until release, ASC readback, and Integrator evidence are complete."
+      "Reviewer": "FINAL_REVIEW_REPORT FINDINGS: blocker remains until release, ASC readback, and Integrator evidence are complete.",
+      "Implementer": "FINAL_IMPLEMENTER_REPORT: PASS / ALREADY COMPLETE; focused widget contract 14 tests passed; no changes made."
     },
     "release_runs": [
       {
@@ -225,9 +226,15 @@
         "run": "35485535469",
         "status": "in_progress",
         "result": "Concurrent same-SHA auto-number run; do not launch another run."
+      },
+      {
+        "run": "35486089409",
+        "status": "in_progress",
+        "source_sha": "3ece3f64f9327c615b68344c649e119c1ef5985c",
+        "result": "Canonical current-SHA release dispatched after prior Build38 ingestion; auto build number pending."
       }
     ],
     "foreign_dirty_preserved": true,
-    "integrator_status": "NOT_RUN_UNTIL_ACTIVE_RELEASE_RUNS_RESOLVE"
+    "integrator_status": "RUNNING; terminal verdict pending current-SHA release completion"
   }
 }
