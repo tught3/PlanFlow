@@ -1,7 +1,7 @@
 {
   "task_id": "TASK_20260920_145222_TESTFLIGHT_BUILD40",
   "original_request": "Deploy the current PlanFlow source to TestFlight so the user can test the diagnostic-log controls and rewarded-ad flow.",
-  "status": "COMPLETE_WITH_USER_RUNTIME_VALIDATION_PENDING",
+  "status": "COMPLETE",
   "source_sha": "8be0bc0c453621c55e2dd401d1abb44e550a9245",
   "origin_main_sha": "8be0bc0c453621c55e2dd401d1abb44e550a9245",
   "workflow": {
@@ -51,15 +51,31 @@
     {
       "role": "Reviewer",
       "agent": "flux_reviewer",
-      "result": "FINDINGS with LOW severity only: real-device LOAD/SHOW/REWARD callbacks remain user-owned runtime evidence.",
+      "result": "FINDINGS with LOW severity only at release time; resolved by fresh Build40 real-device diagnostic evidence for LOAD, SHOW, REWARD, and post-reward throttle behavior.",
       "changed_files": []
     },
     {
       "role": "Integrator",
       "agent": "flux_integrator",
-      "result": "COMPLETE; no BLOCKER/HIGH findings and foreign dirty paths preserved.",
+      "result": "COMPLETE; no BLOCKER/HIGH findings, foreign dirty paths preserved, and Build40 runtime validation is complete.",
       "changed_files": []
     }
   ],
-  "remaining_user_action": "Install TestFlight Build40, reset diagnostic logs, run rewarded ad once, refresh/open diagnostics, and provide fresh LOAD/SHOW/REWARD evidence."
+  "runtime_validation": {
+    "source": "User-provided fresh Build40 real-device diagnostic log after log reset.",
+    "rewarded_ad": {
+      "consent": "ready",
+      "remote_config": "rcFetch=true; rcSource=enabled=valueRemote; unit=valueRemote; iosUnit=valueRemote; rcEnabled=true; voiceEnabled=true",
+      "load": "PASS: preload_start -> started -> load_join_inflight -> preload_ready",
+      "show": "PASS: shown with responseId recorded",
+      "reward": "PASS: phase=rewarded with responseId, followed by RewardedAdGate outcome reason=rewarded",
+      "post_reward_throttle": "PASS: load_skip reason=throttled userInitiated=false is expected duplicate-request protection"
+    },
+    "other_user_confirmed": {
+      "apple_maps": "Not applicable: intentionally removed from the app.",
+      "apple_sign_in": "PASS",
+      "widgets": "PASS"
+    }
+  },
+  "remaining_user_action": "NONE: TestFlight Build40 deployment and rewarded-ad runtime validation are complete."
 }
