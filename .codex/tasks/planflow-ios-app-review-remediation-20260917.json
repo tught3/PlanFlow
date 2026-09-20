@@ -167,5 +167,67 @@
       "App Store Connect tracking declaration correction is external and has not been authenticated/read back in this run."
     ],
     "next_action": "Restore named-agent capacity, run independent Reviewer and Integrator on the current diff, then commit task-owned files, push non-force, dispatch the canonical iOS release workflow, and verify Apple ingestion/TestFlight before resubmission."
+  },
+  "continuation_20260920": {
+    "routing_receipt": {
+      "entry_model": "gpt-5.6-luna",
+      "entry_effort": "low",
+      "classification": "complex",
+      "roles": {
+        "Explorer": "flux_explorer/gpt-5.6-luna/medium",
+        "Planner": "flux_planner/gpt-5.6-terra/high",
+        "Implementer": "NOT_RUN; direct evidence justified a one-line identity correction",
+        "Test Executor": "flux_test_executor/gpt-5.6-luna/low",
+        "Reviewer": "flux_reviewer/gpt-5.6-luna/high",
+        "Integrator": "NOT_RUN"
+      }
+    },
+    "changed_files": [
+      "ios/Flutter/PlanFlow-Identity.xcconfig"
+    ],
+    "reason": "Focused contract test directly identified pubspec build 171 versus widget build 167 mismatch.",
+    "fix": "PLANFLOW_WIDGET_BUILD_NUMBER 167 -> 171 and synchronized current-version comment.",
+    "verification": [
+      {
+        "command": "flutter test --no-pub test/services/auth_service_test.dart test/ios_e2e_flow05_fake_test.dart test/ios_permission_onboarding_contract_test.dart test/ios_admob_contract_test.dart test/ios_simulator_e2e_contract_test.dart test/ios_widget_version_contract_test.dart test/ios_phase2_contract_test.dart test/ios_phase3_native_contract_test.dart test/ios_phase4_identity_contract_test.dart test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "result": "PASS: all tests passed"
+      },
+      {
+        "command": "dart analyze lib/services/auth_service.dart lib/services/oauth_callback_handler.dart lib/screens/auth/login_screen.dart test/services/auth_service_test.dart test/ios_e2e_flow05_fake_test.dart",
+        "exit_code": 0,
+        "result": "PASS: no issues found"
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "result": "PASS with pre-existing line-ending warnings only"
+      }
+    ],
+    "named_reports": {
+      "Explorer": "PASS: current remediation lineage and dirty ownership inspected.",
+      "Planner": "PASS: source gates present; two existing release runs must be monitored without a third dispatch.",
+      "Test Executor": "INITIAL_FAIL then PASS after identity correction; no files changed by executor.",
+      "Reviewer": "FINAL_REVIEW_REPORT FINDINGS: blocker remains until release, ASC readback, and Integrator evidence are complete."
+    },
+    "release_runs": [
+      {
+        "run": "35484842793",
+        "status": "failure",
+        "result": "Build37 archive/dSYM/IPA passed; App Store upload rejected as duplicate because Build37 was already consumed."
+      },
+      {
+        "run": "35485387350",
+        "status": "in_progress",
+        "result": "Build38 candidate; archive/dSYM/IPA and upload step reached, ingestion pending."
+      },
+      {
+        "run": "35485535469",
+        "status": "in_progress",
+        "result": "Concurrent same-SHA auto-number run; do not launch another run."
+      }
+    ],
+    "foreign_dirty_preserved": true,
+    "integrator_status": "NOT_RUN_UNTIL_ACTIVE_RELEASE_RUNS_RESOLVE"
   }
 }
