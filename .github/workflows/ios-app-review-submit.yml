@@ -144,7 +144,7 @@ jobs:
                   "limit": "200",
               }
           )
-          _, versions_doc = api("GET", f"/appStoreVersions?{q}")
+          _, versions_doc = api("GET", f"/apps/{app_id}/appStoreVersions?{q}")
           versions = [
               item
               for item in versions_doc.get("data", [])
