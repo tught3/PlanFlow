@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants.dart';
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
 import '../providers/group_dashboard_provider.dart';
@@ -90,6 +91,7 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
         final state = _provider.state;
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(),
             title: const Text('그룹 대시보드'),
             actions: [
               IconButton(
@@ -672,10 +674,12 @@ class _MemberShareRow extends StatelessWidget {
                             stat.displayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                         ),
                         const SizedBox(width: 6),

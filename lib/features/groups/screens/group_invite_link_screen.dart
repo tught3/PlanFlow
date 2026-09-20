@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../providers/group_invite_provider.dart';
 
 class GroupInviteLinkScreen extends StatefulWidget {
@@ -101,6 +102,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
         widget.groupId.trim().isEmpty || widget.inviteToken.trim().isEmpty;
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.groups),
         title: const Text('그룹 초대'),
       ),
       body: ListView(

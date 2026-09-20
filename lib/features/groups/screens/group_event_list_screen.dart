@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
 import '../models/group_event_recurrence.dart';
@@ -197,6 +198,7 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
             .toList(growable: false);
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(),
             title: const Text('그룹 일정'),
             actions: [
               // 목록/캘린더 토글

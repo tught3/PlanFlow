@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../widgets/app_back_button.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/naver_calendar_launch_service.dart';
 import '../../services/naver_ics_import_service.dart';
@@ -135,6 +136,7 @@ class _NaverIcsImportScreenState extends State<NaverIcsImportScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.settings),
         title: const Text('네이버 캘린더 가져오기'),
       ),
       body: SafeArea(

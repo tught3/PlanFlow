@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants.dart';
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
 import '../models/group_member_model.dart';
@@ -362,6 +363,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
         final state = _provider.state;
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(),
             title: const Text('멤버 관리'),
             actions: [
               IconButton(

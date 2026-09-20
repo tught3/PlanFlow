@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/theme.dart';
+import '../../widgets/app_back_button.dart';
 import '../../core/time_format_controller.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/feedback_repository.dart';
@@ -170,7 +171,10 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.calendar),
+        title: Text(title),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),

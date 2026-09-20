@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../widgets/app_back_button.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 
@@ -90,7 +91,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(title: const Text('비밀번호 재설정')),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.login),
+        title: const Text('비밀번호 재설정'),
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),

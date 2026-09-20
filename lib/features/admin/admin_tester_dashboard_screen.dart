@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/local_time.dart';
+import '../../core/constants.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
+import '../../widgets/app_back_button.dart';
 import '../../data/models/tester_info_model.dart';
 import '../../data/repositories/tester_dashboard_repository.dart';
 import 'tester_dashboard_provider.dart';
@@ -17,7 +19,8 @@ class AdminTesterDashboardScreen extends StatefulWidget {
       _AdminTesterDashboardScreenState();
 }
 
-class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen> {
+class _AdminTesterDashboardScreenState
+    extends State<AdminTesterDashboardScreen> {
   final TesterDashboardProvider _provider = TesterDashboardProvider();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
@@ -59,31 +62,31 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       _provider.applyFilter(_provider.filter.copyWith(
-            search: value.trim(),
-            offset: 0,
-          ));
+        search: value.trim(),
+        offset: 0,
+      ));
     });
   }
 
   void _setStatusFilter(TesterStatus? status) {
     _provider.applyFilter(_provider.filter.copyWith(
-          status: status,
-          offset: 0,
-        ));
+      status: status,
+      offset: 0,
+    ));
   }
 
   void _setPlatformFilter(String? platform) {
     _provider.applyFilter(_provider.filter.copyWith(
-          platform: platform,
-          offset: 0,
-        ));
+      platform: platform,
+      offset: 0,
+    ));
   }
 
   void _setSort(TesterDashboardSort sort) {
     _provider.applyFilter(_provider.filter.copyWith(
-          sort: sort,
-          offset: 0,
-        ));
+      sort: sort,
+      offset: 0,
+    ));
   }
 
   /// 통계 카드 탭 시 메인 리스트로 필터를 적용한다.
@@ -135,14 +138,13 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
         final state = _provider.state;
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(fallbackLocation: AppRoutes.home),
             title: const Text('관리자 · 테스터 대시보드'),
             actions: [
               IconButton(
                 key: const ValueKey('admin-testers-refresh'),
                 tooltip: '새로고침',
-                onPressed: state.isLoading
-                    ? null
-                    : () => _provider.refresh(),
+                onPressed: state.isLoading ? null : () => _provider.refresh(),
                 icon: const Icon(Icons.refresh),
               ),
             ],
@@ -338,9 +340,8 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
               children: cards
                   .map((card) => _StatCard(
                         data: card,
-                        width:
-                            (constraints.maxWidth - 10 * (columns - 1)) /
-                                columns,
+                        width: (constraints.maxWidth - 10 * (columns - 1)) /
+                            columns,
                       ))
                   .toList(),
             );
@@ -926,8 +927,7 @@ class _Active7DaySheetState extends State<_Active7DaySheet> {
                               const SizedBox(height: 2),
                               Text(
                                 '최근 7일 내 접속 기록이 있는 사용자를 날짜별로 묶어 보여줘요. (최대 200명)',
-                                style:
-                                    Theme.of(context).textTheme.bodySmall,
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
                           ),
@@ -969,7 +969,8 @@ class _Active7DaySheetState extends State<_Active7DaySheet> {
                                   mediaQuery.padding.bottom + 24,
                                 ),
                                 children: [
-                                  for (final entry in _groupByDay().entries) ...[
+                                  for (final entry
+                                      in _groupByDay().entries) ...[
                                     Padding(
                                       padding: const EdgeInsets.fromLTRB(
                                           4, 12, 4, 6),
@@ -999,8 +1000,8 @@ class _Active7DaySheetState extends State<_Active7DaySheet> {
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
                                             vertical: 4),
-                                        child: _ActiveDayTesterRow(
-                                            tester: tester),
+                                        child:
+                                            _ActiveDayTesterRow(tester: tester),
                                       ),
                                   ],
                                 ],
@@ -1076,8 +1077,7 @@ class _ActiveDayTesterRow extends StatelessWidget {
             const SizedBox(width: 8),
             if (timeLabel.isNotEmpty)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: PlanFlowColors.tagNormalBg,
                   borderRadius: BorderRadius.circular(8),

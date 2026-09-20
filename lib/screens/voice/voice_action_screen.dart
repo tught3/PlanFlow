@@ -8,6 +8,7 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/theme.dart';
+import '../../widgets/app_back_button.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/models/user_settings_model.dart';
@@ -2733,7 +2734,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.voice),
+        title: Text(title),
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => _loadCandidates(),

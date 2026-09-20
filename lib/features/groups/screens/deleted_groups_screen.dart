@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../models/group_backup_model.dart';
 import '../providers/deleted_groups_provider.dart';
 import '../services/group_cleanup_service.dart';
@@ -221,10 +222,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('보관 · 삭제된 그룹'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
+        leading: const AppBackButton(fallbackLocation: AppRoutes.groups),
       ),
       body: SafeArea(
         child: _buildBody(theme),
@@ -287,9 +285,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
             isExpired: isExpired,
             isRestoring: _provider.isRestoring(backup.id),
             isDeleting: _provider.isDeleting(backup.id),
-            onRestore: isExpired
-                ? null
-                : () => _confirmRestore(backup),
+            onRestore: isExpired ? null : () => _confirmRestore(backup),
             onDelete: () => _confirmPermanentDelete(backup),
           );
         },

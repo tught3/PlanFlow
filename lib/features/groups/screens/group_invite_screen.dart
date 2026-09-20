@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_invite_model.dart';
 import '../models/group_model.dart';
@@ -235,6 +236,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
             !contextState.isPersonalMode;
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(),
             title: const Text('초대 관리'),
             actions: [
               IconButton(

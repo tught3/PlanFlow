@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/theme.dart';
+import '../../../core/constants.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_model.dart';
 import '../providers/group_context_provider.dart';
@@ -167,7 +169,10 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('새 그룹 만들기')),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.groups),
+        title: const Text('새 그룹 만들기'),
+      ),
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: SingleChildScrollView(

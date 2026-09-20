@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../providers/group_event_provider.dart';
 import '../providers/group_event_state.dart';
@@ -273,6 +274,7 @@ class _GroupEventCreateScreenState extends State<GroupEventCreateScreen> {
             !_provider.isLoading;
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(),
             title: const Text('새 그룹 일정'),
           ),
           body: GestureDetector(

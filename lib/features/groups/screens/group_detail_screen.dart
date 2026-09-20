@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../data/repositories/event_repository.dart';
 import '../models/group_backup_model.dart';
 import '../models/group_model.dart';
@@ -36,6 +37,7 @@ class GroupDetailScreen extends StatefulWidget {
   final GroupRepository? repository;
   final EventRepository? eventRepository;
   final GroupEventRepository? groupEventRepository;
+
   /// 테스트 주입용 seam. 미지정 시 기존과 동일하게
   /// `GroupBackupRepository.supabase()`를 사용한다(동작 변경 없음).
   final GroupBackupRepository? backupRepository;
@@ -720,6 +722,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     final group = _group;
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(fallbackLocation: AppRoutes.groups),
         title: Text(_isLoading ? '...' : (group?.name ?? '그룹 상세')),
         actions: [
           IconButton(
@@ -736,76 +739,79 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               : _isArchived
                   ? _buildArchivedCard(context)
                   : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                  children: [
-                    if (group != null) _buildHeaderCard(context, group),
-                    const SizedBox(height: 12),
-                    _buildActionGrid(context),
-                    const SizedBox(height: 12),
-                    _buildAutoShareCard(context),
-                    const SizedBox(height: 16),
-                    const Divider(height: 1),
-                    const SizedBox(height: 10),
-                    // 팀 나가기: 모든 멤버에게 노출. 마지막 리더는 DB(leave_group)에서
-                    // 차단되며 그 사유가 스낵바로 안내된다.
-                    // 한 스크롤 안에 그룹삭제까지 보이도록 버튼은 압축(dense) 스타일.
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFE4DD),
-                          foregroundColor: const Color(0xFFB42318),
-                          side: const BorderSide(color: Color(0xFFF04438)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                      children: [
+                        if (group != null) _buildHeaderCard(context, group),
+                        const SizedBox(height: 12),
+                        _buildActionGrid(context),
+                        const SizedBox(height: 12),
+                        _buildAutoShareCard(context),
+                        const SizedBox(height: 16),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        // 팀 나가기: 모든 멤버에게 노출. 마지막 리더는 DB(leave_group)에서
+                        // 차단되며 그 사유가 스낵바로 안내된다.
+                        // 한 스크롤 안에 그룹삭제까지 보이도록 버튼은 압축(dense) 스타일.
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFFFE4DD),
+                              foregroundColor: const Color(0xFFB42318),
+                              side: const BorderSide(color: Color(0xFFF04438)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: _leaveGroup,
+                            icon: const Icon(Icons.logout, size: 20),
+                            label: const Text('팀 나가기'),
+                          ),
                         ),
-                        onPressed: _leaveGroup,
-                        icon: const Icon(Icons.logout, size: 20),
-                        label: const Text('팀 나가기'),
-                      ),
+                        if (_isLeader) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFFF4E0),
+                                foregroundColor: const Color(0xFFB54708),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: _isArchiving ? null : _archiveGroup,
+                              icon: _isArchiving
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.archive_outlined,
+                                      size: 20),
+                              label: const Text('그룹 보관하기'),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFB42318),
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: _deleteGroup,
+                              icon: const Icon(Icons.delete_forever, size: 20),
+                              label: const Text('그룹 삭제'),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    if (_isLeader) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFF4E0),
-                            foregroundColor: const Color(0xFFB54708),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          onPressed: _isArchiving ? null : _archiveGroup,
-                          icon: _isArchiving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.archive_outlined, size: 20),
-                          label: const Text('그룹 보관하기'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFB42318),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          onPressed: _deleteGroup,
-                          icon: const Icon(Icons.delete_forever, size: 20),
-                          label: const Text('그룹 삭제'),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
     );
   }
 

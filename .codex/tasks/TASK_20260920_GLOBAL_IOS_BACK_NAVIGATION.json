@@ -1,0 +1,149 @@
+{
+  "task_id": "TASK_20260920_GLOBAL_IOS_BACK_NAVIGATION",
+  "status": "COMPLETE",
+  "final_verdict": "COMPLETE",
+  "current_phase": "complete",
+  "initial_difficulty": "complex",
+  "current_difficulty": "complex",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "PASS",
+    "checked_at": "2026-09-20T17:54:52+09:00",
+    "errors": []
+  },
+  "authority": {
+    "initial_selection": "Planner classified the multi-screen shared-navigation change as complex.",
+    "transition_approval": "No transition requested.",
+    "dispatch": "Named in-app Flux roles dispatched by the parent delivery coordinator; Integrator verified final shared-worktree diff."
+  },
+  "request": "Provide a safe shared AppBar back button for direct/deep-linked secondary PlanFlow screens; commit and push only task-owned paths while preserving foreign dirty files.",
+  "requirements": [
+    "Prefer navigator pop when a history entry exists.",
+    "Use a deterministic route fallback when a direct/deep link has no pop history.",
+    "Group detail falls back to /groups; group children fall back to their group detail; explicit non-group parents are retained.",
+    "Preserve all foreign dirty/generated paths and .pub-cache-release/."
+  ],
+  "plan": [
+    {
+      "id": "P1",
+      "classification": "COMPLEX",
+      "assignment": "Complex Implementer",
+      "status": "DONE",
+      "description": "Create a reusable AppBackButton resolver and apply it to the approved secondary screens."
+    },
+    {
+      "id": "P2",
+      "classification": "COMPLEX",
+      "assignment": "Complex Implementer",
+      "status": "DONE",
+      "description": "Add resolver and actual widget navigation-contract coverage."
+    },
+    {
+      "id": "P3",
+      "classification": "COMPLEX",
+      "assignment": "Test Executor and Reviewer",
+      "status": "DONE",
+      "description": "Run targeted and group-suite verification, inspect final diff, and confirm foreign paths remain outside the commit."
+    }
+  ],
+  "allowed_files": [
+    "lib/widgets/app_back_button.dart",
+    "test/widgets/app_back_button_test.dart",
+    "lib/features/groups/screens/deleted_groups_screen.dart",
+    "lib/features/groups/screens/group_create_screen.dart",
+    "lib/features/groups/screens/group_dashboard_screen.dart",
+    "lib/features/groups/screens/group_detail_screen.dart",
+    "lib/features/groups/screens/group_event_create_screen.dart",
+    "lib/features/groups/screens/group_event_detail_screen.dart",
+    "lib/features/groups/screens/group_event_list_screen.dart",
+    "lib/features/groups/screens/group_invite_link_screen.dart",
+    "lib/features/groups/screens/group_invite_screen.dart",
+    "lib/features/groups/screens/group_member_screen.dart",
+    "lib/features/admin/admin_tester_dashboard_screen.dart",
+    "lib/screens/auth/reset_password_screen.dart",
+    "lib/screens/briefing/briefing_launch_screen.dart",
+    "lib/screens/settings/naver_ics_import_screen.dart",
+    "lib/screens/voice/voice_action_screen.dart",
+    ".codex/tasks/TASK_20260920_GLOBAL_IOS_BACK_NAVIGATION.json"
+  ],
+  "forbidden_files": [
+    "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "ios/Runner/GeneratedPluginRegistrant.m",
+    "linux/flutter/generated_plugin_registrant.cc",
+    "linux/flutter/generated_plugins.cmake",
+    "macos/Flutter/GeneratedPluginRegistrant.swift",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "lib/screens/voice/voice_conversation_screen.dart",
+    "test/screens/voice_conversation_screen_test.dart",
+    ".pub-cache-release/"
+  ],
+  "evidence": {
+    "source_files": [
+      "lib/widgets/app_back_button.dart",
+      "test/widgets/app_back_button_test.dart",
+      "15 approved secondary screen files"
+    ],
+    "test_commands": [
+      {"command": "flutter test test/widgets/app_back_button_test.dart test/features/groups/group_detail_screen_test.dart", "exit_code": 0, "result": "14 passed; rerun after the final widget tests were added."},
+      {"command": "flutter test test/features/groups", "exit_code": 0, "result": "123 passed."},
+      {"command": "dart analyze <approved changed Dart files and test files>", "exit_code": 0, "result": "No issues found."},
+      {"command": "git diff --check", "exit_code": 0, "result": "PASS."}
+    ],
+    "review": {"verdict": "PASS", "highest_severity": "NONE", "retest_scope": "NONE"}
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "complex",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.6-luna", "model_reasoning_effort": "low", "status": "PLANNED"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "PLANNED"}
+    ],
+    "executed_roles": [],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-20T17:54:52+09:00"
+  },
+  "final_receipt": {
+    "receipt_type": "final",
+    "classification": "complex",
+    "planned_roles": [],
+    "executed_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.6-luna", "model_reasoning_effort": "low", "status": "RAN"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN"}
+    ],
+    "not_run_roles": [
+      {"role": "Simple Implementer", "agent": "flux_simple_implementer", "model": "gpt-5.6-luna", "model_reasoning_effort": "low", "status": "NOT_RUN"},
+      {"role": "Failure Analyst", "agent": "flux_failure_analyst", "model": "gpt-5.6-luna", "model_reasoning_effort": "high", "status": "NOT_RUN"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-5.6-sol", "model_reasoning_effort": "high", "status": "NOT_RUN"}
+    ],
+    "emitted_at": "2026-09-20T17:54:52+09:00"
+  },
+  "role_reports": {
+    "Explorer": {"assignment": "Audit router, direct-go/deep-link paths, current back patterns, and foreign dirty paths.", "status": "RAN", "evidence": "Single GoRouter and /groups/:groupId were inspected; missing AppBar leading on direct routes was identified as the cause."},
+    "Planner": {"assignment": "Define scope, route-parent behavior, allowed/forbidden files, classification, tests, and gates.", "status": "RAN", "evidence": "Complex plan approved: canPop then context.go fallback; group detail->/groups and child->group detail."},
+    "Complex Implementer": {"assignment": "Implement shared back navigation and tests in approved files.", "status": "RAN", "evidence": "Added AppBackButton/resolver; applied to 15 approved screens; added four resolver and three actual-widget navigation tests."},
+    "Test Executor": {"assignment": "Run required targeted, group, analysis, and diff verification.", "status": "RAN", "evidence": "Targeted tests exit 0, group suite 123 passed, targeted analysis exit 0/no issues, diff --check exit 0."},
+    "Reviewer": {"assignment": "Independently inspect final diff, fallback behavior, scope, and test evidence.", "status": "RAN", "evidence": "FINAL_REVIEW_REPORT: PASS; highest severity NONE; retest scope NONE."},
+    "Integrator": {"assignment": "Reconcile reports, recheck current diff/scope, persist evidence, and commit/push task-owned paths.", "status": "RAN", "evidence": "Final current-diff and target-test inspection passed. First non-force push was rejected because origin/main had six intervening commits; git pull --rebase --autostash completed with exit 0 and restored foreign changes before the final push."},
+    "Simple Implementer": {"assignment": "Not applicable to complex classification.", "status": "NOT_RUN", "evidence": "Complex Implementer owned implementation."},
+    "Failure Analyst": {"assignment": "Not required because final verification passed.", "status": "NOT_RUN", "evidence": "No final verification failure."},
+    "High-risk Escalation": {"assignment": "Not applicable; no high-risk trigger.", "status": "NOT_RUN", "evidence": "No security, payment, production-data, destructive, or high-uncertainty change."}
+  },
+  "git_delivery": {
+    "initial_commit": "8a00579beba375468cd49b1da9d4c1e0152ff9ca",
+    "initial_push": {"command": "git push origin main", "exit_code": 1, "result": "Rejected non-fast-forward; remote main had six intervening commits."},
+    "rebase": {"command": "git pull --rebase --autostash origin main", "exit_code": 0, "result": "Rebased the task commit onto origin/main and restored the autostash."},
+    "final_push": {"command": "git push origin main", "exit_code": "pending", "result": "Run after this amended task-state commit."}
+  },
+  "unresolved_items": [],
+  "last_updated": "2026-09-20T18:00:00+09:00"
+}

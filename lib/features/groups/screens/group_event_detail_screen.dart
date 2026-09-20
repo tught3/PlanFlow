@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/env.dart';
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
+import '../../../widgets/app_back_button.dart';
 import '../../../l10n/app_l10n.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_comment_model.dart';
@@ -52,8 +53,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
   GroupRepository get _groupRepository => _groupRepositoryCache ??=
       widget._groupRepository ?? GroupRepository.supabase();
   GroupEventCommentRepository? _commentRepositoryCache;
-  GroupEventCommentRepository get _commentRepository => _commentRepositoryCache ??=
-      widget._commentRepository ?? GroupEventCommentRepository.supabase();
+  GroupEventCommentRepository get _commentRepository =>
+      _commentRepositoryCache ??=
+          widget._commentRepository ?? GroupEventCommentRepository.supabase();
   GroupEventReportRepository? _reportRepositoryCache;
   GroupEventReportRepository get _reportRepository => _reportRepositoryCache ??=
       widget._reportRepository ?? GroupEventReportRepository.supabase();
@@ -181,8 +183,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
       _commentsError = null;
     });
     try {
-      final comments =
-          await _commentRepository.getCommentsForEvent(event.id);
+      final comments = await _commentRepository.getCommentsForEvent(event.id);
       if (!mounted) return;
       setState(() {
         _comments = comments;
@@ -305,6 +306,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
             event != null && _provider.canArchiveGroupEvent(event);
         return Scaffold(
           appBar: AppBar(
+            leading: const AppBackButton(),
             title: const Text('그룹 일정 상세'),
             actions: [
               IconButton(
@@ -520,7 +522,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
   // TASK 3: 리더 지시 섹션
   Widget _buildCommentSection(BuildContext context, GroupEventModel event) {
     final isLeader = _provider.isLeaderOfSelectedGroup;
-    final isSharer = event.createdBy != null && _currentUserId == event.createdBy;
+    final isSharer =
+        event.createdBy != null && _currentUserId == event.createdBy;
 
     return Card(
       child: Padding(
@@ -675,8 +678,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
               ),
               // 확인 상태 표시
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: comment.isConfirmed
                       ? PlanFlowColors.tagDoneBg
