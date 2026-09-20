@@ -318,7 +318,10 @@
     },
     "current_verdict": "BLOCKED_REMAINING_REAL_DEVICE_REVIEW_FLOWS",
     "user_required_actions": [
-      "On TestFlight Build39, capture remaining real-device evidence: terminated cold launch, Sign in with Apple, permission terminal states, Apple Maps target, WidgetKit behavior, and consent readiness/diagnostic log.",
+      "Cold-launch relaunch sequence is partially evidenced by the supplied Home Screen-to-PlanFlow recording; the app-switcher termination gesture is not visible.",
+      "Sign in with Apple is user-reported as working; provide a redacted recording or screenshot if formal evidence is required.",
+      "Apple Maps target is intentionally removed from the current product surface and is excluded from the remaining checklist.",
+      "On TestFlight Build39, capture remaining real-device evidence for permission terminal states, WidgetKit behavior, and consent readiness/diagnostic log.",
       "If production monetization must be proven, provide App Store production runtime or authoritative AdMob production inventory/telemetry; TestFlight intentionally uses Google's test rewarded unit."
     ]
   },
@@ -356,5 +359,18 @@
     "verdict": "PASS_ASC_TRACKING_DECLARATION_READBACK",
     "interpretation": "The authenticated App Store Connect UI now directly confirms the non-tracking answer for both Device ID and Advertising Data. The remaining privacy question is only whether the separately displayed linked-to-user metadata is intentional; it is not an unresolved tracking boolean.",
     "remaining_gate": "REAL_DEVICE_REVIEW_FLOWS_AND_PRODUCTION_AD_INVENTORY"
+  },
+  "runtime_cold_launch_evidence_20260920": {
+    "artifact": "C:/Users/tught/Downloads/20260920_134543.mp4",
+    "sha256": "C13481226F792F22020FDAAD92826A7DCD29AB36C424F287204B63FA4327DB57",
+    "duration_seconds": 13.265456,
+    "observed": [
+      "Recording begins on the iPhone Home Screen before PlanFlow launch",
+      "PlanFlow is launched from the Home Screen",
+      "PlanFlow reaches the home screen without an observed crash or stuck startup"
+    ],
+    "verdict": "PASS_COLD_LAUNCH_RELAUNCH_SEQUENCE_PARTIAL_TERMINATION_NOT_SHOWN",
+    "interpretation": "The recording proves a Home Screen-to-PlanFlow relaunch sequence. The app-switcher swipe-up termination action is not visible in this recording, so termination itself remains user-reported rather than directly evidenced.",
+    "privacy_note": "Do not publish the recording if account identifiers or personal schedule data are visible."
   }
 }
