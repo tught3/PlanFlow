@@ -322,5 +322,19 @@
       "On TestFlight Build39, capture remaining real-device evidence: terminated cold launch, Sign in with Apple, permission terminal states, Apple Maps target, WidgetKit behavior, and consent readiness/diagnostic log.",
       "If production monetization must be proven, provide App Store production runtime or authoritative AdMob production inventory/telemetry; TestFlight intentionally uses Google's test rewarded unit."
     ]
+  },
+  "asc_privacy_ui_evidence_20260920": {
+    "artifact": "C:/Users/tught/AppData/Local/Temp/codex-clipboard-d01115e2-d1d7-4657-88a3-0d67f0d0402d.png",
+    "sha256": "46E6ADE29A1020C0D794F27B53FB60E221F02F6C158B6D4ABFFCE9B36330E0DE",
+    "observed": [
+      "App Store Connect PlanFlow App Privacy details page",
+      "Device ID is marked linked to user identity with purposes third-party advertising and analytics",
+      "Advertising Data is marked linked to user identity with purposes third-party advertising and analytics",
+      "Product Interaction is marked linked to user identity with purpose analytics",
+      "Crash Data and Performance Data are marked for app functionality",
+      "No explicit tracking yes/no declaration is visible in this detail view"
+    ],
+    "interpretation": "AUTHORITATIVE_UI_READBACK_PARTIAL: the displayed Device ID and Advertising Data linkage/purpose entries conflict with the repository profile assumptions linkedToUser=false and usedForTracking=false. This screenshot does not independently prove Apple's separate tracking declaration, so no automatic ASC mutation or privacy PASS claim is safe.",
+    "required_human_decision": "Confirm whether the ASC entries are intentional and whether AdMob device/ad data is linked to identity or used for cross-company tracking. Correct ASC metadata or the source/privacy profile through the authorized privacy decision workflow; do not change either automatically from this screenshot alone."
   }
 }
