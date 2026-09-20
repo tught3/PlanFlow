@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-app-review-remediation-20260917",
-  "status": "BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE",
+  "status": "BLOCKED_ASC_TRACKING_READBACK_FIELD_AND_REAL_DEVICE",
   "original_request": "Recover the interrupted PlanFlow iOS App Review remediation, add the missing Sign in with Apple path, verify the existing permission/maps/ATT/widget fixes, and continue toward a new TestFlight build without changing the rejected Build23.",
   "scope": {
     "in_scope": [
@@ -160,13 +160,12 @@
     "ingestion": "PASS: processingState=VALID"
   },
   "completion": {
-    "verdict": "BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE",
+    "verdict": "BLOCKED_ASC_TRACKING_READBACK_FIELD_AND_REAL_DEVICE",
     "blockers": [
-      "Authenticated App Store Connect readback verifying the final privacy/tracking declaration is not available in this run.",
-      "Real iPhone runtime evidence is absent for cold launch, Apple sign-in, permissions, maps, widget behavior, and rewarded-ad consent/load/show/reward callback.",
-      "Independent Reviewer must issue a focused terminal re-review after the current-source Build39 evidence; prior blocker cannot be silently treated as cleared."
+      "Authenticated App Store Connect readback run 35487888511 succeeded with mutationCount=0, but the sanitized collector exposes app metadata, review state, and build data only; it does not expose the final privacy/tracking declaration. This gate remains unverified.",
+      "Real iPhone runtime evidence is absent for cold launch, Apple sign-in, permissions, maps, widget behavior, and rewarded-ad consent/load/show/reward callback."
     ],
-    "next_action": "Obtain authenticated App Store Connect privacy/tracking readback and real iPhone/TestFlight runtime evidence, then record the focused Reviewer closure; source and Build39 delivery gates are complete."
+    "next_action": "Obtain an authoritative App Store Connect privacy/tracking declaration readback and real iPhone/TestFlight runtime evidence; source, ASC metadata readback, Reviewer closure, and Build39 delivery gates are complete."
   },
   "continuation_20260920": {
     "routing_receipt": {
@@ -246,6 +245,25 @@
       }
     ],
     "foreign_dirty_preserved": true,
-    "integrator_status": "BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE; current-SHA Build39 release complete and named Implementer evidence confirmed."
+    "integrator_status": "BLOCKED_ASC_TRACKING_READBACK_FIELD_AND_REAL_DEVICE; current-SHA Build39 release complete, ASC metadata readback succeeded, and named Reviewer/Integrator closure is persisted."
+  },
+  "external_readback_20260920": {
+    "workflow": ".github/workflows/store-readback.yml",
+    "run": "35487888511",
+    "source_sha": "cc5c41f56a9800c3b9fca4698f3c17f26f7d92d1",
+    "status": "success",
+    "mutation_count": 0,
+    "artifact": "store-readback-asc-snapshot / ios-readback-2026-09-20.json",
+    "bundle_id": "com.fluxstudio.planflow",
+    "readback": {
+      "app_store_state": "DEVELOPER_REJECTED",
+      "availability": "UNAVAILABLE",
+      "latest_readback_version_build": "1.0 (31)",
+      "review_submission_state": "COMPLETE",
+      "privacy_policy_url": "https://fluxstudio.co.kr/privacy",
+      "tracking_declaration": "NOT_EXPOSED_BY_CURRENT_SANITIZED_COLLECTOR"
+    },
+    "guards": "PASS: secret, raw PII, and PII-shape guards",
+    "interpretation": "Authenticated readback is now present, but it cannot close the tracking-declaration gate because the current GET-only sanitized collector does not collect that field. The App Store metadata state is separate from TestFlight Build39 availability."
   }
 }
