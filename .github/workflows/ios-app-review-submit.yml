@@ -282,29 +282,90 @@ jobs:
           )
           print("REVIEW_NOTES_UPDATED=PASS")
 
-          legacy_body = {
+          review_submission_body = {
               "data": {
-                  "type": "appStoreVersionSubmissions",
+                  "type": "reviewSubmissions",
+                  "attributes": {"platform": "IOS"},
                   "relationships": {
-                      "appStoreVersion": {
+                      "app": {
                           "data": {
-                              "type": "appStoreVersions",
-                              "id": version_id,
+                              "type": "apps",
+                              "id": app_id,
                           }
                       }
                   },
               }
           }
-          status, submit_doc = api(
+          status, review_submission_doc = api(
               "POST",
-              "/appStoreVersionSubmissions",
-              legacy_body,
+              "/reviewSubmissions",
+              review_submission_body,
+              allow_error=True,
+          )
+          if status not in (200, 201):
+              summary = helpers.error_summary(review_submission_doc)
+              raise SystemExit(
+                  f"REVIEW_SUBMISSION_CREATE_FAILED: HTTP {status}: {summary}"
+              )
+          review_submission_id = (
+              review_submission_doc.get("data") or {}
+          ).get("id")
+          if not review_submission_id:
+              raise SystemExit(
+                  "REVIEW_SUBMISSION_CREATE_FAILED: response did not include an id"
+              )
+          print(f"REVIEW_SUBMISSION_CREATED={review_submission_id}")
+
+          item_body = {
+              "data": {
+                  "type": "reviewSubmissionItems",
+                  "relationships": {
+                      "reviewSubmission": {
+                          "data": {
+                              "type": "reviewSubmissions",
+                              "id": review_submission_id,
+                          }
+                      },
+                      "appStoreVersion": {
+                          "data": {
+                              "type": "appStoreVersions",
+                              "id": version_id,
+                          }
+                      },
+                  },
+              }
+          }
+          status, item_doc = api(
+              "POST",
+              "/reviewSubmissionItems",
+              item_body,
+              allow_error=True,
+          )
+          if status not in (200, 201):
+              summary = helpers.error_summary(item_doc)
+              raise SystemExit(
+                  f"REVIEW_SUBMISSION_ITEM_FAILED: HTTP {status}: {summary}"
+              )
+          print("REVIEW_SUBMISSION_ITEM=APP_STORE_VERSION")
+
+          status, submit_doc = api(
+              "PATCH",
+              f"/reviewSubmissions/{review_submission_id}",
+              {
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "id": review_submission_id,
+                      "attributes": {"submitted": True},
+                  }
+              },
               allow_error=True,
           )
           if status not in (200, 201):
               summary = helpers.error_summary(submit_doc)
-              raise SystemExit(f"SUBMIT_FAILED: HTTP {status}: {summary}")
-          print("APP_STORE_VERSION_SUBMISSION=CREATED")
+              raise SystemExit(
+                  f"REVIEW_SUBMIT_FAILED: HTTP {status}: {summary}"
+              )
+          print("REVIEW_SUBMISSION_SUBMITTED=PASS")
 
           terminal_ok = {
               "WAITING_FOR_REVIEW",
