@@ -28,26 +28,14 @@ struct PlanFlowWidget: Widget {
 
 struct PlanFlowMonthlyWidget: Widget {
   var body: some WidgetConfiguration {
-    if #available(iOSApplicationExtension 17.0, *) {
-      StaticConfiguration(
-        kind: "PlanFlowMonthlyWidget", provider: PlanFlowTimelineProvider()
-      ) { entry in
-        PlanFlowMonthlyWidgetView(entry: entry)
-      }
-      .configurationDisplayName("PlanFlow 월간 일정")
-      .description("이번 달 일정 개수와 중요 일정을 한눈에 확인")
-      .supportedFamilies([.systemMedium, .systemLarge])
-      .contentMarginsDisabled()
-    } else {
-      StaticConfiguration(
-        kind: "PlanFlowMonthlyWidget", provider: PlanFlowTimelineProvider()
-      ) { entry in
-        PlanFlowMonthlyWidgetView(entry: entry)
-      }
-      .configurationDisplayName("PlanFlow 월간 일정")
-      .description("이번 달 일정 개수와 중요 일정을 한눈에 확인")
-      .supportedFamilies([.systemMedium, .systemLarge])
+    StaticConfiguration(
+      kind: "PlanFlowMonthlyWidget", provider: PlanFlowTimelineProvider()
+    ) { entry in
+      PlanFlowMonthlyWidgetView(entry: entry)
     }
+    .configurationDisplayName("PlanFlow 월간 일정")
+    .description("이번 달 일정 개수와 중요 일정을 한눈에 확인")
+    .supportedFamilies([.systemMedium, .systemLarge])
   }
 }
 

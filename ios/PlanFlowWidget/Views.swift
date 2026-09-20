@@ -338,7 +338,9 @@ struct PlanFlowMonthlyWidgetView: View {
       .frame(maxHeight: .infinity)
     }
     .padding(.horizontal, 8)
-    .padding(.top, 1)
+    // WidgetKit의 기본 content margin 안에서도 헤더를 최대한 위로 당겨
+    // Android 위젯처럼 상단 공간 낭비를 줄인다.
+    .padding(.top, -8)
     .padding(.bottom, 6)
     .planFlowWidgetBackground()
   }
