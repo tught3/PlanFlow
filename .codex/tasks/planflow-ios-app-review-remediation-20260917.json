@@ -321,7 +321,8 @@
       "Cold-launch relaunch sequence is partially evidenced by the supplied Home Screen-to-PlanFlow recording; the app-switcher termination gesture is not visible.",
       "Sign in with Apple is user-reported as working; provide a redacted recording or screenshot if formal evidence is required.",
       "Apple Maps target is intentionally removed from the current product surface and is excluded from the remaining checklist.",
-      "On TestFlight Build39, capture remaining real-device evidence for permission terminal states, WidgetKit behavior, and consent readiness/diagnostic log.",
+      "RemoteConfig readiness and WidgetKit normal behavior are now recorded from the user's supplied diagnostic log and confirmation; widget capture is classified as user-reported because no widget screenshot/video artifact was supplied.",
+      "On TestFlight Build39, resolve or freshly re-check the UMP consent readiness state; the supplied log still contains ump_form_error_4.",
       "If production monetization must be proven, provide App Store production runtime or authoritative AdMob production inventory/telemetry; TestFlight intentionally uses Google's test rewarded unit."
     ]
   },
@@ -372,5 +373,29 @@
     "verdict": "PASS_COLD_LAUNCH_RELAUNCH_SEQUENCE_PARTIAL_TERMINATION_NOT_SHOWN",
     "interpretation": "The recording proves a Home Screen-to-PlanFlow relaunch sequence. The app-switcher swipe-up termination action is not visible in this recording, so termination itself remains user-reported rather than directly evidenced.",
     "privacy_note": "Do not publish the recording if account identifiers or personal schedule data are visible."
+  },
+  "runtime_diagnostic_and_widget_confirmation_20260920": {
+    "diagnostic_log": {
+      "artifact": "User-provided diagnostic log screenshot in the current conversation; original attachment path/hash is not available in the current workspace.",
+      "observed": [
+        "[RemoteConfig] phase=ready attempt=1 elapsedMs=399 source=fetch",
+        "[RewardedAd] phase=runtime_mode testFlight=true",
+        "[RewardedAdConsent] phase=checking attempt=1 rcFetch=true rcSource=enabled=valueRemote valueRemote and iOS unit resolution are present",
+        "[RewardedAdConsent] phase=retryable_failure attempt=1 reason=ump_form_error_4"
+      ],
+      "remote_config_verdict": "PASS_USER_PROVIDED_REMOTE_CONFIG_READY",
+      "consent_verdict": "BLOCKED_UMP_FORM_ERROR_4",
+      "interpretation": "Remote Config fetch and remote iOS rewarded-unit resolution are evidenced. This does not close the UMP consent-readiness gate because the same log records ump_form_error_4."
+    },
+    "widget": {
+      "artifact": "User confirmation in the current conversation; no screenshot/video artifact supplied for the widget surface.",
+      "observed": [
+        "User reports the PlanFlow widget appears normally on the iPhone Home Screen.",
+        "User reports all widget variants shown are normal."
+      ],
+      "verdict": "PASS_USER_REPORTED_WIDGET_NORMAL",
+      "interpretation": "Widget behavior is recorded as user-reported confirmation, while the signed Build39 widget binary and source contract remain separately verified."
+    },
+    "remaining_gate": "UMP_CONSENT_READINESS_AND_ANY_FORMAL_PERMISSION_TERMINAL_STATE_EVIDENCE"
   }
 }
