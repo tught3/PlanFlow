@@ -96,6 +96,21 @@ void main() {
       expect(snapshot.alarmWillFire, isFalse);
     });
 
+    test('exactAlarmsEnabled null은 iOS/미지원 플랫폼에서 차단하지 않는다', () {
+      final snapshot = AppPermissionSnapshot(
+        microphoneGranted: true,
+        locationGranted: true,
+        calendarGranted: true,
+        notificationStatus: const NotificationPermissionStatus(
+          notificationsEnabled: true,
+          exactAlarmsEnabled: null,
+          fullScreenIntentStatus: PermissionCheckState.unsupported,
+        ),
+      );
+      expect(snapshot.exactAlarmsGranted, isTrue);
+      expect(snapshot.alarmWillFire, isTrue);
+    });
+
     test(
       'batteryOptimizationIgnored 기본값은 true — 명시 없이 생성해도 흐름 차단 없음',
       () {

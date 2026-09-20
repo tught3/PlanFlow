@@ -246,15 +246,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
-    expect(repository.createdEvents, hasLength(1));
+    expect(repository.createdEvents, isEmpty);
     expect(find.text('정확한 알람 설정으로 이동'), findsOneWidget);
 
     await tester.tap(find.text('정확한 알람 설정으로 이동'));
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(permissionService.openAlarmSettingsCalls, 1);
-    expect(repository.createdEvents, hasLength(1));
+    expect(repository.createdEvents, isEmpty);
     expect(find.text('일정 생성'), findsOneWidget);
+
+    permissionService.exactAlarmGranted = true;
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 20 && repository.createdEvents.isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(repository.createdEvents, hasLength(1));
   });
 
   testWidgets('ConfirmScreen shows login guidance when save session is missing',
@@ -2306,16 +2315,17 @@ class _DeniedPermissionService extends AppPermissionService {
 
 class _ExactAlarmMissingPermissionService extends _DeniedPermissionService {
   int openAlarmSettingsCalls = 0;
+  bool exactAlarmGranted = false;
 
   @override
   Future<AppPermissionSnapshot> checkAll() async {
-    return const AppPermissionSnapshot(
+    return AppPermissionSnapshot(
       microphoneGranted: true,
       locationGranted: true,
       calendarGranted: true,
       notificationStatus: NotificationPermissionStatus(
         notificationsEnabled: true,
-        exactAlarmsEnabled: false,
+        exactAlarmsEnabled: exactAlarmGranted,
         fullScreenIntentStatus: PermissionCheckState.granted,
       ),
       batteryOptimizationIgnored: true,

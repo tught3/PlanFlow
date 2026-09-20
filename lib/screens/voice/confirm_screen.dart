@@ -1609,7 +1609,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final missingExact = !snapshot.exactAlarmsGranted;
       final missingBattery = !snapshot.batteryOptimizationIgnored;
-      return await showDialog<_ConfirmAlarmPermissionAction>(
+      final action = await showDialog<_ConfirmAlarmPermissionAction>(
             context: context,
             builder: (_) => _AlarmPermissionGuardDialog(
               missingExactAlarm: missingExact,
@@ -1617,44 +1617,31 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             ),
           ) ??
           _ConfirmAlarmPermissionAction.none;
+      if (!mounted || action == _ConfirmAlarmPermissionAction.none) {
+        return action;
+      }
+
+      bool opened = false;
+      if (action == _ConfirmAlarmPermissionAction.exactAlarmSettings) {
+        opened = await _permissionService.openAlarmSettings();
+        if (!opened) {
+          opened = await _permissionService.requestExactAlarmPermission();
+        }
+      } else if (action ==
+          _ConfirmAlarmPermissionAction.batteryOptimizationSettings) {
+        opened = await _permissionService.requestIgnoreBatteryOptimizations();
+      }
+
+      if (!opened && mounted) {
+        _showMessage(
+          '시스템 알람 설정 화면을 열지 못했어요. Android 설정에서 PlanFlow의 정확한 알람을 허용해 주세요.',
+        );
+      }
+      return action;
     } catch (error) {
       debugPrint('Alarm permission guard check failed (non-blocking): $error');
       return _ConfirmAlarmPermissionAction.none;
     }
-  }
-
-  Future<bool> _openPostSavePermissionSettings(
-    _ConfirmAlarmPermissionAction action,
-  ) async {
-    if (action == _ConfirmAlarmPermissionAction.none || !mounted) {
-      return false;
-    }
-
-    // 외부 설정 Activity를 열기 전에 먼저 플래그를 세워야 한다. 일부
-    // 삼성/Android 버전은 startActivity 직후 lifecycle을 매우 빠르게
-    // 왕복시켜, await 뒤에 플래그를 세우면 resumed 이벤트를 놓친다.
-    _pendingNavigateAfterSave = true;
-    bool opened = false;
-    if (action == _ConfirmAlarmPermissionAction.exactAlarmSettings) {
-      opened = await _permissionService.openAlarmSettings();
-      if (!opened) {
-        // OEM에서 direct Settings intent가 없을 때 플러그인의 공식 exact
-        // alarm permission 요청 경로를 마지막 fallback으로 사용한다.
-        opened = await _permissionService.requestExactAlarmPermission();
-      }
-    } else if (action ==
-        _ConfirmAlarmPermissionAction.batteryOptimizationSettings) {
-      opened = await _permissionService.requestIgnoreBatteryOptimizations();
-    }
-
-    if (!opened) {
-      _pendingNavigateAfterSave = false;
-      if (mounted) {
-        _showMessage(
-            '시스템 알람 설정 화면을 열지 못했어요. Android 설정에서 PlanFlow의 정확한 알람을 허용해 주세요.');
-      }
-    }
-    return opened;
   }
 
   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
@@ -1706,6 +1693,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
     await _maybePromptLeaderAutoShareIfNeeded(userId);
     if (!mounted) {
+      return;
+    }
+
+    // 정확한 알람/배터리 권한이 필요한 Android에서는 실제 저장 전에
+    // 먼저 권한을 확인한다. 사용자가 설정으로 이동하면 이번 저장은 중단하고,
+    // 앱으로 돌아온 뒤 다시 저장을 눌렀을 때 권한이 확인된 경우에만 생성한다.
+    final alarmPermissionAction = await _showAlarmPermissionGuardIfNeeded();
+    if (!mounted) {
+      return;
+    }
+    if (alarmPermissionAction != _ConfirmAlarmPermissionAction.none) {
       return;
     }
 
@@ -1869,23 +1867,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _showMessage(alarmWarning);
         }
         if (savedEvent != null) {
-          final alarmPermissionAction =
-              await _showAlarmPermissionGuardIfNeeded();
-          if (!mounted) {
-            return;
-          }
-          if (alarmPermissionAction == _ConfirmAlarmPermissionAction.none) {
-            _navigateAfterSave();
-          } else {
-            final opened =
-                await _openPostSavePermissionSettings(alarmPermissionAction);
-            if (!opened && mounted) {
-              // 일정 자체는 이미 저장 완료. 설정 화면을 열지 못한 경우에도
-              // 생성 화면에 남겨 두면 재저장→중복 경고가 반복되므로 일정탭으로
-              // 이동해 저장 완료 상태를 명확히 한다.
-              _navigateAfterSave();
-            }
-          }
+          _navigateAfterSave();
         } else {
           // 그룹 전용 저장에는 개인 알람이 없으므로 권한 가드를 건너뛰고 바로 이동.
           _navigateAfterSave();

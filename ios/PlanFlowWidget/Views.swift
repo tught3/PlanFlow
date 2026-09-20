@@ -310,6 +310,7 @@ struct PlanFlowMonthlyWidgetView: View {
     let cells = monthCells
     VStack(alignment: .leading, spacing: 2) {
       monthHeader
+      Spacer().frame(height: 5)
       WeekdayHeaderRow()
       // 6 rows x 7 columns; on small heights later rows clip, matching the
       // Android rowCount budget.
@@ -337,7 +338,7 @@ struct PlanFlowMonthlyWidgetView: View {
       .frame(maxHeight: .infinity)
     }
     .padding(.horizontal, 8)
-    .padding(.top, 2)
+    .padding(.top, 1)
     .padding(.bottom, 6)
     .planFlowWidgetBackground()
   }
@@ -473,7 +474,7 @@ struct PlanFlowMonthlyWidgetView: View {
 
   private func monthEventTitle(_ event: WidgetScheduleEvent) -> String {
     var markers: [String] = []
-    if event.important && event.usesStrongAlarm {
+    if event.usesStrongAlarm {
       markers.append("🔔")
     }
     if event.recurring {
@@ -518,7 +519,12 @@ struct PlanFlowMonthlyWidgetView: View {
       ForEach(Array(visible.enumerated()), id: \.offset) { _, event in
         if event.showsTitleInMonth {
           Text(monthEventTitle(event))
-            .font(.system(size: 6.5, weight: event.important ? .bold : .regular))
+            .font(
+              .system(
+                size: 6.5,
+                weight: (event.important || event.usesStrongAlarm) ? .heavy : .regular
+              )
+            )
             .foregroundColor(
               cell.inMonth ? PlanFlowTheme.eventColor(event) : PlanFlowTheme.mutedText
             )

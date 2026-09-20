@@ -1095,6 +1095,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
 
+      final alarmPermissionAction = await _showAlarmPermissionGuardIfNeeded();
+      if (!mounted) {
+        return;
+      }
+      if (alarmPermissionAction != _AlarmPermissionGuardAction.none) {
+        // 설정 화면으로 이동한 경우 이번 저장은 수행하지 않는다.
+        // 돌아온 뒤 사용자가 다시 저장하면 최신 권한 상태로 재검증한다.
+        return;
+      }
+
       String? recurrenceScope;
       if (!_isNewEvent &&
           _loadedEvent?.recurrenceRule?.trim().isNotEmpty == true) {
@@ -1320,20 +1330,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           startAt: savedEvent?.startAt ?? updatedEvent.startAt,
         );
         if (savedEvent != null) {
-          // 저장은 이미 성공했으므로 설정 화면으로 이동했다가 돌아와 다시
-          // 저장을 눌러도 신규 생성으로 오인하지 않게 현재 화면의 기준 이벤트를
-          // 즉시 방금 저장된 행으로 승격한다.
           _loadedEvent = savedEvent;
-          final alarmGuardAction = await _showAlarmPermissionGuardIfNeeded();
-          if (!mounted) {
-            return;
-          }
-          // OS 권한 화면을 연 경우에는 이 화면을 그대로 유지한다. 예전에는
-          // 다이얼로그 pop 직후 calendar로 라우팅해 설정 Intent와 경쟁했고,
-          // 사용자가 돌아와 다시 저장하면 이미 생성된 일정과 중복되기도 했다.
-          if (alarmGuardAction != _AlarmPermissionGuardAction.none) {
-            return;
-          }
         }
         if (mounted) {
           context.go(AppRoutes.calendar);

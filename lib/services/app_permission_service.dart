@@ -452,7 +452,9 @@ class AppPermissionSnapshot {
   bool get notificationsGranted =>
       notificationStatus.notificationsEnabled == true;
 
-  bool get exactAlarmsGranted => notificationStatus.exactAlarmsEnabled == true;
+  // iOS에는 Android의 SCHEDULE_EXACT_ALARM 같은 별도 권한이 없다.
+  // null은 '지원하지 않음/해당 없음'이므로 차단 조건으로 취급하지 않는다.
+  bool get exactAlarmsGranted => notificationStatus.exactAlarmsEnabled != false;
 
   bool get fullScreenIntentGranted =>
       notificationStatus.fullScreenIntentStatus ==

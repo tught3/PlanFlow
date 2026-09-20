@@ -1053,7 +1053,9 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             fontSize: calendarEventFontSize,
                             height: 1.0,
                             color: fg,
-                            fontWeight: FontWeight.normal,
+                            fontWeight: event.isCritical || event.useStrongAlarm
+                                ? FontWeight.w800
+                                : FontWeight.normal,
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -1127,7 +1129,9 @@ InlineSpan _calendarEventTitleSpan(
   }
   spans.add(TextSpan(
     text: title,
-    style: isCritical ? const TextStyle(fontWeight: FontWeight.w700) : null,
+    style: (isCritical || useStrongAlarm)
+        ? const TextStyle(fontWeight: FontWeight.w800)
+        : null,
   ));
   return TextSpan(children: spans);
 }
@@ -1307,9 +1311,10 @@ class _EventAgendaCard extends StatelessWidget {
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: accentColor,
                               fontSize: 14,
-                              fontWeight: event.isCritical
-                                  ? FontWeight.w700
-                                  : FontWeight.normal,
+                              fontWeight:
+                                  event.isCritical || event.useStrongAlarm
+                                      ? FontWeight.w800
+                                      : FontWeight.normal,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
