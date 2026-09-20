@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-app-review-remediation-20260917",
-  "status": "BLOCKED_ASC_TRACKING_READBACK_AND_REMAINING_DEVICE_CHECKS",
+  "status": "BLOCKED_REMAINING_DEVICE_CHECKS",
   "original_request": "Recover the interrupted PlanFlow iOS App Review remediation, add the missing Sign in with Apple path, verify the existing permission/maps/ATT/widget fixes, and continue toward a new TestFlight build without changing the rejected Build23.",
   "scope": {
     "in_scope": [
@@ -50,7 +50,7 @@
     "sign_in_with_apple": "SOURCE_FIXED: existing dependency and entitlement were present; PlanFlowOAuthProvider.apple, Supabase OAuthProvider.apple, callback persistence/messages, iOS-only Apple button, and localized labels are now connected.",
     "permission_ux": "SOURCE_PRESENT: iOS settings navigation requires explicit confirmation and denied/terminal states remain neutral.",
     "apple_maps_option": "SOURCE_PRESENT: Apple Maps target is iOS-only and uses maps.apple.com; external map query schemes are configured.",
-    "app_privacy_tracking": "SOURCE_PRESENT: no ATT API/package/direct IDFA access; current profile records NOT_CONFIGURED/non-tracking evidence. App Store Connect tracking declaration correction remains external and unverified here.",
+    "app_privacy_tracking": "SOURCE_AND_ASC_UI_CONFIRMED: no ATT API/package/direct IDFA access; App Store Connect Device ID and Advertising Data dialogs both explicitly select 'No, used for tracking'. The separate linked-to-user metadata remains an independent policy declaration and is recorded for reconciliation.",
     "widget_extension": "SOURCE_PRESENT: widget target, embed, entitlements, bundle identity, and release-contract checks are present. Signed archive proof requires macOS workflow.",
     "release_workflow": "CANONICAL_PRESENT_AND_EXECUTED: .github/workflows/ios-release.yml completed current-source Build39/TestFlight qualification with archive, signing, privacy, upload, ingestion, and availability gates passing."
   },
@@ -316,9 +316,8 @@
         "macOS archive/signing, IPA upload, TestFlight, ASC readback, and physical iPhone checks cannot be executed from this Windows host."
       ]
     },
-    "current_verdict": "BLOCKED_ASC_TRACKING_DECLARATION_AND_REMAINING_REAL_DEVICE_REVIEW_FLOWS",
+    "current_verdict": "BLOCKED_REMAINING_REAL_DEVICE_REVIEW_FLOWS",
     "user_required_actions": [
-      "Provide authoritative App Store Connect App Privacy tracking declaration readback (redacted screenshot or exact console status; do not send credentials).",
       "On TestFlight Build39, capture remaining real-device evidence: terminated cold launch, Sign in with Apple, permission terminal states, Apple Maps target, WidgetKit behavior, and consent readiness/diagnostic log.",
       "If production monetization must be proven, provide App Store production runtime or authoritative AdMob production inventory/telemetry; TestFlight intentionally uses Google's test rewarded unit."
     ]
@@ -336,5 +335,26 @@
     ],
     "interpretation": "AUTHORITATIVE_UI_READBACK_PARTIAL: the displayed Device ID and Advertising Data linkage/purpose entries conflict with the repository profile assumptions linkedToUser=false and usedForTracking=false. This screenshot does not independently prove Apple's separate tracking declaration, so no automatic ASC mutation or privacy PASS claim is safe.",
     "required_human_decision": "Confirm whether the ASC entries are intentional and whether AdMob device/ad data is linked to identity or used for cross-company tracking. Correct ASC metadata or the source/privacy profile through the authorized privacy decision workflow; do not change either automatically from this screenshot alone."
+  },
+  "asc_privacy_tracking_confirmation_20260920": {
+    "artifacts": [
+      {
+        "artifact": "C:/Users/tught/AppData/Local/Temp/codex-clipboard-73c020cb-1afc-4db3-88d0-5fb3c3632e93.png",
+        "sha256": "C898F113FA3E039E06EBA74E9437B3674AC839DC2BD9A7A923D81386BC753216",
+        "field": "Device ID"
+      },
+      {
+        "artifact": "C:/Users/tught/AppData/Local/Temp/codex-clipboard-82b9e141-035a-4b4d-ae4d-88e9d7bb9288.png",
+        "sha256": "17CDDEC60CB2FD7D65A69D89A3EAC4D3AE5254056B5923E091CD50DC5B53E745",
+        "field": "Advertising Data"
+      }
+    ],
+    "observed": [
+      "Device ID dialog selects '아니요, 추적 목적으로 기기 ID를 사용하지 않습니다.'",
+      "Advertising Data dialog selects '아니요, 추적 목적으로 광고 데이터를 사용하지 않습니다.'"
+    ],
+    "verdict": "PASS_ASC_TRACKING_DECLARATION_READBACK",
+    "interpretation": "The authenticated App Store Connect UI now directly confirms the non-tracking answer for both Device ID and Advertising Data. The remaining privacy question is only whether the separately displayed linked-to-user metadata is intentional; it is not an unresolved tracking boolean.",
+    "remaining_gate": "REAL_DEVICE_REVIEW_FLOWS_AND_PRODUCTION_AD_INVENTORY"
   }
 }
