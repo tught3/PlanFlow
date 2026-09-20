@@ -486,12 +486,13 @@ struct PlanFlowMonthlyWidgetView: View {
   }
 
   private func monthCell(_ cell: MonthlyCellModel) -> some View {
-    let visible = cell.holidayName == nil
-      ? Array(cell.events.prefix(4))
-      : Array(cell.events.prefix(3))
-    let hiddenOverflow = cell.holidayName == nil
-      ? cell.overflowCount
-      : max(cell.overflowCount, cell.events.count - 3)
+    let rowBudget = cell.holidayName == nil ? 4 : 3
+    let needsOverflowRow =
+      cell.overflowCount > 0 || cell.events.count > rowBudget
+    let eventRowBudget = max(0, needsOverflowRow ? rowBudget - 1 : rowBudget)
+    let visible = Array(cell.events.prefix(eventRowBudget))
+    let hiddenOverflow =
+      cell.overflowCount + max(0, cell.events.count - visible.count)
     return VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 0) {
         Spacer(minLength: 0)
@@ -504,7 +505,9 @@ struct PlanFlowMonthlyWidgetView: View {
               isToday: cell.isToday
             )
           )
-          .frame(width: 13, height: 13)
+          // 두 자리 오늘 날짜도 Dynamic Type/WidgetKit 렌더링에서
+          // "..."으로 잘리지 않도록 여유 폭을 확보한다.
+          .frame(width: 18, height: 15)
           .background(
             Circle().fill(
               cell.isToday ? PlanFlowTheme.todayCircle : Color.clear

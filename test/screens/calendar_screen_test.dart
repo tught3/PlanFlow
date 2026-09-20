@@ -408,6 +408,40 @@ void main() {
     },
   );
 
+  testWidgets(
+    'CalendarScreen reserves the last month-cell row for (+n개) overflow',
+    (tester) async {
+      final year = DateTime.now().year + 1;
+      final day = DateTime(year, 5, 15, 9);
+      final events = <EventModel>[
+        for (var index = 0; index < 6; index += 1)
+          _event(
+            'overflow-$index',
+            '일정 ${index + 1}',
+            day.add(Duration(minutes: index)),
+          ),
+      ];
+      final repository = _AsyncEventRepository([
+        Future<List<EventModel>>.value(events),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'overflow-user',
+            initialDate: day,
+            suppressInitialDaySheet: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('(+3개)'), findsOneWidget);
+      expect(find.text('일정 4'), findsNothing);
+    },
+  );
+
   test('calendar mini month hides only synced canonical holiday duplicates',
       () {
     final holidayYear = DateTime.now().year;

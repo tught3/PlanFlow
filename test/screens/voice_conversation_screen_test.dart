@@ -806,6 +806,16 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 200));
       expect(stt.listenCalls, greaterThanOrEqualTo(2));
+
+      // iOS SpeechToText가 새 세션 시작 직후 방금 보낸 문장을 다시 replay해도
+      // 입력창이 되살아나면 안 된다.
+      stt.emitPartial('이번주 일정 보여줘');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        isEmpty,
+      );
+
       stt.emitPartial('다음 발화 일정');
       await tester.pump();
       expect(

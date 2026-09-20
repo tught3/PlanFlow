@@ -158,6 +158,6 @@ enum PlanFlowFormat {
   }
 
   static func overflow(_ count: Int) -> String? {
-    count > 0 ? "+\(count)건" : nil
+    count > 0 ? "(+\(count)개)" : nil
   }
 }

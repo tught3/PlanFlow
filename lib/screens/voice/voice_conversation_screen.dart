@@ -137,6 +137,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   _VoiceConversationPhase _voicePhase = _VoiceConversationPhase.idle;
   Timer? _restartListenTimer;
   Timer? _conversationWatchdogTimer;
+  String? _suppressedVoiceEcho;
+  DateTime? _suppressedVoiceEchoUntil;
 
   // ── 엔타이틀먼트 소비/세션 게이트 ─────────────────────────────────
   // 이 화면 인스턴스(세션) 안에서 실제 사용자 명령이 한 번이라도 처리되기
@@ -576,7 +578,13 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       _listenGeneration += 1;
       _isListening = false;
       _isRestartPending = true;
-      unawaited(widget.sttService.cancelActiveListen());
+      _armSubmittedVoiceEchoSuppression(text);
+      // 화면은 먼저 즉시 비우고, iOS SpeechToText cancel 완료까지 실제로
+      // 기다린다. 이전 구현은 cancel을 fire-and-forget으로 보내 새 listen이
+      // 옛 recognizer와 겹칠 수 있었고, 그 결과 방금 보낸 문장이 다시
+      // partial로 돌아와 입력창을 채우는 실기기 회귀가 남았다.
+      _setConversationInputText('');
+      await widget.sttService.cancelActiveListen();
     } else {
       if (!inputGenerationAlreadyInvalidated) {
         _inputTurnGeneration += 1;
@@ -595,6 +603,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     // _clearTranscript)이 동일 상황에서 쓰는 것과 같은 API로 모든 제출
     // 경로에서 리셋한다. 제출 직후 재시작 타이머(700ms)보다 먼저 실행되므로
     // 새 발화의 트랜스크립트를 지울 위험은 없다.
+    if (fromVoiceFinal && _keepListening && !_voicePausedByUser) {
+      _armSubmittedVoiceEchoSuppression(text);
+    }
     await widget.sttService.clearActiveTranscript();
     _setConversationInputText('');
     setState(() {
@@ -822,7 +833,22 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         }
         return;
       }
-      if (result.isSuccess && submitText.isNotEmpty) {
+      if (result.isSuccess &&
+          submitText.isNotEmpty &&
+          _shouldSuppressSubmittedVoiceEcho(submitText)) {
+        debugPrint(
+          'VoiceConversationScreen STT final suppressed as submitted echo: '
+          '$submitText',
+        );
+        shouldRetryEarlyFailure = true;
+        if (mounted && listenGeneration == _listenGeneration) {
+          setState(() {
+            _isListening = false;
+            _isRestartPending = true;
+            _voicePhase = _VoiceConversationPhase.restartPending;
+          });
+        }
+      } else if (result.isSuccess && submitText.isNotEmpty) {
         if (mounted && listenGeneration == _listenGeneration) {
           setState(() {
             _isListening = false;
@@ -1793,6 +1819,45 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
   }
 
+  void _armSubmittedVoiceEchoSuppression(String text) {
+    final normalized = SttService.normalizeVoiceTranscript(text).trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+    _suppressedVoiceEcho = normalized;
+    _suppressedVoiceEchoUntil =
+        DateTime.now().add(const Duration(seconds: 3));
+  }
+
+  bool _shouldSuppressSubmittedVoiceEcho(String text) {
+    final expected = _suppressedVoiceEcho;
+    final until = _suppressedVoiceEchoUntil;
+    if (expected == null || until == null) {
+      return false;
+    }
+    if (DateTime.now().isAfter(until)) {
+      _suppressedVoiceEcho = null;
+      _suppressedVoiceEchoUntil = null;
+      return false;
+    }
+    final normalized = SttService.normalizeVoiceTranscript(text).trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    // 새 iOS listen 직후 이전 발화가 다시 partial/final로 replay될 수 있다.
+    // 동일 문장 또는 그 문장의 progressive partial만 억제한다. 실제 새 발화가
+    // 달라지는 순간 suppression을 해제해 연속 대화는 즉시 정상 반영한다.
+    final isEcho = normalized == expected ||
+        expected.startsWith(normalized) ||
+        (normalized.startsWith(expected) &&
+            normalized.length <= expected.length + 2);
+    if (!isEcho) {
+      _suppressedVoiceEcho = null;
+      _suppressedVoiceEchoUntil = null;
+    }
+    return isEcho;
+  }
+
   void _applyVoiceTranscriptToInput(
     String text, {
     required int listenGeneration,
@@ -1801,7 +1866,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (!mounted ||
         text.isEmpty ||
         listenGeneration != _listenGeneration ||
-        inputGeneration != _inputTurnGeneration) {
+        inputGeneration != _inputTurnGeneration ||
+        _shouldSuppressSubmittedVoiceEcho(text)) {
       return;
     }
     _isApplyingVoiceTranscript = true;

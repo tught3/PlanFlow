@@ -848,14 +848,19 @@ class _CalendarMiniEventList extends StatelessWidget {
         _calendarMiniMonthEventRows - holidayRowCount - leadingRows;
 
     final totalItems = events.length + overlayEvents.length;
-    final displayEvents = events.length > maxEventRows
-        ? events.take(maxEventRows).toList(growable: false)
+    final totalDemand = totalItems + overflowCount;
+    final needsOverflowRow = totalDemand > maxEventRows;
+    final itemRowBudget = needsOverflowRow
+        ? (maxEventRows > 0 ? maxEventRows - 1 : 0)
+        : maxEventRows;
+    final displayEvents = events.length > itemRowBudget
+        ? events.take(itemRowBudget).toList(growable: false)
         : events;
-    final remainingRows = maxEventRows - displayEvents.length;
+    final remainingRows = itemRowBudget - displayEvents.length;
     final displayOverlayEvents = remainingRows > 0
         ? overlayEvents.take(remainingRows).toList(growable: false)
         : const <CalendarOverlayItem>[];
-    final hiddenCount = (totalItems + overflowCount) -
+    final hiddenCount = totalDemand -
         displayEvents.length -
         displayOverlayEvents.length;
 
@@ -918,7 +923,7 @@ class _CalendarMiniEventList extends StatelessWidget {
                   // 넘친 일정 개수만 표시한다(제목 미리보기 없이). 홈 위젯과
                   // 단위·표기를 "+N건"으로 통일 — 제목을 함께 넣으면 제목이
                   // 길 때 개수가 잘려 안 보이는 문제가 있었다(사용자 지적).
-                  '+$hiddenCount건',
+                  '(+$hiddenCount개)',
                   maxLines: 1,
                   textAlign: TextAlign.right,
                   overflow: TextOverflow.ellipsis,
