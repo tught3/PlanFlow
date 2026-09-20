@@ -38,14 +38,14 @@ jobs:
     timeout-minutes: 10
     env:
       BUNDLE_ID: com.fluxstudio.planflow
-      APP_STORE_CONNECT_KEY_ID: \${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: \${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      APP_STORE_CONNECT_API_KEY_P8: \${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-      INPUT_APP_STORE_VERSION: \${{ inputs.app_store_version }}
-      INPUT_BUILD_TRAIN: \${{ inputs.build_train }}
-      INPUT_BUILD_NUMBER: \${{ inputs.build_number }}
-      INPUT_DRY_RUN: \${{ inputs.dry_run }}
-      INPUT_CONFIRM: \${{ inputs.confirm }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      INPUT_APP_STORE_VERSION: ${{ inputs.app_store_version }}
+      INPUT_BUILD_TRAIN: ${{ inputs.build_train }}
+      INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+      INPUT_DRY_RUN: ${{ inputs.dry_run }}
+      INPUT_CONFIRM: ${{ inputs.confirm }}
     steps:
       - uses: actions/checkout@v4
 
