@@ -288,5 +288,39 @@
       "production (non-test) ad inventory"
     ],
     "privacy_note": "The supplied recording visibly contains a signed-in account identifier; do not publish it or include it in external reports."
+  },
+  "continued_execution_20260920": {
+    "implementer": {
+      "agent": "flux_complex_implementer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "status": "NO_CHANGE_BLOCKED_EXTERNAL_EVIDENCE",
+      "changed_files": [],
+      "result": "GET-only ASC readback, TestFlight ingestion workflow, iOS device contracts, and rewarded-ad contracts are already present; no safe task-owned source change identified.",
+      "verification": "python -m unittest scripts.tests.test_store_readback_asc scripts.tests.test_store_readback_workflow_contract scripts.tests.test_ios_release_workflow_contract: source assertions passed; six failures were Windows missing-tool environment failures (openssl/WSL bash/grep)."
+    },
+    "test_executor": {
+      "agent": "flux_test_executor",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "status": "PASS_WITH_ENVIRONMENT_GAPS",
+      "changed_files": [],
+      "verification": [
+        "Rewarded runtime/consent/resolver tests: PASS",
+        "Apple OAuth scope tests: PASS",
+        "Targeted Flutter analyze: PASS",
+        "git diff --check: PASS",
+        "Additional contract suite: 122/124 PASS; two failures require a signed iOS binary and are blocked on Windows / foreign dirty GeneratedPluginRegistrant.m."
+      ],
+      "platform_limits": [
+        "macOS archive/signing, IPA upload, TestFlight, ASC readback, and physical iPhone checks cannot be executed from this Windows host."
+      ]
+    },
+    "current_verdict": "BLOCKED_ASC_TRACKING_DECLARATION_AND_REMAINING_REAL_DEVICE_REVIEW_FLOWS",
+    "user_required_actions": [
+      "Provide authoritative App Store Connect App Privacy tracking declaration readback (redacted screenshot or exact console status; do not send credentials).",
+      "On TestFlight Build39, capture remaining real-device evidence: terminated cold launch, Sign in with Apple, permission terminal states, Apple Maps target, WidgetKit behavior, and consent readiness/diagnostic log.",
+      "If production monetization must be proven, provide App Store production runtime or authoritative AdMob production inventory/telemetry; TestFlight intentionally uses Google's test rewarded unit."
+    ]
   }
 }
