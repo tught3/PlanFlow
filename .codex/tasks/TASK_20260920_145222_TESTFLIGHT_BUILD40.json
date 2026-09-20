@@ -1,0 +1,65 @@
+{
+  "task_id": "TASK_20260920_145222_TESTFLIGHT_BUILD40",
+  "original_request": "Deploy the current PlanFlow source to TestFlight so the user can test the diagnostic-log controls and rewarded-ad flow.",
+  "status": "COMPLETE_WITH_USER_RUNTIME_VALIDATION_PENDING",
+  "source_sha": "8be0bc0c453621c55e2dd401d1abb44e550a9245",
+  "origin_main_sha": "8be0bc0c453621c55e2dd401d1abb44e550a9245",
+  "workflow": {
+    "name": "iOS signed release (TestFlight)",
+    "run_number": 53,
+    "run_id": "35491959202",
+    "job_id": "106028322080",
+    "url": "https://github.com/tught3/PlanFlow/actions/runs/35491959202",
+    "conclusion": "success",
+    "ios_version": "1.1.1",
+    "ios_build": "40",
+    "transport_upload": "PASS",
+    "ingestion": "processingState=VALID",
+    "testflight_available": "PASS"
+  },
+  "preflight": {
+    "focused_flutter_tests": "PASS; 75 tests",
+    "targeted_analyze": "PASS",
+    "git_diff_check": "PASS",
+    "foreign_dirty_paths_preserved": true
+  },
+  "role_reports": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "result": "Confirmed canonical workflow, required secrets, build auto-resolution, and source/deployment scope.",
+      "changed_files": []
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "result": "Planned real workflow dispatch without pinning a speculative build number; expected ASC build 40.",
+      "changed_files": []
+    },
+    {
+      "role": "Implementer",
+      "agent": "NOT_RUN",
+      "result": "Not applicable: deployment-only request; source was already committed and pushed.",
+      "changed_files": []
+    },
+    {
+      "role": "Test Executor",
+      "agent": "flux_test_executor",
+      "result": "PASS; Build40, IPA metadata, privacy/export gates, dSYM, transport, ingestion, and TestFlight availability independently verified.",
+      "changed_files": []
+    },
+    {
+      "role": "Reviewer",
+      "agent": "flux_reviewer",
+      "result": "FINDINGS with LOW severity only: real-device LOAD/SHOW/REWARD callbacks remain user-owned runtime evidence.",
+      "changed_files": []
+    },
+    {
+      "role": "Integrator",
+      "agent": "flux_integrator",
+      "result": "COMPLETE; no BLOCKER/HIGH findings and foreign dirty paths preserved.",
+      "changed_files": []
+    }
+  ],
+  "remaining_user_action": "Install TestFlight Build40, reset diagnostic logs, run rewarded ad once, refresh/open diagnostics, and provide fresh LOAD/SHOW/REWARD evidence."
+}
