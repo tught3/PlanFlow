@@ -163,9 +163,9 @@
     "verdict": "BLOCKED_ASC_TRACKING_READBACK_AND_REMAINING_DEVICE_CHECKS",
     "blockers": [
       "Authenticated App Store Connect readback run 35487888511 succeeded with mutationCount=0, but the sanitized collector exposes app metadata, review state, and build data only; it does not expose the final privacy/tracking declaration. This gate remains unverified.",
-      "Rewarded-ad runtime is now evidenced on the physical iPhone for the TestFlight path, but the remaining cold launch, Apple sign-in, permissions, maps, and widget checks are not evidenced in the supplied recording. The recording uses the intentional TestFlight Google test-unit path, so production monetization is not proven by this evidence."
+      "Rewarded-ad runtime is evidenced on the physical iPhone for the TestFlight path. Cold-launch relaunch is partially evidenced, Apple sign-in is user-reported as working, Apple Maps is intentionally excluded, and widget/RemoteConfig checks are recorded separately. The recording uses the intentional TestFlight Google test-unit path, so production monetization is not proven by this evidence."
     ],
-    "next_action": "Obtain an authoritative App Store Connect privacy/tracking declaration readback and the remaining physical-device checklist evidence; rewarded-ad TestFlight flow is now recorded."
+    "next_action": "Re-check UMP consent readiness after the recorded ump_form_error_4 and collect any required permission terminal-state evidence; RemoteConfig and widget checks are recorded."
   },
   "continuation_20260920": {
     "routing_receipt": {
@@ -283,8 +283,7 @@
       "cold launch from a fully terminated app",
       "Sign in with Apple flow",
       "permission prompts and terminal states",
-      "Apple Maps target",
-      "widget behavior",
+      "Apple Maps target (intentionally removed from the current product surface)",
       "production (non-test) ad inventory"
     ],
     "privacy_note": "The supplied recording visibly contains a signed-in account identifier; do not publish it or include it in external reports."
