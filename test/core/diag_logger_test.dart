@@ -62,5 +62,54 @@ void main() {
       final persisted = await DiagLogger.dumpPersisted();
       expect(persisted, '(진단 로그 없음)');
     });
+
+    test('clearPersisted() 완료 후 clear 이전의 비동기 저장이 로그를 되살리지 않는다', () async {
+      // log()는 저장을 기다리지 않고 반환하므로, 즉시 clearPersisted()를
+      // 호출하는 순서가 실제 UI의 "초기화 후 새 로그 보기" 흐름을 재현한다.
+      DiagLogger.log('BeforeClear', 'must not reappear');
+
+      await DiagLogger.clearPersisted();
+
+      expect(DiagLogger.dump(), '(진단 로그 없음)');
+      expect(await DiagLogger.dumpPersisted(), '(진단 로그 없음)');
+
+      // 초기화 이후의 새 로그는 정상적으로 저장되어야 한다.
+      DiagLogger.log('AfterClear', 'must remain');
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(await DiagLogger.dumpPersisted(), contains('AfterClear'));
+    });
+
+    test('clear 이후 이전 세대 키에 늦게 도착한 저장은 dumpPersisted에서 무시된다', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('diag_logger:generation', 7);
+      await prefs.setStringList(
+        'diag_logger:entries:generation:7',
+        <String>['[09:00:00][Old] before clear'],
+      );
+
+      await DiagLogger.clearPersisted();
+
+      // 다른 isolate의 이미 시작된 저장이 clear 뒤에 이전 키를 쓴 상황을
+      // 흉내 낸다. 세대 marker가 바뀌었으므로 이 값은 노출되면 안 된다.
+      await prefs.setStringList(
+        'diag_logger:entries:generation:7',
+        <String>['[09:00:01][Old] late write'],
+      );
+
+      final persisted = await DiagLogger.dumpPersisted();
+      expect(persisted, '(진단 로그 없음)');
+      expect(prefs.getInt('diag_logger:generation'), 8);
+    });
+
+    test('세대 도입 전 legacy 저장 로그도 계속 읽는다', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'diag_logger:entries',
+        <String>['[09:00:00][Legacy] retained'],
+      );
+
+      expect(await DiagLogger.dumpPersisted(), contains('Legacy'));
+    });
   });
 }

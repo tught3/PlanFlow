@@ -2590,6 +2590,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _showDiagnosticLogDialog() async {
+    final log = await _loadDiagnosticLog();
+    if (!mounted) {
+      return;
+    }
+    _presentDiagnosticLogDialog(log);
+  }
+
+  Future<String> _loadDiagnosticLog() async {
     String preflightHeader;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2602,40 +2610,94 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     // dumpPersisted: 백그라운드 알람 콜백(별도 isolate)이 남긴 로그까지
     // 포함해야 "알람이 왜 안 울렸는지"를 실제로 진단할 수 있다.
-    final log = preflightHeader + await DiagLogger.dumpPersisted();
-    if (!mounted) {
-      return;
-    }
-    _presentDiagnosticLogDialog(log);
+    return preflightHeader + await DiagLogger.dumpPersisted();
   }
 
   void _presentDiagnosticLogDialog(String log) {
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('진단 로그'),
-        content: SingleChildScrollView(
-          child: SelectableText(
-            log,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 11,
+      builder: (ctx) {
+        var currentLog = log;
+        var isBusy = false;
+
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('진단 로그'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  currentLog,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-        actions: [
-          PlanFlowActionButtons(
-            buttons: [
-              PlanFlowActionButton(
-                label: '닫기',
-                onPressed: () => Navigator.of(ctx).pop(),
-                type: ActionButtonType.secondary,
+            actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+            actions: [
+              PlanFlowActionButtons(
+                buttons: [
+                  PlanFlowActionButton(
+                    label: '새로고침',
+                    buttonKey: const ValueKey('diagnostic-log-refresh'),
+                    onPressed: isBusy
+                        ? null
+                        : () async {
+                            setDialogState(() => isBusy = true);
+                            final refreshed = await _loadDiagnosticLog();
+                            if (ctx.mounted) {
+                              setDialogState(() {
+                                currentLog = refreshed;
+                                isBusy = false;
+                              });
+                            }
+                          },
+                  ),
+                  PlanFlowActionButton(
+                    label: '로그 초기화',
+                    buttonKey: const ValueKey('diagnostic-log-clear'),
+                    type: ActionButtonType.destructive,
+                    onPressed: isBusy
+                        ? null
+                        : () async {
+                            setDialogState(() => isBusy = true);
+                            await DiagLogger.clearPersisted();
+                            final refreshed = await _loadDiagnosticLog();
+                            if (ctx.mounted) {
+                              setDialogState(() {
+                                currentLog = refreshed;
+                                isBusy = false;
+                              });
+                            }
+                          },
+                  ),
+                  PlanFlowActionButton(
+                    label: '복사',
+                    buttonKey: const ValueKey('diagnostic-log-copy'),
+                    onPressed: isBusy
+                        ? null
+                        : () async {
+                            await DiagLogger.copyToClipboard();
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(content: Text('진단 로그를 복사했습니다.')),
+                              );
+                            }
+                          },
+                  ),
+                  PlanFlowActionButton(
+                    label: '닫기',
+                    onPressed: isBusy ? null : () => Navigator.of(ctx).pop(),
+                    type: ActionButtonType.secondary,
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/diag_logger.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/core/time_format_controller.dart';
@@ -278,6 +279,56 @@ void main() {
       expect(find.text('24시간제(15:30)'), findsOneWidget);
     },
   );
+
+  testWidgets('diagnostic log dialog refreshes, clears, and copies logs',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await DiagLogger.clearPersisted();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final diagnosticButton = find.byKey(
+      const ValueKey('settings-diagnostic-log-button'),
+    );
+    await _scrollUntilHitTestable(tester, diagnosticButton);
+    await tester.tap(diagnosticButton);
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const ValueKey('diagnostic-log-refresh')), findsOneWidget);
+    expect(find.byKey(const ValueKey('diagnostic-log-clear')), findsOneWidget);
+    expect(find.byKey(const ValueKey('diagnostic-log-copy')), findsOneWidget);
+
+    DiagLogger.log('SettingsTest', 'fresh log after dialog opened');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey('diagnostic-log-refresh')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+        find.textContaining('fresh log after dialog opened'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('diagnostic-log-clear')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('(진단 로그 없음)'), findsOneWidget);
+  });
 
   testWidgets('SettingsScreen hides calendar auto-sync summary card', (
     tester,
