@@ -159,6 +159,12 @@ class _LeaderShareChoice {
   final bool dontAskAgain;
 }
 
+enum _ConfirmAlarmPermissionAction {
+  none,
+  exactAlarmSettings,
+  batteryOptimizationSettings,
+}
+
 class _AlarmScheduleFailure {
   const _AlarmScheduleFailure({
     required this.label,
@@ -1485,13 +1491,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
         final location = _stringValue(parsed['location']);
         if (!_locationEditedByUser && location != null && location.isNotEmpty) {
+          final previousLocation = _locationController.text.trim();
+          final parsedLat = _doubleValue(parsed['location_lat']);
+          final parsedLng = _doubleValue(parsed['location_lng']);
           _locationController.text = location;
-        }
-        if (!_locationEditedByUser) {
-          _locationLat = _doubleValue(parsed['location_lat']) ?? _locationLat;
-          _locationLng = _doubleValue(parsed['location_lng']) ?? _locationLng;
-          if (_locationLat != null && _locationLng != null) {
-            _resolvedLocationLabel = _locationController.text.trim();
+          final locationChanged = previousLocation.isNotEmpty &&
+              previousLocation != location.trim();
+          if (parsedLat != null && parsedLng != null) {
+            _locationLat = parsedLat;
+            _locationLng = parsedLng;
+            _resolvedLocationLabel = location.trim();
+          } else if (locationChanged) {
+            _locationLat = null;
+            _locationLng = null;
+            _resolvedLocationLabel = null;
           }
         }
 
@@ -1579,51 +1592,69 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   /// 알람 예약 후 권한이 부족한 경우 사용자에게 안내 다이얼로그를 표시.
   ///
-  /// 정확한 알람 권한 또는 배터리 최적화 예외가 꺼져 있을 때만 표시.
-  /// 저장 자체를 막지 않으며, 다이얼로그는 권한 화면으로 이동하는 버튼을 제공.
-  /// 알람 권한이 부족할 때 안내 다이얼로그를 표시한다.
-  /// 사용자가 "설정하기"를 눌러 시스템 권한 화면으로 이동하면 true를 반환한다.
-  /// 단순 dismiss 또는 권한이 이미 충분한 경우 false를 반환한다.
-  Future<bool> _showAlarmPermissionGuardIfNeeded() async {
+  /// 실제 시스템 설정 화면을 여는 작업은 다이얼로그 밖에서 수행한다.
+  /// 그래야 외부 Activity가 즉시 resumed를 발생시키더라도 그 전에
+  /// [_pendingNavigateAfterSave]를 세울 수 있고, 저장된 일정을 다시 생성하는
+  /// 중복 저장 상태를 만들지 않는다.
+  Future<_ConfirmAlarmPermissionAction>
+      _showAlarmPermissionGuardIfNeeded() async {
     if (!mounted) {
-      return false;
+      return _ConfirmAlarmPermissionAction.none;
     }
     try {
       final snapshot = await _permissionService.checkAll();
-      if (!mounted) {
-        return false;
-      }
-      // 둘 다 허용된 경우 다이얼로그 없이 조용히 진행.
-      if (snapshot.alarmWillFire) {
-        return false;
+      if (!mounted || snapshot.alarmWillFire) {
+        return _ConfirmAlarmPermissionAction.none;
       }
 
       final missingExact = !snapshot.exactAlarmsGranted;
       final missingBattery = !snapshot.batteryOptimizationIgnored;
-
-      var openedSystemSettings = false;
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => _AlarmPermissionGuardDialog(
-          missingExactAlarm: missingExact,
-          missingBatteryOptimization: missingBattery,
-          onFixExactAlarm: () async {
-            openedSystemSettings = true;
-            Navigator.of(dialogContext).pop();
-            await _permissionService.openAlarmSettings();
-          },
-          onFixBatteryOptimization: () async {
-            openedSystemSettings = true;
-            Navigator.of(dialogContext).pop();
-            await _permissionService.requestIgnoreBatteryOptimizations();
-          },
-        ),
-      );
-      return openedSystemSettings;
+      return await showDialog<_ConfirmAlarmPermissionAction>(
+            context: context,
+            builder: (_) => _AlarmPermissionGuardDialog(
+              missingExactAlarm: missingExact,
+              missingBatteryOptimization: missingBattery,
+            ),
+          ) ??
+          _ConfirmAlarmPermissionAction.none;
     } catch (error) {
       debugPrint('Alarm permission guard check failed (non-blocking): $error');
+      return _ConfirmAlarmPermissionAction.none;
+    }
+  }
+
+  Future<bool> _openPostSavePermissionSettings(
+    _ConfirmAlarmPermissionAction action,
+  ) async {
+    if (action == _ConfirmAlarmPermissionAction.none || !mounted) {
       return false;
     }
+
+    // 외부 설정 Activity를 열기 전에 먼저 플래그를 세워야 한다. 일부
+    // 삼성/Android 버전은 startActivity 직후 lifecycle을 매우 빠르게
+    // 왕복시켜, await 뒤에 플래그를 세우면 resumed 이벤트를 놓친다.
+    _pendingNavigateAfterSave = true;
+    bool opened = false;
+    if (action == _ConfirmAlarmPermissionAction.exactAlarmSettings) {
+      opened = await _permissionService.openAlarmSettings();
+      if (!opened) {
+        // OEM에서 direct Settings intent가 없을 때 플러그인의 공식 exact
+        // alarm permission 요청 경로를 마지막 fallback으로 사용한다.
+        opened = await _permissionService.requestExactAlarmPermission();
+      }
+    } else if (action ==
+        _ConfirmAlarmPermissionAction.batteryOptimizationSettings) {
+      opened = await _permissionService.requestIgnoreBatteryOptimizations();
+    }
+
+    if (!opened) {
+      _pendingNavigateAfterSave = false;
+      if (mounted) {
+        _showMessage(
+            '시스템 알람 설정 화면을 열지 못했어요. Android 설정에서 PlanFlow의 정확한 알람을 허용해 주세요.');
+      }
+    }
+    return opened;
   }
 
   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
@@ -1838,16 +1869,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _showMessage(alarmWarning);
         }
         if (savedEvent != null) {
-          // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
-          // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 일정탭 이동.
-          // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 일정탭 이동.
-          final openedPermissionSettings =
+          final alarmPermissionAction =
               await _showAlarmPermissionGuardIfNeeded();
-          if (mounted) {
-            if (openedPermissionSettings) {
-              // 시스템 설정으로 이동 중 — didChangeAppLifecycleState(resumed)에서 처리
-              _pendingNavigateAfterSave = true;
-            } else {
+          if (!mounted) {
+            return;
+          }
+          if (alarmPermissionAction == _ConfirmAlarmPermissionAction.none) {
+            _navigateAfterSave();
+          } else {
+            final opened =
+                await _openPostSavePermissionSettings(alarmPermissionAction);
+            if (!opened && mounted) {
+              // 일정 자체는 이미 저장 완료. 설정 화면을 열지 못한 경우에도
+              // 생성 화면에 남겨 두면 재저장→중복 경고가 반복되므로 일정탭으로
+              // 이동해 저장 완료 상태를 명확히 한다.
               _navigateAfterSave();
             }
           }
@@ -2933,7 +2968,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
     final scaffold = Scaffold(
       appBar: AppBar(
-        title: const Text('일정 확인'),
+        title: const Text('일정 생성'),
         leading: IconButton(
           tooltip: '취소',
           icon: const Icon(Icons.arrow_back),
@@ -3372,14 +3407,10 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
   const _AlarmPermissionGuardDialog({
     required this.missingExactAlarm,
     required this.missingBatteryOptimization,
-    required this.onFixExactAlarm,
-    required this.onFixBatteryOptimization,
   });
 
   final bool missingExactAlarm;
   final bool missingBatteryOptimization;
-  final VoidCallback onFixExactAlarm;
-  final VoidCallback onFixBatteryOptimization;
 
   @override
   Widget build(BuildContext context) {
@@ -3413,7 +3444,9 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           if (missingExactAlarm) ...[
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: onFixExactAlarm,
+              onPressed: () => Navigator.of(context).pop(
+                _ConfirmAlarmPermissionAction.exactAlarmSettings,
+              ),
               icon: const Icon(Icons.alarm_outlined, size: 18),
               label: const Text('정확한 알람 설정으로 이동'),
               style: OutlinedButton.styleFrom(
@@ -3426,7 +3459,9 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           if (missingBatteryOptimization) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: onFixBatteryOptimization,
+              onPressed: () => Navigator.of(context).pop(
+                _ConfirmAlarmPermissionAction.batteryOptimizationSettings,
+              ),
               icon: const Icon(Icons.battery_saver_outlined, size: 18),
               label: const Text('절전 예외 설정으로 이동'),
               style: OutlinedButton.styleFrom(
@@ -3444,7 +3479,9 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           buttons: [
             PlanFlowActionButton(
               label: '나중에',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(context).pop(
+                _ConfirmAlarmPermissionAction.none,
+              ),
               type: ActionButtonType.secondary,
             ),
           ],

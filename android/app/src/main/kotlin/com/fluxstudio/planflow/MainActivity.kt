@@ -319,30 +319,24 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openAlarmSettings(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            return openAppSettings()
+        }
         return try {
-            val intent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = Uri.parse("package:$packageName")
-                }
-            } else {
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:$packageName")
-                }
+            val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:$packageName")
             }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-            true
-        } catch (_: Exception) {
-            try {
-                val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:$packageName")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(fallback)
-                true
-            } catch (_: Exception) {
+            // Activity context에서 NEW_TASK를 강제로 붙이지 않는다. 일부 OEM에서
+            // special-access 화면을 바로 닫아버리는 사례가 있어, 실제로 처리할
+            // Activity가 확인될 때만 현재 task 위에 연다.
+            if (intent.resolveActivity(packageManager) == null) {
                 false
+            } else {
+                startActivity(intent)
+                true
             }
+        } catch (_: Exception) {
+            false
         }
     }
 

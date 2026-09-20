@@ -548,6 +548,14 @@ void main() {
         platform.savedValues['widget_schedule_payload_v1']);
     expect(canonicalPayload['month'], isA<Map<String, dynamic>>());
     expect(canonicalPayload['week'], isA<Map<String, dynamic>>());
+    final canonicalMonth = canonicalPayload['month'] as Map<String, dynamic>;
+    final canonicalCells = canonicalMonth['cells'] as List<dynamic>;
+    final firstCellEvents =
+        (canonicalCells.first as Map<String, dynamic>)['events'] as List<dynamic>;
+    final criticalEvent = firstCellEvents
+        .cast<Map<String, dynamic>>()
+        .firstWhere((event) => event['title'] == 'Cell event 1');
+    expect(criticalEvent['strongAlarm'], isTrue);
     expect(platform.savedValues['month_offset_-1_cell_6_day'], 30);
     expect(
       platform.savedValues['month_offset_-1_cell_6_event_1_title'],

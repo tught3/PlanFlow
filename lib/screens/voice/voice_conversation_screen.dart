@@ -567,7 +567,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _isRestartPending = fromVoiceFinal && _keepListening && !_voicePausedByUser;
     final keepVoiceInputActive =
         !fromVoiceFinal && (_isListening || _keepListening);
-    if (!keepVoiceInputActive) {
+    if (keepVoiceInputActive) {
+      // 사용자가 연속 음성 입력 중 전송 버튼을 누른 경우, 현재 STT 세션의
+      // 늦은 partial/final 콜백이 방금 비운 입력창을 다시 채우지 못하도록
+      // 현재 입력/리스닝 generation을 즉시 폐기한다. 음성 모드 자체
+      // (_keepListening)는 유지하고 명령 처리가 끝난 뒤 새 세션으로 재시작한다.
+      _inputTurnGeneration += 1;
+      _listenGeneration += 1;
+      _isListening = false;
+      _isRestartPending = true;
+      unawaited(widget.sttService.cancelActiveListen());
+    } else {
       if (!inputGenerationAlreadyInvalidated) {
         _inputTurnGeneration += 1;
       }
@@ -710,6 +720,14 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       if (mounted) {
         setState(() => _isSubmitting = false);
         _scrollToBottom();
+        if (keepVoiceInputActive &&
+            _keepListening &&
+            !_voicePausedByUser &&
+            !_isListening) {
+          _scheduleAutoRestartListen(
+            delay: const Duration(milliseconds: 120),
+          );
+        }
       }
     }
   }

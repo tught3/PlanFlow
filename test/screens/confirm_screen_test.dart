@@ -213,6 +213,50 @@ void main() {
     expect(find.text('음성 입력'), findsNothing);
   });
 
+  testWidgets(
+      'ConfirmScreen exact alarm action opens settings after one save without duplicating',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final permissionService = _ExactAlarmMissingPermissionService();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(title: '정확한 알람 테스트'),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: permissionService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 생성'), findsOneWidget);
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+
+    for (var i = 0;
+        i < 20 &&
+            find.text('정확한 알람 설정으로 이동').evaluate().isEmpty;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(find.text('정확한 알람 설정으로 이동'), findsOneWidget);
+
+    await tester.tap(find.text('정확한 알람 설정으로 이동'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(permissionService.openAlarmSettingsCalls, 1);
+    expect(repository.createdEvents, hasLength(1));
+    expect(find.text('일정 생성'), findsOneWidget);
+  });
+
   testWidgets('ConfirmScreen shows login guidance when save session is missing',
       (tester) async {
     await tester.pumpWidget(
@@ -498,6 +542,73 @@ void main() {
     expect(saved.location, '원주집');
     expect(saved.locationLat, isNull);
     expect(saved.locationLng, isNull);
+  });
+
+  testWidgets(
+      'ConfirmScreen drops stale coordinates when AI changes the place name',
+      (tester) async {
+    ScheduleParseAdGate.instance.delegateForTest = _DailyFreeAdGateDelegate();
+    ScheduleParseEntitlementService.instance.delegateForTest =
+        _CountingEntitlementDelegate();
+    final parseCompleter = Completer<Map<String, dynamic>>();
+    final repository = _FakeEventRepository();
+    final parsed = _parsedSchedule(
+      title: '병원 방문',
+      location: '경포대',
+      rawText: '강릉아산병원으로 일정 잡아줘',
+    )
+      ..['location_lat'] = 37.795
+      ..['location_lng'] = 128.907
+      ..['parse_pending'] = true
+      ..['manual_text_confirmed'] = true;
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: parsed,
+          gptService: _DeferredGptService(parseCompleter.future),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _GangneungHospitalLocationLookupService(),
+          permissionService: _AlarmReadyPermissionService(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    parseCompleter.complete(<String, dynamic>{
+      'title': '강릉아산병원 방문',
+      'location': '강릉아산병원',
+      'location_lat': null,
+      'location_lng': null,
+      'memo': null,
+      'start_at': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+      'end_at': null,
+      'supplies': <String>[],
+      'is_critical': false,
+      'pre_actions': <Map<String, dynamic>>[],
+      'parse_failed': false,
+    });
+
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 20 && repository.createdEvents.isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(saved.location, '강릉아산병원');
+    expect(saved.locationLat, closeTo(37.8182, 0.0001));
+    expect(saved.locationLng, closeTo(128.8572, 0.0001));
+    expect(saved.locationLat, isNot(closeTo(37.795, 0.0001)));
+    expect(saved.locationLng, isNot(closeTo(128.907, 0.0001)));
   });
 
   testWidgets(
@@ -1835,6 +1946,27 @@ class _RestaurantLocationLookupService extends LocationLookupService {
   }
 }
 
+class _GangneungHospitalLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
+  }) async {
+    if (!query.contains('강릉아산병원')) {
+      return const <LocationLookupResult>[];
+    }
+    return const <LocationLookupResult>[
+      LocationLookupResult(
+        name: '강릉아산병원',
+        address: '강원특별자치도 강릉시 사천면 방동길 38',
+        latitude: 37.8182,
+        longitude: 128.8572,
+      ),
+    ];
+  }
+}
+
 class _FakeConfirmBackend extends ConfirmScreenBackend {
   final reminderPayloads = <Map<String, dynamic>>[];
 
@@ -2170,6 +2302,34 @@ class _DeniedPermissionService extends AppPermissionService {
 
   @override
   Future<bool> openAppSettings() async => true;
+}
+
+class _ExactAlarmMissingPermissionService extends _DeniedPermissionService {
+  int openAlarmSettingsCalls = 0;
+
+  @override
+  Future<AppPermissionSnapshot> checkAll() async {
+    return const AppPermissionSnapshot(
+      microphoneGranted: true,
+      locationGranted: true,
+      calendarGranted: true,
+      notificationStatus: NotificationPermissionStatus(
+        notificationsEnabled: true,
+        exactAlarmsEnabled: false,
+        fullScreenIntentStatus: PermissionCheckState.granted,
+      ),
+      batteryOptimizationIgnored: true,
+    );
+  }
+
+  @override
+  Future<bool> openAlarmSettings() async {
+    openAlarmSettingsCalls += 1;
+    return true;
+  }
+
+  @override
+  Future<bool> requestExactAlarmPermission() async => true;
 }
 
 class _AlarmReadyPermissionService extends _DeniedPermissionService {

@@ -156,6 +156,7 @@ class WidgetScheduleEvent {
     required this.continuous,
     required this.recurring,
     required this.team,
+    this.strongAlarm = false,
     required this.displayColor,
     required this.route,
     this.segment,
@@ -170,6 +171,7 @@ class WidgetScheduleEvent {
   final bool continuous;
   final bool recurring;
   final bool team;
+  final bool strongAlarm;
   final String displayColor;
   final String route;
 
@@ -189,6 +191,7 @@ class WidgetScheduleEvent {
         'continuous': continuous,
         'recurring': recurring,
         'team': team,
+        'strongAlarm': strongAlarm,
         'displayColor': displayColor,
         'route': route,
         if (segment != null) 'segment': segment,
@@ -221,6 +224,7 @@ class WidgetScheduleEvent {
       continuous: flag('continuous'),
       recurring: flag('recurring'),
       team: flag('team'),
+      strongAlarm: flag('strongAlarm'),
       displayColor: requiredString('displayColor'),
       route: requiredString('route'),
       segment: json['segment'] is String ? json['segment'] as String : null,
@@ -267,6 +271,7 @@ class WidgetScheduleEvent {
       continuous: continuous,
       recurring: recurring,
       team: team,
+      strongAlarm: json['use_strong_alarm'] == true,
       displayColor: displayColor,
       route: NotificationRouteContract.schedule(id).toString(),
     );

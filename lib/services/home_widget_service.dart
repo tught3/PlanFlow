@@ -1396,7 +1396,9 @@ class HomeWidgetService {
       return null;
     }
     final resolvedMonth = month ??
-        (year != null && monthOfYear != null ? DateTime(year, monthOfYear) : null);
+        (year != null && monthOfYear != null
+            ? DateTime(year, monthOfYear)
+            : null);
     final title = resolvedMonth == null
         ? ''
         : '${resolvedMonth.year}.'
@@ -1450,6 +1452,7 @@ class HomeWidgetService {
       continuous: event.monthSegment != null && event.monthSegment != 'single',
       recurring: event.isRecurring,
       team: event.isTeam,
+      strongAlarm: event.useStrongAlarm,
       displayColor: event.isCritical
           ? '#633B8E'
           : event.isTeam

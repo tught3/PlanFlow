@@ -12,6 +12,7 @@ enum PlanFlowWidgetConfig {
   static let payloadV2Key = "widget_schedule_payload_v2"
   static let payloadV1Key = "widget_schedule_payload_v1"
   static let legacyTitleKey = "widget_schedule_title"
+  static let monthOffsetKey = "planflow_ios_month_widget_offset"
 
   static var appGroup: String? {
     Bundle.main.object(forInfoDictionaryKey: "PlanFlowAppGroup") as? String
@@ -71,7 +72,10 @@ struct WidgetScheduleEvent: Decodable {
   let continuous: Bool
   let recurring: Bool
   let team: Bool
+  let strongAlarm: Bool?
   let displayColor: String
+
+  var usesStrongAlarm: Bool { strongAlarm ?? false }
   let route: String
   let segment: String?
   let showTitle: Bool?

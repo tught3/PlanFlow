@@ -767,7 +767,7 @@ void main() {
   });
 
   testWidgets(
-    'AI 일정 대화는 듣는 중 전송해도 이후 STT partial을 입력창에 반영한다',
+    'AI 일정 대화는 듣는 중 전송 시 이전 STT 콜백을 버리고 새 리슨만 반영한다',
     (tester) async {
       final stt = _FakeSttService();
       await pumpConversation(
@@ -778,10 +778,6 @@ void main() {
       await tester.tap(find.byIcon(Icons.mic));
       await tester.pump();
 
-      // GoRouter 없는 경량 헬퍼를 쓰므로, createEvent로 분류돼 화면 전환을
-      // 시도하는 문구(예: "OO 일정")는 피하고 query intent로 분류되는
-      // 문구를 쓴다(이 파일의 다른 통과 테스트들과 동일 패턴, showEvents로
-      // 귀결돼 네비게이션이 필요 없다).
       stt.emitPartial('이번주 일정 보여줘');
       await tester.pump();
 
@@ -791,7 +787,7 @@ void main() {
       );
 
       await tester.tap(find.text('전송'));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
@@ -799,17 +795,22 @@ void main() {
       );
       expect(find.text('음성 입력 정지'), findsOneWidget);
       expect(find.text('음성으로 명령하기'), findsNothing);
-      // 리스닝을 끊지 않고 계속 듣는 경로이므로, STT 서비스 내부에 남은
-      // 이전 발화의 누적 트랜스크립트를 지워야 한다 — 안 그러면 다음 결과에
-      // 방금 제출한 문구가 이어붙거나, 침묵 타임아웃으로 재제출될 수 있다.
       expect(stt.clearActiveTranscriptCalls, 1);
 
-      stt.emitPartial('늦게온 일정');
+      stt.emitPartial('늦게온 이전 세션 일정');
       await tester.pump();
-
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
-        '늦게온 일정',
+        isEmpty,
+      );
+
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(stt.listenCalls, greaterThanOrEqualTo(2));
+      stt.emitPartial('다음 발화 일정');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        '다음 발화 일정',
       );
     },
   );

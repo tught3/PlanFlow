@@ -4,12 +4,46 @@
 // purpose, hierarchy, palette and deep links — they are not copies of one list.
 
 import SwiftUI
+import WidgetKit
+import AppIntents
 
 /// SwiftUI ships `Link` as a view, not a modifier; this keeps row-level tap
 /// targets readable.
 extension View {
   func link(destination: URL) -> some View {
     Link(destination: destination) { self }
+  }
+}
+
+
+@available(iOSApplicationExtension 16.0, *)
+struct PlanFlowMonthNavigationIntent: AppIntent {
+  static var title: LocalizedStringResource = "PlanFlow 월 이동"
+  static var description = IntentDescription("PlanFlow 월간 위젯의 표시 월을 바꿉니다.")
+  static var openAppWhenRun = false
+
+  @Parameter(title: "이동량")
+  var delta: Int
+
+  @Parameter(title: "오늘로")
+  var resetToToday: Bool
+
+  init() {}
+
+  init(delta: Int, resetToToday: Bool = false) {
+    self.delta = delta
+    self.resetToToday = resetToToday
+  }
+
+  func perform() async throws -> some IntentResult {
+    guard let defaults = PlanFlowWidgetConfig.defaults else {
+      return .result()
+    }
+    let current = defaults.integer(forKey: PlanFlowWidgetConfig.monthOffsetKey)
+    let next = resetToToday ? 0 : min(24, max(-24, current + delta))
+    defaults.set(next, forKey: PlanFlowWidgetConfig.monthOffsetKey)
+    WidgetCenter.shared.reloadTimelines(ofKind: "PlanFlowMonthlyWidget")
+    return .result()
   }
 }
 
@@ -275,13 +309,7 @@ struct PlanFlowMonthlyWidgetView: View {
   var body: some View {
     let cells = monthCells
     VStack(alignment: .leading, spacing: 2) {
-      HStack {
-        Text(monthTitle)
-          .font(.system(size: 14, weight: .bold))
-          .foregroundColor(PlanFlowTheme.strongText)
-        Spacer()
-        VoiceChip()
-      }
+      monthHeader
       WeekdayHeaderRow()
       // 6 rows x 7 columns; on small heights later rows clip, matching the
       // Android rowCount budget.
@@ -308,36 +336,115 @@ struct PlanFlowMonthlyWidgetView: View {
       }
       .frame(maxHeight: .infinity)
     }
-    .padding(8)
+    .padding(.horizontal, 8)
+    .padding(.top, 2)
+    .padding(.bottom, 6)
     .planFlowWidgetBackground()
   }
 
+  private var monthOffset: Int {
+    let raw = PlanFlowWidgetConfig.defaults?.integer(
+      forKey: PlanFlowWidgetConfig.monthOffsetKey
+    ) ?? 0
+    return min(24, max(-24, raw))
+  }
+
   private var monthStart: Date {
-    if let month = entry.payload?.month,
-       let first = Calendar.current.date(
-        from: DateComponents(year: month.year, month: month.month, day: 1)
-       ) {
-      return first
-    }
-    return Date()
+    let calendar = Calendar.current
+    let now = Date()
+    let currentStart = calendar.date(
+      from: DateComponents(
+        year: calendar.component(.year, from: now),
+        month: calendar.component(.month, from: now),
+        day: 1
+      )
+    ) ?? now
+    return calendar.date(byAdding: .month, value: monthOffset, to: currentStart)
+      ?? currentStart
   }
 
   private var monthTitle: String {
-    if let title = entry.payload?.month?.title, !title.isEmpty {
-      return title
+    PlanFlowProjection.monthTitle(monthStart)
+  }
+
+  @ViewBuilder
+  private var monthHeader: some View {
+    HStack(spacing: 5) {
+      if #available(iOSApplicationExtension 17.0, *) {
+        Button(intent: PlanFlowMonthNavigationIntent(delta: 0, resetToToday: true)) {
+          Text("오늘")
+            .font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              Capsule().fill(PlanFlowTheme.chipBackground)
+            )
+        }
+        .buttonStyle(.plain)
+      } else {
+        Link(destination: PlanFlowWidgetConfig.calendarURL(Date())) {
+          Text("오늘")
+            .font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              Capsule().fill(PlanFlowTheme.chipBackground)
+            )
+        }
+      }
+
+      Spacer(minLength: 1)
+
+      if #available(iOSApplicationExtension 17.0, *) {
+        Button(intent: PlanFlowMonthNavigationIntent(delta: -1)) {
+          Image(systemName: "chevron.left")
+            .font(.system(size: 10, weight: .bold))
+            .frame(width: 24, height: 22)
+            .background(Circle().fill(PlanFlowTheme.chipBackground))
+        }
+        .buttonStyle(.plain)
+      } else {
+        Image(systemName: "chevron.left")
+          .font(.system(size: 10, weight: .bold))
+      }
+
+      Text(monthTitle)
+        .font(.system(size: 13, weight: .bold))
+        .foregroundColor(PlanFlowTheme.strongText)
+        .lineLimit(1)
+
+      if #available(iOSApplicationExtension 17.0, *) {
+        Button(intent: PlanFlowMonthNavigationIntent(delta: 1)) {
+          Image(systemName: "chevron.right")
+            .font(.system(size: 10, weight: .bold))
+            .frame(width: 24, height: 22)
+            .background(Circle().fill(PlanFlowTheme.chipBackground))
+        }
+        .buttonStyle(.plain)
+      } else {
+        Image(systemName: "chevron.right")
+          .font(.system(size: 10, weight: .bold))
+      }
+
+      Spacer(minLength: 1)
+      VoiceChip()
     }
-    return PlanFlowProjection.monthTitle(monthStart)
+    .foregroundColor(PlanFlowTheme.brandText)
+    .frame(height: 27)
   }
 
   /// v2 month cells, else the Android rawEvents fallback layout (multi-day
   /// rows first, then singles, holiday row reserved).
   private var monthCells: [MonthlyCellModel] {
-    if let cells = entry.payload?.month?.cells {
+    if monthOffset == 0,
+       let month = entry.payload?.month,
+       month.year == Calendar.current.component(.year, from: monthStart),
+       month.month == Calendar.current.component(.month, from: monthStart) {
       let formatter = DateFormatter()
       formatter.locale = Locale(identifier: "en_US_POSIX")
       formatter.timeZone = .current
       formatter.dateFormat = "yyyy-MM-dd"
-      return cells.map { cell in
+      return month.cells.map { cell in
         MonthlyCellModel(
           date: formatter.date(from: cell.date) ?? Date(),
           day: cell.day,
@@ -362,6 +469,17 @@ struct PlanFlowMonthlyWidgetView: View {
         events: Array(dayEvents.prefix(4))
       )
     }
+  }
+
+  private func monthEventTitle(_ event: WidgetScheduleEvent) -> String {
+    var markers: [String] = []
+    if event.important && event.usesStrongAlarm {
+      markers.append("🔔")
+    }
+    if event.recurring {
+      markers.append("↻")
+    }
+    return markers.isEmpty ? event.title : "\(markers.joined(separator: " ")) \(event.title)"
   }
 
   private func monthCell(_ cell: MonthlyCellModel) -> some View {
@@ -399,7 +517,7 @@ struct PlanFlowMonthlyWidgetView: View {
       }
       ForEach(Array(visible.enumerated()), id: \.offset) { _, event in
         if event.showsTitleInMonth {
-          Text((event.recurring ? "↻ " : "") + event.title)
+          Text(monthEventTitle(event))
             .font(.system(size: 6.5, weight: event.important ? .bold : .regular))
             .foregroundColor(
               cell.inMonth ? PlanFlowTheme.eventColor(event) : PlanFlowTheme.mutedText
