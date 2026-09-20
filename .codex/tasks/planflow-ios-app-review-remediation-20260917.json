@@ -1,6 +1,6 @@
 {
   "task_id": "planflow-ios-app-review-remediation-20260917",
-  "status": "BLOCKED_ASC_TRACKING_READBACK_FIELD_AND_REAL_DEVICE",
+  "status": "BLOCKED_ASC_TRACKING_READBACK_AND_REMAINING_DEVICE_CHECKS",
   "original_request": "Recover the interrupted PlanFlow iOS App Review remediation, add the missing Sign in with Apple path, verify the existing permission/maps/ATT/widget fixes, and continue toward a new TestFlight build without changing the rejected Build23.",
   "scope": {
     "in_scope": [
@@ -160,12 +160,12 @@
     "ingestion": "PASS: processingState=VALID"
   },
   "completion": {
-    "verdict": "BLOCKED_ASC_TRACKING_READBACK_FIELD_AND_REAL_DEVICE",
+    "verdict": "BLOCKED_ASC_TRACKING_READBACK_AND_REMAINING_DEVICE_CHECKS",
     "blockers": [
       "Authenticated App Store Connect readback run 35487888511 succeeded with mutationCount=0, but the sanitized collector exposes app metadata, review state, and build data only; it does not expose the final privacy/tracking declaration. This gate remains unverified.",
-      "Real iPhone runtime evidence is absent for cold launch, Apple sign-in, permissions, maps, widget behavior, and rewarded-ad consent/load/show/reward callback."
+      "Rewarded-ad runtime is now evidenced on the physical iPhone for the TestFlight path, but the remaining cold launch, Apple sign-in, permissions, maps, and widget checks are not evidenced in the supplied recording. The recording uses the intentional TestFlight Google test-unit path, so production monetization is not proven by this evidence."
     ],
-    "next_action": "Obtain an authoritative App Store Connect privacy/tracking declaration readback and real iPhone/TestFlight runtime evidence; source, ASC metadata readback, Reviewer closure, and Build39 delivery gates are complete."
+    "next_action": "Obtain an authoritative App Store Connect privacy/tracking declaration readback and the remaining physical-device checklist evidence; rewarded-ad TestFlight flow is now recorded."
   },
   "continuation_20260920": {
     "routing_receipt": {
@@ -207,9 +207,9 @@
       "Explorer": "PASS: current remediation lineage and dirty ownership inspected.",
       "Planner": "PASS: source gates present; two existing release runs must be monitored without a third dispatch.",
       "Test Executor": "INITIAL_FAIL then PASS after identity correction; no files changed by executor.",
-      "Reviewer": "FINAL_REVIEW_REPORT: FINDINGS / BLOCKER. Current-SHA Build39 release and source checks pass; authenticated App Store Connect privacy/tracking readback and real iPhone/TestFlight runtime evidence remain absent. This current terminal report is persisted here.",
+      "Reviewer": "FINAL_REVIEW_REPORT: FINDINGS / BLOCKER. Authenticated ASC readback still does not expose tracking_declaration. The supplied 33.247551-second iPhone recording (SHA-256 D56D0394C8AAB19DB8457B78C379F6C1F018B2C0D0AE05B36463C23952F28110) proves TestFlight rewarded-ad UI progression 1/2 to 2/2, visible 리워드 지급됨, PlanFlow return, and AI conversation entry. Cold launch, Apple sign-in, permissions, Maps, widget, consent readiness, and direct production callback evidence remain absent. TestFlight uses the intentional Google test unit; production monetization remains unproven.",
       "Implementer": "FINAL_IMPLEMENTER_REPORT: PASS / ALREADY COMPLETE; focused widget contract 14 tests passed; no changes made."
-      ,"Integrator": "FINAL_INTEGRATION_REPORT: BLOCKED_EXTERNAL_PRIVACY_REAL_DEVICE_AND_REVIEW_CLOSURE; named Implementer evidence confirmed; Build39 current-SHA release fully qualified; ASC authenticated privacy/tracking readback, real iPhone evidence, and focused Reviewer closure remain."
+      ,"Integrator": "FINAL_INTEGRATION_REPORT: BLOCKED_ASC_TRACKING_DECLARATION_AND_REMAINING_REAL_DEVICE_REVIEW_FLOWS; ledger JSON valid; Build39 current-source release and TestFlight availability pass; ASC tracking_declaration remains NOT_EXPOSED_BY_CURRENT_SANITIZED_COLLECTOR; iPhone recording proves TestFlight rewarded flow only; cold launch, Apple sign-in, permissions, Maps, WidgetKit, and production inventory remain unverified."
     },
     "release_runs": [
       {
@@ -245,7 +245,7 @@
       }
     ],
     "foreign_dirty_preserved": true,
-    "integrator_status": "BLOCKED_ASC_TRACKING_READBACK_FIELD_AND_REAL_DEVICE; current-SHA Build39 release complete, ASC metadata readback succeeded, and named Reviewer/Integrator closure is persisted."
+    "integrator_status": "BLOCKED_ASC_TRACKING_READBACK_AND_REMAINING_DEVICE_CHECKS; current-SHA Build39 release complete, ASC metadata readback succeeded, and rewarded-ad TestFlight flow is evidenced."
   },
   "external_readback_20260920": {
     "workflow": ".github/workflows/store-readback.yml",
@@ -265,5 +265,28 @@
     },
     "guards": "PASS: secret, raw PII, and PII-shape guards",
     "interpretation": "Authenticated readback is now present, but it cannot close the tracking-declaration gate because the current GET-only sanitized collector does not collect that field. The App Store metadata state is separate from TestFlight Build39 availability."
+  },
+  "runtime_evidence_20260920": {
+    "artifact": "C:/Users/tught/Downloads/ScreenRecording_09-20-2026 13-10-57_1.mp4",
+    "sha256": "D56D0394C8AAB19DB8457B78C379F6C1F018B2C0D0AE05B36463C23952F28110",
+    "duration_seconds": 33.247551,
+    "observed": [
+      "TestFlight app launch and PlanFlow home visible",
+      "Rewarded ad page 1/2 displayed with Test mode banner",
+      "Rewarded ad page 2/2 displayed with Test mode banner",
+      "Ad UI displayed '리워드 지급됨'",
+      "PlanFlow resumed after the ad and AI conversation screen became visible"
+    ],
+    "verdict": "PASS_TESTFLIGHT_REWARDED_FLOW",
+    "interpretation": "This closes the physical-device rewarded-ad load/show/reward/return evidence for the TestFlight path. The Test mode banner is expected because iOS TestFlight runtime resolves the Google test rewarded unit; this does not establish App Store production inventory or monetization.",
+    "not_evidenced": [
+      "cold launch from a fully terminated app",
+      "Sign in with Apple flow",
+      "permission prompts and terminal states",
+      "Apple Maps target",
+      "widget behavior",
+      "production (non-test) ad inventory"
+    ],
+    "privacy_note": "The supplied recording visibly contains a signed-in account identifier; do not publish it or include it in external reports."
   }
 }
