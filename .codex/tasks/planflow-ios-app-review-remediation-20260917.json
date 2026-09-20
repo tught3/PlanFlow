@@ -321,7 +321,7 @@
       "Sign in with Apple is user-reported as working; provide a redacted recording or screenshot if formal evidence is required.",
       "Apple Maps target is intentionally removed from the current product surface and is excluded from the remaining checklist.",
       "RemoteConfig readiness and WidgetKit normal behavior are now recorded from the user's supplied diagnostic log and confirmation; widget capture is classified as user-reported because no widget screenshot/video artifact was supplied.",
-      "On TestFlight Build39, resolve the UMP iOS misconfiguration reported as ump_form_error_4 (SDK request error code 4), then freshly re-check consent readiness.",
+      "On TestFlight Build39, perform one fresh cold launch and rewarded-ad attempt, then capture the newest RewardedAdConsent lines; the previous ump_form_error_4 screenshot is stale.",
       "If production monetization must be proven, provide App Store production runtime or authoritative AdMob production inventory/telemetry; TestFlight intentionally uses Google's test rewarded unit."
     ]
   },
@@ -377,6 +377,7 @@
     "diagnostic_log": {
       "artifact": "C:/Users/tught/AppData/Local/Temp/codex-clipboard-99ba9fd3-d191-4594-95d7-f21485510953.png",
       "sha256": "EE5DCDF50D77E52E3E2780DE364EFACD5EE4312D280F48029A9037DF5C88C5C6",
+      "freshness": "STALE_USER_REPORTED_CAPTURE_APPROX_ONE_HOUR_OLD",
       "observed": [
         "[RemoteConfig] phase=ready attempt=1 elapsedMs=399 source=fetch",
         "[RewardedAd] phase=runtime_mode testFlight=true",
@@ -384,8 +385,8 @@
         "[RewardedAdConsent] phase=retryable_failure attempt=1 reason=ump_form_error_4"
       ],
       "remote_config_verdict": "PASS_USER_PROVIDED_REMOTE_CONFIG_READY",
-      "consent_verdict": "BLOCKED_UMP_MISCONFIGURATION_ERROR_4",
-      "interpretation": "Remote Config fetch and remote iOS rewarded-unit resolution are evidenced. UMP request error 4 is the iOS SDK misconfiguration code; this does not close the consent-readiness gate."
+      "consent_verdict": "NOT_CURRENT_RUNTIME_PROOF",
+      "interpretation": "Remote Config fetch and remote iOS rewarded-unit resolution are evidenced in this older capture. The historical ump_form_error_4 cannot be treated as the current runtime result; a fresh Build39 log is required before retaining or clearing the consent gate."
     },
     "widget": {
       "artifact": "User confirmation in the current conversation; no screenshot/video artifact supplied for the widget surface.",
