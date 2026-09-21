@@ -1,0 +1,34 @@
+{
+  "taskId": "TASK_20260921_GLOBAL_DEPLOY_COMMAND",
+  "objective": "Provide a persistent global '배포해' command that resolves the current project and deploys enabled Android/iOS targets.",
+  "routing": {
+    "classification": "complex",
+    "plannedRoles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"],
+    "executedRoles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"],
+    "notRunRoles": []
+  },
+  "changedFiles": [
+    "E:/AI_WIKI/scripts/deploy-project.ps1",
+    "E:/AI_WIKI/scripts/install-deploy-command.ps1",
+    "E:/AI_WIKI/scripts/DEPLOY_CONTRACT.md",
+    "C:/Users/tught/bin/배포해.cmd",
+    "C:/Users/tught/bin/deploy-project.cmd",
+    "C:/Users/tught/.claude/CLAUDE.md",
+    "C:/Users/tught/.codex/AGENTS.md",
+    "C:/Users/tught/.config/opencode/AGENTS.md",
+    "C:/Users/tught/.zcode/AGENTS.md",
+    "E:/AGENTS.md",
+    "E:/AI_WIKI/07_System/codex/global-agents-section.md"
+  ],
+  "verification": [
+    {"command": "배포해.cmd -Check from E:/FluxStudio/PlanFlow/lib", "exitCode": 0, "result": "Android and iOS manifest resolution PASS"},
+    {"command": "배포해.cmd -AndroidOnly -DryRun", "exitCode": 0, "result": "Android-only selection PASS"},
+    {"command": "install-deploy-command.ps1 -CheckOnly", "exitCode": 0, "result": "wrappers and user PATH present"},
+    {"command": "git diff --check", "exitCode": 0, "result": "no whitespace errors; foreign line-ending warnings only"},
+    {"command": "python E:/AI_WIKI/scripts/optimize_instruction_md.py", "exitCode": 0, "result": "completed; pre-existing preference encoding warnings reported"}
+  ],
+  "productionDeployment": "NOT_RUN_BY_DESIGN",
+  "foreignDirtyPreserved": true,
+  "review": {"initialFindings": "HIGH findings fixed: iOS wait/marker, repo routing, global E-drive pointer, installer PATH fail-closed, platform selection, path boundaries"},
+  "integrator": {"status": "RAN_PENDING_FINAL_MESSAGE", "notes": "Reviewed final launcher; production deployment intentionally not executed."}
+}
