@@ -15,6 +15,16 @@
 import WidgetKit
 import SwiftUI
 
+private func planFlowMonthlySupportedFamilies() -> [WidgetFamily] {
+  var families: [WidgetFamily] = [.systemMedium, .systemLarge]
+#if compiler(>=6.4)
+  if #available(iOSApplicationExtension 27.0, *) {
+    families.append(.systemExtraLargePortrait)
+  }
+#endif
+  return families
+}
+
 struct PlanFlowWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "PlanFlowWidget", provider: PlanFlowTimelineProvider()) { entry in
@@ -35,7 +45,7 @@ struct PlanFlowMonthlyWidget: Widget {
     }
     .configurationDisplayName("PlanFlow 월간 일정")
     .description("이번 달 일정 개수와 중요 일정을 한눈에 확인")
-    .supportedFamilies([.systemMedium, .systemLarge])
+    .supportedFamilies(planFlowMonthlySupportedFamilies())
   }
 }
 

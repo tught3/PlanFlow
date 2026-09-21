@@ -280,6 +280,22 @@ void main() {
       expect(groupService, contains("'PlanFlowGroupCalendarWidget'"));
     });
 
+    test('monthly widget offers the iOS 27 portrait extra-large family without dropping legacy sizes', () {
+      final source = widgetSources();
+      expect(source, contains('planFlowMonthlySupportedFamilies'));
+      expect(source, contains('.systemMedium'));
+      expect(source, contains('.systemLarge'));
+      expect(source, contains('.systemExtraLargePortrait'));
+      expect(source, contains('#if compiler(>=6.4)'));
+      expect(source, contains('#available(iOSApplicationExtension 27.0, *)'));
+      expect(source, contains('usesExtraLargePortraitLayout'));
+      expect(
+        source,
+        contains('family == .systemExtraLargePortrait'),
+        reason: 'The tall monthly layout must only activate for the new iOS 27 portrait family.',
+      );
+    });
+
     test('payload decoder keeps the v1 fallback and deep-link hosts', () {
       final source = widgetSources();
       expect(source, contains('widget_schedule_payload_v1'),
