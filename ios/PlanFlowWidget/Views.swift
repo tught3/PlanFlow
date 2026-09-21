@@ -121,12 +121,14 @@ extension WidgetScheduleEvent {
 /// Single-day-of-week header (일 red ... 토 blue), mirrors
 /// bindMonthWeekdayHeader.
 struct WeekdayHeaderRow: View {
+  var fontSize: CGFloat = 9
+
   var body: some View {
     HStack(spacing: 0) {
       ForEach(Array(["일", "월", "화", "수", "목", "금", "토"].enumerated()), id: \.offset) {
         index, label in
         Text(label)
-          .font(.system(size: 9, weight: .semibold))
+          .font(.system(size: fontSize, weight: .semibold))
           .foregroundColor(
             index == 0
               ? PlanFlowTheme.holidayText
@@ -305,13 +307,23 @@ struct MonthlyCellModel {
 
 struct PlanFlowMonthlyWidgetView: View {
   let entry: PlanFlowWidgetEntry
+  @Environment(\.widgetFamily) private var family
+
+  private var usesExtraLargePortraitLayout: Bool {
+#if compiler(>=6.4)
+    if #available(iOSApplicationExtension 27.0, *) {
+      return family == .systemExtraLargePortrait
+    }
+#endif
+    return false
+  }
 
   var body: some View {
     let cells = monthCells
     VStack(alignment: .leading, spacing: 2) {
       monthHeader
       Spacer().frame(height: 5)
-      WeekdayHeaderRow()
+      WeekdayHeaderRow(fontSize: usesExtraLargePortraitLayout ? 11 : 9)
       // 6 rows x 7 columns; on small heights later rows clip, matching the
       // Android rowCount budget.
       // 남은 세로 공간을 6주가 균등하게 나눠 쓰게 한다. 기존에는 각
@@ -337,11 +349,11 @@ struct PlanFlowMonthlyWidgetView: View {
       }
       .frame(maxHeight: .infinity)
     }
-    .padding(.horizontal, 8)
-    // WidgetKit의 기본 content margin 안에서도 헤더를 최대한 위로 당겨
-    // Android 위젯처럼 상단 공간 낭비를 줄인다.
-    .padding(.top, -8)
-    .padding(.bottom, 6)
+    .padding(.horizontal, usesExtraLargePortraitLayout ? 12 : 8)
+    // Large에서는 WidgetKit 기본 margin을 상쇄하고, iOS 27 세로 초대형에서는
+    // 넓어진 캔버스에 맞춰 상하 여백을 복원해 한 달 달력을 더 읽기 쉽게 한다.
+    .padding(.top, usesExtraLargePortraitLayout ? 2 : -8)
+    .padding(.bottom, usesExtraLargePortraitLayout ? 10 : 6)
     .planFlowWidgetBackground()
   }
 
@@ -376,9 +388,9 @@ struct PlanFlowMonthlyWidgetView: View {
       if #available(iOSApplicationExtension 17.0, *) {
         Button(intent: PlanFlowMonthNavigationIntent(delta: 0, resetToToday: true)) {
           Text("오늘")
-            .font(.system(size: 9, weight: .semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .font(.system(size: usesExtraLargePortraitLayout ? 11 : 9, weight: .semibold))
+            .padding(.horizontal, usesExtraLargePortraitLayout ? 10 : 8)
+            .padding(.vertical, usesExtraLargePortraitLayout ? 5 : 4)
             .background(
               Capsule().fill(PlanFlowTheme.chipBackground)
             )
@@ -387,9 +399,9 @@ struct PlanFlowMonthlyWidgetView: View {
       } else {
         Link(destination: PlanFlowWidgetConfig.calendarURL(Date())) {
           Text("오늘")
-            .font(.system(size: 9, weight: .semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .font(.system(size: usesExtraLargePortraitLayout ? 11 : 9, weight: .semibold))
+            .padding(.horizontal, usesExtraLargePortraitLayout ? 10 : 8)
+            .padding(.vertical, usesExtraLargePortraitLayout ? 5 : 4)
             .background(
               Capsule().fill(PlanFlowTheme.chipBackground)
             )
@@ -401,8 +413,11 @@ struct PlanFlowMonthlyWidgetView: View {
       if #available(iOSApplicationExtension 17.0, *) {
         Button(intent: PlanFlowMonthNavigationIntent(delta: -1)) {
           Image(systemName: "chevron.left")
-            .font(.system(size: 10, weight: .bold))
-            .frame(width: 24, height: 22)
+            .font(.system(size: usesExtraLargePortraitLayout ? 12 : 10, weight: .bold))
+            .frame(
+              width: usesExtraLargePortraitLayout ? 28 : 24,
+              height: usesExtraLargePortraitLayout ? 26 : 22
+            )
             .background(Circle().fill(PlanFlowTheme.chipBackground))
         }
         .buttonStyle(.plain)
@@ -412,15 +427,18 @@ struct PlanFlowMonthlyWidgetView: View {
       }
 
       Text(monthTitle)
-        .font(.system(size: 13, weight: .bold))
+        .font(.system(size: usesExtraLargePortraitLayout ? 16 : 13, weight: .bold))
         .foregroundColor(PlanFlowTheme.strongText)
         .lineLimit(1)
 
       if #available(iOSApplicationExtension 17.0, *) {
         Button(intent: PlanFlowMonthNavigationIntent(delta: 1)) {
           Image(systemName: "chevron.right")
-            .font(.system(size: 10, weight: .bold))
-            .frame(width: 24, height: 22)
+            .font(.system(size: usesExtraLargePortraitLayout ? 12 : 10, weight: .bold))
+            .frame(
+              width: usesExtraLargePortraitLayout ? 28 : 24,
+              height: usesExtraLargePortraitLayout ? 26 : 22
+            )
             .background(Circle().fill(PlanFlowTheme.chipBackground))
         }
         .buttonStyle(.plain)
@@ -433,7 +451,7 @@ struct PlanFlowMonthlyWidgetView: View {
       VoiceChip()
     }
     .foregroundColor(PlanFlowTheme.brandText)
-    .frame(height: 27)
+    .frame(height: usesExtraLargePortraitLayout ? 34 : 27)
   }
 
   /// v2 month cells, else the Android rawEvents fallback layout (multi-day
@@ -486,7 +504,9 @@ struct PlanFlowMonthlyWidgetView: View {
   }
 
   private func monthCell(_ cell: MonthlyCellModel) -> some View {
-    let rowBudget = cell.holidayName == nil ? 4 : 3
+    let rowBudget = usesExtraLargePortraitLayout
+      ? (cell.holidayName == nil ? 7 : 6)
+      : (cell.holidayName == nil ? 4 : 3)
     let needsOverflowRow =
       cell.overflowCount > 0 || cell.events.count > rowBudget
     let eventRowBudget = max(0, needsOverflowRow ? rowBudget - 1 : rowBudget)
@@ -497,7 +517,12 @@ struct PlanFlowMonthlyWidgetView: View {
       HStack(spacing: 0) {
         Spacer(minLength: 0)
         Text("\(cell.day)")
-          .font(.system(size: 9, weight: cell.isToday ? .bold : .regular))
+          .font(
+            .system(
+              size: usesExtraLargePortraitLayout ? 11 : 9,
+              weight: cell.isToday ? .bold : .regular
+            )
+          )
           .foregroundColor(
             dayNumberColor(
               day: cell.date, inMonth: cell.inMonth,
@@ -507,7 +532,10 @@ struct PlanFlowMonthlyWidgetView: View {
           )
           // 두 자리 오늘 날짜도 Dynamic Type/WidgetKit 렌더링에서
           // "..."으로 잘리지 않도록 여유 폭을 확보한다.
-          .frame(width: 18, height: 15)
+          .frame(
+            width: usesExtraLargePortraitLayout ? 22 : 18,
+            height: usesExtraLargePortraitLayout ? 18 : 15
+          )
           .background(
             Circle().fill(
               cell.isToday ? PlanFlowTheme.todayCircle : Color.clear
@@ -517,7 +545,7 @@ struct PlanFlowMonthlyWidgetView: View {
       }
       if let holiday = cell.holidayName {
         Text(holiday)
-          .font(.system(size: 6.5))
+          .font(.system(size: usesExtraLargePortraitLayout ? 8.5 : 6.5))
           .foregroundColor(cell.isDayOff ? PlanFlowTheme.holidayText : PlanFlowTheme.mutedText)
           .lineLimit(1)
       }
@@ -526,7 +554,7 @@ struct PlanFlowMonthlyWidgetView: View {
           Text(monthEventTitle(event))
             .font(
               .system(
-                size: 6.5,
+                size: usesExtraLargePortraitLayout ? 8.5 : 6.5,
                 weight: (event.important || event.usesStrongAlarm) ? .heavy : .regular
               )
             )
@@ -540,16 +568,17 @@ struct PlanFlowMonthlyWidgetView: View {
               (cell.inMonth ? PlanFlowTheme.eventColor(event) : PlanFlowTheme.mutedText)
                 .opacity(0.35)
             )
-            .frame(height: 4)
+            .frame(height: usesExtraLargePortraitLayout ? 5.5 : 4)
         }
       }
       if let overflow = PlanFlowFormat.overflow(hiddenOverflow) {
         Text(overflow)
-          .font(.system(size: 6.5))
+          .font(.system(size: usesExtraLargePortraitLayout ? 8.5 : 6.5))
           .foregroundColor(PlanFlowTheme.mutedText)
       }
     }
-    .padding(.vertical, 1)
+    .padding(.vertical, usesExtraLargePortraitLayout ? 3 : 1)
+    .padding(.horizontal, usesExtraLargePortraitLayout ? 1 : 0)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: 2)
