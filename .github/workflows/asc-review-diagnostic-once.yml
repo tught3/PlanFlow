@@ -125,23 +125,16 @@ jobs:
           rejected_item_id = rejected[0]["id"]
           print(f"PRECHECK unresolvedSubmission={UNRESOLVED_SUBMISSION_ID} rejectedItem={rejected_item_id}")
 
-          # Clean up the accidental empty READY_FOR_REVIEW submission created by the failed new-submission path.
+          # The failed new-submission path left an empty READY_FOR_REVIEW submission.
+          # Apple does not allow canceling an unsubmitted empty submission. It has no items,
+          # so preserve it and resubmit the original UNRESOLVED_ISSUES submission instead.
           if empty_ready:
               empty_state = (empty_ready.get("attributes") or {}).get("state")
               empty_links = (((empty_ready.get("relationships") or {}).get("items") or {}).get("data") or [])
-              if empty_state == "READY_FOR_REVIEW":
-                  if empty_links:
-                      raise RuntimeError("Refusing to cancel accidental submission because it unexpectedly contains items")
-                  req("PATCH", f"/reviewSubmissions/{EMPTY_READY_SUBMISSION_ID}", {
-                      "data": {
-                          "type": "reviewSubmissions",
-                          "id": EMPTY_READY_SUBMISSION_ID,
-                          "attributes": {"canceled": True},
-                      }
-                  })
-                  print("MUTATION accidentalEmptySubmissionCanceled=true")
+              if empty_state == "READY_FOR_REVIEW" and not empty_links:
+                  print("NOOP accidentalEmptySubmissionPreserved=true")
               elif empty_state not in {"CANCELING", "COMPLETE"}:
-                  raise RuntimeError(f"Unexpected accidental submission state: {empty_state}")
+                  raise RuntimeError(f"Unexpected accidental submission state/content: state={empty_state} items={len(empty_links)}")
 
           # Mark the existing rejected item as resolved. This is Apple's resubmission path for UNRESOLVED_ISSUES.
           req("PATCH", f"/reviewSubmissionItems/{rejected_item_id}", {
