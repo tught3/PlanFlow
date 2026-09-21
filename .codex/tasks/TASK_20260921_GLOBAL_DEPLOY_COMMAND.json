@@ -29,6 +29,6 @@
   ],
   "productionDeployment": "NOT_RUN_BY_DESIGN",
   "foreignDirtyPreserved": true,
-  "review": {"status": "FINAL_REVIEW_PENDING", "findingsFixed": ["manifest-only authority", "configured iOS success marker", "iOS wait and marker", "repo routing", "global pointers", "installer PATH fail-closed", "platform selection", "path boundaries", "clean iOS tree", "exact iOS head SHA"]},
-  "integrator": {"status": "FINAL_REVIEW_PENDING", "notes": "Production deployment intentionally not executed."}
+  "review": {"status": "PASS", "findingsFixed": ["manifest-only authority", "configured iOS success marker", "iOS wait and marker", "repo routing", "global pointers", "installer PATH fail-closed", "platform selection", "path boundaries", "clean iOS tree", "exact iOS head SHA"]},
+  "integrator": {"status": "PASS", "notes": "Production deployment intentionally not executed; command is ready for user-triggered deployment."}
 }
