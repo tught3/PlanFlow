@@ -234,17 +234,18 @@ jobs:
                   "BLOCKED_DEMO_ACCOUNT: review detail no longer requires the configured demo account"
               )
 
-          notes = """PlanFlow resubmission - Build 40 (1.1.1)
+          notes = f"""PlanFlow resubmission - Build {build_number} ({build_train})
 
-          Previous review findings have been addressed:
-          1. Sign in with Apple is available on iOS alongside Google, Kakao, and Naver sign-in.
-          2. Permission denials are respected. The app does not automatically redirect users to Settings; Settings navigation requires an explicit user action.
-          3. In the iOS location picker, the "Apple 지도에서 열기" action opens the selected place in Apple Maps.
-          4. The app does not request ATT authorization and does not directly access IDFA. NSUserTrackingUsageDescription is absent. App Privacy tracking answers for Device ID and Advertising Data are set to No.
-          5. PlanFlow includes its WidgetKit extension. To add a widget: long-press the Home Screen, tap +, search for PlanFlow, then add the desired widget.
-          6. In TestFlight/App Review sandbox, the rewarded-ad flow uses Google's official test rewarded-ad unit. The production App Store runtime uses the configured production unit.
+          The latest Guideline 5.1.1(iv) permission-flow finding has been addressed:
+          1. On iOS, the custom pre-permission choices such as "권한 설정하기", per-permission "요청", and "나중에 필요한 기능에서 허용할게요" are no longer shown as gates before the system permission dialogs.
+          2. The onboarding now has one neutral "계속" action. Tapping it proceeds directly to the relevant iOS system permission requests in sequence.
+          3. If a permission is declined, PlanFlow respects that choice and continues without showing a custom "나중에 / 설정 열기" prompt or automatically redirecting to Settings. Other app functionality remains available.
+          4. Sign in with Apple remains available on iOS alongside Google, Kakao, and Naver sign-in.
+          5. The app does not request ATT authorization and does not directly access IDFA. NSUserTrackingUsageDescription is absent. App Privacy tracking answers for Device ID and Advertising Data are set to No.
+          6. PlanFlow includes its WidgetKit extension. To add a widget: long-press the Home Screen, tap +, search for PlanFlow, then add the desired widget.
+          7. In TestFlight/App Review sandbox, the rewarded-ad flow uses Google's official test rewarded-ad unit. The production App Store runtime uses the configured production unit.
 
-          Build 40 passed TestFlight ingestion and real-device rewarded-ad load/show/reward/return validation."""
+          Build {build_number} passed the release gates and App Store Connect ingestion before this review submission."""
           notes = "\n".join(line.strip() for line in notes.strip().splitlines())
 
           print(
