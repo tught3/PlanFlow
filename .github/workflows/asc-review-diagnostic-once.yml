@@ -1,0 +1,58 @@
+name: ASC review submission diagnostic once
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect PlanFlow review submissions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import argparse, importlib.util, json, urllib.error, urllib.parse, urllib.request
+          ROOT="https://api.appstoreconnect.apple.com/v1"
+          BUNDLE="com.fluxstudio.planflow"
+          spec=importlib.util.spec_from_file_location("asc","scripts/asc-next-build-number.py")
+          asc=importlib.util.module_from_spec(spec); spec.loader.exec_module(asc)
+          ns=argparse.Namespace(key_id=None,issuer_id=None,private_key_path=None,private_key_base64=None)
+          kid,issuer,pem=asc.resolve_credentials(ns)
+          token=asc.make_token(pem,kid,issuer)
+          def get(path,params=None):
+              url=ROOT+path
+              if params: url+="?"+urllib.parse.urlencode(params)
+              r=urllib.request.Request(url,headers={"Authorization":"Bearer "+token,"Accept":"application/json"},method="GET")
+              with urllib.request.urlopen(r,timeout=45) as resp:
+                  return json.loads(resp.read() or b"{}")
+          apps=get("/apps",{"filter[bundleId]":BUNDLE,"limit":"10"}).get("data") or []
+          app_id=apps[0]["id"]
+          subs=get(f"/apps/{app_id}/reviewSubmissions",{
+              "fields[reviewSubmissions]":"platform,submittedDate,state,items,appStoreVersionForReview",
+              "include":"items,appStoreVersionForReview",
+              "fields[reviewSubmissionItems]":"state,appStoreVersion",
+              "fields[appStoreVersions]":"versionString,appStoreState,build",
+              "limit":"50","limit[items]":"50"
+          })
+          print("SUBMISSIONS")
+          inc={x.get("id"):x for x in subs.get("included") or []}
+          for s in subs.get("data") or []:
+              sa=s.get("attributes") or {}
+              print(f"submission id={s['id']} state={sa.get('state')} submittedDate={sa.get('submittedDate')}")
+              rel=((s.get("relationships") or {}).get("items") or {}).get("data") or []
+              print(" item_link_ids="+",".join(x.get("id","") for x in rel))
+              for link in rel:
+                  item=inc.get(link.get("id")) or {}
+                  ia=item.get("attributes") or {}
+                  ver=((item.get("relationships") or {}).get("appStoreVersion") or {}).get("data") or {}
+                  print(f"  item id={item.get('id')} state={ia.get('state')} appStoreVersionId={ver.get('id')}")
+          PY
