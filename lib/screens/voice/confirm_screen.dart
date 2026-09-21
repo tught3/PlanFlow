@@ -1296,6 +1296,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             return;
           }
           setState(() {
+            // 광고를 거절하면 이 초안은 AI 파싱 대기 상태가 아니라
+            // 사용자가 직접 편집·저장하는 수동 입력 상태가 된다. 대기
+            // 플래그를 남겨두면 같은 라우트가 다시 만들어질 때 광고
+            // 게이트와 hydrate가 반복되어, 사용자가 입력한 값이
+            // 덮어써지거나 저장 직전에 다시 광고를 요구할 수 있다.
+            widget.parsedSchedule['parse_pending'] = false;
+            widget.parsedSchedule['manual_text_confirmed'] = true;
             widget.parsedSchedule['parse_failed'] = true;
             _hydrateMessage = scheduleParseGateDenialMessage(reason);
             if (_titleController.text.trim().isEmpty) {
@@ -3062,10 +3069,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                                           color: PlanFlowColors.textSecondary,
                                         ),
                                       ),
-                                      if ((_parseAuthorized ||
-                                              widget.parsedSchedule[
-                                                      'manual_text_confirmed'] ==
-                                                  true) &&
+                                      if (_parseAuthorized &&
                                           !_isHydratingParsedSchedule &&
                                           _hydrateMessage != null)
                                         TextButton(

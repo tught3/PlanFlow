@@ -240,8 +240,7 @@ void main() {
     await tester.tap(find.text('일정 저장'));
 
     for (var i = 0;
-        i < 20 &&
-            find.text('정확한 알람 설정으로 이동').evaluate().isEmpty;
+        i < 20 && find.text('정확한 알람 설정으로 이동').evaluate().isEmpty;
         i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -1566,6 +1565,50 @@ void main() {
   });
 
   testWidgets(
+      'ConfirmScreen falls back to manual save after ad denial without re-gating',
+      (tester) async {
+    final gate = _DeniedScheduleParseAdGateDelegate();
+    ScheduleParseAdGate.instance.delegateForTest = gate;
+    final parsed = _parsedSchedule(
+      title: '',
+      rawText: '내일 오전 10시에 성남으로 출발',
+    )..['parse_pending'] = true;
+    final repository = _FakeEventRepository();
+
+    Widget buildConfirm() => _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: parsed,
+            backend: _FakeConfirmBackend(),
+            eventRepository: repository,
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
+        );
+
+    await tester.pumpWidget(buildConfirm());
+    await tester.pumpAndSettle();
+
+    expect(gate.calls, 1);
+    expect(parsed['parse_pending'], isFalse);
+    expect(parsed['manual_text_confirmed'], isTrue);
+    expect(parsed['parse_failed'], isTrue);
+    expect(find.byKey(const ValueKey('retry-ai-parse')), findsNothing);
+
+    // Re-entering the same draft must not show the ad gate again.
+    await tester.pumpWidget(buildConfirm());
+    await tester.pumpAndSettle();
+    expect(gate.calls, 1);
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(repository.createdEvents, hasLength(1));
+  });
+
+  testWidgets(
       'ConfirmScreen does not consume entitlement when the ad gate grants an '
       'adFailedFreePass entry', (tester) async {
     // ScheduleParseAdGate가 광고 실패+free_pass 정책으로 진입을 허용한
@@ -1684,7 +1727,8 @@ void main() {
               'title': 'AI 제목',
               'location': 'AI 장소',
               'memo': 'AI 메모',
-              'start_at': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+              'start_at':
+                  DateTime.now().add(const Duration(days: 1)).toIso8601String(),
               'end_at': null,
               'supplies': <String>[],
               'is_critical': false,
@@ -1733,7 +1777,8 @@ void main() {
               'title': 'AI 제목',
               'location': '',
               'memo': null,
-              'start_at': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+              'start_at':
+                  DateTime.now().add(const Duration(days: 1)).toIso8601String(),
               'end_at': null,
               'supplies': <String>[],
               'is_critical': false,
@@ -2356,6 +2401,22 @@ class _AlarmReadyPermissionService extends _DeniedPermissionService {
       ),
       batteryOptimizationIgnored: true,
     );
+  }
+}
+
+class _DeniedScheduleParseAdGateDelegate
+    implements ScheduleParseAdGateDelegate {
+  int calls = 0;
+
+  @override
+  Future<void> tryEnter({
+    required BuildContext context,
+    required void Function(ScheduleParseEntryGrant grant) onEnterAllowed,
+    void Function(ScheduleParseGateDenialReason reason)? onDenied,
+    required ScheduleParseAdGate gate,
+  }) async {
+    calls += 1;
+    onDenied?.call(ScheduleParseGateDenialReason.userCanceled);
   }
 }
 

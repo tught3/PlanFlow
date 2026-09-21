@@ -1,0 +1,44 @@
+{
+  "task_id": "TASK_20260921_MANUAL_SAVE_AFTER_AD_DENIAL",
+  "classification": "Complex",
+  "request": "광고 거절 후 수동으로 입력한 일정이 저장되지 않고 같은 초안에서 광고가 재요청되는 문제 수정",
+  "state": "COMPLETE",
+  "source_root": "E:\\FluxStudio\\PlanFlow",
+  "allowed_files": [
+    "lib/screens/voice/confirm_screen.dart",
+    "test/screens/confirm_screen_test.dart",
+    ".codex/tasks/TASK_20260921_MANUAL_SAVE_AFTER_AD_DENIAL.json"
+  ],
+  "foreign_dirty_preserved": [
+    "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "lib/screens/calendar/calendar_widgets.dart",
+    "lib/screens/voice/voice_conversation_screen.dart",
+    "test/screens/voice_conversation_screen_test.dart",
+    ".pub-cache-release/**"
+  ],
+  "routing_receipt": {
+    "entry": {"agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+    "planned_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"],
+    "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"],
+    "not_run_roles": []
+  },
+  "reports": {
+    "Explorer": {"status": "RAN", "result": "parse_pending remained true after ad denial; manual_text_confirmed was not set, causing re-gating and hydrate re-entry."},
+    "Planner": {"status": "RAN", "result": "Set parse_pending=false, manual_text_confirmed=true, parse_failed=true on denial; add manual save/re-entry regression test."},
+    "Complex Implementer": {"status": "RAN", "changed_files": ["lib/screens/voice/confirm_screen.dart", "test/screens/confirm_screen_test.dart"]},
+    "Test Executor": {"status": "RAN", "commands": [
+      {"command": "flutter test test/screens/confirm_screen_test.dart", "exit_code": 0, "result": "All tests passed (38)."},
+      {"command": "flutter analyze lib/screens/voice/confirm_screen.dart test/screens/confirm_screen_test.dart", "exit_code": 0, "result": "No issues found."},
+      {"command": "git diff --check -- lib/screens/voice/confirm_screen.dart test/screens/confirm_screen_test.dart", "exit_code": 0, "result": "No whitespace errors."}
+    ]},
+    "Reviewer": {"status": "RAN", "verdict": "PASS", "highest_severity": "NONE"},
+    "Integrator": {"status": "RAN", "verdict": "COMPLETE", "result": "Final diff scope verified; foreign dirty files preserved."}
+  },
+  "changes": [
+    "Ad denial now atomically switches the draft to manual mode and clears parse pending.",
+    "Retry UI is shown only when parse authorization exists.",
+    "Regression coverage verifies manual save and no second gate on re-entry."
+  ],
+  "final_verdict": "COMPLETE",
+  "last_update": "2026-09-21"
+}
