@@ -42,7 +42,9 @@ permissions:
 # to an unsigned artifact or report a successful release.
 jobs:
   signed-release:
-    runs-on: macos-latest
+    # Xcode 27/iOS 27 SDK is required for WidgetFamily.systemExtraLargePortrait.
+    # The app remains deployment-target iOS 15; older devices keep Medium/Large widgets.
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
       IOS_BUNDLE_ID: com.fluxstudio.planflow
