@@ -13,7 +13,6 @@ import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
-import '../../widgets/planflow_action_buttons.dart';
 
 class PermissionOnboardingScreen extends StatefulWidget {
   const PermissionOnboardingScreen({
@@ -165,19 +164,12 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           return;
         }
         if (defaultTargetPlatform == TargetPlatform.iOS) {
-          final confirmed = await _confirmOpenSettings(
-            label: _permissionLabelForKey(key),
-            message: deniedMessage,
-          );
-          if (!mounted) {
-            return;
-          }
-          if (!confirmed) {
+          if (mounted) {
             setState(() {
               _message = deniedMessage;
             });
-            return;
           }
+          return;
         }
         await _withPermissionTimeout(openSettings);
         if (!mounted) {
@@ -294,6 +286,13 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
 
     await _refresh();
     if (!mounted) {
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      setState(() {
+        _message = 'iOS 권한 요청을 마쳤습니다. 허용하지 않은 기능은 필요할 때 다시 안내할게요.';
+      });
+      await _complete();
       return;
     }
     final snapshot = _snapshot;
@@ -484,6 +483,14 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _message = step.grantedMessage;
         });
       }
+      if (!granted && defaultTargetPlatform == TargetPlatform.iOS) {
+        if (mounted) {
+          setState(() {
+            _message = step.deniedMessage;
+          });
+        }
+        return true;
+      }
       if (!granted && step.openSettings != null) {
         final checked = await _safeCheckAll();
         final status = checked == null ? null : step.statusOf?.call(checked);
@@ -497,24 +504,6 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           }
           failures.add(step.label);
           return false;
-        }
-        if (defaultTargetPlatform == TargetPlatform.iOS) {
-          final confirmed = await _confirmOpenSettings(
-            label: step.label,
-            message: step.deniedMessage,
-          );
-          if (!mounted) {
-            return false;
-          }
-          if (!confirmed) {
-            setState(() {
-              _message = step.deniedMessage;
-            });
-            if (step.blocksOnboarding) {
-              failures.add(step.label);
-            }
-            return true;
-          }
         }
         final opened = await _withPermissionTimeout(step.openSettings!);
         if (opened) {
@@ -543,11 +532,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         if (mounted) {
           setState(() {
-            _message =
-                '${step.label} 권한 요청이 시간 초과되었거나 완료되지 않았습니다. 설정에서 상태를 확인해 주세요.';
+            _message = '${step.label} 권한 요청이 완료되지 않았습니다. 다음 권한 요청으로 계속합니다.';
           });
         }
-        return false;
+        return true;
       }
       if (step.openSettings != null) {
         final opened = await _withPermissionTimeout(step.openSettings!);
@@ -579,7 +567,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _activeRequestKey = null;
         });
       }
-      if (after != null &&
+      if (defaultTargetPlatform != TargetPlatform.iOS &&
+          after != null &&
           !step.isGranted(after) &&
           step.openSettings != null) {
         final status = step.statusOf?.call(after);
@@ -659,41 +648,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       AppPermissionStatus.timeout => '확인 시간이 초과되어',
       _ => '현재 상태를 확인할 수 없어',
     };
-    return '${step.label} 권한은 $reason 자동으로 요청하지 않습니다. 나중에 설정에서 상태를 확인해 주세요.';
-  }
-
-  /// 설정 화면으로 이동하기 전, 사용자에게 명시적으로 확인을 받는다.
-  /// 시스템 권한 프롬프트를 한 번 거부한 뒤 앱이 자동으로 설정 화면을 여는
-  /// 것은 Apple 심사(Guideline 5.1.1(iv)) 위반으로 지적된 패턴이다. 사용자가
-  /// "설정 열기"를 직접 눌러야만 [true]를 반환하고, 그 경우에만 호출부에서
-  /// openSettings를 실행한다. (참고: location_pick_flow.dart의
-  /// `_showLocationPermissionGuide`와 동일한 확인 패턴)
-  Future<bool> _confirmOpenSettings({
-    required String label,
-    required String message,
-  }) async {
-    if (!mounted) {
-      return false;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('$label 권한이 필요해요'),
-          content: Text(message),
-          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-          actions: [
-            planflowCancelConfirmButtons(
-              onCancel: () => Navigator.of(dialogContext).pop(false),
-              onConfirm: () => Navigator.of(dialogContext).pop(true),
-              cancelLabel: '나중에',
-              confirmLabel: '설정 열기',
-            ),
-          ],
-        );
-      },
-    );
-    return confirmed ?? false;
+    return '${step.label} 권한은 $reason 자동으로 요청하지 않습니다. 설정에서 상태를 확인해 주세요.';
   }
 
   Future<AppPermissionSnapshot?> _safeCheckAll() async {
@@ -754,6 +709,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       requiresFullScreenIntent: showFullScreenIntentPermission,
     );
     final theme = Theme.of(context);
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -789,17 +745,21 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                     ? '권한 요청 중...'
                     : ready
                         ? '시작하기'
-                        : '권한 설정하기',
+                        : isIos
+                            ? '계속'
+                            : '권한 설정하기',
               ),
             ),
-            const SizedBox(height: 6),
-            TextButton(
-              key: const ValueKey('permission-onboarding-skip-button'),
-              onPressed: (_isRequestingAll || _activeRequestKey != null)
-                  ? null
-                  : _complete,
-              child: const Text('나중에 필요한 기능에서 허용할게요'),
-            ),
+            if (!isIos) ...[
+              const SizedBox(height: 6),
+              TextButton(
+                key: const ValueKey('permission-onboarding-skip-button'),
+                onPressed: (_isRequestingAll || _activeRequestKey != null)
+                    ? null
+                    : _complete,
+                child: const Text('나중에 필요한 기능에서 허용할게요'),
+              ),
+            ],
           ],
         ),
       ),
@@ -826,10 +786,11 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 },
               ),
               const SizedBox(height: 16),
-              const _SectionHeader(
-                label: '필수 권한',
-                subtitle:
-                    '아래 항목을 필요한 만큼 허용해 주세요. 폴드/플립에서는 전체 화면 알림도 선택할 수 있어요.',
+              _SectionHeader(
+                label: isIos ? '기능 권한' : '필수 권한',
+                subtitle: isIos
+                    ? '계속을 누르면 iOS 시스템 권한 요청이 순서대로 표시됩니다. 허용하지 않아도 앱의 다른 기능은 사용할 수 있어요.'
+                    : '아래 항목을 필요한 만큼 허용해 주세요. 폴드/플립에서는 전체 화면 알림도 선택할 수 있어요.',
               ),
               const SizedBox(height: 9),
               _PermissionTile(
@@ -839,6 +800,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 descriptionMaxLines: 1,
                 granted: snapshot?.microphoneGranted == true,
                 isRequesting: _activeRequestKey == 'microphone',
+                showRequestButton: !isIos,
                 onRequest: () => _requestOne(
                   key: 'microphone',
                   grantedMessage: '마이크 권한이 허용되었습니다.',
@@ -862,6 +824,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   descriptionMaxLines: 2,
                   granted: snapshot?.speechRecognitionGranted == true,
                   isRequesting: _activeRequestKey == 'speechRecognition',
+                  showRequestButton: false,
                   key: const ValueKey('permission-onboarding-speech-tile'),
                   onRequest: () => _requestOne(
                     key: 'speechRecognition',
@@ -886,6 +849,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 descriptionMaxLines: 2,
                 granted: snapshot?.notificationsGranted == true,
                 isRequesting: _activeRequestKey == 'notification',
+                showRequestButton: !isIos,
                 key: const ValueKey('permission-onboarding-notification-tile'),
                 onRequest: () => _requestOne(
                   key: 'notification',
@@ -906,6 +870,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 descriptionMaxLines: 2,
                 granted: snapshot?.locationGranted == true,
                 isRequesting: _activeRequestKey == 'location',
+                showRequestButton: !isIos,
                 onRequest: () => _requestOne(
                   key: 'location',
                   grantedMessage: '위치 권한이 허용되었습니다.',
@@ -929,6 +894,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 descriptionMaxLines: 2,
                 granted: snapshot?.calendarGranted == true,
                 isRequesting: _activeRequestKey == 'calendar',
+                showRequestButton: !isIos,
                 onRequest: () => _requestOne(
                   key: 'calendar',
                   grantedMessage: '기기 캘린더 권한을 허용했습니다.',
@@ -1087,7 +1053,7 @@ class _IntroCard extends StatelessWidget {
             const SizedBox(height: 7),
             Text(
               'AI가 날짜·시간·장소를 파악해 첫 일정을 빠르게 만들어 줍니다. '
-              '필수 권한은 위에서부터 하나씩 안내하고, '
+              '기능에 필요한 권한은 순서대로 안내하고, '
               '폴드/플립용 알림은 나중에 선택할 수 있어요.',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -1257,6 +1223,7 @@ class _PermissionTile extends StatelessWidget {
     required this.granted,
     required this.onRequest,
     this.isRequesting = false,
+    this.showRequestButton = true,
   });
 
   final IconData icon;
@@ -1265,6 +1232,7 @@ class _PermissionTile extends StatelessWidget {
   final int? descriptionMaxLines;
   final bool granted;
   final bool isRequesting;
+  final bool showRequestButton;
   final Future<void> Function() onRequest;
 
   @override
@@ -1328,7 +1296,7 @@ class _PermissionTile extends StatelessWidget {
                 dimension: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            else
+            else if (showRequestButton)
               TextButton(
                 onPressed: onRequest,
                 child: const Text('요청'),

@@ -62,6 +62,23 @@ void main() {
     expect(source, contains('shouldResumeAfterSettings'));
   });
 
+  test('keeps the iOS pre-permission UI on a single Continue path', () {
+    final source = onboarding.readAsStringSync();
+
+    expect(source, contains("? '계속'"));
+    expect(source, contains('if (!isIos) ...['));
+    expect(source, contains('showRequestButton: !isIos'));
+    expect(source, contains('showRequestButton: false'));
+    expect(
+      source,
+      contains(
+        'if (!granted && defaultTargetPlatform == TargetPlatform.iOS)',
+      ),
+    );
+    expect(source, isNot(contains('_confirmOpenSettings(')));
+    expect(source, isNot(contains("cancelLabel: '나중에'")));
+  });
+
   test('binds real iOS permission APIs and all required purpose strings', () {
     final permissionSource = permissions.readAsStringSync();
     final notificationSource = notifications.readAsStringSync();

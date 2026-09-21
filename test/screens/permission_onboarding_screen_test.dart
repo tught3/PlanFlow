@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -15,7 +16,63 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 void main() {
   tearDown(() {
     authProvider.setUser(null);
+    debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets(
+    'iOS onboarding uses one Continue gate and proceeds directly to system permission requests',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      authProvider.setUser('ios-user');
+
+      final permissionService = _FakePermissionService();
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: AppRoutes.root,
+            builder: (context, state) => PermissionOnboardingScreen(
+              permissionService: permissionService,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) =>
+                const Scaffold(body: Text('ios home reached')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      expect(find.text('계속'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('permission-onboarding-skip-button')),
+        findsNothing,
+      );
+      expect(find.text('요청'), findsNothing);
+      expect(permissionService.totalRequests, isZero);
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('ios home reached'), findsOneWidget);
+      expect(permissionService.microphoneRequests, 1);
+      expect(permissionService.speechRecognitionRequests, 1);
+      expect(permissionService.notificationRequests, 1);
+      expect(permissionService.locationRequests, 1);
+      expect(permissionService.calendarRequests, 1);
+      expect(permissionService.appSettingsOpened, isFalse);
+      expect(permissionService.notificationSettingsOpened, isFalse);
+      expect(permissionService.completedUserId, 'ios-user');
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 
   testWidgets(
     'PermissionOnboardingScreen keeps the main request button visible on compact height',
@@ -447,6 +504,7 @@ class _FakePermissionService extends AppPermissionService {
       : super(notificationService: _FakeNotificationService());
 
   bool microphoneGranted = false;
+  bool speechRecognitionGranted = false;
   bool locationGranted = false;
   bool calendarGranted = false;
   bool exactAlarmGranted = false;
@@ -460,6 +518,7 @@ class _FakePermissionService extends AppPermissionService {
   bool alarmSettingsOpened = false;
   bool appSettingsOpened = false;
   int microphoneRequests = 0;
+  int speechRecognitionRequests = 0;
   int locationRequests = 0;
   int calendarRequests = 0;
   int notificationRequests = 0;
@@ -471,6 +530,7 @@ class _FakePermissionService extends AppPermissionService {
 
   int get totalRequests =>
       microphoneRequests +
+      speechRecognitionRequests +
       locationRequests +
       calendarRequests +
       notificationRequests +
@@ -482,6 +542,13 @@ class _FakePermissionService extends AppPermissionService {
     checkAllCalls += 1;
     return AppPermissionSnapshot(
       microphoneGranted: microphoneGranted,
+      microphoneStatus: microphoneGranted
+          ? AppPermissionStatus.granted
+          : AppPermissionStatus.denied,
+      speechRecognitionGranted: speechRecognitionGranted,
+      speechRecognitionStatus: speechRecognitionGranted
+          ? AppPermissionStatus.granted
+          : AppPermissionStatus.denied,
       locationGranted: locationGranted,
       calendarGranted: calendarGranted,
       notificationStatus: NotificationPermissionStatus(
@@ -500,6 +567,13 @@ class _FakePermissionService extends AppPermissionService {
     microphoneRequests += 1;
     microphoneGranted = true;
     return true;
+  }
+
+  @override
+  Future<AppPermissionStatus> requestSpeechRecognitionPermissionStatus() async {
+    speechRecognitionRequests += 1;
+    speechRecognitionGranted = true;
+    return AppPermissionStatus.granted;
   }
 
   @override
