@@ -17,8 +17,8 @@
   "roles": {
     "Explorer": {"status": "RAN", "report": "KASI canonical holiday source confirmed; iOS EventKit, Android device, Google, Naver Open API and CalDAV import paths identified."},
     "Planner": {"status": "RAN", "report": "Apply existing date-aware synced holiday predicate at each external import boundary; preserve personal events and existing stored rows."},
-    "Implementer": {"status": "RAN", "changed_files": ["lib/services/calendar_sync_service.dart", "lib/services/device_calendar_service.dart", "lib/services/naver_caldav_service.dart", "lib/services/naver_open_api_calendar_service.dart", "test/services/calendar_sync_service_test.dart", "test/services/device_calendar_service_test.dart", "test/services/naver_open_api_calendar_service_test.dart"]},
-    "Test Executor": {"status": "RAN", "evidence": ["flutter test device/synced holiday/Naver Open API: exit 0, 20 passed", "flutter test calendar_sync_service_test.dart: exit 0, 24 passed", "flutter analyze changed services: exit 0", "git diff --check: exit 0"]},
+    "Implementer": {"status": "RAN", "changed_files": ["lib/services/calendar_sync_service.dart", "lib/services/device_calendar_service.dart", "lib/services/naver_caldav_service.dart", "lib/services/naver_ics_import_service.dart", "lib/services/naver_open_api_calendar_service.dart", "test/services/calendar_sync_service_test.dart", "test/services/device_calendar_service_test.dart", "test/services/naver_ics_import_service_test.dart", "test/services/naver_open_api_calendar_service_test.dart"]},
+    "Test Executor": {"status": "RAN", "evidence": ["combined external holiday suite exit 0, 53 passed", "flutter analyze five changed services: exit 0", "dart format --set-exit-if-changed after apply: exit 0", "git diff --check: exit 0"]},
     "Reviewer": {"status": "RAN", "verdict": "PASS", "report": "Fresh final review found no blockers across device, Google, Naver Open API, CalDAV and ICS import boundaries."},
     "Integrator": {"status": "RAN", "verdict": "PASS", "report": "Final diff is scoped; foreign generated files and .pub-cache-release remain unstaged."}
   },
