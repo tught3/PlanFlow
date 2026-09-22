@@ -125,8 +125,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       'naver_ics_reminder',
       _notificationService.scheduleMonthlyNaverIcsReminder,
     ));
+    // 이전 버전이 예약해 둔 베타 후기 알림은 업데이트 후에도 남을 수
+    // 있으므로, 새 예약 없이 기존 예약만 한 번 정리한다.
     unawaited(_deferStartupLifecycleWork(
-        'beta_survey', _scheduleBetaSurveyReminderIfNeeded));
+        'beta_survey_cleanup', _notificationService.cancelBetaSurveyReminder));
     _routeInitialHomeWidgetLaunch();
     unawaited(_routeInitialNotificationLaunch());
     _listenForPlanFlowDeepLinks();
@@ -239,14 +241,6 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       debugPrint('Smart preparation migration skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
-  }
-
-  Future<void> _scheduleBetaSurveyReminderIfNeeded() async {
-    final prefs = await tryGetPrefs();
-    if (prefs == null) return;
-    final completed = prefs.getBool('beta_survey_completed') ?? false;
-    if (completed) return;
-    await _notificationService.scheduleBetaSurveyReminder();
   }
 
   Future<void> _scheduleDeferredSessionSync({required String reason}) async {

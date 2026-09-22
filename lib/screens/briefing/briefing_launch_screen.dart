@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -10,10 +9,8 @@ import '../../core/theme.dart';
 import '../../widgets/app_back_button.dart';
 import '../../core/time_format_controller.dart';
 import '../../data/models/event_model.dart';
-import '../../data/repositories/feedback_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/briefing_scheduler_service.dart';
-import '../settings/beta_survey_sheet.dart';
 
 class BriefingLaunchScreen extends StatefulWidget {
   const BriefingLaunchScreen({
@@ -41,9 +38,6 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
   List<EventModel>? _resolvedEvents;
   String? _errorMessage;
   bool _isCheckingSession = true;
-  bool _showSurveyButton = false;
-
-  static const String _surveyCompletedKey = 'beta_survey_completed';
 
   @override
   void initState() {
@@ -93,9 +87,6 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
       setState(() {
         _result = result;
       });
-      if (!widget.isMorning && result.delivered) {
-        await _checkShouldShowSurvey();
-      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -104,34 +95,6 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
         _isCheckingSession = false;
         _errorMessage = '브리핑을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       });
-    }
-  }
-
-  Future<void> _checkShouldShowSurvey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final completed = prefs.getBool(_surveyCompletedKey) ?? false;
-    if (!mounted || completed) return;
-    setState(() => _showSurveyButton = true);
-  }
-
-  Future<void> _openSurvey() async {
-    FeedbackRepository repository;
-    try {
-      repository = FeedbackRepository.supabase();
-    } catch (_) {
-      return;
-    }
-    if (!mounted) return;
-    final submitted = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => BetaSurveySheet(repository: repository),
-    );
-    if (submitted == true) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_surveyCompletedKey, true);
-      if (mounted) setState(() => _showSurveyButton = false);
     }
   }
 
@@ -242,14 +205,6 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      if (_showSurveyButton) ...[
-                        OutlinedButton.icon(
-                          onPressed: _openSurvey,
-                          icon: const Icon(Icons.star_border_outlined),
-                          label: const Text('오늘 하루 어떠셨나요? 후기 남기기'),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
                       FilledButton(
                         onPressed: () => context.go(AppRoutes.home),
                         child: const Text('홈으로 가기'),

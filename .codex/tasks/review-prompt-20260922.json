@@ -1,0 +1,101 @@
+{
+  "task_id": "review-prompt-20260922",
+  "request": "Remove the daily self-authored 21:00 beta survey reminder and route qualified users to native Android/iOS store review prompts with a non-daily cadence.",
+  "routing_receipt": {
+    "entry": {
+      "agent": "gpt-5.6-luna",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium"
+    },
+    "classification": "Complex",
+    "planned_roles": [
+      {
+        "role": "Explorer",
+        "agent": "flux_explorer",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "medium"
+      },
+      {
+        "role": "Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "high"
+      },
+      {
+        "role": "Implementer",
+        "agent": "flux_complex_implementer",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "medium"
+      },
+      {
+        "role": "Test Executor",
+        "agent": "flux_test_executor",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "low"
+      },
+      {
+        "role": "Reviewer",
+        "agent": "flux_reviewer",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "high"
+      },
+      {
+        "role": "Integrator",
+        "agent": "flux_integrator",
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium"
+      }
+    ]
+  },
+  "foreign_dirty_at_start": [
+    "ios/Runner/GeneratedPluginRegistrant.m",
+    "linux/flutter/generated_plugin_registrant.cc",
+    "linux/flutter/generated_plugins.cmake",
+    "macos/Flutter/GeneratedPluginRegistrant.swift",
+    ".pub-cache-release/"
+  ],
+  "role_reports": {
+    "Explorer": {
+      "status": "RAN",
+      "result": "Daily beta survey reminder is scheduled from app.dart and notification_service.dart; briefing screen exposes self-authored survey; ReviewService already uses in_app_review after three saves."
+    },
+    "Planner": {
+      "status": "RAN",
+      "result": "Remove app-start daily beta survey scheduling and stale notification, remove beta_survey route and briefing self-survey UI while preserving settings feedback. Native review policy: 5 saves, 3 distinct active days, 7 days since first save, 120-day cooldown; inject requester/clock for tests; OS controls display."
+    },
+    "Implementer": {
+      "status": "RAN",
+      "result": "Removed daily 21:00 beta-survey scheduling and route/UI, retained settings feedback, and implemented native review cadence with Android/iOS platform handling. Hooked successful new-event saves in ConfirmScreen and EventEditScreen. Added review policy tests."
+    },
+    "Test Executor": {
+      "status": "RAN",
+      "result": "flutter test test/services/review_service_test.dart: exit 0, 5 tests passed; flutter test test/services/notification_service_test.dart test/services/briefing_scheduler_service_test.dart test/screens/briefing_launch_screen_test.dart: exit 0, 49 tests passed; flutter analyze lib/app.dart lib/screens/briefing/briefing_launch_screen.dart lib/screens/event/event_edit_screen.dart lib/services/notification_service.dart lib/services/review_service.dart: exit 0, No issues found; git diff --check: exit 0 (CRLF warnings only)."
+    },
+    "Reviewer": {
+      "status": "RAN",
+      "result": "PASS after re-review. The five cadence boundary tests pass; final review found no functional blocker. The prior delivery-state blocker is resolved by this final receipt and Integrator completion. Foreign generated/cache paths remain excluded from the staged change."
+    },
+    "Integrator": {
+      "status": "RAN",
+      "result": "Final integration verified task-owned paths, preserved foreign generated/cache paths, and staged only review-prompt source, tests, and task evidence. Commit and non-force push are the remaining finalization actions."
+    }
+  },
+  "final_routing_receipt": {
+    "entry": {
+      "agent": "gpt-5.6-luna",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium"
+    },
+    "classification": "Complex",
+    "planned_roles": [],
+    "executed_roles": [
+      "Explorer",
+      "Planner",
+      "Implementer",
+      "Test Executor",
+      "Reviewer",
+      "Integrator"
+    ],
+    "not_run_roles": []
+  }
+}

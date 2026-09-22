@@ -35,6 +35,7 @@ import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/review_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../l10n/app_l10n.dart';
 import '../../widgets/calendar_style_event_editor.dart';
@@ -1308,6 +1309,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
 
       if (savedEvent != null) {
+        if (_isNewEvent) {
+          unawaited(ReviewService.onEventSaved());
+        }
         unawaited(
           _runPostSaveSideEffects(
             userId: user.id,
