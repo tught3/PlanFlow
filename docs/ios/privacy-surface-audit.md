@@ -90,7 +90,7 @@ signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 사용자 사
 | `NSCameraUsageDescription` / `AVCaptureDevice` | not found in PlanFlow production or linked-framework evidence | camera | `NSCameraUsageDescription` | absent | no |
 | `NSPhotoLibraryUsageDescription` / `PHPhotoLibrary` | Run #3 archive/export PASS의 과거 signed-binary/간접 SDK 심볼; PlanFlow 사용자 사진 선택·보관함 접근·업로드·수집 증거 아님 | photos | `NSPhotoLibraryUsageDescription` | present | PlanFlow 직접 사진 경로 없음; usage key/release gate 유지 |
 | `NSContactsUsageDescription` / `CNContactStore` | Run #3: Contacts.framework linked, but no `CNContactStore` symbol; no direct PlanFlow call | contacts | `NSContactsUsageDescription` | absent | no; SDK candidate only |
-| `NSCalendarsUsageDescription` / `EKEventStore` | `AppDelegate.swift`가 EventKit 권한 상태 확인 및 권한 요청을 수행하지만 iOS EventKit 일정 데이터 읽기·쓰기는 없음 | calendars | `NSCalendarsUsageDescription` | present | 권한 API만 사용; iOS EventKit 일정 데이터 경로 없음 |
+| `NSCalendarsUsageDescription` / `EKEventStore` | `AppDelegate.swift`의 권한 채널과 `PlanFlowDeviceCalendarChannel`이 사용자가 허용한 iPhone 캘린더의 목록·일정을 읽고 PlanFlow 일정을 저장 | calendars | `NSCalendarsUsageDescription` | present | 사용자가 명시적으로 동기화를 실행한 경우에만 EventKit read/write; Android 경로는 별도 유지 |
 | `NSRemindersUsageDescription` / `EKEventStore` | not found in PlanFlow production or linked-framework evidence | reminders | `NSRemindersUsageDescription` | absent | no |
 | `NSLocationAlwaysAndWhenInUseUsageDescription` | not found in PlanFlow production or linked-framework evidence | always location | `NSLocationAlwaysAndWhenInUseUsageDescription` | absent | no |
 | `NSBluetoothAlwaysUsageDescription` / `CBCentralManager` | not found in PlanFlow production or linked-framework evidence | Bluetooth | `NSBluetoothAlwaysUsageDescription` | absent | no |
@@ -102,7 +102,7 @@ signed-binary 심볼은 간접/진단 SDK 증거이며 PlanFlow의 사용자 사
 | `PHPhotoLibrary` / photo APIs | Run #3 archive/export PASS의 과거 signed-binary/간접 SDK 심볼; `GMSMobileMapsPhotoService`, `GMS photo service`도 진단 문자열 | photo read | `NSPhotoLibraryUsageDescription` | present | PlanFlow 사용자 사진 선택·보관함 접근·업로드·수집 증거 없음 |
 | photo write APIs | Run #3 archive/export PASS의 과거 `UIImageWriteToSavedPhotosAlbum` 심볼은 간접/진단 증거 | photo write | `NSPhotoLibraryAddUsageDescription` | present | PlanFlow 사진 쓰기·업로드·수집 증거 없음 |
 | `CNContactStore` / Contacts | no contacts API call or linked-framework proof found | contacts | `NSContactsUsageDescription` | not added; no evidence | not used |
-| `EKEventStore` / EventKit calendars | `AppDelegate.swift`가 권한 상태 확인 및 권한 요청을 수행하지만 iOS EventKit 일정 데이터 읽기·쓰기는 없음; 앱 일정은 Supabase/local data | calendars | `NSCalendarsUsageDescription` | present | 권한 API만 사용; iOS EventKit 데이터 경로는 없음 |
+| `EKEventStore` / EventKit calendars | `PlanFlowDeviceCalendarChannel`이 EventKit 캘린더·일정을 읽고, PlanFlow 이벤트를 writable calendar에 upsert | calendars | `NSCalendarsUsageDescription` | present | iOS 기기 캘린더 연동은 권한 승인 후 사용자가 실행한 가져오기/저장에 한정 |
 | `EKEventStore` reminders | no reminders API call or linked-framework proof found | reminders | `NSRemindersUsageDescription` | not added; no evidence | not used |
 | CoreLocation always authorization | plugin evidence is when-in-use only; no always authorization call found | location always | `NSLocationAlwaysAndWhenInUseUsageDescription` | not added; no evidence | not used |
 | `CBCentralManager` / Bluetooth | no Bluetooth API call or linked-framework proof found | Bluetooth | `NSBluetoothAlwaysUsageDescription` | not added; no evidence | not used |

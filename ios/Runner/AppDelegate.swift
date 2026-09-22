@@ -45,6 +45,7 @@ import UIKit
     diagnostics.mark("IMPLICIT_ENGINE_CALLBACK")
     diagnostics.attach(to: engineBridge.applicationRegistrar.messenger())
     PlanFlowPermissionChannel.register(with: engineBridge.applicationRegistrar.messenger())
+    PlanFlowDeviceCalendarChannel.register(with: engineBridge.applicationRegistrar.messenger())
     StartupDiagnostics.shared.mark("PLUGIN_REGISTRATION_BEGIN")
     let registry = StartupDiagnosticsPluginRegistry(wrapping: engineBridge.pluginRegistry)
     GeneratedPluginRegistrant.register(with: registry)
@@ -235,5 +236,142 @@ final class PlanFlowPermissionChannel: NSObject, CLLocationManagerDelegate {
       return
     }
     UIApplication.shared.open(url, options: [:]) { opened in result(opened) }
+  }
+}
+
+/// EventKit bridge for the device-calendar import/export contract used by
+/// Flutter. Permission prompting remains owned by PlanFlowPermissionChannel;
+/// this channel only reads/writes after authorization has been granted.
+final class PlanFlowDeviceCalendarChannel: NSObject {
+  private static let channelName = "planflow/device_calendar"
+  private static var instances: [PlanFlowDeviceCalendarChannel] = []
+  private let channel: FlutterMethodChannel
+  private let store = EKEventStore()
+
+  private init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: Self.channelName, binaryMessenger: messenger)
+    super.init()
+    channel.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call: call, result: result)
+    }
+  }
+
+  static func register(with messenger: FlutterBinaryMessenger) {
+    instances.append(PlanFlowDeviceCalendarChannel(messenger: messenger))
+  }
+
+  private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { result(false); return }
+      guard self.hasFullAccess else {
+        result(["error": "calendar_permission_required"])
+        return
+      }
+      switch call.method {
+      case "listDeviceCalendars": result(self.listCalendars())
+      case "listDeviceCalendarEvents":
+        result(self.listEvents(arguments: call.arguments))
+      case "upsertDeviceCalendarEvent":
+        result(self.upsertEvent(arguments: call.arguments))
+      default: result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private var hasFullAccess: Bool {
+    let status = EKEventStore.authorizationStatus(for: .event)
+    if #available(iOS 17.0, *) { return status == .fullAccess }
+    return status == .authorized
+  }
+
+  private func listCalendars() -> [[String: Any]] {
+    store.calendars(for: .event).map { calendar in
+      [
+        "id": calendar.calendarIdentifier,
+        "name": calendar.title,
+        "displayName": calendar.title,
+        "accountName": calendar.source.title,
+        "accountType": String(calendar.source.sourceType.rawValue),
+        "ownerAccount": calendar.source.title,
+        "isPrimary": calendar.isSubscribed == false && calendar.calendarIdentifier == store.defaultCalendarForNewEvents?.calendarIdentifier,
+        "visible": !calendar.isSubscribed,
+        "syncEvents": true,
+      ]
+    }
+  }
+
+  private func listEvents(arguments: Any?) -> [[String: Any]] {
+    guard let args = arguments as? [String: Any],
+          let ids = args["calendarIds"] as? [String],
+          let startMillis = args["startMillis"] as? NSNumber,
+          let endMillis = args["endMillis"] as? NSNumber else { return [] }
+    let calendars = store.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
+    guard !calendars.isEmpty else { return [] }
+    let start = Date(timeIntervalSince1970: startMillis.doubleValue / 1000)
+    let end = Date(timeIntervalSince1970: endMillis.doubleValue / 1000)
+    return store.events(matching: store.predicateForEvents(withStart: start, end: end, calendars: calendars)).map { event in
+      let parsedNotes = self.parsePlanFlowMarker(event.notes)
+      var row: [String: Any] = [
+        "eventId": event.eventIdentifier ?? "",
+        "calendarId": event.calendar.calendarIdentifier,
+        "title": event.title ?? "",
+        "description": parsedNotes.description,
+        "location": event.location ?? "",
+        "beginMillis": Int(event.startDate.timeIntervalSince1970 * 1000),
+        "endMillis": Int(event.endDate.timeIntervalSince1970 * 1000),
+        "allDay": event.isAllDay,
+      ]
+      if let modified = event.lastModifiedDate {
+        row["lastDateMillis"] = Int(modified.timeIntervalSince1970 * 1000)
+      }
+      if let eventKey = parsedNotes.eventKey {
+        row["eventKey"] = eventKey
+      }
+      return row
+    }
+  }
+
+  private func upsertEvent(arguments: Any?) -> Bool {
+    guard let args = arguments as? [String: Any],
+          let title = args["title"] as? String,
+          let startMillis = args["startMillis"] as? NSNumber,
+          let endMillis = args["endMillis"] as? NSNumber else { return false }
+    let eventKey = args["eventKey"] as? String ?? ""
+    let start = Date(timeIntervalSince1970: startMillis.doubleValue / 1000)
+    let end = Date(timeIntervalSince1970: endMillis.doubleValue / 1000)
+    let calendars = store.calendars(for: .event).filter { $0.allowsContentModifications }
+    guard let calendar = (store.defaultCalendarForNewEvents.flatMap { $0.allowsContentModifications ? $0 : nil } ?? calendars.first) else { return false }
+    let predicate = store.predicateForEvents(withStart: start.addingTimeInterval(-86400), end: end.addingTimeInterval(86400), calendars: calendars)
+    let event = store.events(matching: predicate).first {
+      self.parsePlanFlowMarker($0.notes).eventKey == eventKey
+    } ?? EKEvent(eventStore: store)
+    event.calendar = calendar
+    event.title = title
+    event.notes = self.notesWithPlanFlowMarker(
+      description: args["description"] as? String,
+      eventKey: eventKey
+    )
+    event.location = args["location"] as? String
+    event.startDate = start
+    event.endDate = end > start ? end : start.addingTimeInterval(1800)
+    event.isAllDay = (args["allDay"] as? Bool) ?? false
+    do { try store.save(event, span: .thisEvent); return true } catch { return false }
+  }
+
+  private func parsePlanFlowMarker(_ notes: String?) -> (description: String, eventKey: String?) {
+    let lines = (notes ?? "").components(separatedBy: .newlines)
+    let marker = lines.first { $0.hasPrefix("planflow:") && $0.count > "planflow:".count }
+    let description = lines.filter { line in
+      !(line.hasPrefix("planflow:") && line.count > "planflow:".count)
+    }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    return (description, marker)
+  }
+
+  private func notesWithPlanFlowMarker(description: String?, eventKey: String) -> String? {
+    let cleanDescription = (description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !eventKey.isEmpty else { return cleanDescription.isEmpty ? nil : cleanDescription }
+    let marker = eventKey.hasPrefix("planflow:") ? eventKey : "planflow:\(eventKey)"
+    if cleanDescription.isEmpty { return marker }
+    return "\(cleanDescription)\n\(marker)"
   }
 }

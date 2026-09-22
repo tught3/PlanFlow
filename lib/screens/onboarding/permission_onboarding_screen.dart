@@ -29,6 +29,9 @@ class PermissionOnboardingScreen extends StatefulWidget {
 
 class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     with WidgetsBindingObserver {
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  String get _calendarPermissionLabel => _isIOS ? 'iPhone 캘린더' : '기기 캘린더';
   late final AppPermissionService _permissionService;
 
   AppPermissionSnapshot? _snapshot;
@@ -369,9 +372,11 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         ),
         _PermissionStep(
           key: 'calendar',
-          label: '기기 캘린더',
-          grantedMessage: '기기 캘린더 권한을 허용했습니다.',
-          deniedMessage: '기기 캘린더를 사용하려면 설정에서 PlanFlow의 캘린더 접근을 켜 주세요.',
+          label: _calendarPermissionLabel,
+          grantedMessage: '$_calendarPermissionLabel 권한을 허용했습니다.',
+          deniedMessage: _isIOS
+              ? 'iPhone 캘린더를 사용하려면 설정에서 PlanFlow의 캘린더 접근을 켜 주세요.'
+              : '기기 캘린더를 사용하려면 설정에서 PlanFlow의 캘린더 접근을 켜 주세요.',
           isGranted: (snapshot) => snapshot.calendarGranted,
           statusOf: (snapshot) => snapshot.calendarStatus,
           request: _permissionService.requestCalendarPermission,
@@ -408,10 +413,11 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       ),
       _PermissionStep(
         key: 'calendar',
-        label: '기기 캘린더',
-        grantedMessage: '기기 캘린더 권한을 허용했습니다.',
-        deniedMessage:
-            '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
+        label: _calendarPermissionLabel,
+        grantedMessage: '$_calendarPermissionLabel 권한을 허용했습니다.',
+        deniedMessage: _isIOS
+            ? 'iPhone 캘린더 권한이 아직 허용되지 않았습니다. iPhone 설정에서 PlanFlow 캘린더 접근을 켜 주세요.'
+            : '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
         isGranted: (snapshot) => snapshot.calendarGranted,
         request: _permissionService.requestCalendarPermission,
       ),
@@ -888,18 +894,19 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.calendar_month_outlined,
-                title: '기기 캘린더',
-                description:
-                    '네이버/삼성/구글 캘린더 앱이 휴대폰에 동기화한 일정을 PlanFlow에서 불러오기 위해 필요합니다.',
+                title: _calendarPermissionLabel,
+                description: _isIOS
+                    ? 'iPhone 캘린더에 연결된 iCloud·Google·Exchange 등의 일정을 PlanFlow에서 불러오기 위해 필요합니다.'
+                    : '네이버/삼성/구글 캘린더 앱이 휴대폰에 동기화한 일정을 PlanFlow에서 불러오기 위해 필요합니다.',
                 descriptionMaxLines: 2,
                 granted: snapshot?.calendarGranted == true,
                 isRequesting: _activeRequestKey == 'calendar',
                 showRequestButton: !isIos,
                 onRequest: () => _requestOne(
                   key: 'calendar',
-                  grantedMessage: '기기 캘린더 권한을 허용했습니다.',
+                  grantedMessage: '$_calendarPermissionLabel 권한을 허용했습니다.',
                   deniedMessage: defaultTargetPlatform == TargetPlatform.iOS
-                      ? '기기 캘린더를 사용하려면 설정에서 PlanFlow의 캘린더 접근을 켜 주세요.'
+                      ? 'iPhone 캘린더를 사용하려면 설정에서 PlanFlow의 캘린더 접근을 켜 주세요.'
                       : '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
                   isGranted: (snapshot) => snapshot.calendarGranted,
                   request: _permissionService.requestCalendarPermission,

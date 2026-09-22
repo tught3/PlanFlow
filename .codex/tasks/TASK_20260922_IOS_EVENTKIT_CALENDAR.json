@@ -1,0 +1,45 @@
+{
+  "taskId": "TASK_20260922_IOS_EVENTKIT_CALENDAR",
+  "status": "INTEGRATED",
+  "classification": "complex",
+  "objective": "Add iOS EventKit device-calendar read/import and write/export support while preserving Android behavior.",
+  "requirements": [
+    "iOS EventKit calendar list, bounded event read, and idempotent PlanFlow event write",
+    "Android CalendarContract behavior and native implementation preserved",
+    "iOS-specific permission and calendar copy",
+    "Privacy/source contracts updated to reflect EventKit read/write and persistence"
+  ],
+  "routingReceipt": {
+    "entryModel": "gpt-5.6-luna",
+    "entryReasoningEffort": "medium",
+    "plannedRoles": [
+      {"role":"Explorer","agent":"flux_explorer","model":"gpt-5.6-luna","reasoningEffort":"medium"},
+      {"role":"Planner","agent":"flux_planner","model":"gpt-5.6-terra","reasoningEffort":"high"},
+      {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-5.6-luna","reasoningEffort":"medium"},
+      {"role":"Test Executor","agent":"flux_test_executor","model":"gpt-5.6-luna","reasoningEffort":"low"},
+      {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-5.6-luna","reasoningEffort":"high"},
+      {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","reasoningEffort":"medium"}
+    ]
+  },
+  "roles": [
+    {"role":"Explorer","agent":"flux_explorer","model":"gpt-5.6-luna","reasoningEffort":"medium","result":"RAN","readOnlyResult":"Confirmed Android CalendarContract and iOS permission-only baseline; identified EventKit gap."},
+    {"role":"Planner","agent":"flux_planner","model":"gpt-5.6-terra","reasoningEffort":"high","result":"RAN","readOnlyResult":"Produced IMPLEMENTABLE_COMPLEX plan with privacy, provenance, loop-prevention, and native-build gates."},
+    {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-5.6-luna","reasoningEffort":"medium","result":"RAN","changedFiles":["ios/Runner/AppDelegate.swift","ios/Runner/Info.plist","lib/services/device_calendar_service.dart","lib/services/naver_caldav_service.dart","lib/screens/settings/settings_screen.dart","lib/screens/onboarding/permission_onboarding_screen.dart","docs/ios/privacy-surface-audit.md","config/store/store-profile.json","test/ios_release_contract_test.dart","test/services/device_calendar_service_test.dart"]},
+    {"role":"Test Executor","agent":"flux_test_executor","model":"gpt-5.6-luna","reasoningEffort":"low","result":"RAN","testEvidence":["flutter test test/services/device_calendar_service_test.dart test/services/calendar_auto_sync_service_test.dart test/ios_release_contract_test.dart: exit 0, 45 tests passed","targeted flutter analyze: exit 0","dart format: exit 0","git diff --check: exit 0"]},
+    {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-5.6-luna","reasoningEffort":"high","result":"RAN","reviewResult":"PASS after rework; no BLOCKER/HIGH findings. Initial marker and iOS loop findings were fixed and re-reviewed."},
+    {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","reasoningEffort":"medium","result":"RAN","integrationResult":"PASS; final diff inspected; Android MainActivity unchanged."}
+  ],
+  "tests": {
+    "command": "flutter test test/services/device_calendar_service_test.dart test/services/calendar_auto_sync_service_test.dart test/ios_release_contract_test.dart",
+    "exitCode": 0,
+    "passed": 45,
+    "additional": ["targeted flutter analyze exit 0", "dart format exit 0", "git diff --check exit 0"]
+  },
+  "integration": {
+    "decision": "PASS",
+    "noBlockerHigh": true,
+    "androidMainActivity": "UNCHANGED",
+    "foreignDirty": ["android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java", ".pub-cache-release/"]
+  },
+  "verificationGaps": ["macOS Xcode compile/archive", "real iPhone EventKit permission/import/export runtime"]
+}

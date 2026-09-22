@@ -1742,6 +1742,7 @@ class NaverCalDavService {
         event.source == 'naver' ||
         event.source == 'naver_caldav' ||
         event.source == 'naver_device' ||
+        event.source == 'ios_device' ||
         event.source == 'device_calendar' ||
         event.startAt == null) {
       return true;

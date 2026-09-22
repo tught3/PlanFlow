@@ -150,10 +150,10 @@ void main() {
     expect(audit, contains('stateDetails'));
     expect(audit, contains('실제 macOS binary'));
     expect(audit, contains('archive/export release gates require'));
-    expect(audit, contains('권한 상태 확인 및 권한 요청을 수행하지만'));
-    expect(audit, contains('iOS EventKit 일정 데이터 읽기·쓰기는 없음'));
+    expect(audit, contains('권한 채널과 `PlanFlowDeviceCalendarChannel`'));
+    expect(audit, contains('사용자가 허용한 iPhone 캘린더'));
     expect(audit, contains('AppDelegate.swift'));
-    expect(audit, contains('권한 API만 사용; iOS EventKit 일정 데이터 경로 없음'));
+    expect(audit, contains('iOS 기기 캘린더 연동은 권한 승인 후'));
     expect(
       audit,
       isNot(contains(
@@ -171,39 +171,49 @@ void main() {
     final calendar = dataTypes['calendar'] as Map<String, dynamic>;
     final calendarCollected = calendar['collected'] as Map<String, dynamic>;
     expect(calendarCollected['value'], isTrue);
-    expect(calendarCollected['note'], contains('Device calendar PERMISSION (not collection)'));
-    expect(calendarCollected['note'], contains('EventKit device-calendar READ/WRITE'));
+    expect(calendarCollected['note'], contains('EventKit authorization'));
+    expect(calendarCollected['note'], contains('device-calendar READ/WRITE'));
     final photos = dataTypes['photos'] as Map<String, dynamic>;
     final photosCollected = photos['collected'] as Map<String, dynamic>;
     expect(photosCollected['value'], isFalse);
-    expect(photosCollected['note'], contains('no photo-library collection path'));
+    expect(
+        photosCollected['note'], contains('no photo-library collection path'));
     final advertising = dataTypes['advertisingData'] as Map<String, dynamic>;
-    final advertisingCollected = advertising['collected'] as Map<String, dynamic>;
-    final usedForTracking = advertising['usedForTracking'] as Map<String, dynamic>;
+    final advertisingCollected =
+        advertising['collected'] as Map<String, dynamic>;
+    final usedForTracking =
+        advertising['usedForTracking'] as Map<String, dynamic>;
     expect(advertisingCollected['value'], isTrue);
     expect(usedForTracking['value'], isFalse);
     expect(usedForTracking['source'], 'USER_CONFIRMED_AUTHENTICATED_CONSOLE');
     final tracking = privacy['tracking'] as Map<String, dynamic>;
     expect(tracking['value'], isFalse);
     expect(tracking['source'], 'USER_CONFIRMED_AUTHENTICATED_CONSOLE');
-    final blockers = (profile['blockers'] as List<dynamic>)
-        .cast<Map<String, dynamic>>();
-    expect(blockers.any((item) => item['code'] == 'IOS_ADS_TRACKING_ANSWER_UNKNOWN'), isFalse);
+    final blockers =
+        (profile['blockers'] as List<dynamic>).cast<Map<String, dynamic>>();
+    expect(
+        blockers
+            .any((item) => item['code'] == 'IOS_ADS_TRACKING_ANSWER_UNKNOWN'),
+        isFalse);
     final decisions = (profile['decisionsRequired'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
-    expect(decisions.any((item) => item['code'] == 'IOS_ADS_TRACKING_ANSWER'), isFalse);
+    expect(decisions.any((item) => item['code'] == 'IOS_ADS_TRACKING_ANSWER'),
+        isFalse);
     final contracts = (profile['privacyChangeContracts'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
     final idfaContract = contracts.singleWhere(
       (item) => item['code'] == 'IOS_IDFA_MESSAGE_STATE_CHANGE',
     );
     expect(idfaContract['currentState'], 'NOT_CONFIGURED');
-    expect(idfaContract['requiredActions'], containsAll(<String>[
-      'PRIVACY_CHANGE_REQUIRED',
-      'ATT_REASSESSMENT_REQUIRED',
-      'APP_PRIVACY_REASSESSMENT_REQUIRED',
-    ]));
-    final readiness = file('docs/ios/APP_STORE_READINESS.md').readAsStringSync();
+    expect(
+        idfaContract['requiredActions'],
+        containsAll(<String>[
+          'PRIVACY_CHANGE_REQUIRED',
+          'ATT_REASSESSMENT_REQUIRED',
+          'APP_PRIVACY_REASSESSMENT_REQUIRED',
+        ]));
+    final readiness =
+        file('docs/ios/APP_STORE_READINESS.md').readAsStringSync();
     final reviewNotes = file('docs/ios/review-notes.md').readAsStringSync();
     for (final companion in <String>[readiness, reviewNotes]) {
       expect(companion, isNot(contains('지도 SDK 장소 사진 표시')));
@@ -632,7 +642,7 @@ echo AVFoundation.framework
       () {
     final workflow =
         file('.github/workflows/ios-release.yml').readAsStringSync();
-    expect(workflow, contains('runs-on: macos-latest'));
+    expect(workflow, contains('runs-on: xcode-27'));
     expect(workflow, contains('BLOCKED_APPLE_SIGNING'));
     expect(workflow, contains('RUNNER_PRIVACY_SOURCE_PASS: PASS'));
     expect(workflow, contains('BLOCKED_RUNNER_PRIVACY_SOURCE'));
@@ -668,8 +678,7 @@ echo AVFoundation.framework
     expect(workflow, contains('dwarfdump --uuid'));
     // Step names generalized: "Build 21"/"Build 22" is no longer baked into
     // the symbol-retention step names now that the build number is dynamic.
-    expect(
-        workflow, contains('Verify and retain exact arm64 Runner symbols'));
+    expect(workflow, contains('Verify and retain exact arm64 Runner symbols'));
     expect(workflow, contains('Upload retained arm64 Runner symbols'));
     expect(workflow, contains('if-no-files-found: error'));
     expect(workflow, contains('retention-days: 90'));
@@ -854,8 +863,7 @@ echo AVFoundation.framework
     expect(ipa, contains('BLOCKED_IPA_WIDGET_EXPORT_COMPLIANCE'));
   });
 
-  test('pipe-safe version capture preserves a multi-line producer',
-      () async {
+  test('pipe-safe version capture preserves a multi-line producer', () async {
     final bash =
         Platform.isWindows ? r'C:\Program Files\Git\bin\bash.exe' : 'bash';
     final result = await Process.run(bash, <String>[

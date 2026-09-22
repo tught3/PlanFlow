@@ -36,9 +36,9 @@
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>일정 장소를 지도에서 찾고 출발지와 목적지를 확인하려면 위치 권한이 필요합니다.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>기기 캘린더 일정을 PlanFlow에서 보여주려면 캘린더 전체 접근 권한이 필요합니다.</string>
+      <string>iPhone 캘린더의 일정을 PlanFlow로 가져오고 PlanFlow 일정을 캘린더에 저장하려면 캘린더 전체 접근 권한이 필요합니다.</string>
     <key>NSCalendarsUsageDescription</key>
-    <string>기기 캘린더 일정을 PlanFlow에서 보여주려면 캘린더 접근 권한이 필요합니다.</string>
+      <string>iPhone 캘린더의 일정을 PlanFlow로 가져오고 PlanFlow 일정을 캘린더에 저장하려면 캘린더 접근 권한이 필요합니다.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>지도 SDK가 장소 사진을 표시할 수 있도록 사진 보관함 접근 권한이 필요합니다.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>

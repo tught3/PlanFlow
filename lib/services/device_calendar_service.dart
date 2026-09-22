@@ -142,6 +142,8 @@ class DeviceCalendarEvent {
     required String userId,
     required DateTime importedAt,
     DeviceCalendarInfo? calendar,
+    String sourcePrefix = 'android',
+    String source = 'naver_device',
   }) {
     final normalizedTitle = title?.trim();
     final isAllDayEvent = allDay == true;
@@ -170,11 +172,11 @@ class DeviceCalendarEvent {
         description: description,
         location: location,
         calendarName: calendar?.label,
-        source: 'naver_device',
+        source: source,
       ),
-      source: 'naver_device',
-      externalId: 'android:$calendarId:$eventId',
-      externalCalendarId: 'android:$calendarId',
+      source: source,
+      externalId: '$sourcePrefix:$calendarId:$eventId',
+      externalCalendarId: '$sourcePrefix:$calendarId',
       externalUpdatedAt: externalUpdatedAt?.toUtc() ?? importedAt,
       lastSyncedAt: importedAt,
       isAllDay: isAllDayEvent,
@@ -232,28 +234,56 @@ class MethodChannelDeviceCalendarGateway implements DeviceCalendarGateway {
 
   static const MethodChannel _channel =
       MethodChannel('planflow/android_permissions');
+  static const MethodChannel _iosCalendarChannel =
+      MethodChannel('planflow/device_calendar');
+  static const MethodChannel _iosPermissionChannel =
+      MethodChannel('planflow/ios_permissions');
+
+  MethodChannel get _calendarChannel =>
+      defaultTargetPlatform == TargetPlatform.iOS
+          ? _iosCalendarChannel
+          : _channel;
 
   @override
   Future<bool> checkCalendarPermission() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    if (kIsWeb) {
       return false;
     }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final status = await _iosPermissionChannel.invokeMethod<String>(
+        'checkCalendarPermission',
+      );
+      return status == 'granted';
+    }
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
     return await _channel.invokeMethod<bool>('checkCalendarPermission') ??
         false;
   }
 
   @override
   Future<bool> requestCalendarPermission() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    if (kIsWeb) {
       return false;
     }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final status = await _iosPermissionChannel.invokeMethod<String>(
+        'requestCalendarPermission',
+      );
+      return status == 'granted';
+    }
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
     return await _channel.invokeMethod<bool>('requestCalendarPermission') ??
         false;
   }
 
   @override
   Future<List<Map<Object?, Object?>>> listDeviceCalendars() async {
-    final result = await _channel.invokeMethod<List<Object?>>(
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      return const <Map<Object?, Object?>>[];
+    }
+    final result = await _calendarChannel.invokeMethod<List<Object?>>(
       'listDeviceCalendars',
     );
     return _mapListResult(result);
@@ -265,7 +295,12 @@ class MethodChannelDeviceCalendarGateway implements DeviceCalendarGateway {
     required DateTime startAt,
     required DateTime endAt,
   }) async {
-    final result = await _channel.invokeMethod<List<Object?>>(
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      return const <Map<Object?, Object?>>[];
+    }
+    final result = await _calendarChannel.invokeMethod<List<Object?>>(
       'listDeviceCalendarEvents',
       <String, Object?>{
         'calendarIds': calendarIds,
@@ -281,10 +316,11 @@ class MethodChannelDeviceCalendarGateway implements DeviceCalendarGateway {
     final startAt = event.startAt;
     if (startAt == null ||
         kIsWeb ||
-        defaultTargetPlatform != TargetPlatform.android) {
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
       return false;
     }
-    final result = await _channel.invokeMethod<bool>(
+    final result = await _calendarChannel.invokeMethod<bool>(
       'upsertDeviceCalendarEvent',
       <String, Object?>{
         'eventKey': 'planflow:${event.id}',
@@ -324,6 +360,10 @@ class DeviceCalendarService {
   final SupabaseClient? _client;
   final String? _currentUserId;
 
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  String get _deviceCalendarSource => _isIOS ? 'ios_device' : 'naver_device';
+
   EventRepository get _eventRepository =>
       _eventRepositoryOverride ?? EventRepository.supabase();
 
@@ -352,6 +392,16 @@ class DeviceCalendarService {
         .toList(growable: false);
   }
 
+  List<DeviceCalendarInfo> _importCalendars(
+    List<DeviceCalendarInfo> calendars,
+  ) {
+    // Android keeps the established Naver/phone-calendar contract. EventKit
+    // already exposes the calendars selected in the iPhone Calendar store, so
+    // iOS must not discard iCloud, Google, Exchange, or subscribed calendars
+    // merely because their provider is not named Naver.
+    return _isIOS ? calendars : findNaverCalendars(calendars);
+  }
+
   Future<DeviceCalendarImportResult> importNaverEvents({
     String? userId,
     DateTime? startAt,
@@ -362,7 +412,7 @@ class DeviceCalendarService {
         _client?.auth.currentSession?.user.id ??
         _client?.auth.currentUser?.id;
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
-      return const DeviceCalendarImportResult(
+      return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.failed,
         message: '먼저 PlanFlow에 로그인해 주세요.',
       );
@@ -371,9 +421,11 @@ class DeviceCalendarService {
     final hasPermission = await _gateway.checkCalendarPermission() ||
         await _gateway.requestCalendarPermission();
     if (!hasPermission) {
-      return const DeviceCalendarImportResult(
+      return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.permissionDenied,
-        message: '기기 캘린더 권한이 필요합니다. Android 앱 설정에서 캘린더 권한을 허용해 주세요.',
+        message: _isIOS
+            ? '기기 캘린더 권한이 필요합니다. iPhone 설정에서 PlanFlow의 캘린더 접근을 허용해 주세요.'
+            : '기기 캘린더 권한이 필요합니다. Android 앱 설정에서 캘린더 권한을 허용해 주세요.',
       );
     }
 
@@ -386,18 +438,19 @@ class DeviceCalendarService {
         );
       }
 
-      final naverCalendars = findNaverCalendars(calendars);
+      final naverCalendars = _importCalendars(calendars);
       debugPrint(
         'Device calendars: ${calendars.map((calendar) => '${calendar.id}:${calendar.label}:${calendar.accountName ?? ''}').join(', ')}',
       );
       debugPrint(
-        'Naver device calendar candidates: ${naverCalendars.map((calendar) => '${calendar.id}:${calendar.label}:${calendar.accountName ?? ''}').join(', ')}',
+        'Device calendar candidates: ${naverCalendars.map((calendar) => '${calendar.id}:${calendar.label}:${calendar.accountName ?? ''}').join(', ')}',
       );
       if (naverCalendars.isEmpty) {
         return DeviceCalendarImportResult(
           status: DeviceCalendarImportStatus.noNaverCalendars,
-          message:
-              '휴대폰 캘린더 저장소에서 내부 캘린더를 찾지 못했습니다. 네이버 캘린더 앱 또는 삼성 캘린더에서 기기 동기화가 켜져 있는지 확인해 주세요.',
+          message: _isIOS
+              ? 'iPhone 캘린더 저장소에서 접근 가능한 캘린더를 찾지 못했습니다. 설정에서 캘린더 계정과 PlanFlow 접근 권한을 확인해 주세요.'
+              : '휴대폰 캘린더 저장소에서 내부 캘린더를 찾지 못했습니다. 네이버 캘린더 앱 또는 삼성 캘린더에서 기기 동기화가 켜져 있는지 확인해 주세요.',
           calendars: calendars,
         );
       }
@@ -410,7 +463,7 @@ class DeviceCalendarService {
       );
       _throwIfNativeError(rows);
       debugPrint(
-        'Naver device calendar event rows: ${rows.length} from calendars ${naverCalendars.map((calendar) => calendar.id).join(',')}',
+        'Device calendar event rows: ${rows.length} from calendars ${naverCalendars.map((calendar) => calendar.id).join(',')}',
       );
 
       final events = rows
@@ -430,8 +483,9 @@ class DeviceCalendarService {
             .join(', ');
         return DeviceCalendarImportResult(
           status: DeviceCalendarImportStatus.noEvents,
-          message:
-              '휴대폰 내부 캘린더는 보이지만 가져올 일정이 없습니다. 확인된 캘린더: $labels. 네이버 캘린더 앱에서 휴대폰/삼성 캘린더 동기화가 켜져 있는지 확인해 주세요.',
+          message: _isIOS
+              ? 'iPhone 캘린더는 보이지만 가져올 일정이 없습니다. 확인된 캘린더: $labels. iPhone 캘린더 계정의 동기화 상태를 확인해 주세요.'
+              : '휴대폰 내부 캘린더는 보이지만 가져올 일정이 없습니다. 확인된 캘린더: $labels. 네이버 캘린더 앱에서 휴대폰/삼성 캘린더 동기화가 켜져 있는지 확인해 주세요.',
           calendars: naverCalendars,
         );
       }
@@ -463,10 +517,10 @@ class DeviceCalendarService {
       return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.imported,
         message: failed > 0
-            ? '휴대폰 내부 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다. 실패 $failed개는 다음 동기화 때 다시 시도해 주세요.'
+            ? '${_isIOS ? 'iPhone' : '휴대폰'} 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다. 실패 $failed개는 다음 동기화 때 다시 시도해 주세요.'
             : skipped > 0
-                ? '휴대폰 내부 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다.'
-                : '휴대폰 내부 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
+                ? '${_isIOS ? 'iPhone' : '휴대폰'} 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다.'
+                : '${_isIOS ? 'iPhone' : '휴대폰 내부'} 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
         importedCount: imported,
         skippedCount: skipped,
         failedCount: failed,
@@ -477,7 +531,9 @@ class DeviceCalendarService {
       debugPrintStack(stackTrace: stackTrace);
       return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.failed,
-        message: '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
+        message: _isIOS
+            ? 'iPhone 캘린더 일정 가져오기에 실패했습니다. 캘린더 권한과 계정 동기화 상태를 확인해 주세요.'
+            : '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
         error: error,
       );
     }
@@ -493,6 +549,8 @@ class DeviceCalendarService {
       userId: userId,
       importedAt: importedAt,
       calendar: calendar,
+      sourcePrefix: _isIOS ? 'ios' : 'android',
+      source: _deviceCalendarSource,
     );
     try {
       final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
@@ -521,7 +579,11 @@ class DeviceCalendarService {
         title: eventModel.title,
         startAt: eventModel.startAt!,
         userId: userId,
-        excludedSources: const <String>{'device_calendar', 'naver_device'},
+        excludedSources: const <String>{
+          'device_calendar',
+          'naver_device',
+          'ios_device',
+        },
       );
       if (duplicate != null) {
         final linked =
@@ -539,7 +601,8 @@ class DeviceCalendarService {
       }
 
       // external_id 기반 중복 체크: 이미 가져온 이벤트면 skipped 처리
-      final alreadyImported = await _eventRepository.fetchEventBySourceExternalId(
+      final alreadyImported =
+          await _eventRepository.fetchEventBySourceExternalId(
         source: eventModel.source,
         externalId: eventModel.externalId!,
         userId: userId,
@@ -570,6 +633,7 @@ class DeviceCalendarService {
         event.source == 'naver' ||
         event.source == 'naver_caldav' ||
         event.source == 'naver_device' ||
+        event.source == 'ios_device' ||
         event.source == 'device_calendar') {
       return true;
     }

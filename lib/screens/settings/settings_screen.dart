@@ -108,6 +108,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  String get _deviceCalendarLabel => _isIOS ? 'iPhone 캘린더' : '휴대폰 내부 캘린더';
   static const String _deviceCalendarSyncedPrefsKey =
       'settings:device_calendar_synced';
 
@@ -852,7 +855,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       debugPrintStack(stackTrace: stackTrace);
       result = DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.failed,
-        message: '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
+        message:
+            '$_deviceCalendarLabel 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
         error: error,
       );
     } finally {
@@ -885,7 +889,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       EventRefreshBus.instance.notifyChanged(reason: 'device_naver_import');
     } else if (result.status == DeviceCalendarImportStatus.noNaverCalendars) {
       _showSnack(
-        '휴대폰 내부 캘린더 저장소에서 네이버 후보를 찾지 못했습니다. 삼성/구글/휴대폰 캘린더 동기화를 확인해 주세요.',
+        _isIOS
+            ? 'iPhone 캘린더 저장소에서 접근 가능한 캘린더를 찾지 못했습니다. 설정에서 캘린더 계정과 PlanFlow 접근 권한을 확인해 주세요.'
+            : '휴대폰 내부 캘린더 저장소에서 네이버 후보를 찾지 못했습니다. 삼성/구글/휴대폰 캘린더 동기화를 확인해 주세요.',
       );
     }
   }
@@ -899,12 +905,12 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
     try {
       _showSnack(
-        '휴대폰 내부 캘린더 연동 정보를 초기화했습니다. 다음 가져오기 때 다시 권한과 저장소를 확인합니다.',
+        '$_deviceCalendarLabel 연동 정보를 초기화했습니다. 다음 가져오기 때 다시 권한과 저장소를 확인합니다.',
       );
     } catch (error, stackTrace) {
       debugPrint('Device calendar disconnect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
-      _showSnack('휴대폰 내부 캘린더 연동 해제에 실패했습니다. 다시 시도해 주세요.');
+      _showSnack('$_deviceCalendarLabel 연동 해제에 실패했습니다. 다시 시도해 주세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -1413,9 +1419,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
-      builder: (context) => const AlertDialog(
-        title: Text('휴대폰 내부 캘린더 가져오기'),
-        content: Column(
+      builder: (context) => AlertDialog(
+        title: Text('$_deviceCalendarLabel 가져오기'),
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircularProgressIndicator(),
@@ -3468,7 +3474,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  '보조 기능: 삼성/구글/기타 휴대폰 캘린더 저장소에 이미 동기화된 일정을 가져올 수 있습니다.',
+                                  _isIOS
+                                      ? '보조 기능: iPhone 캘린더에 연결된 iCloud·Google·Exchange 등의 일정을 가져올 수 있습니다.'
+                                      : '보조 기능: 삼성/구글/기타 휴대폰 캘린더 저장소에 이미 동기화된 일정을 가져올 수 있습니다.',
                                   style: Theme.of(context)
                                       .textTheme
                                       .bodySmall
@@ -3522,7 +3530,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               style: _settingsSkyButtonStyle(),
                               icon: const Icon(Icons.phone_android_outlined),
                               label: Text(
-                                '휴대폰 내부 캘린더 일정 가져오기',
+                                '$_deviceCalendarLabel 일정 가져오기',
                               ),
                             ),
                           ),

@@ -290,6 +290,7 @@ void main() {
       eventRepository: _FakeEventRepository(),
       currentUserId: 'user-1',
     );
+    final futureStart = DateTime.now().add(const Duration(days: 30));
 
     final exported = await service.exportEvent(
       EventModel(
@@ -303,6 +304,29 @@ void main() {
 
     expect(exported, isTrue);
     expect(gateway.exportedEvents, hasLength(1));
+  });
+
+  test('iOS device-calendar imports are not exported back to device calendars',
+      () async {
+    final gateway = _FakeDeviceCalendarGateway();
+    final service = DeviceCalendarService(
+      gateway: gateway,
+      eventRepository: _FakeEventRepository(),
+      currentUserId: 'user-1',
+    );
+
+    final exported = await service.exportEvent(
+      EventModel(
+        id: 'ios-import-1',
+        userId: 'user-1',
+        title: 'iPhone 일정',
+        source: 'ios_device',
+        startAt: futureStart,
+      ),
+    );
+
+    expect(exported, isTrue);
+    expect(gateway.exportedEvents, isEmpty);
   });
 
   test('Android native device export keeps event-only policy', () {
@@ -364,8 +388,7 @@ void main() {
       DeviceCalendarImportStatus.imported,
       reason: 'status는 imported(= 처리 완료)로 유지',
     );
-    expect(secondResult.importedCount, 0,
-        reason: '새로 추가된 이벤트가 없어야 한다');
+    expect(secondResult.importedCount, 0, reason: '새로 추가된 이벤트가 없어야 한다');
     expect(secondResult.skippedCount, 1,
         reason: '중복 external_id는 skipped로 계산되어야 한다');
     // DB row 수는 변하지 않아야 한다.
