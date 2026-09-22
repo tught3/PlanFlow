@@ -39,7 +39,8 @@ void main() {
     expect(permissionService.refreshCallCount, 1);
   });
 
-  test('imports date-only Naver holidays on the same local date', () async {
+  test('skips date-only Naver holidays in favor of canonical app holidays',
+      () async {
     final repository = _FakeEventRepository();
     final requests = <http.Request>[];
     final service = NaverOpenApiCalendarService(
@@ -87,25 +88,8 @@ void main() {
 
     expect(result.success, isTrue);
     expect(requests, isNotEmpty);
-    expect(repository.upserted, hasLength(2));
-
-    final byTitle = <String, EventModel>{
-      for (final event in repository.upserted) event.title: event,
-    };
-
-    expect(byTitle['광복절'], isNotNull);
-    expect(byTitle['광복절']!.isAllDay, isTrue);
-    expect(byTitle['광복절']!.isMultiDay, isFalse);
-    expect(planflowLocalDay(byTitle['광복절']!.startAt!).day, 15);
-    expect(planflowLocalDay(byTitle['광복절']!.startAt!).month, 8);
-    expect(planflowLocalDay(byTitle['광복절']!.endAt!).day, 16);
-
-    expect(byTitle['개천절'], isNotNull);
-    expect(byTitle['개천절']!.isAllDay, isTrue);
-    expect(byTitle['개천절']!.isMultiDay, isFalse);
-    expect(planflowLocalDay(byTitle['개천절']!.startAt!).day, 3);
-    expect(planflowLocalDay(byTitle['개천절']!.startAt!).month, 10);
-    expect(planflowLocalDay(byTitle['개천절']!.endAt!).day, 4);
+    expect(repository.upserted, isEmpty);
+    expect(result.skipped, 2);
   });
 }
 

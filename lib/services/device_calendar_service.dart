@@ -6,6 +6,7 @@ import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'external_event_import_classifier.dart';
+import 'synced_public_holiday_visibility.dart';
 
 enum DeviceCalendarImportStatus {
   imported,
@@ -553,6 +554,17 @@ class DeviceCalendarService {
       source: _deviceCalendarSource,
     );
     try {
+      // PlanFlow renders public holidays from its canonical KASI-backed
+      // holiday table. Do not import the provider copy as a second event.
+      // This is intentionally date-aware so a personal event such as
+      // "광복절 행사" remains importable.
+      if (isSyncedPublicHolidayDuplicate(eventModel)) {
+        debugPrint(
+          'Device calendar holiday duplicate skipped: '
+          'title="${eventModel.title}" start=${eventModel.startAt}',
+        );
+        return _DeviceCalendarEventImportOutcome.skipped();
+      }
       final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
         event.eventKey,
       );

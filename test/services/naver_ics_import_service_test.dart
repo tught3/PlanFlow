@@ -104,6 +104,37 @@ END:VCALENDAR
       expect(repository.events.single.externalId, 'naver-ics:uid:stable-uid');
     });
 
+    test('skips canonical public holidays but keeps personal events', () async {
+      final repository = _FakeEventRepository();
+      final service = NaverIcsImportService(
+        eventRepository: repository,
+        now: () => DateTime.utc(2026, 8, 15),
+      );
+
+      final result = await service.importContent('''
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:holiday-ics
+SUMMARY:광복절
+DTSTART;TZID=Asia/Seoul:20260815T000000
+DTEND;TZID=Asia/Seoul:20260815T010000
+END:VEVENT
+BEGIN:VEVENT
+UID:personal-holiday-ics
+SUMMARY:광복절 행사
+DTSTART;TZID=Asia/Seoul:20260815T100000
+DTEND;TZID=Asia/Seoul:20260815T110000
+END:VEVENT
+END:VCALENDAR
+''', userId: 'user-1');
+
+      expect(result.imported, 1);
+      expect(result.skipped, 1);
+      expect(repository.events, hasLength(1));
+      expect(repository.events.single.title, '광복절 행사');
+    });
+
     test('deletes suspicious imported rows before re-importing', () async {
       final repository = _FakeEventRepository(
         events: <EventModel>[

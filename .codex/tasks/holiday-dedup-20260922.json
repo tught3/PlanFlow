@@ -1,0 +1,27 @@
+{
+  "task_id": "holiday-dedup-20260922",
+  "request": "외부 캘린더 공휴일 중복 import 차단 및 KASI canonical 공휴일 유지",
+  "routing_receipt": {
+    "entry_model": "gpt-5.6-luna",
+    "entry_effort": "medium",
+    "classification": "Complex",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+      {"role": "Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.6-luna", "reasoning_effort": "low"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+    ]
+  },
+  "roles": {
+    "Explorer": {"status": "RAN", "report": "KASI canonical holiday source confirmed; iOS EventKit, Android device, Google, Naver Open API and CalDAV import paths identified."},
+    "Planner": {"status": "RAN", "report": "Apply existing date-aware synced holiday predicate at each external import boundary; preserve personal events and existing stored rows."},
+    "Implementer": {"status": "RAN", "changed_files": ["lib/services/calendar_sync_service.dart", "lib/services/device_calendar_service.dart", "lib/services/naver_caldav_service.dart", "lib/services/naver_open_api_calendar_service.dart", "test/services/calendar_sync_service_test.dart", "test/services/device_calendar_service_test.dart", "test/services/naver_open_api_calendar_service_test.dart"]},
+    "Test Executor": {"status": "RAN", "evidence": ["flutter test device/synced holiday/Naver Open API: exit 0, 20 passed", "flutter test calendar_sync_service_test.dart: exit 0, 24 passed", "flutter analyze changed services: exit 0", "git diff --check: exit 0"]},
+    "Reviewer": {"status": "RAN", "verdict": "PASS", "report": "Fresh final review found no blockers across device, Google, Naver Open API, CalDAV and ICS import boundaries."},
+    "Integrator": {"status": "RAN", "verdict": "PASS", "report": "Final diff is scoped; foreign generated files and .pub-cache-release remain unstaged."}
+  },
+  "foreign_dirty_preserved": ["android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java", "ios/Runner/GeneratedPluginRegistrant.m", "linux/flutter/generated_plugin_registrant.cc", "linux/flutter/generated_plugins.cmake", "macos/Flutter/GeneratedPluginRegistrant.swift", ".pub-cache-release/"],
+  "final_receipt": {"planned_roles": ["Explorer", "Planner", "Implementer", "Test Executor", "Reviewer", "Integrator"], "executed_roles": ["Explorer", "Planner", "Implementer", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []}
+}

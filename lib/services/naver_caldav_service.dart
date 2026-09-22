@@ -15,8 +15,8 @@ import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'api_usage_guard.dart';
 import 'external_event_import_classifier.dart';
-import 'korean_holidays.dart';
 import 'naver_caldav_remote_store.dart';
+import 'synced_public_holiday_visibility.dart';
 
 enum NaverCalDavConnectionStatus {
   success,
@@ -1448,14 +1448,12 @@ class NaverCalDavService {
             syncedAt: syncedAt,
           );
 
-          // 공휴일(신정·광복절 등)은 앱이 KoreanHolidays/KASI API로 이미
-          // 직접 표시하므로 네이버에서 같은 이름의 이벤트로 또 가져오지
-          // 않는다. 안 걸러지면 캘린더 화면에 공휴일이 2개(자체 표시 +
-          // 동기화된 이벤트)로 겹쳐 보인다(사용자 지적, 2026-07-23).
-          if (KoreanHolidays.knownHolidayNames.contains(
-            eventModel.title.trim(),
-          )) {
+          // 공휴일은 앱이 KASI API/계산 결과로 이미 표시하므로 네이버
+          // 캘린더의 provider copy를 가져오지 않는다. 날짜와 외부 식별자가
+          // 함께 확인된 경우만 건너뛰어 개인 일정은 유지한다.
+          if (isSyncedPublicHolidayDuplicate(eventModel)) {
             skippedCount += 1;
+            diagnostics.duplicateSkipped += 1;
             diagnostics.addSkipReason('공휴일(앱 자체 표시와 중복)');
             continue;
           }

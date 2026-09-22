@@ -450,6 +450,57 @@ void main() {
       );
     });
 
+    test('skips canonical public holidays from Google import', () async {
+      final repository = _FakeEventRepository(events: const <EventModel>[]);
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repository,
+        calendarConnectionRepository: _FakeCalendarConnectionRepository(
+          initial: const CalendarConnectionModel(
+            userId: 'user-1',
+            provider: 'google',
+            status: CalendarConnectionStatus.connected,
+          ),
+        ),
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) async {
+          return 'google-token';
+        },
+        googleCalendarEventsFetcher: (_) async {
+          return <GoogleCalendarEventEntry>[
+            GoogleCalendarEventEntry(
+              calendarId: 'ko.south_korea#holiday@group.v.calendar.google.com',
+              event: gcal.Event(
+                id: 'holiday-1',
+                summary: '광복절',
+                updated: DateTime.utc(2026, 8, 15, 1),
+                start: gcal.EventDateTime(
+                  dateTime: DateTime.utc(2026, 8, 15, 2),
+                ),
+                end: gcal.EventDateTime(
+                  dateTime: DateTime.utc(2026, 8, 15, 3),
+                ),
+              ),
+            ),
+          ];
+        },
+        httpClientFactory: () => MockClient((request) async {
+          return http.Response(
+            '{"id":"google-holiday-1","updated":"2026-08-15T08:00:00.000Z"}',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(repository.upsertedEvents, isEmpty);
+    });
+
     test('keeps primary Google calendar keys stable when id is account email',
         () async {
       final entry = GoogleCalendarEventEntry(

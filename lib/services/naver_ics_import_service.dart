@@ -10,6 +10,7 @@ import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'external_event_import_classifier.dart';
+import 'synced_public_holiday_visibility.dart';
 
 class NaverIcsImportService {
   NaverIcsImportService({
@@ -129,6 +130,18 @@ class NaverIcsImportService {
           externalUpdatedAt: parsed.lastModifiedAt ?? _now().toUtc(),
           lastSyncedAt: _now().toUtc(),
         );
+        // Public holidays are rendered from PlanFlow's canonical KASI-backed
+        // holiday data. Skip only the date-aware provider copy; personal
+        // events on the same day (for example, "광복절 행사") remain valid.
+        if (isSyncedPublicHolidayDuplicate(event)) {
+          debugPrint(
+            'Naver ICS holiday duplicate skipped: '
+            'externalId=$externalId, title="${event.title}", '
+            'startAt=${event.startAt}',
+          );
+          skipped += 1;
+          continue;
+        }
         final saved = await _eventRepository.createEvent(event);
         existingEvents.add(saved);
         imported += 1;

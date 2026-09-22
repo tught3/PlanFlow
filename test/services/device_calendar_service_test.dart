@@ -96,7 +96,8 @@ void main() {
     expect(repository.upserted.single.isCritical, isTrue);
   });
 
-  test('imports Android all-day holidays on the same local date', () async {
+  test('skips Android provider holidays in favor of canonical app holidays',
+      () async {
     final repository = _FakeEventRepository();
     final service = DeviceCalendarService(
       gateway: _FakeDeviceCalendarGateway(
@@ -133,15 +134,9 @@ void main() {
     final result = await service.importNaverEvents();
 
     expect(result.status, DeviceCalendarImportStatus.imported);
-    final byTitle = <String, EventModel>{
-      for (final event in repository.upserted) event.title: event,
-    };
-    expect(byTitle['현충일']!.isAllDay, isTrue);
-    expect(byTitle['현충일']!.startAt, DateTime.utc(2026, 6, 5, 15));
-    expect(byTitle['현충일']!.endAt, DateTime.utc(2026, 6, 6, 15));
-    expect(byTitle['광복절']!.isAllDay, isTrue);
-    expect(byTitle['광복절']!.startAt, DateTime.utc(2026, 8, 14, 15));
-    expect(byTitle['광복절']!.endAt, DateTime.utc(2026, 8, 15, 15));
+    expect(result.importedCount, 0);
+    expect(result.skippedCount, 2);
+    expect(repository.upserted, isEmpty);
   });
 
   test('links reflected device calendar duplicate instead of inserting',
@@ -321,7 +316,7 @@ void main() {
         userId: 'user-1',
         title: 'iPhone 일정',
         source: 'ios_device',
-        startAt: futureStart,
+        startAt: DateTime.now().toUtc().add(const Duration(days: 30)),
       ),
     );
 

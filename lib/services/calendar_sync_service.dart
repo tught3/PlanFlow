@@ -20,6 +20,7 @@ import '../data/repositories/event_repository.dart';
 import 'api_usage_guard.dart';
 import 'external_event_import_classifier.dart';
 import 'naver_calendar_permission_service.dart';
+import 'synced_public_holiday_visibility.dart';
 
 enum CalendarProvider {
   google,
@@ -1602,6 +1603,16 @@ class CalendarSyncService {
         externalId: storedExternalId,
         externalCalendarId: entry.externalCalendarId,
       );
+      // Public holidays are supplied by PlanFlow's canonical KASI-backed
+      // table. Keep the external provider copy out of the event list while
+      // retaining ordinary personal events on holiday dates.
+      if (isSyncedPublicHolidayDuplicate(model)) {
+        debugPrint(
+          'Google import holiday duplicate skipped: '
+          'title="${logSafeText(model.title)}" start=${model.startAt}',
+        );
+        continue;
+      }
       final existing = await _findExistingGoogleEvent(
         storedExternalId,
         externalCalendarId: entry.externalCalendarId,

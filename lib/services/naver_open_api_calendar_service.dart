@@ -20,6 +20,7 @@ import 'naver_caldav_service.dart'
         NaverCalDavSyncStage,
         NaverCalDavProgressCallback;
 import 'naver_calendar_permission_service.dart';
+import 'synced_public_holiday_visibility.dart';
 
 /// Naver Open API(OAuth) 기반 캘린더 import 서비스.
 ///
@@ -144,6 +145,15 @@ class NaverOpenApiCalendarService {
           userId: resolvedUserId,
           syncedAt: syncedAt,
         );
+
+        // Public holidays are rendered from the canonical KASI-backed table;
+        // importing the Naver copy would display the same holiday twice.
+        if (isSyncedPublicHolidayDuplicate(eventModel)) {
+          skippedCount += 1;
+          diagnostics.duplicateSkipped += 1;
+          diagnostics.addSkipReason('공휴일(앱 자체 표시와 중복)');
+          continue;
+        }
 
         // PlanFlow에서 export한 일정 되가져오기 처리
         final planFlowOriginId =
