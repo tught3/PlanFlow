@@ -77,7 +77,7 @@
     },
     "Integrator": {
       "status": "RAN",
-      "result": "Final integration verified task-owned paths, preserved foreign generated/cache paths, and staged only review-prompt source, tests, and task evidence. Commit and non-force push are the remaining finalization actions."
+      "result": "Final integration verified task-owned paths, preserved foreign generated/cache paths, staged only review-prompt source, tests, and task evidence. Source commit 96383af76c6086b1d805933e3a91752c9495ec82 was pushed non-force to origin/main."
     }
   },
   "final_routing_receipt": {
@@ -97,5 +97,9 @@
       "Integrator"
     ],
     "not_run_roles": []
+  },
+  "delivery": {
+    "source_commit": "96383af76c6086b1d805933e3a91752c9495ec82",
+    "push": "origin/main updated non-force"
   }
 }
