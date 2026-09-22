@@ -149,7 +149,11 @@ class CalendarAutoSyncService {
 
       final now = _now();
       final lastAttemptAt = _lastAttemptAt ?? await _loadLastAttemptAt();
-      if (!force &&
+      // A foreground lifecycle boundary is an explicit freshness request. It
+      // must not be suppressed by the persisted 15 minute background throttle
+      // (which is still used by manual/background callers).
+      final bypassThrottle = force || _isLifecycleFreshnessReason(reason);
+      if (!bypassThrottle &&
           lastAttemptAt != null &&
           now.difference(lastAttemptAt) < _throttle) {
         _lastAttemptAt = lastAttemptAt;
@@ -201,54 +205,53 @@ class CalendarAutoSyncService {
     bool syncPreparation = true,
   }) async {
     final result = CalendarAutoSyncResult();
-    await _runStep(result, 'google_auto_sync', () async {
-      final google = await _calendarSync.syncGoogleCalendar(
-        interactive: false,
-      );
-      return _calendarOutcome(google);
-    });
-    await _runStep(result, 'naver_api_auto_export', () async {
-      final naver = await _calendarSync.syncNaverCalendar();
-      return _calendarOutcome(naver);
-    });
-    await _runStep(result, 'naver_caldav_auto_import', () async {
-      // CalDAV parsing/import is comparatively expensive (Naver can return
-      // thousands of resources).  Never start it from the interactive
-      // startup/resume paths; Settings' explicit import and the scheduled
-      // alarm remain available.  The existing local events are untouched.
-      if (_deferAutomaticNaverImport(reason)) {
-        return CalendarAutoSyncStepOutcome.skipped(
-          '화면 전환 중에는 Naver CalDAV 자동 가져오기를 보류합니다.',
+    // Start every independent provider at the same time. We deliberately
+    // apply the results in this fixed order after all providers settle so the
+    // persisted aggregate and diagnostics remain deterministic.
+    final executions = await Future.wait<_StepExecution>([
+      _executeStep('google_auto_sync', () async {
+        final google = await _calendarSync.syncGoogleCalendar(
+          interactive: false,
         );
-      }
-      if (!await _naverCalDav.hasCredentials()) {
-        return CalendarAutoSyncStepOutcome.skipped(
-          'Naver CalDAV가 아직 연결되지 않아 자동 가져오기를 건너뜁니다.',
+        return _calendarOutcome(google);
+      }),
+      _executeStep('naver_api_auto_export', () async {
+        final naver = await _calendarSync.syncNaverCalendar();
+        return _calendarOutcome(naver);
+      }),
+      _executeStep('naver_caldav_auto_import', () async {
+        if (!await _naverCalDav.hasCredentials()) {
+          return CalendarAutoSyncStepOutcome.skipped(
+            'Naver CalDAV가 아직 연결되지 않아 자동 가져오기를 건너뜁니다.',
+          );
+        }
+        final naver = await _naverCalDav.syncAll(
+          mode: NaverCalDavSyncMode.quick,
+          skipUnchanged: true,
         );
-      }
-      final naver = await _naverCalDav.syncAll(
-        mode: NaverCalDavSyncMode.quick,
-        skipUnchanged: true,
-      );
-      if (naver.success) {
-        return CalendarAutoSyncStepOutcome.completed(naver.message);
-      }
-      return CalendarAutoSyncStepOutcome.attention(naver.message);
-    });
-    await _runStep(result, 'device_calendar_auto_import', () async {
-      final hasPermission = await _deviceCalendar.checkCalendarPermission();
-      if (!hasPermission) {
-        return CalendarAutoSyncStepOutcome.skipped(
-          '휴대폰 캘린더 권한이 없어 자동 가져오기를 건너뜁니다.',
-        );
-      }
-      final imported = await _deviceCalendar.importNaverEvents();
-      if (imported.status == DeviceCalendarImportStatus.failed ||
-          imported.status == DeviceCalendarImportStatus.permissionDenied) {
-        return CalendarAutoSyncStepOutcome.attention(imported.message);
-      }
-      return CalendarAutoSyncStepOutcome.completed(imported.message);
-    });
+        if (naver.success) {
+          return CalendarAutoSyncStepOutcome.completed(naver.message);
+        }
+        return CalendarAutoSyncStepOutcome.attention(naver.message);
+      }),
+      _executeStep('device_calendar_auto_import', () async {
+        final hasPermission = await _deviceCalendar.checkCalendarPermission();
+        if (!hasPermission) {
+          return CalendarAutoSyncStepOutcome.skipped(
+            '휴대폰 캘린더 권한이 없어 자동 가져오기를 건너뜁니다.',
+          );
+        }
+        final imported = await _deviceCalendar.importNaverEvents();
+        if (imported.status == DeviceCalendarImportStatus.failed ||
+            imported.status == DeviceCalendarImportStatus.permissionDenied) {
+          return CalendarAutoSyncStepOutcome.attention(imported.message);
+        }
+        return CalendarAutoSyncStepOutcome.completed(imported.message);
+      }),
+    ]);
+    for (final execution in executions) {
+      await _applyStepExecution(result, execution);
+    }
     // 알림 재예약은 최초 시도에서만 실행한다 (syncPreparation=false이면 건너뜀).
     // 재시도(retry)마다 반복하면 위치 조회·API 호출이 중복 실행된다.
     if (syncPreparation) {
@@ -260,14 +263,13 @@ class CalendarAutoSyncService {
     return result;
   }
 
-  bool _deferAutomaticNaverImport(String reason) {
+  bool _isLifecycleFreshnessReason(String reason) {
     switch (reason) {
       case 'startup':
       case 'app_start':
       case 'app_resumed':
-      case 'background':
-      case 'auth_changed':
       case 'foreground_idle':
+      case 'auth_changed':
       case 'startup_gate':
         return true;
       default:
@@ -296,39 +298,55 @@ class CalendarAutoSyncService {
     String name,
     Future<CalendarAutoSyncStepOutcome> Function() step,
   ) async {
+    final execution = await _executeStep(name, step);
+    await _applyStepExecution(result, execution);
+  }
+
+  Future<_StepExecution> _executeStep(
+    String name,
+    Future<CalendarAutoSyncStepOutcome> Function() step,
+  ) async {
     try {
-      final outcome = await step();
-      if (outcome.status == CalendarAutoSyncStepStatus.completed) {
-        result.completed.add(name);
-        await _recordProviderStatus(
-          name,
-          status: 'connected',
-          message: outcome.message,
-        );
-      } else if (outcome.status == CalendarAutoSyncStepStatus.skipped) {
-        result.skipped.add(name);
-        await _recordProviderStatus(
-          name,
-          status: 'skipped',
-          message: outcome.message,
-        );
-      } else {
-        result.failed.add(name);
-        await _recordProviderStatus(
-          name,
-          status: 'attention',
-          message: outcome.message,
-        );
-      }
+      return _StepExecution(name, await step());
     } catch (error, stackTrace) {
-      result.failed.add(name);
-      await _recordProviderStatus(
-        name,
-        status: 'attention',
-        message: '$name 동기화 중 오류가 발생했습니다.',
-      );
       debugPrint('Calendar auto sync step failed: $name $error');
       debugPrintStack(stackTrace: stackTrace);
+      return _StepExecution(
+        name,
+        CalendarAutoSyncStepOutcome.attention(
+          '$name 동기화 중 오류가 발생했습니다.',
+        ),
+      );
+    }
+  }
+
+  Future<void> _applyStepExecution(
+    CalendarAutoSyncResult result,
+    _StepExecution execution,
+  ) {
+    final name = execution.name;
+    final outcome = execution.outcome;
+    if (outcome.status == CalendarAutoSyncStepStatus.completed) {
+      result.completed.add(name);
+      return _recordProviderStatus(
+        name,
+        status: 'connected',
+        message: outcome.message,
+      );
+    } else if (outcome.status == CalendarAutoSyncStepStatus.skipped) {
+      result.skipped.add(name);
+      return _recordProviderStatus(
+        name,
+        status: 'skipped',
+        message: outcome.message,
+      );
+    } else {
+      result.failed.add(name);
+      return _recordProviderStatus(
+        name,
+        status: 'attention',
+        message: outcome.message,
+      );
     }
   }
 
@@ -604,6 +622,13 @@ class CalendarAutoSyncService {
     'naver_caldav_auto_import': 'Naver CalDAV',
     'device_calendar_auto_import': '휴대폰 내부 캘린더',
   };
+}
+
+class _StepExecution {
+  const _StepExecution(this.name, this.outcome);
+
+  final String name;
+  final CalendarAutoSyncStepOutcome outcome;
 }
 
 class CalendarAutoSyncResult {

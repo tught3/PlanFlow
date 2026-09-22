@@ -137,6 +137,36 @@ void main() {
     expect(secondDeviceCalendarService.importCallCount, 0);
   });
 
+  test('startup lifecycle freshness bypasses persisted throttle', () async {
+    final now = DateTime.now();
+    SharedPreferences.setMockInitialValues({
+      'calendar_sync:last_attempt_at':
+          now.subtract(const Duration(minutes: 5)).toIso8601String(),
+    });
+    final calendarSyncService = _FakeCalendarSyncService(
+      googleResult: CalendarIntegrationResult.synced(CalendarProvider.google),
+      naverResult: CalendarIntegrationResult.synced(CalendarProvider.naver),
+    );
+    final calDav = _FakeNaverCalDavService(hasSavedCredentials: true);
+    final device = _FakeDeviceCalendarService(hasPermission: true);
+    final service = CalendarAutoSyncService(
+      calendarSyncService: calendarSyncService,
+      naverCalDavService: calDav,
+      deviceCalendarService: device,
+      eventRepository: _FakeEventRepository(),
+      throttle: const Duration(minutes: 15),
+      now: () => now,
+    );
+
+    final result = await service.syncConnectedCalendars(reason: 'startup');
+
+    expect(result.didRun, isTrue);
+    expect(calendarSyncService.googleSyncCallCount, 1);
+    expect(calendarSyncService.naverSyncCallCount, 1);
+    expect(calDav.syncAllCallCount, 1);
+    expect(device.importCallCount, 1);
+  });
+
   test(
       'syncConnectedCalendars ignores unfinished background start for throttle',
       () async {

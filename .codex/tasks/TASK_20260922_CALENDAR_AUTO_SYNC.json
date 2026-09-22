@@ -1,0 +1,53 @@
+{
+  "task_id": "TASK_20260922_CALENDAR_AUTO_SYNC",
+  "request": "앱 시작과 재개 시 연결된 캘린더 동기화를 Android와 iOS 모두에 적용",
+  "classification": "complex",
+  "routing_receipt": {
+    "entry": {"agent": "flux_explorer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.6-luna", "reasoning_effort": "low"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+    ]
+  },
+  "requirements": [
+    "lifecycle freshness sync must bypass persisted 15 minute throttle",
+    "Google, Naver API, Naver CalDAV and existing device provider settle independently",
+    "provider results are applied in deterministic order",
+    "existing auth, onboarding, singleflight, retry and no-prompt gates remain intact",
+    "Android-only native device calendar boundary remains unchanged"
+  ],
+  "changed_files": [
+    "lib/services/calendar_auto_sync_service.dart",
+    "test/services/calendar_auto_sync_service_test.dart"
+  ],
+  "foreign_dirty_preserved": [
+    "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "ios/Runner/GeneratedPluginRegistrant.m",
+    "linux/flutter/generated_plugin_registrant.cc",
+    "linux/flutter/generated_plugins.cmake",
+    "macos/Flutter/GeneratedPluginRegistrant.swift",
+    ".pub-cache-release/"
+  ],
+  "role_reports": {
+    "Explorer": {"status": "RAN", "result": "lifecycle calls and provider/platform boundaries identified"},
+    "Planner": {"status": "RAN", "result": "parallel settle with lifecycle throttle bypass; no iOS EventKit expansion"},
+    "Complex Implementer": {"status": "RAN", "result": "implementation and startup freshness test added"},
+    "Test Executor": {"status": "RAN", "result": "all required targeted checks passed"},
+    "Reviewer": {"status": "RAN", "verdict": "PASS", "highest_severity": "NONE"},
+    "Integrator": {"status": "RAN", "verdict": "PASS", "result": "final formatted diff and tests verified"}
+  },
+  "tests": [
+    {"command": "flutter test test/services/calendar_auto_sync_service_test.dart", "exit_code": 0, "result": "10 passed"},
+    {"command": "flutter analyze lib/services/calendar_auto_sync_service.dart test/services/calendar_auto_sync_service_test.dart", "exit_code": 0, "result": "pass"},
+    {"command": "flutter test test/screens/shell_screen_onboarding_order_test.dart", "exit_code": 0, "result": "pass"},
+    {"command": "dart format --set-exit-if-changed lib/services/calendar_auto_sync_service.dart test/services/calendar_auto_sync_service_test.dart", "exit_code": 0, "result": "pass"},
+    {"command": "git diff --check", "exit_code": 0, "result": "pass"}
+  ],
+  "final_verdict": "COMPLETE_SOURCE_READY",
+  "deployment": "not_run_by_request_scope",
+  "runtime_device_verification": "pending_user_real_device_run"
+}
