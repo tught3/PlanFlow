@@ -1,0 +1,91 @@
+{
+  "task_id": "support-email-20260922",
+  "status": "completed_with_external_console_followup",
+  "objective": "Standardize PlanFlow's public support contact on support@fluxstudio.co.kr and preserve the external-store contact boundary.",
+  "routing_receipt": {
+    "classification": "simple",
+    "planned_roles": ["explorer", "planner", "simple_implementer", "test_executor", "reviewer", "integrator"],
+    "executed_roles": ["explorer", "planner", "simple_implementer", "test_executor", "reviewer", "integrator"],
+    "not_run_roles": []
+  },
+  "roles": [
+    {
+      "role": "explorer",
+      "agent": "flux_explorer",
+      "model": "gpt-5.6-luna",
+      "model_reasoning_effort": "medium",
+      "status": "RAN",
+      "result": "Located the public privacy and account-deletion documents and separated repository-controlled contact content from Google Play Console and App Store Connect metadata."
+    },
+    {
+      "role": "planner",
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "model_reasoning_effort": "high",
+      "status": "RAN",
+      "result": "Scoped the change to public support-email documents plus a regression contract; store-console readback remains an external follow-up."
+    },
+    {
+      "role": "simple_implementer",
+      "agent": "flux_simple_implementer",
+      "model": "gpt-5.6-luna",
+      "model_reasoning_effort": "low",
+      "status": "RAN",
+      "changed_files": [
+        "docs/privacy-policy.md",
+        "docs/privacy-policy.html",
+        "docs/account-deletion.html",
+        "scripts/tests/test_planflow_privacy_policy_contract.py"
+      ],
+      "result": "Replaced legacy contact@fluxstudio.co.kr public contact references with support@fluxstudio.co.kr and added a contract that rejects the legacy address in those public documents."
+    },
+    {
+      "role": "test_executor",
+      "agent": "flux_test_executor",
+      "model": "gpt-5.6-luna",
+      "model_reasoning_effort": "low",
+      "status": "RAN",
+      "evidence": [
+        "python -m unittest scripts.tests.test_planflow_privacy_policy_contract: exit 0, 5 tests passed",
+        "git diff --check: exit 0"
+      ]
+    },
+    {
+      "role": "reviewer",
+      "agent": "flux_reviewer",
+      "model": "gpt-5.6-luna",
+      "model_reasoning_effort": "high",
+      "status": "RAN",
+      "result": "PASS for repository source scope. MEDIUM external follow-up: Google Play Console and App Store Connect public contact metadata require authenticated console readback and update."
+    },
+    {
+      "role": "integrator",
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "model_reasoning_effort": "medium",
+      "status": "RAN",
+      "result": "Verified task-owned scope, preserved unrelated generated/cache changes, and completed normal commit/push integration."
+    }
+  ],
+  "changed_files": [
+    "docs/privacy-policy.md",
+    "docs/privacy-policy.html",
+    "docs/account-deletion.html",
+    "scripts/tests/test_planflow_privacy_policy_contract.py",
+    ".codex/tasks/support-email-20260922.json"
+  ],
+  "external_followup": {
+    "google_play_console": "Set the public developer/app support email to support@fluxstudio.co.kr and remove public personal name, phone, and email where the console permits.",
+    "app_store_connect": "Set the public App Support destination to the official support channel. App Review contact information is private to Apple and may still require a real responsible contact.",
+    "status": "AUTHENTICATED_CONSOLE_READBACK_REQUIRED"
+  },
+  "preserved_unrelated_dirty": [
+    "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "ios/Runner/GeneratedPluginRegistrant.m",
+    "linux/flutter/generated_plugin_registrant.cc",
+    "linux/flutter/generated_plugins.cmake",
+    "macos/Flutter/GeneratedPluginRegistrant.swift",
+    ".pub-cache-release/",
+    "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"
+  ]
+}

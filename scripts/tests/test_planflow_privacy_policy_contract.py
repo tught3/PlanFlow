@@ -5,6 +5,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "docs/store/planflow-privacy-policy-final.md"
+PUBLIC_DOCS = (
+    ROOT / "docs/privacy-policy.md",
+    ROOT / "docs/privacy-policy.html",
+    ROOT / "docs/account-deletion.html",
+)
 PROFILE = ROOT / "config/store/store-profile.json"
 TASK = ROOT / ".codex/tasks/planflow-privacy-final-gate-closure-20260913.json"
 
@@ -45,6 +50,12 @@ class PrivacyPolicyContractTest(unittest.TestCase):
             set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", self.text)),
             {"support@fluxstudio.co.kr"},
         )
+
+    def test_public_docs_use_official_support_email(self):
+        for path in PUBLIC_DOCS:
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("support@fluxstudio.co.kr", text, path)
+            self.assertNotIn("contact@fluxstudio.co.kr", text, path)
 
     def test_profile_states_and_protected_release(self):
         self.assertFalse(self.profile["privacy"]["tracking"]["value"])
