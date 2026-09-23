@@ -1,0 +1,44 @@
+{
+  "task_id": "planflow-deploy-20260923",
+  "request": "Run the canonical deployment command for all manifest-enabled platforms and finish safely.",
+  "status": "BLOCKED",
+  "resolution": {
+    "project": "PlanFlow",
+    "manifest": "config/release-manifest.json",
+    "enabled_platforms": ["android", "ios"],
+    "android": {
+      "status": "PASS",
+      "version": "1.1.1+175",
+      "track": "production",
+      "result": "Production rollout uploaded for com.fluxstudio.planflow, track=production"
+    },
+    "ios": {
+      "status": "BLOCKED",
+      "workflow": "ios-release.yml",
+      "result": "Canonical deploy wrapper refused iOS dispatch because the current worktree contains unrelated local modifications/untracked paths."
+    }
+  },
+  "verification": {
+    "deploy_check": {"exit_code": 0, "android": "PASS", "ios": "PASS", "build_number_before_deploy": 174},
+    "android_analyze": {"exit_code": 0, "result": "No issues found"},
+    "android_focused_tests": {"status": "stage completed before release AAB build"},
+    "android_release_build": {"status": "PASS", "artifact": "build/app/outputs/bundle/release/app-release.aab", "size": "79.9MB"},
+    "ios_release": {"status": "NOT_DISPATCHED", "reason": "clean-worktree guard"}
+  },
+  "commits": [
+    {"sha": "e1288c427b0dde397a89c69daf5887e73f3770db", "purpose": "KASI holiday source-of-truth implementation and audit"},
+    {"sha": "81a585d71b6a6f5f4c778d30451300e866a75077", "purpose": "Record Android Build 175 version bump"}
+  ],
+  "preserved_unrelated_dirty_paths": [
+    "ios/Runner/GeneratedPluginRegistrant.m",
+    "linux/flutter/generated_plugin_registrant.cc",
+    "linux/flutter/generated_plugins.cmake",
+    "macos/Flutter/GeneratedPluginRegistrant.swift",
+    ".codex/tasks/planflow-holiday-canonical-20260923.json",
+    ".pub-cache-release/",
+    "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"
+  ],
+  "deployment_guard": "Did not bypass the canonical clean-worktree guard, revert/stash unrelated paths, or create a worktree without explicit approval.",
+  "next_step": "After unrelated worktree changes are safely resolved by their owner, rerun the canonical deployment workflow for iOS only without rebuilding/redeploying Android.",
+  "updated_at": "2026-09-23"
+}
