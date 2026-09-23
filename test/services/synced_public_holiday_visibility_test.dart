@@ -76,6 +76,68 @@ void main() {
     );
   });
 
+  test('hides Christmas aliases only on Christmas day', () {
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '크리스마스', startAt: DateTime(DateTime.now().year, 12, 25)),
+      ),
+      isTrue,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '아무대나', startAt: DateTime(DateTime.now().year, 12, 25)),
+      ),
+      isFalse,
+    );
+  });
+
+  test('keeps unknown titles on Hangeul Day and hides its provider copy', () {
+    final year = DateTime.now().year;
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '한글날', startAt: DateTime(year, 10, 9)),
+      ),
+      isTrue,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '아무대나', startAt: DateTime(year, 10, 9)),
+      ),
+      isFalse,
+    );
+  });
+
+  // banned-ok: Fixed 2026 legal-calendar regression fixture, not wall-clock logic.
+  test('recognizes the KASI substitute title on its computed date', () {
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(
+            title: '대체공휴일(개천절)',
+            startAt: DateTime(
+                2026, 10, 5)), // banned-ok: fixed statutory regression date.
+      ),
+      isTrue,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(
+            title: '대체공휴일',
+            startAt: DateTime(
+                2026, 10, 5)), // banned-ok: fixed statutory regression date.
+      ),
+      isTrue,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(
+            title: '아무대나',
+            startAt: DateTime(
+                2026, 10, 5)), // banned-ok: fixed statutory regression date.
+      ),
+      isFalse,
+    );
+  });
+
   test('filters only synced holiday duplicates from a mixed list', () {
     final visible = omitSyncedPublicHolidayDuplicates(<EventModel>[
       _event(),

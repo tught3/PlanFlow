@@ -29,6 +29,8 @@ class KoreanHolidays {
     '개천절',
     '한글날',
     '성탄절',
+    '크리스마스',
+    '기독탄신일',
     '설날',
     '설날연휴',
     '추석',
@@ -48,6 +50,21 @@ class KoreanHolidays {
   /// 계산값보다 우선한다(임시공휴일·선거일 등 계산으로 알 수 없는 항목도
   /// 포함되므로 더 정확하다). 없는 연도는 계산값(klc)으로 그대로 동작한다.
   static final Map<int, Map<(int, int), String>> _liveOverride = {};
+
+  /// Provider holiday names which are equivalent to the canonical title on
+  /// the given date.  This is intentionally date-aware so a user event named
+  /// "크리스마스" is not mistaken for a duplicate on another date.
+  static Set<String> holidayTitleAliases(DateTime date) {
+    if (date.month == 12 && date.day == 25) {
+      return const {'성탄절', '크리스마스', '기독탄신일'};
+    }
+    final name = holidayName(date);
+    if (name == null) return const {};
+    if (name.startsWith('대체공휴일')) {
+      return {name, '대체공휴일'};
+    }
+    return {name};
+  }
 
   static Map<(int, int), String> _constitutionDayOffs(int year) {
     if (year < 2026) {
@@ -123,9 +140,9 @@ class KoreanHolidays {
   /// - 설날·추석 연휴(3일) 중 1일이라도 일요일/공휴일이면
   ///   → 연휴 종료 후 첫 비공휴일 평일
   /// - 어린이날이 토/일이면 → 다음 첫 평일
-  /// - 삼일절·광복절·개천절·한글날·부처님오신날이 일요일이면
+  /// - 삼일절·광복절·개천절·한글날·부처님오신날이 토/일이면
   ///   → 다음 첫 평일
-  static Set<(int, int)> _substituteDays(int year) {
+  static Map<(int, int), String> _substituteDays(int year) {
     final allDays = <(int, int), String>{};
     allDays.addAll(_fixed);
     if (year >= 2026) {
@@ -133,19 +150,18 @@ class KoreanHolidays {
     }
     allDays.addAll(_lunarForYear(year));
 
-    final subs = <(int, int)>{};
+    final subs = <(int, int), String>{};
 
     /// 3일 연휴(설날·추석) 검사: 셋 중 하나가 일요일이면 대체 추가
     for (final prefix in ['설날', '추석']) {
-      final periodKeys =
-          allDays.entries
-              .where((e) => e.value.startsWith(prefix))
-              .map((e) => e.key)
-              .toList()
-            ..sort((a, b) {
-              if (a.$1 != b.$1) return a.$1.compareTo(b.$1);
-              return a.$2.compareTo(b.$2);
-            });
+      final periodKeys = allDays.entries
+          .where((e) => e.value.startsWith(prefix))
+          .map((e) => e.key)
+          .toList()
+        ..sort((a, b) {
+          if (a.$1 != b.$1) return a.$1.compareTo(b.$1);
+          return a.$2.compareTo(b.$2);
+        });
       if (periodKeys.length != 3) continue;
       final overlapsSunday = periodKeys.any((k) {
         final d = DateTime(year, k.$1, k.$2);
@@ -157,17 +173,16 @@ class KoreanHolidays {
         periodKeys.last.$1,
         periodKeys.last.$2,
       );
-      while (allDays.containsKey(candidate) || subs.contains(candidate)) {
+      while (allDays.containsKey(candidate) || subs.containsKey(candidate)) {
         candidate = _nextWeekday(year, candidate.$1, candidate.$2);
       }
-      subs.add(candidate);
+      subs[candidate] = '대체공휴일';
     }
 
     /// 단일 공휴일 검사
     final singleHolidays = <(int, int), String>{
       (3, 1): '삼일절',
       (5, 5): '어린이날',
-      (6, 6): '현충일',
       (8, 15): '광복절',
       (10, 3): '개천절',
       (10, 9): '한글날',
@@ -186,16 +201,14 @@ class KoreanHolidays {
       final (m, d) = entry.key;
       final name = entry.value;
       final date = DateTime(year, m, d);
-      final isWeekend = name == '어린이날' || name == '제헌절'
-          ? (date.weekday == DateTime.saturday ||
-                date.weekday == DateTime.sunday)
-          : date.weekday == DateTime.sunday;
+      final isWeekend =
+          date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
       if (!isWeekend) continue;
       var candidate = _nextWeekday(year, m, d);
-      while (allDays.containsKey(candidate) || subs.contains(candidate)) {
+      while (allDays.containsKey(candidate) || subs.containsKey(candidate)) {
         candidate = _nextWeekday(year, candidate.$1, candidate.$2);
       }
-      subs.add(candidate);
+      subs[candidate] = name == '개천절' ? '대체공휴일(개천절)' : '대체공휴일';
     }
 
     return subs;
@@ -237,18 +250,23 @@ class KoreanHolidays {
   static Map<(int, int), String> _allForYear(int year) {
     final live = _liveOverride[year];
     if (live != null) {
-      return Map<(int, int), String>.unmodifiable({
-        ...live,
-        ..._constitutionDayOffs(year),
-      });
+      final result = <(int, int), String>{...live};
+      // KASI can return an incomplete response during publication windows.
+      // Supplement deterministic legal substitutes without overwriting a
+      // provider event already present on the same date.
+      for (final entry in _substituteDays(year).entries) {
+        result.putIfAbsent(entry.key, () => entry.value);
+      }
+      for (final entry in _constitutionDayOffs(year).entries) {
+        result.putIfAbsent(entry.key, () => entry.value);
+      }
+      return Map<(int, int), String>.unmodifiable(result);
     }
     final result = <(int, int), String>{};
     result.addAll(_fixed);
     result.addAll(_constitutionDayOffs(year));
     result.addAll(_lunarForYear(year));
-    for (final key in _substituteDays(year)) {
-      result[key] = '대체공휴일';
-    }
+    result.addAll(_substituteDays(year));
     return result;
   }
 

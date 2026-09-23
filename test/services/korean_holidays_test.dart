@@ -52,6 +52,14 @@ void main() {
     }
   });
 
+  // banned-ok: Fixed 2026 legal-calendar regression fixture, not wall-clock logic.
+  test('2026 개천절 토요일의 대체공휴일은 10월 5일이다', () {
+    final substitute =
+        DateTime(2026, 10, 5); // banned-ok: fixed statutory regression date.
+    expect(KoreanHolidays.isDayOff(substitute), isTrue);
+    expect(KoreanHolidays.holidayName(substitute), '대체공휴일(개천절)');
+  });
+
   group('제헌절 공휴일 부활', () {
     test('2025년까지는 쉬는 날이 아니다', () {
       expect(KoreanHolidays.isDayOff(DateTime(2025, 7, 17)), isFalse);
@@ -213,11 +221,42 @@ void main() {
     });
   });
 
-  test('partial live data preserves the restored Constitution Day and substitute day', () {
+  test(
+      'partial live data preserves the restored Constitution Day and substitute day',
+      () {
     KoreanHolidays.applyLiveData(2027, {(1, 1): '신정'});
 
     expect(KoreanHolidays.isDayOff(DateTime(2027, 7, 17)), isTrue);
     expect(KoreanHolidays.isDayOff(DateTime(2027, 7, 19)), isTrue);
     expect(KoreanHolidays.holidayName(DateTime(2027, 7, 19)), '대체공휴일');
+  });
+
+  // banned-ok: Fixed dates verify date-scoped aliases independent of current time.
+  test('Christmas aliases are date-aware', () {
+    expect(
+      KoreanHolidays.holidayTitleAliases(
+          // banned-ok: fixed alias fixture.
+          DateTime(2026, 12, 25)),
+      containsAll(<String>['성탄절', '크리스마스', '기독탄신일']),
+    );
+    expect(
+      KoreanHolidays.holidayTitleAliases(
+        // banned-ok: fixed alias fixture.
+        DateTime(2026, 12, 24),
+      ),
+      isEmpty,
+    );
+  });
+
+  // banned-ok: Fixed 2026 legal-calendar regression fixture, not wall-clock logic.
+  test('불완전한 실 데이터에도 2026 개천절 대체공휴일을 보충한다', () {
+    // Keep this last: applyLiveData intentionally models process-lifetime
+    // service state and has no production clear operation.
+    KoreanHolidays.applyLiveData(2026, {(10, 3): '개천절'});
+    expect(
+      KoreanHolidays.holidayName(
+          DateTime(2026, 10, 5)), // banned-ok: fixed statutory regression date.
+      '대체공휴일(개천절)',
+    );
   });
 }

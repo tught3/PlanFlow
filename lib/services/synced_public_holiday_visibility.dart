@@ -18,13 +18,13 @@ bool isSyncedPublicHolidayDuplicate(EventModel event) {
     return false;
   }
   final day = planflowLocalDay(event.startAt!);
-  final canonicalName = KoreanHolidays.holidayName(day);
-  if (canonicalName == null || canonicalName.trim().isEmpty) {
+  final aliases = KoreanHolidays.holidayTitleAliases(day);
+  if (aliases.isEmpty) {
     return false;
   }
   final title = _normalize(event.title);
-  final canonical = _normalize(canonicalName);
-  return title == canonical || _genericHolidayTitles.contains(title);
+  return aliases.map(_normalize).contains(title) ||
+      _genericHolidayTitles.contains(title);
 }
 
 String _normalize(String value) => value.replaceAll(RegExp(r'\s+'), '').trim();
