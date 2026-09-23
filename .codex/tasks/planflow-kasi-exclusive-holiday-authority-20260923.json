@@ -1,7 +1,7 @@
 {
   "task_id": "planflow-kasi-exclusive-holiday-authority-20260923",
   "request": "모든 공식 휴무일은 사용자가 설정한 한국천문연구원(KASI) API의 isHoliday=Y 응답만을 기준으로 판정한다. 계산·다른 캘린더로 휴무일을 보충하지 말고, 그 외 동기화 동작은 변경하지 않는다.",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "routing_receipt": {
     "entry_model": "gpt-5.6-luna",
     "entry_effort": "medium",
@@ -43,7 +43,7 @@
     "Complex Implementer": {"status": "RAN", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "assignment": "Implement exclusive KASI source authority and focused regression tests only.", "report": "Removed computed/fixed/lunar/substitute holiday fallbacks, added KASI response result/year validation and valid-empty handling, removed event-title holiday inference, restricted alias dedupe to KASI-confirmed dates, and updated regression fixtures including 2026-10-05."},
     "Test Executor": {"status": "RAN", "agent": "flux_test_executor", "model": "gpt-5.6-luna", "reasoning_effort": "low", "assignment": "Run focused KASI/holiday/sync tests, targeted analyze, formatting, and git diff check.", "report": "Root final rerun after KASI-only comment corrections: focused suite 74 passed; provider sync regression suite 73 passed; scoped analyzer on 18 Dart files passed; dart format applied to three touched files; git diff --check exit 0 (CRLF normalization warnings only)."},
     "Reviewer": {"status": "RAN", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high", "assignment": "Independently review final diff, source authority, sync behavior, tests, and ownership. Earlier MEDIUM fixture concern was resolved; stale Constitution Day comments corrected.", "report": "PASS / BLOCKER=0 / HIGH=0 / MEDIUM=0 / LOW=0. Confirmed KASI-only authority, no computed or calendar-title fallback, scoped fixtures, and preserved foreign dirty paths."},
-    "Integrator": {"status": "RAN", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "assignment": "Integrate only after independent PASS; verify ownership, commit/push scoped changes, and report.", "report": "Inspected final diff and ownership. KASI remains the sole official-holiday authority, 2026-10-05 is covered by KASI fixture, foreign dirty paths are excluded, and final focused tests/analyzer/format/diff checks passed. Scoped commit and non-force push are being performed."}
+    "Integrator": {"status": "RAN", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "assignment": "Integrate only after independent PASS; verify ownership, commit/push scoped changes, and report.", "report": "Inspected final diff and ownership. KASI remains the sole official-holiday authority, 2026-10-05 is covered by KASI fixture, foreign dirty paths are excluded, and final focused tests/analyzer/format/diff checks passed. Commit ab0d13c8 was pushed non-force to origin/main."}
   },
   "allowed_files": [
     "lib/services/korean_holidays.dart",
@@ -81,6 +81,7 @@
     "not_run_roles": []
   },
   "delivery": {"deployed": false, "note": "No Android or iOS deployment was requested or performed."},
+  "completion": {"source_commit": "ab0d13c8", "source_push": "origin/main", "hook_failure_remediation": "Normal pre-commit correctly rejected new absolute DateTime test literals. Tests were rewritten to use named fixed fixture years or a relative UI date; no hook bypass was used."},
   "unresolved": ["CM status helper was unavailable because C:\\Users\\tught\\.codex\\cm-runtime\\cmctl.js was not present; ordinary Codex delivery stages remain active."],
   "updated_at": "2026-09-23"
 }
