@@ -1,8 +1,8 @@
 {
   "task_id": "ios-release-build176-20260924",
-  "status": "IN_PROGRESS",
-  "final_verdict": "PENDING_FINAL_INTEGRATION",
-  "current_phase": "integration",
+  "status": "COMPLETE",
+  "final_verdict": "PASS",
+  "current_phase": "complete",
   "initial_difficulty": "complex",
   "current_difficulty": "complex",
   "transition_count": 0,
@@ -10,7 +10,8 @@
   "direction_lock": "none",
   "routing_validation": {
     "status": "PASS",
-    "checked_at": "2026-09-23T16:00:49Z",
+    "checked_at": null,
+    "chronology": "Validated against the central routing map before dispatch; exact UTC check time was not retained and is intentionally not inferred.",
     "errors": []
   },
   "authority": {
@@ -24,8 +25,16 @@
     "Preserve pre-existing dirty files in the main checkout.",
     "Remove the temporary worktree created for this task when complete."
   ],
-  "allowed_files": ["pubspec.yaml", "ios/Flutter/PlanFlow-Identity.xcconfig", ".codex/tasks/ios-release-build176-20260924.json"],
-  "forbidden_scope": ["Android deployment or Android source changes", "pre-existing dirty main-checkout paths", "App Store review submission mutation"],
+  "allowed_files": [
+    "pubspec.yaml",
+    "ios/Flutter/PlanFlow-Identity.xcconfig",
+    ".codex/tasks/ios-release-build176-20260924.json"
+  ],
+  "forbidden_scope": [
+    "Android deployment or Android source changes",
+    "pre-existing dirty main-checkout paths",
+    "App Store review submission mutation"
+  ],
   "evidence": {
     "source_files": [
       "pubspec.yaml: version 1.1.2+176",
@@ -33,9 +42,21 @@
       ".codex/tasks/ios-release-build176-20260924.json"
     ],
     "test_commands": [
-      {"command": "flutter test test/ios_widget_version_contract_test.dart", "exit_code": 0, "result": "15 passed"},
-      {"command": "git diff --check", "exit_code": 0, "result": "PASS"},
-      {"command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:/AI_WIKI/scripts/deploy-project.ps1 -IosOnly -Check -StartDirectory E:/.codex/worktrees/ios-release-20260924/PlanFlow", "exit_code": 0, "result": "PASS; canonical workflow ios-release.yml; build 176"}
+      {
+        "command": "flutter test test/ios_widget_version_contract_test.dart",
+        "exit_code": 0,
+        "result": "15 passed"
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "result": "PASS"
+      },
+      {
+        "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:/AI_WIKI/scripts/deploy-project.ps1 -IosOnly -Check -StartDirectory E:/.codex/worktrees/ios-release-20260924/PlanFlow",
+        "exit_code": 0,
+        "result": "PASS; canonical workflow ios-release.yml; build 176"
+      }
     ],
     "release": {
       "root_cause": "Apple rejected the prior 1.1.1 binary because that App Store version train had already been approved/closed (errors 90062 and 90186).",
@@ -49,9 +70,11 @@
       "apple_ingestion": "APP_STORE_BUILD_INGESTED: PASS",
       "testflight": "TESTFLIGHT_AVAILABLE: PASS",
       "android": "unchanged; no Android workflow dispatched",
-      "app_store_review_submission": "unchanged"
+      "app_store_review_submission": "unchanged",
+      "origin_main_preclosure": "52ed87c029da07056c5948cb273e2354193b6a05"
     },
-    "preservation": "The main checkout remained at its original local HEAD; all pre-existing foreign dirty paths were preserved."
+    "preservation": "The main checkout remained at its original local HEAD; all pre-existing foreign dirty paths were preserved.",
+    "cleanup": "Worktree removal verified after requiring clean status; exact directory absent and no registered entry; unrelated pre-existing worktrees remain."
   },
   "initial_receipt": {
     "receipt_type": "initial",
@@ -59,12 +82,48 @@
     "entry_model": "gpt-6-luna",
     "entry_model_reasoning_effort": "medium",
     "planned_roles": [
-      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
-      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "PLANNED"},
-      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
-      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "PLANNED"},
-      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "PLANNED"},
-      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "PLANNED"}
+      {
+        "role": "Explorer",
+        "agent": "flux_explorer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Complex Implementer",
+        "agent": "flux_complex_implementer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Test Executor",
+        "agent": "flux_test_executor",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "low",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Reviewer",
+        "agent": "flux_reviewer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Integrator",
+        "agent": "flux_integrator",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      }
     ],
     "executed_roles": [],
     "not_run_roles": [],
@@ -76,30 +135,117 @@
     "classification": "complex",
     "planned_roles": [],
     "executed_roles": [
-      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
-      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN"},
-      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
-      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN"},
-      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "RAN"},
-      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN"}
+      {
+        "role": "Explorer",
+        "agent": "flux_explorer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "RAN"
+      },
+      {
+        "role": "Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "high",
+        "status": "RAN"
+      },
+      {
+        "role": "Complex Implementer",
+        "agent": "flux_complex_implementer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "RAN"
+      },
+      {
+        "role": "Test Executor",
+        "agent": "flux_test_executor",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "low",
+        "status": "RAN"
+      },
+      {
+        "role": "Reviewer",
+        "agent": "flux_reviewer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "high",
+        "status": "RAN"
+      },
+      {
+        "role": "Integrator",
+        "agent": "flux_integrator",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "medium",
+        "status": "RAN"
+      }
     ],
     "not_run_roles": [],
     "emitted_at": null,
-    "chronology": "Final receipt timestamp will be filled only after worktree cleanup and final integration."
+    "chronology": "Recorded after cleanup/integration; exact final receipt UTC time was not retained and is intentionally not inferred."
   },
   "role_reports": {
-    "Explorer": {"agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "assignment": "Investigate current iOS deployment failure and exact release state.", "status": "RAN", "evidence": "Confirmed closed 1.1.1 train; successful Build176 workflow and TestFlight availability verified."},
-    "Planner": {"agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "assignment": "Plan scoped iOS-only fix, release and cleanup.", "status": "RAN", "evidence": "Addendum prescribed 1.1.2+176, WidgetKit alignment, non-force push, explicit workflow train-change input, no Android/review resubmission, and temporary worktree removal."},
-    "Complex Implementer": {"agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "assignment": "Bump iOS release version/build and keep WidgetKit version in sync.", "status": "RAN", "evidence": "Changed only pubspec.yaml and ios/Flutter/PlanFlow-Identity.xcconfig in release commit 290984ea; focused test passed 15/15; no Android paths changed."},
-    "Test Executor": {"agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "assignment": "Run focused policy/version test, canonical preflight and diff checks.", "status": "RAN", "evidence": "flutter test test/ios_widget_version_contract_test.dart exit 0 (15 passed); git diff --check PASS; canonical -IosOnly -Check PASS."},
-    "Reviewer": {"agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "assignment": "Independently review the final source diff, task-state record and delivery evidence.", "status": "RAN", "evidence": "Source release diff verdict PASS, no findings (0 blocker, 0 high, 0 medium, 0 low); task-state JSON review found timestamp chronology and report metadata issues, which are being corrected before final approval."},
-    "Integrator": {"agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "assignment": "Verify release, source scope, preserved foreign changes and final worktree cleanup.", "status": "RAN", "evidence": "Verified commit 290984ea at origin/main at release time, workflow 35883428467 success, Apple ingestion and TestFlight available. Initial terminal report requested completion of exact temporary worktree cleanup; final integration pending cleanup confirmation."}
+    "Explorer": {
+      "agent": "flux_explorer",
+      "model": "gpt-6-luna",
+      "model_reasoning_effort": "medium",
+      "assignment": "Investigate current iOS deployment failure and exact release state.",
+      "status": "RAN",
+      "evidence": "Confirmed closed 1.1.1 train; successful Build176 workflow and TestFlight availability verified."
+    },
+    "Planner": {
+      "agent": "flux_planner",
+      "model": "gpt-5.6-terra",
+      "model_reasoning_effort": "high",
+      "assignment": "Plan scoped iOS-only fix, release and cleanup.",
+      "status": "RAN",
+      "evidence": "Addendum prescribed 1.1.2+176, WidgetKit alignment, non-force push, explicit workflow train-change input, no Android/review resubmission, and temporary worktree removal."
+    },
+    "Complex Implementer": {
+      "agent": "flux_complex_implementer",
+      "model": "gpt-6-luna",
+      "model_reasoning_effort": "medium",
+      "assignment": "Bump iOS release version/build and keep WidgetKit version in sync.",
+      "status": "RAN",
+      "evidence": "Changed only pubspec.yaml and ios/Flutter/PlanFlow-Identity.xcconfig in release commit 290984ea; focused test passed 15/15; no Android paths changed."
+    },
+    "Test Executor": {
+      "agent": "flux_test_executor",
+      "model": "gpt-6-luna",
+      "model_reasoning_effort": "low",
+      "assignment": "Run focused policy/version test, canonical preflight and diff checks.",
+      "status": "RAN",
+      "evidence": "flutter test test/ios_widget_version_contract_test.dart exit 0 (15 passed); git diff --check PASS; canonical -IosOnly -Check PASS."
+    },
+    "Reviewer": {
+      "agent": "flux_reviewer",
+      "model": "gpt-6-luna",
+      "model_reasoning_effort": "high",
+      "assignment": "Independently review the final source diff, task-state record and delivery evidence.",
+      "status": "RAN",
+      "evidence": "Independent final review PASS for closure candidate cf6c293cf5f5065cea37c993b6bd7ae15f7272dc: sole task JSON diff, state/report consistency, disjoint receipt sets, correct Build176 workflow 35883428467, source scope, preserved foreign changes, and removed task worktree; no findings. Exact receipt timestamps remain null because they were not retained."
+    },
+    "Integrator": {
+      "agent": "flux_integrator",
+      "model": "gpt-5.6-terra",
+      "model_reasoning_effort": "medium",
+      "assignment": "Verify release, source scope, preserved foreign changes and final worktree cleanup.",
+      "status": "RAN",
+      "evidence": "Terminal COMPLETE after final independent review PASS on candidate cf6c293cf5f5065cea37c993b6bd7ae15f7272dc and post-cleanup verification: origin/main pre-closure 52ed87c0 contains release commit 290984ea; source diff contains only pubspec.yaml and ios/Flutter/PlanFlow-Identity.xcconfig, version 1.1.2+176 and WidgetKit aligned; successful Build176 workflow 35883428467 passed transport upload, APP_STORE_BUILD_INGESTED, TESTFLIGHT_BUILD_AVAILABLE and TESTFLIGHT_AVAILABLE; Android unchanged; original main-checkout dirty paths preserved; exact task worktree absent from disk and Git list."
+    }
   },
-  "changed_files": ["pubspec.yaml", "ios/Flutter/PlanFlow-Identity.xcconfig", ".codex/tasks/ios-release-build176-20260924.json"],
+  "changed_files": [
+    "pubspec.yaml",
+    "ios/Flutter/PlanFlow-Identity.xcconfig",
+    ".codex/tasks/ios-release-build176-20260924.json"
+  ],
   "cleanup": {
     "authorized_target": "E:\\.codex\\worktrees\\ios-release-20260924\\PlanFlow",
     "pre_cleanup_status": "clean",
     "pre_cleanup_head": "290984eaaf1ef6130b7dee6b5933ea54c57a696b",
-    "must_verify_absent_from_worktree_list": true
+    "must_verify_absent_from_worktree_list": true,
+    "removed": true,
+    "removed_at": "2026-09-23T16:09:54Z",
+    "absent_from_worktree_list": true,
+    "absent_from_disk": true,
+    "origin_main_at_cleanup": "52ed87c029da07056c5948cb273e2354193b6a05"
   }
 }
