@@ -128,7 +128,8 @@ class HomeWidgetMonthCellData {
   /// 공휴일/기념일 이름 (예: '개천절', '제헌절'). 해당 없으면 null.
   final String? holidayName;
 
-  /// 실제 "쉬는 날"(휴무)이면 true. 제헌절처럼 이름은 있어도 평일이면 false.
+  /// KASI API가 공식 공휴일로 반환한 날이면 true. 이름이나 다른 캘린더
+  /// 정보만으로 휴무 여부를 추정하지 않는다.
   final bool isDayOff;
 
   /// Empty rows reserved before a multi-day band. This preserves the exact
@@ -1683,7 +1684,7 @@ class HomeWidgetService {
         : ((lastInMonthIndex + 1 + 6) ~/ 7).clamp(1, 6);
     success = await _saveValue('${keyPrefix}_row_count', rowCount) && success;
     // Keep a compact, schedule-free holiday map so the native fallback can
-    // preserve the app's KASI/klc holiday rules even when a legacy month-cell
+    // preserve the app's KASI-confirmed holiday rules even when a legacy month-cell
     // payload is incomplete. This is intentionally limited to date/name and
     // never contains event or user data.
     final holidayMap = <String, Map<String, Object>>{};

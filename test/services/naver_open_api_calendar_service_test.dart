@@ -6,11 +6,11 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
-import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/naver_open_api_calendar_service.dart';
+import 'package:planflow/services/korean_holidays.dart';
 
 void main() {
   setUp(() {
@@ -41,6 +41,10 @@ void main() {
 
   test('skips date-only Naver holidays in favor of canonical app holidays',
       () async {
+    KoreanHolidays.applyLiveData(2026, {
+      (8, 15): '광복절',
+      (10, 3): '개천절',
+    });
     final repository = _FakeEventRepository();
     final requests = <http.Request>[];
     final service = NaverOpenApiCalendarService(

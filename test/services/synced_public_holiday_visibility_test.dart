@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/services/korean_holidays.dart';
 import 'package:planflow/services/synced_public_holiday_visibility.dart';
 
 EventModel _event({
@@ -20,6 +21,27 @@ EventModel _event({
 }
 
 void main() {
+  setUp(() {
+    final year = DateTime.now().year;
+    KoreanHolidays.applyLiveData(year, {
+      (8, 15): '광복절',
+      (10, 9): '한글날',
+      (12, 25): '기독탄신일',
+    });
+    if (year == 2026) {
+      KoreanHolidays.applyLiveData(year, {
+        (8, 15): '광복절',
+        (10, 9): '한글날',
+        (12, 25): '기독탄신일',
+        (10, 5): '대체공휴일(개천절)',
+      });
+    } else {
+      KoreanHolidays.applyLiveData(2026, {
+        (10, 5): '대체공휴일(개천절)',
+      });
+    }
+  });
+
   test('hides an externally identified event matching the canonical holiday',
       () {
     expect(isSyncedPublicHolidayDuplicate(_event()), isTrue);

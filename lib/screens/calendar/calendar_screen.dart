@@ -149,43 +149,6 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
 const _calendarMiniMonthEventRows = 4;
 const _calendarMiniEventRowHeight = 10.0;
 
-const _holidayTitleKeywords = <String>[
-  '공휴일',
-  '대체공휴일',
-  '임시공휴일',
-  '신정',
-  '설날',
-  '추석',
-  '삼일절',
-  '어린이날',
-  '현충일',
-  '광복절',
-  '개천절',
-  '한글날',
-  '성탄절',
-  '부처님오신날',
-  '석가탄신일',
-  '휴일',
-  // 주의: '제헌절'은 여기 넣지 않는다. 2008년부터 비휴무 국경일이라
-  // 동기화된 캘린더 이벤트 제목에 "제헌절"이 있어도 날짜를 빨간색(휴무)으로
-  // 칠하면 안 된다(KoreanHolidays.holidayName은 이름 표시용으로 별도 처리).
-];
-
-String _normalizeHolidayTitle(String title) {
-  return title.replaceAll(RegExp(r'\s+'), '').toLowerCase();
-}
-
-bool _looksLikeHolidayTitle(String title) {
-  final normalized = _normalizeHolidayTitle(title);
-  if (normalized.isEmpty) {
-    return false;
-  }
-  return _holidayTitleKeywords.any((keyword) {
-    final normalizedKeyword = _normalizeHolidayTitle(keyword);
-    return normalized.contains(normalizedKeyword);
-  });
-}
-
 List<EventModel> _eventsForLocalDay(
   Iterable<EventModel> events,
   DateTime day,
@@ -421,10 +384,9 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       events: visibleEvents,
       overlayEvents: overlayItemsByCell[index],
       overflowCount: overflowCounts[index],
-      isHoliday: day != null &&
-          (KoreanHolidays.isDayOff(day) ||
-              _eventsForLocalDay(sortedEvents, day)
-                  .any((event) => _looksLikeHolidayTitle(event.title))),
+      // Official day-off coloring is driven only by KASI data. Event titles
+      // from user/provider calendars never grant public-holiday status.
+      isHoliday: day != null && KoreanHolidays.isDayOff(day),
       holidayName: holidayName,
       leadingEventRowCount:
           holidayName == null && firstOccupiedSlot > 0 ? firstOccupiedSlot : 0,

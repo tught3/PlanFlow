@@ -171,8 +171,8 @@ class DayEventsSheet extends StatelessWidget {
   final ScrollController? scrollController;
   final String? holidayName;
 
-  /// 공휴일 이름이 있어도 실제 쉬는 날이 아니면(예: 2025년까지의 제헌절)
-  /// false. [_CalendarSelectedDateHeader]의 isHoliday와 동일한 의미로,
+  /// KASI API가 공식 공휴일로 반환한 날에만 true.
+  /// [_CalendarSelectedDateHeader]의 isHoliday와 동일한 의미로,
   /// 휴무색(calendarHolidayColor) 강조 여부를 가른다.
   final bool isDayOff;
   final bool? briefingIsMorning;
@@ -860,9 +860,8 @@ class _CalendarMiniEventList extends StatelessWidget {
     final displayOverlayEvents = remainingRows > 0
         ? overlayEvents.take(remainingRows).toList(growable: false)
         : const <CalendarOverlayItem>[];
-    final hiddenCount = totalDemand -
-        displayEvents.length -
-        displayOverlayEvents.length;
+    final hiddenCount =
+        totalDemand - displayEvents.length - displayOverlayEvents.length;
 
     return Column(
       mainAxisSize: MainAxisSize.max,

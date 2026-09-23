@@ -3,6 +3,7 @@ import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/naver_ics_import_service.dart';
+import 'package:planflow/services/korean_holidays.dart';
 
 void main() {
   group('NaverIcsImportService', () {
@@ -105,6 +106,7 @@ END:VCALENDAR
     });
 
     test('skips canonical public holidays but keeps personal events', () async {
+      KoreanHolidays.applyLiveData(2026, {(8, 15): '광복절'});
       final repository = _FakeEventRepository();
       final service = NaverIcsImportService(
         eventRepository: repository,

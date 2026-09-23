@@ -11,11 +11,9 @@ import 'korean_holidays.dart';
 /// 한국천문연구원(KASI) "특일 정보" 공공데이터포털 API로 그 해의 실제
 /// 공휴일 목록을 받아와 [KoreanHolidays]에 반영한다.
 ///
-/// [KoreanHolidays]의 계산식(klc 패키지, 2050년까지)은 오프라인으로도 항상
-/// 동작하는 기본값이고, 이 서비스는 그 위에 정부가 실시간으로 발표하는
-/// 데이터(임시공휴일·선거일 등 계산으로는 알 수 없는 항목 포함)를 얹어
-/// 정확도를 높이는 보강 레이어다. 네트워크가 없거나 API 키가 없거나
-/// 실패해도 앱은 klc 계산값으로 계속 동작한다(fail-open).
+/// KASI data is the sole authority for official days off. If the API key,
+/// network, response, or cache is unavailable, the app fails closed and does
+/// not infer a holiday from a fixed-date or lunar calculation.
 class KasiHolidayService {
   KasiHolidayService._();
 
@@ -37,8 +35,9 @@ class KasiHolidayService {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString('$_cacheKeyPrefix$year');
       if (cached != null) {
-        _applyRawJson(year, cached);
-        return;
+        if (_applyRawJson(year, cached)) {
+          return;
+        }
       }
       final fetched = await _fetchYear(year);
       if (fetched == null) {
@@ -49,8 +48,7 @@ class KasiHolidayService {
         await prefs.setString('$_cacheKeyPrefix$year', fetched);
       }
     } catch (_) {
-      // 캐시/네트워크 어느 단계에서 실패하든 klc 계산값으로 계속 동작하면
-      // 되므로 조용히 무시한다.
+      // Fail closed: no KASI data means no official holiday classification.
     }
   }
 
@@ -73,8 +71,8 @@ class KasiHolidayService {
     }
   }
 
-  /// [rawJson]을 파싱해 [KoreanHolidays]에 반영한다. 성공적으로 최소 1개
-  /// 이상의 항목을 반영했으면 true(캐시에 저장할 가치가 있음을 의미).
+  /// [rawJson]을 파싱해 [KoreanHolidays]에 반영한다. 유효한 KASI 응답의
+  /// 항목이 0개여도 true이며, 이 경우 해당 연도는 확정된 빈 결과로 저장된다.
   @visibleForTesting
   bool applyRawJsonForTesting(int year, String rawJson) =>
       _applyRawJson(year, rawJson);
@@ -85,8 +83,16 @@ class KasiHolidayService {
       if (decoded is! Map) {
         return false;
       }
-      final body = (decoded['response'] as Map?)?['body'];
-      final items = (body as Map?)?['items'];
+      final response = decoded['response'];
+      if (response is! Map) return false;
+      final header = response['header'];
+      if (header is! Map || header['resultCode']?.toString() != '00') {
+        return false;
+      }
+      final body = response['body'];
+      if (body is! Map) return false;
+      final items = body['items'];
+      if (items is! Map) return false;
       final rawItem = (items as Map?)?['item'];
       final itemList = switch (rawItem) {
         List() => rawItem,
@@ -101,13 +107,14 @@ class KasiHolidayService {
         }
         final dateName = entry['dateName']?.toString().trim() ?? '';
         final isHoliday = entry['isHoliday']?.toString() == 'Y';
-        if (!isHoliday ||
-            dateName.isEmpty ||
-            (year < 2026 && dateName.contains('제헌절'))) {
+        if (!isHoliday || dateName.isEmpty) {
           continue;
         }
         final locdate = entry['locdate']?.toString() ?? '';
         if (locdate.length != 8) {
+          continue;
+        }
+        if (int.tryParse(locdate.substring(0, 4)) != year) {
           continue;
         }
         final month = int.tryParse(locdate.substring(4, 6));
@@ -118,9 +125,6 @@ class KasiHolidayService {
         dayOff[(month, day)] = dateName;
       }
 
-      if (dayOff.isEmpty) {
-        return false;
-      }
       KoreanHolidays.applyLiveData(year, dayOff);
       return true;
     } catch (_) {

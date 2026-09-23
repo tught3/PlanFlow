@@ -5,12 +5,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/korean_holidays.dart';
 import 'package:planflow/screens/calendar/calendar_style_contract.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    KoreanHolidays.applyLiveData(2026, {
+      (7, 17): '제헌절',
+      (8, 15): '광복절',
+      (9, 24): '추석',
+      (9, 25): '추석',
+      (9, 26): '추석',
+      (10, 3): '개천절',
+      (10, 5): '대체공휴일(개천절)',
+    });
+    KoreanHolidays.applyLiveData(2025, {});
   });
 
   test('calendar style contract contains the app calendar source-of-truth', () {
@@ -51,9 +62,7 @@ void main() {
     expect(payload['calendar_style_strong_alarm_marker_sp10'], 58);
   });
 
-  test(
-      'event rows render text-only with an enlarged, bold repeat marker',
-      () {
+  test('event rows render text-only with an enlarged, bold repeat marker', () {
     final calendarSource =
         File('lib/screens/calendar/calendar_widgets.dart').readAsStringSync();
     expect(calendarSource, contains('_calendarEventTitleSpan'));
@@ -550,8 +559,8 @@ void main() {
     expect(canonicalPayload['week'], isA<Map<String, dynamic>>());
     final canonicalMonth = canonicalPayload['month'] as Map<String, dynamic>;
     final canonicalCells = canonicalMonth['cells'] as List<dynamic>;
-    final firstCellEvents =
-        (canonicalCells.first as Map<String, dynamic>)['events'] as List<dynamic>;
+    final firstCellEvents = (canonicalCells.first
+        as Map<String, dynamic>)['events'] as List<dynamic>;
     final criticalEvent = firstCellEvents
         .cast<Map<String, dynamic>>()
         .firstWhere((event) => event['title'] == 'Cell event 1');
@@ -913,6 +922,15 @@ void main() {
     expect(gaecheonjeolCell.holidayName, '개천절');
     expect(gaecheonjeolCell.isDayOff, isTrue);
 
+    final substitutePayload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-10-05T04:00:00Z'),
+      events: const <EventModel>[],
+    );
+    final substituteCell =
+        substitutePayload.monthCells.firstWhere((cell) => cell.day == 5);
+    expect(substituteCell.holidayName, '대체공휴일(개천절)');
+    expect(substituteCell.isDayOff, isTrue);
+
     final julyPayload = HomeWidgetSchedulePayloadBuilder.fromEvents(
       now: DateTime.parse('2026-07-05T04:00:00Z'),
       events: const <EventModel>[],
@@ -928,7 +946,7 @@ void main() {
     );
     final priorJeheonjeolCell =
         priorJulyPayload.monthCells.firstWhere((cell) => cell.day == 17);
-    expect(priorJeheonjeolCell.holidayName, '제헌절');
+    expect(priorJeheonjeolCell.holidayName, isNull);
     expect(priorJeheonjeolCell.isDayOff, isFalse);
   });
 

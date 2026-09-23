@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/services/korean_holidays.dart';
@@ -61,8 +60,8 @@ void main() {
 
   testWidgets('DayEventsSheet shows holiday name when day is a holiday',
       (tester) async {
-    // banned-ok: 광복절(8/15)은 매년 고정 공휴일이라 연도 무관 결정적, 클램프/만료 로직 미사용
     final holidayDate = DateTime(2026, 8, 15);
+    KoreanHolidays.applyLiveData(2026, {(8, 15): '광복절'});
     await tester.binding.setSurfaceSize(const Size(360, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -125,16 +124,13 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets(
-      'DayEventsSheet shows commemorative-only holiday name without '
-      'day-off color', (tester) async {
-    // 제헌절(7/17)은 2025년까지 _commemorativeOnly(쉬는 날 아님)로 고정
-    // banned-ok: 과거 확정 연도의 고정 분류값이라 클램프/만료 로직 미사용, 연도 무관 결정적
+  testWidgets('DayEventsSheet colors KASI-confirmed day off red',
+      (tester) async {
     final commemorativeDate = DateTime(2025, 7, 17);
+    KoreanHolidays.applyLiveData(2025, {(7, 17): '제헌절'});
 
-    // 사전 조건: 이 날짜는 이름은 있지만 실제 쉬는 날은 아니다.
     expect(KoreanHolidays.holidayName(commemorativeDate), '제헌절');
-    expect(KoreanHolidays.isDayOff(commemorativeDate), isFalse);
+    expect(KoreanHolidays.isDayOff(commemorativeDate), isTrue);
 
     await tester.binding.setSurfaceSize(const Size(360, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -163,7 +159,6 @@ void main() {
     expect(find.text('제헌절'), findsOneWidget);
     final holidayText = tester.widget<Text>(find.text('제헌절'));
     final holidayColor = holidayText.style?.color;
-    expect(holidayColor, isNot(calendarHolidayColor));
-    expect(holidayColor, PlanFlowColors.textSecondary);
+    expect(holidayColor, calendarHolidayColor);
   });
 }

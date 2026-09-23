@@ -1448,7 +1448,7 @@ class NaverCalDavService {
             syncedAt: syncedAt,
           );
 
-          // 공휴일은 앱이 KASI API/계산 결과로 이미 표시하므로 네이버
+          // 공휴일은 앱이 KASI API 응답으로 이미 표시하므로 네이버
           // 캘린더의 provider copy를 가져오지 않는다. 날짜와 외부 식별자가
           // 함께 확인된 경우만 건너뛰어 개인 일정은 유지한다.
           if (isSyncedPublicHolidayDuplicate(eventModel)) {

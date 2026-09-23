@@ -18,12 +18,33 @@ import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/screens/calendar/calendar_projection.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
+import 'package:planflow/services/korean_holidays.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     EventPrefetchService().invalidate();
+    KoreanHolidays.applyLiveData(2026, {
+      (6, 6): '현충일',
+      (7, 17): '제헌절',
+      (8, 15): '광복절',
+      (9, 24): '추석',
+      (9, 25): '추석',
+      (9, 26): '추석',
+      (10, 3): '개천절',
+      (10, 5): '대체공휴일(개천절)',
+    });
+    KoreanHolidays.applyLiveData(DateTime.now().year, {
+      (6, 6): '현충일',
+      (7, 17): '제헌절',
+      (8, 15): '광복절',
+      (9, 24): '추석',
+      (9, 25): '추석',
+      (9, 26): '추석',
+      (10, 3): '개천절',
+      (10, 5): '대체공휴일(개천절)',
+    });
   });
 
   testWidgets('CalendarScreen does not show a loading panel while loading', (
@@ -520,6 +541,33 @@ void main() {
       find.byKey(const ValueKey('calendar-mini-day-2026-6-6')),
     );
     expect(dayLabel.style?.color, calendarHolidayColor);
+  });
+
+  testWidgets(
+      'CalendarScreen does not infer an official holiday from an event title',
+      (tester) async {
+    final date = DateTime(DateTime.now().year + 5, 1, 1);
+    final repository = _AsyncEventRepository([
+      Future.value(
+          [_event('user-holiday', '공휴일', date.add(const Duration(hours: 9)))]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: date,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dayLabel = tester.widget<Text>(
+      find.byKey(
+          ValueKey('calendar-mini-day-${date.year}-${date.month}-${date.day}')),
+    );
+    expect(dayLabel.style?.color, isNot(calendarHolidayColor));
   });
 
   testWidgets(

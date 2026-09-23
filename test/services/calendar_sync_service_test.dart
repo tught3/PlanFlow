@@ -14,6 +14,7 @@ import 'package:planflow/data/repositories/calendar_connection_repository.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/korean_holidays.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 
 void main() {
@@ -22,6 +23,10 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     ApiUsageGuard.resetForTesting();
+    KoreanHolidays.applyLiveData(2026, {
+      (8, 15): '광복절',
+      (10, 3): '개천절',
+    });
   });
 
   group('CalendarSyncService', () {

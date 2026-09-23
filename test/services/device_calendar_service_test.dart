@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/device_calendar_service.dart';
+import 'package:planflow/services/korean_holidays.dart';
 
 void main() {
   test('detects Naver calendars by Korean and English names', () {
@@ -98,6 +99,10 @@ void main() {
 
   test('skips Android provider holidays in favor of canonical app holidays',
       () async {
+    KoreanHolidays.applyLiveData(2026, {
+      (6, 6): '현충일',
+      (8, 15): '광복절',
+    });
     final repository = _FakeEventRepository();
     final service = DeviceCalendarService(
       gateway: _FakeDeviceCalendarGateway(
@@ -285,8 +290,6 @@ void main() {
       eventRepository: _FakeEventRepository(),
       currentUserId: 'user-1',
     );
-    final futureStart = DateTime.now().add(const Duration(days: 30));
-
     final exported = await service.exportEvent(
       EventModel(
         id: 'manual-1',
