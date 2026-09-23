@@ -1,0 +1,99 @@
+{
+  "task_id": "global-deploy-ios-first-20260923",
+  "status": "COMPLETE",
+  "final_verdict": "PASS",
+  "current_phase": "integrated",
+  "initial_difficulty": "complex",
+  "current_difficulty": "complex",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "PASS",
+    "checked_at": "2026-09-23",
+    "errors": [],
+    "source": "E:/AI_WIKI/07_System/codex/model-routing.json"
+  },
+  "authority": {
+    "initial_selection": "Planner selected complex; user approved iOS-first then Android sequencing.",
+    "transition_approval": "Not applicable.",
+    "dispatch": "Current-conversation named Codex Desktop subagents."
+  },
+  "requirements": [
+    "When both platforms are enabled, complete iOS release and verify its success marker before starting Android.",
+    "If iOS is enabled but unavailable, skipped, fails, or times out, do not start Android.",
+    "Preserve manifest-authorized Android-only projects and explicit platform-only options.",
+    "If Android fails after iOS succeeds, report iOS success and provide an Android-only retry command."
+  ],
+  "allowed_files": [
+    "E:/AI_WIKI/scripts/deploy-project.ps1",
+    "E:/AI_WIKI/scripts/DEPLOY_CONTRACT.md",
+    "E:/AI_WIKI/scripts/deploy-sequence.ps1",
+    "E:/AI_WIKI/scripts/deploy-sequence.tests.ps1",
+    "E:/FluxStudio/PlanFlow/.codex/tasks/global-deploy-ios-first-20260923.json"
+  ],
+  "forbidden_files": [
+    "PlanFlow app source and release workflows",
+    "Unrelated dirty, cache, build, credential, or user-owned files"
+  ],
+  "evidence": {
+    "source_files": [
+      "E:/AI_WIKI/scripts/deploy-project.ps1",
+      "E:/AI_WIKI/scripts/DEPLOY_CONTRACT.md",
+      "E:/AI_WIKI/scripts/install-deploy-command.ps1",
+    "E:/FluxStudio/PlanFlow/config/release-manifest.json"
+    ],
+    "test_commands": []
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "COMPLEX",
+    "planned_roles": [
+      { "role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN" },
+      { "role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN" },
+      { "role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN" },
+      { "role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN" },
+      { "role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "PLANNED" },
+      { "role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "PLANNED" }
+    ],
+    "executed_roles": [
+      { "role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN" },
+      { "role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN" },
+      { "role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN" },
+      { "role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN" }
+    ],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-23"
+  },
+  "final_receipt": {
+    "receipt_type": "final",
+    "classification": "COMPLEX",
+    "planned_roles": [],
+    "executed_roles": [
+      { "role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN" },
+      { "role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN" },
+      { "role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN" },
+      { "role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN" },
+      { "role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "RAN" },
+      { "role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN" }
+    ],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-23"
+  },
+  "role_reports": {
+    "Explorer": { "assignment": "Read-only investigation of canonical deployment wrapper, contract, manifest and risks.", "status": "RAN", "evidence": "Confirmed Android-first order and iOS skip semantics; report in conversation." },
+    "Planner": { "assignment": "Define iOS-first fail-closed sequencing and verification scope.", "status": "RAN", "evidence": "Complex plan with seven mock verification scenarios; report in conversation." },
+    "Complex Implementer": { "assignment": "Implement the global iOS-first deployment sequence and focused mock tests.", "status": "RAN", "evidence": "Changed E:/AI_WIKI/scripts/deploy-project.ps1, DEPLOY_CONTRACT.md, new deploy-sequence.ps1, and deploy-sequence.tests.ps1. Initial mock tests passed; final 13-scenario tests rerun by root after reviewer finding." },
+    "Test Executor": { "assignment": "Run deployment sequencing, parser, contract and diff checks.", "status": "RAN", "evidence": "Exit 0: initial tests (9 scenarios); all three PowerShell scripts parse; C:\\Users\\tught\\bin\\배포해.cmd -Check from PlanFlow resolves iOS then Android without provider calls. Root then reran tests: 13 scenarios PASS and wrapper -IosOnly -Check exit 0." },
+    "Reviewer": { "assignment": "Independently review final diff and release-safety behavior.", "status": "RAN", "evidence": "FINAL_REVIEW_REPORT: PASS; highest severity NONE; final 13-scenario test suite passed; no files edited." },
+    "Integrator": { "assignment": "Integrate reviewed changes and complete scoped commit/push and final task state.", "status": "RAN", "evidence": "Fresh exit 0: scripts/deploy-sequence.tests.ps1 (13 scenarios) and scoped diff checks. Scoped commit 466736ac5e8be3df964d25f2fb763529e6ec5c37 pushed non-force to origin/master; remote head matches. No production deployment invoked." }
+  },
+  "changed_files": [
+    "E:/AI_WIKI/scripts/deploy-project.ps1",
+    "E:/AI_WIKI/scripts/DEPLOY_CONTRACT.md",
+    "E:/AI_WIKI/scripts/deploy-sequence.ps1",
+    "E:/AI_WIKI/scripts/deploy-sequence.tests.ps1"
+  ],
+  "unresolved_items": [],
+  "last_update": "2026-09-23"
+}
