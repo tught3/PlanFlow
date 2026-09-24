@@ -55,7 +55,8 @@
   "delivery": {"source_commit": "87256e3f", "main_integration_commit": "09c3e73fb4f5e1e05b75387d33f37a6c874639ef", "push": "origin/main (non-force; HEAD == origin/main)", "production_migration": "NOT_APPLIED", "deployment": "NOT_REQUESTED"},
   "continuation_20260924": {
     "request": "Complete the local/staging-equivalent rehearsal and resolve the origin/main divergence while preserving unrelated dirty paths and worktrees.",
-    "staging_equivalent": "BLOCKED_NO_ISOLATED_PLANFLOW_STAGING_TARGET",
+    "staging_equivalent": "BLOCKED_SUPABASE_BRANCH_MIGRATIONS_FAILED_NOT_PRODUCTION_EQUIVALENT",
+    "staging_branch_attempt": {"name": "planflow-group-delete-rehearsal-20260924", "branch_id": "6a5ea50e-636a-4841-848b-70dfd5dfd0a6", "project_ref": "cmlhqkhautsadgzrklek", "parent_project_ref": "xqvvfnvmytjlblcngipn", "creation_cost_confirmed": "USD 0.01344/hour", "with_data": false, "persistent": false, "provisioning_result": "MIGRATIONS_FAILED", "failure_evidence": "Branch migration ledger contained only 20260502153228 create_user_behavior_logs_v1_xqvvfnvmytjlblcngipn while production has approximately 35 PlanFlow migrations; required PlanFlow schema was absent. No guessed DDL was applied.", "cleanup": "DELETED_TASK_OWNED_FAILED_BRANCH", "cleanup_verification": "supabase_list_branches returned only default main branch 5880398c-dd6c-447b-9d7f-cc5bebab94b6; failed branch is absent."},
     "supabase_target_safety": "No migration applied: PlanFlow ref is production; configured host resolves to a different project; no staging project/branch/config found.",
     "local_rehearsal": "PASS_DISPOSABLE_MINIMAL_SCHEMA_ONLY_NOT_FULL_STAGING_EQUIVALENCE",
     "integration": {"method": "git merge origin/main", "origin_main_before": "54014adc1fb21d8d0ce7dd63b44040ab5400a688", "merge_commit": "09c3e73fb4f5e1e05b75387d33f37a6c874639ef", "origin_main_after": "09c3e73fb4f5e1e05b75387d33f37a6c874639ef", "push": "non-force PASS"},
@@ -66,13 +67,16 @@
       {"command": "flutter analyze --no-pub (9 changed Dart files + 7 targeted test files)", "exit_code": 0, "result": "16 items analyzed; no issues."},
       {"command": "git diff --check origin/main...HEAD", "exit_code": 0, "result": "PASS; pre-existing dirty generated files only produced line-ending warnings."}
     ],
-    "reviewer_report": {"agent": "flux_reviewer", "status": "RAN", "verdict": "FINDINGS", "blocker_high": 0, "low": 1, "finding": "Minimal fixture copies the delete RPC and does not establish full deployed-schema equivalence; require isolated staging rehearsal before production migration."},
-    "high_risk_report": {"agent": "flux_high_risk_reviewer", "status": "RAN", "verdict": "GIT_MERGE_PUSH_SAFE_DB_REHEARSAL_BLOCKED", "blocker_high": 0},
-    "integrator_report": {"agent": "flux_integrator", "status": "RAN", "verdict": "PARTIAL_PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION", "app_deployment": "NOT_PERFORMED", "production_migration": "NOT_APPLIED"},
+    "forward_backup_fk_fix": {"source_status": "IMPLEMENTED_UNCOMMITTED", "migration": "supabase/migrations/20260924124102_group_backup_detach_after_group_delete.sql", "behavior": "Refuses schema drift unless the exact legacy ON DELETE CASCADE FK is found, then removes only that FK. group_id remains immutable and NOT NULL; restore remains backup-id/snapshot based.", "tests": [{"command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/run_group_deletion_notice_runtime.ps1", "exit_code": 0, "result": "Disposable PostgreSQL fixture PASS; forward migration executed; backup survives deletion."}, {"command": "python -m unittest scripts.tests.test_group_deletion_notice_contract", "exit_code": 0, "result": "8 tests passed."}, {"command": "git diff --check", "exit_code": 0, "result": "PASS; line-ending warnings only."}]},
+    "reviewer_report": {"agent": "flux_reviewer", "status": "RAN", "verdict": "FINDINGS", "blocker_high": 1, "finding": "HIGH: full staging-equivalent rehearsal remains unverified. The disposable fixture copies the delete RPC and cannot establish deployed-schema or migration-ledger equivalence. Retest on isolated production-equivalent staging: forward migration, deletion, retained backup, restore, migration ledger."},
+    "high_risk_report": {"agent": "flux_high_risk_reviewer", "status": "RAN", "verdict": "SOURCE_APPROVED_STAGING_REHEARSAL_REQUIRED", "blocker_high": 0},
+    "integrator_report": {"agent": "flux_integrator", "status": "RAN", "verdict": "NEEDS_FIX_STAGING_EQUIVALENT_REHEARSAL_BLOCKED", "app_deployment": "NOT_PERFORMED", "production_migration": "NOT_APPLIED", "commit_or_push": "NOT_PERFORMED_IN_THIS_CONTINUATION"},
     "foreign_dirty_preserved": ["5 generated registrants", ".codex/tasks/planflow-holiday-canonical-20260923.json", ".pub-cache-release/", "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"],
     "existing_worktrees": "All inspected; unchanged and not deleted. Two dirty worktrees and two non-task-owned clean worktrees preserved.",
-    "final_routing_receipt": {"planned_roles": ["Explorer", "Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []}
+    "final_routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []},
+    "production_and_app_delivery": {"production_database": "NO_MUTATION: no migration, DDL, reset, or data change applied to xqvvfnvmytjlblcngipn.", "application_deployment": "NOT_PERFORMED"},
+    "unresolved_staging_blocker": "Repair or explicitly configure the Supabase branch migration source so a fresh branch produces the complete PlanFlow migration ledger and schema. Then rerun full delete/backup/restore/restricted-access rehearsal."
   },
-  "final_verdict": "PARTIAL_PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION",
+  "final_verdict": "NEEDS_FIX_STAGING_EQUIVALENT_REHEARSAL_BLOCKED",
   "last_updated": "2026-09-24"
 }

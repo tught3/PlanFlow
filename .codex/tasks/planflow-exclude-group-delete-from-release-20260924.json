@@ -1,0 +1,61 @@
+{
+  "task_id": "planflow-exclude-group-delete-from-release-20260924",
+  "request": "Exclude the latest group-deletion feature changes from the upcoming release while retaining onboarding and review fixes; proceed through delivery gates.",
+  "entry": {"model": "gpt-6-luna", "reasoning_effort": "medium", "classification": "Complex"},
+  "planned_roles": [
+    {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+    {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+    {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+    {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low"},
+    {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high"},
+    {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+  ],
+  "foreign_dirty_preserved": [
+    "5 Flutter generated registrants",
+    ".codex/tasks/planflow-holiday-canonical-20260923.json",
+    ".pub-cache-release/",
+    "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"
+  ],
+  "changes": {
+    "reverted_group_delete_only": [
+      "lib/features/groups/models/group_deletion_notice.dart",
+      "lib/features/groups/repositories/group_deletion_notice_repository.dart",
+      "lib/features/groups/screens/group_detail_screen.dart",
+      "lib/features/groups/screens/group_list_screen.dart",
+      "test/features/groups/group_list_screen_test.dart",
+      "scripts/tests/group_deletion_notice_runtime.sql",
+      "scripts/tests/run_group_deletion_notice_runtime.ps1",
+      "scripts/tests/test_group_deletion_notice_contract.py",
+      "supabase/migrations/20260924090000_group_delete_notices_and_backup_member_compat.sql",
+      "supabase/schema.sql"
+    ],
+    "preserved": [
+      "lib/core/router.dart",
+      "lib/screens/onboarding/feature_tour_screen.dart",
+      "lib/screens/shell_screen.dart",
+      "lib/services/feature_tour_service.dart",
+      "lib/services/review_service.dart",
+      "related onboarding and review tests"
+    ],
+    "behavior_note": "Restores previous group deletion behavior; it may retain the pre-existing group deletion failure."
+  },
+  "role_reports": {
+    "Explorer": {"status": "RAN", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium", "result": "Mapped combined commit and isolated group-only paths/hunks; onboarding/review changes must remain."},
+    "Planner": {"status": "RAN", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "result": "Selective rollback only; targeted tests/analyze, independent review, pathspec-only commit/push, then canonical deployment gate; preserve foreign dirty state."},
+    "Complex Implementer": {"status": "RAN", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium", "result": "Reviewed applied rollback; no further edits needed. Confirmed no dangling notice API refs and onboarding/review files untouched."},
+    "Test Executor": {"status": "RAN", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low", "result": "Targeted Flutter tests 39 passed; targeted analyze clean; git diff --check clean; onboarding/review files unchanged; rg found no notice refs."},
+    "Reviewer": {"status": "RAN", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high", "verdict": "PASS", "blocker_high": 0, "result": "Diff contains only intended group notice/schema/test removals and prior confirmation copy; onboarding/review untouched."},
+    "Integrator": {"status": "RAN", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "result": "Selective rollback is safe for pathspec-only commit/non-force push. Deployment is blocked because foreign dirty files violate canonical clean-worktree preflight."}
+  },
+  "tests": [
+    {"command": "flutter test --no-pub test/features/groups/group_list_screen_test.dart test/features/groups/group_detail_screen_test.dart test/screens/feature_tour_screen_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/services/feature_tour_service_test.dart test/services/review_service_test.dart", "exit_code": 0, "result": "39 tests passed."},
+    {"command": "flutter analyze lib/features/groups/screens/group_detail_screen.dart lib/features/groups/screens/group_list_screen.dart test/features/groups/group_list_screen_test.dart test/features/groups/group_detail_screen_test.dart test/screens/feature_tour_screen_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/services/feature_tour_service_test.dart test/services/review_service_test.dart", "exit_code": 0, "result": "No issues found."},
+    {"command": "git diff --check", "exit_code": 0, "result": "PASS."},
+    {"command": "rg group-deletion notice API/model/migration refs in active lib/test/schema/migrations", "exit_code": 1, "result": "No matches; expected absence."},
+    {"command": "배포해.cmd -Check", "exit_code": 0, "result": "iOS and Android resolution PASS; no production dispatch or upload."}
+  ],
+  "deployment": {"requested_order": "iOS then Android", "check": "PASS", "actual": "BLOCKED_FOREIGN_DIRTY_WORKTREE", "production_database": "UNCHANGED"},
+  "routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []},
+  "status": "SOURCE_READY_DEPLOYMENT_BLOCKED",
+  "last_updated": "2026-09-24"
+}
