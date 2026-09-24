@@ -125,7 +125,10 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.featureTour,
-      builder: (context, state) => const FeatureTourScreen(),
+      builder: (context, state) => FeatureTourScreen(
+        requireFinalConfirmation:
+            state.uri.queryParameters['required'] == 'true',
+      ),
     ),
     GoRoute(
       path: AppRoutes.resetPassword,

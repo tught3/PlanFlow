@@ -7,6 +7,93 @@ import 'package:planflow/screens/shell_screen.dart';
 /// 검증한다. 기존 shell_screen_onboarding_order_test.dart는 소스 grep이라
 /// 게이트가 안 풀리는 회귀를 못 잡는다.
 void main() {
+  group('feature tour requirement probe', () {
+    test('preference read timeout is unknown, not an implicit opt-out',
+        () async {
+      final unresolved = Completer<bool>();
+      final result = await probeFeatureTourRequirement(
+        read: () => unresolved.future,
+        timeout: const Duration(milliseconds: 10),
+      );
+
+      expect(result, isNull);
+      unresolved.complete(false);
+    });
+
+    test('preference read error is unknown, not an implicit opt-out', () async {
+      final result = await probeFeatureTourRequirement(
+        read: () async => throw StateError('preferences unavailable'),
+        timeout: const Duration(seconds: 1),
+      );
+
+      expect(result, isNull);
+    });
+
+    test('a still-required tour keeps the onboarding session incomplete',
+        () async {
+      final stillRequired = await probeFeatureTourRequirement(
+        read: () async => true,
+        timeout: const Duration(seconds: 1),
+      );
+      var requiredTourConfirmed = stillRequired == false;
+      var released = false;
+
+      final completed = await runOnboardingStageChain(
+        stages: [OnboardingStage('feature_tour', () async {})],
+        shouldContinue: () => requiredTourConfirmed,
+        releaseGate: () => released = true,
+        presentationTimeout: const Duration(seconds: 1),
+        log: (_) {},
+      );
+
+      expect(requiredTourConfirmed, isFalse);
+      expect(completed, isFalse);
+      expect(released, isTrue);
+    });
+  });
+
+  group('shared onboarding flow ownership', () {
+    test('same-account shell joining a shared flow releases its gate', () {
+      var released = false;
+
+      final joined = releaseGateForJoiningOnboardingFlow(
+        joiningUserId: 'user-a',
+        flowUserId: 'user-a',
+        releaseGate: () => released = true,
+      );
+
+      expect(joined, isTrue);
+      expect(released, isTrue);
+    });
+
+    test('different-account shell cannot join or release from another flow',
+        () {
+      var released = false;
+
+      final joined = releaseGateForJoiningOnboardingFlow(
+        joiningUserId: 'user-b',
+        flowUserId: 'user-a',
+        releaseGate: () => released = true,
+      );
+
+      expect(joined, isFalse);
+      expect(released, isFalse);
+    });
+
+    test('unowned flow is not treated as a same-account flow', () {
+      var released = false;
+
+      final joined = releaseGateForJoiningOnboardingFlow(
+        joiningUserId: 'user-a',
+        flowUserId: null,
+        releaseGate: () => released = true,
+      );
+
+      expect(joined, isFalse);
+      expect(released, isFalse);
+    });
+  });
+
   group('presentInteractiveOnboardingScreen', () {
     test('상호작용 화면이 닫히기 전에 게이트를 내린다', () async {
       final presentation = Completer<Object?>();

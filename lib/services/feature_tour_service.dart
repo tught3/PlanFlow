@@ -1,4 +1,5 @@
 import '../core/safe_prefs.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Stores the completion state locally because the tour explains this device's UI.
 abstract class FeatureTourStore {
@@ -11,15 +12,21 @@ abstract class FeatureTourStore {
 }
 
 class SharedPreferencesFeatureTourStore extends FeatureTourStore {
-  const SharedPreferencesFeatureTourStore();
+  const SharedPreferencesFeatureTourStore({
+    Future<SharedPreferences?> Function()? prefsProvider,
+  }) : _prefsProvider = prefsProvider ?? tryGetPrefs;
+
+  final Future<SharedPreferences?> Function() _prefsProvider;
 
   static const completedKey = 'feature_tour_completed_v1';
   static const _tipKeyPrefix = 'feature_tour_tip_v1:';
 
   @override
   Future<bool> shouldShow() async {
-    final prefs = await tryGetPrefs();
-    if (prefs == null) return false;
+    final prefs = await _prefsProvider();
+    if (prefs == null) {
+      throw StateError('Feature tour preference storage is unavailable');
+    }
     return prefs.getBool(completedKey) != true;
   }
 

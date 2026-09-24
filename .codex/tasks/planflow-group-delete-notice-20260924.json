@@ -1,0 +1,58 @@
+{
+  "task_id": "planflow-group-delete-notice-20260924",
+  "request": "Allow a group leader to delete a group even when members exist, with a confirmation modal explaining group schedules and memberships will be removed; show the other active members a one-time centered confirmation modal the next time they open Group Management saying the leader deleted the group and they were automatically removed. Fix the group delete failure shown in the screenshot.",
+  "requirements": [
+    "Fix backup RPC schema mismatch using a forward-only migration; do not rewrite historical applied migrations.",
+    "Preserve atomic backup-before-delete behavior, leader authorization, and cascade removal of group schedules/members.",
+    "Persist per-recipient deletion notices before group deletion, outside group cascade, visible only to each recipient, and acknowledge through a narrowly scoped safe contract.",
+    "Display notices on next Group Management entry with the requested Korean message and one centered 확인 button; no notice for deleting leader.",
+    "Keep cancel and red delete buttons side-by-side in the group-delete confirmation dialog; preserve unrelated dirty state and do not apply/deploy a live migration.",
+    "Apply to shared Flutter code used on iOS and Android."
+  ],
+  "routing_receipt": {
+    "entry": {"agent": "gpt-6-luna", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+    "classification": "Complex with high-risk database deletion/RLS review",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "reasoning_effort": "high"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+    ]
+  },
+  "role_reports": {
+    "Explorer": {"status": "RAN", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium", "result": "Current checkout verified. Existing PostgreSQL service was not modified; isolated disposable PostgreSQL 18 cluster is available and was used. Full device runtime still requires a new binary; foreign generated registrants, holiday task, release cache, and privacy pyc remain untouched."},
+    "Planner": {"status": "RAN", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "result": "Complete disposable migration/authorization/transaction proof, then rerun combined app tests, analyzer, diff-check, independent review, and integration. Do not apply production migration or deploy; require full staging-equivalent rehearsal before production apply."},
+    "Complex Implementer": {"status": "RAN", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium", "assignment": "Implement backup schema compatibility, atomic recipient notices, and group management notice UI.", "changed_files": ["lib/features/groups/models/group_deletion_notice.dart", "lib/features/groups/repositories/group_deletion_notice_repository.dart", "lib/features/groups/screens/group_detail_screen.dart", "lib/features/groups/screens/group_list_screen.dart", "supabase/migrations/20260924090000_group_delete_notices_and_backup_member_compat.sql", "supabase/schema.sql"], "result": "Leader can delete with members after confirmation; recipient notice is durable and acknowledged through recipient-scoped RPC. Forward migration repairs legacy left_at contract. Production migration not applied."},
+    "Test Executor": {"status": "RAN", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low", "assignment": "Run combined changed-surface tests, disposable PostgreSQL migration/transaction fixture, static SQL contract tests, targeted analyze, diff check.", "commands": ["& .\\scripts\\tests\\run_group_deletion_notice_runtime.ps1", "flutter test --no-pub seven targeted review/onboarding/group test files", "python -m unittest scripts.tests.test_group_deletion_notice_contract", "flutter analyze --no-pub changed Dart/test files", "git diff --check"], "exit_codes": [0, 0, 0, 0, 0], "result": "Disposable PostgreSQL 18 fixture PASS: migration, generated left_at backup compatibility, leader-only delete, active-member notices, recipient-only list/ack, schedule cascade, preserved personal events with group_event_id SET NULL, and notice/backup rollback. Flutter 43 PASS; Python 5 PASS; analyze 16 items clean; diff check clean. Test cluster and matching process removed."},
+    "Reviewer": {"status": "RAN", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high", "assignment": "Independent final diff and runtime-fixture review.", "result": "No BLOCKER/HIGH. LOW: runner must preserve temp files if pg_ctl stop fails (fixed). LOW: fixture duplicates modeled canonical delete RPC rather than loading full production schema; disclose this scope limitation; full staging-equivalent rehearsal remains before production apply."},
+    "High-risk Escalation": {"status": "RAN", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "reasoning_effort": "high", "result": "APPROVED for source integration and pre-deploy preparation; no BLOCKER/HIGH. Disposable proof passed with group schedule cascade and personal-event SET NULL fidelity. MEDIUM qualification: fixture is minimal and uses a copied delete RPC, so it is not full deployed-schema equivalence; rehearse on full staging-equivalent schema before production migration."},
+    "Integrator": {"status": "RAN", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "assignment": "Inspect final diff, tests, current Git state, and reviewer evidence.", "result": "PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION. All requested code and local verification gates pass. Source commit/pathspec-only rebase/non-force push are safe if dirty-worktree protections permit; no production migration or app deployment performed. Full staging-equivalent migration rehearsal remains before production apply; real device proof requires new binary."}
+  },
+  "foreign_dirty_at_start": [
+    "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+    "ios/Runner/GeneratedPluginRegistrant.m",
+    "linux/flutter/generated_plugin_registrant.cc",
+    "linux/flutter/generated_plugins.cmake",
+    "macos/Flutter/GeneratedPluginRegistrant.swift",
+    ".codex/tasks/planflow-holiday-canonical-20260923.json",
+    ".pub-cache-release/",
+    "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"
+  ],
+  "forbidden_actions": ["apply production migration", "deploy", "force push", "reset", "clean", "foreign stash or revert"],
+  "plan": [
+    {"id": "forward-migration-and-schema", "classification": "High Risk", "owner": "flux_complex_implementer", "status": "DONE_SOURCE_ONLY"},
+    {"id": "recipient-notice-ui-and-ack", "classification": "Complex", "owner": "flux_complex_implementer", "status": "DONE_SOURCE_ONLY"},
+    {"id": "tests-review-integration", "classification": "Complex", "owner": "delivery roles", "status": "DB_FIXTURE_PASS_REVIEWED"}
+  ],
+  "allowed_files": ["scripts/tests/group_deletion_notice_runtime.sql", "scripts/tests/run_group_deletion_notice_runtime.ps1", "scripts/tests/test_group_deletion_notice_contract.py"],
+  "tests": [{"command": "& .\\scripts\\tests\\run_group_deletion_notice_runtime.ps1", "exit_code": 0, "result": "Disposable PostgreSQL fixture PASS; exact ephemeral cluster shut down and removed."}, {"command": "Flutter targeted review/onboarding/group tests", "exit_code": 0, "result": "43 passed"}, {"command": "python -m unittest scripts.tests.test_group_deletion_notice_contract", "exit_code": 0, "result": "5 passed"}, {"command": "flutter analyze --no-pub changed Dart/test files", "exit_code": 0, "result": "16 items; no issues"}, {"command": "git diff --check", "exit_code": 0, "result": "clean; line-ending warnings only"}],
+  "reviewer_findings": [{"severity": "LOW", "finding": "Runtime fixture uses a minimal schema and copied delete RPC, so it does not establish full deployed-schema equivalence.", "status": "ACKNOWLEDGED_PRE_PRODUCTION_STAGING_REHEARSAL_REQUIRED"}],
+  "unresolved": ["Production migration intentionally remains unapplied; rehearse the forward migration on a full staging-equivalent schema before production apply."],
+  "final_routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "High-risk Escalation", "Integrator"], "not_run_roles": []},
+  "delivery": {"source_commit": null, "push": null, "production_migration": "NOT_APPLIED", "deployment": "NOT_REQUESTED"},
+  "final_verdict": "PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION",
+  "last_updated": "2026-09-24"
+}

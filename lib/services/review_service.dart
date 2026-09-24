@@ -56,10 +56,12 @@ class ReviewService {
       await prefs.setInt(_kFirstSaveAt, firstSaveAt);
       await prefs.setStringList(_kActiveDays, activeDays.toList()..sort());
 
-      if (count < _kReviewThreshold ||
-          activeDays.length < _kMinimumActiveDays ||
-          current.difference(DateTime.fromMillisecondsSinceEpoch(firstSaveAt)) <
-              _kMinimumUsageAge) {
+      final hasEnoughSaves = count >= _kReviewThreshold;
+      final hasEnoughActiveDays = activeDays.length >= _kMinimumActiveDays;
+      final hasEnoughUsageAge = current
+              .difference(DateTime.fromMillisecondsSinceEpoch(firstSaveAt)) >=
+          _kMinimumUsageAge;
+      if (!hasEnoughSaves && !hasEnoughActiveDays && !hasEnoughUsageAge) {
         return;
       }
       final lastPromptAt = prefs.getInt(_kLastPromptAt);

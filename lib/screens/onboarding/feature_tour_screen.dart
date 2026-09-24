@@ -8,10 +8,12 @@ class FeatureTourScreen extends StatefulWidget {
     super.key,
     this.store = const SharedPreferencesFeatureTourStore(),
     this.onCompleted,
+    this.requireFinalConfirmation = false,
   });
 
   final FeatureTourStore store;
   final VoidCallback? onCompleted;
+  final bool requireFinalConfirmation;
 
   @override
   State<FeatureTourScreen> createState() => _FeatureTourScreenState();
@@ -79,7 +81,7 @@ class _FeatureTourScreenState extends State<FeatureTourScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
+        if (!didPop && !widget.requireFinalConfirmation) {
           _complete();
         }
       },
@@ -90,14 +92,17 @@ class _FeatureTourScreenState extends State<FeatureTourScreen> {
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
             child: Column(
               children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    key: const ValueKey('feature-tour-skip-button'),
-                    onPressed: _isCompleting ? null : _complete,
-                    child: const Text('건너뛰기'),
+                if (widget.requireFinalConfirmation)
+                  const SizedBox(height: 48)
+                else
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      key: const ValueKey('feature-tour-skip-button'),
+                      onPressed: _isCompleting ? null : _complete,
+                      child: const Text('건너뛰기'),
+                    ),
                   ),
-                ),
                 Expanded(
                   child: PageView.builder(
                     controller: _pageController,

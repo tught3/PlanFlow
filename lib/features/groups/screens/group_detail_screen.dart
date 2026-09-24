@@ -380,7 +380,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '"${group.name}" 그룹을 삭제하면 모든 멤버, 초대, 일정이 함께 삭제됩니다. '
+                '그룹을 삭제하면 모든 그룹 일정이 삭제되고, 모든 멤버는 자동 탈퇴됩니다. '
+                '"${group.name}" 그룹을 삭제하시겠습니까? '
                 '삭제 전 자동으로 백업이 저장되며, 기본 30일 동안 [설정 → 삭제된 그룹]에서 복원할 수 있습니다.',
                 style: const TextStyle(fontSize: 14),
               ),

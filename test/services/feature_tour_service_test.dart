@@ -13,6 +13,15 @@ void main() {
     expect(await store.shouldShow(), isFalse);
   });
 
+  test('unavailable preference storage fails closed instead of skipping tour',
+      () async {
+    final store = SharedPreferencesFeatureTourStore(
+      prefsProvider: () async => null,
+    );
+
+    await expectLater(store.shouldShow(), throwsA(isA<StateError>()));
+  });
+
   test('shows each contextual tip only once', () async {
     const store = SharedPreferencesFeatureTourStore();
 

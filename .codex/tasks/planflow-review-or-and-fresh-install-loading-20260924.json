@@ -1,0 +1,52 @@
+{
+  "task_id": "planflow-review-or-and-fresh-install-loading-20260924",
+  "request": "Change store-review milestones to OR and fix a fresh-install Shell loading gate after a first schedule save and a three-page tutorial disappearing before final confirmation, for shared iOS/Android code.",
+  "requirements": [
+    "Any one of saves >=5, distinct active days >=3, or 7 days since first save qualifies for review; preserve cooldown, native availability and retry behavior.",
+    "A same-account recreated Shell may release only its local visual gate when joining an in-flight onboarding flow; preserve single-flight ownership and completion semantics.",
+    "On a fresh install, the three-page feature tour must remain until final explicit confirmation; hide skip and prevent system back from completing it. Keep optional Settings reruns unchanged.",
+    "Storage read timeout/error must fail closed for required tutorial completion while releasing the visual loading gate and keeping the session incomplete.",
+    "Preserve foreign dirty files; no deployment requested."
+  ],
+  "routing_receipt": {
+    "entry": {"agent": "gpt-6-luna", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+    "classification": "Complex",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+      {"role": "Simple Implementer", "agent": "flux_simple_implementer", "model": "gpt-6-luna", "reasoning_effort": "low"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+    ]
+  },
+  "role_reports": {
+    "Explorer_review_policy": {"status": "RAN", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium", "result": "ReviewService originally required all three milestones (AND); tests encoded AND behavior."},
+    "Explorer_loading": {"status": "RAN", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium", "result": "Screenshot matches ShellScreen onboarding-decision loading UI. A recreated shell awaiting the static shared interactive flow is a source-level candidate; no device runtime proof."},
+    "Planner_review_policy": {"status": "RAN", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "result": "Test each milestone independently as an OR branch while preserving cooldown/unavailable retry."},
+    "Planner_loading": {"status": "RAN", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "result": "Same-account joining shell releases local gate immediately without owning/completing the shared flow."},
+    "Simple Implementer": {"status": "RAN", "agent": "flux_simple_implementer", "model": "gpt-6-luna", "reasoning_effort": "low", "assignment": "Implement OR review qualification in service and isolated tests.", "changed_files": ["lib/services/review_service.dart", "test/services/review_service_test.dart"], "result": "All three milestones qualify independently; cooldown and unavailable retry preserved."},
+    "Complex Implementer": {"status": "RAN", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium", "assignment": "Fix same-account recreated Shell loading gate and required first-run tour confirmation with fail-closed preference-read behavior.", "changed_files": ["lib/core/router.dart", "lib/screens/onboarding/feature_tour_screen.dart", "lib/screens/shell_screen.dart", "test/screens/feature_tour_screen_test.dart", "test/screens/shell_screen_onboarding_gate_test.dart"], "result": "Shared-flow local gate fix, required first-run confirmation mode, optional settings behavior preserved. Fixed reviewer MEDIUM finding for storage timeout/error. Implementer reports follow-up 20 tests PASS and targeted analyze PASS; final combined run pending."},
+    "Test Executor": {"status": "RAN", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low", "assignment": "Final combined review, onboarding, group regression, disposable database suite; targeted analyze and diff check.", "commands": ["scripts/tests/run_group_deletion_notice_runtime.ps1", "flutter test --no-pub seven targeted review/onboarding/group test files", "python -m unittest scripts.tests.test_group_deletion_notice_contract", "flutter analyze --no-pub 16 changed Dart/test files", "git diff --check"], "exit_codes": [0, 0, 0, 0, 0], "result": "Disposable PostgreSQL migration/transaction fixture PASS; Flutter 43 PASS; Python 5 PASS; analyze 16 items clean; diff check clean. Exact temporary cluster/process removed."},
+    "Reviewer": {"status": "RAN", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high", "assignment": "Independent final review of all four changes and runtime fixture.", "result": "No BLOCKER/HIGH. Low runner cleanup issue fixed and verified. Minimal test-schema/copied-RPC scope caveat disclosed; full staging-equivalent rehearsal still required before production migration. Device runtime proof unavailable; verify new binary after deployment."},
+    "Integrator": {"status": "RAN", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "assignment": "Inspect final combined diff, task states, tests, and reviewer evidence.", "result": "PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION. All requested source changes and local tests/review pass. Device runtime requires the new binary; no deployment performed. Production migration requires full staging-equivalent rehearsal."}
+  },
+  "foreign_dirty_at_start": ["ios/Runner/GeneratedPluginRegistrant.m", "linux/flutter/generated_plugin_registrant.cc", "linux/flutter/generated_plugins.cmake", "macos/Flutter/GeneratedPluginRegistrant.swift", ".codex/tasks/planflow-holiday-canonical-20260923.json", ".pub-cache-release/", "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"],
+  "foreign_dirty_observed_during_work": ["android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"],
+  "allowed_files": ["lib/services/review_service.dart", "test/services/review_service_test.dart", "lib/core/router.dart", "lib/screens/shell_screen.dart", "lib/screens/onboarding/feature_tour_screen.dart", "test/screens/shell_screen_onboarding_gate_test.dart", "test/screens/feature_tour_screen_test.dart", ".codex/tasks/planflow-review-or-and-fresh-install-loading-20260924.json"],
+  "forbidden_actions": ["deploy", "force push", "reset", "clean", "foreign stash or revert"],
+  "plan": [
+    {"id": "review-or", "classification": "Simple", "owner": "flux_simple_implementer", "status": "DONE"},
+    {"id": "loading-gate", "classification": "Complex", "owner": "flux_complex_implementer", "status": "DONE"},
+    {"id": "required-tour-confirmation", "classification": "Complex", "owner": "flux_complex_implementer", "status": "DONE"},
+    {"id": "tests-review-integration", "classification": "Complex", "owner": "delivery roles", "status": "DONE_SOURCE_ONLY"}
+  ],
+  "tests": [{"command": "scripts/tests/run_group_deletion_notice_runtime.ps1", "exit_code": 0, "result": "Disposable PostgreSQL runtime proof PASS; cluster removed."}, {"command": "Flutter targeted review/onboarding/group tests", "exit_code": 0, "result": "43 passed"}, {"command": "python -m unittest scripts.tests.test_group_deletion_notice_contract", "exit_code": 0, "result": "5 passed"}, {"command": "flutter analyze --no-pub changed Dart/test files", "exit_code": 0, "result": "16 items; no issues"}, {"command": "git diff --check", "exit_code": 0, "result": "clean; line-ending warnings only"}],
+  "reviewer_findings": [{"severity": "MEDIUM", "finding": "Required tutorial preference read timeout/error could fail open.", "status": "FIXED_AND_RETESTED"}],
+  "unresolved": ["No affected-device runtime logs available; screenshot loading diagnosis is code-path analysis, not live phone confirmation. Real-device retest requires a new binary if issue persists."],
+  "final_routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Simple Implementer", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []},
+  "delivery": {"source_commit": null, "push": null, "deployment": "NOT_REQUESTED"},
+  "final_verdict": "SOURCE_READY_WITH_RUNTIME_GAP",
+  "last_updated": "2026-09-24"
+}

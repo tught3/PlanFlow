@@ -99,6 +99,36 @@ Future<T> presentInteractiveOnboardingScreen<T>(
   }
 }
 
+/// Reads whether the first-run feature tour is still required. `null` means the
+/// preference could not be established (timeout or error), so callers must
+/// fail closed and keep onboarding incomplete.
+Future<bool?> probeFeatureTourRequirement({
+  required Future<bool> Function() read,
+  required Duration timeout,
+}) async {
+  try {
+    return await read()
+        .then<bool?>((value) => value)
+        .timeout(timeout, onTimeout: () => null);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// A recreated shell may encounter an onboarding flow already owned by another
+/// shell. Only the same account may join that flow, and joining releases this
+/// shell's visual gate without claiming that onboarding completed.
+@visibleForTesting
+bool releaseGateForJoiningOnboardingFlow({
+  required String joiningUserId,
+  required String? flowUserId,
+  required void Function() releaseGate,
+}) {
+  if (flowUserId != joiningUserId) return false;
+  releaseGate();
+  return true;
+}
+
 /// 온보딩 단계들을 선언 순서대로(앞 단계가 끝나야 다음 단계 시작) 실행하고,
 /// 어떤 경로로 끝나든 [releaseGate]를 반드시 호출한다.
 ///
@@ -191,6 +221,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   // onboarding and expensive post-onboarding work for the same account.
   static String? _sessionOnboardingUserId;
   static Future<void>? _sessionOnboardingFlow;
+  static String? _sessionOnboardingFlowUserId;
   static String? _sessionDeferredWorkUserId;
 
   late int _currentIndex;
@@ -221,6 +252,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _checkedExternalCalendarGuide = false;
   bool _checkedGoogleCalendarAutoPrompt = false;
   bool _checkedFeatureTour = false;
+  bool _requiredFeatureTourConfirmed = true;
   bool _postOnboardingStartupTasksQueued = false;
   final OnboardingStartupGate _startupGate = OnboardingStartupGate();
   final InteractionIdleGate _interactionIdleGate = InteractionIdleGate.instance;
@@ -342,6 +374,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _checkedExternalCalendarGuide = false;
     _checkedGoogleCalendarAutoPrompt = false;
     _checkedFeatureTour = false;
+    _requiredFeatureTourConfirmed = true;
     _postOnboardingStartupTasksQueued = false;
     _startupGate.reset();
     _startupWorkGeneration += 1;
@@ -350,6 +383,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     // claims. Recreating ShellScreen for a tab change must not reset them.
     _sessionOnboardingUserId = null;
     _sessionOnboardingFlow = null;
+    _sessionOnboardingFlowUserId = null;
     _sessionDeferredWorkUserId = null;
 
     if (!mounted) {
@@ -375,6 +409,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   Future<void> _runSignedInStartupTasks({required String reason}) async {
     final userId = authProvider.userId;
     if (userId == null || userId.isEmpty) {
+      // The auth provider can transiently expose an empty id while startup is
+      // resolving. Never leave this shell's loading gate up on that path.
+      _clearOnboardingGate();
       return;
     }
     if (_sessionOnboardingUserId == userId) {
@@ -384,29 +421,37 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
     final inFlight = _sessionOnboardingFlow;
-    if (inFlight != null) {
-      // 먼저 시작한 인스턴스의 flow가 던지더라도, 이 인스턴스는 반드시 아래
-      // 게이트 해제까지 도달해야 한다. 여기서 예외가 새면 "로딩 중" 화면이
-      // 영구히 남는다.
-      try {
-        await inFlight;
-      } catch (error, stackTrace) {
-        DiagLogger.log('Onboarding', 'shared onboarding flow failed: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
-      if (mounted && _onboardingDecisionPending) {
-        setState(() => _onboardingDecisionPending = false);
-      }
+    if (inFlight != null &&
+        releaseGateForJoiningOnboardingFlow(
+          joiningUserId: userId,
+          flowUserId: _sessionOnboardingFlowUserId,
+          releaseGate: _clearOnboardingGate,
+        )) {
+      // The owner continues the single-flight flow. This shell must not wait
+      // for an interactive onboarding route's Future: on a first install that
+      // can stay pending for the entire visit. Releasing only this instance's
+      // visual gate does not mark the session complete or start duplicate work.
+      DiagLogger.log(
+          'Onboarding', 'joined in-flight flow; local gate released');
       return;
+    }
+    if (inFlight != null) {
+      // A flow owned by another account is not joinable. Auth transitions
+      // invalidate the static pointer, but this check also closes the race
+      // where an old future was already read by this method.
+      DiagLogger.log(
+          'Onboarding', 'ignoring in-flight flow for another account');
     }
 
     final flow = _performSignedInStartupTasks(reason: reason, userId: userId);
     _sessionOnboardingFlow = flow;
+    _sessionOnboardingFlowUserId = userId;
     try {
       await flow;
     } finally {
       if (identical(_sessionOnboardingFlow, flow)) {
         _sessionOnboardingFlow = null;
+        _sessionOnboardingFlowUserId = null;
       }
     }
   }
@@ -441,8 +486,17 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
         // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
         // 게이트는 그래도 풀린다.
-        shouldContinue: () => mounted,
-        releaseGate: _clearOnboardingGate,
+        shouldContinue: () =>
+            mounted &&
+            authProvider.userId == userId &&
+            _requiredFeatureTourConfirmed,
+        releaseGate: () {
+          if (mounted &&
+              _observedUserId == userId &&
+              authProvider.userId == userId) {
+            _clearOnboardingGate();
+          }
+        },
         presentationTimeout: _onboardingPresentationTimeout,
       );
     } catch (error, stackTrace) {
@@ -463,18 +517,16 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       //    작업 큐잉)이 통째로 스킵되지 않는다. 특히 static인
       //    _sessionOnboardingUserId 기록은 인스턴스가 교체돼도 남으므로,
       //    새 인스턴스가 온보딩을 처음부터 다시 돌리는 루프를 끊는다.
-      //  - 살아 있는 인스턴스에서는 _clearOnboardingGate() 호출 자체가
-      //    스킵되지 않는다(setState만 mounted로 가드).
+      //  - 현재 계정이 계속 같은 경우 살아 있는 인스턴스의 게이트가
+      //    반드시 해제된다. 계정 전환 뒤에는 이전 flow가 새 세션의 게이트를
+      //    잘못 내리지 않도록 identity를 확인한다.
       //
-      // 해결되지 않는 것:
-      //  - _onboardingDecisionPending은 인스턴스 필드라, 이미 죽은 인스턴스에서
-      //    내려봐야 새 인스턴스의 "로딩 중" 화면에는 영향이 없다(그 경우
-      //    _clearOnboardingGate는 사실상 no-op이다). 인스턴스 교체 시나리오를
-      //    실제로 끊는 것은 교차 인스턴스 복구가 아니라 "유한 시간 종료 보장"
-      //    이다: 단계별 타임아웃 + 단계/체인 catch + _sessionOnboardingFlow를
-      //    await하는 쪽의 try/catch가 새 인스턴스도 반드시 자기 게이트 해제
-      //    지점에 도달하게 만든다.
-      _clearOnboardingGate();
+      //  - 새 인스턴스는 같은 계정의 단일 실행 flow에 합류할 때 기다리지
+      //    않고 자기 UI 게이트를 내린다. 원래 소유 인스턴스만 전체 흐름 완료를
+      //    기록하므로 route 표시와 세션 완료 판정은 분리된다.
+      if (_observedUserId == userId && authProvider.userId == userId) {
+        _clearOnboardingGate();
+      }
       if (flowCompleted && authProvider.userId == userId) {
         _sessionOnboardingUserId = userId;
       }
@@ -483,7 +535,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms '
             '(completed=$flowCompleted, mounted=$mounted)',
       );
-      if (flowCompleted) {
+      if (flowCompleted && authProvider.userId == userId) {
         _queuePostOnboardingStartupTasks(
           reason: reason,
           generation: _startupWorkGeneration,
@@ -496,7 +548,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   /// 기다리지 않고 로딩 게이트를 즉시 내린다. 자세한 근거는
   /// [presentInteractiveOnboardingScreen] 문서 참고.
   Future<T> _presentInteractive<T>(Future<T> Function() present) {
-    return presentInteractiveOnboardingScreen(present, _clearOnboardingGate);
+    final flowUserId = _sessionOnboardingFlowUserId;
+    return presentInteractiveOnboardingScreen(present, () {
+      if (flowUserId != null && authProvider.userId == flowUserId) {
+        _clearOnboardingGate();
+      }
+    });
   }
 
   void _queuePostOnboardingStartupTasks({
@@ -591,14 +648,44 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   Future<void> _maybeOpenFeatureTour() async {
     if (_checkedFeatureTour || !mounted) return;
     _checkedFeatureTour = true;
-    // prefs 읽기가 멈추면 화면엔 "로딩 중"만 남는다. 상한을 넘기면 투어를
-    // 건너뛴다(다음 실행에서 다시 판정된다).
-    final shouldShow = await const SharedPreferencesFeatureTourStore()
-        .shouldShow()
-        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
+    const store = SharedPreferencesFeatureTourStore();
+    // Preference unavailability must not silently skip the mandatory tour.
+    // The stage-chain timeout releases the visual loading gate, while
+    // `_requiredFeatureTourConfirmed` keeps this session incomplete.
+    final shouldShow = await probeFeatureTourRequirement(
+      read: store.shouldShow,
+      timeout: _onboardingProbeTimeout,
+    );
+    if (shouldShow == null) {
+      _requiredFeatureTourConfirmed = false;
+      DiagLogger.log(
+        'Onboarding',
+        'feature tour preference unavailable; session remains incomplete',
+      );
+      return;
+    }
     if (shouldShow && mounted) {
+      _requiredFeatureTourConfirmed = false;
       // push 호출 즉시 로딩 게이트를 내린다(화면이 닫히기를 기다리지 않는다).
-      await _presentInteractive(() => context.push(AppRoutes.featureTour));
+      await _presentInteractive(
+        () => context.push('${AppRoutes.featureTour}?required=true'),
+      );
+      // Do not treat an externally dismissed route (for example, navigation
+      // replacing the stack) as completion. Only the tour's final confirmation
+      // writes this flag to local storage.
+      final stillRequired = await probeFeatureTourRequirement(
+        read: store.shouldShow,
+        timeout: _onboardingProbeTimeout,
+      );
+      _requiredFeatureTourConfirmed = stillRequired == false;
+      if (stillRequired != false) {
+        DiagLogger.log(
+          'Onboarding',
+          'feature tour completion could not be confirmed; session remains incomplete',
+        );
+      }
+    } else {
+      _requiredFeatureTourConfirmed = true;
     }
   }
 

@@ -12,19 +12,23 @@ import '../providers/group_context_provider.dart';
 import '../providers/group_context_state.dart';
 import '../providers/group_invite_provider.dart';
 import '../providers/group_invite_state.dart';
+import '../repositories/group_deletion_notice_repository.dart';
 
 class GroupListScreen extends StatefulWidget {
   const GroupListScreen({
     super.key,
     GroupContextProvider? provider,
     GroupInviteProvider? inviteProvider,
+    GroupDeletionNoticeRepository? deletionNoticeRepository,
     String? currentUserIdOverride,
   })  : _provider = provider,
         _inviteProvider = inviteProvider,
+        _deletionNoticeRepository = deletionNoticeRepository,
         _currentUserIdOverride = currentUserIdOverride;
 
   final GroupContextProvider? _provider;
   final GroupInviteProvider? _inviteProvider;
+  final GroupDeletionNoticeRepository? _deletionNoticeRepository;
   final String? _currentUserIdOverride;
 
   @override
@@ -36,6 +40,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
   late final GroupInviteProvider _inviteProvider;
   late final bool _ownsProvider;
   late final bool _ownsInviteProvider;
+  late final GroupDeletionNoticeRepository _deletionNoticeRepository;
+  bool _checkingDeletionNotices = false;
+  bool _deletionNoticeDialogOpen = false;
+  String? _activeNoticeAccountId;
 
   @override
   void initState() {
@@ -44,11 +52,25 @@ class _GroupListScreenState extends State<GroupListScreen> {
     _ownsInviteProvider = widget._inviteProvider == null;
     _provider = widget._provider ?? GroupContextProvider();
     _inviteProvider = widget._inviteProvider ?? GroupInviteProvider();
+    _deletionNoticeRepository = widget._deletionNoticeRepository ??
+        GroupDeletionNoticeRepository.supabase();
+    authProvider.addListener(_onAuthAccountChanged);
     unawaited(_load());
+  }
+
+  void _onAuthAccountChanged() {
+    final capturedUserId = _activeNoticeAccountId;
+    if (_deletionNoticeDialogOpen &&
+        capturedUserId != null &&
+        !_isCurrentNoticeAccount(capturedUserId) &&
+        mounted) {
+      Navigator.of(context, rootNavigator: true).maybePop(false);
+    }
   }
 
   @override
   void dispose() {
+    authProvider.removeListener(_onAuthAccountChanged);
     if (_ownsProvider) {
       _provider.dispose();
     }
@@ -64,6 +86,72 @@ class _GroupListScreenState extends State<GroupListScreen> {
       _provider.load(userId),
       _inviteProvider.load(userId),
     ]);
+    if (userId.isNotEmpty) {
+      await _showPendingDeletionNotices(userId);
+    }
+  }
+
+  String _currentAccountId() =>
+      widget._currentUserIdOverride ?? authProvider.userId ?? '';
+
+  bool _isCurrentNoticeAccount(String capturedUserId) =>
+      mounted &&
+      capturedUserId.isNotEmpty &&
+      _currentAccountId() == capturedUserId;
+
+  Future<void> _showPendingDeletionNotices(String capturedUserId) async {
+    if (_checkingDeletionNotices ||
+        !_isCurrentNoticeAccount(capturedUserId)) {
+      return;
+    }
+    _checkingDeletionNotices = true;
+    _activeNoticeAccountId = capturedUserId;
+    try {
+      final notices = await _deletionNoticeRepository.listPending();
+      if (!_isCurrentNoticeAccount(capturedUserId)) return;
+      for (final notice in notices) {
+        if (!mounted || !_isCurrentNoticeAccount(capturedUserId)) return;
+        _deletionNoticeDialogOpen = true;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('그룹 삭제 안내'),
+            content: Text(
+              notice.groupName.isEmpty
+                  ? '그룹의 리더가 그룹을 삭제하였습니다. 자동 탈퇴되었습니다.'
+                  : '그룹 "${notice.groupName}"의 리더가 그룹을 삭제하였습니다. 자동 탈퇴되었습니다.',
+              textAlign: TextAlign.center,
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              FilledButton(
+                key: ValueKey<String>(
+                    'group-deletion-notice-confirm-${notice.id}'),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('확인'),
+              ),
+            ],
+          ),
+        );
+        _deletionNoticeDialogOpen = false;
+        if (!_isCurrentNoticeAccount(capturedUserId)) return;
+        if (confirmed == true) {
+          if (!_isCurrentNoticeAccount(capturedUserId)) return;
+          await _deletionNoticeRepository.acknowledge(notice.id);
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('그룹 삭제 안내를 확인하지 못했어요. 새로고침해 주세요.')),
+        );
+      }
+    } finally {
+      _deletionNoticeDialogOpen = false;
+      _activeNoticeAccountId = null;
+      _checkingDeletionNotices = false;
+    }
   }
 
   Future<void> _openCreateGroup() async {
@@ -270,13 +358,11 @@ class _GroupListScreenState extends State<GroupListScreen> {
                         child: Text(
                           displayName.isEmpty ? '(이름없음)' : '($displayName)',
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                                color: PlanFlowColors.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: PlanFlowColors.textSecondary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                       ),
                     ],
