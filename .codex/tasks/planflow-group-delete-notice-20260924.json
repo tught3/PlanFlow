@@ -52,7 +52,27 @@
   "reviewer_findings": [{"severity": "LOW", "finding": "Runtime fixture uses a minimal schema and copied delete RPC, so it does not establish full deployed-schema equivalence.", "status": "ACKNOWLEDGED_PRE_PRODUCTION_STAGING_REHEARSAL_REQUIRED"}],
   "unresolved": ["Production migration intentionally remains unapplied; rehearse the forward migration on a full staging-equivalent schema before production apply."],
   "final_routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "High-risk Escalation", "Integrator"], "not_run_roles": []},
-  "delivery": {"source_commit": "87256e3f", "push": "origin/session/planflow-remediation-20260924 (non-force; main rebase safely stopped because preserved foreign dirty files are unstaged)", "production_migration": "NOT_APPLIED", "deployment": "NOT_REQUESTED"},
-  "final_verdict": "PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION",
+  "delivery": {"source_commit": "87256e3f", "main_integration_commit": "09c3e73fb4f5e1e05b75387d33f37a6c874639ef", "push": "origin/main (non-force; HEAD == origin/main)", "production_migration": "NOT_APPLIED", "deployment": "NOT_REQUESTED"},
+  "continuation_20260924": {
+    "request": "Complete the local/staging-equivalent rehearsal and resolve the origin/main divergence while preserving unrelated dirty paths and worktrees.",
+    "staging_equivalent": "BLOCKED_NO_ISOLATED_PLANFLOW_STAGING_TARGET",
+    "supabase_target_safety": "No migration applied: PlanFlow ref is production; configured host resolves to a different project; no staging project/branch/config found.",
+    "local_rehearsal": "PASS_DISPOSABLE_MINIMAL_SCHEMA_ONLY_NOT_FULL_STAGING_EQUIVALENCE",
+    "integration": {"method": "git merge origin/main", "origin_main_before": "54014adc1fb21d8d0ce7dd63b44040ab5400a688", "merge_commit": "09c3e73fb4f5e1e05b75387d33f37a6c874639ef", "origin_main_after": "09c3e73fb4f5e1e05b75387d33f37a6c874639ef", "push": "non-force PASS"},
+    "post_merge_tests": [
+      {"command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/run_group_deletion_notice_runtime.ps1", "exit_code": 0, "result": "Disposable PostgreSQL 18 fixture PASS; temporary cluster stopped and removed."},
+      {"command": "flutter test --no-pub test/services/review_service_test.dart test/services/feature_tour_service_test.dart test/screens/feature_tour_screen_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/features/groups/group_detail_screen_test.dart test/features/groups/group_list_screen_test.dart", "exit_code": 0, "result": "43 tests passed."},
+      {"command": "python -m unittest scripts.tests.test_group_deletion_notice_contract", "exit_code": 0, "result": "5 tests passed; task-generated pyc removed."},
+      {"command": "flutter analyze --no-pub (9 changed Dart files + 7 targeted test files)", "exit_code": 0, "result": "16 items analyzed; no issues."},
+      {"command": "git diff --check origin/main...HEAD", "exit_code": 0, "result": "PASS; pre-existing dirty generated files only produced line-ending warnings."}
+    ],
+    "reviewer_report": {"agent": "flux_reviewer", "status": "RAN", "verdict": "FINDINGS", "blocker_high": 0, "low": 1, "finding": "Minimal fixture copies the delete RPC and does not establish full deployed-schema equivalence; require isolated staging rehearsal before production migration."},
+    "high_risk_report": {"agent": "flux_high_risk_reviewer", "status": "RAN", "verdict": "GIT_MERGE_PUSH_SAFE_DB_REHEARSAL_BLOCKED", "blocker_high": 0},
+    "integrator_report": {"agent": "flux_integrator", "status": "RAN", "verdict": "PARTIAL_PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION", "app_deployment": "NOT_PERFORMED", "production_migration": "NOT_APPLIED"},
+    "foreign_dirty_preserved": ["5 generated registrants", ".codex/tasks/planflow-holiday-canonical-20260923.json", ".pub-cache-release/", "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"],
+    "existing_worktrees": "All inspected; unchanged and not deleted. Two dirty worktrees and two non-task-owned clean worktrees preserved.",
+    "final_routing_receipt": {"planned_roles": ["Explorer", "Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []}
+  },
+  "final_verdict": "PARTIAL_PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION",
   "last_updated": "2026-09-24"
 }
