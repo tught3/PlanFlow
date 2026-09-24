@@ -46,7 +46,7 @@
   "reviewer_findings": [{"severity": "MEDIUM", "finding": "Required tutorial preference read timeout/error could fail open.", "status": "FIXED_AND_RETESTED"}],
   "unresolved": ["No affected-device runtime logs available; screenshot loading diagnosis is code-path analysis, not live phone confirmation. Real-device retest requires a new binary if issue persists."],
   "final_routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Simple Implementer", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []},
-  "delivery": {"source_commit": null, "push": null, "deployment": "NOT_REQUESTED"},
+  "delivery": {"source_commit": "87256e3f", "push": "origin/session/planflow-remediation-20260924 (non-force; main rebase safely stopped because preserved foreign dirty files are unstaged)", "deployment": "NOT_REQUESTED"},
   "final_verdict": "SOURCE_READY_WITH_RUNTIME_GAP",
   "last_updated": "2026-09-24"
 }

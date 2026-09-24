@@ -52,7 +52,7 @@
   "reviewer_findings": [{"severity": "LOW", "finding": "Runtime fixture uses a minimal schema and copied delete RPC, so it does not establish full deployed-schema equivalence.", "status": "ACKNOWLEDGED_PRE_PRODUCTION_STAGING_REHEARSAL_REQUIRED"}],
   "unresolved": ["Production migration intentionally remains unapplied; rehearse the forward migration on a full staging-equivalent schema before production apply."],
   "final_routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "High-risk Escalation", "Integrator"], "not_run_roles": []},
-  "delivery": {"source_commit": null, "push": null, "production_migration": "NOT_APPLIED", "deployment": "NOT_REQUESTED"},
+  "delivery": {"source_commit": "87256e3f", "push": "origin/session/planflow-remediation-20260924 (non-force; main rebase safely stopped because preserved foreign dirty files are unstaged)", "production_migration": "NOT_APPLIED", "deployment": "NOT_REQUESTED"},
   "final_verdict": "PRE_DEPLOY_READY_WITH_STAGING_REHEARSAL_QUALIFICATION",
   "last_updated": "2026-09-24"
 }
