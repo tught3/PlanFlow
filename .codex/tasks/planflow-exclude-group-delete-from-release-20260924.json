@@ -54,7 +54,8 @@
     {"command": "rg group-deletion notice API/model/migration refs in active lib/test/schema/migrations", "exit_code": 1, "result": "No matches; expected absence."},
     {"command": "배포해.cmd -Check", "exit_code": 0, "result": "iOS and Android resolution PASS; no production dispatch or upload."}
   ],
-  "deployment": {"requested_order": "iOS then Android", "check": "PASS", "actual": "BLOCKED_FOREIGN_DIRTY_WORKTREE", "production_database": "UNCHANGED"},
+  "delivery": {"source_commit": "8fb34e4bf0f1adbdcd7f19fb369fff24e122b3fc", "origin_main": "8fb34e4bf0f1adbdcd7f19fb369fff24e122b3fc", "push": "PASS_NON_FORCE", "commit_summary": "12 files changed, 72 insertions(+), 919 deletions(-)"},
+  "deployment": {"requested_order": "iOS then Android", "check": "PASS", "actual": "BLOCKED_FOREIGN_DIRTY_WORKTREE", "blocker": "배포해.cmd exited 1 before iOS dispatch: iOS deployment requires a clean Git worktree. Foreign generated registrants, holiday task/cache and privacy pyc were preserved.", "production_database": "UNCHANGED"},
   "routing_receipt": {"planned_roles": [], "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"], "not_run_roles": []},
   "status": "SOURCE_READY_DEPLOYMENT_BLOCKED",
   "last_updated": "2026-09-24"
