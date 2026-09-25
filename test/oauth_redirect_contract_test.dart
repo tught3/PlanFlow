@@ -112,8 +112,9 @@ void main() {
     final source = file('lib/services/auth_service.dart').readAsStringSync();
 
     final launchModeDecision = RegExp(
-      r'final launchMode = !kIsWeb[\s\S]{0,20}?&&\s+Platform\.isIOS[\s\S]{0,200}?'
-      r'LaunchMode\.externalApplication\s*\n\s*:\s*LaunchMode\.inAppBrowserView',
+      r'final launchMode\s*=\s*!kIsWeb\s*&&\s*Platform\.isIOS\s*&&\s*'
+      r'appProvider\s*!=\s*PlanFlowOAuthProvider\.apple\s*\?\s*'
+      r'LaunchMode\.externalApplication\s*:\s*LaunchMode\.inAppBrowserView',
     ).firstMatch(source);
     expect(launchModeDecision, isNotNull,
         reason:

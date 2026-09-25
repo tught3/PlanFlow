@@ -21,21 +21,48 @@ enum OAuthCallbackPurpose {
   emailConfirmation,
 }
 
+/// Narrow external boundary for Supabase session exchange. Callback parsing,
+/// revision checks and routing remain the production implementation.
+abstract interface class OAuthCallbackSessionAdapter {
+  bool get hasCurrentSession;
+  Future<OAuthCallbackSession> completeCallback(Uri callbackUri);
+}
+
+class OAuthCallbackSession {
+  const OAuthCallbackSession({required this.userId, this.providerToken});
+
+  final String userId;
+  final String? providerToken;
+}
+
 class OAuthCallbackHandler {
-  OAuthCallbackHandler({AppLinks? appLinks})
-      : _appLinks = appLinks ?? AppLinks();
+  OAuthCallbackHandler({
+    AppLinks? appLinks,
+    AuthProvider? authProviderOverride,
+    OAuthCallbackSessionAdapter? sessionAdapter,
+    bool? supabaseReadyOverride,
+  })  : _appLinks = appLinks ?? AppLinks(),
+        _authProvider = authProviderOverride ?? authProvider,
+        _sessionAdapter = sessionAdapter,
+        _supabaseReadyOverride = supabaseReadyOverride;
 
   static final ValueNotifier<String?> latestUserMessage =
       ValueNotifier<String?>(null);
+  static int? _latestUserMessageRevision;
   static OAuthCallbackPurpose? _pendingPurpose;
   static String? _pendingMethod;
   static DateTime? _pendingStartedAt;
+  static int _pendingRevision = 0;
+  static Future<void> _pendingPersistenceQueue = Future<void>.value();
   static const _storedPendingPurposeKey = 'oauth_callback_pending_purpose';
   static const _storedPendingMethodKey = 'oauth_callback_pending_method';
   static const _storedPendingStartedAtKey = 'oauth_callback_pending_started_at';
   static const _naverCalendarLogTag = 'PlanFlowNaverCalendar';
 
   final AppLinks _appLinks;
+  final AuthProvider _authProvider;
+  final OAuthCallbackSessionAdapter? _sessionAdapter;
+  final bool? _supabaseReadyOverride;
   StreamSubscription<Uri>? _subscription;
   bool _initialLinkHandled = false;
 
@@ -62,54 +89,62 @@ class OAuthCallbackHandler {
         'fragmentKeys=${fragmentParameters.keys.join(',')}';
   }
 
-  static void markPendingLogin(PlanFlowOAuthProvider provider) {
+  static int markPendingLogin(PlanFlowOAuthProvider provider) {
     clearLatestUserMessage();
+    final method = _methodForProvider(provider);
+    if (_pendingPurpose == OAuthCallbackPurpose.login &&
+        _pendingMethod == method &&
+        _pendingStartedAt != null &&
+        DateTime.now().difference(_pendingStartedAt!) <=
+            const Duration(minutes: 10)) {
+      // LoginScreen and AuthService both mark the same launch boundary. Keep a
+      // single revision so screen cancellation remains scoped to this attempt.
+      return _pendingRevision;
+    }
+    final revision = ++_pendingRevision;
     _pendingPurpose = OAuthCallbackPurpose.login;
-    _pendingMethod = switch (provider) {
-      PlanFlowOAuthProvider.google => 'google',
-      PlanFlowOAuthProvider.kakao => 'kakao',
-      PlanFlowOAuthProvider.naver => 'naver',
-      PlanFlowOAuthProvider.apple => 'apple',
-    };
+    _pendingMethod = method;
     _pendingStartedAt = DateTime.now();
     unawaited(persistCurrentPendingCallback());
+    return revision;
   }
 
-  static void markPendingCalendarLink(PlanFlowOAuthProvider provider) {
+  static int markPendingCalendarLink(PlanFlowOAuthProvider provider) {
     clearLatestUserMessage();
+    final revision = ++_pendingRevision;
     _pendingPurpose = OAuthCallbackPurpose.calendarLink;
-    _pendingMethod = switch (provider) {
-      PlanFlowOAuthProvider.google => 'google',
-      PlanFlowOAuthProvider.kakao => 'kakao',
-      PlanFlowOAuthProvider.naver => 'naver',
-      PlanFlowOAuthProvider.apple => 'apple',
-    };
+    _pendingMethod = _methodForProvider(provider);
     _pendingStartedAt = DateTime.now();
     if (provider == PlanFlowOAuthProvider.naver) {
       _logNaverCalendar('markPendingCalendarLink provider=naver');
     }
     unawaited(persistCurrentPendingCallback());
+    return revision;
   }
 
   static void markPendingEmailConfirmation() {
     clearLatestUserMessage();
+    _pendingRevision++;
     _pendingPurpose = OAuthCallbackPurpose.emailConfirmation;
     _pendingMethod = 'email';
     _pendingStartedAt = DateTime.now();
     unawaited(persistCurrentPendingCallback());
   }
 
-  static String? consumePendingLoginMethod() {
+  static String? consumePendingLoginMethod({int? expectedRevision}) {
+    if (expectedRevision != null && expectedRevision != _pendingRevision) {
+      return null;
+    }
     final purpose = _pendingPurpose;
     final method = _pendingMethod;
     final startedAt = _pendingStartedAt;
-    clearPendingCallback();
     if (purpose != OAuthCallbackPurpose.login ||
         method == null ||
         startedAt == null ||
         DateTime.now().difference(startedAt) > const Duration(minutes: 10)) {
       return null;
     }
+    clearPendingCallback();
     return method;
   }
 
@@ -122,11 +157,78 @@ class OAuthCallbackHandler {
     _pendingPurpose = null;
     _pendingMethod = null;
     _pendingStartedAt = null;
-    unawaited(_clearStoredPendingCallback());
+    final revision = ++_pendingRevision;
+    unawaited(_enqueuePendingPersistence(
+      revision: revision,
+      purpose: null,
+      method: null,
+      startedAt: null,
+    ));
   }
 
+  static String _methodForProvider(PlanFlowOAuthProvider provider) =>
+      switch (provider) {
+        PlanFlowOAuthProvider.google => 'google',
+        PlanFlowOAuthProvider.kakao => 'kakao',
+        PlanFlowOAuthProvider.naver => 'naver',
+        PlanFlowOAuthProvider.apple => 'apple',
+      };
+
+  /// Cancels only the login attempt that owns [revision]. A late lifecycle
+  /// callback from an older provider chooser must not cancel a newer attempt,
+  /// calendar link, or email confirmation.
+  static bool clearPendingLogin(int revision) {
+    if (revision != _pendingRevision ||
+        _pendingPurpose != OAuthCallbackPurpose.login) {
+      return false;
+    }
+    clearPendingCallback();
+    return true;
+  }
+
+  static bool clearPendingCallbackForAttempt({
+    required int revision,
+    required OAuthCallbackPurpose purpose,
+  }) {
+    if (revision != _pendingRevision || _pendingPurpose != purpose) {
+      return false;
+    }
+    clearPendingCallback();
+    return true;
+  }
+
+  static bool clearPendingCalendarLink(int revision) =>
+      clearPendingCallbackForAttempt(
+        revision: revision,
+        purpose: OAuthCallbackPurpose.calendarLink,
+      );
+
+  static bool isPendingCallbackAttempt({
+    required int revision,
+    required OAuthCallbackPurpose purpose,
+  }) =>
+      revision == _pendingRevision && _pendingPurpose == purpose;
+
+  static bool _clearPendingCallbackForRevision(int revision) {
+    if (revision != _pendingRevision) return false;
+    clearPendingCallback();
+    return true;
+  }
+
+  static int? get pendingLoginRevision =>
+      hasPendingLogin() ? _pendingRevision : null;
+
   static void clearLatestUserMessage() {
+    _latestUserMessageRevision = null;
     latestUserMessage.value = null;
+  }
+
+  static int? get latestUserMessageRevision => _latestUserMessageRevision;
+
+  static void setLatestUserMessageForRevision(String message, int revision) {
+    if (revision != _pendingRevision) return;
+    _latestUserMessageRevision = revision;
+    latestUserMessage.value = message;
   }
 
   static bool hasPendingLogin({
@@ -167,16 +269,34 @@ class OAuthCallbackHandler {
   }
 
   static Future<void> persistCurrentPendingCallback() async {
+    final revision = _pendingRevision;
     final purpose = _pendingPurpose;
     final method = _pendingMethod;
     final startedAt = _pendingStartedAt;
-    if (purpose == null || method == null || startedAt == null) {
-      await _clearStoredPendingCallback();
-      return;
-    }
+    await _enqueuePendingPersistence(
+      revision: revision,
+      purpose: purpose,
+      method: method,
+      startedAt: startedAt,
+    );
+  }
 
-    try {
+  static Future<void> _enqueuePendingPersistence({
+    required int revision,
+    required OAuthCallbackPurpose? purpose,
+    required String? method,
+    required DateTime? startedAt,
+  }) {
+    final operation = _pendingPersistenceQueue.then((_) async {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _pendingRevision) return;
+      if (purpose == null || method == null || startedAt == null) {
+        await prefs.remove(_storedPendingPurposeKey);
+        await prefs.remove(_storedPendingMethodKey);
+        await prefs.remove(_storedPendingStartedAtKey);
+        _logNaverCalendar('clearStoredPendingCallback completed');
+        return;
+      }
       await prefs.setString(_storedPendingPurposeKey, purpose.name);
       await prefs.setString(_storedPendingMethodKey, method);
       await prefs.setInt(
@@ -188,32 +308,34 @@ class OAuthCallbackHandler {
           'persistPendingCallback purpose=$purpose method=$method',
         );
       }
-    } catch (error) {
+    });
+    _pendingPersistenceQueue = operation.catchError((Object error) {
       debugPrint(
-        'OAuth pending callback persist skipped: ${logSafeText(error)}',
+        'OAuth pending callback persistence skipped: ${logSafeText(error)}',
       );
-    }
+    });
+    return _pendingPersistenceQueue;
   }
 
-  static Future<void> _clearStoredPendingCallback() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_storedPendingPurposeKey);
-      await prefs.remove(_storedPendingMethodKey);
-      await prefs.remove(_storedPendingStartedAtKey);
-      _logNaverCalendar('clearStoredPendingCallback completed');
-    } catch (error) {
-      debugPrint(
-        'OAuth pending callback clear skipped: ${logSafeText(error)}',
-      );
-    }
+  static Future<void> _clearStoredPendingCallback(
+      {int? expectedRevision}) async {
+    final revision = expectedRevision ?? _pendingRevision;
+    if (revision != _pendingRevision) return;
+    await _enqueuePendingPersistence(
+      revision: revision,
+      purpose: null,
+      method: null,
+      startedAt: null,
+    );
   }
 
   static Future<_StoredOAuthPending?> _readStoredPendingCallback({
     Duration maxAge = const Duration(minutes: 10),
   }) async {
+    final readRevision = _pendingRevision;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (readRevision != _pendingRevision) return null;
       final purposeName = prefs.getString(_storedPendingPurposeKey);
       final method = prefs.getString(_storedPendingMethodKey);
       final startedAtMillis = prefs.getInt(_storedPendingStartedAtKey);
@@ -236,7 +358,7 @@ class OAuthCallbackHandler {
             'readStoredPendingCallback expiredOrInvalid purpose=$purposeName',
           );
         }
-        await _clearStoredPendingCallback();
+        await _clearStoredPendingCallback(expectedRevision: readRevision);
         return null;
       }
 
@@ -260,10 +382,15 @@ class OAuthCallbackHandler {
 
   @visibleForTesting
   static void clearInMemoryPendingCallbackForTest() {
+    _pendingRevision++;
     _pendingPurpose = null;
     _pendingMethod = null;
     _pendingStartedAt = null;
   }
+
+  @visibleForTesting
+  static Future<void> flushPendingCallbackPersistenceForTest() =>
+      _pendingPersistenceQueue;
 
   @visibleForTesting
   static Future<bool> hasRecoverableNaverCalendarLinkCallbackForTest() async {
@@ -361,8 +488,14 @@ class OAuthCallbackHandler {
       return;
     }
 
-    latestUserMessage.value = null;
+    final callbackRevision = _pendingRevision;
     final resolvedPending = await _resolvePendingCallback();
+    if (callbackRevision != _pendingRevision) {
+      debugPrint(
+          'OAuth callback ignored: superseded by a newer login attempt.');
+      return;
+    }
+    clearLatestUserMessage();
     DiagLogger.log('DIAG',
         'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}');
     final pendingPurpose = resolvedPending?.purpose;
@@ -417,44 +550,49 @@ class OAuthCallbackHandler {
           '${normalizedUri.queryParameters['error_description']?.isNotEmpty == true}',
         );
       }
-      clearPendingCallback();
-      latestUserMessage.value = callbackErrorMessage;
+      setLatestUserMessageForRevision(callbackErrorMessage, callbackRevision);
+      _clearPendingCallbackForRevision(callbackRevision);
       return;
     }
 
     final ready = await _waitForSupabaseReady();
+    if (callbackRevision != _pendingRevision) return;
     if (pendingMethod == 'naver') {
       _logNaverCalendar('supabaseReady=$ready');
     }
     if (!ready) {
       debugPrint('OAuth callback skipped: Supabase was not ready in time.');
-      clearPendingCallback();
-      latestUserMessage.value =
-          '로그인 준비가 끝나기 전에 인증 콜백을 받았습니다. 앱을 다시 열고 로그인을 다시 시도해 주세요.';
+      setLatestUserMessageForRevision(
+        '로그인 준비가 끝나기 전에 인증 콜백을 받았습니다. 앱을 다시 열고 로그인을 다시 시도해 주세요.',
+        callbackRevision,
+      );
+      _clearPendingCallbackForRevision(callbackRevision);
       return;
     }
 
-    final client = Supabase.instance.client;
+    final client = _sessionAdapter == null ? Supabase.instance.client : null;
+    final hasCurrentSession = _sessionAdapter?.hasCurrentSession ??
+        client!.auth.currentSession != null;
     final shouldExchangeCallback = shouldExchangeOAuthCallback(
-      currentSessionPresent: client.auth.currentSession != null,
+      currentSessionPresent: hasCurrentSession,
       isPasswordRecovery: isPasswordRecovery,
       hasPendingCalendarLink:
           pendingPurpose == OAuthCallbackPurpose.calendarLink,
     );
     DiagLogger.log('DIAG',
-        'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}');
+        'shouldExchange=$shouldExchangeCallback currentSession=$hasCurrentSession');
 
     debugPrint(
       'OAuth callback routing: pendingPurpose=$pendingPurpose '
       'pendingMethod=$pendingMethod '
-      'currentSessionPresent=${client.auth.currentSession != null} '
+      'currentSessionPresent=$hasCurrentSession '
       'shouldExchange=$shouldExchangeCallback',
     );
     if (pendingMethod == 'naver') {
       debugPrint(
         '[PlanFlowNaverCalendar] oauth callback routing '
         'calendarLink=${pendingPurpose == OAuthCallbackPurpose.calendarLink} '
-        'currentSessionPresent=${client.auth.currentSession != null} '
+        'currentSessionPresent=$hasCurrentSession '
         'shouldExchange=$shouldExchangeCallback',
       );
     }
@@ -478,23 +616,25 @@ class OAuthCallbackHandler {
         explicitProviderToken: urlProviderToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
+      if (callbackRevision != _pendingRevision) return;
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
         if (isEmailConfirmation) {
           await AnalyticsService.logSignUp(method: 'email');
-          clearPendingCallback();
+          _clearPendingCallbackForRevision(callbackRevision);
         } else {
-          await _logPendingLoginIfNeeded();
+          await _logPendingLoginIfNeeded(callbackRevision: callbackRevision);
         }
       } else {
-        clearPendingCallback();
+        _clearPendingCallbackForRevision(callbackRevision);
       }
       return;
     }
 
     // Naver 캘린더 연동 콜백: PKCE code는 교환하되 기존 Google 세션은 복원한다.
     if (isPendingNaverCalendarLink) {
-      final previousSession = client.auth.currentSession;
+      final naverClient = client ?? Supabase.instance.client;
+      final previousSession = naverClient.auth.currentSession;
       final googleUserId = previousSession?.user.id;
       final rawAuthCode = normalizedUri.queryParameters['code'];
       final authCode = rawAuthCode?.trim();
@@ -510,16 +650,18 @@ class OAuthCallbackHandler {
       );
       if (authCode == null || authCode.isEmpty) {
         _logNaverCalendar('exchange path: missing auth code in callback url');
-        clearPendingCallback();
-        latestUserMessage.value =
-            '네이버 권한 동의는 열렸지만 인증 코드가 전달되지 않았습니다. 다시 시도해 주세요.';
+        setLatestUserMessageForRevision(
+          '네이버 권한 동의는 열렸지만 인증 코드가 전달되지 않았습니다. 다시 시도해 주세요.',
+          callbackRevision,
+        );
+        _clearPendingCallbackForRevision(callbackRevision);
         return;
       }
       final normalizedAuthCode = authCode;
       String? naverProviderToken;
 
       try {
-        final response = await client.auth.exchangeCodeForSession(
+        final response = await naverClient.auth.exchangeCodeForSession(
           normalizedAuthCode,
         );
         naverProviderToken = response.session.providerToken?.trim();
@@ -546,7 +688,7 @@ class OAuthCallbackHandler {
                 'exchange path: previous session restore skipped reason=missing_refresh_token',
               );
             } else {
-              await client.auth.setSession(
+              await naverClient.auth.setSession(
                 previousRefreshToken,
                 accessToken: previousSession.accessToken,
               );
@@ -571,7 +713,8 @@ class OAuthCallbackHandler {
           }
         }
       }
-      final restoredUserId = client.auth.currentSession?.user.id;
+      if (callbackRevision != _pendingRevision) return;
+      final restoredUserId = naverClient.auth.currentSession?.user.id;
       final restoredMatchesGoogle =
           restoredUserId != null && restoredUserId == googleUserId;
       DiagLogger.log(
@@ -599,11 +742,12 @@ class OAuthCallbackHandler {
           'naver persist-target SKIPPED reason=$skipReason',
         );
       }
+      if (callbackRevision != _pendingRevision) return;
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
-        await _logPendingLoginIfNeeded();
+        await _logPendingLoginIfNeeded(callbackRevision: callbackRevision);
       } else {
-        clearPendingCallback();
+        _clearPendingCallbackForRevision(callbackRevision);
       }
       return;
     }
@@ -612,27 +756,41 @@ class OAuthCallbackHandler {
       if (pendingMethod == 'naver') {
         _logNaverCalendar('exchange start');
       }
-      final response = await client.auth.getSessionFromUrl(normalizedUri);
+      final OAuthCallbackSession callbackSession;
+      if (_sessionAdapter == null) {
+        final response = await client!.auth.getSessionFromUrl(normalizedUri);
+        callbackSession = OAuthCallbackSession(
+          userId: response.session.user.id,
+          providerToken: response.session.providerToken,
+        );
+      } else {
+        callbackSession = await _sessionAdapter.completeCallback(normalizedUri);
+      }
+      final restoredUserId = callbackSession.userId;
+      // banned-ok: this is a runtime OAuth response token, not a hardcoded secret.
+      final providerToken = callbackSession.providerToken;
       debugPrint(
-        'OAuth callback exchange completed: user=${response.session.user.id}',
+        'OAuth callback exchange completed: user=$restoredUserId',
       );
       if (pendingMethod == 'naver') {
+        // banned-ok: only checks presence of the runtime OAuth response token.
+        final providerTokenPresent = providerToken?.trim().isNotEmpty == true;
         debugPrint(
           '[PlanFlowNaverCalendar] oauth callback exchange completed '
-          'providerTokenPresent='
-          '${response.session.providerToken?.trim().isNotEmpty == true}',
+          'providerTokenPresent=$providerTokenPresent',
         );
       }
       await _captureNaverProviderTokenIfAny(
-        explicitProviderToken: response.session.providerToken,
+        explicitProviderToken: providerToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
+      if (callbackRevision != _pendingRevision) return;
       // OAuth callback completion must not open a second Google account picker.
       // Calendar linking is an explicit Settings action; callback paths only
       // establish the PlanFlow session and route the user home.
       if (isPasswordRecovery) {
-        authProvider.markPasswordRecovery();
-        clearPendingCallback();
+        _authProvider.markPasswordRecovery();
+        _clearPendingCallbackForRevision(callbackRevision);
         appRouter.go(AppRoutes.resetPassword);
         return;
       }
@@ -640,29 +798,34 @@ class OAuthCallbackHandler {
       if (signedIn) {
         if (isEmailConfirmation) {
           await AnalyticsService.logSignUp(method: 'email');
-          clearPendingCallback();
+          _clearPendingCallbackForRevision(callbackRevision);
         } else {
-          await _logPendingLoginIfNeeded();
+          await _logPendingLoginIfNeeded(callbackRevision: callbackRevision);
         }
       } else {
-        clearPendingCallback();
+        _clearPendingCallbackForRevision(callbackRevision);
       }
     } on AuthException catch (error) {
+      if (callbackRevision != _pendingRevision) return;
       debugPrint(
         'OAuth callback exchange failed: ${logSafeText(error.message)} '
         'code=${error.code} status=${error.statusCode}',
       );
-      clearPendingCallback();
+      setLatestUserMessageForRevision(
+        isEmailConfirmation
+            ? _messageForEmailConfirmationException(error)
+            : _messageForAuthException(error),
+        callbackRevision,
+      );
+      _clearPendingCallbackForRevision(callbackRevision);
       if (pendingMethod == 'naver') {
         _logNaverCalendar(
           'exchange authException message=${logSafeText(error.message)} '
           'code=${error.code} status=${error.statusCode}',
         );
       }
-      latestUserMessage.value = isEmailConfirmation
-          ? _messageForEmailConfirmationException(error)
-          : _messageForAuthException(error);
     } catch (error) {
+      if (callbackRevision != _pendingRevision) return;
       debugPrint('OAuth callback exchange failed: ${logSafeText(error)}');
       if (pendingMethod == 'naver') {
         _logNaverCalendar(
@@ -670,10 +833,13 @@ class OAuthCallbackHandler {
           'error=${logSafeText(error)}',
         );
       }
-      clearPendingCallback();
-      latestUserMessage.value = isEmailConfirmation
-          ? '이메일 인증을 확인하지 못했습니다. 인증 링크가 만료되었거나 이미 사용되었을 수 있습니다. 로그인으로 다시 시도해 주세요.'
-          : '로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      setLatestUserMessageForRevision(
+        isEmailConfirmation
+            ? '이메일 인증을 확인하지 못했습니다. 인증 링크가 만료되었거나 이미 사용되었습니다. 로그인으로 다시 시도해 주세요.'
+            : '로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        callbackRevision,
+      );
+      _clearPendingCallbackForRevision(callbackRevision);
     }
   }
 
@@ -802,15 +968,16 @@ class OAuthCallbackHandler {
   Future<bool> _waitForSupabaseReady({
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    if (AppEnv.isSupabaseReady) {
+    if (_supabaseReadyOverride ?? AppEnv.isSupabaseReady) {
       return true;
     }
 
     final deadline = DateTime.now().add(timeout);
-    while (!AppEnv.isSupabaseReady && DateTime.now().isBefore(deadline)) {
+    while (!(_supabaseReadyOverride ?? AppEnv.isSupabaseReady) &&
+        DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    return AppEnv.isSupabaseReady;
+    return _supabaseReadyOverride ?? AppEnv.isSupabaseReady;
   }
 
   Future<void> _captureNaverProviderTokenIfAny({
@@ -899,15 +1066,15 @@ class OAuthCallbackHandler {
   }
 
   Future<bool> _syncAndRouteHome() async {
-    final signedIn = await authProvider.syncCurrentSession();
-    if (signedIn && !authProvider.isPasswordRecovery) {
-      appRouter.go(AppRoutes.home);
-    }
-    return signedIn;
+    // Session synchronization updates authProvider; router redirects decide
+    // whether login, the required first-run tour, or the shell is next. Calling
+    // go(home) here used to override the router's required tutorial route.
+    return _authProvider.syncCurrentSession();
   }
 
-  static Future<void> _logPendingLoginIfNeeded() async {
-    final method = consumePendingLoginMethod();
+  static Future<void> _logPendingLoginIfNeeded({int? callbackRevision}) async {
+    final method =
+        consumePendingLoginMethod(expectedRevision: callbackRevision);
     if (method != null) {
       await AnalyticsService.logLogin(method: method);
     }

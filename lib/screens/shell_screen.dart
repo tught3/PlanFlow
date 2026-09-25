@@ -201,6 +201,11 @@ class ShellScreen extends StatefulWidget {
     this.initialCalendarDate,
     this.initialSettingsAction,
     this.briefingIsMorning,
+    this.authProviderOverride,
+    this.startupRouteGateOverride,
+    this.featureTourStore,
+    this.runPostTourOnboardingStages = true,
+    this.runStartupTasks = true,
   });
 
   final int initialIndex;
@@ -210,12 +215,43 @@ class ShellScreen extends StatefulWidget {
   /// When set, the calendar tab runs the briefing inline instead of opening a
   /// separate result page. Null keeps the normal shell behavior.
   final bool? briefingIsMorning;
+  @visibleForTesting
+  final AuthProvider? authProviderOverride;
+  @visibleForTesting
+  final StartupRouteGate? startupRouteGateOverride;
+  @visibleForTesting
+  final FeatureTourStore? featureTourStore;
+  @visibleForTesting
+  final bool runPostTourOnboardingStages;
+
+  /// Disables only non-onboarding timers/deferred jobs in integration tests.
+  /// The signed-in onboarding chain and required feature tour still run.
+  @visibleForTesting
+  final bool runStartupTasks;
+
+  @visibleForTesting
+  static void resetSessionOnboardingStateForTest() {
+    _ShellScreenState.resetSessionOnboardingStateForTest();
+  }
 
   @override
   State<ShellScreen> createState() => _ShellScreenState();
 }
 
 class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
+  @visibleForTesting
+  static void resetSessionOnboardingStateForTest() {
+    _sessionOnboardingUserId = null;
+    _sessionOnboardingFlow = null;
+    _sessionOnboardingFlowUserId = null;
+    _sessionDeferredWorkUserId = null;
+  }
+
+  AuthProvider get _authProvider => widget.authProviderOverride ?? authProvider;
+  StartupRouteGate get _routeGate =>
+      widget.startupRouteGateOverride ?? startupRouteGate;
+  FeatureTourStore get _tourStore =>
+      widget.featureTourStore ?? const SharedPreferencesFeatureTourStore();
   // GoRouter may recreate ShellScreen for each bottom-tab route. These
   // process/session claims keep that implementation detail from rerunning
   // onboarding and expensive post-onboarding work for the same account.
@@ -282,7 +318,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _homeScrollController = ScrollController(keepScrollOffset: false);
     _tabChildren = List<Widget?>.filled(3, null);
     _tabChildren[_currentIndex] = _buildTabChild(_currentIndex);
-    _observedUserId = authProvider.userId;
+    _observedUserId = _authProvider.userId;
     _onboardingDecisionPending =
         _observedUserId != null && _observedUserId!.isNotEmpty;
     if (_observedUserId != null &&
@@ -291,27 +327,29 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       _onboardingDecisionPending = false;
     }
     if (_onboardingDecisionPending) {
-      startupRouteGate.beginStartupWorkDeferral();
+      _routeGate.beginStartupWorkDeferral();
     }
     WidgetsBinding.instance.addObserver(this);
-    authProvider.addListener(_handleAuthChanged);
+    _authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_runSignedInStartupTasks(reason: 'app_start'));
     });
-    _pendingDepartureTimer = Timer.periodic(
-      const Duration(seconds: 45),
-      (_) => unawaited(_maybeShowPendingDepartureAlarm()),
-    );
+    if (widget.runStartupTasks) {
+      _pendingDepartureTimer = Timer.periodic(
+        const Duration(seconds: 45),
+        (_) => unawaited(_maybeShowPendingDepartureAlarm()),
+      );
+    }
   }
 
   @override
   void dispose() {
     _startupWorkGeneration += 1;
-    authProvider.removeListener(_handleAuthChanged);
+    _authProvider.removeListener(_handleAuthChanged);
     WidgetsBinding.instance.removeObserver(this);
     _homeScrollController.dispose();
     _pendingDepartureTimer?.cancel();
-    startupRouteGate.completeStartupWorkDeferral();
+    _routeGate.completeStartupWorkDeferral();
     super.dispose();
   }
 
@@ -326,7 +364,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // separate idempotent backstop (scheduleDaily is safe to call on every
       // resume) so it must never be dropped from this branch again — losing
       // it previously caused permanent silence until a cold start.
-      unawaited(startupRouteGate.startupWorkAllowedWhenIdle.then((_) async {
+      if (!widget.runStartupTasks) return;
+      unawaited(_routeGate.startupWorkAllowedWhenIdle.then((_) async {
         await _runAlarmRecovery();
         await _ensureBriefingsScheduled(reason: 'app_resumed');
       }));
@@ -364,7 +403,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   void _handleAuthChanged() {
-    final currentUserId = authProvider.userId;
+    final currentUserId = _authProvider.userId;
     if (_observedUserId == currentUserId) {
       return;
     }
@@ -395,9 +434,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           currentUserId != null && currentUserId.isNotEmpty;
     });
     if (currentUserId != null && currentUserId.isNotEmpty) {
-      startupRouteGate.beginStartupWorkDeferral();
+      _routeGate.beginStartupWorkDeferral();
     } else {
-      startupRouteGate.completeStartupWorkDeferral();
+      _routeGate.completeStartupWorkDeferral();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -407,7 +446,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _runSignedInStartupTasks({required String reason}) async {
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
       // The auth provider can transiently expose an empty id while startup is
       // resolving. Never leave this shell's loading gate up on that path.
@@ -469,31 +508,33 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // 끝나는 순간 중 먼저 오는 쪽에서 일어나고, 완료 판정은 아래 finally에서
       // 체인 전체가 중단 없이 끝났을 때만 한다.
       flowCompleted = await runOnboardingStageChain(
-        stages: [
+        stages: <OnboardingStage>[
           OnboardingStage(
             'feature_tour',
             () => _maybeOpenFeatureTour(),
           ),
-          OnboardingStage(
-            'permission_onboarding',
-            () => _maybeOpenPermissionOnboarding(),
-          ),
-          OnboardingStage(
-            'external_calendar_guide',
-            () => _maybeShowExternalCalendarSyncGuide(),
-          ),
+          if (widget.runPostTourOnboardingStages) ...<OnboardingStage>[
+            OnboardingStage(
+              'permission_onboarding',
+              () => _maybeOpenPermissionOnboarding(),
+            ),
+            OnboardingStage(
+              'external_calendar_guide',
+              () => _maybeShowExternalCalendarSyncGuide(),
+            ),
+          ],
         ],
         // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
         // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
         // 게이트는 그래도 풀린다.
         shouldContinue: () =>
             mounted &&
-            authProvider.userId == userId &&
+            _authProvider.userId == userId &&
             _requiredFeatureTourConfirmed,
         releaseGate: () {
           if (mounted &&
               _observedUserId == userId &&
-              authProvider.userId == userId) {
+              _authProvider.userId == userId) {
             _clearOnboardingGate();
           }
         },
@@ -508,7 +549,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // Always release the route gate, including onboarding/prefs exceptions.
       // Nonessential platform work has its own settled-idle permit, so this
       // cannot strand the app behind a permanent startup lock.
-      startupRouteGate.completeStartupWorkDeferral();
+      _routeGate.completeStartupWorkDeferral();
       // 이 finally는 mounted와 무관하게 끝까지 실행된다. 그 효과를 정확히
       // 적어 둔다.
       //
@@ -524,10 +565,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       //  - 새 인스턴스는 같은 계정의 단일 실행 flow에 합류할 때 기다리지
       //    않고 자기 UI 게이트를 내린다. 원래 소유 인스턴스만 전체 흐름 완료를
       //    기록하므로 route 표시와 세션 완료 판정은 분리된다.
-      if (_observedUserId == userId && authProvider.userId == userId) {
+      if (_observedUserId == userId && _authProvider.userId == userId) {
         _clearOnboardingGate();
       }
-      if (flowCompleted && authProvider.userId == userId) {
+      if (flowCompleted && _authProvider.userId == userId) {
         _sessionOnboardingUserId = userId;
       }
       DiagLogger.log(
@@ -535,7 +576,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         'gate released in ${DateTime.now().difference(startedAt).inMilliseconds}ms '
             '(completed=$flowCompleted, mounted=$mounted)',
       );
-      if (flowCompleted && authProvider.userId == userId) {
+      if (flowCompleted &&
+          widget.runStartupTasks &&
+          _authProvider.userId == userId) {
         _queuePostOnboardingStartupTasks(
           reason: reason,
           generation: _startupWorkGeneration,
@@ -550,7 +593,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   Future<T> _presentInteractive<T>(Future<T> Function() present) {
     final flowUserId = _sessionOnboardingFlowUserId;
     return presentInteractiveOnboardingScreen(present, () {
-      if (flowUserId != null && authProvider.userId == flowUserId) {
+      if (flowUserId != null && _authProvider.userId == flowUserId) {
         _clearOnboardingGate();
       }
     });
@@ -560,7 +603,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     required String reason,
     required int generation,
   }) {
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null ||
         userId.isEmpty ||
         _sessionDeferredWorkUserId == userId) {
@@ -597,7 +640,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     required int generation,
   }) async {
     DiagLogger.log('Onboarding', 'deferred startup begin reason=$reason');
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (!mounted ||
         generation != _startupWorkGeneration ||
         userId == null ||
@@ -611,14 +654,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     await _interactionIdleGate.waitForStableIdle();
     if (!mounted ||
         generation != _startupWorkGeneration ||
-        authProvider.userId != userId) {
+        _authProvider.userId != userId) {
       DiagLogger.log(
         'Onboarding',
         'deferred startup cancelled before gate release',
       );
       throw StateError('deferred startup became obsolete');
     }
-    startupRouteGate.completeStartupWorkDeferral();
+    _routeGate.completeStartupWorkDeferral();
     // CalendarAutoSyncService is owned by PlanFlowApp.  Shell instances can
     // be recreated when navigation changes, so starting it here caused each
     // recreation to compete for the UI isolate and CalDAV parser.
@@ -627,7 +670,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       await _interactionIdleGate.waitForIdle();
       if (!mounted ||
           generation != _startupWorkGeneration ||
-          authProvider.userId != userId ||
+          _authProvider.userId != userId ||
           idleGeneration != _interactionIdleGate.generation) {
         DiagLogger.log('Onboarding', 'deferred startup task cancelled');
         throw StateError('deferred startup cancelled by interaction');
@@ -648,7 +691,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   Future<void> _maybeOpenFeatureTour() async {
     if (_checkedFeatureTour || !mounted) return;
     _checkedFeatureTour = true;
-    const store = SharedPreferencesFeatureTourStore();
+    final store = _tourStore;
     // Preference unavailability must not silently skip the mandatory tour.
     // The stage-chain timeout releases the visual loading gate, while
     // `_requiredFeatureTourConfirmed` keeps this session incomplete.
@@ -690,7 +733,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _maybeRecalculateAllAlarms() async {
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) return;
     try {
       const key = 'alarm_recalc_last_run';
@@ -720,13 +763,13 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _checkedGoogleCalendarAutoPrompt = true;
 
     // Google 계정이 아니면 스킵
-    debugPrint('[GCAL] isGoogleAccount=${authProvider.isGoogleAccount}');
-    if (!authProvider.isGoogleAccount) {
+    debugPrint('[GCAL] isGoogleAccount=${_authProvider.isGoogleAccount}');
+    if (!_authProvider.isGoogleAccount) {
       debugPrint('[GCAL] return: isGoogleAccount=false');
       return;
     }
 
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     debugPrint('[GCAL] userId=$userId');
     if (userId == null || userId.isEmpty) {
       debugPrint('[GCAL] return: userId is null or empty');
@@ -784,7 +827,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _migrateFutureCriticalAlarms() async {
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
       return;
     }
@@ -861,7 +904,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     _checkedPermissionOnboarding = true;
 
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
       return;
     }
@@ -909,7 +952,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     _checkedExternalCalendarGuide = true;
 
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
       return;
     }
@@ -1055,10 +1098,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       case 2:
         return SettingsScreen(
           key: ValueKey<String?>(
-            'settings-${authProvider.userId}-'
+            'settings-${_authProvider.userId}-'
             '${widget.initialSettingsAction?.name ?? 'none'}',
           ),
-          userId: authProvider.userId,
+          userId: _authProvider.userId,
           initialAction: widget.initialSettingsAction,
         );
       default:
@@ -1091,7 +1134,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _ensureBriefingsScheduled({required String reason}) async {
-    final userId = authProvider.userId;
+    final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
       debugPrint('Briefing schedule skipped ($reason): signed out');
       return;
