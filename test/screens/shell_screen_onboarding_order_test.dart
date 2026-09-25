@@ -18,9 +18,9 @@ void main() {
     expect(permissionIndex, greaterThan(featureTourIndex));
     expect(externalGuideIndex, greaterThan(permissionIndex));
     expect(
-        shellSource, contains('startupRouteGate.beginStartupWorkDeferral()'));
+        shellSource, contains('_routeGate.beginStartupWorkDeferral()'));
     expect(shellSource,
-        contains('startupRouteGate.completeStartupWorkDeferral()'));
+        contains('_routeGate.completeStartupWorkDeferral()'));
     expect(shellSource, contains('_sessionOnboardingUserId'));
     expect(shellSource, contains('_sessionDeferredWorkUserId'));
     expect(shellSource, contains('_sessionOnboardingFlow'));
@@ -72,5 +72,21 @@ void main() {
     expect(shellSource, contains('_runAlarmRecovery'));
     expect(shellSource, contains('_alarmRecoveryFuture'));
     expect(mainSource, contains('_dailyCalendarSyncSchedule = null'));
+  });
+
+  test('OAuth session sync preserves router-selected required tutorial route',
+      () {
+    final oauthSource =
+        File('lib/services/oauth_callback_handler.dart').readAsStringSync();
+    final syncStart = oauthSource.indexOf('Future<bool> _syncAndRouteHome()');
+    final syncEnd = oauthSource.indexOf(
+      'static Future<void> _logPendingLoginIfNeeded({',
+      syncStart,
+    );
+    expect(syncStart, greaterThan(-1));
+    expect(syncEnd, greaterThan(syncStart));
+    final syncImplementation = oauthSource.substring(syncStart, syncEnd);
+    expect(syncImplementation, contains('authProvider.syncCurrentSession()'));
+    expect(syncImplementation, isNot(contains('appRouter.go(AppRoutes.home)')));
   });
 }

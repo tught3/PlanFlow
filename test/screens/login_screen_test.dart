@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,7 @@ import 'package:planflow/core/env.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/auth/login_screen.dart';
 import 'package:planflow/services/auth_service.dart';
+import 'package:planflow/services/oauth_callback_handler.dart';
 
 void main() {
   setUpAll(() async {
@@ -83,6 +86,56 @@ void main() {
       find.textContaining('Supabase 빌드 설정값을 먼저 주입해야 로그인할 수 있습니다.'),
       findsNothing,
     );
+  });
+
+  testWidgets(
+      'cancelling a provider chooser releases login and stale completion cannot block retry',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(420, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(OAuthCallbackHandler.clearPendingCallback);
+
+    final authService = _PendingOAuthAuthService();
+    AppEnv.markSupabaseInitialized();
+    await tester.pumpWidget(
+      MaterialApp(home: LoginScreen(authService: authService)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Google로 계속하기'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('cancel-social-login')), findsOneWidget);
+    expect(OAuthCallbackHandler.pendingLoginMethod, 'google');
+    final canceledGoogleRevision = OAuthCallbackHandler.pendingLoginRevision!;
+
+    await tester.tap(find.byKey(const ValueKey('cancel-social-login')));
+    await tester.pumpAndSettle();
+    expect(OAuthCallbackHandler.pendingLoginMethod, isNull);
+    expect(find.text('로그인이 취소되었습니다. 다른 로그인 방법을 선택할 수 있어요.'), findsOneWidget);
+
+    await tester.tap(find.text('카카오로 계속하기'));
+    await tester.pump();
+    expect(OAuthCallbackHandler.pendingLoginMethod, 'kakao');
+    final kakaoRevision = OAuthCallbackHandler.pendingLoginRevision!;
+
+    OAuthCallbackHandler.setLatestUserMessageForRevision(
+      '이전 Google 로그인에서 늦게 도착한 오류',
+      canceledGoogleRevision,
+    );
+    await tester.pump();
+    expect(OAuthCallbackHandler.pendingLoginRevision, kakaoRevision);
+    expect(find.text('이전 Google 로그인에서 늦게 도착한 오류'), findsNothing);
+    expect(find.byKey(const ValueKey('cancel-social-login')), findsOneWidget);
+
+    authService.launchResults[0].complete(true);
+    await tester.pump();
+    expect(OAuthCallbackHandler.pendingLoginMethod, 'kakao');
+    expect(find.byKey(const ValueKey('cancel-social-login')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('cancel-social-login')));
+    await tester.pumpAndSettle();
+    expect(OAuthCallbackHandler.pendingLoginMethod, isNull);
+    expect(find.text('네이버로 계속하기'), findsOneWidget);
   });
 
   testWidgets('LoginScreen surfaces Supabase init failures', (tester) async {
@@ -201,5 +254,19 @@ class _FakeAuthService extends AuthService {
   }) async {
     signUpCallCount += 1;
     return AuthResponse();
+  }
+}
+
+class _PendingOAuthAuthService extends _FakeAuthService {
+  final List<Completer<bool>> launchResults = <Completer<bool>>[];
+
+  @override
+  Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider,
+      {bool forceConsent = false, bool forCalendar = false}) {
+    final result = Completer<bool>();
+    launchResults.add(result);
+    // Match the production service's duplicate pending mark at OAuth launch.
+    OAuthCallbackHandler.markPendingLogin(provider);
+    return result.future;
   }
 }

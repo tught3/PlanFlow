@@ -32,6 +32,7 @@ import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
 import '../services/voice_conversation_entitlement.dart';
+import '../services/feature_tour_service.dart';
 import '../screens/shell_screen.dart';
 import '../screens/departure_alarm_screen.dart';
 import 'constants.dart';
@@ -39,379 +40,445 @@ import 'env.dart';
 import '../providers/auth_provider.dart';
 import 'startup_route_gate.dart';
 
-final GoRouter appRouter = GoRouter(
-  initialLocation: AppRoutes.root,
-  overridePlatformDefaultLocation: true,
-  refreshListenable: Listenable.merge(<Listenable>[
-    authProvider,
-    startupRouteGate,
-  ]),
-  redirect: (context, state) {
-    final path = state.uri.path;
-    final isAuthPath =
-        path == AppRoutes.login || path == AppRoutes.resetPassword;
+GoRouter createAppRouter({
+  AuthProvider? authProviderOverride,
+  StartupRouteGate? startupRouteGateOverride,
+  FeatureTourStore? featureTourStore,
+  bool runPostTourOnboardingStages = true,
+  bool runShellStartupTasks = true,
+  bool? supabaseReadyOverride,
+}) {
+  final routeAuthProvider = authProviderOverride ?? authProvider;
+  final routeStartupGate = startupRouteGateOverride ?? startupRouteGate;
+  return GoRouter(
+    initialLocation: AppRoutes.root,
+    overridePlatformDefaultLocation: true,
+    refreshListenable: Listenable.merge(<Listenable>[
+      routeAuthProvider,
+      routeStartupGate.redirectRefreshListenable,
+    ]),
+    redirect: (context, state) {
+      final path = state.uri.path;
+      final isAuthPath =
+          path == AppRoutes.login || path == AppRoutes.resetPassword;
 
-    if (path == AppRoutes.root) {
-      if (startupRouteGate.suppressLoginRedirects) {
+      if (path == AppRoutes.root) {
+        if (routeStartupGate.suppressLoginRedirects) {
+          return null;
+        }
+        if (!routeAuthProvider.hasResolvedInitialSession) {
+          return null;
+        }
+        if (!routeAuthProvider.isSignedIn) {
+          // 세션 갱신 중이거나 토큰만 만료된 경우: 스플래시에서 대기
+          // hasAttemptedStartupSync=false: 첫 syncCurrentSession() 전 → 아직 복구 기회가 남음
+          if (routeAuthProvider.sessionStatus == AuthSessionStatus.recovering ||
+              !routeAuthProvider.hasAttemptedStartupSync ||
+              (routeAuthProvider.sessionStatus ==
+                      AuthSessionStatus.reauthRequired &&
+                  routeAuthProvider.hasAccountSnapshot)) {
+            return null;
+          }
+          return AppRoutes.login;
+        }
+        return AppRoutes.home;
+      }
+
+      if (!(supabaseReadyOverride ?? AppEnv.isSupabaseReady)) {
+        return isAuthPath ? null : AppRoutes.login;
+      }
+
+      if (routeStartupGate.suppressLoginRedirects && !isAuthPath) {
         return null;
       }
-      if (!authProvider.hasResolvedInitialSession) {
-        return null;
+
+      if (!routeAuthProvider.hasResolvedInitialSession && !isAuthPath) {
+        return AppRoutes.root;
       }
-      if (!authProvider.isSignedIn) {
-        // 세션 갱신 중이거나 토큰만 만료된 경우: 스플래시에서 대기
-        // hasAttemptedStartupSync=false: 첫 syncCurrentSession() 전 → 아직 복구 기회가 남음
-        if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
-            !authProvider.hasAttemptedStartupSync ||
-            (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
-                authProvider.hasAccountSnapshot)) {
+
+      if (routeAuthProvider.isPasswordRecovery &&
+          path != AppRoutes.resetPassword) {
+        return AppRoutes.resetPassword;
+      }
+
+      if (!routeAuthProvider.isSignedIn && !isAuthPath) {
+        // recovering: 세션 복구 중 → 대기
+        // reauthRequired + hasAccountSnapshot: 이전 로그인 계정 있음, 토큰만 만료
+        //   → 로그인 화면 강제 전환 금지. 앱 내 배너로 안내.
+        // hasAttemptedStartupSync=false: 아직 첫 sync 전 → 복구 기회 남음
+        if (routeAuthProvider.sessionStatus == AuthSessionStatus.recovering ||
+            !routeAuthProvider.hasAttemptedStartupSync ||
+            (routeAuthProvider.sessionStatus ==
+                    AuthSessionStatus.reauthRequired &&
+                routeAuthProvider.hasAccountSnapshot)) {
           return null;
         }
         return AppRoutes.login;
       }
-      return AppRoutes.home;
-    }
 
-    if (!AppEnv.isSupabaseReady) {
-      return isAuthPath ? null : AppRoutes.login;
-    }
-
-    if (startupRouteGate.suppressLoginRedirects && !isAuthPath) {
-      return null;
-    }
-
-    if (!authProvider.hasResolvedInitialSession && !isAuthPath) {
-      return AppRoutes.root;
-    }
-
-    if (authProvider.isPasswordRecovery && path != AppRoutes.resetPassword) {
-      return AppRoutes.resetPassword;
-    }
-
-    if (!authProvider.isSignedIn && !isAuthPath) {
-      // recovering: 세션 복구 중 → 대기
-      // reauthRequired + hasAccountSnapshot: 이전 로그인 계정 있음, 토큰만 만료
-      //   → 로그인 화면 강제 전환 금지. 앱 내 배너로 안내.
-      // hasAttemptedStartupSync=false: 아직 첫 sync 전 → 복구 기회 남음
-      if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
-          !authProvider.hasAttemptedStartupSync ||
-          (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
-              authProvider.hasAccountSnapshot)) {
-        return null;
+      if (routeAuthProvider.isSignedIn &&
+          path == AppRoutes.login &&
+          !routeAuthProvider.isPasswordRecovery) {
+        return AppRoutes.home;
       }
-      return AppRoutes.login;
-    }
 
-    if (authProvider.isSignedIn &&
-        path == AppRoutes.login &&
-        !authProvider.isPasswordRecovery) {
-      return AppRoutes.home;
-    }
-
-    return null;
-  },
-  routes: <RouteBase>[
-    GoRoute(
-      path: AppRoutes.root,
-      builder: (context, state) => const SplashScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.login,
-      builder: (context, state) => const LoginScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.permissionOnboarding,
-      builder: (context, state) => const PermissionOnboardingScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.featureTour,
-      builder: (context, state) => FeatureTourScreen(
-        requireFinalConfirmation:
-            state.uri.queryParameters['required'] == 'true',
+      return null;
+    },
+    routes: <RouteBase>[
+      GoRoute(
+        path: AppRoutes.root,
+        builder: (context, state) => const SplashScreen(),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.resetPassword,
-      builder: (context, state) => const ResetPasswordScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.home,
-      builder: (context, state) => const ShellScreen(initialIndex: 0),
-    ),
-    GoRoute(
-      path: AppRoutes.calendar,
-      builder: (context, state) => ShellScreen(
-        key: ValueKey<String>('calendar-${state.uri.query}'),
-        initialIndex: 1,
-        initialCalendarDate: _parseRouteDate(
-          state.uri.queryParameters['date'],
+      GoRoute(
+        path: AppRoutes.login,
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.permissionOnboarding,
+        builder: (context, state) => const PermissionOnboardingScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.featureTour,
+        builder: (context, state) => FeatureTourScreen(
+          store: featureTourStore ?? const SharedPreferencesFeatureTourStore(),
+          requireFinalConfirmation:
+              state.uri.queryParameters['required'] == 'true',
         ),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.settings,
-      builder: (context, state) => ShellScreen(
-        initialIndex: 2,
-        initialSettingsAction: _parseSettingsInitialAction(state),
+      GoRoute(
+        path: AppRoutes.resetPassword,
+        builder: (context, state) => const ResetPasswordScreen(),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.briefing,
-      builder: (context, state) {
-        final type = state.uri.queryParameters['type'] ?? 'morning';
-        final isMorning = type != 'evening';
-        final now = DateTime.now();
-        final briefingDate = DateTime(
-          now.year,
-          now.month,
-          now.day + (isMorning ? 0 : 1),
-        );
-        return ShellScreen(
-          key:
-              ValueKey<String>('briefing-${isMorning ? 'morning' : 'evening'}'),
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (context, state) => _buildShell(
+          initialIndex: 0,
+          authProvider: authProviderOverride,
+          startupRouteGate: startupRouteGateOverride,
+          featureTourStore: featureTourStore,
+          runPostTourOnboardingStages: runPostTourOnboardingStages,
+          runStartupTasks: runShellStartupTasks,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.calendar,
+        builder: (context, state) => _buildShell(
+          key: ValueKey<String>('calendar-${state.uri.query}'),
           initialIndex: 1,
-          initialCalendarDate: briefingDate,
-          briefingIsMorning: isMorning,
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.naverIcsImport,
-      builder: (context, state) {
-        final paths = state.extra is List
-            ? (state.extra! as List)
-                .map((item) => item.toString())
-                .where((path) => path.trim().isNotEmpty)
-                .toList(growable: false)
-            : const <String>[];
-        return NaverIcsImportScreen(initialPaths: paths);
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.adminTesters,
-      builder: (context, state) => const AdminTesterDashboardScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.voice,
-      builder: (context, state) => VoiceInputScreen(
-        autoStartOverride: _isAutoStart(state) ? true : null,
-      ),
-    ),
-    GoRoute(
-      path: AppRoutes.voiceLauncher,
-      redirect: (context, state) => '${AppRoutes.voice}?autoStart=1',
-    ),
-    GoRoute(
-      path: AppRoutes.voiceConversation,
-      builder: (context, state) {
-        final extra = state.extra is Map<String, dynamic>
-            ? state.extra! as Map<String, dynamic>
-            : const <String, dynamic>{};
-        final entryGrantRaw = extra['entry_grant'];
-        final entryGrant =
-            entryGrantRaw is VoiceConversationEntryGrant ? entryGrantRaw : null;
-        return VoiceConversationScreen(
-          autoStart: _isAutoStart(state),
-          initialText: extra['initial_text']?.toString(),
-          entryGrant: entryGrant,
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.voiceAction,
-      builder: (context, state) {
-        final extra = state.extra is Map<String, dynamic>
-            ? state.extra! as Map<String, dynamic>
-            : const <String, dynamic>{};
-        final actionText = extra['action']?.toString() ?? 'edit';
-        final action = VoiceScheduleAction.values.firstWhere(
-          (candidate) => candidate.name == actionText,
-          orElse: () => VoiceScheduleAction.choose,
-        );
-        final rawText = extra['raw_text']?.toString() ?? '';
-        return VoiceActionScreen(
-          key: ValueKey(
-            'voice-action-${action.name}-${rawText.hashCode}',
+          initialCalendarDate: _parseRouteDate(
+            state.uri.queryParameters['date'],
           ),
-          rawText: rawText,
-          action: action,
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.confirm,
-      builder: (context, state) {
-        final parsedSchedule = state.extra is Map<String, dynamic>
-            ? state.extra! as Map<String, dynamic>
-            : const <String, dynamic>{};
-        return ConfirmScreen(parsedSchedule: parsedSchedule);
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.eventDetail,
-      builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
-        return EventDetailScreen(
-          event: event,
-          eventId: _resolveEventId(state, event),
-          showDeparturePrompt:
-              state.uri.queryParameters['departureAction'] == 'prompt',
-          showCriticalAckButton:
-              state.uri.queryParameters['criticalAck'] == '1',
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.eventDetailWithId,
-      builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
-        return EventDetailScreen(
-          event: event,
-          eventId: _resolveEventId(state, event),
-          showDeparturePrompt:
-              state.uri.queryParameters['departureAction'] == 'prompt',
-          showCriticalAckButton:
-              state.uri.queryParameters['criticalAck'] == '1',
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.eventEdit,
-      builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
-        return EventEditScreen(
-          event: event,
-          eventId: _resolveEventId(state, event),
-          initialDate: _parseRouteDate(state.uri.queryParameters['date']),
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.eventEditWithId,
-      builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
-        return EventEditScreen(
-          event: event,
-          eventId: _resolveEventId(state, event),
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.departureAlarm,
-      builder: (context, state) {
-        final q = state.uri.queryParameters;
-        return DepartureAlarmScreen(
-          eventId: q['eventId'] ?? '',
-          initialTitle: q['title'],
-          travelMinutes: int.tryParse(q['eta'] ?? ''),
-        );
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.groups,
-      builder: (context, state) => const GroupListScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.groupCreate,
-      builder: (context, state) => const GroupCreateScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.groupInviteLink,
-      builder: (context, state) => GroupInviteLinkScreen(
-        groupId: state.uri.queryParameters['groupId']?.trim() ??
-            state.uri.queryParameters['group_id']?.trim() ??
-            '',
-        inviteToken: state.uri.queryParameters['token']?.trim() ?? '',
+          authProvider: authProviderOverride,
+          startupRouteGate: startupRouteGateOverride,
+          featureTourStore: featureTourStore,
+          runPostTourOnboardingStages: runPostTourOnboardingStages,
+          runStartupTasks: runShellStartupTasks,
+        ),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupInvitesForGroup,
-      builder: (context, state) => GroupInviteScreen(
-        contextProvider: _groupContextProviderExtra(state),
-        initialGroupId: state.pathParameters['groupId']?.trim(),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (context, state) => _buildShell(
+          initialIndex: 2,
+          initialSettingsAction: _parseSettingsInitialAction(state),
+          authProvider: authProviderOverride,
+          startupRouteGate: startupRouteGateOverride,
+          featureTourStore: featureTourStore,
+          runPostTourOnboardingStages: runPostTourOnboardingStages,
+          runStartupTasks: runShellStartupTasks,
+        ),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupMembersForGroup,
-      builder: (context, state) => GroupMemberScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
+      GoRoute(
+        path: AppRoutes.briefing,
+        builder: (context, state) {
+          final type = state.uri.queryParameters['type'] ?? 'morning';
+          final isMorning = type != 'evening';
+          final now = DateTime.now();
+          final briefingDate = DateTime(
+            now.year,
+            now.month,
+            now.day + (isMorning ? 0 : 1),
+          );
+          return _buildShell(
+            key: ValueKey<String>(
+                'briefing-${isMorning ? 'morning' : 'evening'}'),
+            initialIndex: 1,
+            initialCalendarDate: briefingDate,
+            briefingIsMorning: isMorning,
+            authProvider: authProviderOverride,
+            startupRouteGate: startupRouteGateOverride,
+          featureTourStore: featureTourStore,
+          runPostTourOnboardingStages: runPostTourOnboardingStages,
+            runStartupTasks: runShellStartupTasks,
+          );
+        },
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupEventsForGroup,
-      builder: (context, state) => GroupEventListScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
-        initialSelectedDate: _parseRouteDate(state.uri.queryParameters['date']),
+      GoRoute(
+        path: AppRoutes.naverIcsImport,
+        builder: (context, state) {
+          final paths = state.extra is List
+              ? (state.extra! as List)
+                  .map((item) => item.toString())
+                  .where((path) => path.trim().isNotEmpty)
+                  .toList(growable: false)
+              : const <String>[];
+          return NaverIcsImportScreen(initialPaths: paths);
+        },
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupDashboardForGroup,
-      builder: (context, state) => GroupDashboardScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
+      GoRoute(
+        path: AppRoutes.adminTesters,
+        builder: (context, state) => const AdminTesterDashboardScreen(),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupEventCreateForGroup,
-      builder: (context, state) => GroupEventCreateScreen(
-        initialGroupId: state.pathParameters['groupId']?.trim(),
+      GoRoute(
+        path: AppRoutes.voice,
+        builder: (context, state) => VoiceInputScreen(
+          autoStartOverride: _isAutoStart(state) ? true : null,
+        ),
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupInvites,
-      builder: (context, state) => GroupInviteScreen(
-        contextProvider: _groupContextProviderExtra(state),
+      GoRoute(
+        path: AppRoutes.voiceLauncher,
+        redirect: (context, state) => '${AppRoutes.voice}?autoStart=1',
       ),
-    ),
-    GoRoute(
-      path: AppRoutes.groupMembers,
-      builder: (context, state) => const GroupMemberScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.groupEvents,
-      builder: (context, state) => const GroupEventListScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.groupDashboard,
-      builder: (context, state) => const GroupDashboardScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.groupEventCreate,
-      builder: (context, state) => const GroupEventCreateScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.deletedGroups,
-      builder: (context, state) => const DeletedGroupsScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.groupEventDetail,
-      builder: (context, state) => GroupEventDetailScreen(
-        eventId: state.pathParameters['eventId']?.trim() ?? '',
-        event: state.extra is GroupEventModel
-            ? state.extra! as GroupEventModel
-            : null,
+      GoRoute(
+        path: AppRoutes.voiceConversation,
+        builder: (context, state) {
+          final extra = state.extra is Map<String, dynamic>
+              ? state.extra! as Map<String, dynamic>
+              : const <String, dynamic>{};
+          final entryGrantRaw = extra['entry_grant'];
+          final entryGrant = entryGrantRaw is VoiceConversationEntryGrant
+              ? entryGrantRaw
+              : null;
+          return VoiceConversationScreen(
+            autoStart: _isAutoStart(state),
+            initialText: extra['initial_text']?.toString(),
+            entryGrant: entryGrant,
+          );
+        },
       ),
-    ),
-    // 주의: `/groups/:groupId`(그룹 상세)는 반드시 `/groups/invites`,
-    // `/groups/members`, `/groups/events`, `/groups/dashboard` 같은 2세그먼트
-    // 정적 경로들보다 뒤에 선언한다. GoRouter는 먼저 선언된 경로가 우선이라,
-    // 앞에 두면 `/groups/invites`가 groupId="invites"인 그룹 상세로 잘못 매칭돼
-    // 초대 관리 등 정적 경로 화면이 열리지 않는다(빈/깨진 화면).
-    GoRoute(
-      path: AppRoutes.groupDetail,
-      builder: (context, state) => GroupDetailScreen(
-        groupId: state.pathParameters['groupId'] ?? '',
+      GoRoute(
+        path: AppRoutes.voiceAction,
+        builder: (context, state) {
+          final extra = state.extra is Map<String, dynamic>
+              ? state.extra! as Map<String, dynamic>
+              : const <String, dynamic>{};
+          final actionText = extra['action']?.toString() ?? 'edit';
+          final action = VoiceScheduleAction.values.firstWhere(
+            (candidate) => candidate.name == actionText,
+            orElse: () => VoiceScheduleAction.choose,
+          );
+          final rawText = extra['raw_text']?.toString() ?? '';
+          return VoiceActionScreen(
+            key: ValueKey(
+              'voice-action-${action.name}-${rawText.hashCode}',
+            ),
+            rawText: rawText,
+            action: action,
+          );
+        },
       ),
+      GoRoute(
+        path: AppRoutes.confirm,
+        builder: (context, state) {
+          final parsedSchedule = state.extra is Map<String, dynamic>
+              ? state.extra! as Map<String, dynamic>
+              : const <String, dynamic>{};
+          return ConfirmScreen(parsedSchedule: parsedSchedule);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.eventDetail,
+        builder: (context, state) {
+          final event =
+              state.extra is EventModel ? state.extra! as EventModel : null;
+          return EventDetailScreen(
+            event: event,
+            eventId: _resolveEventId(state, event),
+            showDeparturePrompt:
+                state.uri.queryParameters['departureAction'] == 'prompt',
+            showCriticalAckButton:
+                state.uri.queryParameters['criticalAck'] == '1',
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.eventDetailWithId,
+        builder: (context, state) {
+          final event =
+              state.extra is EventModel ? state.extra! as EventModel : null;
+          return EventDetailScreen(
+            event: event,
+            eventId: _resolveEventId(state, event),
+            showDeparturePrompt:
+                state.uri.queryParameters['departureAction'] == 'prompt',
+            showCriticalAckButton:
+                state.uri.queryParameters['criticalAck'] == '1',
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.eventEdit,
+        builder: (context, state) {
+          final event =
+              state.extra is EventModel ? state.extra! as EventModel : null;
+          return EventEditScreen(
+            event: event,
+            eventId: _resolveEventId(state, event),
+            initialDate: _parseRouteDate(state.uri.queryParameters['date']),
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.eventEditWithId,
+        builder: (context, state) {
+          final event =
+              state.extra is EventModel ? state.extra! as EventModel : null;
+          return EventEditScreen(
+            event: event,
+            eventId: _resolveEventId(state, event),
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.departureAlarm,
+        builder: (context, state) {
+          final q = state.uri.queryParameters;
+          return DepartureAlarmScreen(
+            eventId: q['eventId'] ?? '',
+            initialTitle: q['title'],
+            travelMinutes: int.tryParse(q['eta'] ?? ''),
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.groups,
+        builder: (context, state) => const GroupListScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.groupCreate,
+        builder: (context, state) => const GroupCreateScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.groupInviteLink,
+        builder: (context, state) => GroupInviteLinkScreen(
+          groupId: state.uri.queryParameters['groupId']?.trim() ??
+              state.uri.queryParameters['group_id']?.trim() ??
+              '',
+          inviteToken: state.uri.queryParameters['token']?.trim() ?? '',
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupInvitesForGroup,
+        builder: (context, state) => GroupInviteScreen(
+          contextProvider: _groupContextProviderExtra(state),
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupMembersForGroup,
+        builder: (context, state) => GroupMemberScreen(
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupEventsForGroup,
+        builder: (context, state) => GroupEventListScreen(
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+          initialSelectedDate:
+              _parseRouteDate(state.uri.queryParameters['date']),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupDashboardForGroup,
+        builder: (context, state) => GroupDashboardScreen(
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupEventCreateForGroup,
+        builder: (context, state) => GroupEventCreateScreen(
+          initialGroupId: state.pathParameters['groupId']?.trim(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupInvites,
+        builder: (context, state) => GroupInviteScreen(
+          contextProvider: _groupContextProviderExtra(state),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.groupMembers,
+        builder: (context, state) => const GroupMemberScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.groupEvents,
+        builder: (context, state) => const GroupEventListScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.groupDashboard,
+        builder: (context, state) => const GroupDashboardScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.groupEventCreate,
+        builder: (context, state) => const GroupEventCreateScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.deletedGroups,
+        builder: (context, state) => const DeletedGroupsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.groupEventDetail,
+        builder: (context, state) => GroupEventDetailScreen(
+          eventId: state.pathParameters['eventId']?.trim() ?? '',
+          event: state.extra is GroupEventModel
+              ? state.extra! as GroupEventModel
+              : null,
+        ),
+      ),
+      // 주의: `/groups/:groupId`(그룹 상세)는 반드시 `/groups/invites`,
+      // `/groups/members`, `/groups/events`, `/groups/dashboard` 같은 2세그먼트
+      // 정적 경로들보다 뒤에 선언한다. GoRouter는 먼저 선언된 경로가 우선이라,
+      // 앞에 두면 `/groups/invites`가 groupId="invites"인 그룹 상세로 잘못 매칭돼
+      // 초대 관리 등 정적 경로 화면이 열리지 않는다(빈/깨진 화면).
+      GoRoute(
+        path: AppRoutes.groupDetail,
+        builder: (context, state) => GroupDetailScreen(
+          groupId: state.pathParameters['groupId'] ?? '',
+        ),
+      ),
+    ],
+    errorBuilder: (context, state) => const PlaceholderScreen(
+      title: '화면을 찾을 수 없어요',
+      message: '요청한 화면 경로를 찾지 못했습니다.',
     ),
-  ],
-  errorBuilder: (context, state) => const PlaceholderScreen(
-    title: '화면을 찾을 수 없어요',
-    message: '요청한 화면 경로를 찾지 못했습니다.',
-  ),
-);
+  );
+}
+
+final GoRouter appRouter = createAppRouter();
+
+ShellScreen _buildShell({
+  Key? key,
+  required int initialIndex,
+  DateTime? initialCalendarDate,
+  SettingsInitialAction? initialSettingsAction,
+  bool? briefingIsMorning,
+  AuthProvider? authProvider,
+  StartupRouteGate? startupRouteGate,
+  FeatureTourStore? featureTourStore,
+  bool runPostTourOnboardingStages = true,
+  required bool runStartupTasks,
+}) =>
+    ShellScreen(
+      key: key,
+      initialIndex: initialIndex,
+      initialCalendarDate: initialCalendarDate,
+      initialSettingsAction: initialSettingsAction,
+      briefingIsMorning: briefingIsMorning,
+      authProviderOverride: authProvider,
+      startupRouteGateOverride: startupRouteGate,
+      featureTourStore: featureTourStore,
+      runPostTourOnboardingStages: runPostTourOnboardingStages,
+      runStartupTasks: runStartupTasks,
+    );
 
 GroupContextProvider? _groupContextProviderExtra(GoRouterState state) {
   final extra = state.extra;

@@ -6,7 +6,13 @@ import '../services/interaction_idle_gate.dart';
 class StartupRouteGate extends ChangeNotifier {
   bool _widgetLaunchPending = false;
   bool _startupWorkDeferred = false;
+  final ChangeNotifier _redirectRefresh = ChangeNotifier();
   final Completer<void> _startupWorkAllowed = Completer<void>();
+
+  /// Router refreshes only for gate state that can change redirect decisions.
+  /// Startup deferral is observed by app services, but must not rebuild a
+  /// Router while it is parsing/building the current route.
+  Listenable get redirectRefreshListenable => _redirectRefresh;
 
   bool get widgetLaunchPending => _widgetLaunchPending;
 
@@ -32,6 +38,7 @@ class StartupRouteGate extends ChangeNotifier {
       return;
     }
     _widgetLaunchPending = true;
+    _redirectRefresh.notifyListeners();
     notifyListeners();
   }
 
@@ -40,6 +47,7 @@ class StartupRouteGate extends ChangeNotifier {
       return;
     }
     _widgetLaunchPending = false;
+    _redirectRefresh.notifyListeners();
     notifyListeners();
   }
 
@@ -58,6 +66,12 @@ class StartupRouteGate extends ChangeNotifier {
     _startupWorkDeferred = false;
     notifyListeners();
     if (!_startupWorkAllowed.isCompleted) _startupWorkAllowed.complete();
+  }
+
+  @override
+  void dispose() {
+    _redirectRefresh.dispose();
+    super.dispose();
   }
 }
 

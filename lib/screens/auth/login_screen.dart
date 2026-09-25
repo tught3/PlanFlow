@@ -49,6 +49,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
   _AuthMode _mode = _AuthMode.login;
   bool _isLoading = false;
+  int? _activeOAuthAttemptRevision;
   String? _message;
   bool _isError = false;
 
@@ -98,11 +99,18 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
   void _handleOAuthMessage() {
     final message = OAuthCallbackHandler.latestUserMessage.value;
+    final messageRevision = OAuthCallbackHandler.latestUserMessageRevision;
+    if (message != null &&
+        _activeOAuthAttemptRevision != null &&
+        messageRevision != _activeOAuthAttemptRevision) {
+      return;
+    }
     if (authProvider.isSignedIn) {
       OAuthCallbackHandler.clearLatestUserMessage();
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _activeOAuthAttemptRevision = null;
           _message = null;
         });
       }
@@ -112,6 +120,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _activeOAuthAttemptRevision = null;
         });
       }
       _setMessage(message);
@@ -210,25 +219,33 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     });
 
     var keepLoadingForCallback = false;
+    final attemptRevision = OAuthCallbackHandler.markPendingLogin(provider);
+    _activeOAuthAttemptRevision = attemptRevision;
     try {
-      OAuthCallbackHandler.markPendingLogin(provider);
       final launched = await authService.signInWithOAuth(provider);
       if (!launched) {
-        OAuthCallbackHandler.clearPendingCallback();
-        _setMessage(l10n.oauthLaunchFailed);
+        OAuthCallbackHandler.clearPendingLogin(attemptRevision);
+        if (_activeOAuthAttemptRevision == attemptRevision) {
+          _setMessage(l10n.oauthLaunchFailed);
+        }
       } else {
         keepLoadingForCallback = true;
       }
     } on AppleSignInCanceledException {
       // iOS 네이티브 Apple 로그인에서 사용자가 시트를 닫은 경우.
       // 실패가 아니므로 안내 문구 없이 조용히 로딩만 해제한다.
-      OAuthCallbackHandler.clearPendingCallback();
+      OAuthCallbackHandler.clearPendingLogin(attemptRevision);
     } catch (error) {
-      OAuthCallbackHandler.clearPendingCallback();
-      _setMessage(_friendlyAuthMessage(error));
+      OAuthCallbackHandler.clearPendingLogin(attemptRevision);
+      if (_activeOAuthAttemptRevision == attemptRevision) {
+        _setMessage(_friendlyAuthMessage(error));
+      }
     } finally {
-      if (mounted && !keepLoadingForCallback) {
+      if (mounted &&
+          !keepLoadingForCallback &&
+          _activeOAuthAttemptRevision == attemptRevision) {
         setState(() {
+          _activeOAuthAttemptRevision = null;
           _isLoading = false;
         });
       }
@@ -236,11 +253,19 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _resolvePendingOAuthOnResume() async {
-    if (!OAuthCallbackHandler.hasPendingLogin()) {
+    final attemptRevision = _activeOAuthAttemptRevision;
+    if (attemptRevision == null ||
+        OAuthCallbackHandler.pendingLoginRevision != attemptRevision) {
       return;
     }
-    await Future<void>.delayed(const Duration(seconds: 4));
-    if (!mounted || !_isLoading || !OAuthCallbackHandler.hasPendingLogin()) {
+    // Provider account choosers/browser tabs return to the app on cancellation.
+    // A short settling window allows a successful deep-link/session event to win
+    // without leaving the login screen blocked for several seconds.
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted ||
+        !_isLoading ||
+        _activeOAuthAttemptRevision != attemptRevision ||
+        OAuthCallbackHandler.pendingLoginRevision != attemptRevision) {
       return;
     }
     if (OAuthCallbackHandler.latestUserMessage.value != null) {
@@ -248,12 +273,16 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     }
 
     final signedIn = await authProvider.syncCurrentSession();
-    if (!mounted) {
+    if (!mounted ||
+        !_isLoading ||
+        _activeOAuthAttemptRevision != attemptRevision ||
+        OAuthCallbackHandler.pendingLoginRevision != attemptRevision) {
       return;
     }
     if (signedIn) {
       setState(() {
         _isLoading = false;
+        _activeOAuthAttemptRevision = null;
       });
       return;
     }
@@ -265,12 +294,25 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       'apple' => 'Apple',
       _ => '소셜',
     };
-    OAuthCallbackHandler.clearPendingCallback();
+    OAuthCallbackHandler.clearPendingLogin(attemptRevision);
+    _activeOAuthAttemptRevision = null;
     _setMessage(
       '$method 인증이 완료되지 않았어요. 브라우저에서 PlanFlow로 돌아오기 허용을 확인한 뒤 다시 시도해 주세요.',
     );
     setState(() {
       _isLoading = false;
+    });
+  }
+
+  void _cancelPendingOAuthLogin() {
+    final attemptRevision = _activeOAuthAttemptRevision;
+    if (attemptRevision == null) return;
+    OAuthCallbackHandler.clearPendingLogin(attemptRevision);
+    setState(() {
+      _activeOAuthAttemptRevision = null;
+      _isLoading = false;
+      _message = '로그인이 취소되었습니다. 다른 로그인 방법을 선택할 수 있어요.';
+      _isError = false;
     });
   }
 
@@ -453,6 +495,16 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 10),
               ],
+              if (_isLoading && _activeOAuthAttemptRevision != null)
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton.icon(
+                    key: const ValueKey('cancel-social-login'),
+                    onPressed: _cancelPendingOAuthLogin,
+                    icon: const Icon(Icons.close),
+                    label: const Text('로그인 취소'),
+                  ),
+                ),
               _EmailLoginCard(
                 mode: _mode,
                 isLoading: _isLoading,

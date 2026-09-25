@@ -131,9 +131,7 @@ class AuthService implements AuthSessionClient {
     // Supabase 브라우저 OAuth 경로는 Apple provider가 대시보드에서 비활성이면
     // 400("Unsupported provider")을 뱉고, 네이티브 경로는 Sign in with Apple
     // 자체(capability + entitlement)만 있으면 되므로 Supabase 설정과 무관하다.
-    if (provider == PlanFlowOAuthProvider.apple &&
-        !kIsWeb &&
-        Platform.isIOS) {
+    if (provider == PlanFlowOAuthProvider.apple && !kIsWeb && Platform.isIOS) {
       return _signInWithAppleNativeIos();
     }
     final uri = await buildOAuthSignInUri(
@@ -196,7 +194,8 @@ class AuthService implements AuthSessionClient {
     } on SignInWithAppleAuthorizationException catch (error) {
       if (error.code == AuthorizationErrorCode.canceled) {
         debugPrint('Apple native sign-in canceled by user');
-        OAuthCallbackHandler.clearPendingCallback();
+        // The login screen owns the attempt revision and performs a scoped
+        // clear when it catches AppleSignInCanceledException.
         throw const AppleSignInCanceledException();
       }
       rethrow;
@@ -379,11 +378,10 @@ class AuthService implements AuthSessionClient {
     // 브라우저 기반 provider(google/kakao/naver)는 iOS에서
     // externalApplication을 사용한다. Apple은 iOS에서 네이티브 시트 경로로
     // 우회되므로 여기까지 오지 않는다.
-    final launchMode = !kIsWeb &&
-            Platform.isIOS &&
-            appProvider != PlanFlowOAuthProvider.apple
-        ? LaunchMode.externalApplication
-        : LaunchMode.inAppBrowserView;
+    final launchMode =
+        !kIsWeb && Platform.isIOS && appProvider != PlanFlowOAuthProvider.apple
+            ? LaunchMode.externalApplication
+            : LaunchMode.inAppBrowserView;
     final forCalendar = purpose == 'calendar-link';
     final effectiveScopes =
         oauthScopesFor(appProvider, forCalendar: forCalendar) ?? 'default';
@@ -402,8 +400,20 @@ class AuthService implements AuthSessionClient {
         'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
       );
     }
-    _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    final pendingRevision =
+        _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    final callbackPurpose = forCalendar
+        ? OAuthCallbackPurpose.calendarLink
+        : OAuthCallbackPurpose.login;
     await OAuthCallbackHandler.persistCurrentPendingCallback();
+    if (!OAuthCallbackHandler.isPendingCallbackAttempt(
+      revision: pendingRevision,
+      purpose: callbackPurpose,
+    )) {
+      // The user may have canceled/retried while preference persistence was
+      // pending. Do not launch an obsolete provider chooser afterward.
+      return false;
+    }
     final launched = await launchUrl(
       uri,
       mode: launchMode,
@@ -413,7 +423,10 @@ class AuthService implements AuthSessionClient {
       if (appProvider == PlanFlowOAuthProvider.naver) {
         _logNaverCalendarAuth('launchOAuthUrl failed launched=false');
       }
-      OAuthCallbackHandler.clearPendingCallback();
+      OAuthCallbackHandler.clearPendingCallbackForAttempt(
+        revision: pendingRevision,
+        purpose: callbackPurpose,
+      );
     }
     if (appProvider == PlanFlowOAuthProvider.naver) {
       _logNaverCalendarAuth('launchOAuthUrl result launched=$launched');
@@ -421,18 +434,17 @@ class AuthService implements AuthSessionClient {
     return launched;
   }
 
-  void _markPendingOAuthCallback({
+  int _markPendingOAuthCallback({
     required PlanFlowOAuthProvider appProvider,
     required String purpose,
   }) {
     switch (purpose) {
       case 'calendar-link':
-        OAuthCallbackHandler.markPendingCalendarLink(appProvider);
-        break;
+        return OAuthCallbackHandler.markPendingCalendarLink(appProvider);
       case 'sign-in':
-        OAuthCallbackHandler.markPendingLogin(appProvider);
-        break;
+        return OAuthCallbackHandler.markPendingLogin(appProvider);
     }
+    throw ArgumentError.value(purpose, 'purpose', 'Unsupported OAuth purpose');
   }
 
   @override
