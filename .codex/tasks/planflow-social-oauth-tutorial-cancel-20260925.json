@@ -1,0 +1,209 @@
+{
+  "task_id": "planflow-social-oauth-tutorial-cancel-20260925",
+  "status": "COMPLETE",
+  "final_verdict": "CLOSED",
+  "current_phase": "oauth_router_feature_tour_integration_verified",
+  "original_request": "Ensure Google, Naver, and Kakao first-install login always keeps the required three-page tutorial until final confirmation, and Google account-picker back/cancel clears the pending login/loading so other login methods can be used again. Apply to iOS and Android shared code.",
+  "interpreted_requirements": [
+    "All three social providers use the same required first-install feature tour and it cannot be dismissed before final confirmation.",
+    "Do not force-navigate home after an OAuth callback when the router or Shell has already moved to an in-app route or opened the required tour.",
+    "Google OAuth cancel/back releases login loading and permits retry/provider switching.",
+    "Cancel only the matching login-purpose attempt; preserve Naver calendar link, email confirmation, password recovery, PKCE, and late valid success callbacks.",
+    "Use shared Flutter code for both iOS and Android; no native/provider/store configuration change and no deployment."
+  ],
+  "non_requirements": [
+    "No provider-specific copies of the tutorial.",
+    "No force sign-out when a chooser is canceled.",
+    "No deployment or release metadata change."
+  ],
+  "initial_difficulty": "high_risk",
+  "current_difficulty": "high_risk",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "PASS",
+    "checked_at": "2026-09-25",
+    "errors": [],
+    "routing_map": "E:/AI_WIKI/07_System/codex/model-routing.json",
+    "agent_toml_sha256": {
+      "flux_explorer": "E01091D72FE567747BFC05CEAC6BD31CF9103E531A42FE30FE4710DC9A7AA2AF",
+      "flux_planner": "44F936C752161948643B9147E8B515C59CEF97DCA14F45992C0396A8856FA415",
+      "flux_complex_implementer": "0C6EAFD8F1B102490B1B785D452E96E1551E00BAA9FFD6507D58A3C142B4AEBE",
+      "flux_high_risk_reviewer": "EE476135A1C18864356CCAFEEB5092CCC2196F7B0AFBC20CCE44959F876ADD71",
+      "flux_test_executor": "98BB3FA48E054FD4FFFC533852C6F71B22B3B5E01DF3AEBDB7474CFDCC2B4803",
+      "flux_reviewer": "0A8CCA0E3C612E81DA02CF92072EB995F03C10F6D0CF4316B6D56E56ED796A20",
+      "flux_integrator": "6794C9508D15AE1EC398D417DDCA721A00D8E8CAA5471BCFD513D052808C8548"
+    }
+  },
+  "authority": {
+    "initial_selection": "Planner and Integrator selected high_risk because OAuth/authentication async state is involved.",
+    "transition_approval": "No difficulty transition yet.",
+    "dispatch": "Required Complex Implementer and High-risk Escalation roles dispatched."
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "High-risk",
+    "planned_roles": [
+      {"role":"Explorer","agent":"flux_explorer","model":"gpt-6-luna","model_reasoning_effort":"medium","status":"RAN"},
+      {"role":"Planner","agent":"flux_planner","model":"gpt-5.6-terra","model_reasoning_effort":"high","status":"RAN"},
+      {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-6-luna","model_reasoning_effort":"medium","status":"PLANNED"},
+      {"role":"High-risk Escalation","agent":"flux_high_risk_reviewer","model":"gpt-6-sol","model_reasoning_effort":"high","status":"RAN"},
+      {"role":"Test Executor","agent":"flux_test_executor","model":"gpt-6-luna","model_reasoning_effort":"low","status":"PLANNED"},
+      {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-6-luna","model_reasoning_effort":"high","status":"PLANNED"},
+      {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","model_reasoning_effort":"medium","status":"PLANNED"}
+    ],
+    "executed_roles": ["Explorer", "Planner", "High-risk Escalation"],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-25"
+  },
+  "role_reports": {
+    "Explorer": {
+      "role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium",
+      "assignment": "Inspect source, routes, tasks, and tests read-only.", "status": "RAN",
+      "evidence": "OAuthCallbackHandler._syncAndRouteHome signs in then unconditionally go(home); required tour is subsequently pushed from Shell. LoginScreen retains spinner after launch and only resumes delayed session check; no cancel/resume test exists."
+    },
+    "Planner": {
+      "role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high",
+      "assignment": "Plan scoped shared auth/onboarding fix and verification.", "status": "RAN",
+      "evidence": "Keep required three-page tour provider-independent; scope cancellation to login attempt, preserve optional tour and calendar/email pending states, test retries/callback routing and iOS/Android shared paths."
+    },
+    "High-risk Escalation": {
+      "role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "reasoning_effort": "high",
+      "assignment": "Read-only auth race/late callback review before implementation.", "status": "RAN",
+      "evidence": "Flagged unconditional go(home) as probable tutorial dismissal race; recommended attempt identity/bounded cancellation, login-only pending cleanup, preserve PKCE and avoid force signOut."
+    },
+    "Complex Implementer": {
+      "role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium",
+      "assignment": "Implement shared OAuth cancellation scoping and preserve required tutorial navigation; add targeted regression tests.", "status": "RAN",
+      "changed_files": ["lib/screens/auth/login_screen.dart", "lib/services/auth_service.dart", "lib/services/oauth_callback_handler.dart", "test/oauth_redirect_contract_test.dart", "test/screens/login_screen_test.dart", "test/screens/shell_screen_onboarding_order_test.dart", "test/services/oauth_callback_handler_test.dart"],
+      "evidence": "Added explicit cancel, 900ms resume/session resolution, revision-scoped cleanup with same-provider duplicate-mark idempotency, async persistence revision guards, and removed forced home navigation. Focused tests: login screen 7 PASS; OAuth handler + shell onboarding order 19 PASS; git diff --check PASS. No commit/deploy."
+    },
+    "Test Executor": {
+      "role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low",
+      "assignment": "Run final OAuth, auth service, required tour, onboarding gate, shared callback, and redirect tests; analyze changed Dart files and inspect diff whitespace.", "status": "RAN",
+      "evidence": "flutter test --no-pub test/screens/login_screen_test.dart test/services/auth_service_test.dart test/services/oauth_callback_handler_test.dart test/screens/feature_tour_screen_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/ios_e2e_flow05_fake_test.dart test/oauth_redirect_contract_test.dart: exit 0, 63 tests passed. flutter analyze on 7 changed Dart files: exit 0, no issues. git diff --check: exit 0."
+    },
+    "Reviewer": {
+      "role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high",
+      "assignment": "Independently review final diff, callback cancellation race, and tutorial routing coverage.", "status": "RAN", "verdict": "FINDINGS", "highest_severity": "MEDIUM",
+      "evidence": "No BLOCKER/HIGH. Revision-scoped callback errors and login-screen matching prevent an old-revision error from clearing a newer login spinner; cancel/retry widget regression test covers it. MEDIUM remains: no end-to-end OAuth callback→router→required-tour integration/widget test; current source-contract test plus isolated tour/Shell tests do not prove the integrated route. Implementer confirmed production appRouter/AuthProvider/AppEnv are global, protected routes require resolved Supabase session, and Shell starts OS services/timers; a reliable integration test needs broader dependency injection/reset seams, so no fake-router approximation was added. No live iOS/Android provider OAuth tested."
+    },
+    "Integrator": {
+      "role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium",
+      "assignment": "Inspect final diff, task state, ownership, verification, and reviewer findings; determine safe closure/integration state.", "status": "RAN", "verdict": "PARTIAL_NOT_RELEASED",
+      "evidence": "Source fix and 63 targeted tests/analyze/diff check pass. Reviewer has no BLOCKER/HIGH but has a material MEDIUM integration-coverage gap. No live provider/device proof. Workspace is main at 5d3ff068, origin/main at beed461f (2 commits ahead) with foreign dirty paths; no commit/push/deploy performed."
+    }
+  },
+  "plan": [
+    {"id":"callback-route-preservation","classification":"Complex","owner":"flux_complex_implementer","status":"IMPLEMENTED","completion_criteria":"OAuth success callback does not replace an in-app current route or required feature-tour route; auth/root redirect still reaches home."},
+    {"id":"login-cancel-and-retry","classification":"Complex","owner":"flux_complex_implementer","status":"IMPLEMENTED","completion_criteria":"Cancel/resume clears only active login pending state, releases spinner, re-enables choices; stale callback/resume cannot clear a newer attempt."},
+    {"id":"provider-tour-contract","classification":"Complex","owner":"flux_complex_implementer","status":"IMPLEMENTED","completion_criteria":"Regression coverage proves Google/Naver/Kakao share required tour; only final confirmation marks first-run tour complete."},
+    {"id":"tests-review-integration","classification":"Complex","owner":"delivery roles","status":"PARTIAL","completion_criteria":"Targeted tests/analyze/diff check pass; independent review has no BLOCKER/HIGH; Integrator inspects final diff and task state.","remaining":"A true OAuth callback→router→required-tour integration/widget test requires introducing auth/router/Shell test seams because production routing and auth state are module globals and Shell starts concrete OS services. No fake-router approximation was added. Live iOS/Android OAuth remains unverified."}
+  ],
+  "integration_remediation": {
+    "requested_goal": "Close the independent-review MEDIUM by proving actual OAuth callback -> production router -> Shell -> required three-page FeatureTour completion in one widget integration test.",
+    "status": "COMPLETE",
+    "scope_inspected": [
+      "lib/core/router.dart",
+      "lib/screens/shell_screen.dart",
+      "lib/services/oauth_callback_handler.dart",
+      "test/core/startup_route_gate_test.dart",
+      "test/integration/oauth_callback_required_feature_tour_test.dart"
+    ],
+    "implementation_summary": "Narrow test seams construct the production router with injected AuthProvider, StartupRouteGate, FeatureTourStore, and Shell startup-task opt-out; OAuthCallbackHandler receives only a callback-session adapter. Production defaults remain appRouter = createAppRouter(). The handler preserves the callback response provider token for the Naver capture path and no production scheduling workaround remains.",
+    "test_result": {
+      "command": "flutter test --no-pub test/core/startup_route_gate_test.dart test/integration/oauth_callback_required_feature_tour_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/screens/feature_tour_screen_test.dart test/services/oauth_callback_handler_test.dart test/screens/login_screen_test.dart test/oauth_redirect_contract_test.dart --reporter compact",
+      "exit_code": 0,
+      "status": "PASS",
+      "tests_passed": 54,
+      "note": "The true OAuth callback -> production router -> Shell -> required three-page FeatureTour integration flow is now implemented and passes."
+    },
+    "regression_result": {
+      "command": "flutter test --no-pub test/core/startup_route_gate_test.dart test/integration/oauth_callback_required_feature_tour_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/screens/feature_tour_screen_test.dart test/services/oauth_callback_handler_test.dart test/screens/login_screen_test.dart test/oauth_redirect_contract_test.dart --reporter compact",
+      "exit_code": 0,
+      "status": "PASS",
+      "tests_passed": 54,
+      "note": "The latest combined targeted suite includes the integration test."
+    },
+    "static_verification": {
+      "analyze": {"command": "flutter analyze --no-pub lib/core/router.dart lib/screens/auth/login_screen.dart lib/screens/shell_screen.dart lib/services/auth_service.dart lib/services/oauth_callback_handler.dart test/core/startup_route_gate_test.dart test/integration/oauth_callback_required_feature_tour_test.dart test/oauth_redirect_contract_test.dart test/screens/feature_tour_screen_test.dart test/screens/login_screen_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/services/oauth_callback_handler_test.dart", "status": "PASS", "exit_code": 0},
+      "git_diff_check": {"status": "PASS", "exit_code": 0},
+      "temporary_scheduling_change": "NONE_IN_PRODUCTION_SOURCE"
+    },
+    "independent_review": {
+      "verdict": "PASS",
+      "highest_severity": "NONE",
+      "blocker_high": "NONE",
+      "finding": "Independent final reviewer reports PASS with no findings."
+    },
+    "remaining": "The implementation/test integration gap is closed. Live provider and device OAuth round-trips remain external runtime verification, not a failing implementation/test gate.",
+    "routing_receipt": {
+      "receipt_type": "continuation_final",
+      "classification": "High-risk",
+      "planned_roles": [],
+      "executed_roles": ["Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"],
+      "not_run_roles": ["Explorer"],
+      "role_assignments": [
+        {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN", "assignment": "Define a production-router integration test and narrow seams."},
+        {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN", "assignment": "Implement the narrowly injected router, Shell, and callback seams plus the integration test."},
+        {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "model_reasoning_effort": "high", "status": "RAN", "assignment": "Review auth-token, route-order, and startup-task safety of the seam design."},
+        {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN", "assignment": "Run the integration test, targeted regression suite, analyze, and diff check."},
+        {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "RAN", "assignment": "Independently reviewed the passing integration implementation; PASS, severity NONE, no findings."},
+        {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN", "assignment": "Record current integration evidence and hold final closure until independent review."},
+        {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "NOT_RUN", "assignment": "Not re-run; the existing explorer evidence and direct final-diff inspection covered this narrowly scoped continuation."}
+      ],
+      "emitted_at": "2026-09-25"
+    }
+  },
+  "allowed_files": [
+    "lib/screens/auth/login_screen.dart",
+    "lib/services/oauth_callback_handler.dart",
+    "lib/services/auth_service.dart",
+    "lib/core/router.dart",
+    "lib/screens/shell_screen.dart",
+    "lib/screens/onboarding/feature_tour_screen.dart",
+    "test/core/startup_route_gate_test.dart",
+    "test/integration/oauth_callback_required_feature_tour_test.dart",
+    "test/screens/login_screen_test.dart",
+    "test/services/oauth_callback_handler_test.dart",
+    "test/screens/shell_screen_onboarding_gate_test.dart",
+    "test/screens/shell_screen_onboarding_order_test.dart",
+    "test/screens/feature_tour_screen_test.dart",
+    "test/ios_e2e_flow05_fake_test.dart",
+    "test/oauth_redirect_contract_test.dart",
+    ".codex/tasks/planflow-social-oauth-tutorial-cancel-20260925.json"
+  ],
+  "forbidden_files": ["ios/**", "android/**", "supabase/**", "lib/services/ad*", "generated plugin registrants", ".pub-cache-release/**", "all pre-existing foreign dirty files"],
+  "evidence": {
+    "source_files": ["lib/screens/auth/login_screen.dart", "lib/services/auth_service.dart", "lib/services/oauth_callback_handler.dart", "lib/core/router.dart", "lib/screens/shell_screen.dart", "lib/screens/onboarding/feature_tour_screen.dart", "test/core/startup_route_gate_test.dart", "test/integration/oauth_callback_required_feature_tour_test.dart"],
+    "test_commands": [
+      "flutter test --no-pub test/core/startup_route_gate_test.dart test/integration/oauth_callback_required_feature_tour_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/screens/feature_tour_screen_test.dart test/services/oauth_callback_handler_test.dart test/screens/login_screen_test.dart test/oauth_redirect_contract_test.dart --reporter compact",
+      "flutter analyze --no-pub lib/core/router.dart lib/screens/auth/login_screen.dart lib/screens/shell_screen.dart lib/services/auth_service.dart lib/services/oauth_callback_handler.dart test/core/startup_route_gate_test.dart test/integration/oauth_callback_required_feature_tour_test.dart test/oauth_redirect_contract_test.dart test/screens/feature_tour_screen_test.dart test/screens/login_screen_test.dart test/screens/shell_screen_onboarding_gate_test.dart test/screens/shell_screen_onboarding_order_test.dart test/services/oauth_callback_handler_test.dart",
+      "git diff --check"
+    ]
+  },
+  "unresolved": ["No live iOS/Android Google chooser cancellation or Google/Naver/Kakao first-install OAuth round-trip evidence; this is a separate non-gating runtime-verification limitation, not release/deploy readiness or device proof."],
+  "final_receipt": {
+    "receipt_type": "final",
+    "classification": "High-risk",
+    "planned_roles": [],
+    "executed_roles": ["Explorer", "Planner", "Complex Implementer", "High-risk Escalation", "Test Executor", "Reviewer", "Integrator"],
+    "not_run_roles": [],
+    "role_assignments": [
+      {"role":"Explorer","agent":"flux_explorer","model":"gpt-6-luna","model_reasoning_effort":"medium","status":"RAN"},
+      {"role":"Planner","agent":"flux_planner","model":"gpt-5.6-terra","model_reasoning_effort":"high","status":"RAN"},
+      {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-6-luna","model_reasoning_effort":"medium","status":"RAN"},
+      {"role":"High-risk Escalation","agent":"flux_high_risk_reviewer","model":"gpt-6-sol","model_reasoning_effort":"high","status":"RAN"},
+      {"role":"Test Executor","agent":"flux_test_executor","model":"gpt-6-luna","model_reasoning_effort":"low","status":"RAN"},
+      {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-6-luna","model_reasoning_effort":"high","status":"RAN"},
+      {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","model_reasoning_effort":"medium","status":"RAN"}
+    ],
+    "verdict":"INTEGRATION_TEST_REMEDIATION_COMPLETE",
+    "reviewer_verdict":"PASS",
+    "reviewer_highest_severity":"NONE",
+    "reviewer_blocker_high":"NONE",
+    "emitted_at":"2026-09-25"
+  },
+  "last_updated": "2026-09-25"
+}

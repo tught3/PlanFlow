@@ -23,8 +23,8 @@
 전체 목록: `04_Memory/Preference/` (status: confirmed, 총 98개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
-- **auto-finish-after-each-task**: 모든 프로젝트·모든 세션·모든 코딩 프로그램에서, 작업 단위가 실제로 완료될 때마다 "마무리해" 지시 없이 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든,... (`04_Memory/Preference/auto-finish-after-each-task.md`)
-- **global_autonomy_senior_judgement**: E:\FluxStudio 내 모든 작업·모든 세션에서 AI(OpenCode/Claude/Codex/GLM)는 일일이 사용자에게 묻지 않고 스스로 진행한다. 권한은... (`04_Memory/Preference/global_autonomy_senior_judgement.md`)
-- **instruction_md_auto_optimize**: 모든 세션·모든 도구에서 AGENTS.md·CLAUDE.md·preference 등 지시 문서를 추가/변경/삭제할 때, CEO에게 요청받지 않아도 자동으로 최적화... (`04_Memory/Preference/instruction_md_auto_optimize.md`)
+- **최종_검토를_지금_종료하고_수행한_명령_exit_code_판정_남은_blocker를_간**: 최종 검토를 지금 종료하고 수행한 명령·exit code·판정·남은 blocker를 간결하게 보고하세요. 추가 작업/대기는 하지 마세요. (`04_Memory/Preference/최종_검토를_지금_종료하고_수행한_명령_exit_code_판정_남은_blocker를_간.md`)
 - **계속해**: 계속해 (`04_Memory/Preference/계속해.md`)
-- **workspace-hygiene-main-checkout**: 기존 프로젝트 메인 체크아웃과 현재 대화 내 난이도별 서브에이전트를 기본 작업 방식으로 사용한다. 새 worktree, runtime/session 디렉터리 또는... (`04_Memory/Preference/workspace-hygiene-main-checkout.md`)
+- **답변하고_마무리해_그리고_앞으로는_새세션이나_새워크트리를_만들어서_진행하지말고_서브에이**: 답변하고 마무리해. (`04_Memory/Preference/답변하고_마무리해_그리고_앞으로는_새세션이나_새워크트리를_만들어서_진행하지말고_서브에이.md`)
+- **no_visible_console_windows**: 사용자가 일부러 띄운 창을 제외한 모든 프로세스는 화면에 보이면 안 된다. 백그라운드·예약·스크립트 실행이 검은 콘솔 창(깜빡임 포함)을 만드는 것은 결함이다. (`04_Memory/Preference/no_visible_console_windows.md`)
+- **auto-finish-after-each-task**: 모든 프로젝트·모든 세션·모든 코딩 프로그램에서, 작업 단위가 실제로 완료될 때마다 "마무리해" 지시 없이 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든,... (`04_Memory/Preference/auto-finish-after-each-task.md`)

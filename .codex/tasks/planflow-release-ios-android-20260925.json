@@ -1,0 +1,116 @@
+{
+  "task_id": "planflow-release-ios-android-20260925",
+  "status": "COMPLETE",
+  "final_verdict": "IOS_TESTFLIGHT_AVAILABLE_ANDROID_PLAY_PRODUCTION_UPLOADED",
+  "current_phase": "complete",
+  "initial_difficulty": "high_risk",
+  "current_difficulty": "high_risk",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {"status": "PASS", "checked_at": "2026-09-25", "errors": []},
+  "authority": {"initial_selection": "Production iOS then Android rollout explicitly requested by user", "transition_approval": "Not applicable", "dispatch": "User explicitly requested deployment"},
+  "evidence": {
+    "source_files": [
+      "pubspec.yaml",
+      "ios/Flutter/PlanFlow-Identity.xcconfig",
+      "config/release-manifest.json",
+      "E:/AI_WIKI/scripts/deploy-project.ps1",
+      "E:/AI_WIKI/scripts/deploy-sequence.ps1",
+      "E:/AI_WIKI/scripts/deploy-sequence.tests.ps1"
+    ],
+    "test_commands": [
+      {"command": "flutter test test/ios_widget_version_contract_test.dart", "exit_code": 0, "evidence": "Test Executor: pass, 16 tests"},
+      {"command": "python -m unittest scripts.tests.test_ios_release_workflow_contract", "exit_code": 0, "evidence": "Test Executor: pass, 70 tests"},
+      {"command": "powershell -NoProfile -ExecutionPolicy Bypass -File E:/AI_WIKI/scripts/deploy-sequence.tests.ps1", "exit_code": 0, "evidence": "Test Executor: pass, 13 scenarios and parser"},
+      {"command": "git diff --check", "exit_code": 0, "evidence": "Test Executor and final Reviewer: pass on final version metadata diff"},
+      {"command": "C:/Users/tught/bin/배포해.cmd -Check", "exit_code": 0, "evidence": "PlanFlow iOS workflow build 177 and Android resolved"},
+      {"command": "flutter test test/ios_widget_version_contract_test.dart", "exit_code": 0, "evidence": "Post-review Test Executor: 16 tests passed"},
+      {"command": "flutter test --no-pub test/ios_phase3_native_contract_test.dart test/ios_widget_version_contract_test.dart test/ios_phase4_identity_contract_test.dart", "exit_code": 0, "evidence": "Integrator: 21 tests passed"}
+    ]
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "High-risk release",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "PLANNED"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "PLANNED"}
+    ],
+    "executed_roles": [],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-25"
+  },
+  "role_reports": {
+    "Explorer": {"assignment": "Inspect release state, deployment workflow, ignored Android config and safety boundaries", "status": "RAN", "evidence": "Clean release worktree at 5d3ff068; iOS build 176 consumed; Android local configuration available"},
+    "Planner": {"assignment": "Plan safe train/build identity and sequential release", "status": "RAN", "evidence": "Set version 1.1.2+177 and manifest-approved train 1.1.2; iOS gate must pass before Android"},
+    "Complex Implementer": {"assignment": "Update only release identity and manifest in clean release checkout", "status": "RAN", "evidence": "pubspec.yaml, widget identity xcconfig, release manifest updated; test evidence recorded"},
+    "High-risk Escalation": {"assignment": "Review production release and train change risks", "status": "RAN", "evidence": "Conditional go: use consumed build 176 evidence, candidate 177; exact manifest train approval only"},
+    "Test Executor": {"assignment": "Run targeted release tests and dry preflight", "status": "RAN", "evidence": "16 widget tests, 70 workflow tests, 13 global resolver scenarios and canonical check passed"},
+    "Reviewer": {"assignment": "Independently review final diffs and production gates", "status": "RAN", "evidence": "FINAL_REVIEW_REPORT PASS, NONE/NONE; final version metadata diff reviewed after comment correction"},
+    "Integrator": {"assignment": "Reconcile evidence, commit/push, sequence release and final gate", "status": "RAN", "evidence": "COMPLETE; commit beed461fb74bf8fd375616c46c0566422164e305 pushed non-force; HEAD=origin/main verified"}
+  },
+  "release": {
+    "source_commit": "8da1c09a72a5b6de7e704f025c09d683c79101f9",
+    "release_metadata_commit": "e27a3ff272e8358d1b1eaba2739243eaa5d8e5c2",
+    "origin_main": "e27a3ff272e8358d1b1eaba2739243eaa5d8e5c2",
+    "ios": {"version": "1.1.2", "build": 179, "workflow_run": "36142208719", "status": "TESTFLIGHT_AVAILABLE"},
+    "android": {"version": "1.1.2+182", "version_code": 182, "track": "production", "status": "UPLOAD_COMPLETE"},
+    "reviewer": "PASS",
+    "high_risk_gate": "CONDITIONAL_PASS_PREDICATE_SATISFIED_AFTER_PUSH",
+    "integrator": "COMPLETE",
+    "worktree_cleanup": "REMOVED",
+    "unrelated_checkout_changes": "PRESERVED",
+    "notes": ["Test Executor directly observed 35 OAuth tests passing across six files, targeted analyze pass, and iOS TestFlight availability.", "Android production upload success and direct release AAB build exit 0 were observed by the parent through the canonical release command; Android-specific logs were not independently re-read by the Test Executor.", "Google Play public propagation and physical-device install/OAuth validation are not claimed."]
+  },
+  "continuation_receipt": {
+    "receipt_type": "final",
+    "classification": "High-risk production release continuation",
+    "planned_roles": [],
+    "executed_roles": [
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN"}
+    ],
+    "not_run_roles": [],
+    "verdict": "INTEGRATION_PASS",
+    "reviewer_verdict": "PASS",
+    "reviewer_highest_severity": "NONE",
+    "integrator_verdict": "COMPLETE",
+    "role_reports": {
+      "Test Executor": {"assignment": "Reconcile focused OAuth verification and live iOS workflow status", "status": "RAN", "evidence": "Six OAuth test files: 35 passed; targeted analyze over 12 changed Dart/test files exit 0; run 36142208719 Build179 valid and TestFlight available; Android logs were not independently observed by this role."},
+      "High-risk Escalation": {"assignment": "Assess production rollout evidence and source/release metadata integrity", "status": "RAN", "evidence": "CONDITIONAL PASS initially required normal push and exact remote SHA; after e27a3ff2 push, predicates verified. iOS run 36142208719 pass; Android production upload accepted per canonical deployment output."},
+      "Reviewer": {"assignment": "Independently inspect final 179→182 release metadata diff and deployment evidence", "status": "RAN", "evidence": "FINAL_REVIEW_REPORT PASS; highest severity NONE; only pubspec.yaml and ios/Flutter/PlanFlow-Identity.xcconfig changed; git diff --check clean."},
+      "Integrator": {"assignment": "Reconcile final deployment, remote push, review, tests, and preserved checkout state", "status": "RAN", "evidence": "INTEGRATION_PASS/COMPLETE; HEAD and origin/main both e27a3ff2; candidate worktree clean; no BLOCKER/HIGH; unrelated original checkout edits preserved."}
+    },
+    "evidence": {
+      "ios_workflow": "36142208719; Build179; APP_STORE_BUILD_INGESTED PASS; TESTFLIGHT_AVAILABLE PASS",
+      "android_release": "Canonical deploy sequence; preflight PASS; direct AAB build exit 0; production rollout upload complete for versionCode 182",
+      "release_metadata_commit": "e27a3ff272e8358d1b1eaba2739243eaa5d8e5c2; only pubspec.yaml and ios/Flutter/PlanFlow-Identity.xcconfig",
+      "remote_verification": "git ls-remote origin refs/heads/main equals e27a3ff272e8358d1b1eaba2739243eaa5d8e5c2",
+      "candidate_status": "clean; git diff --check exit 0"
+    },
+    "emitted_at": "2026-09-25"
+  },
+  "final_receipt": {
+    "receipt_type": "final",
+    "classification": "High-risk release",
+    "planned_roles": [],
+    "executed_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN"}
+    ],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-25"
+  }
+}

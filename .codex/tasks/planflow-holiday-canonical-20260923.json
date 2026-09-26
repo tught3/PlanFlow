@@ -1,0 +1,69 @@
+{
+  "task_id": "planflow-holiday-canonical-20260923",
+  "request": "공휴일 중복·표시 문제 해결: 2026-10-05 대체공휴일을 빨간색 휴무일로 표시하고, 공식 휴일 외부 캘린더 복제본(성탄절/크리스마스 등)을 iOS와 Android에서 중복 표시하지 않는다. 출처 불명 '아무대나' 및 개인 일정은 근거 없이 제거하지 않는다.",
+  "status": "COMPLETE",
+  "routing_receipt": {
+    "entry_model": "gpt-5.6-luna",
+    "entry_effort": "medium",
+    "classification": "Complex",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-5.6-luna", "reasoning_effort": "low"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-5.6-luna", "reasoning_effort": "high"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+    ]
+  },
+  "initial_git": {
+    "head": "023c5c445a270e551ebca61efa480bfe7021ddbf",
+    "branch": "main",
+    "foreign_dirty_preserved": [
+      "android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java",
+      "ios/Runner/GeneratedPluginRegistrant.m",
+      "linux/flutter/generated_plugin_registrant.cc",
+      "linux/flutter/generated_plugins.cmake",
+      "macos/Flutter/GeneratedPluginRegistrant.swift",
+      ".pub-cache-release/",
+      "scripts/tests/__pycache__/test_planflow_privacy_policy_contract.cpython-314.pyc"
+    ]
+  },
+  "requirements": [
+    "10/5/2026 isDayOff true and uses the existing red official-holiday UI path on both platforms.",
+    "KASI date-specific names retain precedence while known computed substitute holidays supplement missing/stale entries.",
+    "Imported provider aliases for the canonical holiday on that date are hidden at import and projection; personal/unknown titles remain visible.",
+    "No existing user/provider records are deleted."
+  ],
+  "roles": {
+    "Explorer": {"status": "RAN", "agent": "flux_explorer", "report": "2026-10-03 is Saturday and current substitute logic only applies Sunday to Gaecheonjeol; live KASI map replaces calculated dates; exact-title duplicate predicate misses Christmas aliases. Shared Flutter logic covers both platforms. '아무대나' not found in source; its record provenance must be inspected before hiding."},
+    "Planner": {"status": "RAN", "agent": "flux_planner", "report": "Complex scoped changes in korean_holidays and synced_public_holiday_visibility plus focused tests; retain unknown titles and user data; no native changes or data deletion."},
+    "Complex Implementer": {"status": "RAN", "agent": "flux_complex_implementer", "assignment": "Implement deterministic substitute-day supplementation and safe date-aware holiday aliases with regression tests.", "changed_files": ["lib/services/korean_holidays.dart", "lib/services/synced_public_holiday_visibility.dart", "test/services/korean_holidays_test.dart", "test/services/synced_public_holiday_visibility_test.dart"], "report": "Adds Saturday substitute holidays (including 2026-10-05), supplements missing computed dates to live KASI data, adds date-aware Christmas aliases, preserves unknown event titles. Implementer reported focused test/format checks pass; independent test executor reran."},
+    "Test Executor": {"status": "RAN", "agent": "flux_test_executor", "tests": [
+      {"command": "flutter test test/services/korean_holidays_test.dart test/services/synced_public_holiday_visibility_test.dart", "exit_code": 0, "result": "61 tests passed"},
+      {"command": "flutter test test/services/device_calendar_service_test.dart test/services/calendar_sync_service_test.dart test/services/naver_ics_import_service_test.dart test/services/naver_open_api_calendar_service_test.dart", "exit_code": 0, "result": "50 tests passed"},
+      {"command": "flutter analyze lib/services/korean_holidays.dart lib/services/synced_public_holiday_visibility.dart", "exit_code": 0, "result": "No issues found"},
+      {"command": "dart format --set-exit-if-changed <four changed Dart files>", "exit_code": 0, "result": "4 files, 0 changed"},
+      {"command": "git diff --check", "exit_code": 0, "result": "pass"}
+    ]},
+    "Reviewer": {"status": "RAN", "agent": "flux_reviewer", "assignment": "Independent final diff, risk, preservation, and test review.", "report": "Initial FINDINGS/MEDIUM for plain substitute alias was fixed. Final review PASS, NONE: inspected final diff and test/analyze/format/status evidence; no BLOCKER/HIGH/MEDIUM/LOW findings."},
+    "Integrator": {"status": "RAN", "agent": "flux_integrator", "assignment": "Final integration, ownership and completion decision.", "report": "COMPLETE: final diff is restricted to the four allowed Flutter source/test files; all inherited foreign dirty paths remain unstaged and unchanged by this task. Independent tests: 61 focused and 50 importer regression tests passed; targeted analyze, formatting, and diff check passed. Reviewer final verdict PASS/NONE with no BLOCKER or HIGH."}
+  },
+  "allowed_files": [
+    "lib/services/korean_holidays.dart",
+    "lib/services/synced_public_holiday_visibility.dart",
+    "test/services/korean_holidays_test.dart",
+    "test/services/synced_public_holiday_visibility_test.dart"
+  ],
+  "forbidden_files": ["ios/**", "android/**", "database data", "secrets", "foreign dirty paths"],
+  "tests": [
+    {"command": "flutter test test/services/korean_holidays_test.dart test/services/synced_public_holiday_visibility_test.dart", "exit_code": 0, "result": "61 tests passed"},
+    {"command": "flutter test test/services/device_calendar_service_test.dart test/services/calendar_sync_service_test.dart test/services/naver_ics_import_service_test.dart test/services/naver_open_api_calendar_service_test.dart", "exit_code": 0, "result": "50 tests passed"},
+    {"command": "flutter analyze lib/services/korean_holidays.dart lib/services/synced_public_holiday_visibility.dart", "exit_code": 0, "result": "No issues found"},
+    {"command": "dart format --set-exit-if-changed <four changed Dart files>", "exit_code": 0, "result": "4 files, 0 changed"},
+    {"command": "git diff --check", "exit_code": 0, "result": "pass"}
+  ],
+  "review": {"status": "PASS", "highest_severity": "NONE", "report": "Final diff review passed after date-scoped plain substitute alias and regression test rework."},
+  "unresolved": ["The source/ownership of the event titled '아무대나' is unknown; do not hide/delete without event provenance."],
+  "delivery": {"commit": "becb4cbba0e356c40fbf722912b2f2df95f270a1", "origin_main": "becb4cbba0e356c40fbf722912b2f2df95f270a1", "pushed": true, "deployed": false},
+  "updated_at": "2026-09-23"
+}
