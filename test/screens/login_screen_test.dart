@@ -138,6 +138,41 @@ void main() {
     expect(find.text('네이버로 계속하기'), findsOneWidget);
   });
 
+   testWidgets(
+      'returning from a dismissed provider chooser releases login and allows another provider',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(420, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(OAuthCallbackHandler.clearPendingCallback);
+
+    final authService = _PendingOAuthAuthService();
+    AppEnv.markSupabaseInitialized();
+    await tester.pumpWidget(
+      MaterialApp(home: LoginScreen(authService: authService)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Google로 계속하기'));
+    await tester.pump();
+    expect(OAuthCallbackHandler.pendingLoginMethod, 'google');
+    expect(find.byKey(const ValueKey('cancel-social-login')), findsOneWidget);
+
+    // Simulate the account chooser being dismissed externally and the app
+    // returning to the foreground without an OAuth callback.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(milliseconds: 901));
+    await tester.pumpAndSettle();
+
+    expect(OAuthCallbackHandler.pendingLoginMethod, isNull);
+    expect(find.byKey(const ValueKey('cancel-social-login')), findsNothing);
+    expect(find.textContaining('Google 인증이 완료되지 않았어요.'), findsOneWidget);
+
+    await tester.tap(find.text('카카오로 계속하기'));
+    await tester.pump();
+    expect(OAuthCallbackHandler.pendingLoginMethod, 'kakao');
+    expect(find.byKey(const ValueKey('cancel-social-login')), findsOneWidget);
+   });
+
   testWidgets('LoginScreen surfaces Supabase init failures', (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));

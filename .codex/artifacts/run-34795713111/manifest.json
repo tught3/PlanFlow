@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "projectId": "planflow",
+  "platform": "ios",
+  "sourceSha": "7d1c71ab6b6d951ff4dc16c4902659d5a1762d1c",
+  "appVersion": "1.1.1+164",
+  "buildProvenance": "flutter-drive-canonical",
+  "captureType": "native-simulator",
+  "devices": [
+    {
+      "slot": "IPHONE",
+      "model": "iPhone 16 Pro Max",
+      "udid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "runtimeName": "iOS 26.2",
+      "runtimeVersion": "26.2"
+    },
+    {
+      "slot": "IPAD",
+      "model": "iPad Pro 13-inch (M4)",
+      "udid": "E981E79A-BFAD-42DC-A94F-0E5C7B58E555",
+      "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "runtimeName": "iOS 26.2",
+      "runtimeVersion": "26.2"
+    }
+  ],
+  "files": [
+    {
+      "path": "ipad13-calendar-IPAD.png",
+      "sha256": "8a1bee11eda8933fd89372481a1620083e135e6710bd2e3819fe08c86d74bd04",
+      "width": 2064,
+      "height": 2752,
+      "slot": "IPAD",
+      "screenshotId": "ipad13-calendar",
+      "route": "capture://calendar",
+      "fixture": "demo-default",
+      "sourceLocator": "capture://calendar",
+      "finalLocator": "ipad13-calendar-IPAD.png",
+      "locale": "ko_KR",
+      "featureIds": [
+        "calendar-month"
+      ],
+      "captureDeviceSlot": "IPAD",
+      "captureDeviceModel": "iPad Pro 13-inch (M4)",
+      "captureDeviceUdid": "E981E79A-BFAD-42DC-A94F-0E5C7B58E555",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "captureOs": "iOS 26.2",
+      "captureOsVersion": "26.2",
+      "piiReview": "PENDING",
+      "visualReview": "PENDING",
+      "readinessEvidence": "widget-key-and-screen-content"
+    },
+    {
+      "path": "ipad13-group-IPAD.png",
+      "sha256": "322db9ff3c6a2bf9b47ca099f68a5ff9def09a7265f07685e04a0c0e39ccf755",
+      "width": 2064,
+      "height": 2752,
+      "slot": "IPAD",
+      "screenshotId": "ipad13-group",
+      "route": "capture://group",
+      "fixture": "demo-default",
+      "sourceLocator": "capture://group",
+      "finalLocator": "ipad13-group-IPAD.png",
+      "locale": "ko_KR",
+      "featureIds": [
+        "group-dashboard"
+      ],
+      "captureDeviceSlot": "IPAD",
+      "captureDeviceModel": "iPad Pro 13-inch (M4)",
+      "captureDeviceUdid": "E981E79A-BFAD-42DC-A94F-0E5C7B58E555",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "captureOs": "iOS 26.2",
+      "captureOsVersion": "26.2",
+      "piiReview": "PENDING",
+      "visualReview": "PENDING",
+      "readinessEvidence": "widget-key-and-screen-content"
+    },
+    {
+      "path": "iphone69-calendar-home-IPHONE.png",
+      "sha256": "8e2d3da71ff31ad9f6ca6ba6a7aae0f0aef487c77f88fd762843dc5a44809aa1",
+      "width": 1320,
+      "height": 2868,
+      "slot": "IPHONE",
+      "screenshotId": "iphone69-calendar-home",
+      "route": "capture://calendar-home",
+      "fixture": "demo-default",
+      "sourceLocator": "capture://calendar-home",
+      "finalLocator": "iphone69-calendar-home-IPHONE.png",
+      "locale": "ko_KR",
+      "featureIds": [
+        "calendar-month",
+        "home-today-briefing"
+      ],
+      "captureDeviceSlot": "IPHONE",
+      "captureDeviceModel": "iPhone 16 Pro Max",
+      "captureDeviceUdid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "captureOs": "iOS 26.2",
+      "captureOsVersion": "26.2",
+      "piiReview": "PENDING",
+      "visualReview": "PENDING",
+      "readinessEvidence": "widget-key-and-screen-content"
+    },
+    {
+      "path": "iphone69-group-IPHONE.png",
+      "sha256": "e3a0256a6da81dac3db94829c3cb8c84ce724e7deec16080c1b4ed540ccc492d",
+      "width": 1320,
+      "height": 2868,
+      "slot": "IPHONE",
+      "screenshotId": "iphone69-group",
+      "route": "capture://group",
+      "fixture": "demo-default",
+      "sourceLocator": "capture://group",
+      "finalLocator": "iphone69-group-IPHONE.png",
+      "locale": "ko_KR",
+      "featureIds": [
+        "group-dashboard"
+      ],
+      "captureDeviceSlot": "IPHONE",
+      "captureDeviceModel": "iPhone 16 Pro Max",
+      "captureDeviceUdid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "captureOs": "iOS 26.2",
+      "captureOsVersion": "26.2",
+      "piiReview": "PENDING",
+      "visualReview": "PENDING",
+      "readinessEvidence": "widget-key-and-screen-content"
+    },
+    {
+      "path": "iphone69-voice-confirm-IPHONE.png",
+      "sha256": "88b47dae46999b120959a25bfbf91c86e11c803804d493c54281f641365f793c",
+      "width": 1320,
+      "height": 2868,
+      "slot": "IPHONE",
+      "screenshotId": "iphone69-voice-confirm",
+      "route": "capture://voice-confirm",
+      "fixture": "demo-default",
+      "sourceLocator": "capture://voice-confirm",
+      "finalLocator": "iphone69-voice-confirm-IPHONE.png",
+      "locale": "ko_KR",
+      "featureIds": [
+        "voice-schedule-input"
+      ],
+      "captureDeviceSlot": "IPHONE",
+      "captureDeviceModel": "iPhone 16 Pro Max",
+      "captureDeviceUdid": "DBDDC9EC-8B7E-4D03-8D76-2FA91BE5EC2B",
+      "captureRuntimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+      "captureOs": "iOS 26.2",
+      "captureOsVersion": "26.2",
+      "piiReview": "PENDING",
+      "visualReview": "PENDING",
+      "readinessEvidence": "widget-key-and-screen-content"
+    }
+  ],
+  "qualification": "PENDING",
+  "storeUpload": "NOT_UPLOADED"
+}
