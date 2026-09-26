@@ -1,9 +1,9 @@
 {
   "task_id": "production-deploy-default-20260926",
   "original_request": "앞으로 배포해는 TestFlight가 아니라 App Store 정식 배포. 이미 출시된 PlanFlow 업데이트.",
-  "status": "IN_PROGRESS",
-  "final_verdict": "PENDING_LIVE_GET_RETRY",
-  "current_phase": "live_readback_correction_verified",
+  "status": "COMPLETE",
+  "final_verdict": "COMPLETE_SUBMITTED_AND_ANDROID_PRODUCTION_UPLOADED",
+  "current_phase": "complete",
   "initial_difficulty": "high_risk",
   "current_difficulty": "high_risk",
   "transition_count": 0,
@@ -18,7 +18,7 @@
   "authority": {
     "initial_selection": "Planner confirmed HIGH_RISK_COMPLEX because App Store Connect review submission and automatic-after-approval release handling are production external-state contracts.",
     "transition_approval": "Integrator",
-    "dispatch": "User expanded authority to reconcile the current PlanFlow checkout to a clean canonical main state and run the iOS-first production deployment followed by Android. Store readback is complete; release dispatch remains gated on factual notes, clean integration, verification, and review."
+    "dispatch": "User authorized current-checkout reconciliation and the canonical iOS-first production release followed by Android. Both releases reached their accepted external terminal outcomes; Apple approval/public availability remains an external pending outcome."
   },
   "evidence": {
     "source_files": [
@@ -184,17 +184,8 @@
     "emitted_at": "2026-09-26"
   },
   "final_receipt": {
-    "status": "PRE_DEPLOY_INTEGRATED",
-    "planned_roles": [
-      "Explorer",
-      "Planner",
-      "Complex Implementer (PlanFlow)",
-      "Complex Implementer (global)",
-      "Test Executor",
-      "Reviewer",
-      "High-risk Escalation",
-      "Integrator"
-    ],
+    "status": "COMPLETE",
+    "planned_roles": [],
     "executed_roles": [
       "Explorer",
       "Planner",
@@ -210,10 +201,10 @@
       "scope_expansion cleanup: Planner and Simple Implementer RAN",
       "high-risk draft readback: Planner, Complex Implementer, Failure Analyst, Final Test Executor, and Final Reviewer RAN"
     ],
-    "remaining_gate": "Normal non-force push followed by live GET-only App Store draft readback and canonical production deployment dispatch; Apple and Google external outcomes remain separately reported."
+    "remaining_gate": "None for source/release submission. Apple review, approval, and public availability are external follow-up states, not completion of this authorized submission task."
   },
   "merge_checkpoint": {
-    "status": "CORRECTION_COMMITTED_AWAITING_PUSH_AND_LIVE_GET_RETRY",
+    "status": "COMPLETE",
     "source_commit": "b351cbe2d77ea7312b0332af517d99b3cd453204",
     "upstream": "origin/main e2bb10de2a7223ab4532f0153033cda5ce1b2029",
     "conflicts": {
@@ -223,16 +214,37 @@
     "version_reconciliation": "Origin version 1.1.2+182 and widget identity were advanced to task build 183; widget comment updated to the same version/build.",
     "preliminary_diff_check_exit_code": 0,
     "merge_commit": "d540d906d5d45076e59a07d5868e12535f224902",
-    "push": "Normal non-force push succeeded; HEAD and origin/main are both 894c049ca282756f5c1e846e2bb2aa3938a3bead.",
-    "live_get_readback": "Run 36223686466 failed at ASC_RESPONSE_MALFORMED because a review-submission item relationship was missing. Collector performed no Apple writes; canonical deployment did not start. Narrow correction is committed at 1d228d9d: both item GET paths now request the official include=appStoreVersion relationship, regression coverage retains links-only/unknown fail-closed behavior, and a fresh GET-only retry is required before deployment.",
-    "release_dispatch": "NOT_STARTED"
+    "push": "Normal non-force push succeeded through a800bb319caaec65e132479b2fb1a2ebff4e2978 before the immutable iOS build 183 dispatch. The Android auto-bump to 184 is separately audited below and will be committed after this state checkpoint.",
+    "live_get_readback": "Initial run 36223686466 failed fail-closed with ASC_RESPONSE_MALFORMED and performed no Apple writes. The narrow include=appStoreVersion correction was committed and pushed. Fresh GET-only run 36224084564 succeeded at a800bb31: the pending READY_FOR_REVIEW draft 9eaa55ea-1512-4bc0-b95e-8d2264396e85 was fully read with itemCount 0/items []; three historical COMPLETE submissions each had one version item; live 1.0 build 173 remained READY_FOR_SALE.",
+    "release_dispatch": "COMPLETE: canonical dispatch at immutable source a800bb319caaec65e132479b2fb1a2ebff4e2978; iOS run 36224156949 submitted 1.1.2 build 183, then Android canonical production uploaded 1.1.2+184."
   },
   "live_readback_correction_verification": {
     "implementer": "RAN: four scoped files only; official include=appStoreVersion on both item GET paths with regression coverage.",
     "test_executor": "RAN: python -B -m unittest scripts.tests.test_asc_submit_review scripts.tests.test_store_readback_asc scripts.tests.test_ios_release_workflow_contract scripts.tests.test_asc_next_build_number exited 0 with 157 tests; git diff --check exited 0.",
     "reviewer": "RAN: final correction review PASS with BLOCKER 0 and HIGH 0.",
     "high_risk_reviewer": "RAN: final correction review PASS with BLOCKER 0 and HIGH 0.",
-    "external_gate": "PENDING: repeat the GET-only App Store readback; do not infer live response shape from fixtures."
+    "external_gate": "SATISFIED: GET-only run 36224084564 succeeded with complete item relationships before production dispatch."
+  },
+  "release_execution": {
+    "source_sha": "a800bb319caaec65e132479b2fb1a2ebff4e2978",
+    "ios": {
+      "workflow_run": "36224156949",
+      "url": "https://github.com/tught3/PlanFlow/actions/runs/36224156949",
+      "build": 183,
+      "marketing_version": "1.1.2",
+      "archive": "SUCCESS",
+      "dsym": "SUCCESS",
+      "ipa_upload": "SUCCESS",
+      "ingestion": "SUCCESS",
+      "app_store_submission": "SUCCESS: APP_STORE_SUBMITTED version=1.1.2 build=183 state=WAITING_FOR_REVIEW releaseType=AFTER_APPROVAL",
+      "approval_and_public_availability": "PENDING_EXTERNAL_APPLE_REVIEW"
+    },
+    "android": {
+      "build": 184,
+      "marketing_version": "1.1.2",
+      "aab": "build/app/outputs/bundle/release/app-release.aab; 83771272 bytes; SHA256 27DF133534021C95597D9E84D504CA96CA17EBAE305BA7F1F5005703D424E25B",
+      "production_upload": "SUCCESS: com.fluxstudio.planflow [184] production track; ANDROID:PASS; DEPLOY PROJECT:PASS"
+    }
   },
   "role_reports": {
     "Explorer": {
@@ -273,7 +285,7 @@
     "Integrator": {
       "assignment": "Maintain task state and validate eventual merge/push path without changing current Git history during preparation.",
       "status": "RAN",
-      "evidence": "Read-only preflight identified one known merge conflict and patch-identical duplicate local commit. No merge, commit, push, build, upload, or external store action performed."
+      "evidence": "Completed safe current-checkout reconciliation, scoped commits, clean merge, normal non-force pushes, and final source/diff verification. The canonical deployment submitted iOS 1.1.2 build 183 for App Store review with AFTER_APPROVAL and then uploaded Android 1.1.2+184 to production. Apple approval/public availability is not inferred."
     }
   },
   "supplemental_role_receipt": {
@@ -365,7 +377,7 @@
       "evidence": "Accepted item-level GET-only readback plan: verify all pages; redact/sanitize item identity to permitted IDs and state; regression-test editable READY_FOR_REVIEW; never adopt foreign drafts; ignore only fully-read empty READY_FOR_REVIEW; block unknown, nonempty, and transitional states."
     },
     "Production Draft Readback Complex Implementer": {
-      "status": "RAN_NEEDS_FIX",
+      "status": "RAN",
       "assignment": "Own only the Planner-approved four scripts/tests needed for item-level GET-only review-draft readback and its regression coverage.",
       "evidence": "Initial terminal report: four scoped scripts/tests changed; 16 helper tests and the complete 46 readback tests passed after the environment diagnosis. Collector remains GET-only and does not mutate Apple state. The implementer was first reactivated for READY_FOR_REVIEW editable-version-state coverage, then reactivated again after live GET-only run 36223686466 found ASC_RESPONSE_MALFORMED on a missing item relationship. Current correction is limited to the same four files: add the official include=appStoreVersion parameter to both item GET paths, add include-contract regression coverage, preserve links-only/unknown fail-closed behavior, and do not speculate about or relax unknown typed non-version items."
     },
@@ -425,7 +437,7 @@
       {"id": "workflow-wiring", "classification": "Complex", "owner": "Complex Implementer (PlanFlow)", "completion": "Archive/upload then structured production-submission result; Android sequencing observes it."},
       {"id": "verification", "classification": "Complex", "owner": "Test Executor", "completion": "Dry-run, state fixtures, YAML and manifest contracts pass with exit-code evidence."}
     ],
-    "completion_gate": "Task-owned diff only; required tests pass; independent Reviewer and High-risk Escalation have no BLOCKER/HIGH; Integrator verifies final diff and integration evidence.",
+    "completion_gate": "SATISFIED: task-owned diff only; required tests passed; independent Reviewer and High-risk Escalation have no BLOCKER/HIGH; Integrator verified final diff, upload outcomes, and externally reported state separately.",
     "active_remediation": "Never adopt an unknown, empty, or unresolved foreign review draft. Reuse only an exact sole-target READY draft; otherwise create a task-owned fresh draft when safely possible, or fail closed. Add explicit CANCELING/COMPLETING handling and correct the contactPhone contract before retest."
   },
   "ownership": {
@@ -445,5 +457,16 @@
     "No claim of production released from submission success",
     "iOS production submission then Android; automatic Apple release after approval",
     "No live build/upload as a side effect of verification"
-  ]
+  ],
+  "post_deploy_verification": {
+    "test_executor": {
+      "status": "RAN",
+      "evidence": "Post-deploy read-only git diff --check exited 0. Status contained exactly the documented Android auto-generated version/registrant paths. Version alignment is 1.1.2+184 in pubspec and widget identity. AAB exists with the recorded size and SHA256; heavy build/analyze was not rerun because canonical deployment already recorded BUILD SUCCESSFUL and ANDROID:PASS."
+    },
+    "reviewer": {
+      "status": "RAN",
+      "evidence": "Independent final review PASS, BLOCKER/NONE, HIGH/NONE for the three Android auto-generated paths: build 184 increments and removal of the dev-only IntegrationTestPlugin registration. git diff --check passed."
+    },
+    "process_cleanup": "Root read-only verification confirmed task-owned wrapper, Flutter, and Gradle processes exited; protected rollout receipts were cleaned by canonical finally logic."
+  }
 }
