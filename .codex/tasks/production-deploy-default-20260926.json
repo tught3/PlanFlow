@@ -1,0 +1,440 @@
+{
+  "task_id": "production-deploy-default-20260926",
+  "original_request": "앞으로 배포해는 TestFlight가 아니라 App Store 정식 배포. 이미 출시된 PlanFlow 업데이트.",
+  "status": "IN_PROGRESS",
+  "final_verdict": "PENDING_LIVE_DEPLOY",
+  "current_phase": "pre_deploy_integration_complete",
+  "initial_difficulty": "high_risk",
+  "current_difficulty": "high_risk",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "PASS",
+    "checked_at": "2026-09-26",
+    "errors": [],
+    "evidence": "Read central map and matching deployed named role TOML model/effort."
+  },
+  "authority": {
+    "initial_selection": "Planner confirmed HIGH_RISK_COMPLEX because App Store Connect review submission and automatic-after-approval release handling are production external-state contracts.",
+    "transition_approval": "Integrator",
+    "dispatch": "User expanded authority to reconcile the current PlanFlow checkout to a clean canonical main state and run the iOS-first production deployment followed by Android. Store readback is complete; release dispatch remains gated on factual notes, clean integration, verification, and review."
+  },
+  "evidence": {
+    "source_files": [
+      "E:/AI_WIKI/scripts/DEPLOY_CONTRACT.md",
+      "E:/AI_WIKI/scripts/deploy-project.ps1",
+      "config/release-manifest.json",
+      ".github/workflows/ios-app-review-submit.yml",
+      ".github/workflows/ios-release.yml"
+    ],
+    "test_commands": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File E:/AI_WIKI/scripts/deploy-project.ps1 -Check -StartDirectory E:/FluxStudio/PlanFlow",
+        "exit_code": 0,
+        "result": "Resolved the default path as appstore / APP_STORE_SUBMITTED followed by Android sequencing."
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File E:/AI_WIKI/scripts/deploy-project.ps1 -DryRun -TestFlight -StartDirectory E:/FluxStudio/PlanFlow",
+        "exit_code": 0,
+        "result": "Resolved explicit TestFlight mode as testflight / TESTFLIGHT_AVAILABLE and selected iOS only."
+      },
+      {
+        "command": "flutter test test/integration/oauth_callback_required_feature_tour_test.dart",
+        "exit_code": 0,
+        "result": "Required genuine app integration path: OAuthCallbackHandler to createAppRouter to 3-page feature tour to Shell; auth fake only and unrelated OS integration disabled. Fresh Test Executor verification passed."
+      }
+    ],
+    "latest_test_executor_report": {
+      "status": "RAN",
+      "evidence": "Fresh named Test Executor report: three PlanFlow Python groups (14, 70, and 24 tests) all exited 0; the 24 global PowerShell contract scenarios exited 0; required OAuth feature-tour Flutter integration test exited 0. This evidence precedes the remaining GET-only READY_FOR_REVIEW remediation and must be refreshed for its final code diff."
+    },
+    "store_readback": {
+      "workflow": "store-readback.yml",
+      "run_id": "36221264912",
+      "url": "https://github.com/tught3/PlanFlow/actions/runs/36221264912",
+      "dispatch_command": "gh workflow run store-readback.yml --ref main -f bundle_id=com.fluxstudio.planflow",
+      "dispatch_exit_code": 0,
+      "scope": "GET-only App Store inspection using sanitized artifact outputs; no release workflow or store write dispatched.",
+      "completion": "success",
+      "artifact_id": "10899167289",
+      "facts": {
+        "live_version": "1.0",
+        "live_state": "READY_FOR_SALE",
+        "live_build": "173",
+        "release_type": "AFTER_APPROVAL",
+        "live_whats_new_ko": null,
+        "review_submission": "READY_FOR_REVIEW id 9eaa55ea-1512-4bc0-b95e-8d2264396e85 with null submittedDate; three other submissions COMPLETE",
+        "source_train": "1.1.2",
+        "source_train_valid_for_next_version": true
+      },
+      "implementation_constraint": "New-version whatsNew must be factual, checked-in, and version-bound; do not inherit the null live notes."
+    },
+    "android_readiness": {
+      "enabled": true,
+      "package_name": "com.fluxstudio.planflow",
+      "track": "production",
+      "workspace_matches": true,
+      "service_account_json_exists": true,
+      "secrets_logged": false
+    },
+    "release_numbering": {
+      "remote_source_build": 182,
+      "live_ios_build": 173,
+      "expected_next_ios_build": 183,
+      "constraint": "Android canonical deploy controls its own auto-bump; do not force Android to reuse an iOS build identity. Record final platform build numbers from the committed release result."
+    },
+    "final_merge_criteria": {
+      "manifest": "Preserve both the task-owned production marker APP_STORE_SUBMITTED and upstream approvedVersionTrain 1.1.2 if a merge conflict arises.",
+      "login_test": "Resolve the earlier login-screen conflict as a union of independent test coverage, not a wholesale side selection.",
+      "ios_build": "Use build 183 consistently in pubspec, release identity, and explanatory comment after helper remediation is accepted.",
+      "gate": "Run fresh final-diff review and applicable verification after merge; no release dispatch before then."
+    },
+    "integration_preflight": {
+      "planflow_head": "71c8688555c09ead2e498fa7b3c475e00a735902",
+      "origin_main": "e2bb10de2a7223ab4532f0153033cda5ce1b2029",
+      "merge_base": "5d3ff06889f3e7e9f040491e6edfff882136ac0f",
+      "known_merge_conflict": "test/screens/login_screen_test.dart only; local 71c86885 is patch-identical to upstream 8adb17bf, while origin/main adds the companion test in 8da1c09a.",
+      "toml_sha256": {
+        "Explorer": "E01091D72FE567747BFC05CEAC6BD31CF9103E531A42FE30FE4710DC9A7AA2AF",
+        "Planner": "44F936C752161948643B9147E8B515C59CEF97DCA14F45992C0396A8856FA415",
+        "Complex Implementer": "0C6EAFD8F1B102490B1B785D452E96E1551E00BAA9FFD6507D58A3C142B4AEBE",
+        "Test Executor": "98BB3FA48E054FD4FFFC533852C6F71B22B3B5E01DF3AEBDB7474CFDCC2B4803",
+        "Reviewer": "0A8CCA0E3C612E81DA02CF92072EB995F03C10F6D0CF4316B6D56E56ED796A20",
+        "Integrator": "6794C9508D15AE1EC398D417DDCA721A00D8E8CAA5471BCFD513D052808C8548"
+      },
+      "ai_wiki_ref": "master and origin/master both b7374f70aa647dafcedc510484b7aae0f8f7fdec",
+      "instruction_optimizer_check": "python E:/AI_WIKI/scripts/optimize_instruction_md.py --check exited 0; it reported pre-existing global duplicates/budget items, preserved as foreign.",
+      "memory_preference": "C:/Users/tught/.codex/memories/extensions/ad_hoc/notes/2026-09-26-deploy-production-default.md created by root to record the requested future production-default behavior."
+    },
+    "integration_decision": {
+      "status": "SCOPED_CURRENT_CHECKOUT_RECONCILIATION_AUTHORIZED",
+      "decision": "User denied a new worktree and explicitly authorized completion of the remaining PlanFlow task reconciliation needed to clean the current checkout, then normal iOS-first production deployment followed by Android.",
+      "permitted_fallback": "No task-branch fallback unless a newly discovered unresolved ownership conflict prevents canonical main completion after the scoped audit.",
+      "prohibited_recovery": [
+        "foreign stash",
+        "foreign revert",
+        "git reset",
+        "unapproved new worktree",
+        "force push"
+      ]
+    }
+  },
+  "initial_receipt_provisional": {
+    "classification": "complex",
+    "reason": "Initial receipt was emitted before Planner classified the App Store production-state contract.",
+    "preserved_at": "2026-09-26"
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "high_risk",
+    "planned_roles": [
+      {
+        "role": "Explorer",
+        "agent": "flux_explorer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Complex Implementer",
+        "agent": "flux_complex_implementer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Test Executor",
+        "agent": "flux_test_executor",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "low",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Reviewer",
+        "agent": "flux_reviewer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Integrator",
+        "agent": "flux_integrator",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "High-risk Escalation",
+        "agent": "flux_high_risk_reviewer",
+        "model": "gpt-6-sol",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      }
+    ],
+    "executed_roles": [],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-26"
+  },
+  "final_receipt": {
+    "status": "PRE_DEPLOY_INTEGRATED",
+    "planned_roles": [
+      "Explorer",
+      "Planner",
+      "Complex Implementer (PlanFlow)",
+      "Complex Implementer (global)",
+      "Test Executor",
+      "Reviewer",
+      "High-risk Escalation",
+      "Integrator"
+    ],
+    "executed_roles": [
+      "Explorer",
+      "Planner",
+      "Complex Implementer (PlanFlow)",
+      "Complex Implementer (global)",
+      "Test Executor",
+      "Reviewer",
+      "High-risk Escalation",
+      "Integrator"
+    ],
+    "not_run_roles": [],
+    "supplemental_receipts": [
+      "scope_expansion cleanup: Planner and Simple Implementer RAN",
+      "high-risk draft readback: Planner, Complex Implementer, Failure Analyst, Final Test Executor, and Final Reviewer RAN"
+    ],
+    "remaining_gate": "Normal non-force push followed by live GET-only App Store draft readback and canonical production deployment dispatch; Apple and Google external outcomes remain separately reported."
+  },
+  "merge_checkpoint": {
+    "status": "MERGED_AWAITING_PUSH_AND_LIVE_GATE",
+    "source_commit": "b351cbe2d77ea7312b0332af517d99b3cd453204",
+    "upstream": "origin/main e2bb10de2a7223ab4532f0153033cda5ce1b2029",
+    "conflicts": {
+      "config/release-manifest.json": "Resolved by retaining task-owned distribution=appstore and successMarker=APP_STORE_SUBMITTED while accepting origin approvedVersionTrain=1.1.2.",
+      "test/screens/login_screen_test.dart": "Resolved by retaining origin's dismissed-provider-chooser lifecycle regression test alongside local coverage."
+    },
+    "version_reconciliation": "Origin version 1.1.2+182 and widget identity were advanced to task build 183; widget comment updated to the same version/build.",
+    "preliminary_diff_check_exit_code": 0,
+    "merge_commit": "d540d906d5d45076e59a07d5868e12535f224902",
+    "release_dispatch": "NOT_STARTED"
+  },
+  "role_reports": {
+    "Explorer": {
+      "assignment": "Inspect current resolver, manifest, iOS review workflows, branch divergence, dirty ownership, and release risks before planning.",
+      "status": "RAN",
+      "evidence": "Confirmed current iOS marker TESTFLIGHT_AVAILABLE, release resolver requires clean/ref-fresh worktree, origin/main is ahead seven commits, and foreign dirty paths must remain preserved. Source files recorded in evidence.source_files."
+    },
+    "Planner": {
+      "assignment": "Translate the future production-default deployment request into a scoped, verification-ready plan.",
+      "status": "RAN",
+      "evidence": "Planner classified HIGH_RISK_COMPLEX and specified five items: global resolver/contract, PlanFlow manifest, idempotent ASC review submission tool, ios-release workflow wiring, and dry-run/fixture contract tests. External live submission remains out of scope this turn."
+    },
+    "Complex Implementer (PlanFlow)": {
+      "assignment": "Implement PlanFlow manifest, iOS review workflow, release workflow, and ASC tool/test changes within Planner-approved files.",
+      "status": "RAN",
+      "evidence": "production_deploy_implementer delivered the production helper/workflow/manifest implementation and reports 82 local offline tests passing. Exact final changed-file and command evidence remains subject to Test Executor and review confirmation."
+    },
+    "Complex Implementer (global)": {
+      "assignment": "Implement the global deployment contract and resolver default behavior within Planner-approved AI_WIKI files.",
+      "status": "RAN",
+      "evidence": "production_global_implementer completed E:/AI_WIKI/scripts/deploy-project.ps1, deploy-sequence.ps1, deploy-sequence.tests.ps1, and DEPLOY_CONTRACT.md. Default path is production submission; TestFlight is explicit; iOS-only and marker validation inspect runner output rather than source text. All 24 PowerShell scenarios plus parser/diff checks exited 0. Both cmd wrappers forward %*. Root committed exactly those four files at AI_WIKI master e254486 with normal hooks and diff-check 0, then normal non-force pushed origin/master (b7374f7..e254486); unrelated AI_WIKI dirt remains preserved."
+    },
+    "High-risk Escalation": {
+      "assignment": "Independently review production App Store review-submission idempotency, existing-review handling, and after-approval release semantics after implementation.",
+      "status": "RAN",
+      "evidence": "Initial reviews found and remediated wrong contactPhone handling, CANCELING/COMPLETING protection, unsafe foreign-draft adoption, and READY_FOR_REVIEW editable-version-state coverage. Final merged high-risk re-review reports CODE blockers 0/HIGH 0, diff-to-origin check 0, and identity build 183 plus version-bound notes 1.1.2 matched. Operational clean/push/live-GET gates remain separate."
+    },
+    "Reviewer": {
+      "assignment": "Independently review the final scoped production-default code diff and required tests.",
+      "status": "RAN",
+      "evidence": "Initial review found inconsistent empty-draft handling (MEDIUM). After remediation, final merged independent review reported PASS, BLOCKER/NONE, HIGH/NONE, and no source findings; tracked upstream analysis/artifact assets were correctly preserved as merge history rather than misclassified as new foreign dirt."
+    },
+    "Test Executor": {
+      "assignment": "Run the final merged PlanFlow and canonical deployment-contract verification suite.",
+      "status": "RAN",
+      "evidence": "Final merged verification passed: combined Python suites (scripts.tests.test_asc_submit_review, scripts.tests.test_store_readback_asc, scripts.tests.test_ios_release_workflow_contract, scripts.tests.test_asc_next_build_number) exit 0 with 157 tests; exact eight-file Flutter command exit 0 with 55 tests; C:/Users/tught/bin/배포해.cmd -Check exit 0 resolving iOS App Store production build 183 then Android production after APP_STORE_SUBMITTED; git diff --check exit 0. Identity/manifest/widget/workflow propagation matched 1.1.2+183 / build 183."
+    },
+    "Integrator": {
+      "assignment": "Maintain task state and validate eventual merge/push path without changing current Git history during preparation.",
+      "status": "RAN",
+      "evidence": "Read-only preflight identified one known merge conflict and patch-identical duplicate local commit. No merge, commit, push, build, upload, or external store action performed."
+    }
+  },
+  "supplemental_role_receipt": {
+    "receipt_type": "scope_expansion",
+    "classification": "complex",
+    "reason": "User-authorized current-checkout reconciliation added after the original production-default plan; it is a separate cleanup scope with distinct role evidence.",
+    "planned_roles": [
+      {
+        "role": "Cleanup Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "high",
+        "status": "RAN"
+      },
+      {
+        "role": "Cleanup Simple Implementer",
+        "agent": "flux_simple_implementer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "low",
+        "status": "RAN"
+      }
+    ],
+    "executed_roles": ["Cleanup Planner", "Cleanup Simple Implementer"],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-26"
+  },
+  "supplemental_role_reports": {
+    "Cleanup Planner": {
+      "assignment": "Audit pre-existing PlanFlow dirty/task records and define scoped preservation needed to clean the current checkout.",
+      "status": "RAN",
+      "evidence": "Four historical task records can be preserved by scoped commit; generated cache paths receive .gitignore treatment; no new worktree and no deletion are required."
+    },
+    "Cleanup Simple Implementer": {
+      "assignment": "Apply only Planner-approved narrow cleanup metadata changes.",
+      "status": "RAN",
+      "evidence": "Added only /scripts/tests/__pycache__/ and /.pub-cache-release/ ignores; check-ignore exit 0; four preserved historical task JSON files parsed with no credential-pattern hits; document pointers and integration_test/pubspec alignment verified. Scoped reconciliation commit 9ffea6d3aaf2992b111aede553187b03258b746a passed normal pre-commit hooks."
+    }
+  },
+  "supplemental_draft_readback_receipt": {
+    "receipt_type": "high_risk_remediation",
+    "classification": "high_risk",
+    "reason": "High-risk review requires a GET-only item-level readback of the existing READY_FOR_REVIEW submission before any build or production write.",
+    "planned_roles": [
+      {
+        "role": "Production Draft Readback Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "high",
+        "status": "RAN"
+      },
+      {
+        "role": "Production Draft Readback Complex Implementer",
+        "agent": "flux_complex_implementer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "RAN_NEEDS_FIX"
+      },
+      {
+        "role": "Production Readback Failure Analyst",
+        "agent": "flux_failure_analyst",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "high",
+        "status": "RAN"
+      },
+      {
+        "role": "Production Final Test Executor",
+        "agent": "flux_test_executor",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "low",
+        "status": "RAN_SUPERSEDED"
+      },
+      {
+        "role": "Production Final Reviewer",
+        "agent": "flux_reviewer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "high",
+        "status": "RAN_SUPERSEDED"
+      }
+    ],
+    "executed_roles": ["Production Draft Readback Planner", "Production Draft Readback Complex Implementer", "Production Readback Failure Analyst", "Production Final Test Executor", "Production Final Reviewer"],
+    "not_run_roles": [],
+    "notes": "The existing collector does not read reviewSubmission items. Planner accepted the policy: collect complete item relationships with GET only, sanitize ids/state only, preserve/ignore fully-read empty READY_FOR_REVIEW drafts, create a task-owned new submission where Apple permits it, and fail closed on unknown, nonempty, or transitional foreign drafts.",
+    "emitted_at": "2026-09-26"
+  },
+  "supplemental_draft_readback_reports": {
+    "Production Draft Readback Planner": {
+      "status": "RAN",
+      "classification": "COMPLEX",
+      "evidence": "Accepted item-level GET-only readback plan: verify all pages; redact/sanitize item identity to permitted IDs and state; regression-test editable READY_FOR_REVIEW; never adopt foreign drafts; ignore only fully-read empty READY_FOR_REVIEW; block unknown, nonempty, and transitional states."
+    },
+    "Production Draft Readback Complex Implementer": {
+      "status": "RAN_NEEDS_FIX",
+      "assignment": "Own only the Planner-approved four scripts/tests needed for item-level GET-only review-draft readback and its regression coverage.",
+      "evidence": "Initial terminal report: four scoped scripts/tests changed; 16 helper tests and the complete 46 readback tests passed after the environment diagnosis. Collector remains GET-only and does not mutate Apple state. However, high-risk re-review invalidated completion because READY_FOR_REVIEW is absent from EDITABLE_VERSION_STATES. The implementer is reactivated for the exact two-file source/test correction."
+    },
+    "Production Readback Failure Analyst": {
+      "status": "RAN",
+      "assignment": "Classify the full readback-auth test failure and define the narrow process-only OpenSSL PATH repair and retest scope.",
+      "evidence": "Terminal analysis: cryptography supplies the source-test key, while asc-next invokes an OpenSSL subprocess absent from the process PATH, producing three errors and one failure. Adding the installed Git usr/bin directory only to the test process PATH makes all 46 tests pass; no source edit, test skip, or adaptive transition is required."
+    }
+  },
+  "supplemental_draft_readback_final_reports": {
+    "Production Final Test Executor": {
+      "status": "RAN",
+      "evidence": "Final merged verification passed: combined Python suites exit 0 (157 tests), exact Flutter set exit 0 (55 tests), canonical global deploy check exit 0 resolving iOS App Store production build 183 before Android production, and git diff --check exit 0. No temporary outputs or saved test logs were created."
+    },
+    "Production Final Reviewer": {
+      "status": "RAN",
+      "evidence": "Fresh final merged review reported PASS with BLOCKER/NONE and HIGH/NONE after correction; no source findings remain."
+    },
+    "High-risk Escalation": {
+      "status": "RAN",
+      "evidence": "Final merged high-risk re-review reports CODE blockers 0 and HIGH 0 after the READY_FOR_REVIEW editable-version-state correction and regression coverage."
+    }
+  },
+  "plan": {
+    "requirements": [
+      "Bare 배포해 defaults to iOS App Store production review submission, then Android production after successful submission acceptance.",
+      "TestFlight is an explicit-only path and cannot satisfy the default production completion marker.",
+      "Existing App Store review/approval state is read idempotently; no cancellation, replacement, or duplicate submission.",
+      "Dry-run creates no App Store Connect or Google Play external mutation.",
+      "Apple approval and actual release remain external outcomes and are reported distinctly."
+    ],
+    "scope_expansion": {
+      "authorized_by_user": "2026-09-26",
+      "scope": "Audit and reconcile pre-existing PlanFlow dirty paths and prior task state only to the extent required to produce a clean current checkout and canonical iOS-first production deployment.",
+      "non_scope": "AI_WIKI unrelated dirty paths remain foreign and are not part of PlanFlow cleanup."
+    },
+    "cleanup_audit": {
+      "historical_task_records": "All four pre-existing PlanFlow task records are compatible with preservation through a scoped commit; 114 tracked task-record patterns establish repository precedent.",
+      "cache_handling": "Generated caches are handled through a narrow .gitignore change rather than deletion.",
+      "worktree": "No new worktree."
+    },
+    "audit_corrections": [
+      {
+        "finding": "A prior MEDIUM claim that OAuth callback-to-router-to-tutorial had no integration test was stale.",
+        "evidence": "test/integration/oauth_callback_required_feature_tour_test.dart exists identically at current HEAD and origin/main (blob 3fa9043b); it covers the authentic application route chain described in verification evidence.",
+        "action": "Include the integration test in the final suite; do not add a redundant fake-router test."
+      },
+      {
+        "finding": "Initial foreign classification is superseded only by the user-authorized audited reconciliation needed for current-checkout cleanup.",
+        "action": "Preserve compatible changes through scoped commits and ignore generated caches; no automatic deletion."
+      }
+    ],
+    "items": [
+      {"id": "global-resolver", "classification": "Complex", "owner": "Complex Implementer (global)", "completion": "Default resolver and contract select production review submission; TestFlight-only is explicit."},
+      {"id": "planflow-manifest", "classification": "Complex", "owner": "Complex Implementer (PlanFlow)", "completion": "Production submission marker replaces TESTFLIGHT_AVAILABLE as default success condition."},
+      {"id": "asc-submission", "classification": "High-risk Complex", "owner": "Complex Implementer (PlanFlow) plus High-risk Escalation", "completion": "Exact build/version binding and existing-review states are idempotent and fail-closed."},
+      {"id": "workflow-wiring", "classification": "Complex", "owner": "Complex Implementer (PlanFlow)", "completion": "Archive/upload then structured production-submission result; Android sequencing observes it."},
+      {"id": "verification", "classification": "Complex", "owner": "Test Executor", "completion": "Dry-run, state fixtures, YAML and manifest contracts pass with exit-code evidence."}
+    ],
+    "completion_gate": "Task-owned diff only; required tests pass; independent Reviewer and High-risk Escalation have no BLOCKER/HIGH; Integrator verifies final diff and integration evidence.",
+    "active_remediation": "Never adopt an unknown, empty, or unresolved foreign review draft. Reuse only an exact sole-target READY draft; otherwise create a task-owned fresh draft when safely possible, or fail closed. Add explicit CANCELING/COMPLETING handling and correct the contactPhone contract before retest."
+  },
+  "ownership": {
+    "foreign_planflow": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "generated plugin registrants",
+      ".pub-cache-release",
+      ".codex/tasks pre-existing",
+      "scripts/tests/__pycache__ pre-existing"
+    ],
+    "foreign_ai_wiki": "Preserve pre-existing constitutional/preference/continuity script dirty files"
+  },
+  "constraints": [
+    "Task-owned commits only; preserve foreign dirty",
+    "Use current checkout; no new worktrees",
+    "No claim of production released from submission success",
+    "iOS production submission then Android; automatic Apple release after approval",
+    "No live build/upload as a side effect of verification"
+  ]
+}
