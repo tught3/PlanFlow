@@ -21,6 +21,7 @@ import re
 import sys
 import tempfile
 import unittest
+from urllib.parse import parse_qs, urlsplit
 from unittest import mock
 
 try:
@@ -503,12 +504,15 @@ class EndToEndSecretSafetyTests(NoNetworkGuardMixin, unittest.TestCase):
         self.assertEqual(saved["itemCount"], 1)
         self.assertEqual(saved["items"], [{"id": "item-1", "appStoreVersionId": "version-1"}])
         self.assertNotIn("privateNote", json.dumps(fields))
-        self.assertTrue(any("/v1/reviewSubmissions/submission-1/items?" in url for url in transport.calls))
+        item_urls = [url for url in transport.calls if "/v1/reviewSubmissions/submission-1/items?" in url]
+        self.assertEqual(len(item_urls), 1)
+        self.assertEqual(parse_qs(urlsplit(item_urls[0]).query).get("include"), ["appStoreVersion"])
 
     def test_review_submission_items_missing_or_failed_page_blocks_readback(self):
         submission = {"id": "submission-1", "type": "reviewSubmissions", "attributes": {"state": "READY_FOR_REVIEW"}}
         for response in (
             {"__http_status": 200},
+            {"__http_status": 200, "links": {"self": "https://api.appstoreconnect.apple.com/v1/reviewSubmissions/submission-1/items"}},
             {"__http_status": 200, "data": None},
             {"__http_status": 200, "errors": [{"status": "500", "detail": "failure"}], "data": []},
             {"__http_status": 500, "data": []},

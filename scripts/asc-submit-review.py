@@ -260,7 +260,8 @@ def _review_submission_items(client: AscClient, submission_id: str) -> list[dict
     if not isinstance(submission_id, str) or not submission_id.strip():
         raise SubmissionError("BLOCKED_REVIEW_SUBMISSION: existing submission id is missing")
     items = client.pages(
-        f"/reviewSubmissions/{submission_id}/items?fields[reviewSubmissionItems]=appStoreVersion&limit=200"
+        f"/reviewSubmissions/{submission_id}/items"
+        + _query({"include": "appStoreVersion", "fields[reviewSubmissionItems]": "appStoreVersion", "limit": "200"})
     )
     for item in items:
         if (item.get("type") != "reviewSubmissionItems"

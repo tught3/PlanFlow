@@ -30,6 +30,7 @@ class FakeAsc:
         self.localization = {"type": "appStoreVersionLocalizations", "id": "l1", "attributes": {
             "locale": "ko", "description": "desc", "keywords": "kw", "supportUrl": "https://example.com", "whatsNew": None}}
         self.writes = []
+        self.item_queries = []
 
     def __call__(self, method, path, body):
         parsed = urlsplit(path)
@@ -76,6 +77,7 @@ class FakeAsc:
             self.submissions.append(submission)
             return {"data": submission}
         if method == "GET" and route.startswith("/reviewSubmissions/") and route.endswith("/items"):
+            self.item_queries.append(query)
             return {"data": self.items}
         if method == "POST" and route == "/reviewSubmissionItems":
             self.writes.append((method, route))
@@ -170,6 +172,8 @@ class SubmissionTests(unittest.TestCase):
         self.assertFalse(any(method == "POST" and route in {"/reviewSubmissions", "/reviewSubmissionItems"}
                              for method, route in fake.writes))
         self.assertIn(("PATCH", "/reviewSubmissions/s1"), fake.writes)
+        self.assertTrue(fake.item_queries)
+        self.assertTrue(all(query.get("include") == ["appStoreVersion"] for query in fake.item_queries))
         self.assertEqual(client.writes, len(fake.writes))
 
     def test_rejects_foreign_item_in_editable_submission(self):

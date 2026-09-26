@@ -2,8 +2,8 @@
   "task_id": "production-deploy-default-20260926",
   "original_request": "앞으로 배포해는 TestFlight가 아니라 App Store 정식 배포. 이미 출시된 PlanFlow 업데이트.",
   "status": "IN_PROGRESS",
-  "final_verdict": "PENDING_LIVE_DEPLOY",
-  "current_phase": "pre_deploy_integration_complete",
+  "final_verdict": "NEEDS_FIX",
+  "current_phase": "live_readback_failure_analysis",
   "initial_difficulty": "high_risk",
   "current_difficulty": "high_risk",
   "transition_count": 0,
@@ -213,7 +213,7 @@
     "remaining_gate": "Normal non-force push followed by live GET-only App Store draft readback and canonical production deployment dispatch; Apple and Google external outcomes remain separately reported."
   },
   "merge_checkpoint": {
-    "status": "MERGED_AWAITING_PUSH_AND_LIVE_GATE",
+    "status": "PUSHED_LIVE_READBACK_NEEDS_FIX",
     "source_commit": "b351cbe2d77ea7312b0332af517d99b3cd453204",
     "upstream": "origin/main e2bb10de2a7223ab4532f0153033cda5ce1b2029",
     "conflicts": {
@@ -223,6 +223,8 @@
     "version_reconciliation": "Origin version 1.1.2+182 and widget identity were advanced to task build 183; widget comment updated to the same version/build.",
     "preliminary_diff_check_exit_code": 0,
     "merge_commit": "d540d906d5d45076e59a07d5868e12535f224902",
+    "push": "Normal non-force push succeeded; HEAD and origin/main are both 894c049ca282756f5c1e846e2bb2aa3938a3bead.",
+    "live_get_readback": "Run 36223686466 failed at ASC_RESPONSE_MALFORMED because a review-submission item relationship was missing. Collector performed no Apple writes; canonical deployment did not start.",
     "release_dispatch": "NOT_STARTED"
   },
   "role_reports": {
@@ -358,12 +360,12 @@
     "Production Draft Readback Complex Implementer": {
       "status": "RAN_NEEDS_FIX",
       "assignment": "Own only the Planner-approved four scripts/tests needed for item-level GET-only review-draft readback and its regression coverage.",
-      "evidence": "Initial terminal report: four scoped scripts/tests changed; 16 helper tests and the complete 46 readback tests passed after the environment diagnosis. Collector remains GET-only and does not mutate Apple state. However, high-risk re-review invalidated completion because READY_FOR_REVIEW is absent from EDITABLE_VERSION_STATES. The implementer is reactivated for the exact two-file source/test correction."
+      "evidence": "Initial terminal report: four scoped scripts/tests changed; 16 helper tests and the complete 46 readback tests passed after the environment diagnosis. Collector remains GET-only and does not mutate Apple state. The implementer was first reactivated for READY_FOR_REVIEW editable-version-state coverage, then reactivated again after live GET-only run 36223686466 found ASC_RESPONSE_MALFORMED on a missing item relationship. Current correction is limited to the same four files: add the official include=appStoreVersion parameter to both item GET paths, add include-contract regression coverage, preserve links-only/unknown fail-closed behavior, and do not speculate about or relax unknown typed non-version items."
     },
     "Production Readback Failure Analyst": {
       "status": "RAN",
       "assignment": "Classify the full readback-auth test failure and define the narrow process-only OpenSSL PATH repair and retest scope.",
-      "evidence": "Terminal analysis: cryptography supplies the source-test key, while asc-next invokes an OpenSSL subprocess absent from the process PATH, producing three errors and one failure. Adding the installed Git usr/bin directory only to the test process PATH makes all 46 tests pass; no source edit, test skip, or adaptive transition is required."
+      "evidence": "Terminal analysis: cryptography supplies the source-test key, while asc-next invokes an OpenSSL subprocess absent from the process PATH, producing three errors and one failure. Adding the installed Git usr/bin directory only to the test process PATH makes all 46 tests pass; no source edit, test skip, or adaptive transition is required. Reactivated live-RCA report: App Store Connect supports include=appStoreVersion for the item relationship, but the sanitized artifact contains no raw payload to prove an unexpected item type; approved remediation adds the include to both GET paths and regression coverage while retaining fail-closed links-only/unknown handling."
     }
   },
   "supplemental_draft_readback_final_reports": {

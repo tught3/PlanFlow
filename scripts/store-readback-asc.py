@@ -582,7 +582,7 @@ def collect_snapshot(client: ReadbackClient, bundle_id: str, sleep_fn=time.sleep
             raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "review submission identity or state is missing")
         items_raw = client.collect_pages(
             f"/v1/reviewSubmissions/{submission_id}/items",
-            params={"fields[reviewSubmissionItems]": "appStoreVersion", "limit": "200"},
+            params={"include": "appStoreVersion", "fields[reviewSubmissionItems]": "appStoreVersion", "limit": "200"},
             sleep_fn=sleep_fn,
         )
         safe_items = []
