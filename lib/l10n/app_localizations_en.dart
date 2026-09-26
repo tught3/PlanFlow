@@ -374,4 +374,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get termsGateLater => 'Later';
+
+  @override
+  String get appUpdateAvailableTitle => 'Update available';
+
+  @override
+  String get appUpdateAvailableMessage =>
+      'A new version is available. Would you like to update from the App Store?';
+
+  @override
+  String get appUpdateLater => 'Later';
+
+  @override
+  String get appUpdateNow => 'Update';
+
+  @override
+  String get appUpdateStoreOpenFailed =>
+      'Could not open the App Store. Please try again later.';
 }

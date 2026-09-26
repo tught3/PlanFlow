@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'notification_service.dart';
 import 'remote_config_service.dart';
+import 'ios_app_store_update_service.dart';
 
 /// Play Store 인앱 업데이트 서비스.
 ///
@@ -22,6 +23,7 @@ class UpdateService {
     required int Function() minRequiredVersionProvider,
     required Duration checkTimeout,
     required bool skipInDebug,
+    required IosAppStoreUpdateService iosAppStoreUpdateService,
   })  : _updateFlow = updateFlow,
         _versionMetadataProvider = versionMetadataProvider,
         _versionTracker = versionTracker,
@@ -29,7 +31,8 @@ class UpdateService {
         _postUpdateHook = postUpdateHook,
         _minRequiredVersionProvider = minRequiredVersionProvider,
         _checkTimeout = checkTimeout,
-        _skipInDebug = skipInDebug;
+        _skipInDebug = skipInDebug,
+        _iosAppStoreUpdateService = iosAppStoreUpdateService;
 
   UpdateService({
     UpdateFlowGateway? updateFlow,
@@ -40,6 +43,7 @@ class UpdateService {
     int Function()? minRequiredVersionProvider,
     Duration checkTimeout = const Duration(seconds: 10),
     bool skipInDebug = true,
+    IosAppStoreUpdateService? iosAppStoreUpdateService,
   }) : this._(
           updateFlow: updateFlow ?? const InAppUpdateFlowGateway(),
           versionMetadataProvider:
@@ -53,6 +57,8 @@ class UpdateService {
               minRequiredVersionProvider ?? _defaultMinRequiredVersion,
           checkTimeout: checkTimeout,
           skipInDebug: skipInDebug,
+          iosAppStoreUpdateService:
+              iosAppStoreUpdateService ?? const IosAppStoreUpdateService(),
         );
 
   static final UpdateService _defaultInstance = UpdateService();
@@ -68,22 +74,36 @@ class UpdateService {
   @visibleForTesting
   static void resetForTest() {
     _defaultInstance._setUiState(UpdateUiState.idle);
+    _promptedIosVersions.clear();
     _instance = _defaultInstance;
   }
 
+  static final Set<String> _promptedIosVersions = <String>{};
+
   static Future<bool> checkAndPrompt({
     void Function(UpdatePromptOutcome outcome)? onOutcome,
+    Future<void> Function(IosAppStoreUpdate update)? onIosUpdateAvailable,
   }) async {
-    return _instance._checkAndPrompt(onOutcome: onOutcome);
+    return _instance._checkAndPrompt(
+      onOutcome: onOutcome,
+      onIosUpdateAvailable: onIosUpdateAvailable,
+    );
   }
+
+  static Future<bool> openIosAppStore(Uri storeUri) =>
+      _instance._iosAppStoreUpdateService.openStore(storeUri);
 
   Future<bool> _checkAndPrompt({
     void Function(UpdatePromptOutcome outcome)? onOutcome,
+    Future<void> Function(IosAppStoreUpdate update)? onIosUpdateAvailable,
   }) async {
     if (_inFlightCheck != null) {
       return _inFlightCheck!;
     }
-    final check = _checkAndPromptLocked(onOutcome: onOutcome);
+    final check = _checkAndPromptLocked(
+      onOutcome: onOutcome,
+      onIosUpdateAvailable: onIosUpdateAvailable,
+    );
     _inFlightCheck = check;
     try {
       return await check;
@@ -96,6 +116,7 @@ class UpdateService {
 
   Future<bool> _checkAndPromptLocked({
     void Function(UpdatePromptOutcome outcome)? onOutcome,
+    Future<void> Function(IosAppStoreUpdate update)? onIosUpdateAvailable,
   }) async {
     UpdatePromptOutcome report(UpdatePromptOutcome outcome) {
       onOutcome?.call(outcome);
@@ -113,6 +134,32 @@ class UpdateService {
     }
 
     await _runPostUpdateHook(metadata);
+
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      _setUiState(UpdateUiState.checking);
+      try {
+        final update = await _iosAppStoreUpdateService
+            .findUpdate(
+              bundleId: metadata.packageName,
+              installedVersion: metadata.version,
+            )
+            .timeout(_checkTimeout);
+        if (update == null ||
+            onIosUpdateAvailable == null ||
+            _promptedIosVersions.contains(update.version)) {
+          return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
+        }
+        _promptedIosVersions.add(update.version);
+        await onIosUpdateAvailable(update);
+        return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
+      } catch (error, stackTrace) {
+        debugPrint('App Store update check skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
+      } finally {
+        _setUiState(UpdateUiState.idle);
+      }
+    }
 
     final shouldForceUpdate = await _shouldForceUpdate(
       currentCode: metadata.buildNumber,
@@ -216,6 +263,7 @@ class UpdateService {
   final int Function() _minRequiredVersionProvider;
   final Duration _checkTimeout;
   final bool _skipInDebug;
+  final IosAppStoreUpdateService _iosAppStoreUpdateService;
   Future<bool>? _inFlightCheck;
   final ValueNotifier<UpdateUiState> _uiState =
       ValueNotifier<UpdateUiState>(UpdateUiState.idle);
@@ -250,10 +298,12 @@ class AppVersionMetadata {
   const AppVersionMetadata({
     required this.buildNumber,
     required this.packageName,
+    this.version = '',
   });
 
   final int buildNumber;
   final String packageName;
+  final String version;
 }
 
 enum UpdateAvailabilityState {
@@ -336,6 +386,7 @@ class PackageInfoMetadataProvider implements AppVersionMetadataProvider {
       return AppVersionMetadata(
         buildNumber: buildNumber,
         packageName: packageName,
+        version: packageInfo.version.trim(),
       );
     } catch (error, stackTrace) {
       debugPrint('Failed to read app version metadata: $error');

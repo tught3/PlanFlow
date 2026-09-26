@@ -775,6 +775,16 @@ abstract class AppLocalizations {
   /// In ko, this message translates to:
   /// **'나중에'**
   String get termsGateLater;
+
+  String get appUpdateAvailableTitle;
+
+  String get appUpdateAvailableMessage;
+
+  String get appUpdateLater;
+
+  String get appUpdateNow;
+
+  String get appUpdateStoreOpenFailed;
 }
 
 class _AppLocalizationsDelegate

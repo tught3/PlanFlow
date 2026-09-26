@@ -12,6 +12,7 @@ import '../providers/group_context_provider.dart';
 import '../providers/group_context_state.dart';
 import '../providers/group_invite_provider.dart';
 import '../providers/group_invite_state.dart';
+import '../services/group_membership_refresh_bus.dart';
 
 class GroupListScreen extends StatefulWidget {
   const GroupListScreen({
@@ -44,11 +45,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
     _ownsInviteProvider = widget._inviteProvider == null;
     _provider = widget._provider ?? GroupContextProvider();
     _inviteProvider = widget._inviteProvider ?? GroupInviteProvider();
+    GroupMembershipRefreshBus.instance.addListener(_handleMembershipChanged);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    GroupMembershipRefreshBus.instance.removeListener(_handleMembershipChanged);
     if (_ownsProvider) {
       _provider.dispose();
     }
@@ -66,6 +69,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
     ]);
   }
 
+  void _handleMembershipChanged() {
+    if (mounted) unawaited(_provider.refresh());
+  }
+
   Future<void> _openCreateGroup() async {
     final result = await context.push<String>(AppRoutes.groupCreate);
     if (!mounted) {
@@ -77,8 +84,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _openGroupDetail(GroupModel group) async {
-    await context.push(AppRoutes.groupDetailForId(group.id));
-    if (mounted) await _load();
+    final membershipChanged = await context.push<bool>(
+      AppRoutes.groupDetailForId(group.id),
+    );
+    if (mounted && membershipChanged != true) await _load();
   }
 
   Future<void> _copyInviteCode(String code) async {

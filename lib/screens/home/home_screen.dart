@@ -17,6 +17,7 @@ import '../../data/repositories/early_bird_email_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/models/group_model.dart';
 import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/services/group_membership_refresh_bus.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/api_usage_guard.dart';
 import '../../services/departure_alarm_service.dart';
@@ -158,6 +159,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _groupContextProvider.addListener(_handleGroupContextChanged);
+    GroupMembershipRefreshBus.instance.addListener(
+      _handleGroupMembershipChanged,
+    );
     _loadTodayEvents();
     unawaited(_loadGroupContext());
     if (widget.loadHeaderSummary) {
@@ -170,6 +174,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _retryTimer?.cancel();
     _homeWidgetRefreshGeneration += 1;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    GroupMembershipRefreshBus.instance.removeListener(
+      _handleGroupMembershipChanged,
+    );
     _groupContextProvider.removeListener(_handleGroupContextChanged);
     if (_ownsGroupContextProvider) {
       _groupContextProvider.dispose();
@@ -182,6 +189,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _handleGroupMembershipChanged() {
+    if (mounted) unawaited(_groupContextProvider.refresh());
   }
 
   Future<void> _loadGroupContext() async {
@@ -717,8 +728,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         groups: _groupContextProvider.groups,
                         selectedGroupId:
                             _groupContextProvider.selectedGroup?.id,
-                        onTap: (group) =>
-                            context.push(AppRoutes.groupDetailForId(group.id)),
+                        onTap: (group) async {
+                          await context.push<bool>(
+                            AppRoutes.groupDetailForId(group.id),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12),
                     ],

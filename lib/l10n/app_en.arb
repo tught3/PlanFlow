@@ -119,5 +119,10 @@
   "termsGateBody": "Schedules shared to a group are visible to all invited members. Please agree to the Terms of Service to continue.",
   "termsGateViewTerms": "View Terms of Service",
   "termsGateAccept": "Agree and continue",
-  "termsGateLater": "Later"
+  "termsGateLater": "Later",
+  "appUpdateAvailableTitle": "Update available",
+  "appUpdateAvailableMessage": "A new version is available. Would you like to update from the App Store?",
+  "appUpdateLater": "Later",
+  "appUpdateNow": "Update",
+  "appUpdateStoreOpenFailed": "Could not open the App Store. Please try again later."
 }

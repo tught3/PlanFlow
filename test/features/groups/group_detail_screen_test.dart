@@ -9,6 +9,7 @@ import 'package:planflow/features/groups/repositories/group_backup_repository.da
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_detail_screen.dart';
 import 'package:planflow/features/groups/services/group_cleanup_service.dart';
+import 'package:planflow/features/groups/services/group_membership_refresh_bus.dart';
 import 'package:planflow/features/groups/widgets/terms_acceptance_gate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -106,6 +107,147 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('그룹 목록'), findsOneWidget);
+  });
+
+  testWidgets('push된 그룹 상세에서 탈퇴하면 변경 결과를 이전 route에 반환한다', (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(
+      'planflow:group_event_share_prompt:v1:user-1:group-1',
+      true,
+    );
+    final repository = _FakeGroupRepository(
+      groups: <GroupModel>[
+        GroupModel(
+          id: 'group-1',
+          createdBy: 'leader-1',
+          name: '우리 팀',
+          createdAt: DateTime.utc(2026, 6, 29),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          GroupMemberModel(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'member',
+          ),
+        ],
+      },
+    );
+    var membershipRefreshCount = 0;
+    void countMembershipRefresh() => membershipRefreshCount += 1;
+    GroupMembershipRefreshBus.instance.addListener(countMembershipRefresh);
+    addTearDown(
+      () => GroupMembershipRefreshBus.instance
+          .removeListener(countMembershipRefresh),
+    );
+    bool? membershipChanged;
+    final router = GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(
+          path: '/home',
+          builder: (context, _) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                membershipChanged = await context.push<bool>('/groups/group-1');
+              },
+              child: const Text('그룹 상세 열기'),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/groups/group-1',
+          builder: (_, __) => GroupDetailScreen(
+            groupId: 'group-1',
+            repository: repository,
+            preferences: preferences,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('그룹 상세 열기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('팀 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+
+    expect(membershipChanged, isTrue);
+    expect(membershipRefreshCount, 1);
+    expect(find.text('그룹 상세 열기'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('탈퇴 저장이 실패하면 멤버십 변경 신호를 보내지 않는다', (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(
+      'planflow:group_event_share_prompt:v1:user-1:group-1',
+      true,
+    );
+    final repository = _FakeGroupRepository(
+      groups: <GroupModel>[
+        GroupModel(
+          id: 'group-1',
+          createdBy: 'leader-1',
+          name: '우리 팀',
+          createdAt: DateTime.utc(2026, 6, 29),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          GroupMemberModel(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'member',
+          ),
+        ],
+      },
+      leaveError: StateError('leave failed'),
+    );
+    var membershipRefreshCount = 0;
+    void countMembershipRefresh() => membershipRefreshCount += 1;
+    GroupMembershipRefreshBus.instance.addListener(countMembershipRefresh);
+    addTearDown(
+      () => GroupMembershipRefreshBus.instance
+          .removeListener(countMembershipRefresh),
+    );
+    final router = GoRouter(
+      initialLocation: '/groups/group-1',
+      routes: [
+        GoRoute(
+          path: '/groups/group-1',
+          builder: (_, __) => GroupDetailScreen(
+            groupId: 'group-1',
+            repository: repository,
+            preferences: preferences,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('팀 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+
+    expect(membershipRefreshCount, 0);
+    expect(find.text('팀 나가기'), findsOneWidget);
+    expect(find.text('나가기 실패: Bad state: leave failed'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('팀 나가기와 그룹 삭제는 모두 빨간 계열의 채움 버튼으로 구분된다', (tester) async {
@@ -631,10 +773,12 @@ class _FakeGroupRepository extends GroupRepository {
   _FakeGroupRepository({
     required this.groups,
     required this.membersByGroupId,
+    this.leaveError,
   });
 
   final List<GroupModel> groups;
   final Map<String, List<GroupMemberModel>> membersByGroupId;
+  final Object? leaveError;
 
   @override
   Future<List<GroupModel>> listGroups() async => groups;
@@ -676,6 +820,8 @@ class _FakeGroupRepository extends GroupRepository {
 
   @override
   Future<GroupMemberModel> leaveGroup(String groupId) async {
+    final leaveError = this.leaveError;
+    if (leaveError != null) throw leaveError;
     return GroupMemberModel(
       id: 'member-left',
       groupId: groupId,

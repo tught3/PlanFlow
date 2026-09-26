@@ -1,0 +1,32 @@
+{
+  "task_id": "home-group-refresh-after-leave-20260926",
+  "request": "When the user leaves a group, remove it from the Home screen's joined-groups row after returning. The issue was reproduced on iPhone; use the shared Flutter path so Android is covered too.",
+  "status": "complete",
+  "classification": "Complex",
+  "routing_receipt": {
+    "entry": {"agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium"},
+    "planned_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"],
+    "executed_roles": ["Explorer", "Planner", "Complex Implementer", "Test Executor", "Reviewer", "Integrator"],
+    "not_run_roles": []
+  },
+  "requirements": ["Successful leave must refresh Home's owned GroupContextProvider after the detail route returns.", "Removed group must no longer appear in Home's joined-groups row.", "Shared Flutter behavior covers iOS and Android."],
+  "plan": ["Broadcast a successful membership change through a shared GroupMembershipRefreshBus.", "Subscribe HomeScreen and GroupListScreen to refresh their mounted GroupContextProvider instances after leaving through either supported route.", "Keep the route result as a supplementary navigation contract and avoid duplicate GroupList reloads.", "Add regression tests for successful/failed leave notifications and the GroupList -> GroupDetail -> leave route removing the group from Home.", "Run targeted tests, analyzer, diff check, independent final-diff review, and integrate the final evidence."],
+  "allowed_files": ["lib/screens/home/home_screen.dart", "lib/features/groups/screens/group_detail_screen.dart", "lib/features/groups/screens/group_list_screen.dart", "lib/features/groups/services/group_membership_refresh_bus.dart", "test/screens/home_screen_test.dart", "test/features/groups/group_detail_screen_test.dart", ".codex/tasks/home-group-refresh-after-leave-20260926.json"],
+  "forbidden_files": ["android/**", "ios/**", "Supabase migrations/RPC/schema", "existing iOS App Store update files/tests", "other projects"],
+  "reports": {
+    "Explorer": {"agent": "flux_explorer", "model": "gpt-6-luna", "reasoning_effort": "medium", "status": "RAN", "result": "Leave RPC marks membership removed. GroupDetailScreen navigates back without refreshing Home's separate GroupContextProvider; Home awaits neither route result nor refresh. Shared Flutter path is same on iOS/Android."},
+    "Planner": {"agent": "flux_planner", "model": "gpt-5.6-terra", "reasoning_effort": "high", "status": "RAN", "result": "Complex; use a shared membership-change event to refresh mounted Home and GroupList providers, preserve route result as supplementary signal, and test success/failure plus both navigation paths."},
+    "Complex Implementer": {"agent": "flux_complex_implementer", "model": "gpt-6-luna", "reasoning_effort": "medium", "status": "RAN", "changed_files": ["lib/features/groups/services/group_membership_refresh_bus.dart", "lib/features/groups/screens/group_detail_screen.dart", "lib/features/groups/screens/group_list_screen.dart", "lib/screens/home/home_screen.dart", "test/features/groups/group_detail_screen_test.dart", "test/screens/home_screen_test.dart"], "result": "Added a shared in-process membership-change bus. Successful leave emits once; Home and GroupList refresh their own mounted providers. GroupDetail retains the true route result as a supplementary signal, while GroupList avoids duplicate refresh. Regression coverage exercises the real list/detail/leave navigation path."},
+    "Test Executor": {"agent": "flux_test_executor", "model": "gpt-6-luna", "reasoning_effort": "low", "status": "RAN", "result": "Final targeted widget tests passed (25 tests); targeted analyzer exit 0, no issues; git diff --check exit 0. Android GeneratedPluginRegistrant.java was already dirty from generated integration_test registration and remained untouched; iOS native files unchanged."},
+    "Reviewer": {"agent": "flux_reviewer", "model": "gpt-6-luna", "reasoning_effort": "high", "status": "RAN", "result": "FINAL_REVIEW_REPORT: PASS; highest severity NONE. Previous HIGH was resolved by shared refresh bus across Home and GroupList entry paths. Reviewed final current Git diff and final test/analyzer evidence."},
+    "Integrator": {"agent": "flux_integrator", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "status": "RAN", "result": "Verified final diff, current test and analyzer evidence, and independent reviewer PASS. Integration decision COMPLETE; no deployment or commit requested."}
+  },
+  "tests": [
+    {"command": "flutter test test/features/groups/group_detail_screen_test.dart test/features/groups/group_list_screen_test.dart test/screens/home_screen_test.dart", "exit_code": 0, "result": "25 tests passed, including leave event success/failure, Home group-row removal, and GroupList -> GroupDetail -> leave refresh of Home."},
+    {"command": "flutter analyze lib/features/groups/services/group_membership_refresh_bus.dart lib/features/groups/screens/group_detail_screen.dart lib/features/groups/screens/group_list_screen.dart lib/screens/home/home_screen.dart test/features/groups/group_detail_screen_test.dart test/screens/home_screen_test.dart", "exit_code": 0, "result": "No issues found."},
+    {"command": "git diff --check", "exit_code": 0, "result": "Passed."}
+  ],
+  "review_findings": [],
+  "unresolved": [],
+  "delivery": {"commit": "NOT_REQUESTED", "push": "NOT_REQUESTED", "deployment": "NOT_REQUESTED", "platforms": ["iOS", "Android"], "note": "Shared Flutter code path; no release was requested."}
+}

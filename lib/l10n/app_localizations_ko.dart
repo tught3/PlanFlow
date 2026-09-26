@@ -351,4 +351,20 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get termsGateLater => '나중에';
+
+  @override
+  String get appUpdateAvailableTitle => '업데이트 가능';
+
+  @override
+  String get appUpdateAvailableMessage =>
+      '새 버전이 출시되었습니다. App Store에서 업데이트하시겠어요?';
+
+  @override
+  String get appUpdateLater => '나중에';
+
+  @override
+  String get appUpdateNow => '업데이트';
+
+  @override
+  String get appUpdateStoreOpenFailed => 'App Store를 열지 못했습니다. 나중에 다시 시도해 주세요.';
 }

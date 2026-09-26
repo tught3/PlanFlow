@@ -12,6 +12,16 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_invite_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/providers/group_context_provider.dart';
+import 'package:planflow/features/groups/providers/group_invite_provider.dart';
+import 'package:planflow/features/groups/repositories/group_invite_repository.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/features/groups/screens/group_detail_screen.dart';
+import 'package:planflow/features/groups/screens/group_list_screen.dart';
+import 'package:planflow/features/groups/widgets/terms_acceptance_gate.dart';
 import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
@@ -177,6 +187,166 @@ void main() {
     expect(find.text('같은 시간 일정 A'), findsOneWidget);
     expect(find.text('같은 시간 일정 B'), findsOneWidget);
     expect(find.text('오래전 일정'), findsNothing);
+  });
+
+  testWidgets('탈퇴 후 홈에 돌아오면 그룹 행에서 해당 그룹이 제거된다', (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(termsAcceptedUrlKey, termsOfServiceUrl);
+    await preferences.setBool(
+      'planflow:group_event_share_prompt:v1:user-1:group-1',
+      true,
+    );
+    final groupRepository = _HomeGroupRepository();
+    final groupContextProvider = GroupContextProvider(
+      repository: groupRepository,
+    );
+    addTearDown(groupContextProvider.dispose);
+    final router = GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(
+          path: '/home',
+          builder: (_, __) => HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: _QueuedEventRepository(
+              responses: <Future<List<EventModel>> Function()>[
+                () async => <EventModel>[],
+              ],
+            ),
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+            groupContextProvider: groupContextProvider,
+          ),
+        ),
+        GoRoute(
+          path: '/groups/:groupId',
+          builder: (_, state) => GroupDetailScreen(
+            groupId: state.pathParameters['groupId']!,
+            repository: groupRepository,
+            preferences: preferences,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('홈 테스트 그룹'), findsOneWidget);
+    await tester.tap(find.text('홈 테스트 그룹'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('팀 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('홈 테스트 그룹'), findsNothing);
+    expect(groupRepository.listGroupsCallCount, greaterThanOrEqualTo(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('그룹 목록에서 탈퇴해도 이미 열린 홈의 그룹 행이 갱신된다', (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(termsAcceptedUrlKey, termsOfServiceUrl);
+    await preferences.setBool(
+      'planflow:group_event_share_prompt:v1:user-1:group-1',
+      true,
+    );
+    final repository = _HomeGroupRepository();
+    final homeProvider = GroupContextProvider(repository: repository);
+    final listProvider = GroupContextProvider(repository: repository);
+    final inviteProvider = GroupInviteProvider(
+      repository: _HomeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+        'display_name': '민수',
+      },
+    );
+    addTearDown(homeProvider.dispose);
+    addTearDown(listProvider.dispose);
+    addTearDown(inviteProvider.dispose);
+
+    final router = GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(
+          path: '/home',
+          builder: (context, _) => Stack(
+            fit: StackFit.expand,
+            children: [
+              HomeScreen(
+                userIdOverride: 'user-1',
+                eventRepository: _QueuedEventRepository(
+                  responses: <Future<List<EventModel>> Function()>[
+                    () async => <EventModel>[],
+                  ],
+                ),
+                smartPreparationAlarmService:
+                    const _FakeSmartPreparationAlarmService(),
+                homeWidgetService: _RecordingHomeWidgetService(),
+                loadHeaderSummary: false,
+                groupContextProvider: homeProvider,
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                child: SafeArea(
+                  child: TextButton(
+                    onPressed: () => context.push('/groups'),
+                    child: const Text('테스트 그룹 목록 열기'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        GoRoute(
+          path: '/groups',
+          builder: (_, __) => GroupListScreen(
+            provider: listProvider,
+            inviteProvider: inviteProvider,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: '/groups/:groupId',
+          builder: (_, state) => GroupDetailScreen(
+            groupId: state.pathParameters['groupId']!,
+            repository: repository,
+            preferences: preferences,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    expect(find.text('홈 테스트 그룹'), findsOneWidget);
+
+    await tester.tap(find.text('테스트 그룹 목록 열기'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('group-list-item-group-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('팀 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('그룹 관리'), findsOneWidget);
+    expect(find.text('홈 테스트 그룹'), findsNothing);
+    expect(repository.listGroupsCallCount, greaterThanOrEqualTo(4));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -1030,6 +1200,109 @@ class _QueuedEventRepository extends EventRepository {
   @override
   Future<EventModel> upsertEventBySourceExternalId(EventModel event) async =>
       event;
+}
+
+class _HomeGroupRepository extends GroupRepository {
+  _HomeGroupRepository()
+      : group = GroupModel(
+          id: 'group-1',
+          createdBy: 'leader-1',
+          name: '홈 테스트 그룹',
+          createdAt: DateTime.utc(2026, 6, 29),
+        );
+
+  final GroupModel group;
+  bool _left = false;
+  int listGroupsCallCount = 0;
+
+  @override
+  Future<List<GroupModel>> listGroups() async {
+    listGroupsCallCount += 1;
+    return _left ? <GroupModel>[] : <GroupModel>[group];
+  }
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async =>
+      groupId == group.id ? group : null;
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async =>
+      <GroupMemberModel>[
+        GroupMemberModel(
+          id: 'member-1',
+          groupId: groupId,
+          userId: 'user-1',
+          role: 'member',
+          status: _left ? 'removed' : 'active',
+        ),
+      ];
+
+  @override
+  Future<GroupMemberModel> leaveGroup(String groupId) async {
+    _left = true;
+    return GroupMemberModel(
+      id: 'member-1',
+      groupId: groupId,
+      userId: 'user-1',
+      role: 'member',
+      status: 'removed',
+    );
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) async =>
+      throw UnimplementedError();
+}
+
+class _HomeGroupInviteRepository extends GroupInviteRepository {
+  @override
+  Future<List<GroupInviteModel>> getPendingInvitesForMe() async =>
+      const <GroupInviteModel>[];
+
+  @override
+  Future<GroupInviteModel> acceptInvite(String inviteId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupInviteModel> acceptInviteLink({
+    required String groupId,
+    required String inviteToken,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupInviteModel> cancelInvite(String inviteId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupInviteModel> createInviteByEmail({
+    required String groupId,
+    required String email,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupInviteModel> createInviteByInviteCode({
+    required String groupId,
+    required String inviteCode,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupInviteModel> rejectInvite(String inviteId) =>
+      throw UnimplementedError();
 }
 
 /// 매 listEvents 호출마다 같은 (미해결) 일정 목록을 반환해, 반복 새로고침에도

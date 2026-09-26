@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/ios_app_store_update_service.dart';
 import 'package:planflow/services/update_service.dart';
 
 void main() {
@@ -10,6 +12,7 @@ void main() {
     late FakeUpdateVersionTracker versionTracker;
     late FakePlayStoreLauncher playStoreLauncher;
     late FakePostUpdateHook postUpdateHook;
+    late FakeIosAppStoreUpdateService iosUpdateService;
 
     setUp(() {
       UpdateService.resetForTest();
@@ -21,9 +24,12 @@ void main() {
       versionTracker = FakeUpdateVersionTracker();
       playStoreLauncher = FakePlayStoreLauncher();
       postUpdateHook = FakePostUpdateHook();
+      iosUpdateService = FakeIosAppStoreUpdateService();
+      debugDefaultTargetPlatformOverride = null;
     });
 
     tearDown(() {
+      debugDefaultTargetPlatformOverride = null;
       UpdateService.resetForTest();
     });
 
@@ -222,6 +228,79 @@ void main() {
       expect(updateFlow.flexibleStartCallCount, 1);
       expect(updateFlow.flexibleCompleteCallCount, 1);
     });
+
+    test('iOS checks App Store, coalesces prompts, and deduplicates version',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      UpdateService.instance = UpdateService(
+        updateFlow: updateFlow,
+        versionMetadataProvider: const FakeVersionMetadataProvider(
+          buildNumber: 120,
+          packageName: 'com.fluxstudio.planflow',
+          version: '1.1.0',
+        ),
+        versionTracker: versionTracker,
+        playStoreLauncher: playStoreLauncher,
+        postUpdateHook: postUpdateHook,
+        minRequiredVersionProvider: () => 200,
+        skipInDebug: false,
+        iosAppStoreUpdateService: iosUpdateService,
+      );
+      final promptStarted = Completer<void>();
+      final dismissPrompt = Completer<void>();
+      final promptedVersions = <String>[];
+      Future<void> onUpdate(IosAppStoreUpdate update) async {
+        promptedVersions.add(update.version);
+        if (!promptStarted.isCompleted) promptStarted.complete();
+        await dismissPrompt.future;
+      }
+
+      final first = UpdateService.checkAndPrompt(
+        onIosUpdateAvailable: onUpdate,
+      );
+      await promptStarted.future;
+      final second = UpdateService.checkAndPrompt(
+        onIosUpdateAvailable: onUpdate,
+      );
+
+      expect(iosUpdateService.findUpdateCallCount, 1);
+      dismissPrompt.complete();
+      await Future.wait(<Future<bool>>[first, second]);
+
+      await UpdateService.checkAndPrompt(onIosUpdateAvailable: onUpdate);
+
+      expect(iosUpdateService.findUpdateCallCount, 2);
+      expect(promptedVersions, <String>['1.2.0']);
+      expect(updateFlow.checkForUpdateCallCount, 0);
+      expect(playStoreLauncher.openedPackages, isEmpty);
+    });
+
+    test('Android update check does not invoke the App Store lookup', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      updateFlow.result = const UpdateCheckResult(
+        updateAvailability: UpdateAvailabilityState.unavailable,
+        immediateUpdateAllowed: false,
+        flexibleUpdateAllowed: false,
+      );
+      UpdateService.instance = UpdateService(
+        updateFlow: updateFlow,
+        versionMetadataProvider: metadataProvider,
+        versionTracker: versionTracker,
+        playStoreLauncher: playStoreLauncher,
+        postUpdateHook: postUpdateHook,
+        minRequiredVersionProvider: () => 200,
+        skipInDebug: false,
+        iosAppStoreUpdateService: iosUpdateService,
+      );
+
+      await UpdateService.checkAndPrompt();
+
+      expect(updateFlow.checkForUpdateCallCount, 1);
+      expect(iosUpdateService.findUpdateCallCount, 0);
+      expect(playStoreLauncher.openedPackages, <String>[
+        'com.fluxstudio.planflow',
+      ]);
+    });
   });
 }
 
@@ -275,16 +354,36 @@ class FakeVersionMetadataProvider implements AppVersionMetadataProvider {
   const FakeVersionMetadataProvider({
     required this.buildNumber,
     required this.packageName,
+    this.version = '',
   });
 
   final int buildNumber;
   final String packageName;
+  final String version;
 
   @override
   Future<AppVersionMetadata?> load() async {
     return AppVersionMetadata(
       buildNumber: buildNumber,
       packageName: packageName,
+      version: version,
+    );
+  }
+}
+
+class FakeIosAppStoreUpdateService extends IosAppStoreUpdateService {
+  int findUpdateCallCount = 0;
+
+  @override
+  Future<IosAppStoreUpdate?> findUpdate({
+    required String bundleId,
+    required String installedVersion,
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    findUpdateCallCount += 1;
+    return IosAppStoreUpdate(
+      version: '1.2.0',
+      storeUri: Uri.parse('https://apps.apple.com/kr/app/planflow/id123456789'),
     );
   }
 }

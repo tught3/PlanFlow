@@ -32,7 +32,9 @@ import 'services/notification_route_contract.dart';
 import 'services/interaction_idle_gate.dart';
 import 'services/oauth_callback_handler.dart';
 import 'services/update_service.dart';
+import 'services/ios_app_store_update_service.dart';
 import 'widgets/planflow_action_buttons.dart';
+import 'widgets/ios_app_store_update_prompt.dart';
 
 class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key});
@@ -403,7 +405,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         if (persistRoute != null) {
           await _savePendingUpdateRestoreRoute(persistRoute);
         }
-        final started = await UpdateService.checkAndPrompt();
+        final started = await UpdateService.checkAndPrompt(
+          onIosUpdateAvailable: _showIosUpdatePrompt,
+        );
         if (!started) {
           await _clearPendingUpdateRestoreRoute();
         }
@@ -414,6 +418,15 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         _startupUpdateCheckRunning = false;
       }
     }());
+  }
+
+  Future<void> _showIosUpdatePrompt(IosAppStoreUpdate update) async {
+    final context = appRouter.routerDelegate.navigatorKey.currentContext;
+    if (!mounted || context == null || !context.mounted) return;
+    await showIosAppStoreUpdatePrompt(
+      context: context,
+      update: update,
+    );
   }
 
   void _retryDeferredUpdateCheck(

@@ -16,6 +16,7 @@ import '../repositories/group_event_repository.dart';
 import '../repositories/group_repository.dart';
 import '../repositories/group_backup_repository.dart';
 import '../services/group_cleanup_service.dart';
+import '../services/group_membership_refresh_bus.dart';
 import '../services/group_event_share_service.dart';
 import '../widgets/terms_acceptance_gate.dart';
 
@@ -575,9 +576,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   /// 딥링크 등으로 push 이력 없이 이 화면에 바로 들어온 경우 pop할 대상이
   /// 없어 GoError("There is nothing to pop.")가 발생한다. canPop을 먼저
   /// 확인하고, 없으면 그룹 목록으로 이동한다.
-  void _handleBackNavigation() {
+  void _handleBackNavigation({bool membershipChanged = false}) {
     if (context.canPop()) {
-      context.pop();
+      context.pop<bool>(membershipChanged ? true : null);
       return;
     }
     context.go(AppRoutes.groups);
@@ -634,10 +635,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     try {
       await _repository.leaveGroup(group.id);
       if (!mounted) return;
+      GroupMembershipRefreshBus.instance.notifyChanged();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('"${group.name}" 그룹에서 나갔어요.')),
       );
-      _handleBackNavigation();
+      _handleBackNavigation(membershipChanged: true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
