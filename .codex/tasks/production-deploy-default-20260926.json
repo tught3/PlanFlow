@@ -194,9 +194,17 @@
       "Test Executor",
       "Reviewer",
       "High-risk Escalation",
-      "Integrator"
+      "Integrator",
+      "Cleanup Planner",
+      "Cleanup Simple Implementer",
+      "Production Draft Readback Planner",
+      "Production Draft Readback Complex Implementer",
+      "Production Readback Failure Analyst",
+      "Production Final Test Executor",
+      "Production Final Reviewer"
     ],
     "not_run_roles": [],
+    "historical_status_reconciliation": "Supplemental receipts retain RAN_NEEDS_FIX and RAN_SUPERSEDED as historical intermediate states. The final correction, named final test executor, named final reviewer, and high-risk re-review reports resolve those intermediate states; every role listed in executed_roles has a final RAN evidence record in this task state.",
     "supplemental_receipts": [
       "scope_expansion cleanup: Planner and Simple Implementer RAN",
       "high-risk draft readback: Planner, Complex Implementer, Failure Analyst, Final Test Executor, and Final Reviewer RAN"
