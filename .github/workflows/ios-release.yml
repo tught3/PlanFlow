@@ -1,4 +1,4 @@
-name: iOS signed release (TestFlight)
+name: iOS signed App Store release
 
 on:
   workflow_dispatch:
@@ -26,16 +26,30 @@ on:
         type: boolean
         required: false
         default: false
+      distribution:
+        description: >-
+          appstore (default) submits this build for App Store review with release
+          after approval. Choose testflight only for an explicit beta-only run.
+        type: choice
+        required: true
+        options:
+          - appstore
+          - testflight
+        default: appstore
       dry_run:
         description: >-
           Run every build, signing, privacy, compliance and symbol gate but stop
-          immediately before the Apple transport (no TestFlight upload).
+          before upload or App Store submission.
         type: boolean
         required: false
         default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: planflow-ios-app-store-connect
+  cancel-in-progress: false
 
 # The unsigned macOS contract remains in ios-readiness.yml. This workflow is
 # deliberately separate: a missing signing asset must fail, never downgrade
@@ -64,6 +78,9 @@ jobs:
       ASC_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify App Store submission state-machine
+        run: python3 -m unittest scripts.tests.test_asc_submit_review -v
 
       - name: Fail-closed public release gates
         shell: bash
@@ -696,7 +713,7 @@ jobs:
           xcrun altool --upload-app -f "$PLANFLOW_IPA_PATH" -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee "$upload_log"
           delivery_uuid="$(sed -n 's/.*Delivery UUID: \([^[:space:]]*\).*/\1/p' "$upload_log" | tail -n 1)"
-          echo "TestFlight transport gate: upload accepted by App Store Connect."
+          echo "Apple transport gate: upload accepted by App Store Connect."
           echo "Transport delivery UUID: ${delivery_uuid:-not-reported}"
           echo "TESTFLIGHT_TRANSPORT_UPLOAD_PASS: PASS"
 
@@ -735,12 +752,28 @@ jobs:
             exit "$ingestion_status"
           fi
           echo "App Store build ingestion gate: build resource found for $IOS_BUNDLE_ID."
-          # Sole emission point of config/release-manifest.json's
-          # ios.successMarker. It is printed only here, after ingestion
-          # verification actually passed: an accepted Apple transport
-          # (TESTFLIGHT_TRANSPORT_UPLOAD_PASS) and an ingested,
-          # TestFlight-available build are different events. A dry run skips
-          # this whole step, so a dry run can never print this marker.
+          echo "App Store build ingestion gate: exact build is available for submission."
+
+      - name: Submit exact build for App Store review
+        if: ${{ (inputs.dry_run == false || inputs.dry_run == 'false') && inputs.distribution == 'appstore' }}
+        shell: bash
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          python3 scripts/asc-submit-review.py \
+            --bundle-id "$IOS_BUNDLE_ID" \
+            --version "$IOS_BUILD_NAME" \
+            --build "$IOS_BUILD_NUMBER" \
+            --whats-new-file config/store/ios-release-notes.json
+
+      - name: Confirm TestFlight-only distribution
+        if: ${{ (inputs.dry_run == false || inputs.dry_run == 'false') && inputs.distribution == 'testflight' }}
+        shell: bash
+        run: |
+          set -euo pipefail
           echo "TESTFLIGHT_AVAILABLE: PASS"
 
       # Exact logical complement of the two gates above (the negation of the

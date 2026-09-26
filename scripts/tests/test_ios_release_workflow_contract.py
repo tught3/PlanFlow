@@ -332,74 +332,46 @@ class WorkflowTextTests(unittest.TestCase):
     # -- F2. Declared success marker must actually be emitted -------------
 
     def test_success_marker_is_emitted_by_the_workflow(self):
-        self.assertIn(
-            "TESTFLIGHT_AVAILABLE",
-            self.workflow,
-            "config/release-manifest.json declares "
-            "ios.successMarker = TESTFLIGHT_AVAILABLE as the iOS "
-            "auto-completion boundary. If no step ever prints it, every "
-            "successful iOS release looks like a failure to any consumer "
-            "that looks for the marker.",
-        )
+        self.assertIn("APP_STORE_SUBMITTED: PASS", (ROOT / "scripts" / "asc-submit-review.py").read_text(encoding="utf-8"))
+        self.assertIn("TESTFLIGHT_AVAILABLE: PASS", self.workflow)
 
     def test_success_marker_is_emitted_only_after_ingestion_passes(self):
-        # Transport success and TestFlight availability are different
-        # events. The marker must live in the ingestion-verification step,
-        # after the ingestion gate message -- never in the transport step
-        # (which only proves Apple accepted the binary) and never in the
-        # dry-run stop step (which never talks to Apple at all).
+        # Apple production submission and TestFlight availability are separate
+        # distribution choices. The TestFlight marker is valid only on its
+        # explicit branch after ingestion; App Store submission is emitted by
+        # the state-machine only after exact-build readback.
         ingestion_idx = self.workflow.index("- name: Verify App Store ingestion")
         stop_idx = self.workflow.index("- name: Dry run stop before Apple transport")
         upload_idx = self.workflow.index("- name: Upload IPA to TestFlight")
         ingestion_block = self.workflow[ingestion_idx:stop_idx]
         upload_block = self.workflow[upload_idx:ingestion_idx]
         stop_block = self.workflow[stop_idx:]
-        self.assertNotIn(
-            "TESTFLIGHT_AVAILABLE",
-            upload_block,
-            "The success marker must not be printed by the Apple transport "
-            "step: an accepted upload does not mean the build is available "
-            "on TestFlight.",
-        )
+        self.assertNotIn("TESTFLIGHT_AVAILABLE", upload_block)
         self.assertNotIn(
             "TESTFLIGHT_AVAILABLE",
             stop_block,
             "The success marker must never be printed on the dry-run path.",
         )
-        marker_idx = ingestion_block.find('echo "TESTFLIGHT_AVAILABLE')
-        self.assertNotEqual(
-            marker_idx,
-            -1,
-            "Expected the ingestion-verification step to echo the "
-            "TESTFLIGHT_AVAILABLE marker.",
-        )
+        marker_idx = self.workflow.index('echo "TESTFLIGHT_AVAILABLE: PASS"')
+        marker_step_idx = self.workflow.rfind("- name: Confirm TestFlight-only distribution", 0, marker_idx)
+        self.assertGreater(marker_step_idx, ingestion_idx)
+        self.assertIn("inputs.distribution == 'testflight'", self.workflow[marker_step_idx:marker_idx])
         gate_idx = ingestion_block.index("App Store build ingestion gate:")
         failure_exit_idx = ingestion_block.index('exit "$ingestion_status"')
-        self.assertLess(
-            failure_exit_idx,
-            marker_idx,
-            "The marker must come after the ingestion-failure exit, so a "
-            "failed ingestion can never print it.",
-        )
-        self.assertLess(
-            gate_idx,
-            marker_idx,
-            "The marker must be printed after the ingestion gate message, "
-            "i.e. only once ingestion verification actually passed.",
-        )
+        self.assertLess(failure_exit_idx, gate_idx)
 
     def test_manifest_success_marker_matches_a_marker_the_workflow_prints(self):
         manifest_path = ROOT / "config" / "release-manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         marker = manifest["ios"]["successMarker"]
         self.assertTrue(marker, "config/release-manifest.json declares no marker.")
+        marker_source = self.workflow + "\n" + (ROOT / "scripts" / "asc-submit-review.py").read_text(encoding="utf-8")
         self.assertIn(
-            f'echo "{marker}',
-            self.workflow,
+            marker,
+            marker_source,
             "config/release-manifest.json's ios.successMarker "
-            f"({marker!r}) is not echoed anywhere in ios-release.yml. The "
-            "manifest and the workflow must be fixed together, or the "
-            "declared iOS completion boundary is unobservable.",
+            f"({marker!r}) is not emitted by the App Store submission path. "
+            "The manifest and release implementation must agree.",
         )
 
     # -- F3. $GITHUB_ENV is written only with already-validated values ----
@@ -1214,16 +1186,19 @@ class WorkflowYamlTests(unittest.TestCase):
         cls.inputs = cls.doc[True]["workflow_dispatch"]["inputs"]
         cls.steps = cls.doc["jobs"]["signed-release"]["steps"]
 
-    def test_exactly_four_workflow_dispatch_inputs(self):
+    def test_workflow_dispatch_inputs_include_production_distribution_default(self):
         self.assertEqual(
             set(self.inputs.keys()),
             {
                 "build_number",
                 "build_name",
                 "allow_version_train_change",
+                "distribution",
                 "dry_run",
             },
         )
+        self.assertEqual(self.inputs["distribution"].get("default"), "appstore")
+        self.assertEqual(self.inputs["distribution"].get("options"), ["appstore", "testflight"])
 
     def test_string_inputs_are_optional_with_empty_default(self):
         for name in ("build_number", "build_name"):

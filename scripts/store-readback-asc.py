@@ -130,6 +130,7 @@ ALLOWLIST_PATTERNS = [
         r"^/v1/appStoreVersionLocalizations/[^/]+/appScreenshotSets$",
         r"^/v1/appScreenshotSets/[^/]+/appScreenshots$",
         r"^/v1/apps/[^/]+/reviewSubmissions$",
+        r"^/v1/reviewSubmissions/[^/]+/items$",
         r"^/v1/apps/[^/]+/appPriceSchedule$",
         r"^/v1/apps/[^/]+/availabilityV2$",
     )
@@ -239,18 +240,40 @@ class ReadbackClient:
     def collect_pages(self, path: str, params: dict | None = None, sleep_fn=time.sleep) -> list:
         items: list = []
         document = self.request_with_retry(path, params=params, sleep_fn=sleep_fn)
-        if document.get("__http_status") not in (None, 200) and document.get("__http_status") is not None:
+        if not isinstance(document, dict):
+            raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection response is malformed")
+        if document.get("__http_status") != 200 or document.get("errors"):
             raise BlockedError(EXIT_INTERNAL, "ASC_REQUEST_FAILED", redact(error_summary(document)))
-        items.extend(document.get("data") or [])
-        next_link = (document.get("links") or {}).get("next")
+        page_items = document.get("data")
+        if not isinstance(page_items, list) or any(not isinstance(item, dict) for item in page_items):
+            raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection response data is missing or malformed")
+        items.extend(page_items)
+        links = document.get("links") or {}
+        if not isinstance(links, dict):
+            raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection pagination links are malformed")
+        next_link = links.get("next")
+        if next_link is not None and (not isinstance(next_link, str) or not next_link):
+            raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection next-page link is malformed")
         pages = 1
         while next_link and pages < MAX_PAGES:
             document = self.request_url_with_retry(next_link, sleep_fn=sleep_fn)
-            if document.get("__http_status") not in (None, 200) and document.get("__http_status") is not None:
+            if not isinstance(document, dict):
+                raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection response is malformed")
+            if document.get("__http_status") != 200 or document.get("errors"):
                 raise BlockedError(EXIT_INTERNAL, "ASC_REQUEST_FAILED", redact(error_summary(document)))
-            items.extend(document.get("data") or [])
-            next_link = (document.get("links") or {}).get("next")
+            page_items = document.get("data")
+            if not isinstance(page_items, list) or any(not isinstance(item, dict) for item in page_items):
+                raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection response data is missing or malformed")
+            items.extend(page_items)
+            links = document.get("links") or {}
+            if not isinstance(links, dict):
+                raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection pagination links are malformed")
+            next_link = links.get("next")
+            if next_link is not None and (not isinstance(next_link, str) or not next_link):
+                raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "collection next-page link is malformed")
             pages += 1
+        if next_link:
+            raise BlockedError(EXIT_INTERNAL, "ASC_PAGINATION_INCOMPLETE", "collection pagination exceeded the page limit")
         return items
 
 
@@ -549,15 +572,38 @@ def collect_snapshot(client: ReadbackClient, bundle_id: str, sleep_fn=time.sleep
 
     # -- reviewSubmissions ----------------------------------------------
     review_submissions_raw = client.collect_pages(f"/v1/apps/{app_id}/reviewSubmissions", sleep_fn=sleep_fn)
-    fields["reviewSubmissions"] = [
-        {
-            "id": submission.get("id"),
-            "state": _attrs(submission).get("state"),
-            "submittedDate": _attrs(submission).get("submittedDate"),
-            "platform": _attrs(submission).get("platform"),
-        }
-        for submission in review_submissions_raw
-    ]
+    review_submissions = []
+    for submission in review_submissions_raw:
+        submission_id = submission.get("id")
+        attrs = _attrs(submission)
+        state = attrs.get("state")
+        if (not isinstance(submission_id, str) or not submission_id.strip()
+                or not isinstance(state, str) or not state.strip()):
+            raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "review submission identity or state is missing")
+        items_raw = client.collect_pages(
+            f"/v1/reviewSubmissions/{submission_id}/items",
+            params={"fields[reviewSubmissionItems]": "appStoreVersion", "limit": "200"},
+            sleep_fn=sleep_fn,
+        )
+        safe_items = []
+        for item in items_raw:
+            item_id = item.get("id")
+            version_id = _relationship_id(item, "appStoreVersion")
+            if (item.get("type") != "reviewSubmissionItems"
+                    or not isinstance(item_id, str) or not item_id.strip()
+                    or not isinstance(version_id, str) or not version_id.strip()):
+                raise BlockedError(EXIT_INTERNAL, "ASC_RESPONSE_MALFORMED", "review submission item relationship is missing")
+            safe_items.append({"id": item_id, "appStoreVersionId": version_id})
+        review_submissions.append({
+            "id": submission_id,
+            "state": state,
+            "submittedDate": attrs.get("submittedDate"),
+            "platform": attrs.get("platform"),
+            "itemsReadState": "COMPLETE",
+            "itemCount": len(safe_items),
+            "items": safe_items,
+        })
+    fields["reviewSubmissions"] = review_submissions
 
     # -- pricing ----------------------------------------------------------
     pricing_document = client.request_with_retry(f"/v1/apps/{app_id}/appPriceSchedule", sleep_fn=sleep_fn)

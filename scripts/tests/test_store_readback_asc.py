@@ -124,6 +124,7 @@ class AllowlistTests(NoNetworkGuardMixin, unittest.TestCase):
             "/v1/appStoreVersionLocalizations/loc-1/appScreenshotSets",
             "/v1/appScreenshotSets/set-1/appScreenshots",
             "/v1/apps/app-1/reviewSubmissions",
+            "/v1/reviewSubmissions/submission-1/items",
             "/v1/apps/app-1/appPriceSchedule",
             "/v1/apps/app-1/availabilityV2",
         ]
@@ -401,7 +402,7 @@ def _build_args(out_dir):
     return parser.parse_args(["--bundle-id", "com.fluxstudio.planflow", "--out", out_dir, "--project-id", "planflow"])
 
 
-def _full_snapshot_responses(age_rating_status=200):
+def _full_snapshot_responses(age_rating_status=200, review_submissions=None, review_items=None):
     age_rating_response = (
         {"__http_status": 404, "errors": [{"status": "404", "detail": "not found"}]}
         if age_rating_status == 404
@@ -419,7 +420,8 @@ def _full_snapshot_responses(age_rating_status=200):
         ("/v1/appStoreVersions/v-1/appStoreReviewDetail", {"__http_status": 200, "data": {"id": "review-1", "type": "appStoreReviewDetails", "attributes": {"demoAccountPassword": "hunter2", "contactEmail": "reviewer@example.com"}}}),
         ("/v1/appStoreVersions/v-1/appStoreVersionLocalizations", {"__http_status": 200, "data": [{"id": "vloc-1", "type": "appStoreVersionLocalizations", "attributes": {"locale": "en-US", "description": "PlanFlow"}}]}),
         ("/v1/appStoreVersionLocalizations/vloc-1/appScreenshotSets", {"__http_status": 200, "data": []}),
-        ("/v1/apps/app-1/reviewSubmissions", {"__http_status": 200, "data": []}),
+        ("/v1/apps/app-1/reviewSubmissions", {"__http_status": 200, "data": review_submissions or []}),
+        ("/v1/reviewSubmissions/submission-1/items", {"__http_status": 200, "data": review_items or []}),
         ("/v1/apps/app-1/appPriceSchedule", {"__http_status": 200, "data": {"id": "price-1", "type": "appPriceSchedules"}}),
         ("/v1/apps/app-1/availabilityV2", {"__http_status": 200, "data": {"id": "avail-1", "type": "appAvailabilities", "attributes": {}}}),
     ]
@@ -484,6 +486,54 @@ class EndToEndSecretSafetyTests(NoNetworkGuardMixin, unittest.TestCase):
             self.assertEqual(snapshot["schemaVersion"], 1)
             self.assertEqual(snapshot["fields"]["app"]["bundleId"], "com.fluxstudio.planflow")
             self.assertEqual(snapshot["redaction"]["omitted"], ["demoAccountPassword"])
+
+    def test_review_submission_items_are_read_only_sanitized_and_complete(self):
+        submission = {"id": "submission-1", "type": "reviewSubmissions", "attributes": {
+            "state": "READY_FOR_REVIEW", "platform": "IOS", "submittedDate": None}}
+        item = {"id": "item-1", "type": "reviewSubmissionItems", "attributes": {"privateNote": "never export"},
+                "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": "version-1"}}}}
+        responses = _full_snapshot_responses(review_submissions=[submission], review_items=[item])
+        transport = FakeTransport(responses)
+        fields, _unavailable = store_readback.collect_snapshot(
+            store_readback.ReadbackClient("fake-token", transport=transport),
+            "com.fluxstudio.planflow", sleep_fn=no_sleep,
+        )
+        saved = fields["reviewSubmissions"][0]
+        self.assertEqual(saved["itemsReadState"], "COMPLETE")
+        self.assertEqual(saved["itemCount"], 1)
+        self.assertEqual(saved["items"], [{"id": "item-1", "appStoreVersionId": "version-1"}])
+        self.assertNotIn("privateNote", json.dumps(fields))
+        self.assertTrue(any("/v1/reviewSubmissions/submission-1/items?" in url for url in transport.calls))
+
+    def test_review_submission_items_missing_or_failed_page_blocks_readback(self):
+        submission = {"id": "submission-1", "type": "reviewSubmissions", "attributes": {"state": "READY_FOR_REVIEW"}}
+        for response in (
+            {"__http_status": 200},
+            {"__http_status": 200, "data": None},
+            {"__http_status": 200, "errors": [{"status": "500", "detail": "failure"}], "data": []},
+            {"__http_status": 500, "data": []},
+            {"__http_status": 200, "data": [], "links": {"next": "https://api.appstoreconnect.apple.com/v1/reviewSubmissions/submission-1/items?cursor=next"}},
+        ):
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as tmp_dir:
+                responses = _full_snapshot_responses(review_submissions=[submission])
+                responses = [
+                    (needle, response if needle == "/v1/reviewSubmissions/submission-1/items" else body)
+                    for needle, body in responses
+                ]
+                transport = FakeTransport(responses)
+                with self.assertRaises(store_readback.BlockedError):
+                    store_readback.collect_snapshot(
+                        store_readback.ReadbackClient("fake-token", transport=transport),
+                        "com.fluxstudio.planflow", sleep_fn=no_sleep,
+                    )
+                self.assertEqual(transport.calls[-1].split("/items")[0].split("/v1")[-1], "/reviewSubmissions/submission-1")
+
+    def test_review_submission_item_without_version_linkage_blocks(self):
+        submission = {"id": "submission-1", "type": "reviewSubmissions", "attributes": {"state": "READY_FOR_REVIEW"}}
+        item = {"id": "item-1", "type": "reviewSubmissionItems", "relationships": {}}
+        transport = FakeTransport(_full_snapshot_responses(review_submissions=[submission], review_items=[item]))
+        with self.assertRaisesRegex(store_readback.BlockedError, "relationship is missing"):
+            store_readback.collect_snapshot(store_readback.ReadbackClient("fake-token", transport=transport), "com.fluxstudio.planflow", sleep_fn=no_sleep)
 
 
 class ContentHashDeterminismTests(NoNetworkGuardMixin, unittest.TestCase):
