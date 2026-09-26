@@ -2,8 +2,8 @@
   "task_id": "production-deploy-default-20260926",
   "original_request": "앞으로 배포해는 TestFlight가 아니라 App Store 정식 배포. 이미 출시된 PlanFlow 업데이트.",
   "status": "IN_PROGRESS",
-  "final_verdict": "NEEDS_FIX",
-  "current_phase": "live_readback_failure_analysis",
+  "final_verdict": "PENDING_LIVE_GET_RETRY",
+  "current_phase": "live_readback_correction_verified",
   "initial_difficulty": "high_risk",
   "current_difficulty": "high_risk",
   "transition_count": 0,
@@ -213,7 +213,7 @@
     "remaining_gate": "Normal non-force push followed by live GET-only App Store draft readback and canonical production deployment dispatch; Apple and Google external outcomes remain separately reported."
   },
   "merge_checkpoint": {
-    "status": "PUSHED_LIVE_READBACK_NEEDS_FIX",
+    "status": "CORRECTION_COMMITTED_AWAITING_PUSH_AND_LIVE_GET_RETRY",
     "source_commit": "b351cbe2d77ea7312b0332af517d99b3cd453204",
     "upstream": "origin/main e2bb10de2a7223ab4532f0153033cda5ce1b2029",
     "conflicts": {
@@ -224,8 +224,15 @@
     "preliminary_diff_check_exit_code": 0,
     "merge_commit": "d540d906d5d45076e59a07d5868e12535f224902",
     "push": "Normal non-force push succeeded; HEAD and origin/main are both 894c049ca282756f5c1e846e2bb2aa3938a3bead.",
-    "live_get_readback": "Run 36223686466 failed at ASC_RESPONSE_MALFORMED because a review-submission item relationship was missing. Collector performed no Apple writes; canonical deployment did not start.",
+    "live_get_readback": "Run 36223686466 failed at ASC_RESPONSE_MALFORMED because a review-submission item relationship was missing. Collector performed no Apple writes; canonical deployment did not start. Narrow correction is committed at 1d228d9d: both item GET paths now request the official include=appStoreVersion relationship, regression coverage retains links-only/unknown fail-closed behavior, and a fresh GET-only retry is required before deployment.",
     "release_dispatch": "NOT_STARTED"
+  },
+  "live_readback_correction_verification": {
+    "implementer": "RAN: four scoped files only; official include=appStoreVersion on both item GET paths with regression coverage.",
+    "test_executor": "RAN: python -B -m unittest scripts.tests.test_asc_submit_review scripts.tests.test_store_readback_asc scripts.tests.test_ios_release_workflow_contract scripts.tests.test_asc_next_build_number exited 0 with 157 tests; git diff --check exited 0.",
+    "reviewer": "RAN: final correction review PASS with BLOCKER 0 and HIGH 0.",
+    "high_risk_reviewer": "RAN: final correction review PASS with BLOCKER 0 and HIGH 0.",
+    "external_gate": "PENDING: repeat the GET-only App Store readback; do not infer live response shape from fixtures."
   },
   "role_reports": {
     "Explorer": {
