@@ -1,0 +1,127 @@
+{
+  "task_id": "release113-production-20260927",
+  "status": "INTEGRATOR_PASS_READY_TO_COMMIT",
+  "final_verdict": "RELEASE_CANDIDATE_APPROVED",
+  "current_phase": "approved_for_coherent_commit_push_then_canonical_production_rollout",
+  "original_request": "User explicitly approves 1.1.3; deliver latest changes through canonical production iOS-first then Android workflow.",
+  "initial_difficulty": "complex",
+  "current_difficulty": "complex",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "PASS",
+    "checked_at": "2026-09-27",
+    "errors": [],
+    "evidence": "Central role map and six deployed agent TOMLs read; matching model/effort."
+  },
+  "authority": {
+    "initial_selection": "release113_planner confirmed complex",
+    "transition_approval": "Integrator",
+    "dispatch": "root; canonical deployment authorized by user"
+  },
+  "evidence": {
+    "source_files": ["pubspec.yaml", "ios/Flutter/PlanFlow-Identity.xcconfig", "config/release-manifest.json", "config/store/ios-release-notes.json"],
+    "test_commands": [
+      {"command":"flutter test test/ios_widget_version_contract_test.dart test/widgets/ios_app_store_update_prompt_test.dart","exit_code":0,"result":"Focused iOS/widget version parity and update prompt tests passed."},
+      {"command":"python -m unittest scripts.tests.test_ios_release_workflow_contract scripts.tests.test_asc_submit_review -v","exit_code":0,"result":"87 tests PASS; fixture submission markers are not live deployment evidence."},
+      {"command":"python -m pytest test/production_release_contract_test.py -q","exit_code":0,"result":"6 tests PASS."},
+      {"command":"git diff --check","exit_code":0,"result":"PASS; only line-ending notices."},
+      {"command":"E:\\AI_WIKI\\scripts\\deploy-project.ps1 -Check -StartDirectory E:\\FluxStudio\\PlanFlow","exit_code":0,"result":"PASS; iOS App Store build 184 selected, Android gated on APP_STORE_SUBMITTED. No deployment dispatched."}
+    ],
+    "baseline_sha": "88e17b7b9734a799395ed53645e5cfd2be08442f",
+    "app_store_readback": {
+      "run": 36281374995,
+      "capturedAt": "2026-09-27T00:04:36Z",
+      "version": "1.1.2",
+      "build": 183,
+      "state": "READY_FOR_SALE"
+    },
+    "baseline_clean": true,
+    "remote_main_matches": true
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "complex (proposed)",
+    "entry_role_ref": "Explorer",
+    "planned_roles": [
+      {
+        "role": "Explorer",
+        "agent": "flux_explorer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Planner",
+        "agent": "flux_planner",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Complex Implementer",
+        "agent": "flux_complex_implementer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Test Executor",
+        "agent": "flux_test_executor",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "low",
+        "status": "PLANNED"
+      },
+      {
+        "role": "High-risk Escalation",
+        "agent": "flux_high_risk_reviewer",
+        "model": "gpt-6-sol",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Reviewer",
+        "agent": "flux_reviewer",
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "high",
+        "status": "PLANNED"
+      },
+      {
+        "role": "Integrator",
+        "agent": "flux_integrator",
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "medium",
+        "status": "PLANNED"
+      }
+    ],
+    "executed_roles": [],
+    "not_run_roles": [],
+    "emitted_at": "2026-09-27"
+  },
+  "final_receipt": {"classification":"complex","planned_roles":[],"executed_roles":["Explorer","Planner","Complex Implementer","Test Executor","High-risk Escalation","Reviewer","Integrator"],"not_run_roles":[],"verdict":"INTEGRATOR_PASS; approved for coherent commit/push and authorized canonical rollout"},
+  "role_reports": [
+    {"role":"Explorer","agent":"flux_explorer","model":"gpt-6-luna","model_reasoning_effort":"medium","assignment":"Inspect release metadata, canonical sequencing and tests","status":"RAN","evidence":"Final report received: four version files identified; baseline clean remote main88e17b7b; production iOS-first contract confirmed. No source edits."},
+    {"role":"Planner","agent":"flux_planner","model":"gpt-5.6-terra","model_reasoning_effort":"high","assignment":"Define release113 metadata scope and production gates","status":"RAN","evidence":"Final report: Complex; pubspec/widget1.1.3+184, manifest approved train1.1.3, version-bound Korean notes. Canonical iOS184 submission marker required before Android auto-bump185. Four metadata files plus task state only; contracts tests and independent review before clean commit/push."}
+  ],
+  "plan": {"allowed_files":["pubspec.yaml","ios/Flutter/PlanFlow-Identity.xcconfig","config/release-manifest.json","config/store/ios-release-notes.json",".codex/tasks/release113-production-20260927.json"],"ios_target":"1.1.3+184","android_target":"1.1.3+185 via canonical auto-bump","forbidden":"App feature edits, workflow edits, unrelated changes, TestFlight, prior submission cancel/replace","checks":["flutter test test/ios_widget_version_contract_test.dart test/widgets/ios_app_store_update_prompt_test.dart","python -m unittest scripts.tests.test_ios_release_workflow_contract scripts.tests.test_asc_submit_review -v","python -m pytest test/production_release_contract_test.py -q","git diff --check","배포해.cmd -Check"],"sequence":["metadata implementation","focused verification","independent review","clean commit and push","canonical iOS App Store then Android production","final owned version bump commit and push"]},
+  "unresolved_items": [
+    "coherent commit and push to main",
+    "iOS App Store submission marker",
+    "Android production upload",
+    "final cleanup and record"
+  ],
+  "next_step": "Integrator PASS received after final diff inspection. Commit/push only the four approved metadata files and this task evidence, then run canonical production workflow iOS-first; no deployment has started.",
+  "lock_coordination": {"release_path_claim":"ALLOW_PARALLEL","scope":"project","active_conflicts":0,"checked_at":"2026-09-27","remaining_active_nonconflicting_foreign_locks":["L1297","L1298","L1302: HealthFlow owner","L1301","L1303: Claude owner"],"foreign_locks_released_by_owners":["L1294","L1295: A Orchestrator","L1296: Supabase owner"],"foreign_files_modified":false},
+  "additional_role_reports": [
+    {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-6-luna","model_reasoning_effort":"medium","status":"RAN","result":"Final report BLOCKED by P1 file-lock on two apply_patch attempts. No files changed; no bypass, tests or commit."},
+    {"role":"Test Executor","agent":"flux_test_executor","model":"gpt-6-luna","model_reasoning_effort":"low","status":"RAN","result":"Final report: unittest 87 PASS exit0; pytest6 PASS exit0. No files/locks changed. Flutter version-parity verification NOT_RUN pending metadata."},
+    {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-6-luna","model_reasoning_effort":"high","status":"NOT_RUN","reason":"Implementation blocked before metadata edits"},
+    {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","model_reasoning_effort":"medium","status":"NOT_RUN","reason":"Implementation and verification incomplete"},
+    {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-6-luna","model_reasoning_effort":"medium","assignment":"Set approved PlanFlow 1.1.3+184 metadata, widget version parity, App Store version train, and version-specific Korean notes only in allowed files","status":"RAN","result":"PASS: updated the four approved metadata files. Exact release-path lock evaluate_claim returned ALLOW_PARALLEL with zero active locks. No deploy, commit, or push performed.","changed_files":["pubspec.yaml","ios/Flutter/PlanFlow-Identity.xcconfig","config/release-manifest.json","config/store/ios-release-notes.json",".codex/tasks/release113-production-20260927.json"],"tests":[]}
+    ,{"role":"Test Executor","agent":"flux_test_executor","model":"gpt-6-luna","model_reasoning_effort":"low","assignment":"Run focused release tests, migration/release contracts, diff check, and canonical deploy check only","status":"RAN","result":"PASS: Flutter targeted tests exit0; unittest 87 PASS exit0; pytest 6 PASS exit0; git diff --check exit0; canonical deploy-project.ps1 -Check exit0. No production dispatch/upload/commit/push. Test generated Android GeneratedPluginRegistrant.java; root verified no semantic diff and restored only that generated file.","changed_files":[],"tests":[{"command":"flutter test test/ios_widget_version_contract_test.dart test/widgets/ios_app_store_update_prompt_test.dart","exit_code":0},{"command":"python -m unittest scripts.tests.test_ios_release_workflow_contract scripts.tests.test_asc_submit_review -v","exit_code":0},{"command":"python -m pytest test/production_release_contract_test.py -q","exit_code":0},{"command":"git diff --check","exit_code":0},{"command":"E:\\AI_WIKI\\scripts\\deploy-project.ps1 -Check -StartDirectory E:\\FluxStudio\\PlanFlow","exit_code":0}]},
+    {"role":"High-risk Escalation","agent":"flux_high_risk_reviewer","model":"gpt-6-sol","model_reasoning_effort":"high","assignment":"Fresh high-risk release candidate review","status":"RAN","result":"FINAL PASS; BLOCKER=0, HIGH=0. Verified exact 1.1.3+184 metadata, version-matched factual notes, AFTER_APPROVAL contract, canonical iOS-first check, and fresh test evidence. No rollout executed.","changed_files":[]},
+    {"role":"Reviewer","agent":"flux_reviewer","model":"gpt-6-luna","model_reasoning_effort":"high","assignment":"Independent final diff review","status":"RAN","result":"Fresh FINAL_REVIEW_REPORT: PASS; BLOCKER=0, HIGH=0, MEDIUM=0, LOW=0. No findings. Confirmed final_receipt lists Reviewer executed and Integrator pending, consistent with latest report; stale-lock finding closed. Retest scope NONE.","changed_files":[".codex/tasks/release113-production-20260927.json"]},
+    {"role":"Integrator","agent":"flux_integrator","model":"gpt-5.6-terra","model_reasoning_effort":"medium","assignment":"Inspect final diff, evidence, tests, review, branch/upstream and approve release sequence","status":"RAN","result":"FINAL INTEGRATOR PASS. Exact owned files only; diff check and recorded tests/check-only pass; High-risk PASS B0/H0; Reviewer PASS B0/H0/M0/L0; main equals origin/main; no queued/in-progress iOS workflow or existing 1.1.3 submission. Approved coherent commit/push then canonical iOS 1.1.3+184 App Store submission, wait for APP_STORE_SUBMITTED, then Android production auto-bump/upload 1.1.3+185. Apple approval/public availability and Android propagation remain separate outcomes.","changed_files":[]}
+  ]
+}
