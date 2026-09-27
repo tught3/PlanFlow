@@ -1,8 +1,8 @@
 {
   "task_id": "release113-production-20260927",
-  "status": "INTEGRATOR_PASS_READY_TO_COMMIT",
+  "status": "PRODUCTION_SUBMITTED",
   "final_verdict": "RELEASE_CANDIDATE_APPROVED",
-  "current_phase": "approved_for_coherent_commit_push_then_canonical_production_rollout",
+  "current_phase": "canonical_ios_submission_and_android_production_upload_completed",
   "original_request": "User explicitly approves 1.1.3; deliver latest changes through canonical production iOS-first then Android workflow.",
   "initial_difficulty": "complex",
   "current_difficulty": "complex",
@@ -111,7 +111,16 @@
     "Android production upload",
     "final cleanup and record"
   ],
-  "next_step": "Integrator PASS received after final diff inspection. Commit/push only the four approved metadata files and this task evidence, then run canonical production workflow iOS-first; no deployment has started.",
+  "next_step": "No deployment action remains. iOS 1.1.3 build 184 was accepted for App Store review (WAITING_FOR_REVIEW); Android 1.1.3 build 186 was uploaded to the production track. Apple review/public availability and Google Play processing remain external store states.",
+  "live_release": {
+    "ios": {"workflow_run": 36293145382, "source_sha": "aac4942143bc3dbcb297f2be373197b1bb97655f", "build": 184, "version": "1.1.3", "marker": "APP_STORE_SUBMITTED: PASS", "state": "WAITING_FOR_REVIEW"},
+    "android": {"version": "1.1.3", "build": 186, "track": "production", "result": "ANDROID: PASS; production rollout uploaded", "note": "Android production script incremented the pre-run local 185 to 186."},
+    "post_release_commit": "efef986201ec0dc0a2fc56b243e3ddaafdfa2302",
+    "post_release_push": "origin/main",
+    "remaining_worktree_changes": ["android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java", "lib/l10n/app_localizations.dart"],
+    "remaining_changes_preserved": true,
+    "planflow_release_lock_conflicts": 0
+  },
   "lock_coordination": {"release_path_claim":"ALLOW_PARALLEL","scope":"project","active_conflicts":0,"checked_at":"2026-09-27","remaining_active_nonconflicting_foreign_locks":["L1297","L1298","L1302: HealthFlow owner","L1301","L1303: Claude owner"],"foreign_locks_released_by_owners":["L1294","L1295: A Orchestrator","L1296: Supabase owner"],"foreign_files_modified":false},
   "additional_role_reports": [
     {"role":"Complex Implementer","agent":"flux_complex_implementer","model":"gpt-6-luna","model_reasoning_effort":"medium","status":"RAN","result":"Final report BLOCKED by P1 file-lock on two apply_patch attempts. No files changed; no bypass, tests or commit."},
