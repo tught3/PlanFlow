@@ -164,13 +164,52 @@
   },
   "integrator": {
     "verdict": "BLOCKED",
-    "reason": "Post-rework Flutter test/analyze evidence and release AAB validation are unavailable; exact Bitmap downsampling target is also unproven.",
+    "reason": "Post-rework focused Flutter tests and analysis now pass, but guarded release AAB has no terminal result or artifact; exact Bitmap downsampling target is also unproven.",
     "commit_push": "not permitted"
   },
   "unresolved_items": [
-    "Post-rework Flutter focused test and analyze evidence is NOT VALIDATED because Flutter test startup stalled without output; retry in a healthy Flutter runner state.",
-    "Release AAB/R8 resource packaging, AndroidX dependency compilation, and dynamic notification-icon preservation are NOT VALIDATED because trusted PlanFlow local release define/signing files are absent from this worktree.",
+    "Release AAB/R8 resource packaging and dynamic notification-icon preservation are NOT VALIDATED: guarded appbundle --release remains live without a terminal exit code or app-release.aab.",
     "Bitmap downsampling requires evidence from the release artifact or the exact Play Console warning source."
   ],
-  "last_updated": "2026-08-24T02:41:00Z"
+  "revalidation_2026_09_23": {
+    "claim": "pipeline-adopt TASK_20260824_012115 completed before verification; required model remains gpt-5.6-terra.",
+    "temporary_release_inputs": "Trusted PlanFlow local.json, key.properties, and release keystore were copied only for verification and removed afterward; no credential content was staged or reported.",
+    "verification": [
+      {
+        "command": "PLANFLOW_SKIP_FLUXOS_SESSION=1 scripts\\flutter-local.ps1 test test/platform/play_console_android_contract_test.dart test/android_crash_regression_guard_test.dart test/android_deep_link_guard_test.dart",
+        "exit_code": 0,
+        "result": "14 tests passed"
+      },
+      {
+        "command": "PLANFLOW_SKIP_FLUXOS_SESSION=1 scripts\\flutter-local.ps1 analyze",
+        "exit_code": 0,
+        "result": "No issues found"
+      },
+      {
+        "command": "E:\\AI_WIKI\\scripts\\flutter-build-guarded.ps1 -BuildArgs 'appbundle --release'",
+        "exit_code": 124,
+        "result": "outer invocation timed out; owned build remains live and app-release.aab is absent"
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "result": "passed before task-state checkpoint write"
+      }
+    ],
+    "blocked_resolve": {
+      "command": "python E:\\FluxStudio\\.fluxos\\run.py blocked-resolve TASK_20260824_012115 --json",
+      "result": "OWNER_LIVE; owner session S_20260923_121132_3d36b568; recommended action wait"
+    },
+    "roles": {
+      "explorer": "RAN: confirmed scoped source contracts and trusted input availability.",
+      "planner": "RAN: revalidation-only plan; no source edit required.",
+      "failure_analyst": "RAN: diagnosed worktree-local flutter bootstrap path defect; adopted-session skip was safe.",
+      "test_executor": "RAN: focused test/analyze evidence recorded; release gate PARTIAL pending terminal build.",
+      "high_risk_reviewer": "RAN: BLOCKED because no release terminal proof or artifact exists.",
+      "reviewer": "RAN: BLOCKER on absent terminal guarded AAB/artifact; source-level contracts coherent.",
+      "integrator": "RAN: BLOCKED; commit and push not permitted.",
+      "complex_implementer": "NOT_RUN in this revalidation because current committed source required no edit."
+    }
+  },
+  "last_updated": "2026-09-23T12:30:00Z"
 }
