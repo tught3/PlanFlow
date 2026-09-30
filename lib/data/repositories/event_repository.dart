@@ -101,6 +101,25 @@ abstract class EventRepository {
 
   Future<EventModel> createEvent(EventModel event);
 
+  /// Atomically creates a personal event and the selected group copies.
+  /// Implementations must fail the whole operation if any group share fails.
+  Future<EventModel> createEventWithGroupShares(
+    EventModel event,
+    List<String> groupIds,
+  ) =>
+      throw UnimplementedError(
+        'createEventWithGroupShares is not implemented.',
+      );
+
+  /// Atomically updates an owned event and shares it with all selected groups.
+  Future<EventModel> updateEventWithGroupShares(
+    EventModel event,
+    List<String> groupIds,
+  ) =>
+      throw UnimplementedError(
+        'updateEventWithGroupShares is not implemented.',
+      );
+
   Future<EventModel> updateEvent(EventModel event);
 
   Future<EventModel> updateSuppliesChecked({
@@ -666,6 +685,63 @@ class SupabaseEventRepository extends EventRepository {
 
     final response = await _insertEvent(event);
 
+    return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel> createEventWithGroupShares(
+    EventModel event,
+    List<String> groupIds,
+  ) async {
+    final resolvedUserId = _resolveCurrentUserId();
+    _validateWritableEvent(event, resolvedUserId);
+    if (event.id.trim().isEmpty) {
+      throw ArgumentError.value(
+          event.id, 'event.id', 'Stable event id required.');
+    }
+    final uniqueGroupIds = groupIds.toSet().toList(growable: false);
+    if (uniqueGroupIds.isEmpty) {
+      throw ArgumentError.value(
+          groupIds, 'groupIds', 'At least one group required.');
+    }
+    final response = await _client.rpc(
+      'create_personal_event_with_groups',
+      params: <String, dynamic>{
+        'p_event': event.toJson(),
+        'p_group_ids': uniqueGroupIds,
+      },
+    );
+    if (response is! Map) {
+      throw StateError('일정 생성/그룹 공유 응답 형식이 올바르지 않습니다.');
+    }
+    return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel> updateEventWithGroupShares(
+    EventModel event,
+    List<String> groupIds,
+  ) async {
+    final resolvedUserId = _resolveCurrentUserId();
+    _validateWritableEvent(event, resolvedUserId);
+    if (event.id.trim().isEmpty) {
+      throw ArgumentError.value(event.id, 'event.id', 'Event id required.');
+    }
+    final uniqueGroupIds = groupIds.toSet().toList(growable: false);
+    if (uniqueGroupIds.isEmpty) {
+      throw ArgumentError.value(
+          groupIds, 'groupIds', 'At least one group required.');
+    }
+    final response = await _client.rpc(
+      'update_personal_event_with_groups',
+      params: <String, dynamic>{
+        'p_event': event.toJson(),
+        'p_group_ids': uniqueGroupIds,
+      },
+    );
+    if (response is! Map) {
+      throw StateError('일정 수정/그룹 공유 응답 형식이 올바르지 않습니다.');
+    }
     return EventModel.fromJson(_rowAsJson(response));
   }
 

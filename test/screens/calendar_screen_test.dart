@@ -8,6 +8,7 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/calendar_overlay_item.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/providers/group_calendar_overlay_provider.dart';
@@ -123,11 +124,7 @@ void main() {
     'CalendarScreen renders a prefetched event before the reload completes',
     (tester) async {
       final selectedDay = DateTime(DateTime.now().year + 1, 5, 15, 9);
-      final prefetched = _event(
-        'prefetched-1',
-        '프리패치 일정',
-        selectedDay,
-      );
+      final prefetched = _event('prefetched-1', '프리패치 일정', selectedDay);
       EventPrefetchService().store('prefetched-user', [prefetched]);
       final reload = Completer<List<EventModel>>();
       final repository = _AsyncEventRepository([reload.future]);
@@ -253,67 +250,73 @@ void main() {
     },
   );
 
-  test('calendar day projection indexes many events without a scan per tap',
-      () {
-    // banned-ok: 고정 월 fixture, now() 상대 클램프/만료 없음(시한폭탄 아님)
-    final month = DateTime(2026, 8);
-    final events = List<EventModel>.generate(
-      2500,
-      (index) => _event(
-        'projection-$index',
-        '일정 $index',
-        DateTime(
-            2026, 8, (index % 28) + 1, 9), // banned-ok: 고정 월 fixture(위와 동일 사유)
-      ),
-    );
-    final index = buildCalendarDayEventIndex(
-      events: events,
-      focusedMonth: month,
-    );
-
-    expect(index.length, 28);
-    expect(index[1], hasLength((2500 / 28).ceil()));
-    // The returned day lists are immutable snapshots suitable for reuse by
-    // immediate date taps.
-    expect(() => index[1]!.add(events.first), throwsUnsupportedError);
-  });
-
-  testWidgets(
-    'CalendarScreen repaints selected day immediately after tap',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(900, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-
-      final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CalendarScreen(
-            eventRepository: repository,
-            userId: 'user-1',
-            initialDate: DateTime(
-                2026, 5, 12), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
-          ),
+  test(
+    'calendar day projection indexes many events without a scan per tap',
+    () {
+      // banned-ok: 고정 월 fixture, now() 상대 클램프/만료 없음(시한폭탄 아님)
+      final month = DateTime(2026, 8);
+      final events = List<EventModel>.generate(
+        2500,
+        (index) => _event(
+          'projection-$index',
+          '일정 $index',
+          DateTime(
+            2026,
+            8,
+            (index % 28) + 1,
+            9,
+          ), // banned-ok: 고정 월 fixture(위와 동일 사유)
         ),
       );
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('5월 12일'), findsWidgets);
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
+      final index = buildCalendarDayEventIndex(
+        events: events,
+        focusedMonth: month,
       );
-      await tester.pump();
 
-      final selectedDayLabel = tester.widget<Text>(
-        find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
-      );
-      expect(selectedDayLabel.style?.color, calendarNormalEventTextColor);
-      expect(selectedDayLabel.style?.fontWeight, FontWeight.w700);
+      expect(index.length, 28);
+      expect(index[1], hasLength((2500 / 28).ceil()));
+      // The returned day lists are immutable snapshots suitable for reuse by
+      // immediate date taps.
+      expect(() => index[1]!.add(events.first), throwsUnsupportedError);
     },
   );
+
+  testWidgets('CalendarScreen repaints selected day immediately after tap', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: DateTime(
+            2026,
+            5,
+            12,
+          ), // banned-ok: 고정 초기 날짜 fixture, now() 상대 클램프/만료 없음
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('5월 12일'), findsWidgets);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('calendar-mini-day-2026-5-15')));
+    await tester.pump();
+
+    final selectedDayLabel = tester.widget<Text>(
+      find.byKey(const ValueKey('calendar-mini-day-2026-5-15')),
+    );
+    expect(selectedDayLabel.style?.color, calendarNormalEventTextColor);
+    expect(selectedDayLabel.style?.fontWeight, FontWeight.w700);
+  });
 
   testWidgets('CalendarScreen direct add passes selected date to edit route', (
     tester,
@@ -429,6 +432,47 @@ void main() {
     },
   );
 
+  test('calendar marker dedupes only a canonical personal/group link', () {
+    final relativeDay = DateTime.now().add(const Duration(days: 14));
+    final day = DateTime(
+      relativeDay.year,
+      relativeDay.month,
+      relativeDay.day,
+      10,
+    );
+    final focusedMonth = DateTime(day.year, day.month);
+    final targetDate = DateTime(day.year, day.month, day.day);
+    final cells = buildCalendarMiniMonthCells(
+      focusedMonth: focusedMonth,
+      events: <EventModel>[
+        _event('linked-personal', '공유 일정', day),
+        _event(
+          'unrelated-personal',
+          '공유 일정',
+          day.add(const Duration(hours: 1)),
+        ),
+      ],
+      overlayEvents: <CalendarOverlayItem>[
+        CalendarOverlayItem(
+          id: 'group-copy',
+          type: CalendarOverlayItemType.group,
+          title: '공유 일정',
+          startAt: day,
+          endAt: day.add(const Duration(hours: 1)),
+          source: 'group',
+          groupId: 'group-1',
+          personalEventId: 'linked-personal',
+        ),
+      ],
+    );
+
+    final cell = cells.firstWhere((item) => item.date == targetDate);
+    expect(cell.events.map((event) => event.id), <String>[
+      'unrelated-personal',
+    ]);
+    expect(cell.overlayEvents.map((event) => event.id), <String>['group-copy']);
+  });
+
   testWidgets(
     'CalendarScreen reserves the last month-cell row for (+n개) overflow',
     (tester) async {
@@ -463,34 +507,36 @@ void main() {
     },
   );
 
-  test('calendar mini month hides only synced canonical holiday duplicates',
-      () {
-    final holidayYear = DateTime.now().year;
-    final cells = buildCalendarMiniMonthCells(
-      focusedMonth: DateTime(holidayYear, 8),
-      events: <EventModel>[
-        EventModel(
-          id: 'synced-holiday',
-          userId: 'user-1',
-          title: '광복절',
-          startAt: DateTime(holidayYear, 8, 15, 9),
-          externalId: 'provider-1',
-          externalCalendarId: 'google:holidays',
-        ),
-        EventModel(
-          id: 'manual-holiday-note',
-          userId: 'user-1',
-          title: '광복절 행사',
-          startAt: DateTime(holidayYear, 8, 15, 10),
-        ),
-      ],
-    );
+  test(
+    'calendar mini month hides only synced canonical holiday duplicates',
+    () {
+      final holidayYear = DateTime.now().year;
+      final cells = buildCalendarMiniMonthCells(
+        focusedMonth: DateTime(holidayYear, 8),
+        events: <EventModel>[
+          EventModel(
+            id: 'synced-holiday',
+            userId: 'user-1',
+            title: '광복절',
+            startAt: DateTime(holidayYear, 8, 15, 9),
+            externalId: 'provider-1',
+            externalCalendarId: 'google:holidays',
+          ),
+          EventModel(
+            id: 'manual-holiday-note',
+            userId: 'user-1',
+            title: '광복절 행사',
+            startAt: DateTime(holidayYear, 8, 15, 10),
+          ),
+        ],
+      );
 
-    final day15 = cells.firstWhere((cell) => cell.dayNumber == 15);
-    expect(day15.events.map((event) => event.id), <String>[
-      'manual-holiday-note',
-    ]);
-  });
+      final day15 = cells.firstWhere((cell) => cell.dayNumber == 15);
+      expect(day15.events.map((event) => event.id), <String>[
+        'manual-holiday-note',
+      ]);
+    },
+  );
 
   test('calendar keeps a continuous band in the holiday-following row', () {
     final cells = buildCalendarMiniMonthCells(
@@ -500,8 +546,11 @@ void main() {
           id: 'birthday-range',
           userId: 'user-1',
           title: '생일 축하합니다',
-          startAt:
-              DateTime(2026, 9, 23), // banned-ok: fixed 2026 Chuseok fixture
+          startAt: DateTime(
+            2026,
+            9,
+            23,
+          ), // banned-ok: fixed 2026 Chuseok fixture
           // Google date-only DTEND is exclusive: Sep 27 covers Sep 23-26.
           endAt: DateTime(2026, 9, 27), // banned-ok: fixed 2026 Chuseok fixture
           isAllDay: true,
@@ -544,31 +593,34 @@ void main() {
   });
 
   testWidgets(
-      'CalendarScreen does not infer an official holiday from an event title',
-      (tester) async {
-    final date = DateTime(DateTime.now().year + 5, 1, 1);
-    final repository = _AsyncEventRepository([
-      Future.value(
-          [_event('user-holiday', '공휴일', date.add(const Duration(hours: 9)))]),
-    ]);
+    'CalendarScreen does not infer an official holiday from an event title',
+    (tester) async {
+      final date = DateTime(DateTime.now().year + 5, 1, 1);
+      final repository = _AsyncEventRepository([
+        Future.value([
+          _event('user-holiday', '공휴일', date.add(const Duration(hours: 9))),
+        ]),
+      ]);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: date,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: date,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final dayLabel = tester.widget<Text>(
-      find.byKey(
-          ValueKey('calendar-mini-day-${date.year}-${date.month}-${date.day}')),
-    );
-    expect(dayLabel.style?.color, isNot(calendarHolidayColor));
-  });
+      final dayLabel = tester.widget<Text>(
+        find.byKey(
+          ValueKey('calendar-mini-day-${date.year}-${date.month}-${date.day}'),
+        ),
+      );
+      expect(dayLabel.style?.color, isNot(calendarHolidayColor));
+    },
+  );
 
   testWidgets(
     'CalendarScreen paints built-in holiday red even without imported events',
@@ -782,7 +834,7 @@ void main() {
     },
   );
 
-  testWidgets('CalendarScreen이 개인+팀 동시저장된 일정을 중복 표시하지 않고 팀 공유 뱃지만 붙인다', (
+  testWidgets('CalendarScreen은 날짜 바텀시트에 개인·그룹 일정을 함께 표시하고 달력 셀은 그룹 일정만 표시한다', (
     tester,
   ) async {
     final selectedDay = DateTime(2026, 6, 15);
@@ -824,6 +876,7 @@ void main() {
             title: 'A일정',
             startAt: selectedDay.add(const Duration(hours: 9)),
             endAt: selectedDay.add(const Duration(hours: 10)),
+            personalEventId: 'personal-1',
           ),
         ],
       }),
@@ -841,18 +894,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 하단 day 목록에는 "A일정"이 (개인+팀 오버레이 중복 없이) 딱 한 번만
-    // 보인다 — 미니 달력 셀 라벨은 원래도 별도 렌더 영역이라 세지 않는다.
+    // 날짜를 눌렀을 때의 바텀시트에는 개인 레코드와 그룹 레코드가 모두
+    // 보여야 한다. 달력 셀에서만 canonical link ID로 개인 중복을 감춘다.
     final dayEventsList = find.byKey(
       const ValueKey('calendar-day-events-list'),
     );
     expect(
       find.descendant(of: dayEventsList, matching: find.text('A일정')),
-      findsOneWidget,
+      findsNWidgets(2),
     );
-    expect(find.text('팀 A일정'), findsNothing);
-    // 팀 일정은 금색으로 구분하되 별도 팀 뱃지는 표시하지 않는다.
-    expect(find.text('팀 공유'), findsNothing);
+    expect(find.text('개인 일정'), findsOneWidget);
+    expect(find.text('그룹 일정'), findsOneWidget);
   });
 
   testWidgets(
@@ -1051,6 +1103,7 @@ GroupEventModel _groupEvent({
   required String title,
   required DateTime startAt,
   required DateTime endAt,
+  String? personalEventId,
 }) {
   return GroupEventModel(
     id: id,
@@ -1060,6 +1113,7 @@ GroupEventModel _groupEvent({
     endAt: endAt,
     createdBy: 'leader-1',
     location: '회의실',
+    personalEventId: personalEventId,
   );
 }
 

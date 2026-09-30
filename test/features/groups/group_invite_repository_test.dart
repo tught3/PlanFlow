@@ -16,6 +16,45 @@ SupabaseClient _createClient() {
 }
 
 void main() {
+  test('acceptInvite consumes UUID RPC result and reloads the invite row',
+      () async {
+    final client = SupabaseClient(
+      'https://example.supabase.co',
+      'anon-key',
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/rpc/accept_group_invite')) {
+          return http.Response('"member-1"', 200,
+              headers: <String, String>{'content-type': 'application/json'},
+              request: request);
+        }
+        if (request.url.path.endsWith('/group_invites')) {
+          expect(request.url.queryParameters['id'], 'eq.invite-1');
+          return http.Response(
+            '{"id":"invite-1","group_id":"group-1",'
+            '"invited_user_id":"user-1","invited_by":"leader-1",'
+            '"status":"accepted","expires_at":"2026-06-20T00:00:00Z",'
+            '"accepted_at":"2026-06-11T00:00:00Z",'
+            '"acted_by":"user-1","created_at":"2026-06-10T00:00:00Z",'
+            '"updated_at":"2026-06-11T00:00:00Z"}',
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+            request: request,
+          );
+        }
+        return http.Response('unexpected request ${request.url}', 500);
+      }),
+    );
+    final repository = SupabaseGroupInviteRepository(
+      client: client,
+      currentUserIdProvider: () => 'user-1',
+    );
+
+    final invite = await repository.acceptInvite('invite-1');
+
+    expect(invite.id, 'invite-1');
+    expect(invite.status, 'accepted');
+  });
+
   test('acceptInvite uses RPC and maps the accepted invite', () async {
     final client = _createClient();
     var receivedInviteId = '';

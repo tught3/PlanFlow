@@ -7,11 +7,13 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
+import '../models/group_deletion_notice_model.dart';
 import '../models/group_model.dart';
 import '../providers/group_context_provider.dart';
 import '../providers/group_context_state.dart';
 import '../providers/group_invite_provider.dart';
 import '../providers/group_invite_state.dart';
+import '../repositories/group_deletion_notice_repository.dart';
 import '../services/group_membership_refresh_bus.dart';
 
 class GroupListScreen extends StatefulWidget {
@@ -19,13 +21,16 @@ class GroupListScreen extends StatefulWidget {
     super.key,
     GroupContextProvider? provider,
     GroupInviteProvider? inviteProvider,
+    GroupDeletionNoticeRepository? deletionNoticeRepository,
     String? currentUserIdOverride,
   })  : _provider = provider,
         _inviteProvider = inviteProvider,
+        _deletionNoticeRepository = deletionNoticeRepository,
         _currentUserIdOverride = currentUserIdOverride;
 
   final GroupContextProvider? _provider;
   final GroupInviteProvider? _inviteProvider;
+  final GroupDeletionNoticeRepository? _deletionNoticeRepository;
   final String? _currentUserIdOverride;
 
   @override
@@ -37,6 +42,12 @@ class _GroupListScreenState extends State<GroupListScreen> {
   late final GroupInviteProvider _inviteProvider;
   late final bool _ownsProvider;
   late final bool _ownsInviteProvider;
+  late final GroupDeletionNoticeRepository _deletionNoticeRepository;
+  bool _deletionNoticeCheckStarted = false;
+  BuildContext? _deletionNoticeDialogContext;
+  NavigatorState? _deletionNoticeDialogNavigator;
+  Route<bool>? _deletionNoticeDialogRoute;
+  String? _deletionNoticeDialogUserId;
 
   @override
   void initState() {
@@ -45,12 +56,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
     _ownsInviteProvider = widget._inviteProvider == null;
     _provider = widget._provider ?? GroupContextProvider();
     _inviteProvider = widget._inviteProvider ?? GroupInviteProvider();
+    _deletionNoticeRepository = widget._deletionNoticeRepository ??
+        GroupDeletionNoticeRepository.supabase();
+    authProvider.addListener(_handleAuthenticationChanged);
     GroupMembershipRefreshBus.instance.addListener(_handleMembershipChanged);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    authProvider.removeListener(_handleAuthenticationChanged);
     GroupMembershipRefreshBus.instance.removeListener(_handleMembershipChanged);
     if (_ownsProvider) {
       _provider.dispose();
@@ -67,6 +82,109 @@ class _GroupListScreenState extends State<GroupListScreen> {
       _provider.load(userId),
       _inviteProvider.load(userId),
     ]);
+    if (!_deletionNoticeCheckStarted) {
+      _deletionNoticeCheckStarted = true;
+      await _showPendingGroupDeletionNotices(userId);
+    }
+  }
+
+  Future<void> _showPendingGroupDeletionNotices(String userId) async {
+    if (userId.isEmpty || _currentAuthenticatedUserId != userId) return;
+    try {
+      final notices =
+          await _deletionNoticeRepository.listPendingForUser(userId);
+      if (!mounted || _currentAuthenticatedUserId != userId) return;
+      for (final notice in notices) {
+        if (!mounted || _currentAuthenticatedUserId != userId) return;
+        final acknowledged = await _showGroupDeletedDialog(notice, userId);
+        if (acknowledged != true ||
+            !mounted ||
+            _currentAuthenticatedUserId != userId) {
+          return;
+        }
+        await _deletionNoticeRepository.acknowledge(
+          noticeId: notice.id,
+          userId: userId,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('그룹 삭제 알림을 불러오지 못했어요.')),
+      );
+    }
+  }
+
+  String? get _currentAuthenticatedUserId =>
+      authProvider.hasActiveSession ? authProvider.userId : null;
+
+  void _handleAuthenticationChanged() {
+    final dialogContext = _deletionNoticeDialogContext;
+    final expectedUserId = _deletionNoticeDialogUserId;
+    if (dialogContext == null ||
+        expectedUserId == null ||
+        _currentAuthenticatedUserId == expectedUserId ||
+        !dialogContext.mounted) {
+      return;
+    }
+
+    final navigator = _deletionNoticeDialogNavigator;
+    final route = _deletionNoticeDialogRoute;
+    if (navigator != null && route != null) {
+      navigator.removeRoute<bool>(route);
+    }
+  }
+
+  Future<bool?> _showGroupDeletedDialog(
+    GroupDeletionNoticeModel notice,
+    String expectedUserId,
+  ) {
+    _deletionNoticeDialogUserId = expectedUserId;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    late final DialogRoute<bool> route;
+    route = DialogRoute<bool>(
+      context: context,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        _deletionNoticeDialogContext = dialogContext;
+        _deletionNoticeDialogNavigator = navigator;
+        _deletionNoticeDialogRoute = route;
+        if (_currentAuthenticatedUserId != expectedUserId) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (dialogContext.mounted &&
+                identical(_deletionNoticeDialogRoute, route)) {
+              navigator.removeRoute<bool>(route);
+            }
+          });
+          return const SizedBox.shrink();
+        }
+        return AlertDialog(
+          key: const ValueKey('group-deletion-notice-dialog'),
+          title: const Text('그룹 삭제 안내'),
+          content: Text(
+            '「${notice.groupName}」 그룹의 리더가 그룹을 삭제했습니다. '
+            '그룹이 삭제되어 멤버에서 자동 탈퇴되었습니다.',
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: <Widget>[
+            TextButton(
+              key: const ValueKey('group-deletion-notice-confirm'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('확인'),
+            ),
+          ],
+        );
+      },
+    );
+    _deletionNoticeDialogNavigator = navigator;
+    _deletionNoticeDialogRoute = route;
+    return navigator.push<bool>(route).whenComplete(() {
+      _deletionNoticeDialogContext = null;
+      _deletionNoticeDialogNavigator = null;
+      _deletionNoticeDialogRoute = null;
+      _deletionNoticeDialogUserId = null;
+    });
   }
 
   void _handleMembershipChanged() {

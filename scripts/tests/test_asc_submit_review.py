@@ -28,7 +28,7 @@ class FakeAsc:
         self.submissions = [submission] if submission else []
         self.items = list(items or [])
         self.localization = {"type": "appStoreVersionLocalizations", "id": "l1", "attributes": {
-            "locale": "ko", "description": "desc", "keywords": "kw", "supportUrl": "https://example.com", "whatsNew": None}}
+            "locale": "ko", "description": "desc", "keywords": "kw", "supportUrl": "https://example.com", "whatsNew": None, "marketingUrl": None}}
         self.writes = []
         self.item_queries = []
 
@@ -105,7 +105,8 @@ class SubmissionTests(unittest.TestCase):
     def run_submit(self, fake, version="1.1.3", build="55", dry_run=False):
         client = asc.AscClient("fixture-token", fake)
         notes = {"version": version, "localizations": {"ko": "fixture release notes"}}
-        result = asc.submit(client, "com.example.app", version, build, whats_new=notes, dry_run=dry_run, sleep=lambda _: None, max_polls=1)
+        result = asc.submit(client, "com.example.app", version, build, whats_new=notes,
+                            marketing_url="https://fluxstudio.co.kr", dry_run=dry_run, sleep=lambda _: None, max_polls=1)
         return client, result
 
     def test_rejects_invalid_version_and_build(self):
@@ -154,6 +155,15 @@ class SubmissionTests(unittest.TestCase):
         self.assertEqual(fake.version["build"], "b1")
         self.assertEqual(fake.version["attributes"]["releaseType"], "AFTER_APPROVAL")
         self.assertEqual(fake.localization["attributes"]["whatsNew"], "fixture release notes")
+        self.assertEqual(fake.localization["attributes"]["marketingUrl"], "https://fluxstudio.co.kr")
+
+    def test_conflicting_existing_marketing_url_fails_closed_before_writes(self):
+        fake = FakeAsc()
+        fake.localization["attributes"]["marketingUrl"] = "https://other.example"
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_MARKETING_URL_MISMATCH"):
+            self.run_submit(fake)
+        self.assertFalse(any(route == "/appStoreVersionLocalizations/l1" for _, route in fake.writes))
+        self.assertFalse(any(route == "/reviewSubmissions" for _, route in fake.writes))
 
     def test_partial_submission_retry_reuses_existing_exact_item(self):
         submission = {"type": "reviewSubmissions", "id": "s1", "attributes": {"state": "READY_FOR_REVIEW"}}
@@ -240,10 +250,18 @@ class SubmissionTests(unittest.TestCase):
     def test_exact_active_submission_is_read_only_idempotent(self):
         fake = FakeAsc(target_state="WAITING_FOR_REVIEW", target_build="b1")
         fake.version["build"] = "b1"
+        fake.localization["attributes"]["marketingUrl"] = "https://fluxstudio.co.kr"
         client, result = self.run_submit(fake)
         self.assertTrue(result["idempotent"])
         self.assertEqual(result["marker"], "APP_STORE_SUBMITTED")
         self.assertEqual(client.writes, 0)
+
+    def test_active_submission_missing_marketing_url_is_not_confirmed(self):
+        fake = FakeAsc(target_state="WAITING_FOR_REVIEW", target_build="b1")
+        fake.version["build"] = "b1"
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_MARKETING_URL_READBACK"):
+            self.run_submit(fake)
+        self.assertEqual(fake.writes, [])
 
     def test_active_submission_with_different_build_is_blocked(self):
         fake = FakeAsc(target_state="IN_REVIEW", target_build="b1")

@@ -32,13 +32,7 @@ import 'calendar_style_contract.dart';
 export 'calendar_style_contract.dart';
 part 'calendar_widgets.dart';
 
-enum _CalendarLoadState {
-  loading,
-  ready,
-  supabaseMissing,
-  signedOut,
-  error,
-}
+enum _CalendarLoadState { loading, ready, supabaseMissing, signedOut, error }
 
 // Calendar semantic palette. Weekday colors are applied only to date numbers;
 // event colors never inherit the weekday color.
@@ -58,8 +52,7 @@ List<EventModel> mergeCalendarEventsAfterReload({
         if (event.id.trim().isNotEmpty) event.id: event,
       for (final event in loaded)
         if (event.id.trim().isNotEmpty) event.id: event,
-    }.values.toList(growable: false)
-      ..sort(compareCalendarEventsForDisplay);
+    }.values.toList(growable: false)..sort(compareCalendarEventsForDisplay);
   }
 
   return loaded;
@@ -131,9 +124,11 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
     final lastDay = !eventEnd.isBefore(monthEnd)
         ? monthEnd.subtract(const Duration(days: 1))
         : eventEndDay;
-    for (var day = firstDay;
-        !day.isAfter(lastDay);
-        day = day.add(const Duration(days: 1))) {
+    for (
+      var day = firstDay;
+      !day.isAfter(lastDay);
+      day = day.add(const Duration(days: 1))
+    ) {
       final currentColor = markerColors[day.day];
       if (event.isCritical ||
           currentColor != calendarCriticalEventMarkerColor) {
@@ -149,10 +144,7 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
 const _calendarMiniMonthEventRows = 4;
 const _calendarMiniEventRowHeight = 10.0;
 
-List<EventModel> _eventsForLocalDay(
-  Iterable<EventModel> events,
-  DateTime day,
-) {
+List<EventModel> _eventsForLocalDay(Iterable<EventModel> events, DateTime day) {
   final result = <EventModel>[];
   for (final event in events) {
     if (isSyncedPublicHolidayDuplicate(event)) {
@@ -238,48 +230,72 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     return DateTime(monthStart.year, monthStart.month, dayNumber);
   }, growable: false);
 
-  final visibleOverlayEvents = overlayEvents.where((event) {
-    final startAt = event.startAt;
-    if (startAt == null) {
-      return false;
-    }
-    final endAt = event.endAt ?? startAt;
-    final overlayMonthStart = DateTime(focusedMonth.year, focusedMonth.month);
-    final overlayMonthEnd = DateTime(focusedMonth.year, focusedMonth.month + 1);
-    final localStart = planflowLocalDay(startAt);
-    final localEnd = planflowLocalDay(endAt);
-    return !localStart.isAfter(overlayMonthEnd) &&
-        !localEnd.isBefore(overlayMonthStart);
-  }).toList(growable: false)
-    ..sort((a, b) {
-      final aStart = a.startAt ?? DateTime(0);
-      final bStart = b.startAt ?? DateTime(0);
-      final byStart = aStart.compareTo(bStart);
-      if (byStart != 0) {
-        return byStart;
-      }
-      return a.title.compareTo(b.title);
-    });
+  final visibleOverlayEvents =
+      overlayEvents
+          .where((event) {
+            final startAt = event.startAt;
+            if (startAt == null) {
+              return false;
+            }
+            final endAt = event.endAt ?? startAt;
+            final overlayMonthStart = DateTime(
+              focusedMonth.year,
+              focusedMonth.month,
+            );
+            final overlayMonthEnd = DateTime(
+              focusedMonth.year,
+              focusedMonth.month + 1,
+            );
+            final localStart = planflowLocalDay(startAt);
+            final localEnd = planflowLocalDay(endAt);
+            return !localStart.isAfter(overlayMonthEnd) &&
+                !localEnd.isBefore(overlayMonthStart);
+          })
+          .toList(growable: false)
+        ..sort((a, b) {
+          final aStart = a.startAt ?? DateTime(0);
+          final bStart = b.startAt ?? DateTime(0);
+          final byStart = aStart.compareTo(bStart);
+          if (byStart != 0) {
+            return byStart;
+          }
+          return a.title.compareTo(b.title);
+        });
+
+  // When a group copy is linked to a personal event, show only the group
+  // marker (which carries the group's color). Keep the personal event in the
+  // projection/day index so the selected-day sheet still lists both records.
+  final linkedPersonalEventIds = visibleOverlayEvents
+      .map((event) => event.personalEventId)
+      .whereType<String>()
+      .where((id) => id.trim().isNotEmpty)
+      .toSet();
 
   // The mini calendar has its own slot allocator, so filtering only in the
   // selected-day list is too late: an imported holiday could still consume a
   // visible slot or overflow count here.
-  final sortedEvents = events
-      .where((event) => !isSyncedPublicHolidayDuplicate(event))
-      .where((event) => event.startAt != null)
-      .toList(growable: false)
-    ..sort(compareCalendarEventsForDisplay);
+  final sortedEvents =
+      events
+          .where((event) => !isSyncedPublicHolidayDuplicate(event))
+          .where((event) => !linkedPersonalEventIds.contains(event.id))
+          .where((event) => event.startAt != null)
+          .toList(growable: false)
+        ..sort(compareCalendarEventsForDisplay);
 
-  final multiDayEvents = sortedEvents.where((event) {
-    final startAt = event.startAt;
-    if (startAt == null) {
-      return false;
-    }
-    final firstDay = planflowLocalDay(startAt);
-    final lastEventDay =
-        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
-    return lastEventDay.isAfter(firstDay);
-  }).toList(growable: false);
+  final multiDayEvents = sortedEvents
+      .where((event) {
+        final startAt = event.startAt;
+        if (startAt == null) {
+          return false;
+        }
+        final firstDay = planflowLocalDay(startAt);
+        final lastEventDay = _calendarDisplayEndDay(
+          startAt,
+          event.endAt ?? startAt,
+        );
+        return lastEventDay.isAfter(firstDay);
+      })
+      .toList(growable: false);
 
   for (final event in multiDayEvents) {
     final startAt = event.startAt;
@@ -287,8 +303,10 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       continue;
     }
     final firstDay = planflowLocalDay(startAt);
-    final lastEventDay =
-        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
+    final lastEventDay = _calendarDisplayEndDay(
+      startAt,
+      event.endAt ?? startAt,
+    );
     final cellIndices = <int>[
       for (var i = 0; i < cellDates.length; i += 1)
         if (cellDates[i] != null &&
@@ -305,9 +323,11 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       return day != null && KoreanHolidays.holidayName(day) != null;
     });
     var reserved = false;
-    for (var slot = spanContainsHoliday ? 1 : 0;
-        slot < _calendarMiniMonthEventRows;
-        slot += 1) {
+    for (
+      var slot = spanContainsHoliday ? 1 : 0;
+      slot < _calendarMiniMonthEventRows;
+      slot += 1
+    ) {
       if (cellIndices.every((index) => slotMap[index][slot] == null)) {
         for (final index in cellIndices) {
           slotMap[index][slot] = event;
@@ -328,23 +348,30 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     if (day == null) {
       continue;
     }
-    final singleEvents = sortedEvents.where((event) {
-      final startAt = event.startAt;
-      if (startAt == null) {
-        return false;
-      }
-      final firstDay = planflowLocalDay(startAt);
-      final lastEventDay =
-          _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
-      return !lastEventDay.isAfter(firstDay) && firstDay == day;
-    }).toList(growable: false);
+    final singleEvents = sortedEvents
+        .where((event) {
+          final startAt = event.startAt;
+          if (startAt == null) {
+            return false;
+          }
+          final firstDay = planflowLocalDay(startAt);
+          final lastEventDay = _calendarDisplayEndDay(
+            startAt,
+            event.endAt ?? startAt,
+          );
+          return !lastEventDay.isAfter(firstDay) && firstDay == day;
+        })
+        .toList(growable: false);
     for (final event in singleEvents) {
       var placed = false;
-      final firstAvailableSlot =
-          KoreanHolidays.holidayName(day) != null ? 1 : 0;
-      for (var slot = firstAvailableSlot;
-          slot < _calendarMiniMonthEventRows;
-          slot += 1) {
+      final firstAvailableSlot = KoreanHolidays.holidayName(day) != null
+          ? 1
+          : 0;
+      for (
+        var slot = firstAvailableSlot;
+        slot < _calendarMiniMonthEventRows;
+        slot += 1
+      ) {
         if (slotMap[index][slot] == null) {
           slotMap[index][slot] = event;
           placed = true;
@@ -369,16 +396,19 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
 
   return List.generate(cellCount, (index) {
     final day = cellDates[index];
-    final visibleEvents =
-        slotMap[index].whereType<EventModel>().toList(growable: false);
+    final visibleEvents = slotMap[index].whereType<EventModel>().toList(
+      growable: false,
+    );
     final holidayName = day == null ? null : KoreanHolidays.holidayName(day);
-    final firstOccupiedSlot =
-        slotMap[index].indexWhere((event) => event != null);
+    final firstOccupiedSlot = slotMap[index].indexWhere(
+      (event) => event != null,
+    );
     return CalendarMiniMonthCellData(
       index: index,
       date: day,
       dayNumber: day?.day,
-      inMonth: day != null &&
+      inMonth:
+          day != null &&
           day.year == monthStart.year &&
           day.month == monthStart.month,
       events: visibleEvents,
@@ -388,8 +418,9 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       // from user/provider calendars never grant public-holiday status.
       isHoliday: day != null && KoreanHolidays.isDayOff(day),
       holidayName: holidayName,
-      leadingEventRowCount:
-          holidayName == null && firstOccupiedSlot > 0 ? firstOccupiedSlot : 0,
+      leadingEventRowCount: holidayName == null && firstOccupiedSlot > 0
+          ? firstOccupiedSlot
+          : 0,
     );
   }, growable: false);
 }
@@ -477,8 +508,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
     _pendingOpenDaySheetDate =
         widget.suppressInitialDaySheet || widget.briefingIsMorning != null
-            ? null
-            : widget.initialDate;
+        ? null
+        : widget.initialDate;
     if (widget.briefingIsMorning != null) {
       _briefingRunning.value = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -593,8 +624,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         expectedInputRevision == _calendarInputRevision;
     if (!isCurrent()) return null;
     final monthStart = DateTime(month.year, month.month);
-    final monthEnd =
-        DateTime(month.year, month.month + 1, 0).add(const Duration(days: 1));
+    final monthEnd = DateTime(
+      month.year,
+      month.month + 1,
+      0,
+    ).add(const Duration(days: 1));
     final expanded = <EventModel>[];
     final source = _filteredEvents;
     const chunkSize = 64;
@@ -663,7 +697,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             focusedMonth: _focusedMonth,
             overlayEvents: visibleGroupOverlayEvents,
           );
-    final selectedDayEvents = _selectedDate.year == _focusedMonth.year &&
+    final selectedDayEvents =
+        _selectedDate.year == _focusedMonth.year &&
             _selectedDate.month == _focusedMonth.month
         ? projection.dayEvents[_selectedDate.day] ?? const <EventModel>[]
         : _eventsForLocalDay(visibleEvents, _selectedDate);
@@ -686,8 +721,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   List<EventModel> _computeVisibleEvents({DateTime? month}) {
     final targetMonth = month ?? _focusedMonth;
     final monthStart = DateTime(targetMonth.year, targetMonth.month);
-    final monthEnd = DateTime(targetMonth.year, targetMonth.month + 1, 0)
-        .add(const Duration(days: 1));
+    final monthEnd = DateTime(
+      targetMonth.year,
+      targetMonth.month + 1,
+      0,
+    ).add(const Duration(days: 1));
     final expanded = <EventModel>[];
     for (final event in _filteredEvents) {
       expanded.addAll(
@@ -715,22 +753,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
     final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
-    final linkedGroupEventIds = visibleEvents
-        .map((event) => event.groupEventId)
-        .whereType<String>()
-        .toSet();
-    return groupOverlayProvider.items.where((event) {
-      final start = event.startAt;
-      if (start == null) {
-        return false;
-      }
-      if (event.isGroup && linkedGroupEventIds.contains(event.id)) {
-        return false;
-      }
-      final localStart = planflowLocalDay(start);
-      final localEnd = planflowLocalDay(event.endAt ?? start);
-      return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
-    }).toList(growable: false)
+    return groupOverlayProvider.items
+        .where((event) {
+          final start = event.startAt;
+          if (start == null) {
+            return false;
+          }
+          final localStart = planflowLocalDay(start);
+          final localEnd = planflowLocalDay(event.endAt ?? start);
+          return !localStart.isAfter(monthEnd) &&
+              !localEnd.isBefore(monthStart);
+        })
+        .toList(growable: false)
       ..sort((a, b) {
         final aStart = a.startAt ?? DateTime(0);
         final bStart = b.startAt ?? DateTime(0);
@@ -745,9 +779,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _updateSelectedDateCache(DateTime day) {
     final projection =
         day.year == _focusedMonth.year && day.month == _focusedMonth.month
-            ? _monthProjectionCache[_monthCacheKey(_focusedMonth)]
-            : null;
-    final selectedEvents = projection?.dayEvents[day.day] ??
+        ? _monthProjectionCache[_monthCacheKey(_focusedMonth)]
+        : null;
+    final selectedEvents =
+        projection?.dayEvents[day.day] ??
         (day.year == _focusedMonth.year && day.month == _focusedMonth.month
             ? _eventsForLocalDay(_visibleEventsCache, day)
             : const <EventModel>[]);
@@ -787,7 +822,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final repositoryOverride = widget.eventRepository;
     final explicitUserId = widget.userId?.trim();
-    final canUseInjectedRepository = repositoryOverride != null &&
+    final canUseInjectedRepository =
+        repositoryOverride != null &&
         explicitUserId != null &&
         explicitUserId.isNotEmpty;
 
@@ -1051,15 +1087,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (query.isEmpty) {
       return _allEvents;
     }
-    return _allEvents.where((event) {
-      final searchable = <String>[
-        event.title,
-        event.location ?? '',
-        event.memo ?? '',
-        event.category,
-      ].join(' ').toLowerCase();
-      return searchable.contains(query);
-    }).toList(growable: false);
+    return _allEvents
+        .where((event) {
+          final searchable = <String>[
+            event.title,
+            event.location ?? '',
+            event.memo ?? '',
+            event.category,
+          ].join(' ').toLowerCase();
+          return searchable.contains(query);
+        })
+        .toList(growable: false);
   }
 
   // lib/core/recurrence_expansion.dart의 공용 유틸로 위임한다(순수 리팩터,
@@ -1101,8 +1139,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (startAt == null) {
       return false;
     }
-    final localDisplayEnd =
-        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
+    final localDisplayEnd = _calendarDisplayEndDay(
+      startAt,
+      event.endAt ?? startAt,
+    );
     final eventDisplayEndExclusive = DateTime(
       localDisplayEnd.year,
       localDisplayEnd.month,
@@ -1146,8 +1186,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               isDayOff: KoreanHolidays.isDayOff(day),
               briefingIsMorning: briefingIsMorning,
               briefingRunning: _briefingRunning,
-              dataRevision:
-                  briefingIsMorning == null ? null : _briefingSheetRevision,
+              dataRevision: briefingIsMorning == null
+                  ? null
+                  : _briefingSheetRevision,
               personalEventsBuilder: briefingIsMorning == null
                   ? null
                   : () => _selectedDateEventsCache,
@@ -1221,10 +1262,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _changeMonth(int delta) {
-    final nextMonth = DateTime(
-      _focusedMonth.year,
-      _focusedMonth.month + delta,
-    );
+    final nextMonth = DateTime(_focusedMonth.year, _focusedMonth.month + delta);
     final generation = ++_monthNavigationGeneration;
     final inputRevision = _calendarInputRevision;
     setState(() {
@@ -1338,7 +1376,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             maxWidth: context.planflowWindowInfo.wideContentMaxWidth,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final useTwoPane = constraints.maxWidth >=
+                final useTwoPane =
+                    constraints.maxWidth >=
                         PlanFlowResponsive.twoPaneBreakpoint &&
                     MediaQuery.sizeOf(context).height >=
                         PlanFlowResponsive.minimumTwoPaneHeight;
@@ -1357,7 +1396,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             _selectedDate = DateTime.now();
                           });
                           _refreshCalendarViewCache(
-                              includeOverlayEvents: false);
+                            includeOverlayEvents: false,
+                          );
                           unawaited(_loadGroupOverlay());
                         },
                       ),
@@ -1371,8 +1411,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         onDaySelected: (day) {
                           _updateSelectedDateCache(day);
                           if (!useTwoPane) {
-                            final personalEvents =
-                                List<EventModel>.of(_selectedDateEventsCache);
+                            final personalEvents = List<EventModel>.of(
+                              _selectedDateEventsCache,
+                            );
                             final groupEvents = List<CalendarOverlayItem>.of(
                               _selectedDateGroupEventsCache,
                             );
@@ -1427,8 +1468,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           (event) => Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _InstructionBadgeWrapper(
-                              hasInstruction:
-                                  _instructionEventIds.contains(event.id),
+                              hasInstruction: _instructionEventIds.contains(
+                                event.id,
+                              ),
                               child: _EventAgendaCard(
                                 event: event,
                                 onTap: () => context.push(
@@ -1521,7 +1563,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   String _eventEditRouteForDay(DateTime day) {
-    final date = '${day.year.toString().padLeft(4, '0')}-'
+    final date =
+        '${day.year.toString().padLeft(4, '0')}-'
         '${day.month.toString().padLeft(2, '0')}-'
         '${day.day.toString().padLeft(2, '0')}';
     return '${AppRoutes.eventEdit}?date=$date';

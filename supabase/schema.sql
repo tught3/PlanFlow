@@ -172,6 +172,7 @@ create table if not exists public.events (
   participants text[] not null default '{}',
   targets text[] not null default '{}',
   is_critical boolean not null default false,
+  use_strong_alarm boolean not null default false,
   recurrence_rule text,
   recurrence_end_date date,
   recurrence_count integer,
@@ -198,6 +199,7 @@ alter table public.events
   add column if not exists recurrence_rule text,
   add column if not exists recurrence_end_date date,
   add column if not exists recurrence_count integer,
+  add column if not exists use_strong_alarm boolean not null default false,
   add column if not exists is_all_day boolean not null default false,
   add column if not exists is_multi_day boolean not null default false,
   add column if not exists parent_event_id uuid references public.events (id) on delete set null,
@@ -397,6 +399,19 @@ create policy "groups_select_member"
   using (
     (status = 'active' and public.is_group_member(id, auth.uid()))
     or (status = 'archived' and created_by = auth.uid())
+    or (
+      status = 'active'
+      and exists (
+        select 1 from public.group_invites
+         where group_invites.group_id = groups.id
+           and group_invites.status = 'pending'
+           and public.is_group_invite_target(
+             group_invites.invited_user_id,
+             group_invites.invited_email,
+             group_invites.invited_invite_code
+           )
+      )
+    )
   );
 create policy "groups_insert_leader"
   on public.groups
@@ -541,18 +556,43 @@ create trigger group_invites_prevent_immutable_changes
   for each row execute function public.prevent_group_invite_immutable_changes();
 
 create or replace function public.accept_group_invite(invite_id_input uuid)
-returns public.group_invites
+returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   invite_row public.group_invites%rowtype;
+  locked_group public.groups%rowtype;
+  invite_group_id uuid;
   member_id uuid;
-  updated_invite public.group_invites%rowtype;
+  current_user_id uuid := auth.uid();
 begin
-  if auth.uid() is null then
+  if current_user_id is null then
     raise exception '로그인이 필요합니다.';
+  end if;
+
+  -- Archive/delete lock the group row before changing its invites. Use the
+  -- same group -> invite order here to avoid a lock inversion. This first
+  -- lookup only discovers the group id; all authorization/state checks happen
+  -- again after both rows are locked.
+  select group_id
+    into invite_group_id
+    from public.group_invites
+   where id = invite_id_input;
+
+  if not found then
+    raise exception 'group invite not found';
+  end if;
+
+  select *
+    into locked_group
+    from public.groups
+   where id = invite_group_id
+   for update;
+
+  if not found then
+    raise exception '초대된 그룹을 찾을 수 없습니다.';
   end if;
 
   select *
@@ -561,8 +601,12 @@ begin
    where id = invite_id_input
    for update;
 
-  if not found then
+  if not found or invite_row.group_id is distinct from invite_group_id then
     raise exception 'group invite not found';
+  end if;
+
+  if locked_group.status <> 'active' then
+    raise exception '활성화된 그룹만 초대 수락이 가능합니다.';
   end if;
 
   if invite_row.status <> 'pending' then
@@ -581,62 +625,76 @@ begin
     raise exception '내 초대만 처리할 수 있습니다.';
   end if;
 
-  if not exists (
-    select 1
-      from public.groups
-     where id = invite_row.group_id
-       and status = 'active'
-  ) then
-    raise exception '활성화된 그룹만 초대 수락이 가능합니다.';
-  end if;
-
   if exists (
     select 1
       from public.group_members
      where group_id = invite_row.group_id
-       and user_id = auth.uid()
+       and user_id = current_user_id
        and status = 'active'
   ) then
     raise exception '이미 활성 멤버입니다.';
   end if;
 
-  insert into public.group_members (
-    group_id,
-    user_id,
-    role,
-    status,
-    joined_at,
-    created_at,
-    updated_at
-  )
-  values (
-    invite_row.group_id,
-    auth.uid(),
-    'member',
-    'active',
-    now(),
-    now(),
-    now()
-  )
-  on conflict (group_id, user_id) do nothing
+  -- Accept first in the same transaction. The validated SECURITY DEFINER RPC
+  -- performs this state transition and membership write atomically.
+  update public.group_invites
+     set status = 'accepted',
+         accepted_at = now(),
+         acted_by = current_user_id
+   where id = invite_row.id;
+
+  if not found then
+    raise exception '초대 수락 상태를 갱신할 수 없습니다.';
+  end if;
+
+  -- Reuse the existing soft-removed membership row. This preserves its stable
+  -- id and original created_at while starting a new active membership period.
+  update public.group_members
+     set role = 'member',
+         status = 'active',
+         joined_at = now(),
+         removed_at = null,
+         removed_by = null,
+         updated_at = now()
+   where group_id = invite_row.group_id
+     and user_id = current_user_id
+     and status = 'removed'
   returning id into member_id;
+
+  if member_id is null then
+    insert into public.group_members (
+      group_id,
+      user_id,
+      role,
+      status,
+      joined_at,
+      created_at,
+      updated_at
+    )
+    values (
+      invite_row.group_id,
+      current_user_id,
+      'member',
+      'active',
+      now(),
+      now(),
+      now()
+    )
+    returning id into member_id;
+  end if;
 
   if member_id is null then
     raise exception '이미 활성 멤버입니다.';
   end if;
 
-  update public.group_invites
-     set status = 'accepted',
-         accepted_at = now(),
-         acted_by = auth.uid()
-   where id = invite_row.id
-   returning * into updated_invite;
-
-  return updated_invite;
+  return member_id;
 end;
 $$;
 
+revoke all on function public.accept_group_invite(uuid) from public;
+revoke all on function public.accept_group_invite(uuid) from anon;
 grant execute on function public.accept_group_invite(uuid) to authenticated;
+grant execute on function public.accept_group_invite(uuid) to service_role;
 
 create or replace function public.accept_group_invite_link(
   group_id_input uuid,
@@ -783,16 +841,10 @@ create policy "group_invites_select_access"
   on public.group_invites
   for select
   using (
-    exists (
-      select 1
-      from public.groups
-      where groups.id = group_invites.group_id
-        and groups.status = 'active'
-        and public.is_group_leader(groups.id, auth.uid())
-    )
+    public.is_group_leader(group_invites.group_id, auth.uid())
     or invited_by = auth.uid()
     or (
-      status = 'pending'
+      status in ('pending', 'accepted')
       and public.is_group_invite_target(
         invited_user_id,
         invited_email,
@@ -854,8 +906,10 @@ create policy "group_invites_update_leader_cancel"
   );
 
 drop policy if exists "group_members_select_member" on public.group_members;
+drop policy if exists "group_members_select_self_invite_reactivation" on public.group_members;
 drop policy if exists "group_members_insert_leader" on public.group_members;
 drop policy if exists "group_members_update_leader" on public.group_members;
+drop policy if exists "group_members_update_self_invite_reactivation" on public.group_members;
 create policy "group_members_select_member"
   on public.group_members
   for select
@@ -892,14 +946,28 @@ create policy "group_members_insert_leader"
           )
       )
     )
-    and exists (
-      select 1
-      from public.groups
-      where groups.id = group_members.group_id
-        and groups.status = 'active'
-    )
     and role = 'member'
     and status = 'active'
+    and (
+      exists (
+        select 1 from public.groups
+         where groups.id = group_members.group_id
+           and groups.status = 'active'
+           and public.is_group_leader(groups.id, auth.uid())
+      )
+      or exists (
+        select 1 from public.group_invites
+         where group_invites.group_id = group_members.group_id
+           and group_invites.status = 'accepted'
+           and group_invites.acted_by = auth.uid()
+          and group_members.user_id = auth.uid()
+           and public.is_group_invite_target(
+             group_invites.invited_user_id,
+             group_invites.invited_email,
+             group_invites.invited_invite_code
+           )
+      )
+    )
     and removed_at is null
     and removed_by is null
   );
@@ -1295,6 +1363,10 @@ create table if not exists public.group_events (
   start_at timestamptz not null,
   end_at timestamptz not null,
   all_day boolean not null default false,
+  is_multi_day boolean not null default false,
+  is_critical boolean not null default false,
+  use_strong_alarm boolean not null default false,
+  recurrence_rule text,
   recurrence_type text not null default 'none' check (recurrence_type in ('none', 'daily', 'weekly', 'monthly')),
   recurrence_until timestamptz,
   created_by uuid references public.users (id) on delete set null,
@@ -1457,6 +1529,389 @@ create policy "group_events_cancel_access"
     and cancelled_at is not null
     and cancelled_by = auth.uid()
   );
+
+-- Personal-event edits are mirrored atomically to every owner-created group
+-- copy. group_events.personal_event_id is canonical; group_event_id is legacy.
+create or replace function public.share_personal_event_with_groups(
+  p_personal_event_id uuid,
+  p_group_ids uuid[]
+)
+returns setof public.group_events
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  caller_id uuid := auth.uid();
+  event_row public.events%rowtype;
+  requested_count integer;
+  allowed_count integer;
+begin
+  if caller_id is null then raise exception 'authentication required'; end if;
+  if p_group_ids is null or cardinality(p_group_ids) = 0 then
+    raise exception 'at least one group is required';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_personal_event_id::text, 0));
+  select * into event_row from public.events
+   where id = p_personal_event_id and user_id = caller_id for update;
+  if not found then raise exception 'owned personal event not found'; end if;
+
+  select count(distinct requested.group_id), count(distinct eligible.group_id)
+    into requested_count, allowed_count
+    from unnest(p_group_ids) as requested(group_id)
+    left join lateral (
+      select g.id as group_id from public.groups g
+      join public.group_members gm on gm.group_id = g.id
+      where g.id = requested.group_id and g.status = 'active'
+        and gm.user_id = caller_id and gm.status = 'active'
+    ) eligible on true;
+  if requested_count = 0 or allowed_count <> requested_count then
+    raise exception 'caller must be an active member of every target group';
+  end if;
+  if exists (
+    select 1 from public.group_events ge
+    where ge.personal_event_id = p_personal_event_id
+      and ge.group_id = any(p_group_ids) and ge.status = 'active'
+      and ge.created_by <> caller_id
+  ) then raise exception 'linked group event is owned by another user'; end if;
+
+  update public.group_events ge set
+    title = event_row.title, description = event_row.memo,
+    location = event_row.location, start_at = event_row.start_at,
+    end_at = coalesce(event_row.end_at, event_row.start_at),
+    all_day = event_row.is_all_day, is_multi_day = event_row.is_multi_day,
+    is_critical = event_row.is_critical,
+    use_strong_alarm = event_row.use_strong_alarm,
+    recurrence_rule = event_row.recurrence_rule,
+    recurrence_type = case
+      when coalesce(event_row.recurrence_rule, '') = '' then 'none'
+      when upper(event_row.recurrence_rule) like '%FREQ=DAILY%' then 'daily'
+      when upper(event_row.recurrence_rule) like '%FREQ=WEEKLY%' then 'weekly'
+      when upper(event_row.recurrence_rule) like '%FREQ=MONTHLY%' then 'monthly'
+      else 'none' end,
+    recurrence_until = null, updated_by = caller_id
+  where ge.personal_event_id = p_personal_event_id
+    and ge.group_id = any(p_group_ids) and ge.status = 'active'
+    and ge.created_by = caller_id;
+
+  insert into public.group_events (
+    group_id,title,description,location,start_at,end_at,all_day,is_multi_day,
+    is_critical,use_strong_alarm,recurrence_rule,recurrence_type,
+    recurrence_until,created_by,updated_by,personal_event_id,status
+  )
+  select requested.group_id,event_row.title,event_row.memo,event_row.location,
+    event_row.start_at,coalesce(event_row.end_at,event_row.start_at),
+    event_row.is_all_day,event_row.is_multi_day,event_row.is_critical,
+    event_row.use_strong_alarm,event_row.recurrence_rule,
+    case when coalesce(event_row.recurrence_rule,'') = '' then 'none'
+      when upper(event_row.recurrence_rule) like '%FREQ=DAILY%' then 'daily'
+      when upper(event_row.recurrence_rule) like '%FREQ=WEEKLY%' then 'weekly'
+      when upper(event_row.recurrence_rule) like '%FREQ=MONTHLY%' then 'monthly'
+      else 'none' end,
+    null,caller_id,caller_id,p_personal_event_id,'active'
+  from (select distinct unnest(p_group_ids) as group_id) requested
+  where not exists (select 1 from public.group_events ge
+    where ge.personal_event_id = p_personal_event_id
+      and ge.group_id = requested.group_id and ge.status = 'active');
+
+  return query select ge.* from public.group_events ge
+    where ge.personal_event_id = p_personal_event_id
+      and ge.group_id = any(p_group_ids) and ge.status = 'active'
+      and ge.created_by = caller_id order by ge.created_at, ge.id;
+end;
+$$;
+revoke all on function public.share_personal_event_with_groups(uuid, uuid[]) from public;
+grant execute on function public.share_personal_event_with_groups(uuid, uuid[]) to authenticated;
+-- Insert a personal event and all selected group copies in one PostgREST
+-- transaction. The wrapper is SECURITY INVOKER: the personal INSERT remains
+-- subject to events RLS, while the existing owner-checked share RPC performs
+-- the group writes. Any share error aborts the whole function transaction.
+create or replace function public.create_personal_event_with_groups(
+  p_event jsonb,
+  p_group_ids uuid[]
+)
+returns public.events
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  caller_id uuid := auth.uid();
+  event_row public.events%rowtype;
+  saved_event public.events%rowtype;
+  shared_ids uuid[];
+  requested_group_count integer;
+begin
+  if caller_id is null then
+    raise exception 'authentication required';
+  end if;
+  if jsonb_typeof(p_event) <> 'object' then
+    raise exception 'event payload must be a JSON object';
+  end if;
+  if p_group_ids is null or cardinality(p_group_ids) = 0 then
+    raise exception 'at least one group is required';
+  end if;
+
+  event_row := jsonb_populate_record(null::public.events, p_event);
+  if event_row.id is null or event_row.title is null or event_row.start_at is null then
+    raise exception 'stable event id, title, and start time are required';
+  end if;
+  if event_row.user_id is not null and event_row.user_id <> caller_id then
+    raise exception 'event owner must match the signed-in user';
+  end if;
+  event_row.user_id := caller_id;
+  event_row.group_event_id := null;
+  event_row.supplies := coalesce(event_row.supplies, '{}'::text[]);
+  event_row.supplies_checked := coalesce(event_row.supplies_checked, '{}'::text[]);
+  event_row.participants := coalesce(event_row.participants, '{}'::text[]);
+  event_row.targets := coalesce(event_row.targets, '{}'::text[]);
+  event_row.is_critical := coalesce(event_row.is_critical, false);
+  event_row.use_strong_alarm := coalesce(event_row.use_strong_alarm, false);
+  event_row.is_all_day := coalesce(event_row.is_all_day, false);
+  event_row.is_multi_day := coalesce(event_row.is_multi_day, false);
+  event_row.category := coalesce(event_row.category, '기타');
+  event_row.source := coalesce(event_row.source, 'manual');
+  event_row.created_at := coalesce(event_row.created_at, now());
+  event_row.updated_at := coalesce(event_row.updated_at, now());
+
+  select count(distinct requested.group_id)
+    into requested_group_count
+    from unnest(p_group_ids) as requested(group_id);
+  if requested_group_count = 0 then
+    raise exception 'at least one group is required';
+  end if;
+
+  -- Stable client UUID makes an uncertain network retry idempotent. If the
+  -- prior transaction committed, reuse its row and the share RPC's idempotent
+  -- links instead of creating a second personal event.
+  select * into saved_event
+    from public.events
+   where id = event_row.id
+   for update;
+  if found then
+    if saved_event.user_id <> caller_id then
+      raise exception 'event id is owned by another user';
+    end if;
+  else
+    insert into public.events
+      select (event_row).*
+      returning * into saved_event;
+  end if;
+
+  select array_agg(shared.id order by shared.created_at, shared.id)
+    into shared_ids
+    from public.share_personal_event_with_groups(
+      saved_event.id,
+      p_group_ids
+    ) as shared;
+
+  if coalesce(cardinality(shared_ids), 0) <> requested_group_count then
+    raise exception 'not all requested group copies were created';
+  end if;
+
+  update public.events
+     set group_event_id = shared_ids[1]
+   where id = saved_event.id
+     and user_id = caller_id
+   returning * into saved_event;
+
+  if not found then
+    raise exception 'created event could not be read back';
+  end if;
+  return saved_event;
+end;
+$$;
+
+revoke all on function public.create_personal_event_with_groups(jsonb, uuid[]) from public;
+grant execute on function public.create_personal_event_with_groups(jsonb, uuid[]) to authenticated;
+
+
+-- Update an owned personal event and share it with all selected groups in the
+-- same PostgREST transaction. Existing linked copies are synchronized by the
+-- owner-checked update trigger; this RPC covers newly selected group links.
+create or replace function public.update_personal_event_with_groups(
+  p_event jsonb,
+  p_group_ids uuid[]
+)
+returns public.events
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  caller_id uuid := auth.uid();
+  event_row public.events%rowtype;
+  saved_event public.events%rowtype;
+  shared_ids uuid[];
+  requested_group_count integer;
+begin
+  if caller_id is null then
+    raise exception 'authentication required';
+  end if;
+  if jsonb_typeof(p_event) <> 'object' then
+    raise exception 'event payload must be a JSON object';
+  end if;
+  if p_group_ids is null or cardinality(p_group_ids) = 0 then
+    raise exception 'at least one group is required';
+  end if;
+
+  event_row := jsonb_populate_record(null::public.events, p_event);
+  if event_row.id is null or event_row.title is null or event_row.start_at is null then
+    raise exception 'event id, title, and start time are required';
+  end if;
+  if event_row.user_id is not null and event_row.user_id <> caller_id then
+    raise exception 'event owner must match the signed-in user';
+  end if;
+
+  select * into saved_event
+    from public.events
+   where id = event_row.id
+     and user_id = caller_id
+   for update;
+  if not found then
+    raise exception 'owned personal event not found';
+  end if;
+
+  update public.events
+     set title = event_row.title,
+         start_at = event_row.start_at,
+         end_at = event_row.end_at,
+         location = event_row.location,
+         location_lat = event_row.location_lat,
+         location_lng = event_row.location_lng,
+         memo = event_row.memo,
+         supplies = coalesce(event_row.supplies, '{}'::text[]),
+         supplies_checked = coalesce(event_row.supplies_checked, '{}'::text[]),
+         participants = coalesce(event_row.participants, '{}'::text[]),
+         targets = coalesce(event_row.targets, '{}'::text[]),
+         is_critical = coalesce(event_row.is_critical, false),
+         use_strong_alarm = coalesce(event_row.use_strong_alarm, false),
+         recurrence_rule = event_row.recurrence_rule,
+         is_all_day = coalesce(event_row.is_all_day, false),
+         is_multi_day = coalesce(event_row.is_multi_day, false),
+         parent_event_id = event_row.parent_event_id,
+         category = coalesce(event_row.category, '기타'),
+         source = coalesce(event_row.source, 'manual'),
+         external_id = event_row.external_id,
+         external_calendar_id = event_row.external_calendar_id,
+         external_etag = event_row.external_etag,
+         external_updated_at = event_row.external_updated_at,
+         last_synced_at = event_row.last_synced_at,
+         updated_at = now()
+   where id = saved_event.id
+     and user_id = caller_id
+   returning * into saved_event;
+  if not found then
+    raise exception 'owned personal event update failed';
+  end if;
+
+  select count(distinct requested.group_id)
+    into requested_group_count
+    from unnest(p_group_ids) as requested(group_id);
+  if requested_group_count = 0 then
+    raise exception 'at least one group is required';
+  end if;
+
+  select array_agg(shared.id order by shared.created_at, shared.id)
+    into shared_ids
+    from public.share_personal_event_with_groups(saved_event.id, p_group_ids)
+      as shared;
+  if coalesce(cardinality(shared_ids), 0) <> requested_group_count then
+    raise exception 'not all requested group copies were created';
+  end if;
+
+  update public.events
+     set group_event_id = shared_ids[1]
+   where id = saved_event.id
+     and user_id = caller_id
+   returning * into saved_event;
+  if not found then
+    raise exception 'updated event could not be read back';
+  end if;
+  return saved_event;
+end;
+$$;
+
+revoke all on function public.update_personal_event_with_groups(jsonb, uuid[]) from public;
+grant execute on function public.update_personal_event_with_groups(jsonb, uuid[]) to authenticated;
+
+create or replace function public.sync_personal_event_to_linked_group_events()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not exists (
+    select 1 from public.group_events linked
+     where linked.personal_event_id = old.id
+       and linked.created_by = old.user_id
+       and linked.status = 'active'
+  ) then
+    return new;
+  end if;
+
+  if auth.uid() is null or auth.uid() <> old.user_id or new.user_id <> old.user_id then
+    raise exception 'personal event owner authorization required';
+  end if;
+
+  update public.group_events as linked
+     set title = new.title,
+         description = new.memo,
+         location = new.location,
+         start_at = new.start_at,
+         end_at = coalesce(new.end_at, new.start_at),
+         all_day = new.is_all_day,
+         is_multi_day = new.is_multi_day,
+         is_critical = new.is_critical,
+         use_strong_alarm = new.use_strong_alarm,
+         recurrence_rule = new.recurrence_rule,
+         recurrence_type = case
+           when coalesce(new.recurrence_rule, '') = '' then 'none'
+           when upper(new.recurrence_rule) like '%FREQ=DAILY%' then 'daily'
+           when upper(new.recurrence_rule) like '%FREQ=WEEKLY%' then 'weekly'
+           when upper(new.recurrence_rule) like '%FREQ=MONTHLY%' then 'monthly'
+           else 'none'
+         end,
+         recurrence_until = null,
+         updated_by = auth.uid()
+   where linked.personal_event_id = old.id
+     and linked.created_by = old.user_id
+     and linked.status = 'active'
+     and exists (
+       select 1 from public.group_members gm
+        where gm.group_id = linked.group_id
+          and gm.user_id = old.user_id and gm.status = 'active'
+     )
+     and exists (
+       select 1 from public.groups as g
+        where g.id = linked.group_id and g.status = 'active'
+     );
+
+  return new;
+end;
+$$;
+
+revoke all on function public.sync_personal_event_to_linked_group_events() from public;
+drop trigger if exists events_sync_linked_group_events on public.events;
+create trigger events_sync_linked_group_events
+  after update of title, memo, location, start_at, end_at, is_all_day,
+    is_multi_day, is_critical, use_strong_alarm, recurrence_rule
+  on public.events
+  for each row
+  when (
+    old.title is distinct from new.title
+    or old.memo is distinct from new.memo
+    or old.location is distinct from new.location
+    or old.start_at is distinct from new.start_at
+    or old.end_at is distinct from new.end_at
+    or old.is_all_day is distinct from new.is_all_day
+    or old.is_multi_day is distinct from new.is_multi_day
+    or old.is_critical is distinct from new.is_critical
+    or old.use_strong_alarm is distinct from new.use_strong_alarm
+    or old.recurrence_rule is distinct from new.recurrence_rule
+  )
+  execute function public.sync_personal_event_to_linked_group_events();
 
 -- 5.5 group_event_comments
 create table if not exists public.group_event_comments (
@@ -1624,6 +2079,62 @@ create index if not exists group_backups_restored_by_idx
 create index if not exists group_backups_created_at_idx
   on public.group_backups (created_at);
 
+-- Durable notice rows outlive the deleted group and are visible only to their
+-- addressed former member. Archive is a status UPDATE and emits no notice.
+create table if not exists public.group_deletion_notices (
+  id uuid primary key default gen_random_uuid(),
+  recipient_user_id uuid not null references public.users (id) on delete cascade,
+  deleted_group_id uuid not null,
+  group_name text not null,
+  deleted_by uuid references public.users (id) on delete set null,
+  deleted_at timestamptz not null default now(),
+  acknowledged_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists group_deletion_notices_pending_recipient_idx
+  on public.group_deletion_notices (recipient_user_id, deleted_at)
+  where acknowledged_at is null;
+
+create or replace function public.capture_group_deletion_notices()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null
+     or not public.is_group_leader(old.id, auth.uid()) then
+    return old;
+  end if;
+
+  insert into public.group_deletion_notices (
+    recipient_user_id,
+    deleted_group_id,
+    group_name,
+    deleted_by,
+    deleted_at
+  )
+  select gm.user_id, old.id, old.name, auth.uid(), now()
+    from public.group_members as gm
+   where gm.group_id = old.id
+     and gm.status = 'active'
+     and gm.removed_at is null
+     and gm.user_id <> auth.uid();
+
+  return old;
+end;
+$$;
+
+revoke all on function public.capture_group_deletion_notices() from public;
+revoke all on function public.capture_group_deletion_notices() from anon;
+revoke all on function public.capture_group_deletion_notices() from authenticated;
+
+drop trigger if exists groups_capture_deletion_notices on public.groups;
+create trigger groups_capture_deletion_notices
+  before delete on public.groups
+  for each row execute function public.capture_group_deletion_notices();
+
 create or replace function public.prevent_group_backup_immutable_changes()
 returns trigger
 language plpgsql
@@ -1714,7 +2225,8 @@ begin
             'display_name', group_members.display_name,
             'status', group_members.status,
             'joined_at', group_members.joined_at,
-            'left_at', group_members.left_at,
+            'removed_at', group_members.removed_at,
+            'removed_by', group_members.removed_by,
             'created_at', group_members.created_at,
             'updated_at', group_members.updated_at
           )
@@ -1730,6 +2242,15 @@ begin
         select jsonb_agg(to_jsonb(group_events))
         from public.group_events
         where group_events.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'event_reports',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_event_reports))
+        from public.group_event_reports
+        where group_event_reports.group_id = group_row.id
       ),
       '[]'::jsonb
     ),
@@ -1794,6 +2315,13 @@ begin
     now()
   )
   returning * into backup_row;
+
+  update public.group_invites
+     set status = 'cancelled',
+         cancelled_at = now(),
+         acted_by = current_user_id
+   where group_id = group_row.id
+     and status = 'pending';
 
   update public.groups
      set status = 'archived',
@@ -1869,7 +2397,8 @@ begin
             'display_name', group_members.display_name,
             'status', group_members.status,
             'joined_at', group_members.joined_at,
-            'left_at', group_members.left_at,
+            'removed_at', group_members.removed_at,
+            'removed_by', group_members.removed_by,
             'created_at', group_members.created_at,
             'updated_at', group_members.updated_at
           )
@@ -1885,6 +2414,15 @@ begin
         select jsonb_agg(to_jsonb(group_events))
         from public.group_events
         where group_events.group_id = group_row.id
+      ),
+      '[]'::jsonb
+    ),
+    'event_reports',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(group_event_reports))
+        from public.group_event_reports
+        where group_event_reports.group_id = group_row.id
       ),
       '[]'::jsonb
     ),
@@ -1974,6 +2512,7 @@ declare
   new_group_id uuid;
   member_record jsonb;
   event_record jsonb;
+  report_record jsonb;
   event_old_to_new jsonb := '{}'::jsonb;
   comment_record jsonb;
   delegation_record jsonb;
@@ -2036,7 +2575,9 @@ begin
   returning id into new_group_id;
 
   for member_record in
-    select jsonb_array_elements(snapshot_payload->'active_members')
+    select jsonb_array_elements(
+      coalesce(snapshot_payload->'all_members', snapshot_payload->'active_members')
+    )
   loop
     insert into public.group_members (
       group_id,
@@ -2045,6 +2586,8 @@ begin
       display_name,
       status,
       joined_at,
+      removed_at,
+      removed_by,
       created_at,
       updated_at
     )
@@ -2053,8 +2596,10 @@ begin
       (member_record->>'user_id')::uuid,
       member_record->>'role',
       member_record->>'display_name',
-      'active',
+      coalesce(member_record->>'status', 'active'),
       coalesce((member_record->>'joined_at')::timestamptz, now()),
+      (member_record->>'removed_at')::timestamptz,
+      nullif(member_record->>'removed_by', '')::uuid,
       coalesce((member_record->>'created_at')::timestamptz, now()),
       coalesce((member_record->>'updated_at')::timestamptz, now())
     )
@@ -2074,6 +2619,10 @@ begin
       start_at,
       end_at,
       all_day,
+      is_multi_day,
+      is_critical,
+      use_strong_alarm,
+      recurrence_rule,
       recurrence_type,
       recurrence_until,
       created_by,
@@ -2094,13 +2643,17 @@ begin
       (event_record->>'start_at')::timestamptz,
       (event_record->>'end_at')::timestamptz,
       coalesce((event_record->>'all_day')::boolean, false),
+      coalesce((event_record->>'is_multi_day')::boolean, false),
+      coalesce((event_record->>'is_critical')::boolean, false),
+      coalesce((event_record->>'use_strong_alarm')::boolean, false),
+      event_record->>'recurrence_rule',
       coalesce(event_record->>'recurrence_type', 'none'),
       (event_record->>'recurrence_until')::timestamptz,
       (event_record->>'created_by')::uuid,
       (event_record->>'updated_by')::uuid,
       (event_record->>'cancelled_at')::timestamptz,
       (event_record->>'cancelled_by')::uuid,
-      null,
+      nullif(event_record->>'personal_event_id', '')::uuid,
       coalesce(event_record->>'status', 'active'),
       coalesce((event_record->>'created_at')::timestamptz, now()),
       coalesce((event_record->>'updated_at')::timestamptz, now())
@@ -2129,12 +2682,45 @@ begin
   loop
     new_event_id := (event_old_to_new->>old_event_id_text)::uuid;
     update public.group_events ge
-       set personal_event_id = (
-         select id from public.events
-         where group_event_id = new_event_id
-         limit 1
+       set personal_event_id = coalesce(
+         ge.personal_event_id,
+         (
+           select id from public.events
+           where group_event_id = new_event_id
+           limit 1
+         )
        )
      where ge.id = new_event_id;
+  end loop;
+
+  for comment_record in
+    select jsonb_array_elements(snapshot_payload->'event_reports')
+  loop
+    if (event_old_to_new ? (comment_record->>'group_event_id')) then
+      insert into public.group_event_reports (
+        id,
+        reporter_id,
+        group_event_id,
+        group_id,
+        reason,
+        detail,
+        status,
+        content_owner_id,
+        created_at
+      )
+      values (
+        gen_random_uuid(),
+        (comment_record->>'reporter_id')::uuid,
+        (event_old_to_new->>(comment_record->>'group_event_id'))::uuid,
+        new_group_id,
+        comment_record->>'reason',
+        comment_record->>'detail',
+        coalesce(comment_record->>'status', 'new'),
+        nullif(comment_record->>'content_owner_id', '')::uuid,
+        coalesce((comment_record->>'created_at')::timestamptz, now())
+      )
+      on conflict do nothing;
+    end if;
   end loop;
 
   for comment_record in
@@ -2402,6 +2988,27 @@ $$;
 grant execute on function public.permanently_delete_backup(uuid) to authenticated;
 
 alter table public.group_backups enable row level security;
+
+alter table public.group_deletion_notices enable row level security;
+revoke all on table public.group_deletion_notices from anon;
+revoke all on table public.group_deletion_notices from authenticated;
+grant select on table public.group_deletion_notices to authenticated;
+grant update (acknowledged_at) on table public.group_deletion_notices to authenticated;
+
+drop policy if exists "group_deletion_notices_select_recipient"
+  on public.group_deletion_notices;
+create policy "group_deletion_notices_select_recipient"
+  on public.group_deletion_notices
+  for select
+  using (recipient_user_id = auth.uid());
+
+drop policy if exists "group_deletion_notices_ack_recipient"
+  on public.group_deletion_notices;
+create policy "group_deletion_notices_ack_recipient"
+  on public.group_deletion_notices
+  for update
+  using (recipient_user_id = auth.uid() and acknowledged_at is null)
+  with check (recipient_user_id = auth.uid() and acknowledged_at is not null);
 
 grant select, insert, update, delete on table public.group_backups to authenticated;
 

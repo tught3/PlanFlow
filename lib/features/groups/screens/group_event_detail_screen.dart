@@ -26,11 +26,11 @@ class GroupEventDetailScreen extends StatefulWidget {
     GroupRepository? groupRepository,
     GroupEventCommentRepository? commentRepository,
     GroupEventReportRepository? reportRepository,
-  })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride,
-        _groupRepository = groupRepository,
-        _commentRepository = commentRepository,
-        _reportRepository = reportRepository;
+  }) : _provider = provider,
+       _currentUserIdOverride = currentUserIdOverride,
+       _groupRepository = groupRepository,
+       _commentRepository = commentRepository,
+       _reportRepository = reportRepository;
 
   final String eventId;
   final GroupEventModel? event;
@@ -149,7 +149,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     if (groupId == _loadedGroupId) return;
     _loadedGroupId = groupId;
     try {
-      final members = await _groupRepository.listMembers(groupId);
+      final members = await _groupRepository.listMembersForHistory(groupId);
       final map = {for (final m in members) m.userId: m.effectiveDisplayName};
       if (mounted) {
         setState(() => _memberNames = map);
@@ -221,9 +221,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
       await _loadComments();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('지시 추가 실패: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('지시 추가 실패: $error')));
     } finally {
       if (mounted) {
         setState(() => _isSubmittingComment = false);
@@ -239,9 +239,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
       await _loadComments();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('확인 처리 실패: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('확인 처리 실패: $error')));
     }
   }
 
@@ -252,9 +252,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     try {
       final cancelled = await _provider.cancelGroupEvent(event.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('그룹 일정을 취소했어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('그룹 일정을 취소했어요.')));
       await Future<void>.delayed(const Duration(milliseconds: 180));
       if (mounted) Navigator.of(context).pop('cancelled');
       _event = cancelled;
@@ -277,9 +277,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     try {
       final archived = await _provider.archiveGroupEvent(event.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('그룹 일정을 보관했어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('그룹 일정을 보관했어요.')));
       await Future<void>.delayed(const Duration(milliseconds: 180));
       if (mounted) Navigator.of(context).pop('archived');
       _event = archived;
@@ -349,22 +349,13 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                       canArchive: canArchive,
                     )
                   else if (event.isActive)
-                    _buildInfoCard(
-                      context,
-                      '현재 그룹에서 이 일정에 대한 수정 권한이 없어요.',
-                    )
+                    _buildInfoCard(context, '현재 그룹에서 이 일정에 대한 수정 권한이 없어요.')
                   else
-                    _buildInfoCard(
-                      context,
-                      '취소되거나 보관된 일정은 추가 액션을 할 수 없어요.',
-                    ),
+                    _buildInfoCard(context, '취소되거나 보관된 일정은 추가 액션을 할 수 없어요.'),
                   const SizedBox(height: 16),
                   _buildCommentSection(context, event),
                 ] else ...[
-                  _buildInfoCard(
-                    context,
-                    '선택한 그룹 일정 정보를 찾지 못했어요.',
-                  ),
+                  _buildInfoCard(context, '선택한 그룹 일정 정보를 찾지 못했어요.'),
                 ],
               ],
             ),
@@ -390,8 +381,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                   child: Text(
                     '현재 그룹',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
@@ -399,20 +390,20 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
             const SizedBox(height: 10),
             Text(
               selectedGroup?.name ?? '선택된 그룹이 없어요',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
               selectedGroup == null
                   ? '그룹을 먼저 선택해 주세요.'
                   : _provider.isLeaderOfSelectedGroup
-                      ? '리더 권한으로 그룹 일정을 보고 있어요.'
-                      : '멤버 권한으로 그룹 일정을 보고 있어요.',
+                  ? '리더 권한으로 그룹 일정을 보고 있어요.'
+                  : '멤버 권한으로 그룹 일정을 보고 있어요.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                  ),
+                color: PlanFlowColors.textSecondary,
+              ),
             ),
           ],
         ),
@@ -437,8 +428,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                   child: Text(
                     event.title,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 // TASK 1: 'active' 상태일 때는 칩 숨김 (group_event_tile.dart 패턴 동일)
@@ -451,10 +442,10 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
               value: event.allDay
                   ? '종일'
                   : localStart.year == localEnd.year &&
-                          localStart.month == localEnd.month &&
-                          localStart.day == localEnd.day
-                      ? '${_timeLabel(context, localStart)} - ${_timeLabel(context, localEnd)}'
-                      : '${_dateLabel(localStart)} ${_timeLabel(context, localStart)} - ${_dateLabel(localEnd)} ${_timeLabel(context, localEnd)}',
+                        localStart.month == localEnd.month &&
+                        localStart.day == localEnd.day
+                  ? '${_timeLabel(context, localStart)} - ${_timeLabel(context, localEnd)}'
+                  : '${_dateLabel(localStart)} ${_timeLabel(context, localStart)} - ${_dateLabel(localEnd)} ${_timeLabel(context, localEnd)}',
             ),
             if ((event.description ?? '').trim().isNotEmpty)
               _DetailRow(label: '설명', value: event.description!.trim()),
@@ -539,8 +530,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                   child: Text(
                     '리더 지시',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 if (_commentsLoading)
@@ -558,8 +549,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                 child: Text(
                   _commentsError!,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF7A271A),
-                      ),
+                    color: const Color(0xFF7A271A),
+                  ),
                 ),
               ),
             // 댓글 목록
@@ -570,8 +561,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                   child: Text(
                     '아직 리더 지시가 없어요.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: PlanFlowColors.textSecondary,
-                        ),
+                      color: PlanFlowColors.textSecondary,
+                    ),
                   ),
                 ),
               )
@@ -597,9 +588,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 '지시 추가',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -633,8 +624,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
               Text(
                 '내가 만든 일정에는 지시를 남길 수 없어요.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
+                  color: PlanFlowColors.textSecondary,
+                ),
               ),
             ],
           ],
@@ -671,9 +662,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                 child: Text(
                   '$authorName · $timeLabel',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               // 확인 상태 표시
@@ -694,20 +685,17 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                 child: Text(
                   comment.isConfirmed ? '확인함' : '미확인',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: comment.isConfirmed
-                            ? PlanFlowColors.tagDoneText
-                            : PlanFlowColors.textSecondary,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: comment.isConfirmed
+                        ? PlanFlowColors.tagDoneText
+                        : PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            comment.content,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          Text(comment.content, style: Theme.of(context).textTheme.bodyMedium),
           // 공유자이고 미확인 댓글이면 확인 버튼 표시
           if (isSharer && !comment.isConfirmed) ...[
             const SizedBox(height: 8),
@@ -743,9 +731,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
           children: [
             Text(
               '일정 관리',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             Row(
@@ -787,9 +775,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
         padding: const EdgeInsets.all(16),
         child: Text(
           error,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF7A271A),
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A271A)),
         ),
       ),
     );
@@ -801,9 +789,9 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
         padding: const EdgeInsets.all(16),
         child: Text(
           message,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: PlanFlowColors.textSecondary),
         ),
       ),
     );
@@ -840,10 +828,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.label,
-    required this.value,
-  });
+  const _DetailRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -860,16 +845,13 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: PlanFlowColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),
@@ -899,9 +881,9 @@ class _StatusChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: PlanFlowColors.tagNormalText,
-              fontWeight: FontWeight.w700,
-            ),
+          color: PlanFlowColors.tagNormalText,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

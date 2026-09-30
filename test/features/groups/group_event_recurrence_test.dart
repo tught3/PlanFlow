@@ -8,6 +8,7 @@ GroupEventModel _event({
   required DateTime endAt,
   String recurrenceType = 'none',
   DateTime? recurrenceUntil,
+  String? recurrenceRule,
 }) {
   return GroupEventModel(
     id: 'event-1',
@@ -17,8 +18,15 @@ GroupEventModel _event({
     endAt: endAt,
     recurrenceType: recurrenceType,
     recurrenceUntil: recurrenceUntil,
+    recurrenceRule: recurrenceRule,
     createdBy: 'user-1',
   );
+}
+
+DateTime _nextFutureLocalWeekday(int weekday) {
+  final today = planflowLocalDay(DateTime.now());
+  final daysUntil = (weekday - today.weekday + 7) % 7;
+  return today.add(Duration(days: daysUntil == 0 ? 7 : daysUntil));
 }
 
 void main() {
@@ -27,59 +35,110 @@ void main() {
   final end = DateTime.utc(2026, 6, 2, 2);
   // KST 2026-06-01 00:00 ~ 2026-07-01 00:00 (한 달)
   final monthStartUtc = DateTime.utc(2026, 5, 31, 15);
-  final monthEndUtc = DateTime.utc(2026, 6, 30, 15);
+  final monthEndUtc = monthStartUtc.add(const Duration(days: 30));
+  final predicateStartDay = _nextFutureLocalWeekday(DateTime.tuesday);
+  final predicateStart = DateTime.utc(
+    predicateStartDay.year,
+    predicateStartDay.month,
+    predicateStartDay.day,
+    1,
+  );
+  final predicateEnd = predicateStart.add(const Duration(hours: 1));
+  DateTime predicateDay(int offset) =>
+      predicateStartDay.add(Duration(days: offset));
 
   group('groupEventOccursOnLocalDay', () {
     test('non-recurring only on its own local day', () {
-      final event = _event(startAt: start, endAt: end);
-      expect(
-        groupEventOccursOnLocalDay(event, DateTime(2026, 6, 2)),
-        isTrue,
-      );
-      expect(
-        groupEventOccursOnLocalDay(event, DateTime(2026, 6, 9)),
-        isFalse,
-      );
+      final event = _event(startAt: predicateStart, endAt: predicateEnd);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(0)), isTrue);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(7)), isFalse);
     });
 
     test('weekly matches the same weekday only', () {
       final event = _event(
-        startAt: start,
-        endAt: end,
+        startAt: predicateStart,
+        endAt: predicateEnd,
         recurrenceType: 'weekly',
       );
-      final startWeekday = planflowLocalDay(start).weekday;
+      final startWeekday = predicateStartDay.weekday;
       // 같은 요일(다음 주) → true
-      expect(
-        groupEventOccursOnLocalDay(event, DateTime(2026, 6, 9)),
-        isTrue,
-      );
-      expect(DateTime(2026, 6, 9).weekday, startWeekday);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(7)), isTrue);
+      expect(predicateDay(7).weekday, startWeekday);
       // 다른 요일 → false
-      expect(
-        groupEventOccursOnLocalDay(event, DateTime(2026, 6, 10)),
-        isFalse,
-      );
+      expect(groupEventOccursOnLocalDay(event, predicateDay(8)), isFalse);
       // 시작 전 → false
-      expect(
-        groupEventOccursOnLocalDay(event, DateTime(2026, 5, 26)),
-        isFalse,
+      expect(groupEventOccursOnLocalDay(event, predicateDay(-7)), isFalse);
+    });
+
+    test('full weekly RRULE BYDAY controls the day and week list predicate',
+        () {
+      final event = _event(
+        startAt: predicateStart,
+        endAt: predicateEnd,
+        recurrenceType: 'weekly',
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU,TH',
       );
+
+      expect(groupEventOccursOnLocalDay(event, predicateDay(0)), isTrue);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(2)), isTrue);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(1)), isFalse);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(7)), isTrue);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(9)), isTrue);
     });
 
     test('respects recurrence_until', () {
       final event = _event(
-        startAt: start,
-        endAt: end,
+        startAt: predicateStart,
+        endAt: predicateEnd,
         recurrenceType: 'weekly',
-        recurrenceUntil: DateTime.utc(2026, 6, 16, 2),
+        recurrenceUntil: DateTime.utc(
+          predicateStartDay.year,
+          predicateStartDay.month,
+          predicateStartDay.day + 14,
+          2,
+        ),
       );
-      expect(groupEventOccursOnLocalDay(event, DateTime(2026, 6, 16)), isTrue);
-      expect(groupEventOccursOnLocalDay(event, DateTime(2026, 6, 23)), isFalse);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(14)), isTrue);
+      expect(groupEventOccursOnLocalDay(event, predicateDay(21)), isFalse);
     });
   });
 
   group('expandGroupEventOccurrences', () {
+    test('full RRULE expansion preserves alarm and canonical link fields', () {
+      final event = GroupEventModel(
+        id: 'event-rrule',
+        groupId: 'group-1',
+        title: '반복 알람',
+        startAt: start,
+        endAt: end,
+        createdBy: 'user-1',
+        personalEventId: 'personal-1',
+        isCritical: true,
+        useStrongAlarm: true,
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU,TH',
+      );
+
+      final occurrences = expandGroupEventOccurrences(
+        event,
+        monthStartUtc,
+        monthEndUtc,
+      );
+
+      expect(occurrences, hasLength(9));
+      expect(
+        occurrences,
+        everyElement(
+          predicate<GroupEventModel>(
+            (item) =>
+                item.isCritical &&
+                item.useStrongAlarm &&
+                item.personalEventId == 'personal-1' &&
+                item.recurrenceRule == event.recurrenceRule,
+          ),
+        ),
+      );
+    });
+
     test('non-recurring returns self when intersecting range', () {
       final event = _event(startAt: start, endAt: end);
       expect(
@@ -103,8 +162,11 @@ void main() {
         endAt: end,
         recurrenceType: 'weekly',
       );
-      final occurrences =
-          expandGroupEventOccurrences(event, monthStartUtc, monthEndUtc);
+      final occurrences = expandGroupEventOccurrences(
+        event,
+        monthStartUtc,
+        monthEndUtc,
+      );
       // 6/2, 6/9, 6/16, 6/23, 6/30 → 5회
       expect(occurrences, hasLength(5));
       final startWeekday = planflowLocalDay(start).weekday;
@@ -116,11 +178,7 @@ void main() {
     });
 
     test('daily expands to each day in range', () {
-      final event = _event(
-        startAt: start,
-        endAt: end,
-        recurrenceType: 'daily',
-      );
+      final event = _event(startAt: start, endAt: end, recurrenceType: 'daily');
       // 6/2 ~ 6/8 (KST) 범위
       final occurrences = expandGroupEventOccurrences(
         event,
@@ -158,8 +216,11 @@ void main() {
         recurrenceType: 'weekly',
         recurrenceUntil: DateTime.utc(2026, 6, 16, 2),
       );
-      final occurrences =
-          expandGroupEventOccurrences(event, monthStartUtc, monthEndUtc);
+      final occurrences = expandGroupEventOccurrences(
+        event,
+        monthStartUtc,
+        monthEndUtc,
+      );
       // 6/2, 6/9, 6/16 → 3회
       expect(occurrences, hasLength(3));
     });

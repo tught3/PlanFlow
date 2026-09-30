@@ -339,7 +339,23 @@ def _assert_no_foreign_active_submissions(client: AscClient, app_id: str, target
         raise SubmissionError(f"{code}: existing submission is unrelated or cannot be reused")
 
 
-def submit(client: AscClient, bundle_id: str, version_string: str, build_number: str, *, whats_new: dict[str, str] | None = None, dry_run: bool = False,
+def _assert_marketing_url_readback(client: AscClient, version_id: str, expected_url: str) -> None:
+    localizations = client.pages(
+        f"/appStoreVersions/{version_id}/appStoreVersionLocalizations"
+        + _query({"fields[appStoreVersionLocalizations]": "locale,marketingUrl", "limit": "200"})
+    )
+    if not localizations:
+        raise SubmissionError("BLOCKED_MARKETING_URL_READBACK: no version localizations returned")
+    for localization in localizations:
+        attrs = _attrs(localization)
+        locale = attrs.get("locale")
+        if not isinstance(locale, str) or str(attrs.get("marketingUrl") or "").strip() != expected_url:
+            raise SubmissionError(
+                f"BLOCKED_MARKETING_URL_READBACK: expected marketing URL is missing or mismatched for {locale or 'unknown locale'}"
+            )
+
+
+def submit(client: AscClient, bundle_id: str, version_string: str, build_number: str, *, whats_new: dict[str, str] | None = None, marketing_url: str | None = None, dry_run: bool = False,
            sleep: Callable[[float], None] = time.sleep, max_polls: int = MAX_POLLS) -> dict:
     target_version = _version_tuple(version_string)
     if not re.fullmatch(r"[1-9][0-9]{0,9}", build_number):
@@ -386,6 +402,8 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
                     or current_attrs.get("versionString") != version_string
                     or current_attrs.get("releaseType") != "AFTER_APPROVAL"):
                 raise SubmissionError(f"BLOCKED_ACTIVE_SUBMISSION: version is {state} with a different build or release option")
+            if marketing_url is not None:
+                _assert_marketing_url_readback(client, version_id, marketing_url)
             print_state = state
             print(f"APP_STORE_SUBMITTED: PASS version={version_string} build={build_number} state={print_state}")
             return {"marker": "APP_STORE_SUBMITTED", "state": print_state, "version": version_string, "build": build_number, "idempotent": True}
@@ -413,7 +431,7 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
         raise SubmissionError("BLOCKED_REVIEW_METADATA: fill required App Store Connect review fields: " + ", ".join(missing))
 
     localization_params = {
-        "fields[appStoreVersionLocalizations]": "locale,description,keywords,supportUrl,whatsNew",
+        "fields[appStoreVersionLocalizations]": "locale,description,keywords,supportUrl,whatsNew,marketingUrl",
         "limit": "200",
     }
     localizations = client.pages(
@@ -424,8 +442,12 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
     if not isinstance(whats_new, dict) or whats_new.get("version") != version_string or not isinstance(whats_new.get("localizations"), dict):
         raise SubmissionError("BLOCKED_RELEASE_NOTES: provide version-matched localized release notes")
     notes_by_locale = whats_new["localizations"]
+    if marketing_url is not None and (not isinstance(marketing_url, str)
+            or not re.fullmatch(r"https://[^\s]+", marketing_url)):
+        raise SubmissionError("BLOCKED_STORE_METADATA: marketing URL must be an HTTPS URL")
     missing_localizations = []
     note_updates: list[tuple[str, str]] = []
+    metadata_updates: list[tuple[str, dict[str, str]]] = []
     observed_locales: set[str] = set()
     for localization in localizations:
         localization_attrs = _attrs(localization)
@@ -445,6 +467,12 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
             raise SubmissionError(f"BLOCKED_RELEASE_NOTES_MISMATCH: {locale} already has different release notes; refusing to overwrite")
         if not existing_note:
             note_updates.append((localization.get("id"), note.strip()))
+        if marketing_url is not None:
+            existing_marketing_url = str(localization_attrs.get("marketingUrl") or "").strip()
+            if existing_marketing_url and existing_marketing_url != marketing_url:
+                raise SubmissionError(f"BLOCKED_MARKETING_URL_MISMATCH: {locale} already has a different marketing URL; refusing to overwrite")
+            if not existing_marketing_url:
+                metadata_updates.append((localization.get("id"), {"marketingUrl": marketing_url}))
     if set(notes_by_locale) != observed_locales:
         raise SubmissionError("BLOCKED_RELEASE_NOTES: release-notes locales must exactly match App Store localizations")
     if missing_localizations:
@@ -457,7 +485,7 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
     current = client.request("GET", f"/appStoreVersions/{version_id}/relationships/build")
     current_build_id = ((current.get("data") or {}).get("id"))
     if dry_run:
-        print(f"DRY_RUN_PLAN: version={version_string} state={version_state} currentBuild={'same' if current_build_id == builds.get('id') else 'different'} targetBuild={build_number} releaseOption=AFTER_APPROVAL")
+        print(f"DRY_RUN_PLAN: version={version_string} state={version_state} currentBuild={'same' if current_build_id == builds.get('id') else 'different'} targetBuild={build_number} releaseOption=AFTER_APPROVAL metadataUpdates={len(note_updates) + len(metadata_updates)}")
         return {"marker": "DRY_RUN_PASS", "version": version_string, "build": build_number, "writes": client.writes}
 
     for localization_id, note in note_updates:
@@ -466,6 +494,13 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
         client.request("PATCH", f"/appStoreVersionLocalizations/{localization_id}", {
             "data": {"type": "appStoreVersionLocalizations", "id": localization_id,
                      "attributes": {"whatsNew": note}}
+        })
+    for localization_id, attributes in metadata_updates:
+        if not localization_id:
+            raise SubmissionError("BLOCKED_STORE_METADATA: localization id is missing")
+        client.request("PATCH", f"/appStoreVersionLocalizations/{localization_id}", {
+            "data": {"type": "appStoreVersionLocalizations", "id": localization_id,
+                     "attributes": attributes}
         })
 
     if current_build_id != builds.get("id"):
@@ -519,6 +554,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", required=True, help="Exact App Store marketing version, X.Y.Z")
     parser.add_argument("--build", required=True, help="Exact valid App Store Connect build number")
     parser.add_argument("--whats-new-file", required=True, help="Version-bound JSON release notes by locale")
+    parser.add_argument("--marketing-url", help="HTTPS marketing URL to set on each App Store localization")
     parser.add_argument("--dry-run", action="store_true", help="Read-only validation and plan")
     return parser
 
@@ -536,7 +572,8 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, json.JSONDecodeError):
             raise SubmissionError("BLOCKED_RELEASE_NOTES: version-bound release-notes JSON could not be read") from None
         notes = {"version": notes_doc.get("version"), "localizations": notes_doc.get("whatsNew")}
-        result = submit(AscClient(token), args.bundle_id, args.version, args.build, whats_new=notes, dry_run=args.dry_run)
+        result = submit(AscClient(token), args.bundle_id, args.version, args.build, whats_new=notes,
+                        marketing_url=args.marketing_url, dry_run=args.dry_run)
         if args.dry_run:
             suffix = " METADATA=DEFERRED" if result.get("marker") == "DRY_RUN_PLAN_ONLY" else ""
             print(f"DRY_RUN=PASS{suffix}")

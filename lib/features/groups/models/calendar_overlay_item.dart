@@ -2,10 +2,7 @@ import '../../../core/local_time.dart';
 import '../../../data/models/event_model.dart';
 import '../models/group_event_model.dart';
 
-enum CalendarOverlayItemType {
-  personal,
-  group,
-}
+enum CalendarOverlayItemType { personal, group }
 
 class CalendarOverlayItem {
   const CalendarOverlayItem({
@@ -16,6 +13,7 @@ class CalendarOverlayItem {
     required this.endAt,
     required this.source,
     this.groupId,
+    this.personalEventId,
     this.groupName,
     this.location,
     this.allDay = false,
@@ -48,6 +46,7 @@ class CalendarOverlayItem {
       endAt: event.endAt,
       source: 'group',
       groupId: event.groupId,
+      personalEventId: event.personalEventId,
       groupName: groupName,
       location: event.location,
       allDay: event.allDay,
@@ -62,6 +61,7 @@ class CalendarOverlayItem {
   final DateTime? endAt;
   final String source;
   final String? groupId;
+  final String? personalEventId;
   final String? groupName;
   final String? location;
   final bool allDay;

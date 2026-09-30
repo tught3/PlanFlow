@@ -1,4 +1,6 @@
 import '../../../core/local_time.dart';
+import '../../../core/recurrence_expansion.dart' as personal_recurrence;
+import '../../../data/models/event_model.dart';
 import 'group_event_model.dart';
 
 /// 그룹 일정 반복(recurrence) 전개 유틸.
@@ -16,6 +18,24 @@ const int _maxOccurrenceIterations = 400;
 /// 목록 화면의 오늘/이번주 버킷팅에 사용한다.
 bool groupEventOccursOnLocalDay(GroupEventModel event, DateTime day) {
   final target = DateTime(day.year, day.month, day.day);
+  final fullRule = event.recurrenceRule?.trim();
+  if (fullRule != null &&
+      fullRule.isNotEmpty &&
+      RegExp(r'FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)', caseSensitive: false)
+          .hasMatch(fullRule)) {
+    final rangeStart = planflowLocalDateTimeToUtc(target);
+    final rangeEnd = planflowLocalDateTimeToUtc(
+      target.add(const Duration(days: 1)),
+    );
+    return expandGroupEventOccurrences(event, rangeStart, rangeEnd).any(
+      (occurrence) => planflowEventIntersectsLocalDay(
+        startAt: occurrence.startAt,
+        endAt: occurrence.endAt,
+        day: target,
+      ),
+    );
+  }
+
   if (!_isRecurring(event)) {
     return planflowEventIntersectsLocalDay(
       startAt: event.startAt,
@@ -56,6 +76,39 @@ List<GroupEventModel> expandGroupEventOccurrences(
   final rangeStart = rangeStartUtc.toUtc();
   final rangeEnd = rangeEndUtc.toUtc();
 
+  final fullRule = event.recurrenceRule?.trim();
+  if (fullRule != null && fullRule.isNotEmpty) {
+    final expanded = personal_recurrence.expandRecurringEvent(
+      event: EventModel(
+        id: event.id,
+        userId: event.createdBy ?? '',
+        title: event.title,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        location: event.location,
+        isCritical: event.isCritical,
+        useStrongAlarm: event.useStrongAlarm,
+        recurrenceRule: fullRule,
+        isAllDay: event.allDay,
+        isMultiDay: event.isMultiDay,
+        groupEventId: event.id,
+        source: 'group',
+      ),
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+    );
+    return expanded
+        .where((occurrence) => occurrence.startAt != null)
+        .map(
+          (occurrence) => _withSchedule(
+            event,
+            occurrence.startAt!,
+            occurrence.endAt ?? occurrence.startAt!,
+          ),
+        )
+        .toList(growable: false);
+  }
+
   if (!_isRecurring(event)) {
     if (event.startAt.toUtc().isBefore(rangeEnd) &&
         event.endAt.toUtc().isAfter(rangeStart)) {
@@ -67,18 +120,19 @@ List<GroupEventModel> expandGroupEventOccurrences(
   final duration = event.endAt.difference(event.startAt);
   final startLocal = planflowLocal(event.startAt);
   final startDay = DateTime(startLocal.year, startLocal.month, startLocal.day);
-  final untilDay =
-      event.recurrenceUntil != null ? planflowLocalDay(event.recurrenceUntil!) : null;
+  final untilDay = event.recurrenceUntil != null
+      ? planflowLocalDay(event.recurrenceUntil!)
+      : null;
   final rangeStartDay = planflowLocalDay(rangeStart);
   final rangeEndDay = planflowLocalDay(rangeEnd);
 
   final occurrences = <GroupEventModel>[];
   var iterations = 0;
   for (DateTime? occDay = _firstOccurrenceDay(
-        event.recurrenceType,
-        startDay: startDay,
-        rangeStartDay: rangeStartDay,
-      );
+    event.recurrenceType,
+    startDay: startDay,
+    rangeStartDay: rangeStartDay,
+  );
       occDay != null && !occDay.isAfter(rangeEndDay);
       occDay = _nextOccurrenceDay(event.recurrenceType, startDay, occDay)) {
     if (iterations++ > _maxOccurrenceIterations) {
@@ -201,12 +255,17 @@ GroupEventModel _withSchedule(
     startAt: startUtc,
     endAt: endUtc,
     allDay: event.allDay,
+    isMultiDay: event.isMultiDay,
+    isCritical: event.isCritical,
+    useStrongAlarm: event.useStrongAlarm,
+    recurrenceRule: event.recurrenceRule,
     recurrenceType: event.recurrenceType,
     recurrenceUntil: event.recurrenceUntil,
     createdBy: event.createdBy,
     updatedBy: event.updatedBy,
     cancelledAt: event.cancelledAt,
     cancelledBy: event.cancelledBy,
+    personalEventId: event.personalEventId,
     status: event.status,
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
