@@ -52,6 +52,14 @@ declare
   update public.groups
      set status = 'archived',$target$;
 begin
+  -- pg_get_functiondef is normalized to LF; normalize dollar-quoted patterns too.
+  history_source := replace(history_source, E'\r\n', E'\n');
+  history_target := replace(history_target, E'\r\n', E'\n');
+  reports_source := replace(reports_source, E'\r\n', E'\n');
+  reports_target := replace(reports_target, E'\r\n', E'\n');
+  archive_invites_source := replace(archive_invites_source, E'\r\n', E'\n');
+  archive_invites_target := replace(archive_invites_target, E'\r\n', E'\n');
+
   foreach function_signature in array array[
     'public.archive_group_with_backup(uuid)'::regprocedure,
     'public.delete_group_with_backup(uuid)'::regprocedure
@@ -209,6 +217,25 @@ declare
   for comment_record in
     select jsonb_array_elements(snapshot_payload->'event_comments')$new$;
 begin
+  -- Normalize the function body and every multiline search/replacement literal.
+  definition := replace(definition, E'\r\n', E'\n');
+  old_insert := replace(old_insert, E'\r\n', E'\n');
+  new_insert := replace(new_insert, E'\r\n', E'\n');
+  old_values := replace(old_values, E'\r\n', E'\n');
+  new_values := replace(new_values, E'\r\n', E'\n');
+  old_personal_id := replace(old_personal_id, E'\r\n', E'\n');
+  new_personal_id := replace(new_personal_id, E'\r\n', E'\n');
+  old_restore_link := replace(old_restore_link, E'\r\n', E'\n');
+  new_restore_link := replace(new_restore_link, E'\r\n', E'\n');
+  old_member_array := replace(old_member_array, E'\r\n', E'\n');
+  new_member_array := replace(new_member_array, E'\r\n', E'\n');
+  old_member_columns := replace(old_member_columns, E'\r\n', E'\n');
+  new_member_columns := replace(new_member_columns, E'\r\n', E'\n');
+  old_member_values := replace(old_member_values, E'\r\n', E'\n');
+  new_member_values := replace(new_member_values, E'\r\n', E'\n');
+  old_comment_loop := replace(old_comment_loop, E'\r\n', E'\n');
+  new_comment_loop := replace(new_comment_loop, E'\r\n', E'\n');
+
   if position(old_insert in definition) = 0
     or position(old_values in definition) = 0
     or position(old_personal_id in definition) = 0

@@ -5,6 +5,41 @@
 -- while production returns the membership UUID. PostgreSQL cannot change a
 -- function's return type with CREATE OR REPLACE. Drop only this overload,
 -- without CASCADE, so unexpected dependencies fail the migration safely.
+-- Re-establish the invite-target helper used by the RPC and RLS policies below.
+-- The live schema may not yet contain the helper present in supabase/schema.sql.
+create or replace function public.is_group_invite_target(
+  invited_user_id_input uuid,
+  invited_email_input text,
+  invited_invite_code_input text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.users
+    where id = auth.uid()
+      and (
+        (
+          invited_user_id_input is not null
+          and invited_user_id_input = id
+        )
+        or (
+          invited_email_input is not null
+          and email is not null
+          and lower(invited_email_input) = lower(email)
+        )
+        or (
+          invited_invite_code_input is not null
+          and invite_code is not null
+          and lower(invited_invite_code_input) = lower(invite_code)
+        )
+      )
+  );
+$$;
 drop function if exists public.accept_group_invite(uuid);
 
 create function public.accept_group_invite(invite_id_input uuid)
@@ -177,6 +212,8 @@ create policy "groups_select_member"
 -- The invitee still needs read access to their own pending/accepted invite.
 -- Membership mutation itself is confined to the validated SECURITY DEFINER RPC
 -- above so Postgres does not apply INSERT RLS before an ON CONFLICT path.
+-- Replace the old permissive selector; leaving both policies ORed retains the users/group RLS cycle.
+drop policy if exists "group_invites_select_related_users" on public.group_invites;
 drop policy if exists "group_invites_select_access" on public.group_invites;
 create policy "group_invites_select_access"
   on public.group_invites

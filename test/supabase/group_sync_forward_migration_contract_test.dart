@@ -223,6 +223,20 @@ void main() {
         expect(source, contains('group_invites.acted_by = auth.uid()'));
         expect(source, contains('public.is_group_invite_target('));
       }
+      final normalizedInviteMigration = inviteMigration.replaceAll('\r\n', '\n');
+      final obsoleteSelectPolicyDrop = normalizedInviteMigration.indexOf(
+        'drop policy if exists "group_invites_select_related_users"',
+      );
+      final replacementSelectPolicy = normalizedInviteMigration.indexOf(
+        'create policy "group_invites_select_access"',
+      );
+      expect(obsoleteSelectPolicyDrop, isNonNegative);
+      expect(replacementSelectPolicy, isNonNegative);
+      expect(
+        obsoleteSelectPolicyDrop,
+        lessThan(replacementSelectPolicy),
+        reason: 'obsolete permissive policy must be removed before replacement',
+      );
     });
 
     test('personal event and selected group copies share one atomic RPC path',
