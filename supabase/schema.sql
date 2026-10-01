@@ -5367,8 +5367,8 @@ create policy "group_event_reports_insert_member"
     and exists (
       select 1
       from public.group_events ge
-      where ge.id = group_event_id
-        and ge.group_id = group_id
+      where ge.id = group_event_reports.group_event_id
+        and ge.group_id = group_event_reports.group_id
         and ge.status = 'active'
     )
   );

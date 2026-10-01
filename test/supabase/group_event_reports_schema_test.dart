@@ -13,15 +13,18 @@ void main() {
       // schema.sql은 CRLF로 저장되어 있어 줄바꿈을 정규화해서 단언한다.
       final sql = raw.replaceAll('\r\n', '\n');
       test('contains table, columns and checks', () {
-        expect(sql, contains('create table if not exists public.group_event_reports'));
-        expect(sql, contains('reporter_id uuid not null references public.users'));
+        expect(sql,
+            contains('create table if not exists public.group_event_reports'));
+        expect(
+            sql, contains('reporter_id uuid not null references public.users'));
         expect(
           sql,
           contains(
             'group_event_id uuid not null references public.group_events (id) on delete cascade',
           ),
         );
-        expect(sql, contains('group_id uuid not null references public.groups'));
+        expect(
+            sql, contains('group_id uuid not null references public.groups'));
         expect(
           sql,
           contains(
@@ -51,18 +54,12 @@ void main() {
       });
 
       test('insert policy validates reporter, membership and active event', () {
-        expect(
-          sql,
-          contains('reporter_id = auth.uid()'),
-        );
+        expect(sql, contains('reporter_id = auth.uid()'));
         expect(
           sql,
           contains('public.is_group_member(group_id, auth.uid())'),
         );
-        expect(
-          sql,
-          contains("ge.id = group_event_id\n        and ge.group_id = group_id\n        and ge.status = 'active'"),
-        );
+        expect(sql, contains("ge.status = 'active'"));
       });
 
       test('select/update are admin-email only (no user select)', () {
@@ -97,9 +94,32 @@ void main() {
         );
         expect(
           sql,
-          contains('on public.group_event_reports (reporter_id, group_event_id)'),
+          contains(
+              'on public.group_event_reports (reporter_id, group_event_id)'),
         );
       });
     }
+  });
+
+  group('group_event_reports INSERT scope fix', () {
+    final schema = File('supabase/schema.sql').readAsStringSync();
+    final scopeFixMigration = File(
+      'supabase/migrations/20261001140000_fix_group_event_reports_insert_scope.sql',
+    ).readAsStringSync();
+
+    // Static SQL contract only. Authorization is verified separately in Postgres.
+    test('matches the referenced event to the report row group', () {
+      for (final raw in <String>[schema, scopeFixMigration]) {
+        final sql = raw.replaceAll('\r\n', '\n');
+        expect(sql, contains('for insert'));
+        expect(sql, contains('to authenticated'));
+        expect(sql, contains('reporter_id = auth.uid()'));
+        expect(sql, contains('public.is_group_member(group_id, auth.uid())'));
+        expect(sql, contains('ge.id = group_event_reports.group_event_id'));
+        expect(sql, contains('ge.group_id = group_event_reports.group_id'));
+        expect(sql, contains("ge.status = 'active'"));
+        expect(sql, isNot(contains('ge.group_id = ge.group_id')));
+      }
+    });
   });
 }

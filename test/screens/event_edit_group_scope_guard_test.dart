@@ -3,36 +3,95 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  // 회귀: 저장 범위를 "개인 일정만"(personalOnly)으로 고른 경우엔 그룹을
-  // 전혀 건드리지 않으므로 "수정 내용을 반영할 그룹" 바텀시트를 띄우면 안
-  // 된다. 예전엔 _shouldSavePersonalEvent(=개인 저장 여부)만 봐서, 이미 다른
-  // 그룹에 공유돼 있던 일정이면 personalOnly를 골라도 이 시트가 떴다.
+  // 회귀: 신규 atomic save 계약은 저장 직전, 링크된 그룹일정이 이미 있는
+  // 상태에서 사용자가 "개인 일정만" 또는 "그룹 일정만"처럼 한쪽 범위만
+  // 골라 저장(=개인 본만 갱신 / 그룹 본만 갱신 — 기존 공유본과 정면
+  // 충돌)하면 즉시 차단하고 return으로 빠져야 한다. 가드를 제거하거나
+  // _repository 호출 뒤로 옮기면 partial save(개인만 저장됐는데 기존
+  // 그룹본이 stale 상태로 남는 사고)가 재발한다.
   //
-  // 전체 EventEditScreen을 마운트해 시트 등장 여부를 검증하려면 그룹 레포·
-  // 인증·Supabase 목업 등 무거운 하네스가 필요해, 여기서는 _chooseLinked-
-  // GroupsToUpdate 호출부가 personalOnly가 아닐 때만 실행되도록 게이트돼
-  // 있는지 소스 구조로 고정한다(게이트를 실수로 제거하는 재발을 잡는다).
-  test('반영할 그룹 시트 호출부가 personalOnly가 아닐 때로 게이트돼 있다', () {
-    final source =
-        File('lib/screens/event/event_edit_screen.dart').readAsStringSync();
+  // 분기 로직과 helper의 두 케이스 거부는 behavioral 테스트가 검증하므로,
+  // 여기서는 (1) 호출부가 4개 인자 키워드를 모두 받는지, (2) 차단 시
+  // _showMessage + return으로 빠져나가는지, (3) _repository 호출보다
+  // 앞에 위치하는지 — 소스 구조만으로 고정한다. 임의 400자 윈도우 대신
+  // existingLinkedGroupEvents 선언부를 앵커로, 다음 EventModel? savedEvent
+  // 선언을 종점으로 잡는다.
+  test(
+    'shouldBlockLinkedGroupSaveScope 호출부가 4인자·차단 return을 포함하고 '
+    '모든 _repository 호출보다 앞에 있다',
+    () {
+      final source =
+          File('lib/screens/event/event_edit_screen.dart').readAsStringSync();
 
-    // 메서드 정의부가 아니라 실제 호출부(existingLinkedGroupEvents를 넘기는
-    // 곳)를 특정한다.
-    final callIndex =
-        source.indexOf('_chooseLinkedGroupsToUpdate(existingLinkedGroupEvents');
-    expect(callIndex, greaterThan(-1),
-        reason: '_chooseLinkedGroupsToUpdate 호출부를 찾지 못함');
+      // existingLinkedGroupEvents 선언부를 앵커로 잡고, 그 뒤(save 메서드
+      // 본문)에서만 호출부/저장 호출을 찾는다. 헬퍼 정의는 선언부 이전에
+      // 있으므로 자연스럽게 제외된다.
+      const anchor =
+          'final existingLinkedGroupEvents = (!_isNewEvent && _loadedEvent != null)';
+      final anchorIndex = source.indexOf(anchor);
+      expect(anchorIndex, greaterThan(-1),
+          reason: 'existingLinkedGroupEvents 선언부를 찾지 못함');
+      final searchOrigin = anchorIndex + anchor.length;
 
-    // 호출부 바로 앞의 조건 블록에 personalOnly 제외 가드가 있어야 한다.
-    // (호출 지점에서 앞쪽으로 400자 내에 조건이 있다.)
-    final windowStart = (callIndex - 400).clamp(0, callIndex);
-    final precedingBlock = source.substring(windowStart, callIndex);
+      // "if (EventEditScreen.shouldBlockLinkedGroupSaveScope(" 형태만
+      // 매치하므로 헬퍼 정의(static bool …)는 자동 제외.
+      const guardInvocation =
+          'if (EventEditScreen.shouldBlockLinkedGroupSaveScope(';
+      final guardIndex = source.indexOf(guardInvocation, searchOrigin);
+      expect(guardIndex, greaterThan(-1),
+          reason: 'shouldBlockLinkedGroupSaveScope 호출부를 찾지 못함. 헬퍼 정의가 '
+              '아닌 if 조건 안의 실제 호출부를 특정해야 한다.');
 
-    expect(
-      precedingBlock,
-      contains('ScheduleSaveTarget.personalOnly'),
-      reason: '개인 일정만 저장 시 그룹 반영 시트를 건너뛰는 가드가 사라지면, '
-          '개인만 수정하려는 사용자에게 불필요한 그룹 선택 시트가 다시 뜬다.',
-    );
-  });
+      // 호출부부터 다음 "EventModel? savedEvent;" 선언 직전까지를 윈도우로
+      // 잡아 4인자·차단 return·사용자 안내를 한꺼번에 본다. recurrence 가드
+      // 가 사이에 있어도 윈도우 안에 자연 포함된다.
+      const savedEventDecl = 'EventModel? savedEvent;';
+      final savedEventIndex = source.indexOf(savedEventDecl, guardIndex);
+      expect(savedEventIndex, greaterThan(-1),
+          reason: 'guard 호출부 뒤에 EventModel? savedEvent 선언이 없음');
+      // Bound this assertion to the scope guard itself, not the later recurrence guard.
+      final guardEnd = source.indexOf('\n      }', guardIndex);
+      expect(guardEnd, greaterThan(guardIndex));
+      expect(guardEnd, lessThan(savedEventIndex));
+      final guardWindow = source.substring(guardIndex, guardEnd);
+
+      expect(
+          guardWindow,
+          contains(
+              'hasLinkedGroupCopies: existingLinkedGroupEvents.isNotEmpty'),
+          reason: 'hasLinkedGroupCopies 인자가 빠짐');
+      expect(guardWindow, contains('hasGroupEventId: hasGroupEventId'),
+          reason: 'hasGroupEventId 인자가 빠짐');
+      expect(guardWindow,
+          contains('shouldSavePersonalEvent: _shouldSavePersonalEvent'),
+          reason: 'shouldSavePersonalEvent 인자가 빠짐');
+      expect(
+          guardWindow, contains('shouldSaveGroupEvent: _shouldSaveGroupEvent'),
+          reason: 'shouldSaveGroupEvent 인자가 빠짐');
+      expect(guardWindow, contains('return;'),
+          reason: '차단 시 return;으로 빠져야 함 (없으면 partial save)');
+      expect(guardWindow, contains('_showMessage'),
+          reason: '차단 시 사용자에게 안내를 띄워야 함');
+
+      // 가드는 두 _repository 호출보다 무조건 앞에 와야 한다. 하나라도 뒤에
+      // 있으면 가드가 무의미해진다. _repository.updateEventWithGroupShares(
+      // 가 _repository.updateEvent( 의 접두사를 공유하므로, "With"로 이어지
+      // 는 호출은 건너뛰고 진짜 updateEvent( 만 잡는다.
+      final withSharesIndex = source.indexOf(
+          '_repository.updateEventWithGroupShares(', searchOrigin);
+      expect(withSharesIndex, greaterThan(-1),
+          reason: '_repository.updateEventWithGroupShares 호출을 찾지 못함 (atomic '
+              'save 경로가 사라졌거나 이름이 바뀜)');
+
+      final updateEventIndex =
+          source.indexOf('_repository.updateEvent(', searchOrigin);
+      expect(updateEventIndex, greaterThan(-1),
+          reason: '_repository.updateEvent 호출을 찾지 못음');
+
+      expect(guardIndex, lessThan(withSharesIndex),
+          reason: '가드가 updateEventWithGroupShares보다 뒤에 있어 partial save 가능');
+      expect(guardIndex, lessThan(updateEventIndex),
+          reason: '가드가 updateEvent보다 뒤에 있어 partial save 가능');
+    },
+  );
 }
