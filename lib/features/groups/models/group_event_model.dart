@@ -11,6 +11,10 @@ class GroupEventModel {
     this.description,
     this.location,
     this.allDay = false,
+    this.isMultiDay = false,
+    this.isCritical = false,
+    this.useStrongAlarm = false,
+    this.recurrenceRule,
     this.recurrenceType = 'none',
     this.recurrenceUntil,
     this.updatedBy,
@@ -39,6 +43,10 @@ class GroupEventModel {
       startAt: requiredDateTimeValue(json['start_at'], 'start_at'),
       endAt: requiredDateTimeValue(json['end_at'], 'end_at'),
       allDay: json['all_day'] == true,
+      isMultiDay: json['is_multi_day'] == true,
+      isCritical: json['is_critical'] == true,
+      useStrongAlarm: json['use_strong_alarm'] == true,
+      recurrenceRule: optionalStringValue(json['recurrence_rule']),
       recurrenceType: stringValue(json['recurrence_type']).isEmpty
           ? 'none'
           : stringValue(json['recurrence_type']),
@@ -64,6 +72,10 @@ class GroupEventModel {
   final DateTime startAt;
   final DateTime endAt;
   final bool allDay;
+  final bool isMultiDay;
+  final bool isCritical;
+  final bool useStrongAlarm;
+  final String? recurrenceRule;
   final String recurrenceType;
   final DateTime? recurrenceUntil;
   final String? createdBy;
@@ -91,6 +103,10 @@ class GroupEventModel {
       'start_at': utcIsoValue(startAt),
       'end_at': utcIsoValue(endAt),
       'all_day': allDay,
+      'is_multi_day': isMultiDay,
+      'is_critical': isCritical,
+      'use_strong_alarm': useStrongAlarm,
+      'recurrence_rule': recurrenceRule,
       'recurrence_type': recurrenceType,
       'recurrence_until': utcIsoValue(recurrenceUntil),
       'created_by': createdBy,
@@ -112,6 +128,10 @@ class GroupEventModel {
       'start_at': utcIsoValue(startAt),
       'end_at': utcIsoValue(endAt),
       'all_day': allDay,
+      'is_multi_day': isMultiDay,
+      'is_critical': isCritical,
+      'use_strong_alarm': useStrongAlarm,
+      'recurrence_rule': recurrenceRule,
       'recurrence_type': recurrenceType,
       'recurrence_until': utcIsoValue(recurrenceUntil),
       'updated_by': updatedBy,
@@ -134,6 +154,11 @@ class GroupEventModel {
     DateTime? startAt,
     DateTime? endAt,
     bool? allDay,
+    bool? isMultiDay,
+    bool? isCritical,
+    bool? useStrongAlarm,
+    String? recurrenceRule,
+    bool clearRecurrenceRule = false,
     String? recurrenceType,
     DateTime? recurrenceUntil,
     bool clearRecurrenceUntil = false,
@@ -161,15 +186,23 @@ class GroupEventModel {
       startAt: startAt ?? this.startAt,
       endAt: endAt ?? this.endAt,
       allDay: allDay ?? this.allDay,
+      isMultiDay: isMultiDay ?? this.isMultiDay,
+      isCritical: isCritical ?? this.isCritical,
+      useStrongAlarm: useStrongAlarm ?? this.useStrongAlarm,
+      recurrenceRule: clearRecurrenceRule
+          ? null
+          : recurrenceRule ?? this.recurrenceRule,
       recurrenceType: recurrenceType ?? this.recurrenceType,
-      recurrenceUntil:
-          clearRecurrenceUntil ? null : recurrenceUntil ?? this.recurrenceUntil,
+      recurrenceUntil: clearRecurrenceUntil
+          ? null
+          : recurrenceUntil ?? this.recurrenceUntil,
       createdBy: createdBy ?? this.createdBy,
       updatedBy: clearUpdatedBy ? null : updatedBy ?? this.updatedBy,
       cancelledAt: clearCancelledAt ? null : cancelledAt ?? this.cancelledAt,
       cancelledBy: clearCancelledBy ? null : cancelledBy ?? this.cancelledBy,
-      personalEventId:
-          clearPersonalEventId ? null : personalEventId ?? this.personalEventId,
+      personalEventId: clearPersonalEventId
+          ? null
+          : personalEventId ?? this.personalEventId,
       status: status ?? this.status,
       createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
       updatedAt: clearUpdatedAt ? null : updatedAt ?? this.updatedAt,

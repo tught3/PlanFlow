@@ -65,6 +65,6 @@ jobs:
             echo "::error title=BLOCKED_CONFIRMATION::Live manual submission requires SUBMIT_PLANFLOW_IOS_REVIEW."
             exit 1
           fi
-          args=(--bundle-id "$BUNDLE_ID" --version "$INPUT_APP_STORE_VERSION" --build "$INPUT_BUILD_NUMBER" --whats-new-file config/store/ios-release-notes.json)
+          args=(--bundle-id "$BUNDLE_ID" --version "$INPUT_APP_STORE_VERSION" --build "$INPUT_BUILD_NUMBER" --whats-new-file config/store/ios-release-notes.json --marketing-url https://fluxstudio.co.kr)
           if [[ "$INPUT_DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
           python3 scripts/asc-submit-review.py "${args[@]}"

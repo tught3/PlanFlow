@@ -66,6 +66,187 @@ void main() {
     });
   });
 
+  group('linked recurring edit scope guard', () {
+    for (final scope in <String>['single', 'future']) {
+      test('blocks $scope when an existing group link is known', () {
+        expect(
+          EventEditScreen.shouldBlockLinkedRecurringPartialEdit(
+            isRecurring: true,
+            recurrenceScope: scope,
+            hasLinkedGroupCopies: true,
+            hasGroupEventId: false,
+            isSharingToSelectedGroups: false,
+          ),
+          isTrue,
+        );
+      });
+
+      test('blocks $scope when sharing to selected groups', () {
+        expect(
+          EventEditScreen.shouldBlockLinkedRecurringPartialEdit(
+            isRecurring: true,
+            recurrenceScope: scope,
+            hasLinkedGroupCopies: false,
+            hasGroupEventId: false,
+            isSharingToSelectedGroups: true,
+          ),
+          isTrue,
+        );
+      });
+    }
+
+    test('group_event_id is a fallback when the link query is empty', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedRecurringPartialEdit(
+          isRecurring: true,
+          recurrenceScope: 'single',
+          hasLinkedGroupCopies: false,
+          hasGroupEventId: true,
+          isSharingToSelectedGroups: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('allows whole-series edits of linked recurring events', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedRecurringPartialEdit(
+          isRecurring: true,
+          recurrenceScope: 'all',
+          hasLinkedGroupCopies: true,
+          hasGroupEventId: true,
+          isSharingToSelectedGroups: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('allows partial edits when the recurring event is not linked/shared',
+        () {
+      expect(
+        EventEditScreen.shouldBlockLinkedRecurringPartialEdit(
+          isRecurring: true,
+          recurrenceScope: 'future',
+          hasLinkedGroupCopies: false,
+          hasGroupEventId: false,
+          isSharingToSelectedGroups: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('linked group edit save policy', () {
+    test('blocks personal-only edits when active group copies are linked', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedGroupSaveScope(
+          hasLinkedGroupCopies: true,
+          hasGroupEventId: false,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('blocks group-only edits when active group copies are linked', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedGroupSaveScope(
+          hasLinkedGroupCopies: true,
+          hasGroupEventId: false,
+          shouldSavePersonalEvent: false,
+          shouldSaveGroupEvent: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('allows linked edits only when personal and group are both saved', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedGroupSaveScope(
+          hasLinkedGroupCopies: true,
+          hasGroupEventId: false,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not restrict a personal-only event with no group links', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedGroupSaveScope(
+          hasLinkedGroupCopies: false,
+          hasGroupEventId: false,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('uses group_event_id as a fallback when links are not returned', () {
+      expect(
+        EventEditScreen.shouldBlockLinkedGroupSaveScope(
+          hasLinkedGroupCopies: false,
+          hasGroupEventId: true,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('uses atomic update-and-share for whole linked event edits', () {
+      expect(
+        EventEditScreen.shouldUseAtomicGroupShareForUpdate(
+          isNewEvent: false,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: true,
+          recurrenceScope: null,
+        ),
+        isTrue,
+      );
+      expect(
+        EventEditScreen.shouldUseAtomicGroupShareForUpdate(
+          isNewEvent: false,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: true,
+          recurrenceScope: 'single',
+        ),
+        isFalse,
+      );
+      expect(
+        EventEditScreen.shouldUseAtomicGroupShareForUpdate(
+          isNewEvent: false,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: true,
+          recurrenceScope: 'future',
+        ),
+        isFalse,
+      );
+      expect(
+        EventEditScreen.shouldUseAtomicGroupShareForUpdate(
+          isNewEvent: true,
+          shouldSavePersonalEvent: true,
+          shouldSaveGroupEvent: true,
+          recurrenceScope: null,
+        ),
+        isFalse,
+      );
+    });
+
+    test('atomic update includes existing and newly selected groups once', () {
+      expect(
+        EventEditScreen.mergeLinkedAndSelectedGroupIdsForEdit(
+          linkedGroupIds: <String>['group-a', 'group-a', ' '],
+          selectedGroupIds: <String>['group-b', 'group-a'],
+        ),
+        <String>['group-a', 'group-b'],
+      );
+    });
+  });
+
   group('shouldHydratePersistedCoordinates', () {
     const persisted = EventModel(
       id: 'event-1',

@@ -240,13 +240,18 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
   }
 
   Future<Map<String, dynamic>> _acceptInviteWithRpc(String inviteId) async {
-    final response = await _client
-        .rpc('accept_group_invite', params: <String, dynamic>{
-          'invite_id_input': inviteId,
-        })
+    final response =
+        await _client.rpc('accept_group_invite', params: <String, dynamic>{
+      'invite_id_input': inviteId,
+    });
+    if (response is! String || response.trim().isEmpty) {
+      throw StateError('초대 수락 응답이 올바르지 않습니다.');
+    }
+    return _rowAsJson(await _client
+        .from('group_invites')
         .select()
-        .single();
-    return _rowAsJson(response);
+        .eq('id', inviteId)
+        .single());
   }
 
   Future<Map<String, dynamic>> _acceptInviteLinkWithRpc({

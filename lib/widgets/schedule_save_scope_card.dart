@@ -65,7 +65,8 @@ class ScheduleSaveScopeCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '이 일정을 나만 볼지, 선택된 그룹에도 공유할지 정해 주세요.',
+              '이 일정을 나만 볼지, 선택된 그룹에도 공유할지 정해 주세요.\n'
+              '기존에 연결된 그룹 일정은 함께 동기화되고, 선택한 그룹에는 추가로 공유됩니다.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: PlanFlowColors.textSecondary,
               ),

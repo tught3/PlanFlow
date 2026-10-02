@@ -228,13 +228,15 @@
         "note": "User confirmed this is the submitted App Store support URL. This is submitted configuration, not Apple acceptance."
       },
       "marketingUrl": {
-        "value": null,
-        "source": "UNKNOWN",
-        "evidence": [],
-        "lastVerified": "2026-09-11",
-        "confidence": "UNKNOWN",
+        "value": "https://fluxstudio.co.kr",
+        "source": "USER_STATED",
+        "evidence": [
+          "User explicitly requested this iOS marketing URL on 2026-09-28; App Store Connect was not changed or read back."
+        ],
+        "lastVerified": null,
+        "confidence": "HIGH",
         "requiresHumanAuthority": false,
-        "approval": "NONE",
+        "approval": "USER_APPROVED",
         "storeAcceptance": "NONE"
       },
       "copyright": {

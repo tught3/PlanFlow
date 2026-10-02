@@ -16,6 +16,12 @@ abstract class GroupEventRepository {
 
   Future<GroupEventModel> createGroupEvent(GroupEventModel event);
 
+  /// Atomically create selected group copies from an owned personal event.
+  Future<List<GroupEventModel>> sharePersonalEventWithGroups(
+    String personalEventId,
+    List<String> groupIds,
+  ) async => throw UnimplementedError();
+
   /// 개인일정 하나에 연동된(공유된) 활성 그룹일정 전체를 반환한다.
   /// 개인일정 1 ↔ 그룹일정 N(다중 그룹 공유) 연동에서 수정/삭제 전파 대상 조회에 쓴다.
   /// 기존 fake(extends)들이 깨지지 않도록 기본 구현을 둔다(필요한 곳만 override).
@@ -36,7 +42,7 @@ abstract class GroupEventRepository {
 
 class SupabaseGroupEventRepository extends GroupEventRepository {
   SupabaseGroupEventRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+    : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
@@ -63,7 +69,8 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
         .order('start_at', ascending: true);
     return response
         .map<GroupEventModel>(
-            (row) => GroupEventModel.fromJson(_rowAsJson(row)))
+          (row) => GroupEventModel.fromJson(_rowAsJson(row)),
+        )
         .toList(growable: false);
   }
 
@@ -88,6 +95,40 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
   }
 
   @override
+  Future<List<GroupEventModel>> sharePersonalEventWithGroups(
+    String personalEventId,
+    List<String> groupIds,
+  ) async {
+    final currentUser = _requireCurrentUser();
+    final uniqueGroupIds = groupIds.toSet().toList(growable: false);
+    if (personalEventId.trim().isEmpty || uniqueGroupIds.isEmpty) {
+      throw ArgumentError('개인 일정과 공유할 그룹을 선택해야 합니다.');
+    }
+    final response = await _client.rpc(
+      'share_personal_event_with_groups',
+      params: <String, dynamic>{
+        'p_personal_event_id': personalEventId,
+        'p_group_ids': uniqueGroupIds,
+      },
+    );
+    if (response is! List) {
+      throw StateError('그룹 일정 공유 응답 형식이 올바르지 않습니다.');
+    }
+    final events = response
+        .map<GroupEventModel>(
+          (row) => GroupEventModel.fromJson(_rowAsJson(row)),
+        )
+        .toList(growable: false);
+    final linkedGroupIds = events.map((event) => event.groupId).toSet();
+    if (linkedGroupIds.length != uniqueGroupIds.length ||
+        !linkedGroupIds.containsAll(uniqueGroupIds) ||
+        events.any((event) => event.createdBy != currentUser.id)) {
+      throw StateError('요청한 모든 그룹 일정의 소유권을 확인할 수 없습니다.');
+    }
+    return events;
+  }
+
+  @override
   Future<List<GroupEventModel>> getGroupEventsByPersonalEventId(
     String personalEventId,
   ) async {
@@ -102,7 +143,8 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
         .order('created_at', ascending: true);
     return response
         .map<GroupEventModel>(
-            (row) => GroupEventModel.fromJson(_rowAsJson(row)))
+          (row) => GroupEventModel.fromJson(_rowAsJson(row)),
+        )
         .toList(growable: false);
   }
 
@@ -115,9 +157,7 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
 
     final response = await _client
         .from('group_events')
-        .update(
-          event.copyWithUpdatedBy(currentUser.id).toUpdateJson(),
-        )
+        .update(event.copyWithUpdatedBy(currentUser.id).toUpdateJson())
         .eq('id', event.id)
         .select()
         .single();
@@ -134,14 +174,12 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
 
     final response = await _client
         .from('group_events')
-        .update(
-          <String, dynamic>{
-            'status': 'cancelled',
-            'cancelled_at': DateTime.now().toUtc().toIso8601String(),
-            'cancelled_by': currentUser.id,
-            'updated_by': currentUser.id,
-          },
-        )
+        .update(<String, dynamic>{
+          'status': 'cancelled',
+          'cancelled_at': DateTime.now().toUtc().toIso8601String(),
+          'cancelled_by': currentUser.id,
+          'updated_by': currentUser.id,
+        })
         .eq('id', eventId)
         .select()
         .single();
@@ -158,12 +196,10 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
 
     final response = await _client
         .from('group_events')
-        .update(
-          <String, dynamic>{
-            'status': 'archived',
-            'updated_by': currentUser.id,
-          },
-        )
+        .update(<String, dynamic>{
+          'status': 'archived',
+          'updated_by': currentUser.id,
+        })
         .eq('id', eventId)
         .select()
         .single();
@@ -184,8 +220,11 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
   }
 
   Future<GroupEventModel> _fetchEvent(String eventId) async {
-    final response =
-        await _client.from('group_events').select().eq('id', eventId).single();
+    final response = await _client
+        .from('group_events')
+        .select()
+        .eq('id', eventId)
+        .single();
     return GroupEventModel.fromJson(_rowAsJson(response));
   }
 
@@ -223,6 +262,10 @@ extension on GroupEventModel {
       startAt: startAt,
       endAt: endAt,
       allDay: allDay,
+      isMultiDay: isMultiDay,
+      isCritical: isCritical,
+      useStrongAlarm: useStrongAlarm,
+      recurrenceRule: recurrenceRule,
       recurrenceType: recurrenceType,
       recurrenceUntil: recurrenceUntil,
       createdBy: createdBy,
@@ -246,6 +289,10 @@ extension on GroupEventModel {
       startAt: startAt,
       endAt: endAt,
       allDay: allDay,
+      isMultiDay: isMultiDay,
+      isCritical: isCritical,
+      useStrongAlarm: useStrongAlarm,
+      recurrenceRule: recurrenceRule,
       recurrenceType: recurrenceType,
       recurrenceUntil: recurrenceUntil,
       createdBy: createdBy,
@@ -269,6 +316,10 @@ extension on GroupEventModel {
       startAt: startAt,
       endAt: endAt,
       allDay: allDay,
+      isMultiDay: isMultiDay,
+      isCritical: isCritical,
+      useStrongAlarm: useStrongAlarm,
+      recurrenceRule: recurrenceRule,
       recurrenceType: recurrenceType,
       recurrenceUntil: recurrenceUntil,
       createdBy: createdBy,

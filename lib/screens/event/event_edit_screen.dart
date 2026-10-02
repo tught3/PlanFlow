@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -44,6 +45,18 @@ import '../../widgets/planflow_action_buttons.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 import '../../widgets/schedule_save_scope_card.dart';
+
+String _newEventUuid() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0'));
+  final value = hex.join();
+  return '${value.substring(0, 8)}-${value.substring(8, 12)}-'
+      '${value.substring(12, 16)}-${value.substring(16, 20)}-'
+      '${value.substring(20)}';
+}
 
 class EventEditScreen extends StatefulWidget {
   EventEditScreen({
@@ -92,6 +105,62 @@ class EventEditScreen extends StatefulWidget {
       }
     }
     return null;
+  }
+
+  /// Group-linked recurring occurrences cannot yet be split atomically across
+  /// personal and group calendars. Fail closed for partial scopes rather than
+  /// detaching the personal occurrence while leaving its group copy unchanged.
+  @visibleForTesting
+  static bool shouldBlockLinkedRecurringPartialEdit({
+    required bool isRecurring,
+    required String? recurrenceScope,
+    required bool hasLinkedGroupCopies,
+    required bool hasGroupEventId,
+    required bool isSharingToSelectedGroups,
+  }) {
+    final isPartialScope =
+        recurrenceScope == 'single' || recurrenceScope == 'future';
+    return isRecurring &&
+        isPartialScope &&
+        (hasLinkedGroupCopies || hasGroupEventId || isSharingToSelectedGroups);
+  }
+
+  @visibleForTesting
+  static bool shouldBlockLinkedGroupSaveScope({
+    required bool hasLinkedGroupCopies,
+    required bool hasGroupEventId,
+    required bool shouldSavePersonalEvent,
+    required bool shouldSaveGroupEvent,
+  }) =>
+      (hasLinkedGroupCopies || hasGroupEventId) &&
+      !(shouldSavePersonalEvent && shouldSaveGroupEvent);
+
+  @visibleForTesting
+  static bool shouldUseAtomicGroupShareForUpdate({
+    required bool isNewEvent,
+    required bool shouldSavePersonalEvent,
+    required bool shouldSaveGroupEvent,
+    required String? recurrenceScope,
+  }) =>
+      !isNewEvent &&
+      shouldSavePersonalEvent &&
+      shouldSaveGroupEvent &&
+      recurrenceScope != 'single' &&
+      recurrenceScope != 'future';
+
+  @visibleForTesting
+  static List<String> mergeLinkedAndSelectedGroupIdsForEdit({
+    required Iterable<String> linkedGroupIds,
+    required Iterable<String> selectedGroupIds,
+  }) {
+    final result = <String>{};
+    for (final id in <String>[...linkedGroupIds, ...selectedGroupIds]) {
+      final normalized = id.trim();
+      if (normalized.isNotEmpty) {
+        result.add(normalized);
+      }
+    }
+    return result.toList(growable: false);
   }
 
   /// 장소 텍스트 변경 시 이미 저장된 좌표를 지워야 하는지 판정한다.
@@ -175,6 +244,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _saveTargetTouchedByUser = false;
   // 여러 그룹에 소속된 경우 공유할 그룹 id 집합. 기본값=자동선택된 대표 그룹 1개.
   final Set<String> _selectedGroupIds = <String>{};
+  String? _pendingAtomicCreateEventId;
 
   // 리더 지시(그룹 이벤트 코멘트) 관련
   List<GroupEventCommentModel> _leaderInstructions = const [];
@@ -968,67 +1038,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
         startAt: startAt,
         endAt: endAt,
         allDay: draft.isAllDay,
+        isMultiDay: draft.isMultiDay,
+        isCritical: draft.isCritical,
+        useStrongAlarm: draft.useStrongAlarm,
+        recurrenceRule: draft.recurrenceRule,
         recurrenceType: recurrenceType,
         createdBy: draft.userId,
         personalEventId: personalEventId,
         status: 'active',
       ),
     );
-  }
-
-  Future<GroupEventModel> _updateLinkedGroupEventFromDraft(
-    EventModel draft,
-    String groupEventId,
-  ) async {
-    final existing = await _groupEventRepository.fetchGroupEvent(groupEventId);
-    final startAt = draft.startAt;
-    if (startAt == null) {
-      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
-    }
-    return _groupEventRepository.updateGroupEvent(
-      existing.copyWith(
-        title: draft.title,
-        description: draft.memo,
-        location: draft.location,
-        startAt: startAt,
-        endAt: draft.endAt ?? _eventRangeEnd(startAt, draft.endAt),
-        allDay: draft.isAllDay,
-        recurrenceType: _groupRecurrenceTypeFor(draft.recurrenceRule),
-        personalEventId:
-            draft.id.trim().isEmpty ? existing.personalEventId : draft.id,
-      ),
-    );
-  }
-
-  /// 이미 공유된 그룹일정들 중 이번 수정 내용을 반영할 그룹을 고른다.
-  /// 기본은 전체 선택. 반환=선택된 group_event id 집합(빈 집합이면 개인만 수정),
-  /// null이면 사용자가 취소(저장 자체를 중단).
-  Future<Set<String>?> _chooseLinkedGroupsToUpdate(
-    List<GroupEventModel> linkedGroupEvents,
-  ) {
-    return showGroupMultiSelectSheet(
-      context,
-      options: linkedGroupEvents
-          .map((groupEvent) => GroupSelectOption(
-                id: groupEvent.id,
-                name: _groupNameForId(groupEvent.groupId),
-              ))
-          .toList(growable: false),
-      initiallySelected:
-          linkedGroupEvents.map((groupEvent) => groupEvent.id).toSet(),
-      title: '수정 내용을 반영할 그룹',
-      confirmLabel: '수정',
-      allowEmpty: true,
-    );
-  }
-
-  String _groupNameForId(String groupId) {
-    for (final group in _allActiveGroups) {
-      if (group.id == groupId) {
-        return group.name;
-      }
-    }
-    return '그룹';
   }
 
   String _groupRecurrenceTypeFor(String? recurrenceRule) {
@@ -1133,7 +1152,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _endAt != null && !DateUtils.isSameDay(_startAt, _endAt);
 
       final updatedEvent = EventModel(
-        id: _persistedEventId ?? '',
+        id: _isNewEvent && _shouldSavePersonalEvent && _shouldSaveGroupEvent
+            ? (_pendingAtomicCreateEventId ??= _newEventUuid())
+            : _persistedEventId ?? '',
         userId: user.id,
         title: _titleController.text.trim(),
         startAt: normalizedStartAt,
@@ -1199,31 +1220,68 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
 
       final previousStartAt = _loadedEvent?.startAt;
-      // 이미 여러 그룹에 공유된 일정이면, 연동된 그룹일정 전체를 불러와
-      // "어느 그룹에 변경을 반영할지" 체크리스트로 물어본다(기본 전체 선택).
+      // 활성 연결 그룹은 기존 공유를 보존해 함께 동기화하고, 여기서 고른
+      // 그룹을 추가 공유 대상으로 전달하기 위해 조회한다.
       final existingLinkedGroupEvents = (!_isNewEvent && _loadedEvent != null)
-          ? await _groupEventRepository
-              .getGroupEventsByPersonalEventId(_loadedEvent!.id)
+          ? await _groupEventRepository.getGroupEventsByPersonalEventId(
+              _loadedEvent!.id,
+            )
           : const <GroupEventModel>[];
-      Set<String>? groupEventIdsToUpdate;
-      // 저장 범위를 "개인 일정만"으로 명시적으로 고른 경우엔 그룹을 전혀
-      // 건드리지 않으므로 "반영할 그룹" 시트를 띄우면 안 된다. 예전엔
-      // _shouldSavePersonalEvent(=개인 저장 여부)만 봐서, personalOnly를
-      // 골라도 이미 다른 그룹에 공유돼 있던 일정이면 이 시트가 떴다.
-      if (existingLinkedGroupEvents.isNotEmpty &&
-          _shouldSavePersonalEvent &&
-          _saveTarget != ScheduleSaveTarget.personalOnly) {
-        groupEventIdsToUpdate =
-            await _chooseLinkedGroupsToUpdate(existingLinkedGroupEvents);
-        if (groupEventIdsToUpdate == null || !mounted) {
-          debugPrint(
-              'EventEditScreen save canceled: linked group edit scope sheet');
-          return;
-        }
+      final hasGroupEventId =
+          _loadedEvent?.groupEventId?.trim().isNotEmpty == true;
+      if (EventEditScreen.shouldBlockLinkedGroupSaveScope(
+        hasLinkedGroupCopies: existingLinkedGroupEvents.isNotEmpty,
+        hasGroupEventId: hasGroupEventId,
+        shouldSavePersonalEvent: _shouldSavePersonalEvent,
+        shouldSaveGroupEvent: _shouldSaveGroupEvent,
+      )) {
+        _showMessage(
+          '이미 그룹과 연결된 일정은 개인 일정과 그룹 일정이 함께 업데이트됩니다. '
+          '저장 범위에서 “개인 + 그룹”을 선택해 주세요.',
+        );
+        return;
       }
-
+      if (_shouldSavePersonalEvent &&
+          EventEditScreen.shouldBlockLinkedRecurringPartialEdit(
+            isRecurring:
+                _loadedEvent?.recurrenceRule?.trim().isNotEmpty == true,
+            recurrenceScope: recurrenceScope,
+            hasLinkedGroupCopies: existingLinkedGroupEvents.isNotEmpty,
+            hasGroupEventId: hasGroupEventId,
+            isSharingToSelectedGroups:
+                _shouldSaveGroupEvent && _selectedGroupsForSharing.isNotEmpty,
+          )) {
+        await _showLinkedRecurringScopeUnsupported();
+        return;
+      }
       EventModel? savedEvent;
-      if (_shouldSavePersonalEvent) {
+      final createAndShareAtomically =
+          _isNewEvent && _shouldSavePersonalEvent && _shouldSaveGroupEvent;
+      final updateAndShareAtomically =
+          EventEditScreen.shouldUseAtomicGroupShareForUpdate(
+        isNewEvent: _isNewEvent,
+        shouldSavePersonalEvent: _shouldSavePersonalEvent,
+        shouldSaveGroupEvent: _shouldSaveGroupEvent,
+        recurrenceScope: recurrenceScope,
+      );
+      if (createAndShareAtomically) {
+        final targetGroups = _selectedGroupsForSharing;
+        savedEvent = await _repository.createEventWithGroupShares(
+          updatedEvent,
+          targetGroups.map((group) => group.id).toList(growable: false),
+        );
+      } else if (updateAndShareAtomically) {
+        final targetGroupIds =
+            EventEditScreen.mergeLinkedAndSelectedGroupIdsForEdit(
+          linkedGroupIds:
+              existingLinkedGroupEvents.map((event) => event.groupId),
+          selectedGroupIds: _selectedGroupsForSharing.map((group) => group.id),
+        );
+        savedEvent = await _repository.updateEventWithGroupShares(
+          updatedEvent,
+          targetGroupIds,
+        );
+      } else if (_shouldSavePersonalEvent) {
         if (_isNewEvent) {
           savedEvent = await _repository.createEvent(updatedEvent);
         } else if (recurrenceScope == 'single' && _loadedEvent != null) {
@@ -1268,35 +1326,26 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
 
       if (existingLinkedGroupEvents.isNotEmpty) {
-        // 이미 공유된 일정 수정: 선택된 연동 그룹일정에만 변경을 전파한다.
-        // (신규 그룹 추가는 생성 흐름에서만, 여기선 기존 공유 그룹만 대상)
-        if (savedEvent != null && groupEventIdsToUpdate != null) {
-          for (final groupEvent in existingLinkedGroupEvents) {
-            if (groupEventIdsToUpdate.contains(groupEvent.id)) {
-              await _updateLinkedGroupEventFromDraft(savedEvent, groupEvent.id);
-            }
-          }
-        }
+        // The atomic update-and-share RPC already updates linked copies and
+        // idempotently adds any newly selected groups. Never split these writes.
       } else if (_shouldSaveGroupEvent) {
         // 아직 공유 안 된 일정을 그룹에 공유: 선택한 그룹마다 그룹일정 생성.
         final targetGroups = _selectedGroupsForSharing;
-        if (savedEvent == null) {
+        if (createAndShareAtomically || updateAndShareAtomically) {
+          // Personal write and all selected group copies committed atomically.
+        } else if (savedEvent == null) {
           for (final group in targetGroups) {
             await _createGroupEventFromDraft(updatedEvent, group: group);
           }
         } else {
-          String? primaryGroupEventId;
-          for (final group in targetGroups) {
-            final createdGroupEvent = await _createGroupEventFromDraft(
-              savedEvent,
-              group: group,
-              personalEventId: savedEvent.id,
-            );
-            primaryGroupEventId ??= createdGroupEvent?.id;
-          }
-          if (primaryGroupEventId != null) {
+          final createdGroupEvents =
+              await _groupEventRepository.sharePersonalEventWithGroups(
+            savedEvent.id,
+            targetGroups.map((group) => group.id).toList(growable: false),
+          );
+          if (createdGroupEvents.isNotEmpty) {
             savedEvent = await _repository.updateEvent(
-              savedEvent.copyWith(groupEventId: primaryGroupEventId),
+              savedEvent.copyWith(groupEventId: createdGroupEvents.first.id),
             );
           }
         }
@@ -2086,6 +2135,24 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 flex: 2,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLinkedRecurringScopeUnsupported() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('그룹 공유 반복 일정'),
+        content: const Text(
+          '그룹과 공유 중인 반복 일정은 ‘이 일정만’ 또는 ‘이후 모든 일정’ 수정이 아직 지원되지 않아요. 개인 일정과 그룹 일정이 달라지는 것을 막기 위해 저장하지 않았습니다. ‘전체 반복 일정’을 선택해 수정하거나 취소해 주세요.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('확인'),
           ),
         ],
       ),

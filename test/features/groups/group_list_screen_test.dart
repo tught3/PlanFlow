@@ -1,15 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_deletion_notice_model.dart';
 import 'package:planflow/features/groups/models/group_invite_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/providers/group_context_provider.dart';
 import 'package:planflow/features/groups/providers/group_invite_provider.dart';
 import 'package:planflow/features/groups/repositories/group_invite_repository.dart';
+import 'package:planflow/features/groups/repositories/group_deletion_notice_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_list_screen.dart';
+import 'package:planflow/providers/auth_provider.dart';
 
 class FakeGroupRepository extends GroupRepository {
   FakeGroupRepository({
@@ -110,6 +115,64 @@ class FakeGroupInviteRepository extends GroupInviteRepository {
   }
 }
 
+class FakeGroupDeletionNoticeRepository extends GroupDeletionNoticeRepository {
+  FakeGroupDeletionNoticeRepository({List<GroupDeletionNoticeModel>? notices})
+      : _notices = List<GroupDeletionNoticeModel>.of(
+          notices ?? const <GroupDeletionNoticeModel>[],
+        );
+
+  final List<GroupDeletionNoticeModel> _notices;
+  final List<String> acknowledgedIds = <String>[];
+
+  @override
+  Future<List<GroupDeletionNoticeModel>> listPendingForUser(
+          String userId) async =>
+      List<GroupDeletionNoticeModel>.of(_notices);
+
+  @override
+  Future<void> acknowledge({
+    required String noticeId,
+    required String userId,
+  }) async {
+    acknowledgedIds.add(noticeId);
+    _notices.removeWhere((notice) => notice.id == noticeId);
+  }
+}
+
+class PendingGroupDeletionNoticeRepository
+    extends GroupDeletionNoticeRepository {
+  final Completer<void> requestStarted = Completer<void>();
+  final Completer<List<GroupDeletionNoticeModel>> response =
+      Completer<List<GroupDeletionNoticeModel>>();
+  final List<String> queriedUserIds = <String>[];
+  final List<String> acknowledgedIds = <String>[];
+
+  @override
+  Future<List<GroupDeletionNoticeModel>> listPendingForUser(
+    String userId,
+  ) {
+    queriedUserIds.add(userId);
+    if (!requestStarted.isCompleted) requestStarted.complete();
+    return response.future;
+  }
+
+  @override
+  Future<void> acknowledge({
+    required String noticeId,
+    required String userId,
+  }) async {
+    acknowledgedIds.add(noticeId);
+  }
+}
+
+GroupDeletionNoticeModel _deletionNotice(String id, String groupName) =>
+    GroupDeletionNoticeModel(
+      id: id,
+      deletedGroupId: 'deleted-$id',
+      groupName: groupName,
+      deletedAt: DateTime.utc(2026, 9, 29),
+    );
+
 GroupModel _group({
   required String id,
   required String name,
@@ -170,6 +233,7 @@ void main() {
         home: GroupListScreen(
           provider: provider,
           inviteProvider: inviteProvider,
+          deletionNoticeRepository: FakeGroupDeletionNoticeRepository(),
           currentUserIdOverride: 'user-1',
         ),
       ),
@@ -224,6 +288,7 @@ void main() {
           home: GroupListScreen(
             provider: provider,
             inviteProvider: inviteProvider,
+            deletionNoticeRepository: FakeGroupDeletionNoticeRepository(),
             currentUserIdOverride: 'user-1',
           ),
         ),
@@ -285,6 +350,7 @@ void main() {
         home: GroupListScreen(
           provider: provider,
           inviteProvider: inviteProvider,
+          deletionNoticeRepository: FakeGroupDeletionNoticeRepository(),
           currentUserIdOverride: 'user-1',
         ),
       ),
@@ -325,5 +391,231 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'shows each group deletion notice once and acknowledges only on OK',
+      (tester) async {
+    authProvider.setUser('user-1');
+    addTearDown(() => authProvider.setUser(null));
+    final repository = FakeGroupDeletionNoticeRepository(
+      notices: <GroupDeletionNoticeModel>[
+        _deletionNotice('notice-1', '첫 번째 그룹'),
+        _deletionNotice('notice-2', '두 번째 그룹'),
+      ],
+    );
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: const <GroupModel>[],
+        membersByGroupId: const <String, List<GroupMemberModel>>{},
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+        'display_name': '민수',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupListScreen(
+          provider: provider,
+          inviteProvider: inviteProvider,
+          deletionNoticeRepository: repository,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsOneWidget);
+    final noticeDialog = tester.widget<AlertDialog>(
+      find.byKey(const ValueKey('group-deletion-notice-dialog')),
+    );
+    expect(noticeDialog.actions, hasLength(1));
+    expect(noticeDialog.actionsAlignment, MainAxisAlignment.center);
+    expect(find.text('「첫 번째 그룹」 그룹의 리더가 그룹을 삭제했습니다. 그룹이 삭제되어 멤버에서 자동 탈퇴되었습니다.'),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('group-deletion-notice-confirm')),
+        findsOneWidget);
+    expect(repository.acknowledgedIds, isEmpty);
+
+    await tester
+        .tap(find.byKey(const ValueKey('group-deletion-notice-confirm')));
+    await tester.pumpAndSettle();
+    expect(repository.acknowledgedIds, <String>['notice-1']);
+    expect(find.text('「두 번째 그룹」 그룹의 리더가 그룹을 삭제했습니다. 그룹이 삭제되어 멤버에서 자동 탈퇴되었습니다.'),
+        findsOneWidget);
+
+    await tester
+        .tap(find.byKey(const ValueKey('group-deletion-notice-confirm')));
+    await tester.pumpAndSettle();
+    expect(repository.acknowledgedIds, <String>['notice-1', 'notice-2']);
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupListScreen(
+          provider: provider,
+          inviteProvider: inviteProvider,
+          deletionNoticeRepository: repository,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsNothing);
+  });
+
+  testWidgets('does not display a fetched notice after account changes',
+      (tester) async {
+    authProvider.setUser('account-a');
+    addTearDown(() => authProvider.setUser(null));
+    final repository = PendingGroupDeletionNoticeRepository();
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: const <GroupModel>[],
+        membersByGroupId: const <String, List<GroupMemberModel>>{},
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+        'display_name': '민수',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupListScreen(
+          provider: provider,
+          inviteProvider: inviteProvider,
+          deletionNoticeRepository: repository,
+        ),
+      ),
+    );
+    await repository.requestStarted.future;
+    authProvider.setUser('account-b');
+    repository.response.complete(<GroupDeletionNoticeModel>[
+      _deletionNotice('notice-a', 'A 그룹'),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(repository.queriedUserIds, <String>['account-a']);
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsNothing);
+    expect(repository.acknowledgedIds, isEmpty);
+  });
+
+  testWidgets('closes notice without acknowledgment when account changes',
+      (tester) async {
+    authProvider.setUser('account-a');
+    addTearDown(() => authProvider.setUser(null));
+    final repository = FakeGroupDeletionNoticeRepository(
+      notices: <GroupDeletionNoticeModel>[
+        _deletionNotice('notice-a', 'A 그룹'),
+      ],
+    );
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: const <GroupModel>[],
+        membersByGroupId: const <String, List<GroupMemberModel>>{},
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+        'display_name': '민수',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupListScreen(
+          provider: provider,
+          inviteProvider: inviteProvider,
+          deletionNoticeRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsOneWidget);
+
+    authProvider.setUser('account-b');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsNothing);
+    expect(repository.acknowledgedIds, isEmpty);
+  });
+
+  testWidgets('removes the exact hidden notice route after account changes',
+      (tester) async {
+    authProvider.setUser('account-a');
+    addTearDown(() => authProvider.setUser(null));
+    final repository = FakeGroupDeletionNoticeRepository(
+      notices: <GroupDeletionNoticeModel>[
+        _deletionNotice('notice-a', 'A 그룹'),
+      ],
+    );
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: const <GroupModel>[],
+        membersByGroupId: const <String, List<GroupMemberModel>>{},
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+        'display_name': '민수',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupListScreen(
+          provider: provider,
+          inviteProvider: inviteProvider,
+          deletionNoticeRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsOneWidget);
+
+    final navigator =
+        Navigator.of(tester.element(find.byType(GroupListScreen)));
+    unawaited(navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('covering route')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('covering route'), findsOneWidget);
+
+    authProvider.setUser('account-b');
+    await tester.pumpAndSettle();
+    expect(find.text('covering route'), findsOneWidget);
+
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('group-deletion-notice-dialog')),
+        findsNothing);
+    expect(repository.acknowledgedIds, isEmpty);
   });
 }

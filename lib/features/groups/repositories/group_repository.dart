@@ -19,6 +19,11 @@ abstract class GroupRepository {
 
   Future<List<GroupMemberModel>> listMembers(String groupId);
 
+  /// Includes soft-removed rows only for historical event-owner labels.
+  /// Member-management screens must use [listMembers] instead.
+  Future<List<GroupMemberModel>> listMembersForHistory(String groupId) async =>
+      listMembers(groupId);
+
   Future<GroupMemberModel> addMember(GroupMemberModel member);
 
   Future<GroupMemberModel> updateMember(GroupMemberModel member);
@@ -56,25 +61,21 @@ class SupabaseGroupRepository extends GroupRepository {
     SupabaseClient? client,
     String? Function()? currentUserIdProvider,
     Future<void> Function(String groupId, String userId)? ensureLeaderOfGroup,
-    Future<Map<String, dynamic>> Function(
-      String groupId,
-      String userId,
-    )? removeGroupMemberRpc,
+    Future<Map<String, dynamic>> Function(String groupId, String userId)?
+    removeGroupMemberRpc,
     Future<Map<String, dynamic>> Function(String groupId)? leaveGroupRpc,
-  })  : _client = client ?? Supabase.instance.client,
-        _currentUserIdProvider = currentUserIdProvider,
-        _ensureLeaderOfGroupOverride = ensureLeaderOfGroup,
-        _removeGroupMemberRpc = removeGroupMemberRpc,
-        _leaveGroupRpc = leaveGroupRpc;
+  }) : _client = client ?? Supabase.instance.client,
+       _currentUserIdProvider = currentUserIdProvider,
+       _ensureLeaderOfGroupOverride = ensureLeaderOfGroup,
+       _removeGroupMemberRpc = removeGroupMemberRpc,
+       _leaveGroupRpc = leaveGroupRpc;
 
   final SupabaseClient _client;
   final String? Function()? _currentUserIdProvider;
   final Future<void> Function(String groupId, String userId)?
-      _ensureLeaderOfGroupOverride;
-  final Future<Map<String, dynamic>> Function(
-    String groupId,
-    String userId,
-  )? _removeGroupMemberRpc;
+  _ensureLeaderOfGroupOverride;
+  final Future<Map<String, dynamic>> Function(String groupId, String userId)?
+  _removeGroupMemberRpc;
   final Future<Map<String, dynamic>> Function(String groupId)? _leaveGroupRpc;
 
   @override
@@ -90,8 +91,11 @@ class SupabaseGroupRepository extends GroupRepository {
 
   @override
   Future<GroupModel?> fetchGroup(String groupId) async {
-    final response =
-        await _client.from('groups').select().eq('id', groupId).maybeSingle();
+    final response = await _client
+        .from('groups')
+        .select()
+        .eq('id', groupId)
+        .maybeSingle();
     if (response == null) {
       return null;
     }
@@ -104,12 +108,15 @@ class SupabaseGroupRepository extends GroupRepository {
     // AFTER 트리거(handle_new_group → group_members INSERT)가 보이지 않아
     // is_group_member → FALSE → SELECT 정책 42501이 발생한다.
     // security definer RPC로 우회하면 트리거는 정상 작동하고 RLS 스냅샷 문제를 피할 수 있다.
-    final response = await _client.rpc('create_group_for_user', params: {
-      'p_name': group.name,
-      'p_description': group.description,
-      'p_created_by': group.createdBy,
-      'p_status': group.status,
-    });
+    final response = await _client.rpc(
+      'create_group_for_user',
+      params: {
+        'p_name': group.name,
+        'p_description': group.description,
+        'p_created_by': group.createdBy,
+        'p_status': group.status,
+      },
+    );
     return GroupModel.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
@@ -130,6 +137,21 @@ class SupabaseGroupRepository extends GroupRepository {
         .from('group_members')
         .select(_memberUserSelect)
         .eq('group_id', groupId)
+        .eq('status', 'active')
+        .order('created_at', ascending: true);
+    return response
+        .map<GroupMemberModel>(
+          (row) => GroupMemberModel.fromJson(_rowAsJson(row)),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembersForHistory(String groupId) async {
+    final response = await _client
+        .from('group_members')
+        .select(_memberUserSelect)
+        .eq('group_id', groupId)
         .order('created_at', ascending: true);
     return response
         .map<GroupMemberModel>(
@@ -142,7 +164,15 @@ class SupabaseGroupRepository extends GroupRepository {
   Future<GroupMemberModel> addMember(GroupMemberModel member) async {
     final response = await _client
         .from('group_members')
-        .insert(member.toJson(includeId: member.id.trim().isNotEmpty))
+        .upsert(<String, dynamic>{
+          'group_id': member.groupId,
+          'user_id': member.userId,
+          'role': member.role,
+          'status': 'active',
+          'joined_at': DateTime.now().toUtc().toIso8601String(),
+          'removed_at': null,
+          'removed_by': null,
+        }, onConflict: 'group_id,user_id')
         .select()
         .single();
     return GroupMemberModel.fromJson(_rowAsJson(response));
@@ -216,10 +246,13 @@ class SupabaseGroupRepository extends GroupRepository {
     String userId,
   ) async {
     final response = await _client
-        .rpc('remove_group_member', params: <String, dynamic>{
-          'group_id_input': groupId,
-          'member_user_id_input': userId,
-        })
+        .rpc(
+          'remove_group_member',
+          params: <String, dynamic>{
+            'group_id_input': groupId,
+            'member_user_id_input': userId,
+          },
+        )
         .select()
         .single();
     return _rowAsJson(response);
@@ -227,9 +260,10 @@ class SupabaseGroupRepository extends GroupRepository {
 
   Future<Map<String, dynamic>> _leaveGroupWithRpc(String groupId) async {
     final response = await _client
-        .rpc('leave_group', params: <String, dynamic>{
-          'group_id_input': groupId,
-        })
+        .rpc(
+          'leave_group',
+          params: <String, dynamic>{'group_id_input': groupId},
+        )
         .select()
         .single();
     return _rowAsJson(response);
@@ -251,10 +285,7 @@ class SupabaseGroupRepository extends GroupRepository {
 
   @override
   Future<void> deleteGroup(String groupId) async {
-    await _client.rpc(
-      'delete_group_for_user',
-      params: {'p_group_id': groupId},
-    );
+    await _client.rpc('delete_group_for_user', params: {'p_group_id': groupId});
   }
 
   Map<String, dynamic> _rowAsJson(Object row) {
