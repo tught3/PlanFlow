@@ -471,6 +471,313 @@ drop policy if exists "action_items_own" on nexusflow.action_items;
 create policy "action_items_own" on nexusflow.action_items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+create table if not exists nexusflow.industry_modes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  mode_type text not null,
+  is_active boolean not null default true,
+  custom_name text,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.industry_modes enable row level security;
+drop policy if exists "industry_modes_own" on nexusflow.industry_modes;
+create policy "industry_modes_own" on nexusflow.industry_modes
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  name text not null,
+  industry_mode text,
+  address text,
+  region text,
+  priority integer not null default 3,
+  relationship_score integer not null default 50,
+  last_contacted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table nexusflow.accounts enable row level security;
+drop policy if exists "accounts_own" on nexusflow.accounts;
+create policy "accounts_own" on nexusflow.accounts
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.contacts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  account_id uuid references nexusflow.accounts (id) on delete cascade,
+  name text not null,
+  role text,
+  department text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table nexusflow.contacts enable row level security;
+drop policy if exists "contacts_own" on nexusflow.contacts;
+create policy "contacts_own" on nexusflow.contacts
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.contact_aliases (
+  id uuid primary key default gen_random_uuid(),
+  contact_id uuid not null references nexusflow.contacts (id) on delete cascade,
+  alias text not null,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.contact_aliases enable row level security;
+drop policy if exists "contact_aliases_own" on nexusflow.contact_aliases;
+create policy "contact_aliases_own" on nexusflow.contact_aliases
+  for all using (
+    exists (
+      select 1
+      from nexusflow.contacts c
+      where c.id = contact_id
+        and c.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from nexusflow.contacts c
+      where c.id = contact_id
+        and c.user_id = auth.uid()
+    )
+  );
+
+create table if not exists nexusflow.contact_secure_vault (
+  id uuid primary key default gen_random_uuid(),
+  contact_id uuid not null references nexusflow.contacts (id) on delete cascade,
+  data_type text not null,
+  encrypted_value text not null,
+  encryption_key_hint text,
+  data_source_consent_type text,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.contact_secure_vault enable row level security;
+drop policy if exists "contact_secure_vault_own" on nexusflow.contact_secure_vault;
+create policy "contact_secure_vault_own" on nexusflow.contact_secure_vault
+  for all using (
+    exists (
+      select 1
+      from nexusflow.contacts c
+      where c.id = contact_id
+        and c.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from nexusflow.contacts c
+      where c.id = contact_id
+        and c.user_id = auth.uid()
+    )
+  );
+
+create table if not exists nexusflow.contact_availability_slots (
+  id uuid primary key default gen_random_uuid(),
+  contact_id uuid not null references nexusflow.contacts (id) on delete cascade,
+  day_of_week integer not null,
+  time_slot text not null,
+  is_available boolean not null default true,
+  note text,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.contact_availability_slots enable row level security;
+drop policy if exists "contact_availability_slots_own" on nexusflow.contact_availability_slots;
+create policy "contact_availability_slots_own" on nexusflow.contact_availability_slots
+  for all using (
+    exists (
+      select 1
+      from nexusflow.contacts c
+      where c.id = contact_id
+        and c.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from nexusflow.contacts c
+      where c.id = contact_id
+        and c.user_id = auth.uid()
+    )
+  );
+
+create table if not exists nexusflow.raw_sources (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  source_type text not null,
+  raw_text text,
+  original_file_deleted_at timestamptz,
+  user_consented_at timestamptz,
+  processed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.raw_sources enable row level security;
+drop policy if exists "raw_sources_own" on nexusflow.raw_sources;
+create policy "raw_sources_own" on nexusflow.raw_sources
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.ai_extractions (
+  id uuid primary key default gen_random_uuid(),
+  raw_source_id uuid not null references nexusflow.raw_sources (id) on delete cascade,
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  extracted_data jsonb,
+  confidence_score double precision,
+  confidence_level text,
+  status text not null default 'pending',
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.ai_extractions enable row level security;
+drop policy if exists "ai_extractions_own" on nexusflow.ai_extractions;
+create policy "ai_extractions_own" on nexusflow.ai_extractions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.validation_queue (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  extraction_id uuid not null references nexusflow.ai_extractions (id) on delete cascade,
+  queue_status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+alter table nexusflow.validation_queue enable row level security;
+drop policy if exists "validation_queue_own" on nexusflow.validation_queue;
+create policy "validation_queue_own" on nexusflow.validation_queue
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.confirmed_memories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  contact_id uuid references nexusflow.contacts (id) on delete set null,
+  account_id uuid references nexusflow.accounts (id) on delete set null,
+  memory_type text not null,
+  content text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz
+);
+alter table nexusflow.confirmed_memories enable row level security;
+drop policy if exists "confirmed_memories_own" on nexusflow.confirmed_memories;
+create policy "confirmed_memories_own" on nexusflow.confirmed_memories
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.active_signals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  account_id uuid references nexusflow.accounts (id) on delete cascade,
+  signal_type text not null,
+  signal_content text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz
+);
+alter table nexusflow.active_signals enable row level security;
+drop policy if exists "active_signals_own" on nexusflow.active_signals;
+create policy "active_signals_own" on nexusflow.active_signals
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.interaction_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  account_id uuid references nexusflow.accounts (id) on delete set null,
+  contact_id uuid references nexusflow.contacts (id) on delete set null,
+  event_type text not null,
+  summary text,
+  raw_source_id uuid references nexusflow.raw_sources (id) on delete set null,
+  occurred_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.interaction_events enable row level security;
+drop policy if exists "interaction_events_own" on nexusflow.interaction_events;
+create policy "interaction_events_own" on nexusflow.interaction_events
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.term_dictionary (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  industry_mode text,
+  term text not null,
+  meaning text,
+  dict_scope text not null default 'user',
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.term_dictionary enable row level security;
+drop policy if exists "term_dictionary_own" on nexusflow.term_dictionary;
+create policy "term_dictionary_own" on nexusflow.term_dictionary
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.term_aliases (
+  id uuid primary key default gen_random_uuid(),
+  term_id uuid not null references nexusflow.term_dictionary (id) on delete cascade,
+  alias text not null,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.term_aliases enable row level security;
+drop policy if exists "term_aliases_own" on nexusflow.term_aliases;
+create policy "term_aliases_own" on nexusflow.term_aliases
+  for all using (
+    exists (
+      select 1
+      from nexusflow.term_dictionary t
+      where t.id = term_id
+        and t.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from nexusflow.term_dictionary t
+      where t.id = term_id
+        and t.user_id = auth.uid()
+    )
+  );
+
+create table if not exists nexusflow.quick_actions (
+  id uuid primary key default gen_random_uuid(),
+  industry_mode text,
+  label text not null,
+  action_type text,
+  dict_scope text not null default 'system',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists nexusflow.insights (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  account_id uuid references nexusflow.accounts (id) on delete set null,
+  insight_type text not null,
+  content text not null,
+  status text not null default 'new',
+  created_at timestamptz not null default now(),
+  expires_at timestamptz
+);
+alter table nexusflow.insights enable row level security;
+drop policy if exists "insights_own" on nexusflow.insights;
+create policy "insights_own" on nexusflow.insights
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.insight_feedback (
+  id uuid primary key default gen_random_uuid(),
+  insight_id uuid not null references nexusflow.insights (id) on delete cascade,
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  feedback_type text not null,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.insight_feedback enable row level security;
+drop policy if exists "insight_feedback_own" on nexusflow.insight_feedback;
+create policy "insight_feedback_own" on nexusflow.insight_feedback
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists nexusflow.shared_learning_patterns (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references shared.user_profiles (id) on delete cascade,
+  pattern_type text,
+  pattern_data jsonb,
+  created_at timestamptz not null default now()
+);
+alter table nexusflow.shared_learning_patterns enable row level security;
+drop policy if exists "shared_learning_patterns_own" on nexusflow.shared_learning_patterns;
+create policy "shared_learning_patterns_own" on nexusflow.shared_learning_patterns
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
