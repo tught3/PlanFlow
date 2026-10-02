@@ -776,14 +776,34 @@ abstract class AppLocalizations {
   /// **'나중에'**
   String get termsGateLater;
 
+  /// No description provided for @appUpdateAvailableTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'업데이트 가능'**
   String get appUpdateAvailableTitle;
 
+  /// No description provided for @appUpdateAvailableMessage.
+  ///
+  /// In ko, this message translates to:
+  /// **'새 버전이 출시되었습니다. App Store에서 업데이트하시겠어요?'**
   String get appUpdateAvailableMessage;
 
+  /// No description provided for @appUpdateLater.
+  ///
+  /// In ko, this message translates to:
+  /// **'나중에'**
   String get appUpdateLater;
 
+  /// No description provided for @appUpdateNow.
+  ///
+  /// In ko, this message translates to:
+  /// **'업데이트'**
   String get appUpdateNow;
 
+  /// No description provided for @appUpdateStoreOpenFailed.
+  ///
+  /// In ko, this message translates to:
+  /// **'App Store를 열지 못했습니다. 나중에 다시 시도해 주세요.'**
   String get appUpdateStoreOpenFailed;
 }
 
