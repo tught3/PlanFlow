@@ -128,6 +128,23 @@ class AdConsentService {
   /// GDPR/EEA 사용자에게 동의 폼을 띄워야 하는지.
   bool get requiresConsentForm => RemoteConfigService.rewardedAdEnabled;
 
+  /// 사용자가 "개인정보 옵션" 폼을 열 수 있는 상태인지 (EEA/규제 지역).
+  /// UMP ConsentInformation.privacyOptionsRequirementStatus 래퍼.
+  /// - true: 설정 화면에 "광고 개인정보 설정" 진입 버튼 표시.
+  /// - false: 비-EEA 또는 이미 동의 완료 → 버튼 숨김.
+  /// - Remote Config 마스터 스위치 OFF면 항상 false.
+  Future<bool> get privacyOptionsRequired async {
+    if (!RemoteConfigService.rewardedAdEnabled) {
+      return false;
+    }
+    try {
+      return ConsentInformation.instance.privacyOptionsRequirementStatus ==
+          ConsentStatus.required;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 사용자 요청 시 개인정보 옵션 폼 표시.
   /// - EEA/규제 지역 + 동의 상태 변경을 원하는 경우 사용.
   /// - 광고 흐름과 분리된 1회성 호출.

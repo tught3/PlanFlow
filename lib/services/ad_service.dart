@@ -94,11 +94,17 @@ class AdService {
     _loadingAd = false;
   }
 
-  /// 운영 단위 ID (Remote Config). 비어 있으면 테스트 ID로 폴백.
+  /// 광고 단위 ID 결정.
+  /// - debug/profile: Google 공식 테스트 ID 고정 (운영 ID 사용 금지, 정책 위반 방지)
+  /// - release: Remote Config의 운영 ID 사용. 비어 있으면 광고 기능 OFF (빈 문자열 반환).
   String _resolveAdUnitId() {
+    if (kDebugMode || kProfileMode) {
+      return _kTestRewardedAdUnitIdAndroid;
+    }
     final configured = RemoteConfigService.rewardedAdUnitIdAndroid.trim();
     if (configured.isEmpty) {
-      return _kTestRewardedAdUnitIdAndroid;
+      // Release에서 운영 ID 없으면 안전하게 기능 OFF → 호출자가 빈 문자열 체크 후 false 반환.
+      return '';
     }
     return configured;
   }
@@ -308,6 +314,11 @@ class AdService {
     _loadingAd = true;
     _lastLoadAt = DateTime.now();
     final adUnitId = _resolveAdUnitId();
+    if (adUnitId.isEmpty) {
+      // Release에서 운영 ID 미설정: 광고 기능 OFF.
+      _loadingAd = false;
+      return false;
+    }
     try {
       final completer = Completer<bool>();
       RewardedAd.load(
@@ -345,21 +356,27 @@ class AdService {
   }
 
   /// 캐시된 _rewardedAd를 표시. 광고가 닫히면 dispose.
+  /// - 보상은 onUserEarnedReward 콜백에서만 true로 인정 (사용자가 광고 끝까지 시청).
+  /// - 중간에 닫으면 false 반환 (보상 미부여).
   Future<bool> _showRewardedAd() async {
     final ad = _rewardedAd;
     if (ad == null) {
       return false;
     }
     final completer = Completer<bool>();
+    // 보상 획득 여부: 이 표시 흐름 안에서만 유효. 표시 시작마다 false로 초기화.
+    bool rewardEarned = false;
     try {
       ad.fullScreenContentCallback = FullScreenContentCallback<RewardedAd>(
         onAdDismissedFullScreenContent: (RewardedAd closedAd) {
           closedAd.dispose();
           _rewardedAd = null;
-          // 보상은 onUserEarnedReward에서 부여한다.
+          // 보상은 onUserEarnedReward에서 true로 세팅된 경우에만 인정.
           if (!completer.isCompleted) {
-            completer.complete(true);
+            completer.complete(rewardEarned);
           }
+          // 다음 광고 미리 로드 (사용자 UX 매끄럽게).
+          _preloadNextAd();
         },
         onAdFailedToShowFullScreenContent: (RewardedAd failedAd, AdError error) {
           debugPrint(
@@ -371,12 +388,15 @@ class AdService {
           if (!completer.isCompleted) {
             completer.complete(false);
           }
+          // 실패 후에도 다음을 위해 미리 로드.
+          _preloadNextAd();
         },
       );
       await ad.show(
         onUserEarnedReward: (AdWithoutView rewardedAd, RewardItem reward) {
           // 보상 grant는 호출자가 showForParseSchedule/showForVoiceConversation에서
-          // 명시적으로 처리한다. 여기서는 호출만 받는다.
+          // 명시적으로 처리한다. 여기서는 표시만.
+          rewardEarned = true;
         },
       );
       // show()는 풀스크린 닫힘까지 await하지 않는다. completer는
@@ -392,6 +412,17 @@ class AdService {
       }
       return false;
     }
+  }
+
+  /// 다음 광고를 백그라운드에서 미리 로드 (fire-and-forget).
+  /// _loadRewardedAd의 throttle/dedup가 안전하게 처리한다.
+  /// 다음 광고 표시가 매끄럽게 이어지도록.
+  void _preloadNextAd() {
+    unawaited(_loadRewardedAd().catchError((Object error, StackTrace stackTrace) {
+      debugPrint('AdService._preloadNextAd failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }));
   }
 }
 

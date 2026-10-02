@@ -1,0 +1,33 @@
+{
+  "taskId": "google-oauth-400-20260906",
+  "createdAt": "2026-09-06T00:00:00+09:00",
+  "originalRequest": "Google quick-login that worked about one to two hours ago now reaches a Google 400 page; identify and safely fix the cause.",
+  "scope": "PlanFlow-AppsInToss Google Calendar OAuth request and its installed-runtime configuration; no credentials, account data, or Google Cloud changes without specific authority.",
+  "status": "planning",
+  "roles": [
+    {
+      "role": "Explorer",
+      "agent": "flux_explorer",
+      "mappedModel": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "assignment": "Read-only authoritative runtime and Google OAuth investigation.",
+      "state": "complete",
+      "changedFiles": [],
+      "testEvidence": "Flutter test was started but no final result was obtained.",
+      "summary": "ArticleFlow is not the Google-login runtime. PlanFlow-AppsInToss settings delegates Calendar login to CalendarSyncService; Android client/server ID and Google OAuth registration/build identity are the likely fault domain."
+    },
+    {
+      "role": "Planner",
+      "agent": "flux_planner",
+      "mappedModel": "gpt-5.6-terra",
+      "reasoningEffort": "high",
+      "assignment": "Define safe diagnosis, minimal remediation, verification, and external authority gates.",
+      "state": "running"
+    }
+  ],
+  "changedFiles": [],
+  "tests": [],
+  "review": null,
+  "finalVerdict": null,
+  "lastUpdatedAt": "2026-09-06T00:00:00+09:00"
+}

@@ -27,6 +27,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/analytics_service.dart';
 import '../../services/remote_config_service.dart';
+import '../../services/ad_consent_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';

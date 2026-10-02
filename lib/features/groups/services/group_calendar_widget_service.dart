@@ -201,7 +201,11 @@ class GroupCalendarWidgetService {
       final localEnd = planflowLocal(occ.endAt);
       final startDay = DateTime(localStart.year, localStart.month, localStart.day);
       final endDay = DateTime(localEnd.year, localEnd.month, localEnd.day);
-      final displayName = displayNames[occ.createdBy] ?? '?';
+      // 작성자가 탈퇴한 경우(occ.createdBy == null)는 '?' 대신 '탈퇴한 사용자'를
+      // 사용해 위젯 셀에서 어떤 일정이 누구 작성인지 알아볼 수 있게 한다.
+      final displayName = occ.createdBy == null
+          ? '탈퇴한 사용자'
+          : (displayNames[occ.createdBy] ?? '?');
       for (var d = startDay;
           !d.isAfter(endDay);
           d = d.add(const Duration(days: 1))) {

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/analytics_service.dart';
 import '../core/env.dart';
 import '../widgets/voice_conversation_ad_dialog.dart';
+import 'ad_consent_service.dart';
 import 'ad_service.dart';
 import 'remote_config_service.dart';
 
@@ -123,7 +124,28 @@ class VoiceConversationAdGate {
       return;
     }
 
-    // 3. 무료 사용 횟수 확인.
+    // 3. 광고 요청 가능 여부(consent) 확인.
+    //    - consent 미획득/거절/제출필요 상태면 광고 띄울 수 없다.
+    //    - free_pass 정책이면 이 세션에 한해 무료 진입 허용.
+    //    - 그 외 정책이면 기능 일시 사용 불가로 거부.
+    final canRequestAds = await AdConsentService.instance.canRequestAdsLive();
+    if (!canRequestAds) {
+      final policyOnConsentFail = RemoteConfigService.rewardAdFailurePolicy;
+      await AnalyticsService.logVoiceConvGateBlocked(
+        reason: 'consent_not_granted',
+      );
+      if (policyOnConsentFail == 'free_pass') {
+        await AnalyticsService.logVoiceConvEntered(
+          source: 'consent_not_granted_free_pass',
+        );
+        onEnterAllowed();
+        return;
+      }
+      // 'retry' 또는 'feature_unavailable' (default 폴백 포함).
+      return;
+    }
+
+    // 4. 무료 사용 횟수 확인.
     final remaining = await getRemainingFreeTrialCount(userId);
     if (remaining != null && !isAdRequired(remaining)) {
       final used = await useFreeTrial(userId);

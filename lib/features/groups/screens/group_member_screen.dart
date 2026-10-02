@@ -112,17 +112,24 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
   ) {
     final result = <String, _MemberShareStats>{};
     for (final event in events) {
+      // createdBy가 null(= 작성자 계정이 삭제된 일정)은 멤버별 통계의 키로
+      // 쓸 수 없으므로 집계에서 제외한다. 탈퇴한 사용자가 만든 일정은
+      // 별도 통계가 의미 없고, Map의 non-null 키 계약을 지키기 위함.
+      final createdBy = event.createdBy;
+      if (createdBy == null) {
+        continue;
+      }
       final activityAt = event.startAt;
-      final existing = result[event.createdBy];
+      final existing = result[createdBy];
       if (existing == null) {
-        result[event.createdBy] = _MemberShareStats(
+        result[createdBy] = _MemberShareStats(
           sharedCount: 1,
           lastActivityAt: activityAt,
         );
         continue;
       }
       final nextActivityAt = _laterOf(existing.lastActivityAt, activityAt);
-      result[event.createdBy] = _MemberShareStats(
+      result[createdBy] = _MemberShareStats(
         sharedCount: existing.sharedCount + 1,
         lastActivityAt: nextActivityAt,
       );

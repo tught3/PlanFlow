@@ -366,7 +366,8 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
                         key: ValueKey<String>(
                             'group-dashboard-event-${event.id}'),
                         event: event,
-                        ownerName: memberNames[event.createdBy],
+                        ownerName: memberNames[event.createdBy] ??
+                            (event.createdBy == null ? '탈퇴한 사용자' : null),
                       ),
                     ),
                 ],

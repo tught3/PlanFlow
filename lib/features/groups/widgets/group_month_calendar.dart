@@ -34,7 +34,9 @@ class GroupMonthCalendar extends StatefulWidget {
   final DateTime? initialSelectedDay;
 
   /// createdBy(userId) → 표시할 이름. null이면 소유자 행을 숨긴다.
-  final String? Function(String createdBy)? ownerNameOf;
+  /// createdBy 자체가 null(=작성자 계정 삭제)인 경우에도 호출되며, 그땐
+  /// null을 반환해 "+N명" 같은 요약 줄로 흡수되거나 숨김 처리되게 한다.
+  final String? Function(String? createdBy)? ownerNameOf;
 
   /// 이전/다음 버튼 또는 '오늘' 버튼을 누르면 호출된다.
   final void Function(DateTime month) onMonthChanged;
@@ -394,6 +396,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
   /// 그날 그룹 일정을 작성자(createdBy)별로 집계해 "이름 N건" 줄 목록을
   /// 만든다. 건수가 많은 순으로 정렬하고, 표시할 멤버가 너무 많으면
   /// 마지막 줄을 "+N명"으로 요약한다(칸이 무한정 늘어나는 것을 방지).
+  /// createdBy가 null(=작성자 계정 삭제)인 일정은 집계에서 제외한다.
   List<String> _buildMemberCountLines(DateTime day) {
     final dayEvents = _dayIndex[day];
     if (dayEvents == null || dayEvents.isEmpty) {
@@ -401,7 +404,11 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     }
     final counts = <String, int>{};
     for (final event in dayEvents) {
-      counts.update(event.createdBy, (value) => value + 1, ifAbsent: () => 1);
+      final createdBy = event.createdBy;
+      if (createdBy == null) {
+        continue;
+      }
+      counts.update(createdBy, (value) => value + 1, ifAbsent: () => 1);
     }
     final entries = counts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));

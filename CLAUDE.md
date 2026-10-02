@@ -19,11 +19,11 @@
 - 프로젝트 노트 (PlanFlow AppsInToss): `03_Projects/FLUXSTUDIO/planflow-appsintoss.md`
 
 ## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 96개). 작업과 관련 있어 보이면 열람할 것.
+전체 목록: `04_Memory/Preference/` (status: confirmed, 총 99개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
-- **context_compaction_before_instruction**: 모든 도구(Claude Code/Desktop, Codex Desktop/CLI, OpenCode) 공통 규칙. 각 세션에서 새 지시가 내려올 때마다(단순 조회·... (`04_Memory/Preference/context_compaction_before_instruction.md`)
-- **push_default_after_commit_policy_reversal**: 커밋이 성공(exit 0)하면 기본적으로 즉시 push한다. "push까지 해달라"는 매번 확인·매번 지시를 기다리지 않는다. CEO가 그 자리에서 명시적으로 "... (`04_Memory/Preference/push_default_after_commit_policy_reversal.md`)
-- **audit_then_stop_handoff_for_cheaper_implementation**: 비단순 작업에서 고성능(고비용) 모델이 감사·조사·설계를 끝내면 구현에 들어가기 직전에 반드시 멈추고 CEO에게 인계 보고한다. CEO가 모델을 바꿔(더 저렴한... (`04_Memory/Preference/audit_then_stop_handoff_for_cheaper_implementation.md`)
-- **stage_handoff_with_model_recommendation**: 鍮꾨떒???묒뾽??紐⑤뱺 ?④퀎 寃쎄퀎(議곗궗?믨뎄?? 援ы쁽?믩━酉? 由щ럭?믪옱?묒뾽, ?ъ옉?끸넂?꾨즺)?먯꽌 諛섎뱶??硫덉텛怨?CEO?먭쾶 ?ㅼ쓬 ?④퀎?... (`04_Memory/Preference/stage_handoff_with_model_recommendation.md`)
-- **하던거_게속해줘**: 하던거 게속해줘 (`04_Memory/Preference/하던거_게속해줘.md`)
+- **desktop_commander_continuity_and_stale_cleanup**: Desktop Commander를 사용하는 모든 ChatGPT 세션은 중간 연결 단절이나 응답 중단 뒤 사용자가 `계속`, `이어줘`, `resume` 등을 말했... (`04_Memory/Preference/desktop_commander_continuity_and_stale_cleanup.md`)
+- **최종_검토를_지금_종료하고_수행한_명령_exit_code_판정_남은_blocker를_간**: 최종 검토를 지금 종료하고 수행한 명령·exit code·판정·남은 blocker를 간결하게 보고하세요. 추가 작업/대기는 하지 마세요. (`04_Memory/Preference/최종_검토를_지금_종료하고_수행한_명령_exit_code_판정_남은_blocker를_간.md`)
+- **계속해**: 계속해 (`04_Memory/Preference/계속해.md`)
+- **답변하고_마무리해_그리고_앞으로는_새세션이나_새워크트리를_만들어서_진행하지말고_서브에이**: 답변하고 마무리해. (`04_Memory/Preference/답변하고_마무리해_그리고_앞으로는_새세션이나_새워크트리를_만들어서_진행하지말고_서브에이.md`)
+- **no_visible_console_windows**: 사용자가 일부러 띄운 창을 제외한 모든 프로세스는 화면에 보이면 안 된다. 백그라운드·예약·스크립트 실행이 검은 콘솔 창(깜빡임 포함)을 만드는 것은 결함이다. (`04_Memory/Preference/no_visible_console_windows.md`)

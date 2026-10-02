@@ -139,7 +139,13 @@ class SupabaseGroupDashboardRepository extends GroupDashboardRepository {
     final counts = <String, int>{};
     final lastSharedAt = <String, DateTime>{};
     for (final event in events) {
+      // 작성자 계정이 삭제되어 createdBy가 null인 일정은 멤버별 통계에
+      // 포함되지 않도록 건너뛴다. counts/lastSharedAt 맵의 키는 String
+      // (non-null) 계약이라 null 키를 그대로 쓰면 런타임 에러가 난다.
       final userId = event.createdBy;
+      if (userId == null) {
+        continue;
+      }
       counts[userId] = (counts[userId] ?? 0) + 1;
       final candidate = event.createdAt ?? event.startAt;
       final current = lastSharedAt[userId];

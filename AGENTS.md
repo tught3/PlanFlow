@@ -10,14 +10,14 @@
 - 프로젝트 노트 (PlanFlow AppsInToss): `03_Projects/FLUXSTUDIO/planflow-appsintoss.md`
 
 ## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 7개). 작업과 관련 있어 보이면 열람할 것.
+전체 목록: `04_Memory/Preference/` (status: confirmed, 총 8개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
-- **stage_handoff_with_model_recommendation**: 鍮꾨떒???묒뾽??紐⑤뱺 ?④퀎 寃쎄퀎(議곗궗?믨뎄?? 援ы쁽?믩━酉? 由щ럭?믪옱?묒뾽, ?ъ옉?끸넂?꾨즺)?먯꽌 諛섎뱶??硫덉텛怨?CEO?먭쾶 ?ㅼ쓬 ?④퀎?... (`04_Memory/Preference/stage_handoff_with_model_recommendation.md`)
-- **auto-finish-after-each-task**: 각 작업 단위가 다 끝나면 (세션 종료뿐 아니라 매 작업 완료 시점마다) 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든, 컴퓨터가 껐다 켜져도. (`04_Memory/Preference/auto-finish-after-each-task.md`)
+- **no_visible_console_windows**: 사용자가 일부러 띄운 창을 제외한 모든 프로세스는 화면에 보이면 안 된다. 백그라운드·예약·스크립트 실행이 검은 콘솔 창(깜빡임 포함)을 만드는 것은 결함이다. (`04_Memory/Preference/no_visible_console_windows.md`)
+- **instruction_md_auto_optimize**: 모든 세션·모든 도구에서 AGENTS.md·CLAUDE.md·preference 등 지시 문서를 추가/변경/삭제할 때, CEO에게 요청받지 않아도 자동으로 최적화... (`04_Memory/Preference/instruction_md_auto_optimize.md`)
+- **auto-finish-after-each-task**: 모든 프로젝트·모든 세션·모든 코딩 프로그램에서, 작업 단위가 실제로 완료될 때마다 "마무리해" 지시 없이 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든,... (`04_Memory/Preference/auto-finish-after-each-task.md`)
 - **humanlike-cadence-naver-actions**: Naver 계열 액션은 사람이 하는 것처럼 일정하고 인간적인 cadence로 실행해야 한다. 기계적인 high-throughput 패턴 (예: sub-1초/요청,... (`04_Memory/Preference/humanlike-cadence-naver-actions.md`)
 - **pro-main-relay-pipeline**: opencode 메인 세션(사용자 창) 진입 모델은 MiniMax-M3다 (OC-P14, 2026-08-16). 진입 에이전트(pro-main)는 사용자 지시를... (`04_Memory/Preference/pro-main-relay-pipeline.md`)
-- **pipeline-dispatch-visibility**: 파이프라인으로 디스패치된 사용자 요청도 원문이 그대로 보여야 한다. 디스패처가 원문을 지우거나 교체하는 것 금지 — 핸드오프 안내는 원문 뒤에 "추가"한다. 핸드... (`04_Memory/Preference/pipeline-dispatch-visibility.md`)
 
 <!-- [WIKI:END] -->
 

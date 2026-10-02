@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,6 +8,7 @@ import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../models/group_backup_model.dart';
 import '../providers/deleted_groups_provider.dart';
+import '../services/group_cleanup_service.dart';
 
 class DeletedGroupsScreen extends StatefulWidget {
   const DeletedGroupsScreen({super.key});
@@ -112,13 +115,26 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
     }
     try {
       final groupName = _groupNameFromSnapshot(backup);
-      await _provider.restore(backup.id);
+      final restored = await _provider.restore(backup.id);
       if (!mounted) {
         return;
       }
       messenger.showSnackBar(
         SnackBar(content: Text('"$groupName" 복원 완료')),
       );
+      // restore RPC는 백업 행(GroupBackupModel)을 반환한다. backup.groupId는
+      // 원본(보관됐던) 그룹 id이고 새 group_id는 응답에 포함되지 않는다.
+      // onGroupRestored의 현재 구현(위젯·프로바이더 갱신 + no-op 알람 프라이밍)은
+      // groupId를 실질적으로 사용하지 않으므로 원본 id를 전달한다.
+      // (group_detail_screen.dart:520-532 의 기존 best practice와 동일 패턴.)
+      if (restored != null) {
+        unawaited(
+          GroupCleanupService.instance.onGroupRestored(
+            restored.groupId,
+            userId: Supabase.instance.client.auth.currentUser?.id,
+          ),
+        );
+      }
       // restore RPC는 백업 행만 반환. 새 그룹은 새 group_id를 받아낸다.
       // 클라이언트에서 같은 이름의 active 그룹을 찾아 상세로 이동.
       final response = await Supabase.instance.client

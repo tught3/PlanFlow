@@ -150,8 +150,12 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     }
   }
 
-  /// 공유자 표시 이름: 멤버 맵 우선, 없으면 userId 앞 8자
-  String _resolveDisplayName(String userId) {
+  /// 공유자 표시 이름: 멤버 맵 우선, 없으면 userId 앞 8자.
+  /// userId가 null이면 작성자 계정이 삭제된 경우로 보고 '탈퇴한 사용자'를 반환한다.
+  String _resolveDisplayName(String? userId) {
+    if (userId == null) {
+      return '탈퇴한 사용자';
+    }
     final name = _memberNames[userId];
     if (name != null && name.isNotEmpty) return name;
     return userId.length > 8 ? userId.substring(0, 8) : userId;

@@ -5,7 +5,7 @@ class GroupEventCommentModel {
     required this.id,
     required this.groupEventId,
     required this.groupId,
-    required this.authorUserId,
+    this.authorUserId,
     required this.targetUserId,
     required this.content,
     this.confirmedAt,
@@ -18,7 +18,7 @@ class GroupEventCommentModel {
       id: requiredStringValue(json['id'], 'id'),
       groupEventId: requiredStringValue(json['group_event_id'], 'group_event_id'),
       groupId: requiredStringValue(json['group_id'], 'group_id'),
-      authorUserId: requiredStringValue(json['author_user_id'], 'author_user_id'),
+      authorUserId: optionalStringValue(json['author_user_id']),
       targetUserId: requiredStringValue(json['target_user_id'], 'target_user_id'),
       content: requiredStringValue(json['content'], 'content'),
       confirmedAt: dateTimeValue(json['confirmed_at']),
@@ -30,7 +30,7 @@ class GroupEventCommentModel {
   final String id;
   final String groupEventId;
   final String groupId;
-  final String authorUserId;
+  final String? authorUserId;
   final String targetUserId;
   final String content;
   final DateTime? confirmedAt;
