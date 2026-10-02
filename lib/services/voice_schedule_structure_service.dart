@@ -559,6 +559,13 @@ class VoiceScheduleStructureService {
           ' ',
         )
         .replaceAll(RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)'), ' ')
+        // 숫자 없는 고아 시간 조사 제거:
+        // "2시간 뒤에" -> GPT가 "2시간"만 떼고 "뒤에"만 남긴 경우 등 처리.
+        // 단어 경계(공백/문자열 시작·끝)로만 매칭해 "뒤풀이" 등 일반 단어 오제거 방지.
+        .replaceAll(
+          RegExp(r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가?|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])'),
+          ' ',
+        )
         .replaceAll(
           (shouldPreserveRelativeDayWords(referenceText ?? title)
               ? RegExp(
@@ -1302,9 +1309,33 @@ class VoiceScheduleStructureService {
     if (isOnlyScheduleMetadata(normalized)) {
       return true;
     }
-    return RegExp(
+    if (RegExp(
       r'^(?:오늘|내일|모레|글피|오전|오후|아침|낮|점심|저녁|밤|새벽|오전중|오후중|오전쯤|오후쯤)$',
-    ).hasMatch(normalized.replaceAll(RegExp(r'\s+'), ''));
+    ).hasMatch(normalized.replaceAll(RegExp(r'\s+'), ''))) {
+      return true;
+    }
+    // 동사 어간 + 조사 조각("간 뒤", "한 뒤", "온 뒤" 등)을 비명사로 거부.
+    // 한국어 동사 어간(한 글자 이상) + 공백 + 후치(뒤/후/에/으로/까지 등) 패턴.
+    if (RegExp(
+      r'^[가-힣]{1,4}\s+(?:뒤|후|에|으로|까지|서|부터)(?:에|로|서)?$',
+    ).hasMatch(normalized)) {
+      return true;
+    }
+    // 조사/연결어미로만 구성된 조각을 비명사로 거부.
+    if (RegExp(
+      r'^(?:뒤|후|에|으로|까지|서|부터|이후|그후|그뒤|뒤에|후에|뒤로|후로)+$',
+    ).hasMatch(normalized.replaceAll(RegExp(r'\s+'), ''))) {
+      return true;
+    }
+    // 순수 동사형(어미 "-ㄴ/은/는/고/서" 등으로 끝나는 짧은 조각)을 비명사로 거부.
+    // 단, 3글자 이상의 명사 후보는 통과시켜 "강남역" 등을 보호.
+    if (normalized.length <= 4 &&
+        RegExp(
+          r'[가-힣](?:간|온|한|된|된다|하고|해서|이고|이며)$',
+        ).hasMatch(normalized)) {
+      return true;
+    }
+    return false;
   }
 
   bool isOnlyScheduleMetadata(String text) {

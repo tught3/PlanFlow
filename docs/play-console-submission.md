@@ -77,6 +77,12 @@ PlanFlow 1.1.0 내부 테스트 버전입니다.
 `flutter analyze` → 주요 테스트 → `release appbundle` 순서로 실행하고,
 마지막에 `build/app/outputs/bundle/release/app-release.aab` 전체 경로를 출력합니다.
 
+## 빌드 규칙
+
+- 내부 테스트와 실기기 확인에 쓰는 Android 빌드는 모두 `release`만 사용합니다.
+- `flutter build apk --debug` 같은 디버그 빌드는 사용하지 않습니다.
+- 배포/설치 확인은 릴리즈 APK 또는 AAB 기준으로만 진행합니다.
+
 ## 앱 액세스
 
 - 앱 전체 기능은 로그인이 필요합니다.
