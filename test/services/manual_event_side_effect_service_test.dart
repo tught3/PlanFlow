@@ -3,12 +3,14 @@ import 'package:planflow/core/diag_logger.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/app_permission_service.dart';
+import 'package:planflow/services/critical_alarm_acknowledgement_store.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -1223,6 +1225,250 @@ void main() {
       expect(noPlaceTitles, isEmpty);
       expect(placeTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(placeTitles.any(_isPreparationStartAlarmTitle), true);
+    });
+
+    // ── 강한알람 ack 게이트 ────────────────────────────────────────────────
+    //
+    // scheduleLocalNotifications는 강한알람 재예약 전에 CriticalAlarm
+    // AcknowledgementStore를 확인해 사용자가 확인한 일정은 다시 예약하지
+    // 않아야 한다. 이 게이트가 없으면 캘린더 재동기화/채널 마이그레이션이
+    // 확인한 일정의 알람을 다시 띄우는 회귀가 발생한다.
+
+    test(
+        'scheduleLocalNotifications는 acked 일정의 강한알람을 재예약하지 않는다',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final startAt = DateTime.now().add(const Duration(hours: 3));
+      await store.markAcknowledged('event-acked', startAt);
+      final event = EventModel(
+        id: 'event-acked',
+        userId: 'user-1',
+        title: '확인된 중요 일정',
+        startAt: startAt,
+        isCritical: true,
+      );
+
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      await service.scheduleLocalNotifications(event);
+
+      expect(notifications.scheduledCriticalAlarmIds, isEmpty,
+          reason: '사용자가 확인한 일정의 강한알람은 재예약되면 안 된다.');
+    });
+
+    test(
+        'scheduleLocalNotifications는 시작 시각이 바뀐 acked 일정의 강한알람은 '
+        '재예약한다 (편집 후 다시 울림)', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final oldStartAt = DateTime.now().add(const Duration(hours: 3));
+      final newStartAt = DateTime.now().add(const Duration(hours: 4));
+      await store.markAcknowledged('event-edited', oldStartAt);
+      final event = EventModel(
+        id: 'event-edited',
+        userId: 'user-1',
+        title: '시작 시각이 바뀐 일정',
+        startAt: newStartAt,
+        isCritical: true,
+      );
+
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      await service.scheduleLocalNotifications(event);
+
+      expect(notifications.scheduledCriticalAlarmIds, hasLength(1),
+          reason: '시작 시각이 바뀌면 기존 ack가 매칭되지 않아 다시 예약된다.');
+    });
+
+    test(
+        'scheduleLocalNotifications는 sentinel이 저장된 일정의 강한알람을 '
+        '재예약하지 않는다 (startAt 조회 실패 케이스)', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      // sentinel을 강제로 저장해 startAt이 정의되지 않은 ack를 시뮬레이션.
+      await store.markAcknowledged('event-sentinel', unknownStartSentinel);
+
+      final event = EventModel(
+        id: 'event-sentinel',
+        userId: 'user-1',
+        title: 'sentinel이 남은 일정',
+        startAt: DateTime.now().add(const Duration(hours: 3)),
+        isCritical: true,
+      );
+
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      await service.scheduleLocalNotifications(event);
+
+      expect(notifications.scheduledCriticalAlarmIds, isEmpty,
+          reason: 'sentinel 케이스도 hasUnknownStartAcknowledgement로 막혀야 한다.');
+    });
+
+    test(
+        'sentinel ack는 재동기화 때 실제 시작 시각으로 고정되어 이후 시각 변경은 '
+        '다시 울린다', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      await store.markAcknowledged('event-adopt', unknownStartSentinel);
+      final firstStart = DateTime.now().add(const Duration(hours: 3));
+      final laterStart = DateTime.now().add(const Duration(hours: 6));
+      ManualEventSideEffectService buildService() =>
+          ManualEventSideEffectService(
+            gateway: _FakeManualEventGateway(),
+            eventRepository: _FakeEventRepository(),
+            departureAlarmService: _FakeDepartureAlarmService(),
+            notificationService: notifications,
+            criticalAlarmAcknowledgementStore: store,
+          );
+
+      await buildService().scheduleLocalNotifications(EventModel(
+        id: 'event-adopt',
+        userId: 'user-1',
+        title: '시각 불명 ack',
+        startAt: firstStart,
+        isCritical: true,
+      ));
+      expect(notifications.scheduledCriticalAlarmIds, isEmpty);
+      expect(await store.hasUnknownStartAcknowledgement('event-adopt'), isFalse,
+          reason: 'sentinel은 실제 시작 시각으로 교체되어야 한다.');
+      expect(await store.isAcknowledged('event-adopt', firstStart), isTrue);
+
+      await buildService().scheduleLocalNotifications(EventModel(
+        id: 'event-adopt',
+        userId: 'user-1',
+        title: '시각 불명 ack',
+        startAt: laterStart,
+        isCritical: true,
+      ));
+      expect(notifications.scheduledCriticalAlarmIds, hasLength(1),
+          reason: '고정 이후 시작 시각이 바뀌면 다시 예약되어야 한다.');
+    });
+
+    test('사용자가 일정을 저장(syncAfterSave)하면 sentinel ack는 해제되어 알람이 다시 예약된다',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      await store.markAcknowledged('event-save-sentinel', unknownStartSentinel);
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      await service.syncAfterSave(
+        event: EventModel(
+          id: 'event-save-sentinel',
+          userId: 'user-1',
+          title: '저장된 일정',
+          startAt: DateTime.now().add(const Duration(hours: 3)),
+          isCritical: true,
+          useStrongAlarm: true,
+        ),
+        userId: 'user-1',
+      );
+
+      expect(await store.hasAcknowledgement('event-save-sentinel'), isFalse);
+      expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
+    });
+    test(
+        '1시간 이내 시작 일정의 now+10s 클램프도 acked면 재예약하지 않는다',
+        () async {
+      // 핵심 회귀: 알림 60분 전 시각이 과거인 일정은 _resolveCriticalNotifyAt가
+      // now+10s로 클램프해 강한알람을 즉시 예약한다. 이 클램프 경로가 acked
+      // 이벤트도 무차별로 다시 울리던 버그를 막아야 한다.
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final startAt = DateTime.now().add(const Duration(minutes: 30));
+      await store.markAcknowledged('event-soon-acked', startAt);
+      final event = EventModel(
+        id: 'event-soon-acked',
+        userId: 'user-1',
+        title: '곧 시작 (확인됨)',
+        startAt: startAt,
+        isCritical: true,
+      );
+
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      await service.scheduleLocalNotifications(event);
+
+      expect(notifications.scheduledCriticalAlarmIds, isEmpty,
+          reason: 'now+10s 클램프 경로도 게이트 뒤에서 실행돼야 한다.');
+    });
+
+    test(
+        'resyncRemindersForEvents도 acked 일정의 강한알람은 재예약하지 않는다 '
+        '(캘린더 재동기화 회귀 방지)', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final store =
+          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final startAt = DateTime.now().add(const Duration(hours: 5));
+      await store.markAcknowledged('event-acked-resync', startAt);
+      final event = EventModel(
+        id: 'event-acked-resync',
+        userId: 'user-1',
+        title: 'resync 대상 (확인됨)',
+        startAt: startAt,
+        isCritical: true,
+      );
+
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(events: <EventModel>[event]),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      final result = await service.resyncRemindersForEvents(
+        events: <EventModel>[event],
+        userId: 'user-1',
+      );
+
+      expect(result, isTrue);
+      expect(notifications.scheduledCriticalAlarmIds, isEmpty,
+          reason: 'resyncRemindersForEvents도 gate 뒤에서 호출되므로 '
+              '확인된 일정의 알람은 다시 예약되지 않아야 한다.');
     });
   });
 }

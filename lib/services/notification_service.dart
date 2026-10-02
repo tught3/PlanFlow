@@ -9,6 +9,8 @@ import 'package:timezone/timezone.dart' as tz;
 import '../core/constants.dart';
 import '../core/diag_logger.dart';
 import '../core/router.dart';
+import '../data/repositories/event_repository.dart';
+import 'critical_alarm_acknowledgement_store.dart';
 import 'departure_acknowledgement_store.dart';
 
 enum NotificationScheduleStatus {
@@ -1447,11 +1449,19 @@ class NotificationService {
 ///
 /// 출발은 즉시 확인 상태로 바꾸고, 중요 알람의 내일 액션은 일정 자체를
 /// 수정하지 않은 채 다음 날 오전 9시에 다시 확인하도록 예약한다.
+///
+/// 중요 알람의 "확인(출발)" 액션은 (1) 강한알람/리마인더/스마트 준비/사전 액션
+/// 등 동일 event에 묶인 모든 로컬 알림을 취소하고, (2) 같은 시작 시각에 대한
+/// 사용자 확인을 SharedPreferences에 영구 저장해 다음 동기화/마이그레이션에서
+/// 같은 시각 기준으로는 다시 예약되지 않게 한다. 시작 시각이 변경되면
+/// 저장된 ISO와 매칭되지 않으므로 다시 울린다.
 @visibleForTesting
 Future<void> handleNotificationResponseAction(
   NotificationResponse response, {
   NotificationService? notificationService,
   DepartureAcknowledgementStore? departureAcknowledgementStore,
+  CriticalAlarmAcknowledgementStore? criticalAlarmAcknowledgementStore,
+  EventRepository? eventRepository,
 }) async {
   final payload = response.payload ?? '';
   final actionId = response.actionId;
@@ -1488,9 +1498,66 @@ Future<void> handleNotificationResponseAction(
               NotificationResponseType.selectedNotification)) {
     final eventId = NotificationService._eventIdFromEventPayload(payload);
     if (eventId.isNotEmpty) {
-      await (notificationService ?? NotificationService())
-          .cancelEventReminderNotifications(eventId);
+      final notifications = notificationService ?? NotificationService();
+      // 중요 알람 액션은 같은 event로 묶인 모든 로컬 알림(푸시/중요/출발/
+      // 스마트 준비/사전 액션)을 함께 취소한다. 단순 body 탭은 리마인더만
+      // 취소해 출발/스마트 준비는 유지한다(사용자 의도 분리).
+      if (actionId == NotificationService.criticalAcknowledgedActionId) {
+        await _persistCriticalAcknowledge(
+          eventId: eventId,
+          criticalAlarmAcknowledgementStore:
+              criticalAlarmAcknowledgementStore,
+          eventRepository: eventRepository,
+        );
+        await notifications.cancelEventNotifications(eventId);
+      } else {
+        await notifications.cancelEventReminderNotifications(eventId);
+      }
     }
+  }
+}
+
+/// 강한알람 확인을 영구화한다.
+///
+/// payload에는 eventId만 있고 startTime은 들어 있지 않다(현재 구현). startTime을
+/// 모르면 store에 [unknownStartSentinel]을 저장해 eventId 기준으로만
+/// 매칭시키고, 다음 동기화에서 `hasAcknowledgement` 검사로 재예약을 막는다.
+/// 단, 다음 사용자 ack(시작 시각을 아는 경우)이나 `clearAcknowledgement` 호출로
+/// 덮어쓰면 다시 울리게 된다.
+///
+/// 백그라운드 isolate 액션 경로에서는 SharedPreferences가 일시적으로
+/// 끊길 수 있다(tryGetPrefs가 false 반환). 이 경로에서는 store 호출 실패를
+/// 삼키고 알림 정지만 보장한다(다음 실행에서 재시도).
+Future<void> _persistCriticalAcknowledge({
+  required String eventId,
+  required CriticalAlarmAcknowledgementStore?
+      criticalAlarmAcknowledgementStore,
+  required EventRepository? eventRepository,
+}) async {
+  final store = criticalAlarmAcknowledgementStore ??
+      const SharedPreferencesCriticalAlarmAcknowledgementStore();
+  DateTime? startAt;
+  try {
+    final repository = eventRepository ?? EventRepository.supabase();
+    final event = await repository.fetchEvent(eventId);
+    startAt = event?.startAt;
+  } catch (error, stackTrace) {
+    debugPrint('Critical ack startAt lookup failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+
+  try {
+    if (startAt != null) {
+      await store.markAcknowledged(eventId, startAt);
+    } else {
+      // 시작 시각을 모르는 경우 sentinel 저장. `isAcknowledged`는 sentinel과
+      // 실제 startAt을 비교하므로 false를 반환한다. 호출측은 `hasAcknowledgement`
+      // 로 sentinel을 감지해 "시작 시각을 모르는 채로" 재예약을 막는다.
+      await store.markAcknowledged(eventId, unknownStartSentinel);
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Critical ack store write failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
   }
 }
 

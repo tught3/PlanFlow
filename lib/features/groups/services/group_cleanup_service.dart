@@ -11,6 +11,7 @@ import '../../../services/notification_service.dart';
 import '../../../services/smart_preparation_alarm_service.dart';
 import '../providers/group_context_provider.dart';
 import '../services/group_calendar_widget_service.dart';
+import '../services/group_membership_refresh_bus.dart';
 
 /// 그룹 archive/restore 이후 파생 상태(알림, 알람, 위젯, 캐시 등)를 정리하는 서비스.
 ///
@@ -67,22 +68,34 @@ class GroupCleanupService {
   String _currentUserId() => _client.auth.currentUser?.id ?? '';
 
   /// 그룹 archive RPC가 성공한 뒤 호출. 파생 상태 정리를 fire-and-forget 수행.
-  Future<void> onGroupArchived(String groupId, {String? userId}) async {
+  Future<void> onGroupArchived(
+    String groupId, {
+    String? userId,
+    bool refreshGroupContext = true,
+  }) async {
     final effectiveUserId = (userId ?? _currentUserId()).trim();
     await _cancelGroupEventNotifications(groupId);
     await _cancelSmartPreparationAlarms(groupId);
     await _cancelDepartureAlarms(groupId);
     await _refreshWidgetsAfterArchive(groupId, effectiveUserId);
-    await _refreshGroupContextProvider(groupId, effectiveUserId);
+    if (refreshGroupContext) {
+      await _refreshGroupContextProvider(groupId, effectiveUserId);
+    }
     await _pauseCalendarAutoSync(groupId);
     await _invalidateSharedPreferencesCache(groupId, effectiveUserId);
   }
 
   /// 그룹 restore RPC가 성공한 뒤 호출. archive 때 정리한 상태를 복원.
-  Future<void> onGroupRestored(String groupId, {String? userId}) async {
+  Future<void> onGroupRestored(
+    String groupId, {
+    String? userId,
+    bool refreshGroupContext = true,
+  }) async {
     final effectiveUserId = (userId ?? _currentUserId()).trim();
     await _refreshWidgetsAfterRestore(groupId, effectiveUserId);
-    await _refreshGroupContextProvider(groupId, effectiveUserId);
+    if (refreshGroupContext) {
+      await _refreshGroupContextProvider(groupId, effectiveUserId);
+    }
     await _resumeCalendarAutoSync(groupId);
     await _primeRestoredGroupAlarms(groupId);
   }
@@ -276,8 +289,7 @@ class GroupCleanupService {
   ) async {
     final provider = _contextProvider;
     if (provider == null) {
-      debugPrint(
-          'GroupCleanupService: GroupContextProvider not injected, skipping provider reload');
+      GroupMembershipRefreshBus.instance.notifyChanged();
       return;
     }
     if (userId.isEmpty) {

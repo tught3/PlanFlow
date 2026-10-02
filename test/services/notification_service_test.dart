@@ -6,7 +6,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/critical_alarm_acknowledgement_store.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('NotificationService', () {
@@ -416,12 +420,16 @@ void main() {
       );
     });
 
-    test('acknowledge and body tap cancel all event notifications', () async {
+    test('acknowledge and body tap cancel event notifications', () async {
+      // 강한알람 ack 액션은 같은 event로 묶인 모든 로컬 알림(푸시/중요/출발/
+      // 스마트 준비/사전 액션)을 한 번에 취소한다. body tap은 리마인더만
+      // 취소해 출발/스마트 준비는 유지한다.
       final ack = NotificationResponse(
         notificationResponseType:
             NotificationResponseType.selectedNotificationAction,
         actionId: NotificationService.criticalAcknowledgedActionId,
-        payload: 'event:event-ack',
+        payload:
+            'event:event-ack${NotificationService.criticalAlarmPayloadSuffix}',
       );
       final bodyTap = NotificationResponse(
         notificationResponseType: NotificationResponseType.selectedNotification,
@@ -438,10 +446,9 @@ void main() {
         notificationService: notifications,
       );
 
-      expect(
-        notifications.cancelledEventIds,
-        containsAll(<String>['event-ack', 'event-body']),
-      );
+      // ack → full cancellation만, body tap → reminder cancellation만.
+      expect(notifications.fullCancelledEventIds, ['event-ack']);
+      expect(notifications.cancelledEventIds, ['event-body']);
     });
 
     test(
@@ -494,7 +501,13 @@ void main() {
         notificationService: notifications,
       );
 
-      expect(notifications.cancelledEventIds, contains('event-stop-check'));
+      // cancelEventNotifications는 모든 event-scoped 알림을 정리하는
+      // 함수다. 강한알람 ack는 reminder만 취소하는 옛 동작과 달리 이 경로를
+      // 사용한다.
+      expect(
+        notifications.fullCancelledEventIds,
+        contains('event-stop-check'),
+      );
     });
 
     test('important alarm tomorrow reminder is scheduled for 9 AM next day',
@@ -557,10 +570,161 @@ void main() {
 
       expect(
         source,
-        isNot(matches(RegExp(r'吏|湲|異|쒕|쇱|덉|볦|튂|以묒|뚮|媛|諛|�'))),
+        isNot(matches(RegExp(r'吏|湲|異|쒕|쇱|덉|볦|튂|以묒|뚮|媛|諛|�'))),
       );
       expect(source, contains('이미 지난 출발 알림은 예약하지 않았습니다.'));
       expect(source, contains('놓치면 안 되는 중요 알림'));
+    });
+
+    // ── 강한알람 확인(출발) ack 흐름 ───────────────────────────────────────
+    //
+    // 강한알람 알림의 "확인(출발)" 액션은 단순히 body 탭과 동일하게 처리해
+    // 서는 안 된다. 알림만 취소하는 것이 아니라 같은 event로 묶인 모든 로컬
+    // 알림(푸시/중요/출발/스마트 준비/사전 액션)을 한 번에 정리하고, 같은
+    // 시작 시각에 대한 ack를 SharedPreferences에 남겨 다음 동기화에서
+    // 같은 시작 시각으로는 절대 다시 울리지 않게 막아야 한다.
+
+    test(
+        'critical_ack 액션은 같은 event로 묶인 모든 로컬 알림을 한 번에 취소한다',
+        () async {
+      final ack = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload:
+            'event:event-ack-full${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+      final notifications = _FakeNotificationService();
+
+      await handleNotificationResponseAction(
+        ack,
+        notificationService: notifications,
+      );
+
+      // cancelEventNotifications가 호출되어 push/critical/departure/
+      // smart_prep/pre_action까지 모두 취소된다.
+      expect(
+        notifications.fullCancelledEventIds,
+        contains('event-ack-full'),
+      );
+    });
+
+    test(
+        'critical_ack 액션은 event의 startAt을 알아내 SharedPreferences에 '
+        'ack를 영구 저장한다', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final startAt = DateTime.utc(2026, 7, 16, 9);
+      final repository = _FakeEventRepository(<String, EventModel>{
+        'event-ack': EventModel(
+          id: 'event-ack',
+          userId: 'user-1',
+          title: '중요 회의',
+          startAt: startAt,
+        ),
+      });
+      final ack = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload:
+            'event:event-ack${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+      final notifications = _FakeNotificationService();
+
+      await handleNotificationResponseAction(
+        ack,
+        notificationService: notifications,
+        eventRepository: repository,
+      );
+
+      // SharedPreferencesCriticalAlarmAcknowledgeStore 기본 구현으로 호출됐고
+      // 정확히 그 startAt ISO가 저장됐다.
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString('critical_alarm:ack:event-ack'),
+        startAt.toIso8601String(),
+      );
+    });
+
+    test(
+        'critical_ack 액션은 다른 event의 알림에는 영향을 주지 않는다 (스코프)',
+        () async {
+      final notifications = _FakeNotificationService();
+      final ackOther = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload:
+            'event:event-1${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+
+      await handleNotificationResponseAction(
+        ackOther,
+        notificationService: notifications,
+      );
+
+      expect(notifications.fullCancelledEventIds, ['event-1']);
+      expect(notifications.cancelledEventIds, isEmpty,
+          reason: 'cancelEventReminderNotifications는 호출되면 안 된다.');
+    });
+
+    test(
+        'startAt 조회 실패 시 sentinel이 저장되고 알림은 여전히 취소된다 '
+        '(백그라운드 isolate 시나리오)', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final notifications = _FakeNotificationService();
+      final ack = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload:
+            'event:event-no-event${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+
+      // 기본 EventRepository.supabase()는 초기화되지 않으면 예외를 던진다.
+      // 그 경우 sentinel이 저장되고 알림은 계속 취소되어야 한다.
+      await handleNotificationResponseAction(
+        ack,
+        notificationService: notifications,
+      );
+
+      expect(
+        notifications.fullCancelledEventIds,
+        ['event-no-event'],
+      );
+
+      // sentinel이 저장돼 있어 다음 scheduleLocalNotifications가
+      // hasUnknownStartAcknowledgement()으로 재예약을 막는다.
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      expect(await store.hasUnknownStartAcknowledgement('event-no-event'),
+          isTrue);
+    });
+
+    test(
+        'SharedPreferences를 못 가져오면 ack 저장은 건너뛰지만 알림은 '
+        '그대로 취소된다 (플랫폼 채널 일시 끊김 대응)', () async {
+      // setMockInitialValues 없이 store만 인스턴스화 → prefs는 null 반환.
+      final notifications = _FakeNotificationService();
+      final store = _ThrowingCriticalAlarmAckStore();
+      final ack = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.criticalAcknowledgedActionId,
+        payload:
+            'event:event-prefs-down${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+
+      await handleNotificationResponseAction(
+        ack,
+        notificationService: notifications,
+        criticalAlarmAcknowledgementStore: store,
+      );
+
+      expect(
+        notifications.fullCancelledEventIds,
+        ['event-prefs-down'],
+        reason: 'store 실패에도 알림 취소는 보장돼야 한다.',
+      );
     });
   });
 }
@@ -568,10 +732,11 @@ void main() {
 class _FakeNotificationService extends NotificationService {
   String? remindTomorrowEventId;
   final List<String> cancelledEventIds = <String>[];
+  final List<String> fullCancelledEventIds = <String>[];
 
   @override
   Future<void> cancelEventNotifications(String eventId) async {
-    cancelledEventIds.add(eventId);
+    fullCancelledEventIds.add(eventId);
   }
 
   @override
@@ -590,4 +755,40 @@ class _FakeNotificationService extends NotificationService {
       notifyAt: now ?? DateTime.now(),
     );
   }
+}
+
+class _FakeEventRepository extends EventRepository {
+  _FakeEventRepository(this._eventsById);
+
+  final Map<String, EventModel> _eventsById;
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    return _eventsById[eventId];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ThrowingCriticalAlarmAckStore
+    extends CriticalAlarmAcknowledgementStore {
+  const _ThrowingCriticalAlarmAckStore();
+
+  @override
+  Future<bool> isAcknowledged(String eventId, DateTime startAt) async => false;
+
+  @override
+  Future<bool> hasUnknownStartAcknowledgement(String eventId) async => false;
+
+  @override
+  Future<bool> hasAcknowledgement(String eventId) async => false;
+
+  @override
+  Future<void> markAcknowledged(String eventId, DateTime startAt) async {
+    throw StateError('SharedPreferences unavailable');
+  }
+
+  @override
+  Future<void> clearAcknowledgement(String eventId) async {}
 }

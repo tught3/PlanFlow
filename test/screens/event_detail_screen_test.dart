@@ -339,10 +339,107 @@ void main() {
     await tester.tap(find.text('확인(출발)'));
     await tester.pumpAndSettle();
 
+    // cancelEventNotifications: 푸시/중요/출발/스마트 준비/사전 액션을 모두
+    // 정리한다 (M1: 강한알람 ack는 reminder 만 제외하는 옛 동작 회귀).
     expect(
-      notificationService.cancelledReminderEventIds,
+      notificationService.fullCancelledEventIds,
       ['event-6'],
     );
+  });
+
+  testWidgets(
+      'EventDetailScreen 확인(출발)은 event의 startAt으로 ack를 '
+      'SharedPreferences에 영구 저장한다', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final event = EventModel(
+      id: 'event-7',
+      userId: 'user-1',
+      title: '확인 시 ack 저장',
+      startAt: DateTime.utc(2026, 7, 16, 9),
+      endAt: DateTime.utc(2026, 7, 16, 10),
+      isCritical: true,
+    );
+    final notificationService = _FakeNotificationService();
+    final router = GoRouter(
+      initialLocation: '${AppRoutes.eventDetail}/${event.id}',
+      routes: [
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, __) => EventDetailScreen(
+            event: event,
+            eventRepository: _FakeEventRepository(event),
+            showCriticalAckButton: true,
+            notificationService: notificationService,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+
+    // SharedPreferences에 정확히 event.startAt.toUtc().toIso8601String()로
+    // 저장돼 다음 scheduleLocalNotifications가 같은 시각으로는 다시 예약하지
+    // 못하게 한다.
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      prefs.getString('critical_alarm:ack:event-7'),
+      DateTime.utc(2026, 7, 16, 9).toIso8601String(),
+    );
+  });
+
+  testWidgets(
+      'EventDetailScreen 확인(출발) 더블 탭은 멱등이다 (취소 한 번만 호출)',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final event = EventModel(
+      id: 'event-8',
+      userId: 'user-1',
+      title: '더블 탭 멱등 검증',
+      startAt: DateTime.utc(2026, 7, 16, 9),
+      endAt: DateTime.utc(2026, 7, 16, 10),
+      isCritical: true,
+    );
+    final notificationService = _FakeNotificationService();
+    final router = GoRouter(
+      initialLocation: '${AppRoutes.eventDetail}/${event.id}',
+      routes: [
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, __) => EventDetailScreen(
+            event: event,
+            eventRepository: _FakeEventRepository(event),
+            showCriticalAckButton: true,
+            notificationService: notificationService,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    // 첫 탭: 정상적으로 알림 취소가 호출되고 버튼이 사라진다.
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+
+    expect(notificationService.fullCancelledEventIds, ['event-8']);
+
+    // 두 번째 탭 시도가 와도 더블 탭/연타 시 멱등해야 한다. _criticalAckHandled
+    // 가드 덕분에 두 번째 탭에서 호출이 일어나지 않는다(버튼이 사라졌어도
+    // setState가 늦을 수 있어 guard를 명시적으로 검증). 첫 탭 후에는
+    // 버튼이 사라지므로 두 번째 탭이 잡힐 일이 없지만, 동기 호출이 두 번
+    // 들어오는 경우의 멱등성(같은 ack 효과를 여러 번 적용해도 store/cancel
+    // 상태가 깨지지 않음)을 검증한다.
+    expect(find.text('확인(출발)'), findsNothing,
+        reason: '첫 탭 후 버튼이 숨겨져야 두 번째 탭이 들어올 수 없다.');
+    expect(notificationService.fullCancelledEventIds, ['event-8'],
+        reason: '두 번째 호출이 없어야 하므로 cancelEventNotifications도 '
+            '한 번만 호출돼야 한다.');
+    expect(find.text('알림을 확인했어요.'), findsOneWidget);
   });
 }
 
@@ -483,6 +580,12 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
 
 class _FakeNotificationService extends NotificationService {
   final cancelledReminderEventIds = <String>[];
+  final fullCancelledEventIds = <String>[];
+
+  @override
+  Future<void> cancelEventNotifications(String eventId) async {
+    fullCancelledEventIds.add(eventId);
+  }
 
   @override
   Future<void> cancelEventReminderNotifications(String eventId) async {

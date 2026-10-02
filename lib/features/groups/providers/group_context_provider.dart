@@ -36,7 +36,13 @@ class GroupContextProvider extends ChangeNotifier {
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
   List<GroupModel> get leaderGroups => _state.leaderGroups;
 
-  Future<void> load(String userId, {String? preferredGroupId}) async {
+  /// [keepGroupsOnError]가 true이고 이미 불러온 그룹이 있으면, 조회 실패(오프라인 등)에도
+  /// 기존 그룹 목록·선택 상태를 비우지 않고 error만 기록한다(앱 재진입 갱신용).
+  Future<void> load(
+    String userId, {
+    String? preferredGroupId,
+    bool keepGroupsOnError = false,
+  }) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(
@@ -84,6 +90,10 @@ class GroupContextProvider extends ChangeNotifier {
 
       await _persistSelectedGroupId(selectedGroupId);
     } catch (error) {
+      if (keepGroupsOnError && _state.groups.isNotEmpty) {
+        _setState(_state.copyWith(isLoading: false, error: error.toString()));
+        return;
+      }
       _setState(
         GroupContextState(
           groups: const <GroupModel>[],

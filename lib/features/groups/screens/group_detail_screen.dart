@@ -427,7 +427,21 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     });
     try {
       await _backupRepository.deleteGroupWithBackup(group.id);
+      try {
+        unawaited(
+          GroupCleanupService.instance
+              .onGroupArchived(
+                group.id,
+                userId: Supabase.instance.client.auth.currentUser?.id,
+                refreshGroupContext: false,
+              )
+              .catchError((Object _) {}),
+        );
+      } catch (_) {
+        // Cleanup is best-effort and must not affect the successful deletion.
+      }
       if (!mounted) return;
+      GroupMembershipRefreshBus.instance.notifyChanged();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -436,7 +450,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           duration: const Duration(seconds: 5),
         ),
       );
-      _handleBackNavigation();
+      _handleBackNavigation(membershipChanged: true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

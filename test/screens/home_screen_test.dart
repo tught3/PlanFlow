@@ -21,6 +21,7 @@ import 'package:planflow/features/groups/repositories/group_invite_repository.da
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_detail_screen.dart';
 import 'package:planflow/features/groups/screens/group_list_screen.dart';
+import 'package:planflow/features/groups/services/group_membership_refresh_bus.dart';
 import 'package:planflow/features/groups/widgets/terms_acceptance_gate.dart';
 import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -348,6 +349,183 @@ void main() {
     expect(repository.listGroupsCallCount, greaterThanOrEqualTo(4));
     expect(tester.takeException(), isNull);
   });
+
+  // 그룹 멤버십 버스 신호에 따른 그룹 칩 라이프사이클 회귀 테스트.
+  //  - 초기: 그룹 한 개가 보임
+  //  - bus notify + repository가 빈 목록 반환 → 칩 사라짐
+  //  - bus notify + repository가 새 id 그룹 반환 → 새 ID 칩이 표시)
+  // (보관 후 복원 등 membership refresh가 일어나는 모든 경로를 검증한다.)
+  testWidgets(
+    'HomeScreen 그룹 칩이 bus 신호에 따라 추가·제거되고, 새 id 복원 시 새 칩으로 교체된다.',
+    (tester) async {
+      final repository = _ScriptableGroupRepository(
+        script: <_GroupScriptEntry>[
+          _GroupScriptEntry(groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'leader-1',
+              name: '첫 그룹',
+              createdAt: DateTime.utc(2026, 6, 29),
+            ),
+          ]),
+        ],
+      );
+      final groupContextProvider = GroupContextProvider(
+        repository: repository,
+      );
+      addTearDown(groupContextProvider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: _QueuedEventRepository(
+              responses: <Future<List<EventModel>> Function()>[
+                () async => <EventModel>[],
+              ],
+            ),
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+            groupContextProvider: groupContextProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1) 초기에는 첫 그룹 칩이 보임.
+      expect(find.text('첫 그룹'), findsOneWidget,
+          reason: '초기 group context 로드 후 그룹 칩이 보여야 한다');
+
+      // 2) 저장소에서 그룹이 사라진 상태를 시뮬레이션 + bus notify →
+      // group context가 다시 그려져 그룹 칩이 사라져야 한다.
+      repository.setNextResponse(
+        <GroupModel>[],
+      );
+      GroupMembershipRefreshBus.instance.notifyChanged();
+      await tester.pumpAndSettle();
+      expect(find.text('첫 그룹'), findsNothing,
+          reason: '그룹이 사라지면 칩도 사라져야 한다');
+
+      // 3) 복원(보관 → 복원) 시나리오: 새 id 그룹이 다시 등장하면 새 칩이
+      // 보여야 한다. 기존 id("group-1")와 다른 id("group-restored")를 쓴다.
+      repository.setNextResponse(
+        <GroupModel>[
+          GroupModel(
+            id: 'group-restored',
+            createdBy: 'leader-1',
+            name: '복원된 그룹',
+            createdAt: DateTime.utc(2026, 6, 29),
+          ),
+        ],
+      );
+      GroupMembershipRefreshBus.instance.notifyChanged();
+      await tester.pumpAndSettle();
+      expect(find.text('복원된 그룹'), findsOneWidget,
+          reason: '복원된 새 그룹은 새 칩으로 렌더링되어야 한다');
+      expect(find.text('첫 그룹'), findsNothing,
+          reason: '이전 칩은 사라지고 새 칩만 보여야 한다');
+
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 앱 lifecycle resumed 이벤트가 group context refresh를 트리거하지만,
+  // 동시에 여러 resume이 연속되면 in-progress 가드로 중복 refresh가
+  // 발생하지 않아야 한다 (2026-10 알림·그룹 라이프사이클 회귀).
+  testWidgets(
+    'HomeScreen은 앱 lifecycle resumed가 연속 발사돼도 group context refresh를 중복 실행하지 않는다',
+    (tester) async {
+      final repository = _ScriptableGroupRepository(
+        script: <_GroupScriptEntry>[
+          _GroupScriptEntry(groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'leader-1',
+              name: '홈 그룹',
+              createdAt: DateTime.utc(2026, 6, 29),
+            ),
+          ]),
+        ],
+      );
+      // 첫 listGroups() 호출은 우리가 직접 끝낼 때까지 멈춰 있게 만들어
+      // 연속된 resume 이벤트가 같은 in-flight refresh 안에서 겹치게 한다.
+      final firstLoadGate = Completer<void>();
+      repository.holdNextListGroups(firstLoadGate.future);
+      final groupContextProvider = GroupContextProvider(
+        repository: repository,
+      );
+      addTearDown(groupContextProvider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: _QueuedEventRepository(
+              responses: <Future<List<EventModel>> Function()>[
+                () async => <EventModel>[],
+              ],
+            ),
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+            groupContextProvider: groupContextProvider,
+          ),
+        ),
+      );
+
+      // 첫 group context 로드(initState → _loadGroupContext)가
+      // firstLoadGate에서 멈춘 상태다. 아직 칩은 렌더링되지 않는다.
+      await tester.pump();
+      expect(find.text('홈 그룹'), findsNothing);
+
+      // 첫 resume 발사 → 다음 refresh가 in-progress 상태가 되도록
+      // 다시 한 번 listGroups를 hold. 이때 두 번 더 resume을 연속으로
+      // 쏴도 _groupContextRefreshInProgress 가드로 흡수돼야 한다.
+      repository.holdNextListGroups(firstLoadGate.future);
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      await tester.pump();
+
+      // resume 3회 + initState 1회 = 총 4회 resume 시도가 있어도
+      // 첫 번째 listGroups 호출만 진행 중이라 listGroups 호출 횟수는 2
+      // (initState의 첫 호출 + resume이 시작하는 호출) 여야 한다. 첫
+      // 호출은 첫 loadGate에서, 두 번째 호출은 두 번째 holdGate에서
+      // 각각 멈춰 있다. 연속 resume은 in-progress 게이트로 모두 거른다.
+      expect(repository.listGroupsCallCount, lessThanOrEqualTo(2),
+          reason: '연속된 resume은 in-progress 가드로 단일 refresh로 합쳐져야 한다');
+
+      // 이제 gate를 풀어 다음 load까지 마치게 한다.
+      firstLoadGate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('홈 그룹'), findsOneWidget);
+
+      // resume 한 번 더 → 다음 refresh가 일어나 listGroups 호출 수가
+      // 1 늘어난다. 이건 가드가 풀린 뒤의 다음 호출이라 정상.
+      final baselineCount = repository.listGroupsCallCount;
+      repository.holdNextListGroups(Future<void>.value());
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        repository.listGroupsCallCount,
+        greaterThan(baselineCount),
+        reason: 'resume 한 번이 정상적으로 다음 refresh를 트리거해야 한다',
+      );
+
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'HomeScreen keeps rendered content visible during resume refresh',
@@ -1337,4 +1515,74 @@ class _CountingLocationLookupService extends LocationLookupService {
     searchedQueries.add(query);
     return const <LocationLookupResult>[];
   }
+}
+
+/// bus 신호에 따른 그룹 칩 라이프사이클 테스트와 resume 가드 테스트에서
+/// 사용하는 가변 그룹 리포지토리. setNextResponse로 다음 listGroups() 응답을
+/// 바꿀 수 있고, holdNextListGroups로 다음 호출을 외부 Future가 끝날 때까지
+/// 보류해 in-flight refresh가 겹치는 시나리오를 만들 수 있다.
+class _GroupScriptEntry {
+  _GroupScriptEntry({required this.groups});
+
+  final List<GroupModel> groups;
+}
+
+class _ScriptableGroupRepository extends GroupRepository {
+  _ScriptableGroupRepository({required List<_GroupScriptEntry> script})
+      : _script = List<_GroupScriptEntry>.of(script, growable: true);
+
+  final List<_GroupScriptEntry> _script;
+  int _responseIndex = 0;
+  int listGroupsCallCount = 0;
+
+  /// 다음 listGroups() 호출이 반환할 그룹 목록을 큐 끝에 등록한다.
+  void setNextResponse(List<GroupModel> groups) {
+    _script.add(_GroupScriptEntry(groups: groups));
+  }
+
+  /// 다음 listGroups() 호출이 [gate]가 끝날 때까지 멈춰 있게 만든다.
+  /// in-flight refresh가 겹치는 시나리오를 검증하기 위해 사용한다.
+  void holdNextListGroups(Future<void> gate) {
+    _pendingGates.add(gate);
+  }
+
+  final List<Future<void>> _pendingGates = <Future<void>>[];
+
+  @override
+  Future<List<GroupModel>> listGroups() async {
+    listGroupsCallCount += 1;
+    if (_pendingGates.isNotEmpty) {
+      final gate = _pendingGates.removeAt(0);
+      await gate;
+    }
+    if (_responseIndex >= _script.length) {
+      return _script.last.groups;
+    }
+    final entry = _script[_responseIndex];
+    _responseIndex += 1;
+    return entry.groups;
+  }
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async => null;
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async =>
+      const <GroupMemberModel>[];
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) async =>
+      throw UnimplementedError();
 }

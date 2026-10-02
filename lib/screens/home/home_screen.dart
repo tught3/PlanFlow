@@ -195,12 +195,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) unawaited(_groupContextProvider.refresh());
   }
 
-  Future<void> _loadGroupContext() async {
+  bool _groupContextRefreshInProgress = false;
+
+  Future<void> _loadGroupContext({bool keepGroupsOnError = false}) async {
+    if (!mounted || _groupContextRefreshInProgress) return;
     final userId = _resolveUserId();
     if (userId == null || userId.isEmpty) {
       return;
     }
-    await _groupContextProvider.load(userId);
+    _groupContextRefreshInProgress = true;
+    try {
+      if (!mounted) return;
+      await _groupContextProvider.load(
+        userId,
+        preferredGroupId:
+            keepGroupsOnError ? _groupContextProvider.selectedGroup?.id : null,
+        keepGroupsOnError: keepGroupsOnError,
+      );
+    } finally {
+      _groupContextRefreshInProgress = false;
+    }
   }
 
   void _scheduleRetry() {
@@ -223,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_cacheForegroundLocation());
       _loadTodayEvents();
+      unawaited(_loadGroupContext(keepGroupsOnError: true));
       if (widget.loadHeaderSummary) {
         unawaited(_loadHomeHeaderSummary());
       }

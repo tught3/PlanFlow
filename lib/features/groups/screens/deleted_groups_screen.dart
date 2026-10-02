@@ -10,9 +10,18 @@ import '../../../widgets/app_back_button.dart';
 import '../models/group_backup_model.dart';
 import '../providers/deleted_groups_provider.dart';
 import '../services/group_cleanup_service.dart';
+import '../services/group_membership_refresh_bus.dart';
 
 class DeletedGroupsScreen extends StatefulWidget {
-  const DeletedGroupsScreen({super.key});
+  const DeletedGroupsScreen({
+    super.key,
+    this.deletedGroupsProvider,
+  });
+
+  /// 테스트 주입용 seam. 미지정 시 기존과 동일하게
+  /// [DeletedGroupsProvider]를 기본 `GroupBackupRepository.supabase()`로 만든다
+  /// (동작 변경 없음).
+  final DeletedGroupsProvider? deletedGroupsProvider;
 
   @override
   State<DeletedGroupsScreen> createState() => _DeletedGroupsScreenState();
@@ -22,11 +31,13 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
   static const int _defaultRetentionDays = 30;
 
   late final DeletedGroupsProvider _provider;
+  late final bool _ownsProvider;
 
   @override
   void initState() {
     super.initState();
-    _provider = DeletedGroupsProvider();
+    _ownsProvider = widget.deletedGroupsProvider == null;
+    _provider = widget.deletedGroupsProvider ?? DeletedGroupsProvider();
     _provider.addListener(_onProviderChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _provider.load();
@@ -36,7 +47,9 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
   @override
   void dispose() {
     _provider.removeListener(_onProviderChanged);
-    _provider.dispose();
+    if (_ownsProvider) {
+      _provider.dispose();
+    }
     super.dispose();
   }
 
@@ -120,6 +133,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
       if (!mounted) {
         return;
       }
+      GroupMembershipRefreshBus.instance.notifyChanged();
       messenger.showSnackBar(
         SnackBar(content: Text('"$groupName" 복원 완료')),
       );
@@ -133,6 +147,7 @@ class _DeletedGroupsScreenState extends State<DeletedGroupsScreen> {
           GroupCleanupService.instance.onGroupRestored(
             restored.groupId,
             userId: Supabase.instance.client.auth.currentUser?.id,
+            refreshGroupContext: false,
           ),
         );
       }

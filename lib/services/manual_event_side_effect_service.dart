@@ -6,6 +6,7 @@ import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'app_permission_service.dart';
+import 'critical_alarm_acknowledgement_store.dart';
 import 'departure_alarm_service.dart';
 import 'location_lookup_service.dart';
 import 'map_service.dart';
@@ -130,13 +131,17 @@ class ManualEventSideEffectService {
     LocationLookupService? locationLookupService,
     Future<GeoPoint?> Function()? currentLocationProvider,
     DateTime Function()? now,
+    CriticalAlarmAcknowledgementStore?
+        criticalAlarmAcknowledgementStore,
   })  : _eventRepository = eventRepository,
         _departureAlarmService = departureAlarmService,
         _notificationService = notificationService,
         _travelTimeBufferService = travelTimeBufferService,
         _locationLookupService = locationLookupService,
         _currentLocationProvider = currentLocationProvider,
-        _now = now;
+        _now = now,
+        _criticalAlarmAcknowledgementStore =
+            criticalAlarmAcknowledgementStore;
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
   static const Duration criticalAlarmOffset = Duration(minutes: 60);
@@ -157,6 +162,8 @@ class ManualEventSideEffectService {
   final LocationLookupService? _locationLookupService;
   final Future<GeoPoint?> Function()? _currentLocationProvider;
   final DateTime Function()? _now;
+  final CriticalAlarmAcknowledgementStore?
+      _criticalAlarmAcknowledgementStore;
 
   EventRepository get _events => _eventRepository ?? EventRepository.supabase();
   DepartureAlarmService get _departureAlarms =>
@@ -168,6 +175,9 @@ class ManualEventSideEffectService {
   LocationLookupService get _locationLookup =>
       _locationLookupService ?? LocationLookupService();
   DateTime get _currentTime => (_now ?? DateTime.now)();
+  CriticalAlarmAcknowledgementStore get _criticalAcks =>
+      _criticalAlarmAcknowledgementStore ??
+      const SharedPreferencesCriticalAlarmAcknowledgementStore();
 
   Future<ManualEventSideEffectResult> syncAfterSave({
     required EventModel event,
@@ -206,6 +216,15 @@ class ManualEventSideEffectService {
     );
 
     await _departureAlarms.clearAcknowledgement(event.id);
+    // 사용자가 일정을 직접 저장했다면 시작 시각 불명 ack는 더 이상 신뢰할 수
+    // 없으므로 해제한다(시각이 바뀌었는데도 새 알람이 막히는 일 방지).
+    try {
+      if (await _criticalAcks.hasUnknownStartAcknowledgement(event.id)) {
+        await _criticalAcks.clearAcknowledgement(event.id);
+      }
+    } catch (error) {
+      DiagLogger.log('ManualSideEffect', 'critical ack sentinel clear failed: $error');
+    }
     await _notifications.cancelEventNotifications(event.id);
 
     // 편집 경로 진입 로그: 장소 유무와 isFirstExternalEventOfDay 값을 기록해
@@ -1133,6 +1152,22 @@ class ManualEventSideEffectService {
     }
 
     if (event.isCritical && criticalNotifyAt != null) {
+      // 사용자가 이미 확인한 일정이면 강한알람을 재예약하지 않는다. 이 한
+      // 줄이 채널 마이그레이션/캘린더 재동기화/사용자 편집 후 재예약까지
+      // 모두 막는다(모든 경로가 scheduleLocalNotifications를 거친다).
+      // sentinel 케이스(startAt을 모른 채로 저장된 ack)도 같은 eventId에
+      // 대해 매칭되므로 막는다. 시작 시각이 변경되면 exact 매칭이 풀려
+      // 자동으로 다시 울린다.
+      final criticalAcks = _criticalAcks;
+      if (await criticalAcks.hasUnknownStartAcknowledgement(event.id)) {
+        // 백그라운드에서 시작 시각 없이 저장된 ack: 지금 확인된 시작 시각으로
+        // 고정해 두면 이후 시각 변경은 정상적으로 다시 울린다.
+        await criticalAcks.adoptUnknownStart(event.id, startAt);
+        return;
+      }
+      if (await criticalAcks.isAcknowledged(event.id, startAt)) {
+        return;
+      }
       final result = await _notifications.scheduleCriticalAlarmWithResult(
         id: _notifications.notificationIdFor('${event.id}:critical'),
         title: event.title,

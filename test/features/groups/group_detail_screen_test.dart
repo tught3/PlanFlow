@@ -674,6 +674,195 @@ void main() {
       expect(recorder.restoredCalls, hasLength(1));
       expect(recorder.restoredCalls.single, 'group-1');
     });
+
+    // 그룹 삭제(soft delete via backup) 성공 시:
+    //  - GroupCleanupService.onGroupArchived가 정확히 1회 호출되고
+    //  - GroupMembershipRefreshBus가 정확히 1회 notify되고
+    //  - navigator pop 결과로 true(membershipChanged: true)가 반환된다.
+    //  - 실패 시 catch 블록으로 빠지므로 위 세 가지가 모두 0/none이어야 한다.
+    // cleanup은 fire-and-forget이지만 unawaited().catchError로 안전망을 두고
+    // 있어 실패해도 삭제 성공 흐름은 막히지 않는다.
+    testWidgets(
+        '그룹 삭제 성공 시 GroupCleanupService.onGroupArchived와 bus가 정확히 한 번씩 호출되고 pop 결과는 true다',
+        (tester) async {
+      final recorder = _RecordingGroupCleanupService();
+      GroupCleanupService.setInstance(recorder);
+
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(
+        'planflow:group_event_share_prompt:v1:leader-1:group-1',
+        true,
+      );
+      final repository = _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 29),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'leader-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      );
+      final backupRepository = _FakeGroupBackupRepository();
+
+      var membershipRefreshCount = 0;
+      void countMembershipRefresh() => membershipRefreshCount += 1;
+      GroupMembershipRefreshBus.instance.addListener(countMembershipRefresh);
+      addTearDown(
+        () => GroupMembershipRefreshBus.instance
+            .removeListener(countMembershipRefresh),
+      );
+
+      bool? membershipChanged;
+      final router = GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(
+            path: '/home',
+            builder: (context, _) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  membershipChanged = await context.push<bool>(
+                    AppRoutes.groupDetailForId('group-1'),
+                  );
+                },
+                child: const Text('그룹 상세 열기'),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/groups/:groupId',
+            builder: (_, state) => GroupDetailScreen(
+              groupId: state.pathParameters['groupId']!,
+              repository: repository,
+              backupRepository: backupRepository,
+              preferences: preferences,
+              currentUserIdOverride: 'leader-1',
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.groups,
+            builder: (_, __) => const Scaffold(body: Text('그룹 목록')),
+          ),
+        ],
+      );
+
+      await tester.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('그룹 상세 열기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('그룹 삭제'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+
+      expect(backupRepository.deleteGroupWithBackupCalls, <String>['group-1']);
+      expect(recorder.archivedCalls, <String>['group-1']);
+      expect(recorder.restoredCalls, isEmpty);
+      expect(membershipRefreshCount, 1,
+          reason: '성공한 삭제에서는 bus notify가 정확히 1회만 발행되어야 한다');
+      expect(membershipChanged, isTrue,
+          reason: 'pop 결과는 true(membershipChanged: true)로 반환되어야 한다');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        '그룹 삭제 RPC 실패 시 bus를 notify하지 않고 화면이 그대로 남는다',
+        (tester) async {
+      final recorder = _RecordingGroupCleanupService();
+      GroupCleanupService.setInstance(recorder);
+
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(
+        'planflow:group_event_share_prompt:v1:leader-1:group-1',
+        true,
+      );
+      final repository = _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 29),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'leader-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      );
+      final backupRepository = _FakeGroupBackupRepository(
+        deleteError: StateError('delete failed'),
+      );
+
+      var membershipRefreshCount = 0;
+      void countMembershipRefresh() => membershipRefreshCount += 1;
+      GroupMembershipRefreshBus.instance.addListener(countMembershipRefresh);
+      addTearDown(
+        () => GroupMembershipRefreshBus.instance
+            .removeListener(countMembershipRefresh),
+      );
+
+      final router = GoRouter(
+        initialLocation: '/groups/group-1',
+        routes: [
+          GoRoute(
+            path: '/groups/group-1',
+            builder: (_, __) => GroupDetailScreen(
+              groupId: 'group-1',
+              repository: repository,
+              backupRepository: backupRepository,
+              preferences: preferences,
+              currentUserIdOverride: 'leader-1',
+            ),
+          ),
+        ],
+      );
+
+      await tester.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('그룹 삭제'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+
+      expect(backupRepository.deleteGroupWithBackupCalls, <String>['group-1']);
+      expect(recorder.archivedCalls, isEmpty,
+          reason: 'RPC 실패 시 cleanup은 시작조차 안 해야 한다');
+      expect(recorder.restoredCalls, isEmpty);
+      expect(membershipRefreshCount, 0,
+          reason: '실패한 삭제에서는 membership bus notify가 발행되면 안 된다');
+      expect(find.text('그룹 삭제'), findsOneWidget,
+          reason: '삭제 실패 시 그룹 상세 화면이 그대로 보여야 한다');
+      expect(
+        find.text('삭제 실패: Bad state: delete failed'),
+        findsOneWidget,
+        reason: '실패 메시지가 스낵바로 안내되어야 한다',
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 }
 
@@ -686,12 +875,20 @@ class _RecordingGroupCleanupService extends GroupCleanupService {
   final List<String> restoredCalls = <String>[];
 
   @override
-  Future<void> onGroupArchived(String groupId, {String? userId}) async {
+  Future<void> onGroupArchived(
+    String groupId, {
+    String? userId,
+    bool refreshGroupContext = true,
+  }) async {
     archivedCalls.add(groupId);
   }
 
   @override
-  Future<void> onGroupRestored(String groupId, {String? userId}) async {
+  Future<void> onGroupRestored(
+    String groupId, {
+    String? userId,
+    bool refreshGroupContext = true,
+  }) async {
     restoredCalls.add(groupId);
   }
 }
@@ -700,13 +897,18 @@ class _FakeGroupBackupRepository extends GroupBackupRepository {
   _FakeGroupBackupRepository({
     Map<String, List<GroupBackupModel>>? backupsByGroupId,
     this.restoredGroupId,
+    this.deleteError,
   }) : backupsByGroupId = backupsByGroupId ?? <String, List<GroupBackupModel>>{};
 
   final Map<String, List<GroupBackupModel>> backupsByGroupId;
   final String? restoredGroupId;
 
+  /// deleteGroupWithBackup 실패 시뮬레이션용. null이면 성공으로 응답한다.
+  final Object? deleteError;
+
   final List<String> archiveGroupWithBackupCalls = <String>[];
   final List<String> restoreGroupFromBackupCalls = <String>[];
+  final List<String> deleteGroupWithBackupCalls = <String>[];
 
   @override
   Future<GroupBackupModel> createArchiveBackup(
@@ -764,8 +966,18 @@ class _FakeGroupBackupRepository extends GroupBackupRepository {
   }
 
   @override
-  Future<GroupBackupModel> deleteGroupWithBackup(String groupId) {
-    throw UnimplementedError();
+  Future<GroupBackupModel> deleteGroupWithBackup(String groupId) async {
+    deleteGroupWithBackupCalls.add(groupId);
+    final error = deleteError;
+    if (error != null) {
+      throw error;
+    }
+    return GroupBackupModel(
+      id: 'backup-delete-$groupId',
+      groupId: groupId,
+      backupType: 'delete',
+      snapshot: const <String, dynamic>{},
+    );
   }
 }
 

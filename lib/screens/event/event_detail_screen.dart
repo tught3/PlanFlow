@@ -24,6 +24,7 @@ import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/departure_alarm_service.dart';
+import '../../services/critical_alarm_acknowledgement_store.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -45,6 +46,7 @@ class EventDetailScreen extends StatefulWidget {
     SmartPreparationAlarmService? smartPreparationAlarmService,
     DepartureAlarmService? departureAlarmService,
     NotificationService? notificationService,
+    CriticalAlarmAcknowledgementStore? criticalAlarmAcknowledgementStore,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
@@ -52,7 +54,10 @@ class EventDetailScreen extends StatefulWidget {
             const SmartPreparationAlarmService(),
         departureAlarmService =
             departureAlarmService ?? const DepartureAlarmService(),
-        notificationService = notificationService ?? NotificationService();
+        notificationService = notificationService ?? NotificationService(),
+        criticalAlarmAcknowledgementStore =
+            criticalAlarmAcknowledgementStore ??
+                const SharedPreferencesCriticalAlarmAcknowledgementStore();
 
   final EventModel? event;
   final String? eventId;
@@ -69,6 +74,7 @@ class EventDetailScreen extends StatefulWidget {
   final SmartPreparationAlarmService smartPreparationAlarmService;
   final DepartureAlarmService departureAlarmService;
   final NotificationService notificationService;
+  final CriticalAlarmAcknowledgementStore criticalAlarmAcknowledgementStore;
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -244,20 +250,32 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   /// 강한알람 알림에서 딥링크로 들어왔을 때 노출되는 "확인(출발)" 버튼 핸들러.
-  /// 알림 액션 버튼(criticalAcknowledgedActionId)과 동일하게 이벤트 알림을
-  /// 명시적으로 취소한다. cancelEventReminderNotifications는 멱등 호출이라
-  /// 여러 번 눌러도 안전하다.
+  /// 알림 액션 버튼(criticalAcknowledgedActionId)과 동일하게, 같은 event로
+  /// 묶인 모든 로컬 알림(푸시/중요/출발/스마트 준비/사전 액션)을 취소하고
+  /// 시작 시각 기반 영구 ack를 저장해 다음 동기화/마이그레이션이 같은 시작
+  /// 시각으로는 다시 예약하지 못하게 한다. 시작 시각이 바뀌면 자동 재예약된다.
+  ///
+  /// 멱등: `_criticalAckHandled`로 더블 탭이 들어와도 한 번만 실행된다.
   Future<void> _handleCriticalAck() async {
     final eventId = _resolvedEventId;
-    if (eventId == null || eventId.isEmpty) {
+    if (eventId == null || eventId.isEmpty || _criticalAckHandled) {
       return;
     }
     setState(() {
       _criticalAckHandled = true;
     });
     try {
-      await widget.notificationService
-          .cancelEventReminderNotifications(eventId);
+      final startAt = _event?.startAt;
+      if (startAt != null) {
+        await widget.criticalAlarmAcknowledgementStore
+            .markAcknowledged(eventId, startAt);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Critical ack store write failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    try {
+      await widget.notificationService.cancelEventNotifications(eventId);
     } catch (error, stackTrace) {
       debugPrint('Critical ack cancel failed: $error');
       debugPrintStack(stackTrace: stackTrace);
