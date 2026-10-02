@@ -12,7 +12,20 @@
           "package_name": "com.fluxstudio.planflow"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "375219078541-ht62grvdc4qvc39t251uash9las92jag.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fluxstudio.planflow",
+            "certificate_hash": "146f2897534a63770699077698bd5fb6b6d3d206"
+          }
+        },
+        {
+          "client_id": "375219078541-70e11ugp24l9vu8davi3qumv3kd82ohf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBoy__DA0zyMHEDLhBcqBRhNFX8MSGJPCY"
@@ -20,7 +33,41 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "375219078541-70e11ugp24l9vu8davi3qumv3kd82ohf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:375219078541:android:2d02e149c63e82644729c4",
+        "android_client_info": {
+          "package_name": "com.fluxstudio.planflow.v2"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "375219078541-70e11ugp24l9vu8davi3qumv3kd82ohf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoy__DA0zyMHEDLhBcqBRhNFX8MSGJPCY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "375219078541-70e11ugp24l9vu8davi3qumv3kd82ohf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

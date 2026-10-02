@@ -1025,13 +1025,13 @@ class SupabaseEventRepository extends EventRepository {
   static const Set<String> _fallbackRemovablePayloadColumns = <String>{
     'external_calendar_id',
     'external_etag',
-  'external_updated_at',
-  'last_synced_at',
-  'parent_event_id',
-  'participants',
-  'targets',
-  'updated_at',
-};
+    'external_updated_at',
+    'last_synced_at',
+    'parent_event_id',
+    'participants',
+    'targets',
+    'updated_at',
+  };
 }
 
 extension on EventModel {

@@ -94,6 +94,25 @@ class GptService {
     }
 
     final normalized = _normalizeSchedule(parsed, rawText);
+
+    // 동기 정규화 이후 location 값이 있으면 GPT로 재검증.
+    // 700ms 타임아웃 내에 "null" 반환 시 location을 비운다.
+    // 타임아웃/예외 발생 시 로컬 판정 결과를 그대로 유지.
+    final rawLocation = normalized['location']?.toString();
+    if (rawLocation != null && rawLocation.isNotEmpty) {
+      try {
+        final validated = await validateLocation(rawLocation).timeout(
+          const Duration(milliseconds: 700),
+          onTimeout: () => rawLocation, // 타임아웃 시 원래 후보 유지
+        );
+        if (validated == null) {
+          normalized['location'] = null;
+        }
+      } catch (_) {
+        // 예외 시 기존 location 그대로 유지
+      }
+    }
+
     return _applyCorrectionRulesToParsedSchedule(normalized);
   }
 
@@ -237,6 +256,9 @@ class GptService {
     final content = await _requestCompletion(
       systemPrompt: systemPrompt,
       userPrompt: candidate.trim(),
+      // 단답 분류이므로 경량 모델 고정, 토큰 최소화
+      model: 'gpt-4o-mini',
+      maxTokens: 20,
     );
     final response = content?.trim();
     if (response == null || response.isEmpty || response == 'null') return null;
@@ -248,6 +270,10 @@ class GptService {
     required String userPrompt,
     Map<String, dynamic>? responseFormat,
     bool throwOnFailure = false,
+    // 특정 호출(validateLocation 등)에서 모델·토큰 수 재정의 가능.
+    // null이면 기존 _model / 제한 없음 동작 그대로 유지.
+    String? model,
+    int? maxTokens,
   }) async {
     final client = _client ?? http.Client();
     try {
@@ -260,7 +286,7 @@ class GptService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode(<String, dynamic>{
-              'model': _model,
+              'model': model ?? _model,
               'messages': <Map<String, String>>[
                 <String, String>{
                   'role': 'system',
@@ -272,6 +298,7 @@ class GptService {
                 },
               ],
               if (responseFormat != null) 'response_format': responseFormat,
+              if (maxTokens != null) 'max_tokens': maxTokens,
             }),
           )
           .timeout(_completionTimeout);
