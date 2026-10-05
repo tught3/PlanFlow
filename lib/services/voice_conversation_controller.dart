@@ -43,6 +43,8 @@ class VoiceConversationSession {
     this.pendingDelete,
     this.pendingConvert,
     this.pendingTitleSearchText,
+    this.lastQueryRange,
+    this.lastMentionedTitle,
   });
 
   final List<EventModel> visibleEvents;
@@ -52,6 +54,12 @@ class VoiceConversationSession {
   final EventModel? pendingConvert;
   final String? pendingTitleSearchText;
 
+  /// 직전 조회 성공 시의 날짜 범위("그 주", "그날" 같은 후속 지시의 폴백).
+  final VoiceConversationDateRange? lastQueryRange;
+
+  /// 직전 제목 검색에서 언급된 텍스트(제목 지시 폴백용 컨텍스트).
+  final String? lastMentionedTitle;
+
   VoiceConversationSession copyWith({
     List<EventModel>? visibleEvents,
     List<EventModel>? selectedEvents,
@@ -59,10 +67,14 @@ class VoiceConversationSession {
     VoiceConversationDeleteAction? pendingDelete,
     EventModel? pendingConvert,
     String? pendingTitleSearchText,
+    VoiceConversationDateRange? lastQueryRange,
+    String? lastMentionedTitle,
     bool clearPendingAction = false,
     bool clearFocusedEvent = false,
     bool clearPendingTitleSearch = false,
     bool clearPendingConvert = false,
+    bool clearLastQueryRange = false,
+    bool clearLastMentionedTitle = false,
   }) {
     return VoiceConversationSession(
       visibleEvents: visibleEvents ?? this.visibleEvents,
@@ -77,6 +89,11 @@ class VoiceConversationSession {
       pendingTitleSearchText: clearPendingTitleSearch
           ? null
           : pendingTitleSearchText ?? this.pendingTitleSearchText,
+      lastQueryRange:
+          clearLastQueryRange ? null : lastQueryRange ?? this.lastQueryRange,
+      lastMentionedTitle: clearLastMentionedTitle
+          ? null
+          : lastMentionedTitle ?? this.lastMentionedTitle,
     );
   }
 }
@@ -209,7 +226,9 @@ class VoiceConversationController {
       ..focusedEvent = null
       ..pendingDelete = null
       ..pendingConvert = null
-      ..pendingTitleSearchText = null;
+      ..pendingTitleSearchText = null
+      ..lastQueryRange = null
+      ..lastMentionedTitle = null;
   }
 
   VoiceConversationResult handle(
@@ -632,6 +651,24 @@ class VoiceConversationController {
       // 날짜·제목을 직접 말한 경우, 그 범위에서 후보를 찾아 바로 확인 단계로
       // 진입한다(후보가 여러 개면 번호 선택을 요청).
       if (target == null) {
+        // "그 일정 삭제해 줘"처럼 지시어만 온 경우: 조회 결과가 여러 개면
+        // 전체 후보 폴백 대신 번호 선택을 요청한다(수정 의도 분기와 동일 가드).
+        if (_isFocusedEventReference(text) &&
+            state.focusedEvent == null &&
+            state.visibleEvents.length > 1) {
+          state.pendingTitleSearchText = null;
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.none,
+              inputText: input,
+              visibleEvents: state.visibleEvents,
+              selectedEvents: const <EventModel>[],
+              assistantMessage: '여러 일정이 보여요. 몇 번째 일정인지 번호로 말해 주세요.',
+            ),
+          );
+        }
         final matched = _eventsMatchingRequestContext(text, state);
         if (matched.length == 1) {
           target = matched.single;
@@ -660,7 +697,8 @@ class VoiceConversationController {
         final pending = VoiceConversationDeleteAction(
           event: target,
           requestText: text,
-          occurrenceDate: _resolveOccurrenceDateForDelete(target, text),
+          occurrenceDate:
+              _resolveOccurrenceDateForDelete(target, text, state),
         );
         state
           ..focusedEvent = target
@@ -683,7 +721,23 @@ class VoiceConversationController {
       state.pendingTitleSearchText = null;
     }
 
-    final range = _parseDateRange(text);
+    final range = _parseDateRangeWithContext(text, state);
+    if (range == null && _isQueryIntent(text, route: route)) {
+      // "그 주", "그날" 같은 맥락 의존 표현인데 참고할 직전 조회가 없으면
+      // 엉뚱한 날짜로 해석하지 않고 날짜를 다시 묻는다.
+      if (_hasContextualDateReference(text)) {
+        state.pendingTitleSearchText = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.none,
+            inputText: input,
+            assistantMessage: '어느 날짜인지 잘 모르겠어요. 조회할 날짜를 말해 주세요.',
+          ),
+        );
+      }
+    }
     if (range != null && _isQueryIntent(text, route: route)) {
       final matched = state.events
           .map((event) => _visibleEventInRange(event, range, state.events))
@@ -696,7 +750,8 @@ class VoiceConversationController {
         ..selectedEvents = const <EventModel>[]
         ..pendingDelete = null
         ..pendingConvert = null
-        ..pendingTitleSearchText = null;
+        ..pendingTitleSearchText = null
+        ..lastQueryRange = range;
       return _finish(
         state,
         session,
@@ -774,13 +829,19 @@ class VoiceConversationController {
     final titleSearch = _searchEventsByTitleOrPeople(text, state);
     if (titleSearch.inRangeMatches.isNotEmpty) {
       final matched = titleSearch.inRangeMatches;
+      // banned-ok: 'Token'은 제목 검색용 단어 토큰이지 시크릿이 아님(오탐)
+      final searchTokens = _queryTokensForTitleSearch(text);
       state
         ..visibleEvents = matched
         ..focusedEvent = matched.length == 1 ? matched.first : null
         ..selectedEvents = const <EventModel>[]
         ..pendingDelete = null
         ..pendingConvert = null
-        ..pendingTitleSearchText = null;
+        ..pendingTitleSearchText = null
+        ..lastQueryRange = null
+        ..lastMentionedTitle = searchTokens.isEmpty
+            ? state.lastMentionedTitle
+            : searchTokens.join(' ');
       return _finish(
         state,
         session,
@@ -933,6 +994,45 @@ class VoiceConversationController {
     );
   }
 
+  /// 날짜 파서는 stateless를 유지하고, 맥락 폴백만 컨트롤러에서 한다:
+  /// 직전 조회 범위([_VoiceConversationState.lastQueryRange])가 있을 때
+  /// "그 주"/"같은 주"는 그 범위 전체를, "그날"/"당일"은 그 범위가 단일일일
+  /// 때만 그 하루를 가리킨다. 명시적 날짜가 있으면 항상 파서가 우선한다.
+  VoiceConversationDateRange? _parseDateRangeWithContext(
+    String text,
+    _VoiceConversationState state,
+  ) {
+    final direct = _parseDateRange(text);
+    if (direct != null) {
+      return direct;
+    }
+    final context = state.lastQueryRange;
+    if (context == null) {
+      return null;
+    }
+    final compact = _compact(text);
+    // '그다음주'는 파서가 "2주 뒤"로 이미 처리하므로('그주'와 부분일치하지
+    // 않음) 여기 정규식에 걸리지 않는다.
+    if (compact.contains('그주') || compact.contains('같은주')) {
+      return context;
+    }
+    if ((compact.contains('그날') || compact.contains('당일')) &&
+        context.isSingleDay) {
+      return context;
+    }
+    return null;
+  }
+
+  /// "그 주", "그날", "당일", "같은 주"처럼 직전 조회 맥락 없이는 해석할 수
+  /// 없는 날짜 표현인지 판별한다(가이드 응답용).
+  bool _hasContextualDateReference(String text) {
+    final compact = _compact(text);
+    return compact.contains('그주') ||
+        compact.contains('같은주') ||
+        compact.contains('그날') ||
+        compact.contains('당일');
+  }
+
   DateTime _defaultDraftStartAt(DateTime? candidate, DateTime now) {
     final date = candidate ?? now;
     if (candidate == null ||
@@ -993,12 +1093,16 @@ class VoiceConversationController {
   /// `expandRecurringEvent`로 전개한 뒤, 범위와 매칭되는 첫 회차의 startAt
   /// local-day를 반환한다. 반복 일정이 아니거나(range 없음/매칭 회차 없음)
   /// 추론에 실패하면 null — UI는 이 경우 시리즈 전체 삭제로 폴백한다.
-  DateTime? _resolveOccurrenceDateForDelete(EventModel target, String text) {
+  DateTime? _resolveOccurrenceDateForDelete(
+    EventModel target,
+    String text,
+    _VoiceConversationState state,
+  ) {
     final rule = target.recurrenceRule;
     if (rule == null || rule.trim().isEmpty) {
       return null;
     }
-    final range = _parseDateRange(text);
+    final range = _parseDateRangeWithContext(text, state);
     if (range == null) {
       return null;
     }
@@ -1153,7 +1257,11 @@ class VoiceConversationController {
     String text,
     _VoiceConversationState state,
   ) {
-    final range = _parseDateRange(text);
+    final range = _parseDateRangeWithContext(text, state);
+    if (range != null) {
+      // 삭제 발화에서 직접 날짜를 말했다면 그 범위가 이후 맥락의 기준이 된다.
+      state.lastQueryRange = range;
+    }
     var candidates = state.events
         .map(
           (event) => range == null
@@ -1188,11 +1296,23 @@ class VoiceConversationController {
       '삭제', '지워', '없애', '취소', '해줘', '해 줘', '주세요',
       '일정', '시작하는', '시작한', '다시', '먼저', '보여', '줘', '모두', '전부',
       '그리고', '그담', '그다음',
+      // 맥락 지시어: 직전 조회 범위를 가리키는 표현은 키워드가 아니다.
+      '그 주에서', '그주에서', '그 주에', '그주에',
+      '같은 주', '같은주', '그 주', '그주', '그 주간', '그주간',
+      '그 날', '그날', '당일', '아까', '방금',
     ];
     for (final word in stopWords) {
       cleaned = cleaned.replaceAll(word, ' ');
     }
     cleaned = cleaned.trim();
+    // 키워드 끝에 붙은 조사·보조사 제거("단기렌트만" → "단기렌트").
+    while (cleaned.isNotEmpty) {
+      final stripped = cleaned.replaceAll(RegExp(r'(만|에서|에)$'), '').trim();
+      if (stripped == cleaned) {
+        break;
+      }
+      cleaned = stripped;
+    }
     return cleaned.length >= 2 ? cleaned : null;
   }
 
@@ -2071,13 +2191,21 @@ class VoiceConversationController {
   }
 
   bool _isFocusedEventReference(String text) {
-    return text.contains('그 일정') ||
+    if (text.contains('그 일정') ||
         text.contains('이 일정') ||
         text.contains('방금 일정') ||
         text.contains('그거') ||
         text.contains('이거') ||
         text.contains('방금 거') ||
-        text.contains('방금거');
+        text.contains('방금거')) {
+      return true;
+    }
+    final compact = _compact(text);
+    return compact.contains('아까말한') ||
+        compact.contains('아까그') ||
+        compact.contains('아까본') ||
+        compact.contains('방금본') ||
+        compact.contains('방금목록');
   }
 
   String? _extractLocationText(String text) {
@@ -2201,6 +2329,8 @@ class _VoiceConversationState {
     this.pendingDelete,
     this.pendingConvert,
     this.pendingTitleSearchText,
+    this.lastQueryRange,
+    this.lastMentionedTitle,
   }) : events = List<EventModel>.of(events) {
     VoiceConversationController._sortEvents(this.events);
   }
@@ -2221,6 +2351,8 @@ class _VoiceConversationState {
       pendingDelete: session.pendingDelete,
       pendingConvert: session.pendingConvert,
       pendingTitleSearchText: session.pendingTitleSearchText,
+      lastQueryRange: session.lastQueryRange,
+      lastMentionedTitle: session.lastMentionedTitle,
     );
   }
 
@@ -2231,6 +2363,8 @@ class _VoiceConversationState {
   VoiceConversationDeleteAction? pendingDelete;
   EventModel? pendingConvert;
   String? pendingTitleSearchText;
+  VoiceConversationDateRange? lastQueryRange;
+  String? lastMentionedTitle;
 
   void replaceEvents(Iterable<EventModel> nextEvents) {
     events
@@ -2247,6 +2381,8 @@ class _VoiceConversationState {
       pendingDelete: pendingDelete,
       pendingConvert: pendingConvert,
       pendingTitleSearchText: pendingTitleSearchText,
+      lastQueryRange: lastQueryRange,
+      lastMentionedTitle: lastMentionedTitle,
     );
   }
 }

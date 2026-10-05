@@ -14,10 +14,10 @@ void main() {
     test('STT로 이름 일부가 빠져도 단일 제목 토큰 일치 수정은 기존 일정을 연다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)),
-          _event('other', '디자인 프로젝트 회의', DateTime(2026, 7, 14, 16)),
+          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('other', '디자인 프로젝트 회의', DateTime(2026, 7, 14, 16)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
-        now: () => DateTime(2026, 7, 13, 9),
+        now: () => DateTime(2026, 7, 13, 9), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
       );
       controller.handle('내일 일정 보여줘');
 
@@ -32,9 +32,9 @@ void main() {
     test('일정 시간 필드명을 포함한 수정도 조회된 제목과 매칭한다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)),
+          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
-        now: () => DateTime(2026, 7, 13, 9),
+        now: () => DateTime(2026, 7, 13, 9), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
       );
       controller.handle('내일 일정 보여줘');
 
@@ -50,13 +50,13 @@ void main() {
     test('장소와 시간 변경은 하나의 편집 초안에 함께 반영한다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)).copyWith(
+          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)).copyWith( // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
             location: '강남역',
             locationLat: 37.4979,
             locationLng: 127.0276,
           ),
         ],
-        now: () => DateTime(2026, 7, 13, 9),
+        now: () => DateTime(2026, 7, 13, 9), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
       );
       controller.handle('내일 일정 보여줘');
 
@@ -78,9 +78,9 @@ void main() {
     test('중요도와 시간 변경도 하나의 편집 초안에 함께 반영한다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)),
+          _event('meeting', '김민수와 프로젝트 회의', DateTime(2026, 7, 14, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
-        now: () => DateTime(2026, 7, 13, 9),
+        now: () => DateTime(2026, 7, 13, 9), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
       );
       controller.handle('내일 일정 보여줘');
 
@@ -521,7 +521,7 @@ void main() {
     test('focused event wording can move a queried event to another date', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('target', '원주집 단기렌트', DateTime(2026, 7, 19, 9)),
+          _event('target', '원주집 단기렌트', DateTime(2026, 7, 19, 9)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
         now: () => DateTime(2026, 6, 7, 8),
       );
@@ -545,7 +545,7 @@ void main() {
     test('title or person search defaults to one month around today', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('near-title', '김태형 PM 확인전화', DateTime(2026, 7, 6, 9)),
+          _event('near-title', '김태형 PM 확인전화', DateTime(2026, 7, 6, 9)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
           _event('far-title', '김태형 PM 분기 미팅', DateTime(2026, 8, 9, 9)),
           _eventWithPeople(
             'near-target',
@@ -585,9 +585,9 @@ void main() {
     test('title search requires all name and role tokens to match', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('exact', '김태형 PM 확인전화', DateTime(2026, 7, 6, 9)),
-          _event('name-only', '김태형 미팅', DateTime(2026, 7, 6, 11)),
-          _event('role-only', 'PM 주간보고', DateTime(2026, 7, 6, 14)),
+          _event('exact', '김태형 PM 확인전화', DateTime(2026, 7, 6, 9)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('name-only', '김태형 미팅', DateTime(2026, 7, 6, 11)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('role-only', 'PM 주간보고', DateTime(2026, 7, 6, 14)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
         now: () => DateTime(2026, 6, 7, 8),
       );
@@ -619,8 +619,8 @@ void main() {
         () {
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('first', '김태형 오전 미팅', DateTime(2026, 7, 6, 9)),
-          _event('second', '김태형 오후 미팅', DateTime(2026, 7, 6, 15)),
+          _event('first', '김태형 오전 미팅', DateTime(2026, 7, 6, 9)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('second', '김태형 오후 미팅', DateTime(2026, 7, 6, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
         now: () => DateTime(2026, 6, 7, 8),
       );
@@ -968,9 +968,9 @@ void main() {
       // 대신 그 기존 일정을 오후 2시로 편집해버리는 버그가 있었다.
       final controller = VoiceConversationController(
         events: <EventModel>[
-          _event('existing-1', '가기', DateTime(2026, 7, 3, 9, 30)),
+          _event('existing-1', '가기', DateTime(2026, 7, 3, 9, 30)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
         ],
-        now: () => DateTime(2026, 7, 3, 10),
+        now: () => DateTime(2026, 7, 3, 10), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
       );
 
       final showResult = controller.handle('오늘 일정 보여줘');
@@ -1027,6 +1027,135 @@ void main() {
         );
       },
     );
+  });
+
+  group('멀티턴 맥락 유지', () {
+    test('다다음주 조회 후 "그 주에서 ~만 삭제"는 조회한 범위에서 후보를 좁힌다', () {
+      // '다다음주'는 컨트롤러 now 기준이므로 절대 날짜 리터럴 없이 now를 고정한다.
+      final now = DateTime(2026, 7, 3, 10); // 금요일 // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          // 다음 주(7/6~7/12)의 단기렌트: 맥락 폴백 없이 후보를 좁히면
+          // 범위 밖 이 일정까지 후보에 들어와 2개로 모호해진다.
+          _event('rent-other', '단기렌트 청소', DateTime(2026, 7, 8, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('rent-target', '단기렌트 물품 수령', DateTime(2026, 7, 15, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+        ],
+        now: () => now,
+      );
+
+      final query = controller.handle('다다음주 일정 보여 줘');
+      expect(query.action, VoiceConversationAction.showEvents);
+      expect(
+        query.visibleEvents.map((event) => event.id),
+        contains('rent-target'),
+      );
+      expect(
+        query.visibleEvents.map((event) => event.id),
+        isNot(contains('rent-other')),
+      );
+
+      final deleteAsk = controller.handle('그 주에서 단기렌트만 삭제해 줘');
+      expect(deleteAsk.action, VoiceConversationAction.confirmDelete);
+      expect(deleteAsk.targetEvent?.id, 'rent-target');
+      expect(deleteAsk.requiresDeleteConfirmation, isTrue);
+
+      final confirmed = controller.handle('응 삭제해');
+      expect(confirmed.action, VoiceConversationAction.deleteConfirmed);
+      expect(confirmed.targetEvent?.id, 'rent-target');
+    });
+
+    test('조회 후 "같은 주 일정 보여 줘"는 동일 범위를 재조회한다', () {
+      final now = DateTime(2026, 7, 3, 10); // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('in-week', '주간 작업', DateTime(2026, 7, 15, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('out-week', '다른 주 작업', DateTime(2026, 7, 8, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+        ],
+        now: () => now,
+      );
+
+      final first = controller.handle('다다음주 일정 보여 줘');
+      expect(first.action, VoiceConversationAction.showEvents);
+      expect(first.queryRange, isNotNull);
+
+      final second = controller.handle('같은 주 일정 보여 줘');
+      expect(second.action, VoiceConversationAction.showEvents);
+      expect(second.queryRange?.start, first.queryRange?.start);
+      expect(second.queryRange?.end, first.queryRange?.end);
+      expect(
+        second.visibleEvents.map((event) => event.id).toSet(),
+        first.visibleEvents.map((event) => event.id).toSet(),
+      );
+    });
+
+    test('"방금 본 일정 중에 2번 삭제"는 조회 결과의 순번으로 선택한다', () {
+      final now = DateTime(2026, 7, 3, 10); // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '첫 회의', DateTime(2026, 7, 4, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('second', '둘째 회의', DateTime(2026, 7, 4, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+        ],
+        now: () => now,
+      );
+
+      final query = controller.handle('내일 일정 보여 줘');
+      expect(query.visibleEvents.length, 2);
+
+      final result = controller.handle('방금 본 일정 중에 2번 삭제해 줘');
+      expect(result.action, VoiceConversationAction.confirmDelete);
+      expect(result.targetEvent?.id, 'second');
+    });
+
+    test('맥락 없이 "그 주 일정 보여 줘"라고 말하면 날짜를 다시 묻는다', () {
+      final now = DateTime(2026, 7, 3, 10); // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('some', '어떤 일정', DateTime(2026, 7, 8, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+        ],
+        now: () => now,
+      );
+
+      final result = controller.handle('그 주 일정 보여 줘');
+      expect(result.action, VoiceConversationAction.none);
+      expect(result.assistantMessage, '어느 날짜인지 잘 모르겠어요. 조회할 날짜를 말해 주세요.');
+    });
+
+    test('반복 일정 조회 후 "그날" 삭제는 조회한 회차 날짜로 occurrenceDate를 설정한다', () {
+      // "모레"가 항상 화요일이 되도록(BYDAY=TU와 정합) 미래의 가장 가까운
+      // 화요일을 기준으로 삼는다 — 절대 날짜 리터럴 시한폭탄 방지.
+      final DateTime tuesday = _nextWeekdayOnOrAfter(
+        DateTime.now().add(const Duration(days: 400)),
+        DateTime.tuesday,
+      );
+      final DateTime dayAfterTomorrow = tuesday;
+      final DateTime today = dayAfterTomorrow.subtract(const Duration(days: 2));
+      final DateTime anchorWeek = dayAfterTomorrow.subtract(
+        const Duration(days: 7),
+      );
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event(
+            'recurring',
+            '주간 회의',
+            DateTime(anchorWeek.year, anchorWeek.month, anchorWeek.day, 9),
+          ).copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU'),
+        ],
+        now: () => DateTime(today.year, today.month, today.day, 9),
+      );
+
+      final query = controller.handle('모레 일정 보여 줘');
+      expect(query.action, VoiceConversationAction.showEvents);
+      expect(query.visibleEvents.map((event) => event.id), contains('recurring'));
+
+      final result = controller.handle('그날 일정 삭제해 줘');
+      expect(result.action, VoiceConversationAction.confirmDelete);
+      expect(result.targetEvent?.id, 'recurring');
+      final occurrenceDate = result.pendingDelete?.occurrenceDate;
+      expect(occurrenceDate, isNotNull);
+      expect(occurrenceDate!.year, dayAfterTomorrow.year);
+      expect(occurrenceDate.month, dayAfterTomorrow.month);
+      expect(occurrenceDate.day, dayAfterTomorrow.day);
+    });
   });
 }
 
