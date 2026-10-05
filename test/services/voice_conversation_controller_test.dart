@@ -843,6 +843,67 @@ void main() {
       expect(controller.focusedEvent?.id, 'afternoon');
     });
 
+    test(
+        'recurring delete with a date phrase sets pendingDelete.occurrenceDate',
+        () {
+      // 절대 날짜 리터럴 금지 — "내일"이 항상 회차 요일(BYDAY)과 일치하도록
+      // 미래의 가장 가까운 화요일을 앵커로 삼는다.
+      final DateTime tomorrow = _nextWeekdayOnOrAfter(
+        DateTime.now().add(const Duration(days: 400)),
+        DateTime.tuesday,
+      );
+      final DateTime today = tomorrow.subtract(const Duration(days: 1));
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event(
+            'recurring',
+            '주간 회의',
+            DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9),
+          ).copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU'),
+        ],
+        now: () => DateTime(today.year, today.month, today.day, 9),
+      );
+      controller.handle('내일 일정 보여줘');
+
+      final result = controller.handle('내일 주간 회의 삭제해줘');
+
+      expect(result.action, VoiceConversationAction.confirmDelete);
+      expect(result.targetEvent?.id, 'recurring');
+      expect(result.requiresDeleteConfirmation, isTrue);
+      final occurrenceDate = result.pendingDelete?.occurrenceDate;
+      expect(occurrenceDate, isNotNull);
+      expect(occurrenceDate!.year, tomorrow.year);
+      expect(occurrenceDate.month, tomorrow.month);
+      expect(occurrenceDate.day, tomorrow.day);
+      expect(controller.pendingDelete?.occurrenceDate, isNotNull);
+    });
+
+    test('recurring delete without a date leaves occurrenceDate null', () {
+      final DateTime tomorrow = _nextWeekdayOnOrAfter(
+        DateTime.now().add(const Duration(days: 400)),
+        DateTime.tuesday,
+      );
+      final DateTime today = tomorrow.subtract(const Duration(days: 1));
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event(
+            'recurring',
+            '팀 스크럼',
+            DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9),
+          ).copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU'),
+        ],
+        now: () => DateTime(today.year, today.month, today.day, 9),
+      );
+      controller.handle('내일 일정 보여줘');
+
+      final result = controller.handle('팀 스크럼 삭제해줘');
+
+      expect(result.action, VoiceConversationAction.confirmDelete);
+      expect(result.targetEvent?.id, 'recurring');
+      expect(result.requiresDeleteConfirmation, isTrue);
+      expect(result.pendingDelete?.occurrenceDate, isNull);
+    });
+
     test('개인 일정 전환 발화는 확인 질문을 만들고 응답으로 확정된다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

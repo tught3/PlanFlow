@@ -660,7 +660,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             return;
           }
         } else {
-          final deleted = await _deleteEvent(result.targetEvent!);
+          // 반복 일정 + 회차가 확정된 pendingDelete면 시리즈 전체가 아니라
+          // 그 회차만 삭제한다(pendingDelete.occurrenceDate 보존).
+          final occurrenceDate = result.pendingDelete?.occurrenceDate;
+          final rule = result.targetEvent!.recurrenceRule;
+          final isRecurring = rule != null && rule.trim().isNotEmpty;
+          final deleted = isRecurring && occurrenceDate != null
+              ? await _deleteEventOccurrence(
+                  result.targetEvent!,
+                  occurrenceDate,
+                )
+              : await _deleteEvent(result.targetEvent!);
           if (!deleted) {
             return;
           }
@@ -714,6 +724,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             events: result.visibleEvents,
             pendingDeleteEvent:
                 result.requiresDeleteConfirmation ? result.targetEvent : null,
+            deleteOccurrenceDate: result.requiresDeleteConfirmation
+                ? result.pendingDelete?.occurrenceDate
+                : null,
           ),
         );
       });
@@ -1611,9 +1624,114 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
   }
 
+  /// 반복 일정의 단일 회차만 삭제한다(시리즈는 유지). anchor의
+  /// `deletedOccurrenceDates`에 해당 local-day를 추가해 updateEvent로
+  /// 저장하며, 이후 후속 처리(목록 갱신/EventRefreshBus/음성 재개 등)는
+  /// [_deleteEvent]와 동일하게 진행한다.
+  Future<bool> _deleteEventOccurrence(
+    EventModel event,
+    DateTime occurrenceDate,
+  ) async {
+    try {
+      final anchor = await _repository.fetchEvent(
+        event.id,
+        userId: authProvider.userId,
+      );
+      if (anchor == null) {
+        // anchor를 못 찾으면 전체 삭제 경로로 폴백하지 않고 실패 처리.
+        debugPrint(
+          'VoiceConversationScreen occurrence delete: anchor not found',
+        );
+        if (!mounted) return false;
+        setState(() {
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '삭제하지 못했어요. 잠시 후 다시 시도해 주세요.',
+            ),
+          );
+        });
+        return false;
+      }
+      final localDay = DateTime(
+        occurrenceDate.year,
+        occurrenceDate.month,
+        occurrenceDate.day,
+      );
+      final updated = anchor.copyWith(
+        deletedOccurrenceDates: <DateTime>[
+          ...(anchor.deletedOccurrenceDates ?? const <DateTime>[]),
+          localDay,
+        ],
+      );
+      await _repository.updateEvent(updated);
+      _deletedEventIds.add(event.id);
+      _setConversationInputText('');
+      _restartListenTimer?.cancel();
+      _isRestartPending = false;
+      _listenGeneration += 1;
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_delete',
+        eventId: event.id,
+        startAt: event.startAt,
+      );
+      await _loadEvents();
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _voicePhase = _VoiceConversationPhase.idle;
+        });
+      } else {
+        _isListening = false;
+      }
+      if (_keepListening && !_voicePausedByUser) {
+        _scheduleAutoRestartListen();
+      }
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${localDay.month}월 ${localDay.day}일 회차만 삭제했어요.',
+          ),
+        ),
+      );
+      return true;
+    } catch (error) {
+      debugPrint(
+        'VoiceConversationScreen occurrence delete failed: $error',
+      );
+      if (!mounted) return false;
+      setState(() {
+        _messages.add(
+          const _ConversationMessage.assistant(
+            '삭제하지 못했어요. 잠시 후 다시 시도해 주세요.',
+          ),
+        );
+      });
+      return false;
+    }
+  }
+
   Future<void> _confirmPendingDelete(EventModel event) async {
     _conversation.handle('응 삭제해');
     await _deleteEvent(event);
+  }
+
+  /// "이 회차만 삭제" 버튼: 반복 일정에서 지정된 회차 하나만 삭제하고
+  /// assistant 메시지로 결과를 알린다.
+  Future<void> _confirmPendingDeleteOccurrence(
+    EventModel event,
+    DateTime occurrenceDate,
+  ) async {
+    final deleted = await _deleteEventOccurrence(event, occurrenceDate);
+    if (!deleted || !mounted) return;
+    setState(() {
+      _messages.add(
+        _ConversationMessage.assistant(
+          '${occurrenceDate.month}월 ${occurrenceDate.day}일 회차만 삭제했어요.',
+        ),
+      );
+    });
+    _scrollToBottom();
   }
 
   // 이 함수의 유일한 호출자 _showEventActionSheet()는 진입 시 항상
@@ -2034,6 +2152,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                                     : () => _confirmPendingDelete(
                                           message.pendingDeleteEvent!,
                                         ),
+                            onDeleteOccurrence:
+                                message.pendingDeleteEvent == null ||
+                                        message.deleteOccurrenceDate == null ||
+                                        _deletedEventIds.contains(
+                                          message.pendingDeleteEvent!.id,
+                                        )
+                                    ? null
+                                    : () => _confirmPendingDeleteOccurrence(
+                                          message.pendingDeleteEvent!,
+                                          message.deleteOccurrenceDate!,
+                                        ),
                           );
                         }
                         final tail = index - _messages.length;
@@ -2195,6 +2324,7 @@ class _ConversationMessage {
     required this.isUser,
     this.events = const <EventModel>[],
     this.pendingDeleteEvent,
+    this.deleteOccurrenceDate,
   });
 
   const _ConversationMessage.user(String text)
@@ -2204,17 +2334,23 @@ class _ConversationMessage {
     String text, {
     List<EventModel> events = const <EventModel>[],
     EventModel? pendingDeleteEvent,
+    DateTime? deleteOccurrenceDate,
   }) : this._(
           text: text,
           isUser: false,
           events: events,
           pendingDeleteEvent: pendingDeleteEvent,
+          deleteOccurrenceDate: deleteOccurrenceDate,
         );
 
   final String text;
   final bool isUser;
   final List<EventModel> events;
   final EventModel? pendingDeleteEvent;
+
+  /// pendingDelete가 반복 일정일 때 삭제 대상 회차의 local-day
+  /// (null이면 버튼이 "전체 삭제" 하나로 폴백).
+  final DateTime? deleteOccurrenceDate;
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -2223,12 +2359,19 @@ class _MessageBubble extends StatelessWidget {
     required this.deletedEventIds,
     required this.onEventTap,
     this.onConfirmDelete,
+    this.onDeleteOccurrence,
   });
 
   final _ConversationMessage message;
   final Set<String> deletedEventIds;
   final ValueChanged<EventModel> onEventTap;
   final VoidCallback? onConfirmDelete;
+  final VoidCallback? onDeleteOccurrence;
+
+  static bool _isRecurringEvent(EventModel event) {
+    final rule = event.recurrenceRule;
+    return rule != null && rule.trim().isNotEmpty;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2280,13 +2423,31 @@ class _MessageBubble extends StatelessWidget {
         ],
         if (message.pendingDeleteEvent != null && onConfirmDelete != null) ...[
           const SizedBox(height: 8),
+          // 반복 일정 + 회차가 확정된 경우에만 "이 회차만 삭제"를 노출한다.
+          // 반복 일정이지만 회차 추론 실패(deleteOccurrenceDate == null)면
+          // 기존처럼 단일 버튼(전체 삭제)으로 폴백한다.
+          if (_isRecurringEvent(message.pendingDeleteEvent!) &&
+                  message.deleteOccurrenceDate != null &&
+                  onDeleteOccurrence != null)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: onDeleteOccurrence,
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('이 회차만 삭제'),
+            ),
           FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
             onPressed: onConfirmDelete,
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('삭제 확인'),
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: Text(
+              _isRecurringEvent(message.pendingDeleteEvent!)
+                  ? '전체 삭제'
+                  : '삭제 확인',
+            ),
           ),
         ],
       ],

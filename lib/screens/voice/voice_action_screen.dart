@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/recurrence_expansion.dart';
 import '../../core/theme.dart';
 import '../../widgets/app_back_button.dart';
 import '../../data/models/event_model.dart';
@@ -102,6 +103,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   VoiceCommandRouteResult? _routeResult;
   _CandidateLoadDiagnostics? _candidateLoadDiagnostics;
   _CandidateLoadSnapshot? _candidateLoadSnapshot;
+  // 삭제 확인 시 반복 일정의 회차를 전개하는 데 쓰는 날짜 범위. 후보 로드 시
+  // 텍스트에서 뽑아 둔다(사용자가 말한 날짜 표현).
+  _DateRange? _candidateDateRangeForDelete;
 
   late VoiceScheduleAction _selectedAction;
   late final VoiceCommandRouter _voiceCommandRouter;
@@ -369,9 +373,17 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       if (!mounted) {
         return;
       }
+      // 날짜 매칭으로 후보가 정확히 1개로 좁혀지면 삭제 선택을 미리 켠다.
+      final autoSelectId = _isDelete &&
+              candidateDateRange != null &&
+              ranked.length == 1 &&
+              _isEventInCandidateDateRange(ranked.single, candidateDateRange)
+          ? ranked.single.id
+          : null;
       setState(() {
         _cleanupResult = cleanup;
         _routeResult = routeResult;
+        _candidateDateRangeForDelete = candidateDateRange;
         _candidateLoadDiagnostics = diagnostics;
         _candidateLoadSnapshot = _CandidateLoadSnapshot(
           diagnostics: diagnostics,
@@ -384,6 +396,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         _selectedDeleteEventIds.removeWhere(
           (id) => !ranked.any((event) => event.id == id),
         );
+        if (autoSelectId != null) {
+          _selectedDeleteEventIds.add(autoSelectId);
+        }
         _message =
             events.isEmpty && !allowAutoSyncRetry && _canAutoRetryEmptyLoad
                 ? '앱 DB에서 일정을 못 불러왔어요'
@@ -793,6 +808,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return firstDateRange;
     }
 
+    // 자체 정규식 커버리지 밖의 상대 표현("다다음주", "그다음주", 요일 조합,
+    // "N월" 월 단위 등)은 공유 파서로 보강한다. 기존 케이스는 위 분기들이
+    // 먼저 처리하므로 회귀 없다.
+    final parserRange = VoiceDateRangeParser.parse(normalized);
+    if (parserRange != null) {
+      return _DateRange(parserRange.start, parserRange.end);
+    }
+
     return _queryDateRange(normalized);
   }
 
@@ -876,13 +899,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     if (candidateDateRange == null) {
       return false;
     }
-    final startAt = event.startAt;
-    if (startAt == null) {
-      return false;
-    }
-    final local = planflowLocal(startAt);
-    return !local.isBefore(candidateDateRange.start) &&
-        local.isBefore(candidateDateRange.end);
+    // 반복 일정은 앵커 startAt이 아니라 범위 안에 시작하는 회차가 있는지로
+    // 판정한다("10월 26일부터 시작하는 반복 일정" 같은 미래 회차 매칭).
+    return eventHasOccurrenceInRange(
+      event,
+      candidateDateRange.start,
+      candidateDateRange.end,
+    );
   }
 
   int _compareDateForCandidate(DateTime? aStart, DateTime? bStart) {
@@ -2338,7 +2361,66 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   Future<void> _confirmDelete(EventModel event) async {
-    final shouldDelete = await showDialog<bool>(
+    final isRecurring =
+        (event.recurrenceRule ?? '').trim().isNotEmpty;
+    if (!isRecurring) {
+      final shouldDelete = await _showSeriesDeleteDialog(event);
+      if (shouldDelete == true) {
+        await _deleteEvent(event);
+      }
+      return;
+    }
+
+    // 반복 일정: 사용자가 말한 날짜 범위 안의 회차를 전개해 스코프를 고른다.
+    final range = _candidateDateRangeForDelete;
+    final occurrenceDays = range == null
+        ? const <DateTime>[]
+        : occurrenceLocalDaysInRange(
+            event: event,
+            rangeStart: range.start,
+            rangeEnd: range.end,
+          );
+
+    if (occurrenceDays.isEmpty) {
+      // 회차를 특정할 수 없으면(범위 정보 없음/범위 안에 회차 없음) 기존
+      // 전체 삭제 확인 다이얼로그로 폴백한다.
+      final shouldDelete = await _showSeriesDeleteDialog(event);
+      if (shouldDelete == true) {
+        await _deleteEvent(event);
+      }
+      return;
+    }
+
+    if (occurrenceDays.length == 1) {
+      final scope = await chooseRecurrenceDeleteScope(
+        context,
+        eventTitle: event.title,
+        occurrenceDate: occurrenceDays.single,
+      );
+      if (scope == RecurrenceDeleteScope.occurrence) {
+        await _deleteSingleOccurrence(event, occurrenceDays.single);
+      } else if (scope == RecurrenceDeleteScope.all) {
+        await _deleteEvent(event);
+      }
+      return;
+    }
+
+    final selectedDay = await chooseRecurrenceOccurrenceDate(
+      context,
+      eventTitle: event.title,
+      occurrenceDays: occurrenceDays,
+      onSeriesDelete: () {
+        unawaited(_deleteEvent(event));
+      },
+    );
+    if (selectedDay != null) {
+      await _deleteSingleOccurrence(event, selectedDay);
+    }
+  }
+
+  /// 기존의 전체 삭제 확인 다이얼로그(단발 일정 경로와 동일).
+  Future<bool?> _showSeriesDeleteDialog(EventModel event) {
+    return showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -2367,9 +2449,64 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         );
       },
     );
+  }
 
-    if (shouldDelete == true) {
+  /// 반복 일정의 단일 회차만 삭제한다. anchor의 deletedOccurrenceDates에 해당
+  /// 날짜(local-day)를 추가해 update하며, 표시 계열(expandRecurringEvent)이
+  /// 그 회차를 스킵한다. 목록 새로고침/버스 갱신은 전체 삭제 경로와 동일하게
+  /// 맞춘다. 그룹 일정은 회차 단위 삭제를 지원하지 않아 전체 삭제로 폴백한다.
+  Future<void> _deleteSingleOccurrence(EventModel event, DateTime day) async {
+    final groupEvent = _groupEventById[event.id];
+    if (groupEvent != null) {
+      debugPrint(
+        'VoiceActionScreen group recurring event does not support '
+        'single-occurrence delete; falling back to series delete',
+      );
       await _deleteEvent(event);
+      return;
+    }
+    final userId = _resolveUserId();
+    if (userId == null) {
+      _showMessage('로그인 후 삭제할 수 있어요.');
+      return;
+    }
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    try {
+      final updated = event.copyWith(
+        deletedOccurrenceDates: <DateTime>[
+          ...(event.deletedOccurrenceDates ?? const <DateTime>[]),
+          planflowLocalDay(day),
+        ],
+      );
+      await _repository.updateEvent(updated);
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_event_occurrence_deleted',
+        eventId: event.id,
+        startAt: event.startAt,
+      );
+      if (!mounted) {
+        return;
+      }
+      _showMessage('해당 회차를 삭제했습니다.');
+      context.go(AppRoutes.calendar);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VoiceActionScreen single-occurrence delete failed: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('회차를 삭제하지 못했어요. 로그인 상태 또는 스토리지를 확인해 주세요.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
+      }
     }
   }
 

@@ -24,10 +24,15 @@ class VoiceConversationDeleteAction {
   const VoiceConversationDeleteAction({
     required this.event,
     required this.requestText,
+    this.occurrenceDate,
   });
 
   final EventModel event;
   final String requestText;
+
+  /// 반복 일정 삭제 시 사용자가 지칭한 회차의 local-day
+  /// (year/month/day만 비교됨). null이면 시리즈 전체 삭제로 폴백.
+  final DateTime? occurrenceDate;
 }
 
 class VoiceConversationSession {
@@ -655,6 +660,7 @@ class VoiceConversationController {
         final pending = VoiceConversationDeleteAction(
           event: target,
           requestText: text,
+          occurrenceDate: _resolveOccurrenceDateForDelete(target, text),
         );
         state
           ..focusedEvent = target
@@ -981,6 +987,38 @@ class VoiceConversationController {
   /// `hideOverriddenRecurringOccurrences`로 그 회차를 결과에서 숨긴다 —
   /// `calendar_screen.dart`와 동일한 동작. 여러 회차가 범위 안에 매칭되면
   /// (override로 숨겨지지 않은) 첫 회차를 반환한다.
+  /// 반복 일정 삭제 발화에서 사용자가 지칭한 회차의 local-day를 추론한다.
+  ///
+  /// 발화에서 날짜 범위를 파싱해(`_parseDateRange`) [target]의 반복 회차를
+  /// `expandRecurringEvent`로 전개한 뒤, 범위와 매칭되는 첫 회차의 startAt
+  /// local-day를 반환한다. 반복 일정이 아니거나(range 없음/매칭 회차 없음)
+  /// 추론에 실패하면 null — UI는 이 경우 시리즈 전체 삭제로 폴백한다.
+  DateTime? _resolveOccurrenceDateForDelete(EventModel target, String text) {
+    final rule = target.recurrenceRule;
+    if (rule == null || rule.trim().isEmpty) {
+      return null;
+    }
+    final range = _parseDateRange(text);
+    if (range == null) {
+      return null;
+    }
+    final occurrences = expandRecurringEvent(
+      event: target,
+      rangeStart: range.start,
+      rangeEnd: range.end,
+      includeOccurrence: (occurrence, rangeStart, rangeEnd) =>
+          _eventIntersectsRange(occurrence, range),
+    );
+    if (occurrences.isEmpty) {
+      return null;
+    }
+    final startAt = occurrences.first.startAt;
+    if (startAt == null) {
+      return null;
+    }
+    return DateTime(startAt.year, startAt.month, startAt.day);
+  }
+
   EventModel? _matchingRecurringOccurrence(
     EventModel event,
     VoiceConversationDateRange range,

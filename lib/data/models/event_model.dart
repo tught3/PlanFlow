@@ -22,6 +22,7 @@ class EventModel {
     this.isMultiDay = false,
     this.parentEventId,
     this.overriddenOccurrenceDate,
+    this.deletedOccurrenceDates,
     this.groupEventId,
     this.category = '기타',
     this.source = 'manual',
@@ -57,6 +58,8 @@ class EventModel {
       parentEventId: _optionalStringValue(json['parent_event_id']),
       overriddenOccurrenceDate:
           _dateTimeValue(json['overridden_occurrence_date']),
+      deletedOccurrenceDates:
+          _dateTimeListValue(json['deleted_occurrence_dates']),
       groupEventId: _optionalStringValue(json['group_event_id']),
       category: _categoryValue(json['category']),
       source: _sourceValue(json['source']),
@@ -96,6 +99,12 @@ class EventModel {
   /// startAt이 아닌 별도 필드로 기록 — 2026-07-27 버그: startAt으로
   /// 매칭하면 날짜를 바꾼 예외는 원본 회차를 못 숨겼다).
   final DateTime? overriddenOccurrenceDate;
+
+  /// 반복 일정에서 "단일 회차만 삭제"된 날짜 목록. 반복 전개 시 이 날짜
+  /// (local-day 기준)에 해당하는 회차는 생성하지 않는다.
+  /// [overriddenOccurrenceDate]가 있는 예외 회차와 같은 날짜가 여기에도
+  /// 있으면 삭제가 우선한다(회차를 아예 표시하지 않음).
+  final List<DateTime>? deletedOccurrenceDates;
   final String? groupEventId;
   final String category;
   final String source;
@@ -136,6 +145,10 @@ class EventModel {
       'is_multi_day': isMultiDay,
       'parent_event_id': _optionalStringValue(parentEventId),
       'overridden_occurrence_date': _utcIsoValue(overriddenOccurrenceDate),
+      'deleted_occurrence_dates': deletedOccurrenceDates
+          ?.map((date) => _utcIsoValue(date))
+          .whereType<String>()
+          .toList(growable: false),
       'group_event_id': _optionalStringValue(groupEventId),
       'category': _categoryValue(category),
       'source': _sourceValue(source),
@@ -169,6 +182,10 @@ class EventModel {
       'is_multi_day': isMultiDay,
       'parent_event_id': _optionalStringValue(parentEventId),
       'overridden_occurrence_date': _utcIsoValue(overriddenOccurrenceDate),
+      'deleted_occurrence_dates': deletedOccurrenceDates
+          ?.map((date) => _utcIsoValue(date))
+          .whereType<String>()
+          .toList(growable: false),
       'group_event_id': _optionalStringValue(groupEventId),
       'category': _categoryValue(category),
       'source': _sourceValue(source),
@@ -210,6 +227,8 @@ class EventModel {
     bool clearParentEventId = false,
     DateTime? overriddenOccurrenceDate,
     bool clearOverriddenOccurrenceDate = false,
+    List<DateTime>? deletedOccurrenceDates,
+    bool clearDeletedOccurrenceDates = false,
     String? groupEventId,
     bool clearGroupEventId = false,
     String? category,
@@ -254,6 +273,9 @@ class EventModel {
       overriddenOccurrenceDate: clearOverriddenOccurrenceDate
           ? null
           : overriddenOccurrenceDate ?? this.overriddenOccurrenceDate,
+      deletedOccurrenceDates: clearDeletedOccurrenceDates
+          ? null
+          : deletedOccurrenceDates ?? this.deletedOccurrenceDates,
       groupEventId:
           clearGroupEventId ? null : groupEventId ?? this.groupEventId,
       category: category ?? this.category,
@@ -332,6 +354,20 @@ class EventModel {
       return value.toDouble();
     }
     return double.tryParse(value.toString());
+  }
+
+  static List<DateTime>? _dateTimeListValue(Object? value) {
+    if (value is List) {
+      final dates = value
+          .map(_dateTimeValue)
+          .whereType<DateTime>()
+          .toList(growable: false);
+      // 빈 배열은 "명시적으로 비움"과 null(필드 없음)을 구분하지 않고 null로
+      // 정규화한다 — 컬럼이 null이면 jsonb에서 키 자체가 없어 List가 나오지
+      // 않으므로 두 상태를 구분할 필요가 없다.
+      return dates.isEmpty ? null : dates;
+    }
+    return null;
   }
 
   static DateTime? _dateTimeValue(Object? value) {

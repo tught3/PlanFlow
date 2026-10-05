@@ -9,6 +9,7 @@ EventModel _event({
   String? recurrenceRule,
   String? parentEventId,
   DateTime? overriddenOccurrenceDate,
+  List<DateTime>? deletedOccurrenceDates,
   String title = '테스트 일정',
 }) {
   return EventModel(
@@ -20,6 +21,7 @@ EventModel _event({
     recurrenceRule: recurrenceRule,
     parentEventId: parentEventId,
     overriddenOccurrenceDate: overriddenOccurrenceDate,
+    deletedOccurrenceDates: deletedOccurrenceDates,
   );
 }
 
@@ -320,6 +322,98 @@ void main() {
       );
 
       expect(occurrences, isEmpty);
+    });
+
+    test('deletedOccurrenceDates에 포함된 날짜의 회차는 전개에서 제외된다', () {
+      final anchor = _futureDate();
+      final deletedDay = anchor.add(const Duration(days: 2));
+      final event = _event(
+        startAt: _withHour(anchor, 8),
+        recurrenceRule: 'FREQ=DAILY',
+        deletedOccurrenceDates: <DateTime>[_withHour(deletedDay, 8)],
+      );
+
+      final occurrences = expandRecurringEvent(
+        event: event,
+        rangeStart: anchor,
+        rangeEnd: anchor.add(const Duration(days: 5)),
+      );
+
+      final days = occurrences
+          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .toList();
+
+      expect(days, isNot(contains(deletedDay)));
+      // 삭제된 회차만 빠지고 나머지는 그대로 생성된다.
+      expect(
+        days,
+        List<DateTime>.generate(
+          4,
+          (i) => anchor.add(Duration(days: i < 2 ? i : i + 1)),
+        ),
+      );
+    });
+
+    test('삭제된 날짜는 override(예외 회차)보다 우선한다', () {
+      // 같은 날짜가 deletedOccurrenceDates와 예외 이벤트의
+      // overriddenOccurrenceDate 양쪽에 있으면 삭제가 이긴다: 원본 회차는
+      // 전개되지 않아 화면에 아무것도 표시되지 않는 방향으로 풀린다.
+      final anchor = _onOrAfterWeekday(_futureDate(), DateTime.monday);
+      final overriddenDay = anchor.add(const Duration(days: 7));
+      final event = _event(
+        startAt: _withHour(anchor, 9),
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO',
+        deletedOccurrenceDates: <DateTime>[_withHour(overriddenDay, 9)],
+      );
+      final overrideEvent = _event(
+        id: 'override-1',
+        startAt: _withHour(overriddenDay.add(const Duration(days: 1)), 15),
+        parentEventId: event.id,
+        overriddenOccurrenceDate: _withHour(overriddenDay, 9),
+      );
+
+      final occurrences = expandRecurringEvent(
+        event: event,
+        rangeStart: anchor,
+        rangeEnd: anchor.add(const Duration(days: 14)),
+      );
+
+      final days = occurrences
+          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .toList();
+      expect(days, isNot(contains(overriddenDay)));
+      expect(days, contains(anchor));
+
+      // 예외 이벤트 자체는 여전히 목록에 남는다(숨김 정책은 기존 로직 담당).
+      final visible = hideOverriddenRecurringOccurrences(<EventModel>[
+        ...occurrences,
+        overrideEvent,
+      ]);
+      expect(visible, contains(overrideEvent));
+    });
+
+    test('deletedOccurrenceDates가 null이면 기존 전개 동작이 변하지 않는다', () {
+      final anchor = _futureDate();
+      final event = _event(
+        startAt: _withHour(anchor, 8),
+        recurrenceRule: 'FREQ=DAILY',
+        deletedOccurrenceDates: null,
+      );
+
+      final occurrences = expandRecurringEvent(
+        event: event,
+        rangeStart: anchor,
+        rangeEnd: anchor.add(const Duration(days: 5)),
+      );
+
+      final days = occurrences
+          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .toList();
+
+      expect(
+        days,
+        List<DateTime>.generate(5, (i) => anchor.add(Duration(days: i))),
+      );
     });
   });
 

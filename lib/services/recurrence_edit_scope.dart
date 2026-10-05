@@ -50,6 +50,109 @@ Future<RecurrenceEditScope?> chooseRecurrenceEditScope(BuildContext context) {
   );
 }
 
+/// 반복 일정 삭제 시 어느 범위에 적용할지를 나타낸다.
+/// [chooseRecurrenceDeleteScope]가 쓴다.
+enum RecurrenceDeleteScope { occurrence, all }
+
+/// 반복 일정 삭제용 2옵션 다이얼로그("이 회차만 삭제" / "전체 삭제").
+/// 사용자가 바깥을 탭해 취소하면 null을 반환한다.
+Future<RecurrenceDeleteScope?> chooseRecurrenceDeleteScope(
+  BuildContext context, {
+  required String eventTitle,
+  required DateTime occurrenceDate,
+}) {
+  return showDialog<RecurrenceDeleteScope>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('반복 일정 삭제'),
+      content: Text(
+        '"$eventTitle"은(는) 반복 일정이에요.\n'
+        '${occurrenceDate.month}월 ${occurrenceDate.day}일 회차만 삭제할까요, '
+        '전체 반복 일정을 삭제할까요?',
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+      actions: [
+        PlanFlowActionButtons(
+          buttons: [
+            PlanFlowActionButton(
+              label: '이 회차만',
+              onPressed: () =>
+                  Navigator.of(context).pop(RecurrenceDeleteScope.occurrence),
+              type: ActionButtonType.secondary,
+              flex: 1,
+            ),
+            PlanFlowActionButton(
+              label: '전체 삭제',
+              onPressed: () =>
+                  Navigator.of(context).pop(RecurrenceDeleteScope.all),
+              type: ActionButtonType.destructive,
+              flex: 1,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+/// 반복 일정의 회차 날짜가 여러 개로 좁혀졌을 때 회차를 고르는 리스트
+/// 다이얼로그. 선택한 회차 날짜를 반환하며, 바깥을 탭해 취소하면 null을
+/// 반환한다. "전체 삭제"는 [onSeriesDelete] 콜백으로 분기한다.
+Future<DateTime?> chooseRecurrenceOccurrenceDate(
+  BuildContext context, {
+  required String eventTitle,
+  required List<DateTime> occurrenceDays,
+  required VoidCallback onSeriesDelete,
+}) {
+  return showDialog<DateTime>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('어떤 회차를 삭제할까요?'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: occurrenceDays.length,
+          itemBuilder: (context, index) {
+            final day = occurrenceDays[index];
+            return ListTile(
+              title: Text(_occurrenceDayLabel(day)),
+              onTap: () => Navigator.of(context).pop(day),
+            );
+          },
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+      actions: [
+        PlanFlowActionButtons(
+          buttons: [
+            PlanFlowActionButton(
+              label: '취소',
+              onPressed: () => Navigator.of(context).pop(),
+              type: ActionButtonType.secondary,
+              flex: 1,
+            ),
+            PlanFlowActionButton(
+              label: '전체 삭제',
+              onPressed: () {
+                Navigator.of(context).pop();
+                onSeriesDelete();
+              },
+              type: ActionButtonType.destructive,
+              flex: 1,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+String _occurrenceDayLabel(DateTime day) {
+  const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  return '${day.month}월 ${day.day}일 (${weekdays[day.weekday - 1]})';
+}
+
 /// 반복 계열에서 분리된 단일/이후 이벤트를 만든다 (신규 insert용, id는 빈 문자열).
 /// [keepRecurrence]가 false면 단발 이벤트로, true면 원래 반복 규칙을 이어받는
 /// 새 계열의 시작 이벤트로 만든다.

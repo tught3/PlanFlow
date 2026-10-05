@@ -59,6 +59,11 @@ List<EventModel> expandRecurringEvent({
   final duration = event.endAt?.difference(startAt);
   final occurrences = <EventModel>[];
 
+  // "단일 회차 삭제"된 날짜(local-day) 집합. 전개 중 이 날짜에 걸리는 회차는
+  // 생성하지 않는다. overriddenOccurrenceDate(예외 회차)와 같은 날짜가 여기에도
+  // 있으면 삭제가 우선한다 — 예외 회차를 만들어 두어도 표시하지 않는다.
+  final deletedDays = _deletedLocalDays(event);
+
   if (freq == 'WEEKLY') {
     final byDays = _parseRRuleByDays(rule);
     if (byDays.isNotEmpty) {
@@ -87,6 +92,9 @@ List<EventModel> expandRecurringEvent({
             continue;
           }
           final occurrenceEnd = duration == null ? null : current.add(duration);
+          if (_isDeletedLocalDay(deletedDays, current)) {
+            continue;
+          }
           final candidate = _copyEventWithTime(
             event,
             startAt: current,
@@ -107,13 +115,15 @@ List<EventModel> expandRecurringEvent({
   while (current.isBefore(hardEnd) && safety < 420) {
     safety += 1;
     final occurrenceEnd = duration == null ? null : current.add(duration);
-    final candidate = _copyEventWithTime(
-      event,
-      startAt: current,
-      endAt: occurrenceEnd,
-    );
-    if (include(candidate, rangeStart, rangeEnd)) {
-      occurrences.add(candidate);
+    if (!_isDeletedLocalDay(deletedDays, current)) {
+      final candidate = _copyEventWithTime(
+        event,
+        startAt: current,
+        endAt: occurrenceEnd,
+      );
+      if (include(candidate, rangeStart, rangeEnd)) {
+        occurrences.add(candidate);
+      }
     }
     current = switch (freq) {
       'DAILY' => current.add(Duration(days: interval)),
@@ -159,6 +169,63 @@ bool _defaultIncludeOccurrence(
   return startAt.isBefore(rangeEnd) && !endAt.isBefore(rangeStart);
 }
 
+/// [event]가 [rangeStart] 이상 [rangeEnd] 미만(local)에 시작하는 회차를
+/// 갖는지 판정한다.
+///
+/// - 반복 일정이면 [expandRecurringEvent]로 해당 범위의 회차를 전개해
+///   회차 startAt이 범위 안에 드는지 본다(앵커 startAt만 보면
+///   "10월 26일부터 시작하는 반복 일정" 같은 미래 회차를 놓친다).
+/// - 단발 일정은 anchor startAt이 범위 안에 드는지로 판정한다(기존
+///   voice_action_screen의 날짜 매칭과 동일한 의미).
+bool eventHasOccurrenceInRange(
+  EventModel event,
+  DateTime rangeStart,
+  DateTime rangeEnd,
+) {
+  return occurrenceLocalDaysInRange(
+    event: event,
+    rangeStart: rangeStart,
+    rangeEnd: rangeEnd,
+  ).isNotEmpty;
+}
+
+/// [event]의 회차 중 [rangeStart] 이상 [rangeEnd] 미만(local)에 시작하는
+/// 회차들의 시작 날짜(local-day 정규화, 시각 0시)를 오름차순으로 반환한다.
+/// 단발 일정은 anchor startAt의 날짜 하나(범위 안이면)를 반환한다.
+List<DateTime> occurrenceLocalDaysInRange({
+  required EventModel event,
+  required DateTime rangeStart,
+  required DateTime rangeEnd,
+}) {
+  bool startsInRange(EventModel occurrence, DateTime start, DateTime end) {
+    final startAt = occurrence.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final local = planflowLocal(startAt);
+    return !local.isBefore(start) && local.isBefore(end);
+  }
+
+  // expandRecurringEvent는 반복이 아닌 이벤트에 대해 includeOccurrence를
+  // 적용하지 않고 anchor를 그대로 반환하므로, 여기서 범위 필터를 한 번 더
+  // 적용해야 단발 일정도 동일한 범위 판정을 거친다.
+  final occurrences = expandRecurringEvent(
+    event: event,
+    rangeStart: rangeStart,
+    rangeEnd: rangeEnd,
+    includeOccurrence: startsInRange,
+  ).where((occurrence) => startsInRange(occurrence, rangeStart, rangeEnd));
+  final days = <DateTime>{};
+  for (final occurrence in occurrences) {
+    final startAt = occurrence.startAt;
+    if (startAt != null) {
+      days.add(planflowLocalDay(startAt));
+    }
+  }
+  final sorted = days.toList()..sort();
+  return sorted;
+}
+
 /// override(단일 회차 예외)된 원본 회차를 [events] 목록에서 숨긴다.
 ///
 /// 예외 이벤트(`parentEventId` + `overriddenOccurrenceDate`가 있는 이벤트)가
@@ -192,6 +259,24 @@ List<EventModel> hideOverriddenRecurringOccurrences(
     });
     return !isOverridden;
   }).toList(growable: false);
+}
+
+/// [event].deletedOccurrenceDates를 local-day 정규화한 집합으로 변환한다.
+/// null이거나 비어 있으면 빈 집합(삭제된 회차 없음)을 반환한다.
+Set<DateTime> _deletedLocalDays(EventModel event) {
+  final dates = event.deletedOccurrenceDates;
+  if (dates == null || dates.isEmpty) {
+    return const <DateTime>{};
+  }
+  return dates.map(planflowLocalDay).toSet();
+}
+
+/// [occurrenceStartAt] 회차가 삭제된 날짜(local-day)에 해당하는지 판정한다.
+bool _isDeletedLocalDay(Set<DateTime> deletedDays, DateTime occurrenceStartAt) {
+  if (deletedDays.isEmpty) {
+    return false;
+  }
+  return deletedDays.contains(planflowLocalDay(occurrenceStartAt));
 }
 
 DateTime? _parseRRuleUntil(String? value) {
@@ -257,6 +342,7 @@ EventModel _copyEventWithTime(
     isAllDay: event.isAllDay,
     isMultiDay: event.isMultiDay,
     parentEventId: event.parentEventId,
+    deletedOccurrenceDates: event.deletedOccurrenceDates,
     category: event.category,
     source: event.source,
     externalId: event.externalId,
