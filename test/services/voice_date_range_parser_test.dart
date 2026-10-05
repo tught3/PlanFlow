@@ -44,6 +44,35 @@ void main() {
       );
     });
 
+    test('다다음주/그다음주는 다음주와 구별되어 2주 뒤 주로 해석된다', () {
+      final now = DateTime.now();
+      final monday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: now.weekday - 1));
+
+      final daDaEum = VoiceDateRangeParser.parse(
+        '다다음주 일정 보여 줘',
+        now: monday,
+      )!;
+      expect(daDaEum.start, monday.add(const Duration(days: 14)));
+      expect(daDaEum.end, monday.add(const Duration(days: 21)));
+      expect(daDaEum.isMultiDay, isTrue);
+
+      final geuDaEum = VoiceDateRangeParser.parse(
+        '그다음주 일정 보여 줘',
+        now: monday,
+      )!;
+      expect(geuDaEum.start, monday.add(const Duration(days: 14)));
+
+      final daEum = VoiceDateRangeParser.parse('다음주 일정 보여 줘', now: monday)!;
+      expect(daEum.start, monday.add(const Duration(days: 7)));
+
+      final weekday = VoiceDateRangeParser.parse('다다음주 수요일', now: monday)!;
+      expect(weekday.start, monday.add(const Duration(days: 16)));
+    });
+
     test(
       'single dates keep a query boundary separate from multi-day intent',
       () {

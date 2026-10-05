@@ -74,27 +74,26 @@ class VoiceDateRangeParser {
       return weekday;
     }
 
-    if (compact.contains('다음주')) {
+    // '다다음주'·'그다음주'는 '다음주'보다 먼저 검사해야 한다. '다다음주'는
+    // '다음주'를 부분 문자열로 포함하므로 순서가 바뀌면 다음 주로 오인된다.
+    final weekOffset = _relativeWeekOffset(compact);
+    if (weekOffset != null) {
       final start = today
           .subtract(Duration(days: today.weekday - 1))
-          .add(const Duration(days: 7));
+          .add(Duration(days: 7 * weekOffset));
+      final label = switch (weekOffset) {
+        1 => '다음 주',
+        2 => '다다음 주',
+        3 => '다다다음 주',
+        _ => '$weekOffset주 후',
+      };
       return VoiceDateRangeParseResult(
         start: start,
         end: start.add(const Duration(days: 7)),
-        label: '다음 주',
+        label: label,
         isMultiDay: true,
       );
     }
-    if (compact.contains('이번주') || compact.contains('주간')) {
-      final start = today.subtract(Duration(days: today.weekday - 1));
-      return VoiceDateRangeParseResult(
-        start: start,
-        end: start.add(const Duration(days: 7)),
-        label: '이번 주',
-        isMultiDay: true,
-      );
-    }
-
     // "7월", "7월 일정", "7월 전체" 등 월 단독 패턴 ("7월 15일"은 위에서 이미 처리됨)
     final monthMatch =
         RegExp(r'(\d{1,2})\s*월(?!\s*\d+\s*일)').firstMatch(compact);
@@ -217,7 +216,7 @@ class VoiceDateRangeParser {
     DateTime today,
   ) {
     final match = RegExp(
-      r'(?:(이번|다음)주)?([월화수목금토일])요일',
+      r'(?:(이번|다다다음|다다음|다음)주)?([월화수목금토일])요일',
     ).firstMatch(compact);
     if (match == null) {
       return null;
@@ -229,9 +228,15 @@ class VoiceDateRangeParser {
     }
     final currentWeekStart = today.subtract(Duration(days: today.weekday - 1));
     if (modifier != null) {
-      final weekStart = modifier == '다음'
-          ? currentWeekStart.add(const Duration(days: 7))
-          : currentWeekStart;
+      final offset = modifier == '이번'
+          ? 0
+          : switch (modifier) {
+              '다음' => 1,
+              '다다음' => 2,
+              '다다다음' => 3,
+              _ => 0,
+            };
+      final weekStart = currentWeekStart.add(Duration(days: 7 * offset));
       final start = weekStart.add(Duration(days: weekday - 1));
       return _singleDay(start, '$modifier 주 ${_weekdayLabel(weekday)}');
     }
@@ -243,6 +248,26 @@ class VoiceDateRangeParser {
       start = start.add(const Duration(days: 7));
     }
     return _singleDay(start, _weekdayLabel(weekday));
+  }
+
+  /// '이번주'는 0, '다음주'는 1, '다다음주'·'그다음주'는 2, '다다다음주'는 3.
+  /// 긴 표현부터 검사한다('다다음주' 안에 '다음주'가 포함되어 있음).
+  static int? _relativeWeekOffset(String compact) {
+    if (compact.contains('다다다음주') || compact.contains('그그다음주')) {
+      return 3;
+    }
+    if (compact.contains('다다음주') ||
+        compact.contains('그다음주') ||
+        compact.contains('다음다음주')) {
+      return 2;
+    }
+    if (compact.contains('다음주')) {
+      return 1;
+    }
+    if (compact.contains('이번주') || compact.contains('주간')) {
+      return 0;
+    }
+    return null;
   }
 
   static VoiceDateRangeParseResult _singleDay(DateTime start, String label) {

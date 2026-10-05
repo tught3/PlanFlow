@@ -622,7 +622,35 @@ class VoiceConversationController {
         );
       }
       // 이미 '삭제' 의도가 확정됐으므로 route.intent와 무관하게 대상을 찾는다.
-      final target = _resolveFollowUpTarget(text, state);
+      var target = _resolveFollowUpTarget(text, state);
+      // 선행 조회 없이 "10월 26일부터 시작하는 단기렌트 일정 삭제해 줘"처럼
+      // 날짜·제목을 직접 말한 경우, 그 범위에서 후보를 찾아 바로 확인 단계로
+      // 진입한다(후보가 여러 개면 번호 선택을 요청).
+      if (target == null) {
+        final matched = _eventsMatchingRequestContext(text, state);
+        if (matched.length == 1) {
+          target = matched.single;
+        } else if (matched.length > 1) {
+          state
+            ..visibleEvents = matched
+            ..focusedEvent = null
+            ..pendingDelete = null
+            ..pendingConvert = null
+            ..pendingTitleSearchText = null;
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.showEvents,
+              inputText: input,
+              visibleEvents: matched,
+              selectedEvents: const <EventModel>[],
+              assistantMessage:
+                  '해당 조건의 일정이 ${matched.length}개 있어요. 삭제할 일정을 번호로 말해 주세요.',
+            ),
+          );
+        }
+      }
       if (target != null) {
         final pending = VoiceConversationDeleteAction(
           event: target,
@@ -1079,6 +1107,55 @@ class VoiceConversationController {
       r'중요한\s*일정|중요\s*일정|중요\s*표시|'
       r'중요한\s*알림|중요\s*알림|중요한\s*알람|중요\s*알람|긴급|급한|critical)',
     ).hasMatch(text);
+  }
+
+  // "10월 26일부터 시작하는 단기렌트 일정 삭제해 줘"처럼 명령 안에 날짜·제목이
+  // 함께 들어온 경우, 선행 조회 없이 후보 좁히기에 쓴다.
+  List<EventModel> _eventsMatchingRequestContext(
+    String text,
+    _VoiceConversationState state,
+  ) {
+    final range = _parseDateRange(text);
+    var candidates = state.events
+        .map(
+          (event) => range == null
+              ? event
+              : _visibleEventInRange(event, range, state.events),
+        )
+        .whereType<EventModel>()
+        .toList(growable: false);
+    if (candidates.isEmpty) {
+      return const <EventModel>[];
+    }
+    final keyword = _extractTitleKeyword(text);
+    if (keyword != null) {
+      final byTitle = candidates
+          .where((event) => event.title.contains(keyword))
+          .toList(growable: false);
+      if (byTitle.isNotEmpty) {
+        candidates = byTitle;
+      }
+    }
+    _sortEvents(candidates);
+    return candidates;
+  }
+
+  String? _extractTitleKeyword(String text) {
+    var cleaned = text.replaceAll(RegExp(r'\s+'), ' ');
+    cleaned = cleaned.replaceAll(
+      RegExp(r'(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?\s*(부터|까지|에서)?'),
+      ' ',
+    );
+    const stopWords = <String>[
+      '삭제', '지워', '없애', '취소', '해줘', '해 줘', '주세요',
+      '일정', '시작하는', '시작한', '다시', '먼저', '보여', '줘', '모두', '전부',
+      '그리고', '그담', '그다음',
+    ];
+    for (final word in stopWords) {
+      cleaned = cleaned.replaceAll(word, ' ');
+    }
+    cleaned = cleaned.trim();
+    return cleaned.length >= 2 ? cleaned : null;
   }
 
   bool _isDeleteIntent(String text, {VoiceCommandRouteResult? route}) {
