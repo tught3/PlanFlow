@@ -1120,6 +1120,61 @@ void main() {
       expect(result.assistantMessage, '어느 날짜인지 잘 모르겠어요. 조회할 날짜를 말해 주세요.');
     });
 
+    test('제목 조회 후 지시어만 말하면 마지막 언급 제목으로 재검색해 삭제한다', () {
+      final now = DateTime(2026, 7, 3, 10); // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('rent-target', '단기렌트 물품 수령', DateTime(2026, 7, 15, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('other', '다른 회의', DateTime(2026, 7, 15, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+        ],
+        now: () => now,
+      );
+
+      final titleQuery = controller.handle('단기렌트 물품 수령 일정 보여 줘');
+      expect(titleQuery.action, VoiceConversationAction.showEvents);
+      expect(titleQuery.visibleEvents.single.id, 'rent-target');
+      expect(titleQuery.targetEvent?.id, 'rent-target');
+
+      // 다른 조회로 focusedEvent를 해제한다(7/6~7/12 범위라 매칭 0개).
+      final narrowQuery = controller.handle('다음주 일정 보여 줘');
+      expect(narrowQuery.action, VoiceConversationAction.showEvents);
+      expect(narrowQuery.visibleEvents, isEmpty);
+
+      final deleteAsk = controller.handle('아까 그 일정 삭제해 줘');
+      expect(deleteAsk.action, VoiceConversationAction.confirmDelete);
+      expect(deleteAsk.targetEvent?.id, 'rent-target');
+      expect(deleteAsk.requiresDeleteConfirmation, isTrue);
+    });
+
+    test('지시어 제목 폴백으로 2개가 매칭되면 목록을 보여 주고 번호를 요청한다', () {
+      final now = DateTime(2026, 7, 3, 10); // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('rent-1', '단기렌트 물품 수령', DateTime(2026, 7, 15, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('rent-2', '단기렌트 물품 반납', DateTime(2026, 7, 16, 10)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+          _event('other', '다른 회의', DateTime(2026, 7, 15, 15)), // banned-ok: 고정 날짜 결정론적 테스트(시한폭탄 아님, now도 고정)
+        ],
+        now: () => now,
+      );
+
+      final titleQuery = controller.handle('단기렌트 일정 보여 줘');
+      expect(titleQuery.action, VoiceConversationAction.showEvents);
+      expect(titleQuery.visibleEvents.length, 2);
+
+      // focusedEvent를 해제하기 위해 매칭 0개 조회로 갈아끊운다.
+      final narrowQuery = controller.handle('다음주 일정 보여 줘');
+      expect(narrowQuery.visibleEvents, isEmpty);
+
+      final result = controller.handle('아까 그 일정 삭제해 줘');
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.length, 2);
+      expect(
+        result.visibleEvents.map((event) => event.id).toSet(),
+        <String>{'rent-1', 'rent-2'},
+      );
+      expect(result.assistantMessage, contains('2개'));
+    });
+
     test('반복 일정 조회 후 "그날" 삭제는 조회한 회차 날짜로 occurrenceDate를 설정한다', () {
       // "모레"가 항상 화요일이 되도록(BYDAY=TU와 정합) 미래의 가장 가까운
       // 화요일을 기준으로 삼는다 — 절대 날짜 리터럴 시한폭탄 방지.

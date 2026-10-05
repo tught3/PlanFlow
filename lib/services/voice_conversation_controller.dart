@@ -669,12 +669,14 @@ class VoiceConversationController {
             ),
           );
         }
-        final matched = _eventsMatchingRequestContext(text, state);
-        if (matched.length == 1) {
-          target = matched.single;
-        } else if (matched.length > 1) {
+        // 지시어만 있고 포커스 대상이 없으면, 직전에 언급한 제목으로
+        // 재검색한다(1개면 바로 확인 단계, 여러 개면 번호 선택 요청).
+        final mentionedMatches = _matchesFromLastMentionedTitle(text, state);
+        if (mentionedMatches.length == 1) {
+          target = mentionedMatches.single;
+        } else if (mentionedMatches.length > 1) {
           state
-            ..visibleEvents = matched
+            ..visibleEvents = mentionedMatches
             ..focusedEvent = null
             ..pendingDelete = null
             ..pendingConvert = null
@@ -685,12 +687,38 @@ class VoiceConversationController {
             VoiceConversationResult(
               action: VoiceConversationAction.showEvents,
               inputText: input,
-              visibleEvents: matched,
+              visibleEvents: mentionedMatches,
               selectedEvents: const <EventModel>[],
               assistantMessage:
-                  '해당 조건의 일정이 ${matched.length}개 있어요. 삭제할 일정을 번호로 말해 주세요.',
+                  '아까 언급한 제목의 일정이 ${mentionedMatches.length}개 있어요. '
+                  '삭제할 일정을 번호로 말해 주세요.',
             ),
           );
+        }
+        if (target == null) {
+          final matched = _eventsMatchingRequestContext(text, state);
+          if (matched.length == 1) {
+            target = matched.single;
+          } else if (matched.length > 1) {
+            state
+              ..visibleEvents = matched
+              ..focusedEvent = null
+              ..pendingDelete = null
+              ..pendingConvert = null
+              ..pendingTitleSearchText = null;
+            return _finish(
+              state,
+              session,
+              VoiceConversationResult(
+                action: VoiceConversationAction.showEvents,
+                inputText: input,
+                visibleEvents: matched,
+                selectedEvents: const <EventModel>[],
+                assistantMessage:
+                    '해당 조건의 일정이 ${matched.length}개 있어요. 삭제할 일정을 번호로 말해 주세요.',
+              ),
+            );
+          }
         }
       }
       if (target != null) {
@@ -824,6 +852,76 @@ class VoiceConversationController {
           assistantMessage: '여러 일정이 보여요. 몇 번째 일정인지 말해 주세요.',
         ),
       );
+    }
+
+    // 지시어("아까 그 일정", "아까 말한 일정" 등)만 있고 포커스 대상이
+    // 없을 때, 직전에 언급한 제목으로 재검색하는 공통 폴백(수정·조회).
+    // 남용 방지: 지시어 표현이 있을 때만 폴백한다.
+    if (_isFocusedEventReference(text) &&
+        state.focusedEvent == null &&
+        state.visibleEvents.length != 1) {
+      final mentionedMatches = _matchesFromLastMentionedTitle(text, state);
+      if (mentionedMatches.length == 1) {
+        final mentionedTarget = mentionedMatches.single;
+        state
+          ..focusedEvent = mentionedTarget
+          ..selectedEvents = const <EventModel>[]
+          ..pendingTitleSearchText = null;
+        if (_isModificationIntent(text, route: route)) {
+          final draftEvent = _draftEventForRequestedChanges(
+            mentionedTarget,
+            text,
+            route: route,
+          );
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.openEditScreen,
+              inputText: input,
+              targetEvent: mentionedTarget,
+              draftEvent: draftEvent,
+              selectedEvents: <EventModel>[mentionedTarget],
+              requiresEditScreenNavigation: true,
+              assistantMessage:
+                  '"${mentionedTarget.title}" 일정을 편집 화면에서 바꿔 드릴게요.',
+            ),
+          );
+        }
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.showEvents,
+            inputText: input,
+            visibleEvents: <EventModel>[mentionedTarget],
+            selectedEvents: const <EventModel>[],
+            targetEvent: mentionedTarget,
+            assistantMessage: '"${mentionedTarget.title}" 일정이에요.',
+          ),
+        );
+      }
+      if (mentionedMatches.length > 1) {
+        state
+          ..visibleEvents = mentionedMatches
+          ..focusedEvent = null
+          ..pendingDelete = null
+          ..pendingConvert = null
+          ..pendingTitleSearchText = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.showEvents,
+            inputText: input,
+            visibleEvents: mentionedMatches,
+            selectedEvents: const <EventModel>[],
+            assistantMessage:
+                '아까 언급한 제목의 일정이 ${mentionedMatches.length}개 있어요. '
+                '몇 번째 일정인지 말해 주세요.',
+          ),
+        );
+      }
     }
 
     final titleSearch = _searchEventsByTitleOrPeople(text, state);
@@ -1462,6 +1560,36 @@ class VoiceConversationController {
     }
 
     return null;
+  }
+
+  /// 지시어("아까 그 일정", "그거" 등)만 말했는데 포커스 대상이 없을 때,
+  /// 직전에 언급된 제목([_VoiceConversationState.lastMentionedTitle])으로
+  /// 이벤트 제목을 재검색한다. 남용 방지를 위해 지시어 표현이 있을 때만
+  /// 폴백하며, 대상이 이미 확정되는 경로(포커스 존재 · 후보 1개)는
+  /// 건드리지 않고 빈 목록을 반환한다.
+  List<EventModel> _matchesFromLastMentionedTitle(
+    String text,
+    _VoiceConversationState state,
+  ) {
+    if (!_isFocusedEventReference(text)) {
+      return const <EventModel>[];
+    }
+    if (state.focusedEvent != null || state.visibleEvents.length == 1) {
+      return const <EventModel>[];
+    }
+    final mentioned = state.lastMentionedTitle?.trim();
+    if (mentioned == null || mentioned.isEmpty) {
+      return const <EventModel>[];
+    }
+    // banned-ok: 'Token'은 제목 검색용 단어 토큰이지 시크릿이 아님(오탐)
+    final tokens = _queryTokensForTitleSearch(mentioned);
+    if (tokens.isEmpty) {
+      return const <EventModel>[];
+    }
+    final result = state.events
+        .where((event) => _eventMatchesTitleOrPeople(event, tokens))
+        .toList(growable: false);
+    return result;
   }
 
   _VoiceConversationTitleSearch _searchEventsByTitleOrPeople(
