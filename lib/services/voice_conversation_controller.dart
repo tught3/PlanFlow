@@ -115,6 +115,7 @@ class VoiceConversationResult {
     this.isAvailabilityCheck = false,
     this.requiresEditScreenNavigation = false,
     this.requiresDeleteConfirmation = false,
+    this.canAutoApplyDateChange = false,
     this.session = const VoiceConversationSession(),
     String? assistantMessage,
   }) : _assistantMessage = assistantMessage;
@@ -134,6 +135,12 @@ class VoiceConversationResult {
   final bool isAvailabilityCheck;
   final bool requiresEditScreenNavigation;
   final bool requiresDeleteConfirmation;
+
+  /// Controller-side hint that the change is a date/time [start_at]-only move
+  /// for a uniquely-resolved, nonrecurring, non-linked target. UI screens must
+  /// independently fail closed for group-shared events because that linkage is
+  /// not visible at this layer.
+  final bool canAutoApplyDateChange;
   final VoiceConversationSession session;
   final String? _assistantMessage;
 
@@ -540,6 +547,9 @@ class VoiceConversationController {
       );
     }
 
+    // isLocationIntent이 확정된 흐름은 locationText가 들어가므로 위 critical
+    // 분기와 동일한 폴백(openEditScreen)을 사용한다. 명시적 분기 없음.
+
     if (_isLocationIntent(text, route: route)) {
       final ambiguous = _resolveAmbiguousTimeTargets(text, state);
       if (ambiguous.length > 1) {
@@ -725,8 +735,7 @@ class VoiceConversationController {
         final pending = VoiceConversationDeleteAction(
           event: target,
           requestText: text,
-          occurrenceDate:
-              _resolveOccurrenceDateForDelete(target, text, state),
+          occurrenceDate: _resolveOccurrenceDateForDelete(target, text, state),
         );
         state
           ..focusedEvent = target
@@ -809,6 +818,31 @@ class VoiceConversationController {
           route: route,
         );
         state.pendingTitleSearchText = null;
+        final autoApply = _isPureDateTimeAutoApply(
+          target: followUp,
+          route: route,
+          draftEvent: draftEvent,
+          locationText: null,
+          criticalValue: null,
+        );
+        if (autoApply && draftEvent != null && draftEvent.startAt != null) {
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.confirmedEdit,
+              inputText: input,
+              targetEvent: followUp,
+              draftEvent: draftEvent,
+              selectedEvents: <EventModel>[followUp],
+              canAutoApplyDateChange: true,
+              assistantMessage: _dateEditAutoApplyMessage(
+                followUp,
+                planflowLocal(draftEvent.startAt!),
+              ),
+            ),
+          );
+        }
         return _finish(
           state,
           session,
@@ -873,6 +907,31 @@ class VoiceConversationController {
             text,
             route: route,
           );
+          final autoApply = _isPureDateTimeAutoApply(
+            target: mentionedTarget,
+            route: route,
+            draftEvent: draftEvent,
+            locationText: null,
+            criticalValue: null,
+          );
+          if (autoApply && draftEvent != null && draftEvent.startAt != null) {
+            return _finish(
+              state,
+              session,
+              VoiceConversationResult(
+                action: VoiceConversationAction.confirmedEdit,
+                inputText: input,
+                targetEvent: mentionedTarget,
+                draftEvent: draftEvent,
+                selectedEvents: <EventModel>[mentionedTarget],
+                canAutoApplyDateChange: true,
+                assistantMessage: _dateEditAutoApplyMessage(
+                  mentionedTarget,
+                  planflowLocal(draftEvent.startAt!),
+                ),
+              ),
+            );
+          }
           return _finish(
             state,
             session,
@@ -916,8 +975,7 @@ class VoiceConversationController {
             inputText: input,
             visibleEvents: mentionedMatches,
             selectedEvents: const <EventModel>[],
-            assistantMessage:
-                '아까 언급한 제목의 일정이 ${mentionedMatches.length}개 있어요. '
+            assistantMessage: '아까 언급한 제목의 일정이 ${mentionedMatches.length}개 있어요. '
                 '몇 번째 일정인지 말해 주세요.',
           ),
         );
@@ -1072,6 +1130,7 @@ class VoiceConversationController {
       isAvailabilityCheck: result.isAvailabilityCheck,
       requiresEditScreenNavigation: result.requiresEditScreenNavigation,
       requiresDeleteConfirmation: result.requiresDeleteConfirmation,
+      canAutoApplyDateChange: result.canAutoApplyDateChange,
       session: nextSession,
       assistantMessage: result._assistantMessage,
     );
@@ -1428,7 +1487,8 @@ class VoiceConversationController {
   String? _extractTitleKeyword(String text) {
     var cleaned = text.replaceAll(RegExp(r'\s+'), ' ');
     cleaned = cleaned.replaceAll(
-      RegExp(r'(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?\s*(부터|까지|에서)?'),
+      RegExp(
+          r'(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?\s*(부터|까지|에서)?'),
       ' ',
     );
     const stopWords = <String>[
@@ -1889,37 +1949,16 @@ class VoiceConversationController {
           ? null
           : originalEndLocal.difference(originalStartLocal);
 
-      return EventModel(
-        id: event.id,
-        userId: event.userId,
-        title: event.title,
+      // draft은 원본 일정의 모든 메타데이터(useStrongAlarm, overriddenOccurrenceDate,
+      // deletedOccurrenceDates, groupEventId 등)를 보존해야 한다. 필드를 수동으로
+      // 나열하면 신규 필드 추가 시 누락 회귀가 생기므로 copyWith로만 파생한다.
+      return event.copyWith(
         startAt: planflowLocalDateTimeToUtc(requestedStartLocal),
         endAt:
             duration == null || duration.isNegative || duration == Duration.zero
                 ? event.endAt
                 : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration)),
-        location: event.location,
-        locationLat: event.locationLat,
-        locationLng: event.locationLng,
-        memo: event.memo,
-        supplies: event.supplies,
-        suppliesChecked: event.suppliesChecked,
-        participants: event.participants,
-        targets: event.targets,
-        isCritical: event.isCritical,
         recurrenceRule: requestedRecurrenceRule ?? event.recurrenceRule,
-        isAllDay: event.isAllDay,
-        isMultiDay: event.isMultiDay,
-        parentEventId: event.parentEventId,
-        category: event.category,
-        source: event.source,
-        externalId: event.externalId,
-        externalCalendarId: event.externalCalendarId,
-        externalEtag: event.externalEtag,
-        externalUpdatedAt: event.externalUpdatedAt,
-        lastSyncedAt: event.lastSyncedAt,
-        createdAt: event.createdAt,
-        updatedAt: event.updatedAt,
       );
     }
 
@@ -1941,34 +1980,11 @@ class VoiceConversationController {
         ? null
         : planflowLocal(event.endAt!).add(Duration(days: shiftDays));
 
-    return EventModel(
-      id: event.id,
-      userId: event.userId,
-      title: event.title,
+    // 위 분기와 동일하게 copyWith로 파생해 메타데이터 플래그를 모두 보존한다.
+    return event.copyWith(
       startAt: planflowLocalDateTimeToUtc(shiftedStart),
       endAt: shiftedEnd == null ? null : planflowLocalDateTimeToUtc(shiftedEnd),
-      location: event.location,
-      locationLat: event.locationLat,
-      locationLng: event.locationLng,
-      memo: event.memo,
-      supplies: event.supplies,
-      suppliesChecked: event.suppliesChecked,
-      participants: event.participants,
-      targets: event.targets,
-      isCritical: event.isCritical,
       recurrenceRule: requestedRecurrenceRule ?? event.recurrenceRule,
-      isAllDay: event.isAllDay,
-      isMultiDay: event.isMultiDay,
-      parentEventId: event.parentEventId,
-      category: event.category,
-      source: event.source,
-      externalId: event.externalId,
-      externalCalendarId: event.externalCalendarId,
-      externalEtag: event.externalEtag,
-      externalUpdatedAt: event.externalUpdatedAt,
-      lastSyncedAt: event.lastSyncedAt,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
     );
   }
 
@@ -2001,6 +2017,64 @@ class VoiceConversationController {
       hasChange = true;
     }
     return hasChange ? draft : null;
+  }
+
+  /// Returns true when the requested edit is a pure date/time [start_at]
+  /// change for a uniquely-resolved, nonrecurring target that has no
+  /// known external-calendar link at this layer. Group-shared linkage is
+  /// not visible to the controller; UI must independently fail closed.
+  bool _isPureDateTimeAutoApply({
+    required EventModel target,
+    required VoiceCommandRouteResult route,
+    required EventModel? draftEvent,
+    required String? locationText,
+    required bool? criticalValue,
+  }) {
+    if (locationText != null) return false;
+    if (criticalValue != null) return false;
+    final changes = route.requestedChanges;
+    if (changes.length != 1 || !changes.contains('start_at')) return false;
+    final rule = target.recurrenceRule;
+    if (rule != null && rule.trim().isNotEmpty) return false;
+    final externalId = target.externalId;
+    final externalCalendarId = target.externalCalendarId;
+    if (externalId != null && externalId.isNotEmpty) return false;
+    if (externalCalendarId != null && externalCalendarId.isNotEmpty) {
+      return false;
+    }
+    if (draftEvent == null) return false;
+    final newStart = draftEvent.startAt;
+    final oldStart = target.startAt;
+    if (newStart == null || oldStart == null) return false;
+    final newLocal = planflowLocal(newStart);
+    final oldLocal = planflowLocal(oldStart);
+    if (newLocal.year == oldLocal.year &&
+        newLocal.month == oldLocal.month &&
+        newLocal.day == oldLocal.day &&
+        newLocal.hour == oldLocal.hour &&
+        newLocal.minute == oldLocal.minute) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Builds the user-facing assistant message for the confirmed date edit.
+  /// [oldStart] is the original local start; [newStart] is the draft's local
+  /// start. Both must be non-null when called from the auto-apply path.
+  String _dateEditAutoApplyMessage(EventModel target, DateTime newStart) {
+    final local = planflowLocal(newStart);
+    final weekday = switch (local.weekday) {
+      DateTime.monday => '월',
+      DateTime.tuesday => '화',
+      DateTime.wednesday => '수',
+      DateTime.thursday => '목',
+      DateTime.friday => '금',
+      DateTime.saturday => '토',
+      _ => '일',
+    };
+    return '"${target.title}" 일정을 '
+        '${local.year}년 ${local.month}월 ${local.day}일 ($weekday) '
+        '${local.hour}시${local.minute == 0 ? '' : ' ${local.minute}분'}로 변경할게요.';
   }
 
   DateTime? _inferRequestedStartLocal(
@@ -2165,6 +2239,15 @@ class VoiceConversationController {
     final normalized = _compact(text);
     if (normalized.isEmpty) {
       return null;
+    }
+
+    // Relative week moves are anchored to the selected event occurrence.
+    // Check before generic '미뤄/연기' one-day fallback.
+    if (RegExp(r'(?:그)?다다음주').hasMatch(normalized)) {
+      return 14;
+    }
+    if (RegExp(r'(?:그)?다음주').hasMatch(normalized)) {
+      return 7;
     }
 
     final explicitForward = RegExp(
@@ -2540,6 +2623,43 @@ class _VoiceConversationState {
       ..clear()
       ..addAll(nextEvents);
     VoiceConversationController._sortEvents(events);
+    _refreshFocusedEventAfterReplace();
+  }
+
+  /// After a write-back replaces the events list, the previously-focused
+  /// event reference may still point at the stale instance whose [startAt]
+  /// reflects the pre-save value. A subsequent relative edit ("다음주로
+  /// 더 옮겨줘") would then compute the shift from the old date and undo
+  /// the just-saved move. Refresh the focused reference for nonrecurring
+  /// targets (empty RRULE) by matching the same id to the latest event
+  /// object. Recurring expanded occurrences are left untouched so a
+  /// concrete occurrence instant is not replaced with the series anchor.
+  /// If the focused event id is missing entirely, clear the reference to
+  /// avoid any stale edit landing on a deleted row.
+  void _refreshFocusedEventAfterReplace() {
+    final current = focusedEvent;
+    if (current == null) {
+      return;
+    }
+    final rule = current.recurrenceRule;
+    final hasRecurrence = rule != null && rule.trim().isNotEmpty;
+    if (hasRecurrence) {
+      return;
+    }
+    EventModel? refreshed;
+    for (final candidate in events) {
+      if (candidate.id == current.id) {
+        refreshed = candidate;
+        break;
+      }
+    }
+    if (refreshed != null) {
+      focusedEvent = refreshed;
+    } else {
+      // Signaled: focused id missing from new list — drop it so the next
+      // edit cannot target a deleted or renamed row.
+      focusedEvent = null;
+    }
   }
 
   VoiceConversationSession toSession() {

@@ -62,6 +62,8 @@ class EventEditScreen extends StatefulWidget {
   EventEditScreen({
     super.key,
     this.event,
+    this.originalEvent,
+    this.originalOccurrenceStartAt,
     this.eventId,
     this.initialDate,
     this.eventRepository,
@@ -75,6 +77,8 @@ class EventEditScreen extends StatefulWidget {
         homeWidgetService = homeWidgetService ?? HomeWidgetService();
 
   final EventModel? event;
+  final EventModel? originalEvent;
+  final DateTime? originalOccurrenceStartAt;
   final String? eventId;
   final DateTime? initialDate;
   final EventRepository? eventRepository;
@@ -610,7 +614,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   void initState() {
     super.initState();
     final event = widget.event;
-    _loadedEvent = event;
+    _loadedEvent = widget.originalEvent ?? event;
     _titleController = TextEditingController(text: event?.title ?? '');
     _locationController = TextEditingController(text: event?.location ?? '');
     _memoController = TextEditingController(text: event?.memo ?? '');
@@ -641,8 +645,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
     unawaited(_loadGroupContextIfNeeded());
     _loadEventIfNeeded();
-    if (event != null && AppEnv.isSupabaseReady) {
-      unawaited(_loadReminderOffsetIfNeeded(event));
+    if (_loadedEvent != null && AppEnv.isSupabaseReady) {
+      unawaited(_loadReminderOffsetIfNeeded(_loadedEvent!));
     }
   }
 
@@ -1294,21 +1298,28 @@ class _EventEditScreenState extends State<EventEditScreen> {
               // 캘린더/위젯이 원본 회차를 정확히 찾아 숨긴다(사용자 지적,
               // 2026-07-27 — 날짜를 바꾸면 원래 자리(예: 21일)에 회차가
               // 그대로 남아 있었음).
-              overriddenOccurrenceDate: _loadedEvent!.startAt,
+              overriddenOccurrenceDate:
+                  widget.originalOccurrenceStartAt ?? _loadedEvent!.startAt,
             ),
           );
         } else if (recurrenceScope == 'future' && _loadedEvent != null) {
           final original = _loadedEvent!;
           final originalStart = original.startAt;
+          final selectedOccurrenceStart =
+              widget.originalOccurrenceStartAt ?? originalStart;
           final isFirstOccurrence = originalStart == null ||
-              planflowIsSameLocalDay(originalStart, normalizedStartAt);
+              selectedOccurrenceStart == null ||
+              planflowIsSameLocalDay(originalStart, selectedOccurrenceStart);
           if (isFirstOccurrence) {
             savedEvent = await _repository.updateEvent(updatedEvent);
           } else {
             await _repository.updateEvent(
               _eventWithRecurrenceRule(
                 original,
-                _truncateRRuleBefore(original.recurrenceRule, _startAt),
+                _truncateRRuleBefore(
+                  original.recurrenceRule,
+                  planflowLocal(selectedOccurrenceStart),
+                ),
               ),
             );
             savedEvent = await _repository.createEvent(
@@ -1316,7 +1327,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 updatedEvent,
                 parentEventId: original.id,
                 keepRecurrence: true,
-                overriddenOccurrenceDate: originalStart,
+                overriddenOccurrenceDate: selectedOccurrenceStart,
               ),
             );
           }
@@ -1610,7 +1621,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         )) {
           _isApplyingLoadedEvent = true;
           setState(() {
-            _loadedEvent = routeEvent.copyWith(
+            _loadedEvent = (widget.originalEvent ?? routeEvent).copyWith(
               locationLat: event.locationLat,
               locationLng: event.locationLng,
             );
@@ -1620,7 +1631,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           });
           _isApplyingLoadedEvent = false;
         }
-        unawaited(_loadReminderOffsetIfNeeded(event));
+        unawaited(_loadReminderOffsetIfNeeded(_loadedEvent ?? event));
         if (event.groupEventId != null) {
           unawaited(_loadGroupInstructions(event));
         }
@@ -1628,7 +1639,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       _isApplyingLoadedEvent = true;
       setState(() {
-        _loadedEvent = event;
+        _loadedEvent = widget.originalEvent ?? event;
         _titleController.text = event.title;
         _locationController.text = event.location ?? '';
         _locationLat = event.locationLat;
@@ -1912,7 +1923,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _loadReminderOffsetIfNeeded(EventModel event) async {
-    final startAt = event.startAt;
+    final startAt = widget.originalOccurrenceStartAt ?? event.startAt;
+    final reminderType = event.isCritical ? 'system_alarm' : 'push';
     if (event.id.trim().isEmpty || startAt == null || !AppEnv.isSupabaseReady) {
       return;
     }
@@ -1927,7 +1939,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           .select('notify_at')
           .eq('event_id', event.id)
           .eq('user_id', user.id)
-          .eq('type', 'push')
+          .eq('type', reminderType)
           .maybeSingle();
       if (!mounted) {
         return;

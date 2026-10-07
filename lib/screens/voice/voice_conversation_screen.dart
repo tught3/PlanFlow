@@ -2,14 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/analytics_service.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/event_edit_route_payload.dart';
 import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
 import '../../features/groups/repositories/group_repository.dart';
@@ -19,10 +22,12 @@ import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/location_lookup_service.dart';
+import '../../services/manual_event_side_effect_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_ad_gate.dart';
 import '../../services/voice_conversation_controller.dart';
 import '../../services/voice_conversation_entitlement.dart';
+import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../location/location_pick_flow.dart';
 
@@ -47,10 +52,13 @@ class VoiceConversationScreen extends StatefulWidget {
     this.sttService = const SttService(),
     this.locationLookupService,
     this.permissionService,
+    this.settingsRepository,
+    this.reminderNotifyAtReader,
     this.locationPicker = pickLocationFromQuery,
     this.autoStart = false,
     this.initialText,
     this.entryGrant,
+    this.sideEffectService,
   });
 
   final EventRepository? repository;
@@ -59,6 +67,16 @@ class VoiceConversationScreen extends StatefulWidget {
   final SttService sttService;
   final LocationLookupService? locationLookupService;
   final AppPermissionService? permissionService;
+  final SettingsRepository? settingsRepository;
+
+  /// 저장 직전 기존 push 리마인더의 notify_at을 읽어 오는 함수(선택 주입).
+  /// 기본 구현은 Supabase reminders 테이블을 조회한다(편집 화면
+  /// _loadReminderOffsetIfNeeded와 동일한 쿼리). 날짜 자동 저장 시 이 값에서
+  /// 역산한 '개별' 오프셋을 그대로 유지한다. 테스트에서 주입해 검증한다.
+  /// null 반환 = 리마인더 행 없음, 예외 = 조회 실패(fail-closed).
+  final Future<DateTime?> Function(String userId, String eventId)?
+      reminderNotifyAtReader;
+  final ManualEventSideEffectService? sideEffectService;
   final Future<LocationLookupResult?> Function({
     required BuildContext context,
     required String query,
@@ -80,10 +98,10 @@ class VoiceConversationScreen extends StatefulWidget {
 
   @override
   State<VoiceConversationScreen> createState() =>
-      _VoiceConversationScreenState();
+      VoiceConversationScreenState();
 }
 
-class _VoiceConversationScreenState extends State<VoiceConversationScreen>
+class VoiceConversationScreenState extends State<VoiceConversationScreen>
     with WidgetsBindingObserver {
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -101,6 +119,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       widget.groupEventRepository ?? GroupEventRepository.supabase();
   late final VoiceConversationController _conversation =
       VoiceConversationController(events: const <EventModel>[]);
+  // 개인 일정 일간 motion에서 알림/외부 캘린더/위젯 재동기화를 위해 사용하는
+  // 사이드 이펙트 서비스. 테스트에서는 [sideEffectService] 주입으로 가짜
+  // 구현을 넣어 호출 횟수와 인자를 검증한다. 이벤트 편집 화면과 동일한
+  // 기본 구현([ManualEventSideEffectService])을 쓴다.
+  late final ManualEventSideEffectService _sideEffectService =
+      widget.sideEffectService ?? const ManualEventSideEffectService();
 
   List<EventModel> _events = const <EventModel>[];
   // 그룹 일정을 개인 EventModel로 변환해 음성 후보 목록에 병합할 때, id로
@@ -637,6 +661,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           ? null
           : _groupEventById[result.targetEvent!.id];
 
+      // 후속 안내 메시지를 지면에서 교체해야 할 때 세팅한다. null 이면
+      // 기본 _messageForResult(result)을 그대로 쓰고, null 이 아니면 그
+      // 문자열을 그대로 쓴다(특히 '저장됨' 표현을 말하지 않아야 하는 폴백
+      // 경로에서 사용한다).
+      String? messageOverride;
+      // 폴백 시 메시지 카드에 실어 보낼 일정 목록. null 이면 result 의
+      // visibleEvents 를 그대로 쓴다. 자동 저장 실패 시 원본이 아니라
+      // 제안된 드래프트(새 날짜)를 실어서, 편집 버튼으로 다시 열 때 요청한
+      // 날짜가 유지되도록 한다.
+      List<EventModel>? eventsOverride;
+
       if (result.action == VoiceConversationAction.convertToPersonalConfirmed &&
           result.targetEvent != null) {
         if (targetGroupEvent == null) {
@@ -685,9 +720,41 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         }
       } else if (result.action == VoiceConversationAction.confirmedEdit &&
           result.targetEvent != null) {
-        final updated = await _applyConversationEventUpdate(result);
-        if (!updated) {
-          return;
+        // 단독 날짜/시간 변경이면 편집 화면 없이 곧바로 저장한다.
+        // 컨트롤러가 canAutoApplyDateChange를 true 로 둔 결과만 자동 저장
+        // 경로에 들어오며, 점검이 실패하거나 저장 실패하면 편집 화면으로
+        // 드래프트를 그대로 넘겨 사용자가 명시적으로 저장하도록 한다(자동
+        // 저장 경로가 '저장됨' 안내를 먼저 보내지 않도록 폴업은 저장
+        // 경로 밖에서 처리).
+        if (_canApplyDateChangeAuto(
+          result: result,
+          targetEvent: result.targetEvent!,
+        )) {
+          final dateSaved = await _applyConversationDateAutoSave(
+            result: result,
+            targetEvent: result.targetEvent!,
+          );
+          if (dateSaved) {
+            // 성공. 기본 안내는 아래 _messageForResult 로 처리한다.
+          } else {
+            // 자동 저장 불가/실패(중복 경고 취소, 저장소 오류 포함): 저장은
+            // 일어나지 않았으므로 '저장됨' 표현을 쓰지 않고, 제안된 드래프트
+            // (요청한 새 날짜)를 편집 화면과 메시지 카드에 그대로 넘겨
+            // 사용자가 확정하도록 한다.
+            final fallbackDraft = result.draftEvent ?? result.targetEvent!;
+            await _openGeneralEditScreen(
+              fallbackDraft,
+              originalEvent: _canonicalOriginalFor(fallbackDraft.id),
+              originalOccurrenceStartAt: result.targetEvent?.startAt,
+            );
+            messageOverride = '저장하지 않았어요. 편집 화면에서 내용을 확인하고 저장해 주세요.';
+            eventsOverride = <EventModel>[fallbackDraft];
+          }
+        } else {
+          final updated = await _applyConversationEventUpdate(result);
+          if (!updated) {
+            return;
+          }
         }
       } else if (result.action == VoiceConversationAction.createEvent &&
           result.draftEvent != null) {
@@ -712,16 +779,24 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText == null) {
-        // location 변경 외 수정(날짜·시간 이동 등): 일반 편집 화면으로 이동
-        await _openGeneralEditScreen(result.draftEvent ?? result.targetEvent!);
+        // location 변경 외 수정(날짜·시간 이동 등): 일반 편집 화면으로 이동.
+        // 날짜 이동 제안은 캐논컬 원본과 선택된 회차(변경 전) 시작 시각을
+        // 함께 넘겨 편집 화면의 source 스코프로 삼게 한다. 반복 일정은
+        // 회차 시작 시각을 별도 필드로만 전달하고 원본 치환은 하지 않는다.
+        final draftForEdit = result.draftEvent ?? result.targetEvent!;
+        await _openGeneralEditScreen(
+          draftForEdit,
+          originalEvent: _canonicalOriginalFor(draftForEdit.id),
+          originalOccurrenceStartAt: result.targetEvent?.startAt,
+        );
       }
 
       if (!mounted) return;
       setState(() {
         _messages.add(
           _ConversationMessage.assistant(
-            _messageForResult(result),
-            events: result.visibleEvents,
+            messageOverride ?? _messageForResult(result),
+            events: eventsOverride ?? result.visibleEvents,
             pendingDeleteEvent:
                 result.requiresDeleteConfirmation ? result.targetEvent : null,
             deleteOccurrenceDate: result.requiresDeleteConfirmation
@@ -1228,12 +1303,374 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   /// 날짜·시간 이동 등 일반 수정: 편집 화면으로 바로 이동해 GPT 파이프라인이 처리한다.
-  Future<void> _openGeneralEditScreen(EventModel event) async {
+  /// 편집 화면으로 이동한다. [originalEvent]에 캐논컬 원본(같은 id의 저장된
+  /// 일정 스냅샷)을 주면 라우트 extra로 [EventEditRoutePayload]를 전달한다.
+  /// 편집 화면은 요청한 날짜(draft)를 그대로 보여 주면서도 리마인더/반복
+  /// 스코프/previousStart는 원본 기준으로 읽는다. 원본을 모르면 기존처럼
+  /// EventModel만 전달한다(하위 호환).
+  Future<void> _openGeneralEditScreen(
+    EventModel event, {
+    EventModel? originalEvent,
+    DateTime? originalOccurrenceStartAt,
+  }) async {
     await _stopVoiceBeforeNavigation();
     if (!mounted) return;
-    await context.push('${AppRoutes.eventEdit}/${event.id}', extra: event);
+    await context.push(
+      '${AppRoutes.eventEdit}/${event.id}',
+      extra: _eventEditRouteExtra(
+        draft: event,
+        originalEvent: originalEvent,
+        originalOccurrenceStartAt: originalOccurrenceStartAt,
+      ),
+    );
     await _loadEvents();
     _resumeListeningAfterNavigation();
+  }
+
+  /// 편집 라우트 extra를 만든다. 원본을 알 수 없거나 드래프트와 같은
+  /// 인스턴스면 기존 호환을 위해 EventModel 그대로 전달한다.
+  Object _eventEditRouteExtra({
+    required EventModel draft,
+    EventModel? originalEvent,
+    DateTime? originalOccurrenceStartAt,
+  }) {
+    if (originalEvent == null || identical(originalEvent, draft)) {
+      return draft;
+    }
+    return EventEditRoutePayload(
+      draft: draft,
+      original: originalEvent,
+      originalOccurrenceStartAt: originalOccurrenceStartAt,
+    );
+  }
+
+  /// 화면이 보유한 목록(_events)에서 같은 id의 캐논컬 원본을 찾는다.
+  EventModel? _canonicalOriginalFor(String eventId) {
+    for (final event in _events) {
+      if (event.id == eventId) {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  /// 음성 명력으로 일간/시간을 옮길 때 편집 화면 없이 곧바로 저장해도 안전한
+  /// 대상인지 판정한다. 다음 조건을 모두 통과해야 자동 저장 경로로 분기한다.
+  ///
+  /// 1) 컨트롤러가 명시적으로 `canAutoApplyDateChange=true`를 둔 결과(단독
+  ///    날짜/시간 변경, 장소·중요도·강한 알람 등 다른 필드 변경 없음).
+  /// 2) 대상 일정이 개인 소유다(현재 사용자 본인이 만들거나, 그룹 공유본이
+  ///    개인 사본을 가진 일정). 본 적 목록(_events)에 없는 id이거나
+  ///    [_groupEventById] 레지스트리에 존재하는 그룹 일정이면 false.
+  /// 3) 반복 일정(rrule)이 아니고 그룹 일정 연결(groupEventId)도 없는 일정.
+  /// 4) 드래프트가 시작 시각을 가지고 있고 원본과 실제 다른 값을 가지고 있다.
+  /// 5) 결과에 다른 필드 변경(locationText, criticalValue)이 함께 실려
+  ///    있지 않다(동시 변경은 컨트롤러 쪽에서 requiresEditScreenNavigation을
+  ///    세우지만, 방어 차원에서 한 번 더 검사한다).
+  @visibleForTesting
+  bool debugCanApplyDateChangeAuto({
+    required VoiceConversationResult result,
+    required EventModel targetEvent,
+  }) =>
+      _canApplyDateChangeAuto(result: result, targetEvent: targetEvent);
+
+  bool _canApplyDateChangeAuto({
+    required VoiceConversationResult result,
+    required EventModel targetEvent,
+  }) {
+    if (!result.canAutoApplyDateChange) {
+      return false;
+    }
+    if (result.locationText != null && result.locationText!.trim().isNotEmpty) {
+      return false;
+    }
+    if (result.criticalValue != null) {
+      return false;
+    }
+    final draft = result.draftEvent;
+    if (draft == null || draft.startAt == null) {
+      return false;
+    }
+    if (targetEvent.startAt == draft.startAt) {
+      return false;
+    }
+    final rule = targetEvent.recurrenceRule?.trim();
+    if (rule != null && rule.isNotEmpty) {
+      return false;
+    }
+    if (targetEvent.groupEventId != null &&
+        targetEvent.groupEventId!.trim().isNotEmpty) {
+      return false;
+    }
+    // 외부 캘린더 연동 일정(externalId/externalCalendarId)은 단독 자동 저장
+    // 대상에서 제외한다. 외부 동기화 충돌을 피하고, 편집 화면 경로에서 기존
+    // 동기화 흐름을 그대로 태우기 위함이다.
+    final externalId = targetEvent.externalId?.trim();
+    if (externalId != null && externalId.isNotEmpty) {
+      return false;
+    }
+    final externalCalendarId = targetEvent.externalCalendarId?.trim();
+    if (externalCalendarId != null && externalCalendarId.isNotEmpty) {
+      return false;
+    }
+    if (_groupEventById.containsKey(targetEvent.id)) {
+      return false;
+    }
+    // 본 후보 목록에 실제로 존재하고 id가 일치하는 일정만 자동 저장 대상으로
+    // 인정한다. 이렇게 하면 새 id, 이미 삭제된 id, 다른 사용자의 일정 등
+    // 모르는 대상을 자동으로 경로로 저장하지 않는다(요청에 따라 다시 편집 화면
+    // 안내로 폴백).
+    final currentIndex =
+        _events.indexWhere((candidate) => candidate.id == targetEvent.id);
+    if (currentIndex < 0) {
+      return false;
+    }
+    // 대상 신선도 검증: 결과에 실린 대상이 화면이 알던 최신본과 다르면
+    // (예: 저장 직후 다른 경로에서 갱신된 경우) fail-closed 로 편집 화면
+    // 경로로 되돌린다.
+    final current = _events[currentIndex];
+    final targetUpdatedAt = targetEvent.updatedAt;
+    final currentUpdatedAt = current.updatedAt;
+    if (targetUpdatedAt != null &&
+        currentUpdatedAt != null &&
+        !targetUpdatedAt.isAtSameMomentAs(currentUpdatedAt)) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 날짜 자동 저장에서 기존 push 리마인더의 '개별' 오프셋을 보존한다.
+  ///
+  /// 편집 화면(_loadReminderOffsetIfNeeded)과 동일하게 reminders 테이블의
+  /// notify_at을 [originalEvent](변경 전 원본)의 시작 시각 기준으로 역산한다:
+  /// - 조회 타입은 저장 서비스(manual_event_side_effect_service)와 동일하게
+  ///   크리티컬 일정은 'system_alarm', 일반 일정은 'push'다. 타입을 잘못
+  ///   고르면 실제 행이 있는데도 '없음'으로 오판해 오프셋이 리셋된다.
+  /// - 일반 일정은 push 행이 없으면 null을 반환해 '알림 끔' 상태를 유지한다
+  ///   (꺼진 알림이 자동 저장으로 켜지지 않는다).
+  /// - 크리티컬 일정은 system_alarm 행이 없으면 상태를 확정할 수 없어
+  ///   예외를 던진다(저장 전 fail-closed).
+  /// - 유효 범위는 편집 화면과 같은 0~1440분이고 0분(정시)도 유효하다.
+  /// - 읽기 실패/값 비정상/범위 이탈은 예외를 던진다. 호출부는 저장 전에
+  ///   fail-closed 해야 하며, 사용자 설정 기본값이나 60분 폴백으로 대체한
+  ///   채 '저장됨'을 보고하면 안 된다(잘못된 알림 재발급 금지).
+  Future<Duration?> _resolveOriginalReminderOffset({
+    required String userId,
+    required EventModel originalEvent,
+  }) async {
+    final originalStart = originalEvent.startAt;
+    if (originalStart == null) {
+      throw StateError(
+        '원본 일정에 시작 시각이 없어 리마인더 오프셋을 복원할 수 없어요',
+      );
+    }
+    final reader = widget.reminderNotifyAtReader;
+    DateTime? notifyAt;
+    if (reader != null) {
+      // 주입된 reader: null = 리마인더 행 없음(끔 보존), 예외 = 조회 실패.
+      notifyAt = await reader(userId, originalEvent.id);
+    } else {
+      if (!AppEnv.isSupabaseReady) {
+        throw StateError(
+          '리마인더 조회 환경이 준비되지 않아 오프셋을 복원할 수 없어요',
+        );
+      }
+      // 저장 서비스와 동일한 타입 선택: 크리티컬은 system_alarm, 일반은 push.
+      final reminderType = originalEvent.isCritical ? 'system_alarm' : 'push';
+      final row = await Supabase.instance.client
+          .from('reminders')
+          .select('notify_at')
+          .eq('event_id', originalEvent.id)
+          .eq('user_id', userId)
+          .eq('type', reminderType)
+          .maybeSingle();
+      final rawNotifyAt = row == null ? null : row['notify_at'];
+      if (rawNotifyAt != null) {
+        notifyAt = DateTime.tryParse(rawNotifyAt.toString());
+        if (notifyAt == null) {
+          throw FormatException('리마인더 notify_at 해석 실패: $rawNotifyAt');
+        }
+      }
+    }
+    if (notifyAt == null) {
+      if (originalEvent.isCritical) {
+        // 크리티컬 일정의 알람 행이 없으면 상태를 확정할 수 없다. 전역
+        // 기본값(60분)으로 대체하지 않고 저장 전에 실패시킨다.
+        throw StateError(
+          '중요 일정의 알람 행을 찾을 수 없어 오프셋을 복원할 수 없어요',
+        );
+      }
+      return null;
+    }
+    final minutes = originalStart.difference(notifyAt).inMinutes;
+    if (minutes < 0 || minutes > 1440) {
+      throw FormatException('리마인더 오프셋 범위 이탈: $minutes분');
+    }
+    return Duration(minutes: minutes);
+  }
+
+  /// 음성 명력으로 일간/시간을 곧바로 옮겨 저장한다. 호출 전
+  /// [_canApplyDateChangeAuto] 검증을 통과한 경우에만 호출한다.
+  ///
+  /// 테스트가 직접 인스턴스화해 호출할 수 있도록 같은 본문을
+  /// [debugApplyConversationDateAutoSave]에 공개한다. 이 메서드는
+  /// [_applyConversationDateAutoSave]를 그대로 위임만 한다.
+  ///
+  /// 실패 흐름:
+  /// - 반복 일정 검출: 편집 화면으로 드래프트를 그대로 넘긴다.
+  /// - 기존 리마인더 오프셋 복원 실패(조회 오류/값 비정상): 저장 전에
+  ///   실패 처리해 편집 화면 폴백으로 넘긴다(거짓 저장 성공 금지).
+  /// - 저장소 오류: 저장 전으로 돌아가고 편집 화면으로 드래프트를 넘긴다
+  ///   (false 이거나 throw를 잡아 호출자가 폴백을 선택하게 한다).
+  /// - 중복 알림 경고 다이얼로그에서 취소: 저장 없이 false 반환.
+  /// - 저장 후 사이드 이벤트(syncAfterSave) 실패: 저장은 이미 성공했으므로
+  ///   '일부 알림/위젯 동기화에 실패했어요'라는 제한 안내만 추가하고 true
+  ///   반환로 처리한다.
+  @visibleForTesting
+  Future<bool> debugApplyConversationDateAutoSave({
+    required VoiceConversationResult result,
+    required EventModel targetEvent,
+  }) =>
+      _applyConversationDateAutoSave(
+        result: result,
+        targetEvent: targetEvent,
+      );
+
+  /// 안내 문구 규칙을 위젯 경로 밖에서 검증하기 위한 위임자. 실제 저장
+  /// 날짜를 문구에 말하는지, '편집 화면' 표현을 쓰지 않는지 확인한다.
+  @visibleForTesting
+  String debugMessageForResult(VoiceConversationResult result) =>
+      _messageForResult(result);
+
+  Future<bool> _applyConversationDateAutoSave({
+    required VoiceConversationResult result,
+    required EventModel targetEvent,
+  }) async {
+    // 위젯 경로를 거치지 않고 직접 호출되는 경우에도 가드를 다시 통과시킨다.
+    // 가드가 거부하면 저장 없이 false 로 fail-closed 한다.
+    if (!_canApplyDateChangeAuto(result: result, targetEvent: targetEvent)) {
+      return false;
+    }
+    final draft = result.draftEvent!;
+    final newStart = draft.startAt!;
+    final originalStart = targetEvent.startAt;
+    final originalEnd = targetEvent.endAt;
+    final originalDuration = (originalStart != null && originalEnd != null)
+        ? originalEnd.difference(originalStart)
+        : const Duration(hours: 1);
+    final fallbackEnd = newStart.add(
+      originalDuration.isNegative || originalDuration == Duration.zero
+          ? const Duration(hours: 1)
+          : originalDuration,
+    );
+    // 드래프트 종료가 없거나 새 시작보다 과거(원본 날짜의 오래된 endAt 이
+    // 남은 경우)면, 원본 시각/길이를 보존해 새 시작 기준으로 재계산한다.
+    final draftEnd = draft.endAt;
+    final newEnd = (draftEnd != null && draftEnd.isAfter(newStart))
+        ? draftEnd
+        : fallbackEnd;
+
+    try {
+      final overlappingEvents = await _repository.findOverlappingEvents(
+        rangeStart: newStart,
+        rangeEnd: newEnd,
+        userId: widget.repository == null ? authProvider.userId : null,
+        excludedEventId: targetEvent.id,
+      );
+      if (!mounted) {
+        return false;
+      }
+      final candidateDraft = targetEvent.copyWith(
+        startAt: newStart,
+        endAt: newEnd,
+      );
+      final duplicateWarningEvents = filterDuplicateWarningEvents(
+        draft: candidateDraft,
+        candidates: overlappingEvents,
+      );
+      if (duplicateWarningEvents.isNotEmpty) {
+        final shouldContinue = await showOverlapWarningDialog(
+          context: context,
+          overlappingEvents: duplicateWarningEvents,
+        );
+        if (!mounted) {
+          return false;
+        }
+        if (!shouldContinue) {
+          return false;
+        }
+      }
+
+      final updated = targetEvent.copyWith(startAt: newStart, endAt: newEnd);
+
+      // 기존 push 리마인더의 개별 오프셋은 '저장 이전'에 복원한다. 복원이
+      // 실패하면 예외가 던져져 아래 updateEvent에 도달하지 못하고 fail-closed
+      // 한다. 저장이 끝난 뒤에는 알림 상태를 되돌릴 수 없기 때문이다. 오프셋은
+      // 드래프트/저장본이 아니라 '원본(변경 전) 시작 시각' 기준으로 역산한다.
+      final userIdForSideEffects = widget.repository == null
+          ? (authProvider.userId ?? '')
+          : updated.userId;
+      Duration? originalReminderOffset;
+      if (userIdForSideEffects.isNotEmpty) {
+        originalReminderOffset = await _resolveOriginalReminderOffset(
+          userId: userIdForSideEffects,
+          originalEvent: targetEvent,
+        );
+      }
+      if (!mounted) {
+        return false;
+      }
+
+      final saved = await _repository.updateEvent(updated);
+
+      // 저장 성공 이후에만 내부 상태와 EventRefreshBus를 갱신한다. 부분
+      // 성공 시 false 로컬 변경/사이드 메시지가 나오지 않도록 한다.
+      _events = _events
+          .map((candidate) => candidate.id == saved.id ? saved : candidate)
+          .toList(growable: false);
+      _conversation.replaceEvents(_events);
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_date_update',
+        eventId: saved.id,
+        startAt: saved.startAt,
+      );
+
+      // 알림/외부/위젯/예비 액션 재동기화. 실패해도 사용자 의도는 이미
+      // 영구 저장이 완료된 상태이므로 '일부 동기화 실패' 안내만 추가한다.
+      if (userIdForSideEffects.isNotEmpty) {
+        // 저장 전 복원한 개별 오프셋(리마인더 행이 없으면 null)을 그대로
+        // 전달한다. null은 편집 화면과 동일하게 '알림 끔' 유지를 뜻한다.
+        try {
+          await _sideEffectService.syncAfterSave(
+            event: saved,
+            userId: userIdForSideEffects,
+            reminderOffset: originalReminderOffset,
+            criticalAlarmOffset: originalReminderOffset,
+          );
+        } catch (sideEffectError, sideEffectStack) {
+          debugPrint(
+            'VoiceConversationScreen date side-effect sync failed: $sideEffectError',
+          );
+          debugPrintStack(stackTrace: sideEffectStack);
+          if (mounted) {
+            setState(() {
+              _messages.add(
+                const _ConversationMessage.assistant(
+                  '저장은 했지만 알림/위젯 동기화에 일부 실패했어요. 잠시 후 다시 시도해 주세요.',
+                ),
+              );
+            });
+          }
+        }
+      }
+
+      await _loadEvents();
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('VoiceConversationScreen date auto-save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
   }
 
   Future<bool> _applyConversationEventUpdate(
@@ -1743,9 +2180,20 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   Future<void> _openEditEvent(EventModel event) async {
     await _stopVoiceBeforeNavigation();
     if (!mounted) return;
+    // 반복 일정이 아닐 때만 로컬 캐논컬 원본을 회복해 함께 넘긴다(날짜 자동
+    // 저장 가드가 반복 일정을 자동 저장하지 않으므로 실패 카드의 드래프트는
+    // 개인 단발 일정이다). 반복 일정은 기준 회차 치환이 일어나면 안 되므로
+    // 기존처럼 EventModel만 전달한다.
+    final rule = event.recurrenceRule?.trim();
+    final isRecurring = rule != null && rule.isNotEmpty;
     await context.push(
       '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
-      extra: event,
+      extra: isRecurring
+          ? event
+          : _eventEditRouteExtra(
+              draft: event,
+              originalEvent: _canonicalOriginalFor(event.id),
+            ),
     );
     await _loadEvents();
     _resumeListeningAfterNavigation();
@@ -1943,8 +2391,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       return;
     }
     _suppressedVoiceEcho = normalized;
-    _suppressedVoiceEchoUntil =
-        DateTime.now().add(const Duration(seconds: 3));
+    _suppressedVoiceEchoUntil = DateTime.now().add(const Duration(seconds: 3));
   }
 
   bool _shouldSuppressSubmittedVoiceEcho(String text) {
@@ -2039,6 +2486,35 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return '$title 일정의 장소에 $location 입력 화면을 열게요. 저장은 편집 화면에서 직접 눌러 주세요.';
       case VoiceConversationAction.confirmedEdit:
         final title = result.targetEvent?.title ?? '선택한 일정';
+        // 음성으로 일간/시간만 옮긴 경우(컨트롤러가 canAutoApplyDateChange를
+        // true 로 둔 단독 변경). 컨트롤러가 보낸 안내 메시지가 있으면 그대로
+        // 쓴다(예: 'OO 일정을 다음 주로 옮겼어요'). 없으면 안전한 기본
+        // 안내를 출력한다.
+        if (result.canAutoApplyDateChange) {
+          final controllerMessage = result.assistantMessage.trim();
+          if (controllerMessage.isNotEmpty) {
+            return controllerMessage;
+          }
+          // 컨트롤러 안내가 비어 있으면 실제 저장된(드래프트 확정) 날짜를
+          // 직접 말한다. '편집 화면' 표현은 쓰지 않는다.
+          final savedStart =
+              result.draftEvent?.startAt ?? result.targetEvent?.startAt;
+          if (savedStart != null) {
+            final local = planflowLocal(savedStart);
+            final hasTime = local.hour != 0 || local.minute != 0;
+            final String dateLabel;
+            if (hasTime) {
+              final hh = local.hour.toString().padLeft(2, '0');
+              final mm = local.minute.toString().padLeft(2, '0');
+              dateLabel = '${local.month}월 ${local.day}일 $hh:$mm';
+            } else {
+              dateLabel = '${local.month}월 ${local.day}일';
+            }
+            final particle = dateLabel.endsWith('일') ? '으로' : '로';
+            return '$title 일정을 $dateLabel$particle 옮겼어요.';
+          }
+          return '$title 일정의 날짜를 옮겼어요.';
+        }
         if (result.criticalValue != null) {
           return result.criticalValue!
               ? '$title 일정을 중요한 일정으로 표시했어요.'
@@ -2427,8 +2903,8 @@ class _MessageBubble extends StatelessWidget {
           // 반복 일정이지만 회차 추론 실패(deleteOccurrenceDate == null)면
           // 기존처럼 단일 버튼(전체 삭제)으로 폴백한다.
           if (_isRecurringEvent(message.pendingDeleteEvent!) &&
-                  message.deleteOccurrenceDate != null &&
-                  onDeleteOccurrence != null)
+              message.deleteOccurrenceDate != null &&
+              onDeleteOccurrence != null)
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.error,

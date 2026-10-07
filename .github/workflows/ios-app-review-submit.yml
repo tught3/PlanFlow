@@ -21,6 +21,16 @@ on:
         type: string
         required: false
         default: ''
+      replace_existing_build:
+        description: Opt-in old build number of the active review submission to replace.
+        type: string
+        required: false
+        default: ''
+      confirm_replace:
+        description: For a real replacement cancel enter REPLACE_PLANFLOW_IOS_REVIEW; otherwise verification-only.
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -32,7 +42,7 @@ concurrency:
 jobs:
   submit-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       BUNDLE_ID: com.fluxstudio.planflow
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -42,6 +52,8 @@ jobs:
       INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
       INPUT_DRY_RUN: ${{ inputs.dry_run }}
       INPUT_CONFIRM: ${{ inputs.confirm }}
+      INPUT_REPLACE_EXISTING_BUILD: ${{ inputs.replace_existing_build }}
+      INPUT_CONFIRM_REPLACE: ${{ inputs.confirm_replace }}
     steps:
       - uses: actions/checkout@v4
 
@@ -67,4 +79,21 @@ jobs:
           fi
           args=(--bundle-id "$BUNDLE_ID" --version "$INPUT_APP_STORE_VERSION" --build "$INPUT_BUILD_NUMBER" --whats-new-file config/store/ios-release-notes.json --marketing-url https://fluxstudio.co.kr)
           if [[ "$INPUT_DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
+          if [[ -n "$INPUT_REPLACE_EXISTING_BUILD" ]]; then
+            if [[ ! "$INPUT_REPLACE_EXISTING_BUILD" =~ ^[1-9][0-9]{0,9}$ ]]; then
+              echo "::error title=BLOCKED_INPUT::replace_existing_build must be explicit digits without a leading zero."
+              exit 1
+            fi
+            if [[ -n "$INPUT_CONFIRM_REPLACE" && "$INPUT_CONFIRM_REPLACE" != "REPLACE_PLANFLOW_IOS_REVIEW" ]]; then
+              echo "::error title=BLOCKED_CONFIRMATION::Live replacement cancel requires REPLACE_PLANFLOW_IOS_REVIEW."
+              exit 1
+            fi
+            args+=(--replace-existing-build "$INPUT_REPLACE_EXISTING_BUILD")
+            if [[ "$INPUT_CONFIRM_REPLACE" == "REPLACE_PLANFLOW_IOS_REVIEW" ]]; then
+              args+=(--confirm-replace "REPLACE_PLANFLOW_IOS_REVIEW")
+            fi
+          elif [[ -n "$INPUT_CONFIRM_REPLACE" ]]; then
+            echo "::error title=BLOCKED_INPUT::confirm_replace requires replace_existing_build."
+            exit 1
+          fi
           python3 scripts/asc-submit-review.py "${args[@]}"

@@ -53,6 +53,60 @@ void main() {
     );
   });
 
+  test(
+      'expandEventOccurrencesForOverlap keeps strong alarm and override metadata',
+      () {
+    final now = DateTime.now();
+    final anchor = DateTime(now.year, now.month, now.day + 1, 9);
+    final overrideDate = DateTime(now.year, now.month, now.day - 30, 9);
+    final deletedDate = DateTime(now.year, now.month, now.day + 15, 9);
+    final seedEvent = EventModel(
+      id: 'seed-meta',
+      userId: 'user-1',
+      title: '강도알람 반복 회의',
+      startAt: planflowLocalDateTimeToUtc(anchor),
+      endAt: planflowLocalDateTimeToUtc(anchor.add(const Duration(hours: 1))),
+      recurrenceRule: 'FREQ=WEEKLY',
+      overriddenOccurrenceDate: planflowLocalDateTimeToUtc(overrideDate),
+      deletedOccurrenceDates: <DateTime>[
+        planflowLocalDateTimeToUtc(deletedDate),
+      ],
+      useStrongAlarm: true,
+      groupEventId: 'group-1',
+    );
+
+    final occurrences = expandEventOccurrencesForOverlap(
+      seedEvent,
+      rangeStart: planflowLocalDateTimeToUtc(
+        DateTime(now.year, now.month, now.day),
+      ),
+      rangeEnd: planflowLocalDateTimeToUtc(
+        DateTime(now.year, now.month, now.day + 22),
+      ),
+    );
+
+    expect(occurrences, isNotEmpty);
+    final occurrence = occurrences.first;
+    expect(occurrence.id, 'seed-meta');
+    expect(occurrence.useStrongAlarm, isTrue);
+    expect(occurrence.groupEventId, 'group-1');
+    expect(
+      occurrence.overriddenOccurrenceDate,
+      planflowLocalDateTimeToUtc(overrideDate),
+    );
+    expect(
+      occurrence.deletedOccurrenceDates,
+      <DateTime>[planflowLocalDateTimeToUtc(deletedDate)],
+    );
+    expect(occurrence.recurrenceRule, 'FREQ=WEEKLY');
+    // 회차 시각은 seed와 동일한 로컬 벽시각(09:00, 1시간 길이)으로 전개된다.
+    expect(planflowLocal(occurrence.startAt!), anchor);
+    expect(
+      planflowLocal(occurrence.endAt!),
+      anchor.add(const Duration(hours: 1)),
+    );
+  });
+
   test('filterDuplicateWarningEvents ignores unrelated overlapping events', () {
     final draft = EventModel(
       id: '',

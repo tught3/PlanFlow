@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/event_edit_route_payload.dart';
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
@@ -18,10 +21,23 @@ import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
+import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/stt_service.dart';
+import 'package:planflow/services/voice_conversation_controller.dart';
 import 'package:planflow/services/voice_conversation_ad_gate.dart';
 import 'package:planflow/services/voice_conversation_entitlement.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+int _alignedFutureFixtureYear() {
+  for (var year = DateTime.now().year + 1; ; year++) {
+    if (DateTime(year, 1, 1).weekday == DateTime.thursday &&
+        !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
+      return year;
+    }
+  }
+}
+
+final int _voiceFixtureYear = _alignedFutureFixtureYear();
 
 class _FakeSttService extends SttService {
   Completer<SttListenResult>? _completer;
@@ -117,6 +133,18 @@ class _FakeEventRepository extends EventRepository {
   final List<String> deletedIds = <String>[];
   final List<EventModel> updatedEvents = <EventModel>[];
   final List<EventModel> createdEvents = <EventModel>[];
+  // 테스트에서 주입하는 겹지 후보. 비워 두면 Repository 기본 구현대로
+  // 빈 목록이 반환된다.
+  List<EventModel> overlappingCandidates = const <EventModel>[];
+  int findOverlappingCalls = 0;
+  DateTime? lastOverlapRangeStart;
+  DateTime? lastOverlapRangeEnd;
+  String? lastOverlapExcludedEventId;
+  // updateEvent에서 throw할지 여부. 실패 경로 검증을 위한 옵션.
+  bool throwOnUpdate = false;
+  // updateEvent의 펜딩 컨테이너. 갱신 결과를 지연시켜 테스트가 펜딩
+  // 상태를 검증할 수 있다.
+  Completer<EventModel>? savePendingCompleter;
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => events;
@@ -132,6 +160,25 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+  }) async {
+    findOverlappingCalls += 1;
+    lastOverlapRangeStart = rangeStart;
+    lastOverlapRangeEnd = rangeEnd;
+    lastOverlapExcludedEventId = excludedEventId;
+    if (!rangeEnd.isAfter(rangeStart)) {
+      return const <EventModel>[];
+    }
+    return overlappingCandidates
+        .where((candidate) => candidate.id != excludedEventId)
+        .toList(growable: false);
+  }
+
+  @override
   Future<EventModel> createEvent(EventModel event) async {
     createdEvents.add(event);
     return event;
@@ -139,6 +186,18 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<EventModel> updateEvent(EventModel event) async {
+    if (throwOnUpdate) {
+      throw StateError('updateEvent 강제 실패');
+    }
+    if (savePendingCompleter != null) {
+      final saved = await savePendingCompleter!.future;
+      updatedEvents.add(saved);
+      final index = events.indexWhere((candidate) => candidate.id == saved.id);
+      if (index >= 0) {
+        events[index] = saved;
+      }
+      return saved;
+    }
     updatedEvents.add(event);
     final index = events.indexWhere((candidate) => candidate.id == event.id);
     if (index >= 0) {
@@ -150,6 +209,46 @@ class _FakeEventRepository extends EventRepository {
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {
     deletedIds.add(eventId);
+  }
+}
+
+/// 테스트 안에서 [_applyConversationDateAutoSave]의 사이드 이펙트 호출을
+/// 검증하기 위한 가짜 구현. 호출된 횟수와 인자를 그대로 기록한다.
+class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
+  _FakeManualEventSideEffectService();
+
+  final List<({EventModel event, String userId})> syncAfterSaveCalls =
+      <({EventModel event, String userId})>[];
+  Duration? lastReminderOffset;
+  Duration? lastCriticalAlarmOffset;
+  bool throwOnSync = false;
+
+  @override
+  Future<ManualEventSideEffectResult> syncAfterSave({
+    required EventModel event,
+    required String userId,
+    bool clearPreActions = true,
+    Duration? reminderOffset,
+    Duration? criticalAlarmOffset,
+    int prepTimeMin = 60,
+    int prepPreAlarmOffset = 30,
+    int departPreAlarmOffset = 30,
+    int travelMinutes = 15,
+    Duration departureSafetyMargin = const Duration(minutes: 1),
+    String travelMode = 'car',
+    bool isFirstExternalEventOfDay = true,
+  }) async {
+    syncAfterSaveCalls.add((event: event, userId: userId));
+    lastReminderOffset = reminderOffset;
+    lastCriticalAlarmOffset = criticalAlarmOffset;
+    if (throwOnSync) {
+      throw StateError('syncAfterSave 강제 실패');
+    }
+    return const ManualEventSideEffectResult(
+      remindersSynced: true,
+      notificationsSynced: true,
+      preActionsCleared: true,
+    );
   }
 }
 
@@ -440,7 +539,8 @@ class _DelayedDeniedAdGateDelegate implements VoiceConversationAdGateDelegate {
 /// 리셋하기 때문에, 이 delegate는 reset 이후에 lastDenialReason을 다시 쓴다 —
 /// 그래야 화면의 fallback에서 `voiceConversationGateDenialMessage`가 정상적으로
 /// 호출되는 흐름이 그대로 재현된다.
-class _SilentAdGateDelegateWithReason implements VoiceConversationAdGateDelegate {
+class _SilentAdGateDelegateWithReason
+    implements VoiceConversationAdGateDelegate {
   _SilentAdGateDelegateWithReason({required this.lastDenialReason});
 
   int tryEnterCalls = 0;
@@ -548,8 +648,7 @@ void main() {
     );
   });
 
-  testWidgets('AI 일정 대화는 음성 인식 실패 뒤에도 텍스트로 전환해 자동 재시작을 멈춘다',
-      (tester) async {
+  testWidgets('AI 일정 대화는 음성 인식 실패 뒤에도 텍스트로 전환해 자동 재시작을 멈춘다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(
       tester,
@@ -908,7 +1007,7 @@ void main() {
   });
 
   testWidgets('AI 일정 대화는 initialText 결과 일정 카드를 렌더링한다', (tester) async {
-    final friday = DateTime(2026, 5, 29, 18);
+    final friday = DateTime(_voiceFixtureYear, 5, 29, 18);
     final events = List<EventModel>.generate(
       4,
       (index) => EventModel(
@@ -923,12 +1022,12 @@ void main() {
       tester,
       VoiceConversationScreen(
         repository: _FakeEventRepository(events),
-        initialText: '5월 29일 일정 다 보여 줘',
+        initialText: '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘',
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('5월 29일 일정 다 보여 줘'), findsOneWidget);
+    expect(find.text('$_voiceFixtureYear년 5월 29일 일정 다 보여 줘'), findsOneWidget);
     expect(find.textContaining('일정 4개를 찾았어요'), findsOneWidget);
     expect(find.text('금요일 일정 1'), findsOneWidget);
     expect(find.text('금요일 일정 4'), findsOneWidget);
@@ -940,7 +1039,7 @@ void main() {
       id: 'event-edit',
       userId: 'user-1',
       title: '금요일 상담',
-      startAt: DateTime(2026, 5, 29, 18).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 29, 18).toUtc(),
     );
     final router = GoRouter(
       initialLocation: AppRoutes.voiceConversation,
@@ -949,7 +1048,7 @@ void main() {
           path: AppRoutes.voiceConversation,
           builder: (context, state) => VoiceConversationScreen(
             repository: _FakeEventRepository(<EventModel>[event]),
-            initialText: '5월 29일 일정 다 보여 줘',
+            initialText: '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘',
           ),
         ),
         GoRoute(
@@ -984,22 +1083,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 다음날 이동 명령을 편집 초안으로 넘긴다', (tester) async {
+  testWidgets('AI 일정 대화는 다음날 이동 명령을 편집 화면 없이 곧바로 저장한다', (tester) async {
     final event = EventModel(
       id: 'event-shift',
       userId: 'user-1',
       title: '이동할 일정',
-      startAt: DateTime(2026, 5, 7, 9).toUtc(),
-      endAt: DateTime(2026, 5, 7, 10).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 7, 9).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 7, 10).toUtc(),
     );
     EventModel? receivedDraft;
+    final repository = _FakeEventRepository(<EventModel>[event]);
+    final sideEffects = _FakeManualEventSideEffectService();
     final router = GoRouter(
       initialLocation: AppRoutes.voiceConversation,
       routes: [
         GoRoute(
           path: AppRoutes.voiceConversation,
           builder: (context, state) => VoiceConversationScreen(
-            repository: _FakeEventRepository(<EventModel>[event]),
+            repository: repository,
+            sideEffectService: sideEffects,
+            settingsRepository:
+                _FakeSettingsRepository(const Duration(minutes: 30)),
+            reminderNotifyAtReader: _fakeReminderReader(repository),
             initialText: '5월 7일 일정 알려줘',
           ),
         ),
@@ -1029,18 +1134,26 @@ void main() {
       '1번 일정 그 다음날로 변경해줘',
     );
     await tester.tap(find.text('전송'));
+    // 단독 날짜 변경은 자동 저장 경로로 저장 완료까지 기다린다.
+    for (var i = 0; i < 40 && repository.updatedEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     await tester.pumpAndSettle();
 
-    expect(find.text('편집 화면'), findsOneWidget);
-    expect(receivedDraft, isNotNull);
+    // 편집 화면으로 넘어가지 않고 곧바로 저장됐다.
+    expect(find.text('편집 화면'), findsNothing);
+    expect(receivedDraft, isNull);
+    expect(repository.updatedEvents, hasLength(1));
     expect(
-      planflowLocal(receivedDraft!.startAt!),
-      DateTime(2026, 5, 8, 9),
+      planflowLocal(repository.updatedEvents.single.startAt!),
+      DateTime(_voiceFixtureYear, 5, 8, 9),
     );
     expect(
-      planflowLocal(receivedDraft!.endAt!),
-      DateTime(2026, 5, 8, 10),
+      planflowLocal(repository.updatedEvents.single.endAt!),
+      DateTime(_voiceFixtureYear, 5, 8, 10),
     );
+    // 안내 문구는 '편집 화면을 열었다'가 아니라 저장 결과를 말한다.
+    expect(find.textContaining('편집 화면'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1049,7 +1162,7 @@ void main() {
       id: 'event-delete',
       userId: 'user-1',
       title: '삭제할 일정',
-      startAt: DateTime(2026, 5, 29, 18).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 29, 18).toUtc(),
     );
     final repository = _FakeEventRepository(<EventModel>[event]);
 
@@ -1057,7 +1170,7 @@ void main() {
       tester,
       VoiceConversationScreen(
         repository: repository,
-        initialText: '5월 29일 일정 다 보여 줘',
+        initialText: '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘',
       ),
     );
     await tester.pumpAndSettle();
@@ -1078,7 +1191,7 @@ void main() {
   });
 
   testWidgets('AI 일정 대화는 삭제 확인 대기 중 붙은 이전 명령을 잘라낸다', (tester) async {
-    final friday = DateTime(2026, 5, 29, 18);
+    final friday = DateTime(_voiceFixtureYear, 5, 29, 18);
     final events = List<EventModel>.generate(
       5,
       (index) => EventModel(
@@ -1240,8 +1353,7 @@ void main() {
             builder: (context, state) => Scaffold(
               body: Center(
                 child: TextButton(
-                  onPressed: () =>
-                      context.push(AppRoutes.voiceConversation),
+                  onPressed: () => context.push(AppRoutes.voiceConversation),
                   child: const Text('홈 화면'),
                 ),
               ),
@@ -1405,7 +1517,7 @@ void main() {
         id: 'event-1',
         userId: 'user-1',
         title: '방문 일정',
-        startAt: DateTime(2026, 5, 22, 9).toUtc(),
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
       ),
     ]);
     Future<LocationLookupResult?> fakeLocationPicker({
@@ -1436,7 +1548,7 @@ void main() {
             locationLookupService: _FakeLocationLookupService(),
             permissionService: _NoLocationPermissionService(),
             locationPicker: fakeLocationPicker,
-            initialText: '5월 22일 일정 보여줘',
+            initialText: '$_voiceFixtureYear년 5월 22일 일정 보여줘',
           ),
         ),
         GoRoute(
@@ -1480,7 +1592,7 @@ void main() {
         id: 'event-1',
         userId: 'user-1',
         title: '방문 일정',
-        startAt: DateTime(2026, 5, 22, 9).toUtc(),
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
         isCritical: false,
       ),
     ]);
@@ -1510,14 +1622,14 @@ void main() {
       id: 'personal-1',
       userId: 'user-1',
       title: '개인 방문 일정',
-      startAt: DateTime(2026, 5, 22, 9).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
     );
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
       title: '팀 회의',
-      startAt: DateTime(2026, 5, 22, 14).toUtc(),
-      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 14).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 22, 15).toUtc(),
       createdBy: 'leader-1',
       location: '회의실',
     );
@@ -1533,7 +1645,7 @@ void main() {
         repository: _FakeEventRepository(<EventModel>[personalEvent]),
         groupRepository: groupRepository,
         groupEventRepository: groupEventRepository,
-        initialText: '5월 22일 일정 다 보여줘',
+        initialText: '$_voiceFixtureYear년 5월 22일 일정 다 보여줘',
       ),
     );
     await tester.pumpAndSettle();
@@ -1545,13 +1657,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다', (tester) async {
+  testWidgets('AI 일정 대화는 그룹 일정 수정을 GroupEventRepository로 라우팅한다',
+      (tester) async {
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
       title: '팀 회의',
-      startAt: DateTime(2026, 5, 22, 14).toUtc(),
-      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 14).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 22, 15).toUtc(),
       createdBy: 'leader-1',
       location: '회의실',
     );
@@ -1593,8 +1706,8 @@ void main() {
       id: 'group-event-1',
       groupId: 'group-1',
       title: '팀 회의',
-      startAt: DateTime(2026, 5, 22, 14).toUtc(),
-      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 14).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 22, 15).toUtc(),
       createdBy: 'leader-1',
       location: '회의실',
     );
@@ -1637,14 +1750,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다',
-      (tester) async {
+  testWidgets('AI 일정 대화는 팀 일정 개인 전환 권한 실패 시 개인 일정을 만들지 않는다', (tester) async {
     final groupEvent = GroupEventModel(
       id: 'group-event-1',
       groupId: 'group-1',
       title: '팀 회의',
-      startAt: DateTime(2026, 5, 22, 14).toUtc(),
-      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 14).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 22, 15).toUtc(),
       createdBy: 'leader-1',
       location: '회의실',
     );
@@ -1686,8 +1798,8 @@ void main() {
       id: 'group-event-1',
       groupId: 'group-1',
       title: '팀 회의',
-      startAt: DateTime(2026, 5, 22, 14).toUtc(),
-      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 14).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 22, 15).toUtc(),
       createdBy: 'leader-1',
       location: '회의실',
     );
@@ -1733,8 +1845,8 @@ void main() {
       id: 'group-event-1',
       groupId: 'group-1',
       title: '팀 회의',
-      startAt: DateTime(2026, 5, 22, 14).toUtc(),
-      endAt: DateTime(2026, 5, 22, 15).toUtc(),
+      startAt: DateTime(_voiceFixtureYear, 5, 22, 14).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 22, 15).toUtc(),
       createdBy: 'leader-1',
       location: '회의실',
     );
@@ -1777,8 +1889,13 @@ void main() {
         id: 'event-resume',
         userId: 'user-1',
         title: '이동할 일정',
-        startAt: DateTime(2026, 5, 7, 9).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
-        endAt: DateTime(2026, 5, 7, 10).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        startAt: DateTime(_voiceFixtureYear, 5, 7, 9)
+            .toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        endAt: DateTime(_voiceFixtureYear, 5, 7, 10)
+            .toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        // 반복 일정은 단독 날짜 자동 저장 가드를 통과하지 못하므로, 이 테스트의
+        // 편집 화면 폴백(요구사항: recur → 편집 화면)을 그대로 탄다.
+        recurrenceRule: 'FREQ=DAILY',
       );
       final stt = _FakeSttService();
       final router = GoRouter(
@@ -1839,8 +1956,13 @@ void main() {
         id: 'event-no-resume',
         userId: 'user-1',
         title: '이동할 일정',
-        startAt: DateTime(2026, 5, 7, 9).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
-        endAt: DateTime(2026, 5, 7, 10).toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        startAt: DateTime(_voiceFixtureYear, 5, 7, 9)
+            .toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        endAt: DateTime(_voiceFixtureYear, 5, 7, 10)
+            .toUtc(), // banned-ok: 마이크 자동재개 검증용 더미 일정(유일 후보, 클램프 로직 미개입)
+        // 반복 일정은 단독 날짜 자동 저장 가드를 통과하지 못하므로, 이 테스트의
+        // 편집 화면 폴백(요구사항: recur → 편집 화면)을 그대로 탄다.
+        recurrenceRule: 'FREQ=DAILY',
       );
       final stt = _FakeSttService();
       final router = GoRouter(
@@ -1909,7 +2031,8 @@ void main() {
         id: 'event-edit-sheet',
         userId: 'user-1',
         title: '금요일 상담',
-        startAt: DateTime(2026, 5, 29, 18).toUtc(), // banned-ok: initialText('5월 29일 일정 다 보여 줘')와 매칭시키는 더미 일정(클램프 로직 미개입)
+        startAt: DateTime(_voiceFixtureYear, 5, 29, 18)
+            .toUtc(), // banned-ok: initialText('5월 29일 일정 다 보여 줘')와 매칭시키는 더미 일정(클램프 로직 미개입)
       );
       final stt = _FakeSttService();
       final router = GoRouter(
@@ -1920,7 +2043,7 @@ void main() {
             builder: (context, state) => VoiceConversationScreen(
               sttService: stt,
               repository: _FakeEventRepository(<EventModel>[event]),
-              initialText: '5월 29일 일정 다 보여 줘',
+              initialText: '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘',
             ),
           ),
           GoRoute(
@@ -2452,4 +2575,1608 @@ void main() {
       },
     );
   });
+
+  // -------------------------------------------------------------------------
+  // 일간/시간 자동 저장 경로 테스트 (voice screen 전용)
+  //
+  // 다음 세 가지 시나리오를 검증한다:
+  // 1) 가드/일관성: [debugCanApplyDateChangeAuto]가 controller 플래그,
+  //    반복 일정, 그룹 연결, 드래프트 일관성 등을 정확히 판정한다.
+  // 2) 실제 저장: [debugApplyConversationDateAutoSave]가 드래프트의
+  //    startAt/endAt을 그대로 저장하고 사이드 이펙트 서비스를 호출한다.
+  // 3) 폴백/실패: 중복 경고 취소, 저장 실패, 그룹 공유본/반복 일정 같은
+  //    자동 저장 불가 대상이 있을 때 편집 화면 경로로 정확히 들어간다.
+  //
+  // 테스트는 모두 [_FakeEventRepository]와 [_FakeManualEventSideEffectService]
+  // 를 주입해 외부 의존성 없이 검증한다. 컨트롤러의 canAutoApplyDateChange
+  // 플래그(3mT80MWHgUxUkPlv 워커가 계약으로 제공)는 VoiceConversationResult
+  // 직접 구성으로 시뮬레이트한다.
+  // -------------------------------------------------------------------------
+
+  VoiceConversationResult buildDateAutoResult({
+    required EventModel targetEvent,
+    required DateTime newStart,
+    DateTime? newEnd,
+    bool canAutoApplyDateChange = true,
+    String? locationText,
+    bool? criticalValue,
+    String? recurrenceRule,
+    String? groupEventId,
+  }) {
+    final draft = targetEvent.copyWith(
+      startAt: newStart,
+      endAt: newEnd,
+      recurrenceRule: recurrenceRule,
+      clearRecurrenceRule: recurrenceRule == null,
+      groupEventId: groupEventId,
+      clearGroupEventId: groupEventId == null,
+    );
+    return VoiceConversationResult(
+      action: VoiceConversationAction.confirmedEdit,
+      inputText: '그 일정 다음 주로',
+      targetEvent: targetEvent,
+      draftEvent: draft,
+      visibleEvents: <EventModel>[targetEvent],
+      selectedEvents: <EventModel>[targetEvent],
+      canAutoApplyDateChange: canAutoApplyDateChange,
+      locationText: locationText,
+      criticalValue: criticalValue,
+      assistantMessage: '환자 일정을 다음 주로 옮겼어요.',
+    );
+  }
+
+  testWidgets('음성 자동 저장 가드는 canAutoApplyDateChange=true+일반 개인 일정만 통과시킨다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '병원 방문',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime(_voiceFixtureYear, 5, 29, 9).toUtc();
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 반복 일정이면 거부한다 (편집 화면으로 폴백)', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-rec',
+        userId: 'user-1',
+        title: '매주 회의',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=FR',
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime(_voiceFixtureYear, 5, 29, 9).toUtc();
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '반복 일정은 자동 저장 불가',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 groupEventId가 있으면 거부한다 (그룹 연결 폴백)', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-group',
+        userId: 'user-1',
+        title: '그룹 공유 일정',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+        groupEventId: 'group-event-1',
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime(_voiceFixtureYear, 5, 29, 9).toUtc();
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '그룹 연결 일정은 자동 저장 불가',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 locationText가 같이 오면 거부한다 (동시 변경 폴백)',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-mixed',
+        userId: 'user-1',
+        title: '방문',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime(_voiceFixtureYear, 5, 29, 9).toUtc();
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+      locationText: '강릉',
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '장소 변경이 함께 있으면 편집 화면 경로',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 criticalValue가 같이 오면 거부한다 (동시 변경 폴백)',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-mixed-2',
+        userId: 'user-1',
+        title: '면접',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime(_voiceFixtureYear, 5, 29, 9).toUtc();
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+      criticalValue: true,
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '중요 표시 변경이 함께 있으면 편집 화면 경로',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 드래프트의 시작 시각이 원본과 같으면 거부한다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-same',
+        userId: 'user-1',
+        title: '같은 날',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final sameStart = originalEvent.startAt!;
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: sameStart,
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '날짜가 실제로 바뀌지 않으면 자동 저장 불가',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 canAutoApplyDateChange=false이면 무조건 거부한다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-flag-false',
+        userId: 'user-1',
+        title: '기존 일정',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final result = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime(_voiceFixtureYear, 5, 29, 9).toUtc(),
+      canAutoApplyDateChange: false,
+    );
+
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: result,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '컨트롤러 플래그가 false이면 자동 저장 비활성',
+    );
+  });
+
+  testWidgets('음성 자동 저장은 정확한 UTC 시작/종료 페이로드를 저장소에 전달한다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-save',
+        userId: 'user-1',
+        title: '저장 대상',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    // 실제 사이드 이펙트 서비스는 플러그인/네트워크 의존이라 fake async
+    // 테스트에서 종료하지 않는다. 저장 경로 테스트에는 항상 fake 를 주입한다.
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime.utc(_voiceFixtureYear, 5, 29, 9);
+    final newEnd = DateTime.utc(_voiceFixtureYear, 5, 29, 10);
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+      newEnd: newEnd,
+    );
+
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    expect(repository.updatedEvents, hasLength(1));
+    final updated = repository.updatedEvents.single;
+    expect(updated.id, originalEvent.id);
+    expect(updated.startAt, newStart);
+    expect(updated.endAt, newEnd);
+    // 다른 필드는 그대로 보존되어야 한다(사용자가 원치 않은 필드 변경 없음).
+    expect(updated.title, originalEvent.title);
+    expect(updated.location, originalEvent.location);
+    expect(updated.isCritical, originalEvent.isCritical);
+    expect(updated.recurrenceRule, originalEvent.recurrenceRule);
+  });
+
+  testWidgets('음성 자동 저장 후 사이드 이펙트는 old/new 임드를 포함한 event로 1회만 호출된다',
+      (tester) async {
+    final originalStart = DateTime.utc(_voiceFixtureYear, 5, 22, 9);
+    final newStart = DateTime.utc(_voiceFixtureYear, 5, 29, 9);
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-side-effects',
+        userId: 'user-1',
+        title: '사이즈 이펙트',
+        startAt: originalStart,
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    final call = sideEffects.syncAfterSaveCalls.single;
+    expect(call.event.id, originalEvent.id);
+    // 저장 후의 event 가 이전 (옙초) 와 다른 일수 실수로 전환되어 있다.
+    expect(call.event.startAt, newStart);
+    expect(call.event.startAt, isNot(equals(originalStart)));
+  });
+
+  testWidgets('음성 자동 저장 가드는 시작 시각이 같은 경우 자동 저장 경로에서 제외된다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-nochange',
+        userId: 'user-1',
+        title: '변화 없음',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: originalEvent.startAt!,
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    // 드래프트가 원본과 같으면 자동 저장함에 수행되지 않는다.
+    expect(saved, isFalse);
+    expect(repository.updatedEvents, isEmpty);
+  });
+
+  testWidgets('음성 자동 저장 가드는 _events 목록에 없는 id targetEvent면 자동 저장 경로에서 제외된다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-actual',
+        userId: 'user-1',
+        title: '실제 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    // 원본 이벤트에 존재하지 않는 id로 targetEvent를 바꾸어 본 적 없는
+    // 일정으로 만든다.
+    final phantom = EventModel(
+      id: 'phantom-id',
+      userId: 'user-1',
+      title: '유령 일정',
+      startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+    );
+    final phantomResult = VoiceConversationResult(
+      action: VoiceConversationAction.confirmedEdit,
+      inputText: voiceResult.inputText,
+      targetEvent: phantom,
+      draftEvent: voiceResult.draftEvent,
+      visibleEvents: voiceResult.visibleEvents,
+      selectedEvents: voiceResult.selectedEvents,
+      canAutoApplyDateChange: voiceResult.canAutoApplyDateChange,
+      locationText: voiceResult.locationText,
+      criticalValue: voiceResult.criticalValue,
+      assistantMessage: voiceResult.assistantMessage,
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: phantomResult,
+        targetEvent: phantom,
+      ),
+      isFalse,
+      reason: '본 적 목록에 없는 targetEvent는 자동 저장 불가',
+    );
+  });
+
+  testWidgets('음성 자동 저장은 개별 이벤트 알림 오프셋(15분)을 전역 설정(60분)보다 우선한다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-reminder',
+        userId: 'user-1',
+        title: '오프셋 검증',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService()
+      ..throwOnSync = false;
+    // 전역 기본 알림은 60분. 개별 이벤트에는 15분 알림이 저장돼 있다.
+    final settingsRepository =
+        _FakeSettingsRepository(const Duration(minutes: 60));
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository: settingsRepository,
+        reminderNotifyAtReader: _fakeReminderReader(
+          repository,
+          offsetsByEventId: <String, Duration>{
+            'event-reminder': const Duration(minutes: 15),
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime.utc(_voiceFixtureYear, 5, 29, 9);
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    // 개별 이벤트의 저장된 알림(원본 시작 09:00 - 15분 = 08:45)이 우선한다.
+    // 전역 설정(60분)은 자동 저장 경로에서 읽지 않는다. 저장된 이벤트 시작은
+    // 새 날짜이므로 알림은 '새 시작 - 15분'으로 재계산된다(오래된 알림
+    // 시각 재사용 금지).
+    expect(settingsRepository.fetchSettingsCalls, 0);
+    expect(sideEffects.lastReminderOffset, const Duration(minutes: 15));
+    expect(sideEffects.lastCriticalAlarmOffset, const Duration(minutes: 15));
+    expect(
+      sideEffects.syncAfterSaveCalls.single.event.startAt,
+      DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+  });
+
+  testWidgets('음성 자동 저장 시 저장소가 저장소에서 실피한다면 다음 호출로 false를 반환하고 상태가 변경되지 않는다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-fail',
+        userId: 'user-1',
+        title: '실패 케이스',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ])
+      ..throwOnUpdate = true;
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime.utc(_voiceFixtureYear, 5, 29, 9);
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isFalse);
+    // 저장 실패 시 사이드 이펙트 호출이 일어나지 않는다.
+    expect(sideEffects.syncAfterSaveCalls, isEmpty);
+    expect(repository.updatedEvents, isEmpty);
+    // _events의 사본은 여전히 원본이다.
+    expect(repository.events.single.startAt, originalEvent.startAt);
+  });
+
+  testWidgets('음성 자동 저장 시 저장소에서 겹지 후보를 받으면 저장 전에 경고 다이얼로그를 보여준다',
+      (tester) async {
+    final originalStart = DateTime.utc(_voiceFixtureYear, 5, 22, 9);
+    final newStart = DateTime.utc(_voiceFixtureYear, 5, 23, 14);
+    final overlappingEvent = EventModel(
+      id: 'event-overlap',
+      userId: 'user-1',
+      title: '겹지 대상',
+      startAt: DateTime.utc(_voiceFixtureYear, 5, 23, 14),
+      endAt: DateTime.utc(_voiceFixtureYear, 5, 23, 15),
+    );
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-move',
+        userId: 'user-1',
+        title: '옮길 일정',
+        startAt: originalStart,
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+      overlappingEvent,
+    ])
+      ..overlappingCandidates = <EventModel>[overlappingEvent];
+    final sideEffects = _FakeManualEventSideEffectService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            repository: repository,
+            sideEffectService: sideEffects,
+            settingsRepository:
+                _FakeSettingsRepository(const Duration(minutes: 30)),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) =>
+              const Text('편집 화면 폴백', textDirection: TextDirection.ltr),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final voiceScreenState = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+    final originalEvent = repository.events.first;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+    );
+    // 다이얼로그가 뜨기 전까지 저장 호출은 펜딩된다. 먼저 호출을 걸어 둔 뒤
+    // 다이얼로그 표시를 확인하고 '중단'으로 취소한다.
+    final Future<bool> savedFuture =
+        voiceScreenState.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    await tester.pump();
+    // 겹치는 후보가 있으면 저장 전에 경고 다이얼로그가 먼저 뜬다(라우트
+    // 진입 프레임을 위해 두 번 펌프한다).
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('일정이 겹쳐요'), findsOneWidget);
+    await tester.tap(find.text('중단'));
+    await tester.pumpAndSettle();
+    final saved = await savedFuture;
+    // 취소는 저장 없이 false 로 끝난다. 로컬 변경도, 사이드 이펙트도 없어야
+    // 하며('저장됨'/로컬 변조 금지), 제안은 편집 경로에 드래프트로 남는다.
+    expect(saved, isFalse);
+    expect(repository.updatedEvents, isEmpty);
+    expect(sideEffects.syncAfterSaveCalls, isEmpty);
+  });
+
+  testWidgets('음성 자동 저장 시 _groupEventById에 등록된 targetEvent면 자동 저장 경로에서 제외된다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'group-event-1',
+        userId: 'user-1',
+        title: '팀 회의',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+      ),
+    ]);
+    final groupRepository = _FakeGroupRepository(<GroupModel>[
+      const GroupModel(id: 'group-1', createdBy: 'leader-1', name: '우리 팀'),
+    ]);
+    final groupEventRepository = _FakeGroupEventRepository(<GroupEventModel>[
+      GroupEventModel(
+        id: 'group-event-1',
+        groupId: 'group-1',
+        title: '팀 회의',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+        createdBy: 'leader-1',
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        groupRepository: groupRepository,
+        groupEventRepository: groupEventRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final personalOfGroup = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: personalOfGroup,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: voiceResult,
+        targetEvent: personalOfGroup,
+      ),
+      isFalse,
+      reason: '_groupEventById에 있는 id는 그룹 일정으로 다뤄야 함',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 _events 목록에 일치하는 id가 없으면 자동 저장 경로에서 제외된다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-actual',
+        userId: 'user-1',
+        title: '실제 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final phantom = EventModel(
+      id: 'phantom-id',
+      userId: 'user-1',
+      title: '유령',
+      startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+    );
+    final voiceResult = buildDateAutoResult(
+      targetEvent: phantom,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: voiceResult,
+        targetEvent: phantom,
+      ),
+      isFalse,
+      reason: '본 적 없는 id는 자동 저장에서 제외',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 외부 캘린더 연동 일정이면 거부한다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-external',
+        userId: 'user-1',
+        title: '구글 연동 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        externalId: 'google-evt-1',
+        externalCalendarId: 'calendar-a',
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: voiceResult,
+        targetEvent: originalEvent,
+      ),
+      isFalse,
+      reason: '외부 연동 일정은 편집 화면 경로로 폴백',
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 대상이 화면의 최신본과 다르면 거부한다 (fail-closed)',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-fresh',
+        userId: 'user-1',
+        title: '최신 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        updatedAt: DateTime.utc(_voiceFixtureYear, 5, 21, 12),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    // 같은 일정의 오래된 버전(updatedAt 이 다름)이 컨트롤러 결과에 실렸다고
+    // 가정한다. 자동 저장은 fail-closed 로 거부해 최신본을 덮어쓰지 않는다.
+    final staleTarget = originalEvent.copyWith(
+      updatedAt: DateTime.utc(_voiceFixtureYear, 5, 20, 8),
+    );
+    final voiceResult = buildDateAutoResult(
+      targetEvent: staleTarget,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: voiceResult,
+        targetEvent: staleTarget,
+      ),
+      isFalse,
+      reason: '만료된 대상은 자동 저장 금지',
+    );
+  });
+
+  testWidgets('음성 자동 저장은 원본 시각/길이를 보존해 새 시작 기준 종료를 계산한다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-duration',
+        userId: 'user-1',
+        title: '길이 보존',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10, 30),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    // 드래프트가 원본 날짜의 오래된 종료(endAt)를 간직한 채 오는 경우에도
+    // 새 시작 기준으로 원본 길이(90분)를 보존해 재계산한다.
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    final updated = repository.updatedEvents.single;
+    // 시각 보존: 9시 → 9시. 길이 보존: 90분 → 종료 10:30.
+    expect(updated.startAt, DateTime.utc(_voiceFixtureYear, 5, 29, 9));
+    expect(updated.endAt, DateTime.utc(_voiceFixtureYear, 5, 29, 10, 30));
+  });
+
+  testWidgets('음성 자동 저장 후 같은 일정을 다시 옮기면 갱신된 날짜 기준으로 저장된다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-repeat',
+        userId: 'user-1',
+        title: '후속 상대 수정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final firstResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+      newEnd: DateTime.utc(_voiceFixtureYear, 5, 29, 10),
+    );
+    final firstSaved = await state.debugApplyConversationDateAutoSave(
+      result: firstResult,
+      targetEvent: originalEvent,
+    );
+    expect(firstSaved, isTrue);
+
+    // 저장 후 갱신된 대상(새 날짜)을 기준으로 후속 상대 수정이 계산되는지
+    // 본다. 컨트롤러 포커스 갱신(replaceEvents by id)과 화면 갱신이 이어져
+    // 있는지 확인하는 테스트다.
+    final movedEvent = repository.events.single;
+    expect(movedEvent.startAt, DateTime.utc(_voiceFixtureYear, 5, 29, 9));
+    final secondResult = buildDateAutoResult(
+      targetEvent: movedEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 30, 9),
+      newEnd: DateTime.utc(_voiceFixtureYear, 5, 30, 10),
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(
+        result: secondResult,
+        targetEvent: movedEvent,
+      ),
+      isTrue,
+    );
+    final secondSaved = await state.debugApplyConversationDateAutoSave(
+      result: secondResult,
+      targetEvent: movedEvent,
+    );
+    expect(secondSaved, isTrue);
+    expect(repository.updatedEvents, hasLength(2));
+    expect(
+      repository.updatedEvents.last.startAt,
+      DateTime.utc(_voiceFixtureYear, 5, 30, 9),
+    );
+    expect(repository.updatedEvents.last.endAt, DateTime.utc(_voiceFixtureYear, 5, 30, 10));
+  });
+
+  testWidgets('저장 성공 후 사이드 이펙트가 실패해도 저장은 유지된다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-side-fail',
+        userId: 'user-1',
+        title: '사이드 실패',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService()..throwOnSync = true;
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    // 저장소 저장은 성공했으므로 true. 사이드 이펙트 실패를 '저장 실패'로
+    // 보고하면 안 된다(안내는 경고 수준).
+    expect(saved, isTrue);
+    expect(repository.updatedEvents, hasLength(1));
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    expect(repository.events.single.startAt, DateTime.utc(_voiceFixtureYear, 5, 29, 9));
+  });
+
+  testWidgets('개별 30분 알림(전역 60분)은 이동 후 새 시작(+7일) 기준 30분 전으로 재계산된다',
+      (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-notify',
+        userId: 'user-1',
+        title: '알림 상대 보존',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    // 전역 기본은 60분이지만 이 일정에는 30분 개별 알림이 저장돼 있다.
+    final settingsRepository =
+        _FakeSettingsRepository(const Duration(minutes: 60));
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository: settingsRepository,
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final newStart = DateTime.utc(_voiceFixtureYear, 5, 29, 9); // +7일, 시각 보존
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: newStart,
+      newEnd: DateTime.utc(_voiceFixtureYear, 5, 29, 10),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    // 개별 이벤트의 저장된 알림(30분)이 그대로 전달되고, 저장된 이벤트
+    // 시작은 새 날짜(+7일)다. 즉 알림은 '새 시작 - 30분'으로 재계산된다.
+    // 전역 설정(60분)은 이 경로에서 읽지 않는다.
+    expect(settingsRepository.fetchSettingsCalls, 0);
+    expect(sideEffects.lastReminderOffset, const Duration(minutes: 30));
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    expect(sideEffects.syncAfterSaveCalls.single.event.startAt, newStart);
+  });
+
+  testWidgets('리마인더 행이 없으면 알림 꺼짐이 보존된다(꺼짐→자동 켜짐 금지)', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-none',
+        userId: 'user-1',
+        title: '알림 없는 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    final settingsRepository =
+        _FakeSettingsRepository(const Duration(minutes: 60));
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository: settingsRepository,
+        reminderNotifyAtReader: _fakeReminderReader(
+          repository,
+          absentEventIds: <String>{'event-none'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    // push 리마인더 행이 없으면 null(끔)이 그대로 전달된다. 전역 60분으로
+    // 대체해 꺼진 알림을 자동으로 켜지 않는다.
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    expect(sideEffects.lastReminderOffset, isNull);
+    expect(sideEffects.lastCriticalAlarmOffset, isNull);
+    expect(repository.updatedEvents, hasLength(1));
+  });
+
+  testWidgets('정시(0분) 알림 오프셋도 0으로 보존된다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-zero',
+        userId: 'user-1',
+        title: '정시 알림 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    final settingsRepository =
+        _FakeSettingsRepository(const Duration(minutes: 60));
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository: settingsRepository,
+        reminderNotifyAtReader: _fakeReminderReader(
+          repository,
+          offsetsByEventId: <String, Duration>{
+            'event-zero': Duration.zero,
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    // 0분(정시)도 유효한 오프셋이다. 60분으로 바뀌지 않는다.
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    expect(sideEffects.lastReminderOffset, Duration.zero);
+    expect(sideEffects.lastCriticalAlarmOffset, Duration.zero);
+  });
+
+  testWidgets('중요 일정의 저장된 알람 오프셋(30분)이 보존된다(전역 60분 무시)', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-critical',
+        userId: 'user-1',
+        title: '중요 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+        isCritical: true,
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    final settingsRepository =
+        _FakeSettingsRepository(const Duration(minutes: 60));
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository: settingsRepository,
+        reminderNotifyAtReader: _fakeReminderReader(
+          repository,
+          offsetsByEventId: <String, Duration>{
+            'event-critical': const Duration(minutes: 30),
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    // 크리티컬 일정은 system_alarm 행에서 역산한 30분이 유지된다.
+    expect(sideEffects.syncAfterSaveCalls, hasLength(1));
+    expect(sideEffects.lastCriticalAlarmOffset, const Duration(minutes: 30));
+    expect(sideEffects.lastReminderOffset, const Duration(minutes: 30));
+    expect(repository.updatedEvents, hasLength(1));
+  });
+
+  testWidgets('중요 일정의 알람 행이 없으면 저장 전에 실패한다(fail-closed)', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-critical-absent',
+        userId: 'user-1',
+        title: '알람 없는 중요 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+        isCritical: true,
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 60)),
+        reminderNotifyAtReader: _fakeReminderReader(
+          repository,
+          absentEventIds: <String>{'event-critical-absent'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    // 크리티컬 + 알람 행 부재 = 상태 미확정. 전역 60분 폴백 없이 저장 자체를
+    // 막는다.
+    expect(saved, isFalse);
+    expect(repository.updatedEvents, isEmpty);
+    expect(sideEffects.syncAfterSaveCalls, isEmpty);
+    expect(repository.events.single.startAt, originalEvent.startAt);
+  });
+
+  testWidgets('리마인더 조회가 실패하면 저장 전에 실패 처리한다(fail-closed)', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-reader-error',
+        userId: 'user-1',
+        title: '조회 실패 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 60)),
+        reminderNotifyAtReader: (userId, eventId) {
+          throw StateError('리마인더 조회 실패');
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    // 조회 오류는 '모름'이다. 기본값 폴백 없이 저장 전에 실패하고 로컬
+    // 상태/사이드 이펙트 모두 변경되지 않는다.
+    expect(saved, isFalse);
+    expect(repository.updatedEvents, isEmpty);
+    expect(sideEffects.syncAfterSaveCalls, isEmpty);
+    expect(repository.events.single.startAt, originalEvent.startAt);
+  });
+
+  testWidgets('notify_at이 유효 범위(0~1440분)를 벗어나면 저장하지 않는다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-out-of-range',
+        userId: 'user-1',
+        title: '범위 이탈 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 22, 10),
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 60)),
+        reminderNotifyAtReader: _fakeReminderReader(
+          repository,
+          defaultOffset: const Duration(minutes: 2000),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    // 비정상 오프셋(2000분)은 무시/기본값 대체 없이 저장을 막는다.
+    expect(saved, isFalse);
+    expect(repository.updatedEvents, isEmpty);
+    expect(sideEffects.syncAfterSaveCalls, isEmpty);
+  });
+
+  testWidgets('리마인더 복원 실패 시 편집 폴백이 요청한 새 날짜 드래프트를 그대로 넘긴다', (tester) async {
+    final event = EventModel(
+      id: 'event-reader-fail',
+      userId: 'user-1',
+      title: '복원 실패 일정',
+      startAt: DateTime(_voiceFixtureYear, 5, 7, 9).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 7, 10).toUtc(),
+    );
+    Object? receivedExtra;
+    final repository = _FakeEventRepository(<EventModel>[event]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            repository: repository,
+            sideEffectService: sideEffects,
+            settingsRepository:
+                _FakeSettingsRepository(const Duration(minutes: 60)),
+            reminderNotifyAtReader: (userId, eventId) {
+              throw StateError('리마인더 조회 실패');
+            },
+            initialText: '5월 7일 일정 알려줘',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            receivedExtra = state.extra;
+            return const Text(
+              '편집 화면',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextField),
+      '1번 일정 그다음날로 변경해줘',
+    );
+    await tester.tap(find.text('전송'));
+    for (var i = 0; i < 40 && find.text('편집 화면').evaluate().isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pumpAndSettle();
+
+    // 저장은 일어나지 않고(거짓 성공 금지), 요청한 새 날짜(5월 8일) 드래프트가
+    // 편집 화면으로 그대로 넘어간다.
+    expect(find.text('편집 화면'), findsOneWidget);
+    expect(repository.updatedEvents, isEmpty);
+    expect(sideEffects.syncAfterSaveCalls, isEmpty);
+    expect(receivedExtra, isNotNull);
+    // extra는 draft+original DTO다. 요청한 새 날짜(5월 8일)와 원본 날짜
+    // (5월 7일), 선택 회차 시작 시각이 모두 정확해야 한다(이전에는 폴백
+    // 내비 검증 자체가 없었다).
+    final payload = receivedExtra as EventEditRoutePayload;
+    expect(payload.draft.id, event.id);
+    expect(planflowLocal(payload.draft.startAt!), DateTime(_voiceFixtureYear, 5, 8, 9));
+    expect(
+      planflowLocal(payload.original.startAt!),
+      DateTime(_voiceFixtureYear, 5, 7, 9),
+    );
+    expect(payload.originalOccurrenceStartAt, event.startAt);
+
+    // 폴백 편집 화면에서 되돌아오면 '저장하지 않았다' 안내가 남는다.
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('저장하지 않았어요'), findsOneWidget);
+  });
+
+  testWidgets('리마인더 복원 실패 카드의 수정하기도 요청한 새 날짜 드래프트를 넘긴다', (tester) async {
+    final event = EventModel(
+      id: 'event-card-fail',
+      userId: 'user-1',
+      title: '카드 수정 일정',
+      startAt: DateTime(_voiceFixtureYear, 5, 7, 9).toUtc(),
+      endAt: DateTime(_voiceFixtureYear, 5, 7, 10).toUtc(),
+    );
+    Object? receivedExtra;
+    final repository = _FakeEventRepository(<EventModel>[event]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            repository: repository,
+            sideEffectService: sideEffects,
+            settingsRepository:
+                _FakeSettingsRepository(const Duration(minutes: 60)),
+            reminderNotifyAtReader: (userId, eventId) {
+              throw StateError('리마인더 조회 실패');
+            },
+            initialText: '5월 7일 일정 알려줘',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            receivedExtra = state.extra;
+            return const Text(
+              '편집 화면',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextField),
+      '1번 일정 그다음날로 변경해줘',
+    );
+    await tester.tap(find.text('전송'));
+    for (var i = 0; i < 40 && find.text('편집 화면').evaluate().isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pumpAndSettle();
+    expect(repository.updatedEvents, isEmpty);
+
+    // 자동 폴백 편집 화면에서 되돌아와, 실패 카드의 수정 버튼 경로도 같은
+    // 드래프트(요청한 새 날짜)를 넘기는지 확인한다.
+    router.pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카드 수정 일정').last);
+    await tester.pumpAndSettle();
+    expect(find.text('수정하기'), findsOneWidget);
+    await tester.tap(find.text('수정하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('편집 화면'), findsOneWidget);
+    expect(receivedExtra, isNotNull);
+    // 카드의 수정하기 경로도 원본을 회복해 DTO로 넘긴다(단발 일정).
+    // 여기서는 개별 회차가 없으므로 occurrence는 null이다.
+    final payload = receivedExtra as EventEditRoutePayload;
+    expect(payload.draft.id, event.id);
+    expect(planflowLocal(payload.draft.startAt!), DateTime(_voiceFixtureYear, 5, 8, 9));
+    expect(
+      planflowLocal(payload.original.startAt!),
+      DateTime(_voiceFixtureYear, 5, 7, 9),
+    );
+    expect(payload.originalOccurrenceStartAt, isNull);
+  });
+
+  testWidgets('자동 날짜 저장 안내는 실제 저장 날짜를 말하고 편집 화면 문구를 쓰지 않는다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-message',
+        userId: 'user-1',
+        title: '병원 재활',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    final draft = originalEvent.copyWith(
+      startAt: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+      endAt: DateTime.utc(_voiceFixtureYear, 5, 29, 10),
+    );
+    // 컨트롤러 안내가 비어 온 경우: UI 기본 문구가 실제 저장 날짜를 말해야
+    // 하고 '편집 화면' 표현을 쓰지 않아야 한다.
+    final result = VoiceConversationResult(
+      action: VoiceConversationAction.confirmedEdit,
+      inputText: '그 일정 다음 주로 옮겨줘',
+      targetEvent: originalEvent,
+      draftEvent: draft,
+      visibleEvents: <EventModel>[originalEvent],
+      selectedEvents: <EventModel>[originalEvent],
+      canAutoApplyDateChange: true,
+      assistantMessage: '',
+    );
+    final message = state.debugMessageForResult(result);
+    final local = planflowLocal(DateTime.utc(_voiceFixtureYear, 5, 29, 9));
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    expect(message, contains('병원 재활'));
+    expect(message, contains('${local.month}월 ${local.day}일'));
+    expect(message, contains('$hh:$mm'));
+    expect(message, isNot(contains('편집 화면')));
+
+    // 컨트롤러 안내가 있으면 그대로 사용한다(상대 표현도 저장된 날짜와
+    // 동일하므로 허용).
+    final withControllerMessage = VoiceConversationResult(
+      action: VoiceConversationAction.confirmedEdit,
+      inputText: result.inputText,
+      targetEvent: originalEvent,
+      draftEvent: draft,
+      visibleEvents: result.visibleEvents,
+      selectedEvents: result.selectedEvents,
+      canAutoApplyDateChange: true,
+      assistantMessage: '병원 재활 일정을 다음 주로 옮겼어요.',
+    );
+    expect(
+      state.debugMessageForResult(withControllerMessage),
+      '병원 재활 일정을 다음 주로 옮겼어요.',
+    );
+  });
+}
+
+// -------------------------------------------------------------------
+// 날짜 자동 저장의 개별 리마인더 오프셋 보존을 검증하는 reader 가짜 구현.
+// [repository]에 남아 있는 '현재' 이벤트 시작 시각에서 [defaultOffset]
+// 만큼 앞선 notify_at을 반환한다(옮긴 뒤 재요청 시 새 시작 기준).
+// [offsetsByEventId]로 일정별 오프셋을, [absentEventIds]로 '리마인더 행
+// 없음'(null)을 지정한다. 목록에 없는 id는 픽스처 실수로 보고 예외를 던진다.
+// -------------------------------------------------------------------
+Future<DateTime?> Function(String userId, String eventId) _fakeReminderReader(
+  _FakeEventRepository repository, {
+  Map<String, Duration> offsetsByEventId = const <String, Duration>{},
+  Duration defaultOffset = const Duration(minutes: 30),
+  Set<String> absentEventIds = const <String>{},
+}) {
+  return (String userId, String eventId) async {
+    if (absentEventIds.contains(eventId)) {
+      return null;
+    }
+    EventModel? current;
+    for (final event in repository.events) {
+      if (event.id == eventId) {
+        current = event;
+        break;
+      }
+    }
+    if (current == null || current.startAt == null) {
+      throw StateError('리마인더 픽스처에 없는 일정: $eventId');
+    }
+    final offset = offsetsByEventId[eventId] ?? defaultOffset;
+    return current.startAt!.subtract(offset);
+  };
+}
+
+// -------------------------------------------------------------------
+// 테스트용 SettingsRepository 가짜 구현. fetchSettings는 미리 설정된
+// defaultReminderMin을 그대로 돌려주고, fetchSettings 호출 횟수를
+// 기록한다.
+// -------------------------------------------------------------------
+class _FakeSettingsRepository extends SettingsRepository {
+  _FakeSettingsRepository(this.reminderOffset) : super();
+
+  final Duration reminderOffset;
+  int fetchSettingsCalls = 0;
+
+  @override
+  Future<UserSettingsModel?> fetchSettings(String userId) async {
+    fetchSettingsCalls += 1;
+    return UserSettingsModel(
+      id: 'settings-$userId',
+      userId: userId,
+      morningBriefingAt: '08:00',
+      eveningBriefingAt: '21:00',
+      defaultReminderMin: reminderOffset.inMinutes,
+      prepTimeMin: 60,
+      prepPreAlarmOffset: 30,
+      departPreAlarmOffset: 30,
+      departureSafetyMarginMin: 5,
+      travelMode: 'car',
+      voiceAutoStart: true,
+      voiceCorrectionLearningEnabled: false,
+      voiceCommonLearningOptIn: false,
+      preferredMapProvider: 'google',
+      countryCode: 'KR',
+      localeCode: 'ko-KR',
+      timeZoneId: 'Asia/Seoul',
+      briefingEnabled: false,
+      use24HourFormat: true,
+      googleCalendarToken: null,
+      naverCalendarToken: null,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<UserSettingsModel> upsertSettings(UserSettingsModel settings) async {
+    return settings;
+  }
 }

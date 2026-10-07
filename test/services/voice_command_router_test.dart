@@ -186,6 +186,57 @@ void main() {
       }
     });
 
+    test('미뤄/연기/옮겨/변경/바꿔 키워드 모두 start_at change와 destination을 분할한다', () {
+      const router = VoiceCommandRouter();
+
+      for (final phrase in const [
+        '팀장님 동행방문 다음 주 수요일로 미뤄줘',
+        '팀장님 동행방문 다음 주 수요일로 연기해줘',
+        '팀장님 동행방문 다음 주 수요일로 옮겨줘',
+        '팀장님 동행방문 다음 주 수요일로 바꿔줘',
+        '팀장님 동행방문 다음 주 수요일로 변경해줘',
+      ]) {
+        final route = router.route(
+          phrase,
+          context: VoiceTextCleanupContext.edit,
+        );
+
+        expect(route.intent, VoiceCommandRouteIntent.edit,
+            reason: '$phrase should classify as edit');
+        expect(route.requestedChanges, contains('start_at'),
+            reason: '$phrase should include start_at in requestedChanges');
+        expect(route.changeText, contains('다음 주 수요일'),
+            reason: '$phrase should segment destination into changeText');
+      }
+    });
+
+    test('공백 있는 "그 다음 주" 단독 발화도 start_at change를 만든다', () {
+      const router = VoiceCommandRouter();
+
+      final route = router.route(
+        '일정 다음 주로 미뤄줘',
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(route.intent, VoiceCommandRouteIntent.edit);
+      expect(route.requestedChanges, contains('start_at'));
+    });
+
+    test('조회 표현은 edit로 오분류되지 않는다', () {
+      const router = VoiceCommandRouter();
+
+      for (final phrase in const [
+        '내일 일정 확인해줘',
+        '다음주 일정 알려줘',
+        '7월 10일 일정 확인해줘',
+        '오늘 일정 조회해줘',
+      ]) {
+        final route = router.route(phrase);
+        expect(route.intent, isNot(VoiceCommandRouteIntent.edit),
+            reason: '$phrase should not be reclassified as edit');
+      }
+    });
+
     test('긴 조사 토큰은 앞부분 일치도 후보 매칭에 사용할 수 있다', () {
       const router = VoiceCommandRouter();
 

@@ -445,35 +445,15 @@ EventModel _copyEventWithTime(
   required DateTime startAt,
   required DateTime? endAt,
 }) {
-  return EventModel(
-    id: event.id,
-    userId: event.userId,
-    title: event.title,
+  // occurrence 클론도 원본의 모든 메타데이터(useStrongAlarm, overriddenOccurrenceDate,
+  // deletedOccurrenceDates 등)를 보존한다. 수동 나열은 신규 필드 추가 시 누락
+  // 회귀를 만드므로 copyWith로만 파생한다.
+  return event.copyWith(
     startAt: startAt,
+    // 회차 종료가 null이면 anchor의 endAt이 남지 않도록 명시 해제한다.
+    // 이 공개 경로는 duration 폴백 때문에 endAt이 항상 non-null이므로 방어적 분기다.
     endAt: endAt,
-    location: event.location,
-    locationLat: event.locationLat,
-    locationLng: event.locationLng,
-    memo: event.memo,
-    supplies: event.supplies,
-    suppliesChecked: event.suppliesChecked,
-    participants: event.participants,
-    targets: event.targets,
-    isCritical: event.isCritical,
-    recurrenceRule: event.recurrenceRule,
-    isAllDay: event.isAllDay,
-    isMultiDay: event.isMultiDay,
-    parentEventId: event.parentEventId,
-    groupEventId: event.groupEventId,
-    category: event.category,
-    source: event.source,
-    externalId: event.externalId,
-    externalCalendarId: event.externalCalendarId,
-    externalEtag: event.externalEtag,
-    externalUpdatedAt: event.externalUpdatedAt,
-    lastSyncedAt: event.lastSyncedAt,
-    createdAt: event.createdAt,
-    updatedAt: event.updatedAt,
+    clearEndAt: endAt == null,
   );
 }
 

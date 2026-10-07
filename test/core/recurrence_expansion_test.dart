@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/core/recurrence_expansion.dart';
 import 'package:planflow/data/models/event_model.dart';
 
@@ -107,7 +108,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList()
         ..sort((a, b) => a.compareTo(b));
 
@@ -133,7 +135,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList()
         ..sort((a, b) => a.compareTo(b));
 
@@ -159,7 +162,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList()
         ..sort((a, b) => a.compareTo(b));
 
@@ -186,7 +190,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList()
         ..sort((a, b) => a.compareTo(b));
 
@@ -215,7 +220,8 @@ void main() {
       );
 
       final lastDay = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .reduce((a, b) => a.isAfter(b) ? a : b);
 
       expect(lastDay, untilDate);
@@ -340,7 +346,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList();
 
       expect(days, isNot(contains(deletedDay)));
@@ -379,7 +386,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList();
       expect(days, isNot(contains(overriddenDay)));
       expect(days, contains(anchor));
@@ -407,7 +415,8 @@ void main() {
       );
 
       final days = occurrences
-          .map((e) => DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
+          .map((e) =>
+              DateTime(e.startAt!.year, e.startAt!.month, e.startAt!.day))
           .toList();
 
       expect(
@@ -461,6 +470,68 @@ void main() {
       final result = hideOverriddenRecurringOccurrences(events);
 
       expect(result, events);
+    });
+  });
+
+  group('expandRecurringEvent 회차 클론 메타데이터 보존', () {
+    test('강도알람·그룹·오버라이드·삭제 메타데이터가 회차 클론에 보존된다', () {
+      final anchor = _withHour(_futureDate(), 9);
+      final overrideDate = _withHour(_futureDate(daysFromNow: 370), 9);
+      final deletedDate = _withHour(_futureDate(daysFromNow: 414), 9);
+      final base = _event(
+        id: 'series-meta',
+        startAt: anchor,
+        endAt: _withHour(_futureDate(), 10),
+        recurrenceRule: 'FREQ=WEEKLY',
+        overriddenOccurrenceDate: overrideDate,
+        deletedOccurrenceDates: <DateTime>[deletedDate],
+      ).copyWith(
+        useStrongAlarm: true,
+        groupEventId: 'group-1',
+        suppliesChecked: const <String>['노트북'],
+      );
+
+      final occurrences = expandRecurringEvent(
+        event: base,
+        rangeStart: anchor.subtract(const Duration(days: 1)),
+        rangeEnd: anchor.add(const Duration(days: 22)),
+      );
+
+      // anchor, +1주, +2주(삭제일로 제외), +3주 → 총 3개.
+      expect(occurrences.length, 3);
+      final first = occurrences.first;
+      expect(first.id, 'series-meta');
+      expect(first.useStrongAlarm, isTrue);
+      expect(first.groupEventId, 'group-1');
+      expect(first.suppliesChecked, <String>['노트북']);
+      expect(first.overriddenOccurrenceDate, overrideDate);
+      expect(first.deletedOccurrenceDates, <DateTime>[deletedDate]);
+      expect(first.recurrenceRule, 'FREQ=WEEKLY');
+      expect(first.startAt, anchor);
+
+      // +1주 회차도 동일 메타데이터와 1시간 duration을 유지한다.
+      final occurrence = occurrences[1];
+      final expectedStart = anchor.add(const Duration(days: 7));
+      expect(occurrence.startAt, expectedStart);
+      expect(occurrence.endAt, expectedStart.add(const Duration(hours: 1)));
+      expect(occurrence.useStrongAlarm, isTrue);
+      expect(occurrence.groupEventId, 'group-1');
+      expect(occurrence.overriddenOccurrenceDate, overrideDate);
+      expect(occurrence.deletedOccurrenceDates, <DateTime>[deletedDate]);
+      // UTC 시점 기준으로도 정확히 1주 뒤 같은 시각인지 확인.
+      expect(
+        occurrence.startAt!
+            .isAtSameMomentAs(planflowLocalDateTimeToUtc(expectedStart)),
+        isTrue,
+      );
+      expect(
+        occurrence.endAt!.isAtSameMomentAs(
+          planflowLocalDateTimeToUtc(
+            expectedStart.add(const Duration(hours: 1)),
+          ),
+        ),
+        isTrue,
+      );
     });
   });
 }

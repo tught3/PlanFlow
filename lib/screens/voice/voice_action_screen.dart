@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/event_edit_route_payload.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/recurrence_expansion.dart';
@@ -34,6 +35,7 @@ import '../../services/recurrence_edit_scope.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_date_range_parser.dart';
 import '../../services/voice_text_cleanup_service.dart';
+import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../calendar/calendar_style_contract.dart'
     show
@@ -61,6 +63,7 @@ class VoiceActionScreen extends StatefulWidget {
     AppPermissionService? permissionService,
     this.forceSyncCalendars,
     this.userIdOverride,
+    this.reminderNotifyAtReader,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
@@ -81,6 +84,13 @@ class VoiceActionScreen extends StatefulWidget {
   final Future<void> Function({required String reason, required bool force})?
       forceSyncCalendars;
   final String? userIdOverride;
+
+  /// 저장 직전 기존 push 리마인더의 notify_at을 읽어 오는 함수. 기본 구현은
+  /// Supabase reminders 테이블을 조회한다(편집 화면 _loadReminderOffsetIfNeeded
+  /// 와 동일한 쿼리). 날짜/시간 이동 저장 시 이 값에서 역산한 오프셋을 그대로
+  /// 유지한다. 테스트에서 주입해 오프셋 보존을 검증한다.
+  final Future<DateTime?> Function(String userId, String eventId)?
+      reminderNotifyAtReader;
 
   @override
   State<VoiceActionScreen> createState() => _VoiceActionScreenState();
@@ -106,6 +116,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   // 삭제 확인 시 반복 일정의 회차를 전개하는 데 쓰는 날짜 범위. 후보 로드 시
   // 텍스트에서 뽑아 둔다(사용자가 말한 날짜 표현).
   _DateRange? _candidateDateRangeForDelete;
+  // "다음 주로 미뤄줘"/"6월 18일로 바꿔줘" 류 단일 후보 날짜 수정의 자동 저장
+  // 1회 가드. build()가 아니라 후보 로드(비동기 후보 해석)가 끝난 시점에 한 번만
+  // 평가한다.
+  bool _autoApplyDateEditAttempted = false;
 
   late VoiceScheduleAction _selectedAction;
   late final VoiceCommandRouter _voiceCommandRouter;
@@ -172,6 +186,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     _routeResult = null;
     _candidateLoadDiagnostics = null;
     _candidateLoadSnapshot = null;
+    _autoApplyDateEditAttempted = false;
     _events.clear();
     _selectedDeleteEventIds.clear();
     unawaited(_loadCandidates(allowAutoSyncRetry: false));
@@ -409,6 +424,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                   );
         _isLoading = false;
       });
+      // 후보 로드(비동기 target 해석)가 끝난 직후 딱 한 번 자동 저장을 평가한다.
+      // build()/rebuild에서는 절대 평가하지 않는다.
+      if (_isEdit) {
+        unawaited(_maybeAutoApplyUniqueDateEdit());
+      }
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen load failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -1347,7 +1367,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   /// 음성 명령으로 파악한 변경값을 편집화면 없이 바로 저장한다.
-  Future<void> _applyAndSave(EventModel event) async {
+  Future<void> _applyAndSave(
+    EventModel event, {
+    bool hasResolvedReminderOffset = false,
+    Duration? resolvedReminderOffset,
+  }) async {
     final groupEvent = _groupEventById[event.id];
     if (groupEvent != null) {
       if (_isConvertToPersonalRequested) {
@@ -1386,6 +1410,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           userId: userId,
           savedEvent: savedEvent,
           previousStartAt: previousStartAt,
+          hasResolvedReminderOffset: hasResolvedReminderOffset,
+          resolvedReminderOffset: resolvedReminderOffset,
         ),
       );
       EventRefreshBus.instance.notifyChanged(
@@ -1654,6 +1680,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     required String? userId,
     required EventModel savedEvent,
     DateTime? previousStartAt,
+    bool hasResolvedReminderOffset = false,
+    Duration? resolvedReminderOffset,
   }) {
     return BackgroundTaskService.run(
       () async {
@@ -1667,12 +1695,30 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             minutes: settings?.departureSafetyMarginMin ??
                 DepartureAlarmService.safetyMargin.inMinutes,
           );
+          // 리마인더 오프셋: 날짜/시간 자동 저장 경로는 저장 전에 확정한 값을
+          // 그대로 쓴다(null = 알림 꺼짐 유지). 수동 "바로 저장" 경로는 기존
+          // 정책을 유지한다: 저장된 notify_at을 이전 시작 시각 기준으로 역산해
+          // 전달하고, 못 읽으면 서비스 기본값(60분)으로 폴백한다.
+          Duration? reminderOffset;
+          if (hasResolvedReminderOffset) {
+            reminderOffset = resolvedReminderOffset;
+          } else {
+            reminderOffset = await _loadPersistedReminderOffset(
+                  userId: userId,
+                  eventId: savedEvent.id,
+                  previousStartAt: previousStartAt,
+                  type: savedEvent.isCritical ? 'system_alarm' : 'push',
+                ) ??
+                ManualEventSideEffectService.defaultReminderOffset;
+          }
           await _runFollowUpStep(
             'sync_after_save',
             () async {
               await widget.sideEffectService.syncAfterSave(
                 event: savedEvent,
                 userId: userId,
+                reminderOffset: reminderOffset,
+                criticalAlarmOffset: reminderOffset,
                 prepTimeMin: settings?.prepTimeMin ??
                     SmartPreparationAlarmService.defaultPrepTimeMin,
                 prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
@@ -1880,9 +1926,51 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         SnackBar(content: Text(locationSnackBarMessage)),
       );
     }
+    // 편집 화면에 넘길 원본(저장된 기준 행) 확정. 반복 계열 후보는 선택 회차
+    // 시작이 저장 행 시작과 다를 수 있어 원본을 저장소에서 한 번 확인한다.
+    // 원본을 못 찾으면 잘못된 기준으로 계열을 자르지 않도록 편집 화면을 열지
+    // 않는다(fail closed). 일반 단발 일정은 선택한 행 자체가 원본이다.
+    var canonicalOriginal = event;
+    final isSeriesCandidate = (event.recurrenceRule ?? '').trim().isNotEmpty ||
+        (event.parentEventId ?? '').trim().isNotEmpty;
+    if (isSeriesCandidate) {
+      final canonicalUserId = _resolveUserId();
+      EventModel? storedOriginal;
+      if (canonicalUserId != null) {
+        try {
+          storedOriginal = await _repository.fetchEvent(
+            event.id,
+            userId: canonicalUserId,
+          );
+        } catch (error, stackTrace) {
+          debugPrint('VoiceActionScreen canonical lookup skipped: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      }
+      if (storedOriginal == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('반복 일정 원본을 찾지 못했어요. 잠시 후 다시 시도해 주세요.'),
+            ),
+          );
+        }
+        return;
+      }
+      canonicalOriginal = storedOriginal;
+    }
+    if (!mounted) {
+      return;
+    }
     await context.push(
       '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
-      extra: locationResolution.event,
+      extra: EventEditRoutePayload(
+        draft: locationResolution.event,
+        original: canonicalOriginal,
+        // 사용자가 고른 회차의 이동 전 시작. 원본 행의 시작(계열 기준점)으로
+        // 덮어쓰지 않는다.
+        originalOccurrenceStartAt: event.startAt,
+      ),
     );
   }
 
@@ -2062,34 +2150,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       nextEndUtc = event.endAt;
     }
 
-    return EventModel(
-      id: event.id,
-      userId: event.userId,
-      title: event.title,
+    return event.copyWith(
       startAt: nextStartUtc,
       endAt: nextEndUtc,
       location: requestedLocation ?? event.location,
-      locationLat: requestedLocation == null ? event.locationLat : null,
-      locationLng: requestedLocation == null ? event.locationLng : null,
-      memo: event.memo,
-      supplies: event.supplies,
-      suppliesChecked: event.suppliesChecked,
-      participants: event.participants,
-      targets: event.targets,
+      clearLocationLat: requestedLocation != null,
+      clearLocationLng: requestedLocation != null,
       isCritical: requestedCritical ?? event.isCritical,
-      recurrenceRule: event.recurrenceRule,
-      isAllDay: event.isAllDay,
       isMultiDay: nextIsMultiDay,
-      parentEventId: event.parentEventId,
-      category: event.category,
-      source: event.source,
-      externalId: event.externalId,
-      externalCalendarId: event.externalCalendarId,
-      externalEtag: event.externalEtag,
-      externalUpdatedAt: event.externalUpdatedAt,
-      lastSyncedAt: event.lastSyncedAt,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
     );
   }
 
@@ -2142,6 +2210,197 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final hour = timeCandidate?.hour ?? originalStartLocal.hour;
     final minute = timeCandidate?.minute ?? originalStartLocal.minute;
     return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+  }
+
+  /// STT 띄어쓰기 노이즈("그 다음 주", "다 다음 주")를 흡수하려고 공백을 제거한
+  /// 뒤 상대 주 표현을 판정한다. 다음 주/그다음 주는 +7일, 다다음 주/그다다음
+  /// 주는 +14일. 상대 주 표현이 없으면 null.
+  /// "그다음 주"는 두 주 뒤가 아니라 "다음 주"를 강조한 표현으로도 쓰이므로
+  /// +7로 통일한다(2026-09-30: 이전 구현의 +14 오판 정정).
+  int? _relativeWeekOffsetDays(String text) {
+    final compact = text.replaceAll(RegExp(r'\s+'), '');
+    if (compact.contains('그다다음주') || compact.contains('다다음주')) {
+      return 14;
+    }
+    if (compact.contains('그다음주') || compact.contains('다음주')) {
+      return 7;
+    }
+    return null;
+  }
+
+  /// 이번 자동 저장의 대상 발화인지. "다음 주로 미뤄줘" 류 상대 주 표현과
+  /// "6월 18일로 바꿔줘" 명시 날짜, "금요일로 바꿔줘" 요일 지정, "오후 3시로
+  /// 바꿔줘" 시간 지정처럼 기존 추론 파이프라인(_inferRequestedStartLocal)이
+  /// 시작 시각을 하나로 확정할 수 있는 날짜/시간 수정이면 true다. 해석 신호가
+  /// 아예 없거나 후보가 여러 개로 갈리는 발화는 false로 편집 화면 미리채움 +
+  /// 수동 저장 흐름을 유지한다. 해석 결과가 실제로 시작 시각을 바꾸는지는
+  /// 호출부(_maybeAutoApplyUniqueDateEdit)에서 다시 검사한다(fail closed).
+  bool _isClearDateOrTimeEditRequest() {
+    final changeText = _routeResult?.changeText.trim();
+    final hasCleanedText = changeText != null && changeText.isNotEmpty;
+    final texts = <String>[
+      if (hasCleanedText) changeText else _normalizedRawText,
+      if (hasCleanedText) _normalizedRawText,
+    ];
+    final referenceLocal = planflowNow();
+    for (final text in texts) {
+      if (_relativeWeekOffsetDays(text) != null ||
+          _inferLastDateCandidate(text, referenceLocal) != null ||
+          _inferLastTimeCandidate(text) != null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// "다음 주로 미뤄줘", "6월 18일로 바꿔줘" 류의 날짜/시간 수정이 아래 조건을
+  /// 모두 만족할 때만 기존 [_applyAndSave]로 한 번 자동 저장한다.
+  /// - 수정 의도 + start_at 단일 변경(장소/중요/연속/전환 등이 섞이면 제외)
+  /// - 후보가 정확히 1개(개인, 비반복, 외부 연동 없음, 그룹 공유 없음)
+  /// - 실제로 시작 시각이 달라지는 경우
+  /// 어떤 단계에서든 조건이 깨지거나 조회·공유 확인이 실패하면 아무것도 저장
+  /// 하지 않고 카드/미리보기를 유지해 수동 저장·편집 버튼 경로를 그대로 쓰게
+  /// 한다(fail closed). 저장 성공/실패 처리와 알람·위젯 후속 정리는 기존
+  /// [_applyAndSave]가 그대로 수행한다.
+  Future<void> _maybeAutoApplyUniqueDateEdit() async {
+    if (_autoApplyDateEditAttempted) {
+      return;
+    }
+    _autoApplyDateEditAttempted = true;
+    if (!_isEdit || _routeResult == null || _isSaving || _isLoading) {
+      return;
+    }
+    final changes = _requestedChanges;
+    if (changes.length != 1 || !changes.contains('start_at')) {
+      return;
+    }
+    if (_isConvertToPersonalRequested ||
+        _isLocationFieldAddition ||
+        _inferRequestedLocation() != null ||
+        _inferRequestedCriticalFlag() != null) {
+      return;
+    }
+    if (!_isClearDateOrTimeEditRequest()) {
+      return;
+    }
+    if (_events.length != 1) {
+      // 후보가 0개 또는 2개 이상이면 모호하다. 카드만 보여준다.
+      return;
+    }
+    final candidate = _events.single;
+    if (_groupEventById[candidate.id] != null) {
+      return;
+    }
+    if (_inferRequestedMultiDayEndLocal(candidate) != null) {
+      return;
+    }
+    try {
+      final userId = _resolveUserId();
+      if (userId == null) {
+        return;
+      }
+      // 저장 직전 최신 상태 재조회: 삭제/소유권 변경/반복·외부 전환 감지.
+      final freshEvent = await _repository.fetchEvent(
+        candidate.id,
+        userId: userId,
+      );
+      if (freshEvent == null ||
+          freshEvent.userId != userId ||
+          !_isAutoAppliablePersonalEvent(freshEvent)) {
+        return;
+      }
+      // 그룹 공유 링크가 있으면 자동 저장 금지(조회 실패도 예외로 fail closed).
+      final groupShares = await _groupEventRepository
+          .getGroupEventsByPersonalEventId(freshEvent.id);
+      if (groupShares.isNotEmpty ||
+          (freshEvent.groupEventId?.trim().isNotEmpty ?? false)) {
+        return;
+      }
+      final editedEvent = _eventWithRequestedVoiceChanges(freshEvent);
+      final newStart = editedEvent.startAt;
+      final oldStart = freshEvent.startAt;
+      if (newStart == null ||
+          oldStart == null ||
+          (!newStart.isBefore(oldStart) && !newStart.isAfter(oldStart))) {
+        return;
+      }
+      // 리마인더 정책 확정(저장 전): 알림 행이 없으면 "꺼짐"(null)이고, 읽기
+      // 실패·불명 행은 자동 저장 자체를 중단한다(fail closed). 기본값(60분)으로
+      // 몰래 재예약하지 않는다. 강한(critical) 알림은 실제 저장 형식인
+      // system_alarm 행 기준으로 판정한다.
+      Duration? autoReminderOffset;
+      try {
+        autoReminderOffset = await _resolveAutoApplyReminderOffset(
+          event: freshEvent,
+          userId: userId,
+        );
+      } catch (error, stackTrace) {
+        debugPrint(
+          'VoiceActionScreen auto apply reminder resolve failed: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      // 저장 전 중복(시간 겹침) 확인: 기존 저장소 조회 + 공용 경고 다이얼로그.
+      final overlappingEvents = await _repository.findOverlappingEvents(
+        rangeStart: newStart,
+        rangeEnd:
+            editedEvent.endAt != null && editedEvent.endAt!.isAfter(newStart)
+                ? editedEvent.endAt!
+                : newStart.add(const Duration(minutes: 30)),
+        userId: userId,
+        excludedEventId: freshEvent.id,
+      );
+      final duplicateWarningEvents = filterDuplicateWarningEvents(
+        draft: editedEvent,
+        candidates: overlappingEvents,
+      );
+      if (duplicateWarningEvents.isNotEmpty) {
+        if (!mounted) {
+          return;
+        }
+        final shouldContinue = await showOverlapWarningDialog(
+          context: context,
+          overlappingEvents: duplicateWarningEvents,
+        );
+        if (!shouldContinue || !mounted) {
+          // 취소: 저장도 하지 않고 성공 처리도 하지 않으며 카드를 유지한다.
+          return;
+        }
+      }
+      // 기존 직접 저장 경로를 그대로 재사용한다(반복 범위 선택, 알람/준비알람
+      // 재계산, 홈 위젯 갱신, 성공 스낵바와 캘린더 이동 포함). 별도 스케줄러나
+      // 헤드리스 편집기 자동 저장을 만들지 않는다.
+      await _applyAndSave(
+        freshEvent,
+        hasResolvedReminderOffset: true,
+        resolvedReminderOffset: autoReminderOffset,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen auto apply date edit skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  /// 자동 저장 가능한 개인 일정 조건. 반복 일정과 외부 캘린더 연동 일정은
+  /// 제외한다(컨트롤러의 pure-date-time 자동 적용 조건과 동일한 기준).
+  bool _isAutoAppliablePersonalEvent(EventModel event) {
+    final rule = event.recurrenceRule;
+    if (rule != null && rule.trim().isNotEmpty) {
+      return false;
+    }
+    final externalId = event.externalId;
+    if (externalId != null && externalId.trim().isNotEmpty) {
+      return false;
+    }
+    final externalCalendarId = event.externalCalendarId;
+    if (externalCalendarId != null && externalCalendarId.trim().isNotEmpty) {
+      return false;
+    }
+    return true;
   }
 
   /// "연속 일정으로 바꿔줘"류 발화에서 종료일을 추론한다. 파이프라인이
@@ -2235,7 +2494,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         )
         .toList(growable: false);
     if (dateMatches.isEmpty) {
-      return null;
+      // 명시 날짜·요일 후보가 없을 때만 여기 도달한다(위 dateMatches가 명시
+      // 표현을 우선한다). 이벤트 기준 날짜(referenceLocal)에서 정확히 7/14일
+      // 뒤로 옮기므로 요일·시각이 보존된다.
+      // 다음 주/그다음 주 = +7일, 다다음 주/그다다음 주 = +14일.
+      final weekDays = _relativeWeekOffsetDays(text);
+      if (weekDays == null) {
+        return null;
+      }
+      return referenceLocal.add(Duration(days: weekDays));
     }
     final match = dateMatches.last;
     final snippet = text.substring(
@@ -2361,8 +2628,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   Future<void> _confirmDelete(EventModel event) async {
-    final isRecurring =
-        (event.recurrenceRule ?? '').trim().isNotEmpty;
+    final isRecurring = (event.recurrenceRule ?? '').trim().isNotEmpty;
     if (!isRecurring) {
       final shouldDelete = await _showSeriesDeleteDialog(event);
       if (shouldDelete == true) {
@@ -2761,6 +3027,106 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       debugPrintStack(stackTrace: stackTrace);
       return true;
     }
+  }
+
+  /// 저장된 리마인더 notify_at 조회(저수준). 행이 없으면 null(끔), 읽기
+  /// 오류·해석 불가는 예외로 던진다(호출자가 fail closed 처리). 테스트 주입
+  /// reader가 있으면 우선한다. [type]은 실제 저장 형식(critical은
+  /// system_alarm, 일반은 push)을 따른다.
+  Future<DateTime?> _readPersistedReminderNotifyAt({
+    required String userId,
+    required String eventId,
+    required String type,
+  }) async {
+    final reader = widget.reminderNotifyAtReader;
+    if (reader != null) {
+      return reader(userId, eventId);
+    }
+    if (!AppEnv.isSupabaseReady) {
+      throw StateError('reminder lookup unavailable');
+    }
+    final row = await Supabase.instance.client
+        .from('reminders')
+        .select('notify_at')
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+        .eq('type', type)
+        .maybeSingle();
+    if (row == null) {
+      return null;
+    }
+    final notifyAt = DateTime.tryParse(row['notify_at'].toString());
+    if (notifyAt == null) {
+      throw StateError('reminder notify_at malformed for $eventId');
+    }
+    return notifyAt;
+  }
+
+  /// 기존 리마인더 오프셋을 저장된 notify_at에서 역산한다(수동 저장 경로용,
+  /// 기존 정책 유지). 반드시 이전 시작 시각(previousStartAt) 기준, 유효
+  /// 범위는 편집 화면 normalizeReminderOffset과 같은 0~1440분. 못 읽거나
+  /// 범위 밖이면 null(호출부가 서비스 기본값 60분으로 폴백)을 반환한다.
+  Future<Duration?> _loadPersistedReminderOffset({
+    required String userId,
+    required String eventId,
+    DateTime? previousStartAt,
+    required String type,
+  }) async {
+    final referenceStartAt = previousStartAt;
+    if (referenceStartAt == null) {
+      return null;
+    }
+    try {
+      final notifyAt = await _readPersistedReminderNotifyAt(
+        userId: userId,
+        eventId: eventId,
+        type: type,
+      );
+      if (notifyAt == null) {
+        return null;
+      }
+      final minutes = referenceStartAt.difference(notifyAt).inMinutes;
+      if (minutes < 0 || minutes > 1440) {
+        return null;
+      }
+      return Duration(minutes: minutes);
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen reminder offset load skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  /// 날짜/시간 자동 저장 직전에 리마인더 정책을 확정한다. 알림 행이 없으면
+  /// null(끔 유지, 편집 화면의 row==null → offset null 규칙과 동일), 읽기
+  /// 실패·해석 불가·범위 밖(0~1440분)은 예외를 던져 자동 저장을 중단시킨다.
+  /// 강한(critical) 알림은 행이 없어도 확정 불가로 중단한다(기본값 재설정
+  /// 금지). 0분(시작 시각 알림)도 유효 값이다.
+  Future<Duration?> _resolveAutoApplyReminderOffset({
+    required EventModel event,
+    required String userId,
+  }) async {
+    final previousStartAt = event.startAt;
+    if (previousStartAt == null) {
+      return null;
+    }
+    final type = event.isCritical ? 'system_alarm' : 'push';
+    final notifyAt = await _readPersistedReminderNotifyAt(
+      userId: userId,
+      eventId: event.id,
+      type: type,
+    );
+    if (notifyAt == null) {
+      if (event.isCritical) {
+        throw StateError('critical reminder row missing for ${event.id}');
+      }
+      return null;
+    }
+    final minutes = previousStartAt.difference(notifyAt).inMinutes;
+    if (minutes < 0 || minutes > 1440) {
+      throw StateError('reminder offset out of range for ${event.id}');
+    }
+    return Duration(minutes: minutes);
   }
 
   Future<UserSettingsModel?> _fetchSettingsOrNull(String userId) async {

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
@@ -19,6 +22,19 @@ import 'package:planflow/widgets/calendar_style_event_editor.dart';
 import 'package:planflow/widgets/schedule_save_scope_card.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+
+// UI 음성 테스트와 동일한 규칙: 1월 1일이 목요일인 윤년 아닌 미래 연도.
+// 과거 기준 연도와 같은 요일 배치를 보존해 날짜 칩의 요일 접미사(목/월/금/수)가 유지된다.
+int _alignedFutureFixtureYear() {
+  for (var year = DateTime.now().year + 1; ; year++) {
+    if (DateTime(year, 1, 1).weekday == DateTime.thursday &&
+        !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
+      return year;
+    }
+  }
+}
+
+final int _fixtureYear = _alignedFutureFixtureYear();
 
 void main() {
   group('resolvePersistedEventId', () {
@@ -338,6 +354,111 @@ void main() {
     });
   });
 
+  group('route draft 날짜 프리필 (음성 요청 날짜 우선)', () {
+    final year = DateTime.now().year + 1;
+    final requestedStart = DateTime(year, 3, 15, 9);
+    final requestedEnd = DateTime(year, 3, 15, 10);
+
+    // calendar_style_event_editor.dart 날짜 칩과 동일한 라벨 규칙.
+    String dateLabel(DateTime value) {
+      const labels = <int, String>{
+        DateTime.monday: '월',
+        DateTime.tuesday: '화',
+        DateTime.wednesday: '수',
+        DateTime.thursday: '목',
+        DateTime.friday: '금',
+        DateTime.saturday: '토',
+        DateTime.sunday: '일',
+      };
+      return '${value.year % 100}. ${value.month}. ${value.day}.'
+          '(${labels[value.weekday]})';
+    }
+
+    testWidgets('eventId가 있어도 화면은 요청한 draft 날짜를 유지한다', (tester) async {
+      // 회귀: 음성 대화가 '/event/edit/{id}' + extra draft로 진입시켰을 때,
+      // persisted 재조회/좌표 hydrate 과정에서도 요청한 startAt/endAt이
+      // 원래 persisted 날짜로 되돌아가면 안 된다.
+      final persistedOriginalStart = DateTime(year, 3, 19, 9);
+      final fake = _RecordingEventRepository(
+        EventModel(
+          id: 'event-1',
+          userId: 'user-1',
+          title: '회의',
+          startAt: persistedOriginalStart,
+          endAt: DateTime(year, 3, 19, 10),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EventEditScreen(
+            event: EventModel(
+              id: 'event-1',
+              userId: 'user-1',
+              title: '회의',
+              startAt: requestedStart,
+              endAt: requestedEnd,
+            ),
+            eventId: 'event-1',
+            eventRepository: fake,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final editor = tester.widget<CalendarStyleEventEditor>(
+        find.byType(CalendarStyleEventEditor),
+      );
+      expect(editor.startAt, planflowLocal(requestedStart));
+      expect(editor.endAt, planflowLocal(requestedEnd));
+      expect(
+        find.text(dateLabel(planflowLocal(requestedStart))),
+        findsWidgets,
+      );
+      // 원래 persisted 날짜는 어디에도 표시되지 않는다.
+      expect(
+        find.text(dateLabel(planflowLocal(persistedOriginalStart))),
+        findsNothing,
+      );
+    });
+
+    testWidgets('반복 occurrence draft는 anchor를 유지하고 이동된 날짜를 표시한다',
+        (tester) async {
+      final originalOccurrence = DateTime(year, 3, 1, 10);
+      final draft = EventModel(
+        id: 'occurrence-1',
+        userId: 'user-1',
+        title: '주간 회의',
+        startAt: requestedStart,
+        endAt: requestedEnd,
+        parentEventId: 'series-1',
+        overriddenOccurrenceDate: originalOccurrence,
+      );
+
+      await tester.pumpWidget(MaterialApp(home: EventEditScreen(event: draft)));
+      await tester.pumpAndSettle();
+
+      final editor = tester.widget<CalendarStyleEventEditor>(
+        find.byType(CalendarStyleEventEditor),
+      );
+      // 표시되는 날짜는 이동 후(요청) 날짜다.
+      expect(editor.startAt, planflowLocal(requestedStart));
+      expect(
+        find.text(dateLabel(planflowLocal(requestedStart))),
+        findsWidgets,
+      );
+      // anchor(parent_event_id + overridden_occurrence_date)는 화면이 들고
+      // 있는 draft에 그대로 남아, 저장 시 이 이동이 "원래 occurrence의 이동"으로
+      // 기록될 수 있어야 한다. 시리즈 전체 조작으로 바뀌면 안 된다.
+      final screen = tester.widget<EventEditScreen>(
+        find.byType(EventEditScreen),
+      );
+      expect(screen.event!.id, 'occurrence-1');
+      expect(screen.event!.parentEventId, 'series-1');
+      expect(screen.event!.overriddenOccurrenceDate, originalOccurrence);
+    });
+  });
+
   group('shouldClearLocationCoordinatesOnTextChange', () {
     test('데이터 로드 중(isApplyingLoadedEvent=true)에는 절대 좌표를 지우지 않는다', () {
       // 회귀: fetchEvent로 불러온 event.location을 _locationController.text에
@@ -454,8 +575,8 @@ void main() {
             id: 'event-1',
             userId: 'user-1',
             title: '팀장 동행방문',
-            startAt: DateTime.utc(2026, 5, 13, 0),
-            endAt: DateTime.utc(2026, 5, 13, 1),
+            startAt: DateTime.utc(_fixtureYear, 5, 13, 0),
+            endAt: DateTime.utc(_fixtureYear, 5, 13, 1),
             category: '업무',
           ),
         ),
@@ -476,18 +597,53 @@ void main() {
     expect(find.text('시작 시간 조정'), findsOneWidget);
   });
 
+  testWidgets(
+      'EventEditScreen displays draft date while retaining source event',
+      (tester) async {
+    final source = EventModel(
+      id: 'event-source',
+      userId: 'user-1',
+      title: '원본 일정',
+      startAt: DateTime.utc(_fixtureYear, 6, 12, 9),
+      endAt: DateTime.utc(_fixtureYear, 6, 12, 10),
+      isCritical: true,
+      useStrongAlarm: true,
+    );
+    final draft = EventModel(
+      id: source.id,
+      userId: source.userId,
+      title: '수정 일정',
+      startAt: DateTime.utc(_fixtureYear, 6, 18, 9),
+      endAt: DateTime.utc(_fixtureYear, 6, 18, 10),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(event: draft, originalEvent: source),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final calendarEditor = tester.widget<CalendarStyleEventEditor>(
+      find.byType(CalendarStyleEventEditor),
+    );
+    expect(calendarEditor.startAt, DateTime(_fixtureYear, 6, 18, 18));
+    expect(find.text('수정 일정'), findsOneWidget);
+    expect(find.text('${_fixtureYear % 100}. 6. 18.(목)'), findsWidgets);
+  });
+
   testWidgets('EventEditScreen initializes new event date from selected date',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: EventEditScreen(
-          initialDate: DateTime(2026, 6, 15),
+          initialDate: DateTime(_fixtureYear, 6, 15),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('26. 6. 15.(월)'), findsWidgets);
+    expect(find.text('${_fixtureYear % 100}. 6. 15.(월)'), findsWidgets);
   });
 
   testWidgets('EventEditScreen keeps duration when start date changes',
@@ -499,8 +655,8 @@ void main() {
             id: 'event-1',
             userId: 'user-1',
             title: '김창민 만나기',
-            startAt: DateTime.utc(2026, 6, 12, 9),
-            endAt: DateTime.utc(2026, 6, 12, 10),
+            startAt: DateTime.utc(_fixtureYear, 6, 12, 9),
+            endAt: DateTime.utc(_fixtureYear, 6, 12, 10),
             category: '개인',
           ),
         ),
@@ -508,16 +664,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('26. 6. 12.(금)'), findsWidgets);
+    expect(find.text('${_fixtureYear % 100}. 6. 12.(금)'), findsWidgets);
 
     final editor = tester.widget<CalendarStyleEventEditor>(
       find.byType(CalendarStyleEventEditor),
     );
-    editor.onStartChanged(DateTime(2026, 6, 10, 9));
+    editor.onStartChanged(DateTime(_fixtureYear, 6, 10, 9));
     await tester.pumpAndSettle();
 
-    expect(find.text('26. 6. 10.(수)'), findsWidgets);
-    expect(find.text('26. 6. 12.(금)'), findsNothing);
+    expect(find.text('${_fixtureYear % 100}. 6. 10.(수)'), findsWidgets);
+    expect(find.text('${_fixtureYear % 100}. 6. 12.(금)'), findsNothing);
   });
 
   testWidgets(
@@ -535,8 +691,8 @@ void main() {
             id: 'event-1',
             userId: 'user-1',
             title: '팀장 동행방문',
-            startAt: DateTime.utc(2026, 5, 13, 0),
-            endAt: DateTime.utc(2026, 5, 13, 1),
+            startAt: DateTime.utc(_fixtureYear, 5, 13, 0),
+            endAt: DateTime.utc(_fixtureYear, 5, 13, 1),
             category: '업무',
           ),
         ),
@@ -595,8 +751,8 @@ void main() {
             id: 'event-1',
             userId: 'user-1',
             title: '팀장 동행방문',
-            startAt: DateTime.utc(2026, 5, 13, 0),
-            endAt: DateTime.utc(2026, 5, 13, 1),
+            startAt: DateTime.utc(_fixtureYear, 5, 13, 0),
+            endAt: DateTime.utc(_fixtureYear, 5, 13, 1),
             category: '업무',
           ),
         ),
@@ -641,8 +797,8 @@ void main() {
               id: 'event-1',
               userId: 'user-1',
               title: '알림으로 연 일정',
-              startAt: DateTime.utc(2026, 5, 13, 0),
-              endAt: DateTime.utc(2026, 5, 13, 1),
+              startAt: DateTime.utc(_fixtureYear, 5, 13, 0),
+              endAt: DateTime.utc(_fixtureYear, 5, 13, 1),
             ),
           ),
         ),
@@ -680,7 +836,7 @@ void main() {
               id: 'group-1',
               createdBy: 'leader-1',
               name: '우리 팀',
-              createdAt: DateTime.utc(2026, 6, 11),
+              createdAt: DateTime.utc(_fixtureYear, 6, 11),
             ),
           ],
           membersByGroupId: <String, List<GroupMemberModel>>{
@@ -702,7 +858,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: EventEditScreen(
-            initialDate: DateTime(2026, 6, 15),
+            initialDate: DateTime(_fixtureYear, 6, 15),
             groupContextProvider: buildContextProvider(),
             groupEventRepository: _FakeGroupEventRepository(),
           ),
@@ -724,7 +880,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: EventEditScreen(
-            initialDate: DateTime(2026, 6, 15),
+            initialDate: DateTime(_fixtureYear, 6, 15),
             groupContextProvider: buildContextProvider(),
             groupEventRepository: _FakeGroupEventRepository(),
           ),
@@ -746,7 +902,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: EventEditScreen(
-            initialDate: DateTime(2026, 6, 15),
+            initialDate: DateTime(_fixtureYear, 6, 15),
             groupContextProvider: buildContextProvider(),
             groupEventRepository: _FakeGroupEventRepository(),
           ),
@@ -770,7 +926,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: EventEditScreen(
-            initialDate: DateTime(2026, 6, 15),
+            initialDate: DateTime(_fixtureYear, 6, 15),
             groupContextProvider: buildContextProvider(),
             groupEventRepository: _FakeGroupEventRepository(),
           ),
@@ -801,13 +957,13 @@ void main() {
               id: 'group-1',
               createdBy: 'user-1',
               name: '우리 팀',
-              createdAt: DateTime.utc(2026, 6, 11),
+              createdAt: DateTime.utc(_fixtureYear, 6, 11),
             ),
             GroupModel(
               id: 'group-2',
               createdBy: 'leader-2',
               name: '동아리',
-              createdAt: DateTime.utc(2026, 6, 12),
+              createdAt: DateTime.utc(_fixtureYear, 6, 12),
             ),
           ],
           membersByGroupId: <String, List<GroupMemberModel>>{
@@ -834,7 +990,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: EventEditScreen(
-            initialDate: DateTime(2026, 6, 15),
+            initialDate: DateTime(_fixtureYear, 6, 15),
             groupContextProvider: provider,
             groupEventRepository: _FakeGroupEventRepository(),
           ),
@@ -992,4 +1148,30 @@ class _FakeGroupEventRepository extends GroupEventRepository {
   Future<GroupEventModel> fetchGroupEvent(String eventId) {
     throw UnimplementedError();
   }
+}
+
+/// 좌표 hydrate가 startAt/endAt을 건드리지 않음을 검증하기 위한 최소 fake.
+class _RecordingEventRepository extends EventRepository {
+  _RecordingEventRepository(this.persisted);
+
+  final EventModel persisted;
+  int fetchEventCalls = 0;
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    fetchEventCalls++;
+    return persisted;
+  }
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async => [persisted];
+
+  @override
+  Future<EventModel> createEvent(EventModel event) => Future.value(event);
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) => Future.value(event);
 }

@@ -5,6 +5,15 @@ The planning path is read-only. Mutations are limited to the selected version,
 its build relationship, its release option, version-matched localized release
 notes when missing, and a review submission containing that version alone.
 Review contact information and existing non-empty notes are never overwritten.
+
+Opt-in replacement (--replace-existing-build OLD): before any mutation the
+script proves, against freshly fetched App Store Connect state, that this exact
+version is under review with that old build via exactly one active review
+submission containing only this version. With the explicit confirmation phrase
+it cancels that submission (PATCH canceled=true), waits a bounded time for an
+editable version state, and only then submits the new build through the normal
+path. Without the confirmation phrase the replacement is verification-only and
+performs zero mutations.
 """
 
 from __future__ import annotations
@@ -48,6 +57,10 @@ EDITABLE_VERSION_STATES = {
     "DEVELOPER_REJECTED",
     "REJECTED",
 }
+REPLACE_CONFIRMATION_PHRASE = "REPLACE_PLANFLOW_IOS_REVIEW"
+CANCELABLE_SUBMISSION_STATES = {"WAITING_FOR_REVIEW", "IN_REVIEW"}
+REPLACE_POLL_INTERVAL_SECONDS = 5.0
+REPLACE_MAX_POLLS = 60  # bounded wait of roughly five minutes for Apple to finish canceling
 
 
 class SubmissionError(Exception):
@@ -180,7 +193,7 @@ def _find_version(client: AscClient, app_id: str, version: str) -> dict | None:
     return matches[0] if matches else None
 
 
-def _get_build(client: AscClient, app_id: str, version: str, build_number: str) -> dict:
+def _find_build(client: AscClient, app_id: str, version: str, build_number: str) -> dict:
     params = {
         "filter[app]": app_id,
         "filter[version]": build_number,
@@ -224,7 +237,11 @@ def _get_build(client: AscClient, app_id: str, version: str, build_number: str) 
         train_id = _relationship_id(build, "preReleaseVersion")
         if _attrs(included.get(train_id) or {}).get("version") == version:
             matches.append(build)
-    build = _one(matches, "BUILD")
+    return _one(matches, "BUILD")
+
+
+def _get_build(client: AscClient, app_id: str, version: str, build_number: str) -> dict:
+    build = _find_build(client, app_id, version, build_number)
     if _attrs(build).get("processingState") != "VALID":
         raise SubmissionError(f"BLOCKED_BUILD_STATE: selected build {version} ({build_number}) is not VALID")
     expiration = _attrs(build).get("expirationDate")
@@ -355,16 +372,150 @@ def _assert_marketing_url_readback(client: AscClient, version_id: str, expected_
             )
 
 
+def _plan_replacement(client: AscClient, app_id: str, version: dict | None, version_string: str,
+                      new_build: dict, old_build_number: str) -> dict:
+    """Read-only proof that the old active submission can be canceled and replaced.
+
+    Every precondition is checked against freshly fetched App Store Connect
+    state. There is no generic force flag: any mismatch fails closed before
+    the cancellation mutation happens.
+    """
+    new_build_number = str(_attrs(new_build).get("version"))
+    if new_build_number == old_build_number or int(new_build_number) <= int(old_build_number):
+        raise SubmissionError(
+            f"BLOCKED_REPLACE_BUILD: replacement build {new_build_number} must be greater than old build {old_build_number}")
+    if version is None or not version.get("id"):
+        raise SubmissionError("BLOCKED_REPLACE_TARGET: the App Store version for the old submission does not exist")
+    version_id = version.get("id")
+    version_state = _attrs(version).get("appStoreState")
+    if version_state == "READY_FOR_SALE":
+        raise SubmissionError("BLOCKED_VERSION_LIVE: this version is already released; create a new marketing version")
+    if version_state not in ACTIVE_VERSION_STATES:
+        raise SubmissionError(
+            f"BLOCKED_REPLACE_TARGET: version state {version_state or 'unknown'} is not in an active review; "
+            "replacement does not apply")
+    try:
+        old_build = _find_build(client, app_id, version_string, old_build_number)
+    except SubmissionError as error:
+        raise SubmissionError(f"BLOCKED_REPLACE_OLD_BUILD: {error}") from None
+    linked = client.request("GET", f"/appStoreVersions/{version_id}/relationships/build")
+    linked_build_id = (linked.get("data") or {}).get("id")
+    if linked_build_id != old_build.get("id"):
+        raise SubmissionError(
+            f"BLOCKED_REPLACE_VERSION_BUILD: version {version_string} is linked to build id {linked_build_id or 'unknown'}, "
+            f"not old build {old_build_number}")
+    submissions = client.pages(f"/apps/{app_id}/reviewSubmissions" + _query({"limit": "200"}))
+    active: list[tuple[dict, str]] = []
+    for submission in submissions:
+        state = _attrs(submission).get("state")
+        if state not in REVIEW_SUBMISSION_STATES:
+            raise SubmissionError(f"BLOCKED_REVIEW_SUBMISSION_STATE: unknown ReviewSubmission state {state or 'missing'}")
+        if state == "COMPLETE":
+            continue
+        active.append((submission, state))
+    if not active:
+        raise SubmissionError(
+            "BLOCKED_REPLACE_NO_ACTIVE: no active review submission to replace; if this version was already approved, "
+            "create a new marketing version")
+    if len(active) > 1:
+        raise SubmissionError(
+            f"BLOCKED_REPLACE_MULTIPLE: expected exactly one active review submission, found {len(active)}")
+    submission, submission_state = active[0]
+    if submission_state not in CANCELABLE_SUBMISSION_STATES:
+        raise SubmissionError(
+            f"BLOCKED_REPLACE_STATE: existing submission state {submission_state} is not cancelable; resolve it manually")
+    submission_id = submission.get("id")
+    items = _review_submission_items(client, submission_id)
+    if not items:
+        raise SubmissionError(
+            "BLOCKED_REPLACE_ITEMS: the active submission has no version items; it cannot be proven to be this version's submission")
+    foreign = [i for i in items if _relationship_id(i, "appStoreVersion") != version_id]
+    if foreign:
+        raise SubmissionError("BLOCKED_REPLACE_ITEMS: the active submission contains items unrelated to the target version")
+    return {
+        "old_build": old_build_number,
+        "old_build_id": old_build.get("id"),
+        "new_build": new_build_number,
+        "version": version_string,
+        "version_id": version_id,
+        "version_state": version_state,
+        "submission_id": submission_id,
+        "submission_state": submission_state,
+    }
+
+
+def _cancel_and_wait(client: AscClient, plan: dict, *, sleep: Callable[[float], None] = time.sleep,
+                     max_polls: int = REPLACE_MAX_POLLS,
+                     poll_interval: float = REPLACE_POLL_INTERVAL_SECONDS) -> dict:
+    submission_id = plan["submission_id"]
+    client.request("PATCH", f"/reviewSubmissions/{submission_id}", {
+        "data": {"type": "reviewSubmissions", "id": submission_id, "attributes": {"canceled": True}}
+    })
+    version_state = None
+    submission_state = None
+    for attempt in range(max_polls):
+        if attempt:
+            sleep(poll_interval)
+        version_doc = client.request(
+            "GET", f"/appStoreVersions/{plan['version_id']}?fields[appStoreVersions]=versionString,appStoreState")
+        version_state = _attrs(version_doc.get("data") or {}).get("appStoreState")
+        submission_doc = client.request(
+            "GET", f"/reviewSubmissions/{submission_id}?fields[reviewSubmissions]=state")
+        submission_state = _attrs(submission_doc.get("data") or {}).get("state")
+        if submission_state not in REVIEW_SUBMISSION_STATES:
+            raise SubmissionError(
+                f"BLOCKED_REPLACE_POLL: unknown ReviewSubmission state {submission_state or 'missing'} while waiting for the cancellation")
+        if submission_state == "COMPLETE" and version_state in EDITABLE_VERSION_STATES:
+            return {**plan, "canceled": True, "submission_state": submission_state, "version_state": version_state}
+    raise SubmissionError(
+        "REPLACE_CANCEL_UNCONFIRMED: Apple did not confirm the cancellation within the bounded wait "
+        f"(submission={submission_state or 'unknown'}, version={version_state or 'unknown'}); "
+        "the new build was not attached and no resubmission happened")
+
+
+def _replacement_report(marker: str, plan: dict, writes: int, **extra: Any) -> str:
+    payload = {
+        "marker": marker,
+        "version": plan.get("version"),
+        "old_build": plan.get("old_build"),
+        "new_build": plan.get("new_build"),
+        "submission_id": plan.get("submission_id"),
+        "submission_state": plan.get("submission_state"),
+        "version_state": plan.get("version_state"),
+        "writes": writes,
+    }
+    payload.update(extra)
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
 def submit(client: AscClient, bundle_id: str, version_string: str, build_number: str, *, whats_new: dict[str, str] | None = None, marketing_url: str | None = None, dry_run: bool = False,
-           sleep: Callable[[float], None] = time.sleep, max_polls: int = MAX_POLLS) -> dict:
+           replace_existing_build: str | None = None, replace_confirm: str | None = None,
+           sleep: Callable[[float], None] = time.sleep, max_polls: int = MAX_POLLS,
+           replace_max_polls: int = REPLACE_MAX_POLLS,
+           replace_poll_interval: float = REPLACE_POLL_INTERVAL_SECONDS) -> dict:
     target_version = _version_tuple(version_string)
     if not re.fullmatch(r"[1-9][0-9]{0,9}", build_number):
         raise SubmissionError("BLOCKED_INPUT: build number must be 1 to 10 digits without leading zeroes")
+    if replace_existing_build is not None and not re.fullmatch(r"[1-9][0-9]{0,9}", replace_existing_build):
+        raise SubmissionError("BLOCKED_INPUT: replace-existing-build must be 1 to 10 digits without leading zeroes")
     apps = client.pages("/apps" + _query({"filter[bundleId]": bundle_id, "limit": "200"}))
     app = _one([a for a in apps if _attrs(a).get("bundleId") == bundle_id], "APP")
     app_id = app.get("id")
     builds = _get_build(client, app_id, version_string, build_number)
     version = _find_version(client, app_id, version_string)
+    replace_plan: dict | None = None
+    if replace_existing_build is not None:
+        replace_plan = _plan_replacement(client, app_id, version, version_string, builds, replace_existing_build)
+        if dry_run or replace_confirm != REPLACE_CONFIRMATION_PHRASE:
+            confirmed = replace_confirm == REPLACE_CONFIRMATION_PHRASE and not dry_run
+            print(_replacement_report("REPLACE_VERIFIED", replace_plan, client.writes, confirmed=confirmed))
+            return {"marker": "REPLACE_VERIFIED", "replace": replace_plan, "confirmed": confirmed, "writes": client.writes}
+        replace_plan = _cancel_and_wait(client, replace_plan, sleep=sleep, max_polls=replace_max_polls,
+                                        poll_interval=replace_poll_interval)
+        print(_replacement_report("REPLACE_CANCELED", replace_plan, client.writes))
+        version = _find_version(client, app_id, version_string)
+        if version is None:
+            raise SubmissionError("BLOCKED_REPLACE_TARGET: target App Store version disappeared after cancellation")
     _assert_no_foreign_active_submissions(client, app_id, version.get("id") if version else None)
     current_live = _current_released_version(client, app_id)
 
@@ -544,7 +695,10 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
         if (exact_version and exact_build and observed in ACCEPTED_SUBMISSION_STATES
                 and _attrs(data).get("releaseType") == "AFTER_APPROVAL"):
             print(f"APP_STORE_SUBMITTED: PASS version={version_string} build={build_number} state={observed}")
-            return {"marker": "APP_STORE_SUBMITTED", "state": observed, "version": version_string, "build": build_number, "idempotent": False}
+            result = {"marker": "APP_STORE_SUBMITTED", "state": observed, "version": version_string, "build": build_number, "idempotent": False}
+            if replace_plan:
+                result["replace"] = {key: replace_plan.get(key) for key in ("old_build", "new_build", "submission_id", "version_state")}
+            return result
     raise SubmissionError(f"SUBMIT_UNCONFIRMED: Apple did not confirm exact version/build in an accepted state (observed={observed or 'unknown'})")
 
 
@@ -556,6 +710,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--whats-new-file", required=True, help="Version-bound JSON release notes by locale")
     parser.add_argument("--marketing-url", help="HTTPS marketing URL to set on each App Store localization")
     parser.add_argument("--dry-run", action="store_true", help="Read-only validation and plan")
+    parser.add_argument("--replace-existing-build",
+                        help="Opt-in: old build number currently attached to the active review of this exact "
+                             "version; its submission is verified, then canceled so the new build can be submitted")
+    parser.add_argument("--confirm-replace", default=None,
+                        help=f"Real cancellation requires exactly {REPLACE_CONFIRMATION_PHRASE}; any other value "
+                             "keeps the run verification-only with zero mutations")
     return parser
 
 
@@ -573,11 +733,12 @@ def main(argv: list[str] | None = None) -> int:
             raise SubmissionError("BLOCKED_RELEASE_NOTES: version-bound release-notes JSON could not be read") from None
         notes = {"version": notes_doc.get("version"), "localizations": notes_doc.get("whatsNew")}
         result = submit(AscClient(token), args.bundle_id, args.version, args.build, whats_new=notes,
-                        marketing_url=args.marketing_url, dry_run=args.dry_run)
+                        marketing_url=args.marketing_url, dry_run=args.dry_run,
+                        replace_existing_build=args.replace_existing_build, replace_confirm=args.confirm_replace)
         if args.dry_run:
             suffix = " METADATA=DEFERRED" if result.get("marker") == "DRY_RUN_PLAN_ONLY" else ""
             print(f"DRY_RUN=PASS{suffix}")
-        return 0 if result.get("marker") in {"APP_STORE_SUBMITTED", "DRY_RUN_PASS", "DRY_RUN_PLAN_ONLY"} else 1
+        return 0 if result.get("marker") in {"APP_STORE_SUBMITTED", "DRY_RUN_PASS", "DRY_RUN_PLAN_ONLY", "REPLACE_VERIFIED"} else 1
     except SubmissionError as error:
         print(str(error), file=sys.stderr)
         return 1

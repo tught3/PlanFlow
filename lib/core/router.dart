@@ -10,6 +10,7 @@ import '../data/models/event_model.dart';
 import '../features/groups/models/group_event_model.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
+import 'event_edit_route_payload.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/settings/settings_screen.dart';
@@ -206,8 +207,8 @@ GoRouter createAppRouter({
             briefingIsMorning: isMorning,
             authProvider: authProviderOverride,
             startupRouteGate: startupRouteGateOverride,
-          featureTourStore: featureTourStore,
-          runPostTourOnboardingStages: runPostTourOnboardingStages,
+            featureTourStore: featureTourStore,
+            runPostTourOnboardingStages: runPostTourOnboardingStages,
             runStartupTasks: runShellStartupTasks,
           );
         },
@@ -318,10 +319,13 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.eventEdit,
         builder: (context, state) {
-          final event =
-              state.extra is EventModel ? state.extra! as EventModel : null;
+          final extra = state.extra;
+          final payload = extra is EventEditRoutePayload ? extra : null;
+          final event = payload?.draft ?? (extra is EventModel ? extra : null);
           return EventEditScreen(
             event: event,
+            originalEvent: payload?.original,
+            originalOccurrenceStartAt: payload?.originalOccurrenceStartAt,
             eventId: _resolveEventId(state, event),
             initialDate: _parseRouteDate(state.uri.queryParameters['date']),
           );
@@ -330,10 +334,13 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.eventEditWithId,
         builder: (context, state) {
-          final event =
-              state.extra is EventModel ? state.extra! as EventModel : null;
+          final extra = state.extra;
+          final payload = extra is EventEditRoutePayload ? extra : null;
+          final event = payload?.draft ?? (extra is EventModel ? extra : null);
           return EventEditScreen(
             event: event,
+            originalEvent: payload?.original,
+            originalOccurrenceStartAt: payload?.originalOccurrenceStartAt,
             eventId: _resolveEventId(state, event),
           );
         },
