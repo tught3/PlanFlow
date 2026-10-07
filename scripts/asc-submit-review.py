@@ -412,6 +412,13 @@ def _plan_replacement(client: AscClient, app_id: str, version: dict | None, vers
             raise SubmissionError(f"BLOCKED_REVIEW_SUBMISSION_STATE: unknown ReviewSubmission state {state or 'missing'}")
         if state == "COMPLETE":
             continue
+        if state == "READY_FOR_REVIEW":
+            # A blank editable draft is not an active review. Prove emptiness
+            # through the items endpoint (the same evidence the foreign-active
+            # guard uses); a failed, unknown, or malformed read fails closed
+            # instead of being treated as an empty draft.
+            if not _review_submission_items(client, submission.get("id")):
+                continue
         active.append((submission, state))
     if not active:
         raise SubmissionError(
@@ -426,12 +433,10 @@ def _plan_replacement(client: AscClient, app_id: str, version: dict | None, vers
             f"BLOCKED_REPLACE_STATE: existing submission state {submission_state} is not cancelable; resolve it manually")
     submission_id = submission.get("id")
     items = _review_submission_items(client, submission_id)
-    if not items:
+    if len(items) != 1 or _relationship_id(items[0], "appStoreVersion") != version_id:
         raise SubmissionError(
-            "BLOCKED_REPLACE_ITEMS: the active submission has no version items; it cannot be proven to be this version's submission")
-    foreign = [i for i in items if _relationship_id(i, "appStoreVersion") != version_id]
-    if foreign:
-        raise SubmissionError("BLOCKED_REPLACE_ITEMS: the active submission contains items unrelated to the target version")
+            "BLOCKED_REPLACE_ITEMS: the active submission must contain exactly one item for the target version; "
+            "an empty, unrelated, or duplicated item list cannot be proven to be this version's submission")
     return {
         "old_build": old_build_number,
         "old_build_id": old_build.get("id"),

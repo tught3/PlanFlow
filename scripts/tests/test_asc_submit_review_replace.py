@@ -27,6 +27,7 @@ NEW_BUILD = "195"
 OLD_BUILD_ID = "b193"
 NEW_BUILD_ID = "b195"
 SUBMISSION_ID = "s1"
+DRAFT_ID = "s-blank"
 CONFIRM = "REPLACE_PLANFLOW_IOS_REVIEW"
 
 
@@ -47,7 +48,8 @@ class ReplacementAsc:
 
     def __init__(self, *, version_state="WAITING_FOR_REVIEW", linked_build=OLD_BUILD_ID,
                  submission_state="WAITING_FOR_REVIEW", items=None, new_build_state="VALID",
-                 submissions=None, cancel_completes_after=2, live_version="1.1.2"):
+                 submissions=None, cancel_completes_after=2, live_version="1.1.2",
+                 items_by_submission=None, items_error=None, items_malformed=False):
         self.app = {"type": "apps", "id": APP_ID, "attributes": {"bundleId": "com.example.app"}}
         self.live_version = live_version
         self.version = {"type": "appStoreVersions", "id": VERSION_ID, "attributes": {
@@ -62,6 +64,9 @@ class ReplacementAsc:
         else:
             self.submissions = submissions
         self.items = list(items) if items is not None else [version_item()]
+        self.items_by_submission = dict(items_by_submission) if items_by_submission is not None else None
+        self.items_error = items_error
+        self.items_malformed = items_malformed
         self.localization = {"type": "appStoreVersionLocalizations", "id": "l1", "attributes": {
             "locale": "ko", "description": "desc", "keywords": "kw", "supportUrl": "https://example.com",
             "whatsNew": None, "marketingUrl": None}}
@@ -115,6 +120,13 @@ class ReplacementAsc:
             self.submissions.append(submission)
             return {"data": submission}
         if method == "GET" and route.startswith("/reviewSubmissions/") and route.endswith("/items"):
+            if self.items_error is not None:
+                raise self.items_error
+            if self.items_malformed:
+                return {"errors": [{"status": "500", "title": "fixture items read failure"}]}
+            sid = route.split("/")[2]
+            if self.items_by_submission is not None:
+                return {"data": list(self.items_by_submission.get(sid, []))}
             return {"data": self.items}
         if method == "GET" and route.startswith("/reviewSubmissions/"):
             submission = next(s for s in self.submissions if s["id"] == route.split("/")[2])
@@ -141,6 +153,10 @@ class ReplacementAsc:
             item = {"type": "reviewSubmissionItems", "id": f"i{len(self.items) + 1}",
                     "relationships": body["data"]["relationships"]}
             self.items.append(item)
+            if self.items_by_submission is not None:
+                relationships = ((body.get("data") or {}).get("relationships") or {})
+                submitted_sid = ((relationships.get("reviewSubmission") or {}).get("data") or {}).get("id")
+                self.items_by_submission.setdefault(submitted_sid, []).append(item)
             return {"data": item}
         if method == "GET" and route == f"/appStoreVersions/{VERSION_ID}/appStoreReviewDetail":
             return {"data": {"type": "appStoreReviewDetails", "id": "detail1", "attributes": {
@@ -335,6 +351,93 @@ class ReplaceContractTests(unittest.TestCase):
         dry_run_idx = text.index("dry_run:")
         self.assertIn("default: true", text[dry_run_idx:text.index("confirm:", dry_run_idx)])
         self.assertLess(text.index("timeout-minutes: 15"), text.index("env:"))
+
+
+class ReplaceBlankDraftTests(ReplacementTestBase):
+    """A blank READY_FOR_REVIEW draft must not count as the active review.
+
+    Mirrors the live 2026-10-07 state: one empty editable draft plus one
+    WAITING_FOR_REVIEW submission of 1.1.7 (193). Only a successful, validated
+    empty items read may skip the draft; failed or malformed reads block.
+    """
+
+    def draft_plus_target(self, *, draft_items, items_error=None, items_malformed=False):
+        submissions = [
+            {"type": "reviewSubmissions", "id": DRAFT_ID, "attributes": {"state": "READY_FOR_REVIEW"}},
+            {"type": "reviewSubmissions", "id": SUBMISSION_ID, "attributes": {"state": "WAITING_FOR_REVIEW"}},
+        ]
+        return ReplacementAsc(
+            submissions=submissions,
+            items_by_submission={DRAFT_ID: list(draft_items), SUBMISSION_ID: [version_item()]},
+            items_error=items_error, items_malformed=items_malformed)
+
+    def test_dry_run_skips_proved_blank_draft_and_plans_the_waiting_target(self):
+        fake = self.draft_plus_target(draft_items=[])
+        client, result = self.run_submit(fake, dry_run=True, replace=OLD_BUILD, confirm=CONFIRM)
+        self.assertEqual(result["marker"], "REPLACE_VERIFIED")
+        self.assertEqual(result["replace"]["submission_id"], SUBMISSION_ID)
+        self.assertEqual(result["replace"]["old_build"], OLD_BUILD)
+        self.assertEqual(result["replace"]["new_build"], NEW_BUILD)
+        self.assertEqual(client.writes, 0)
+        self.assertEqual(fake.writes, [])
+
+    def test_confirmed_replacement_cancels_only_the_target_and_never_the_blank_draft(self):
+        fake = self.draft_plus_target(draft_items=[])
+        client, result = self.run_submit(fake, replace=OLD_BUILD, confirm=CONFIRM)
+        self.assertEqual(result["marker"], "APP_STORE_SUBMITTED")
+        self.assertEqual(result["replace"]["old_build"], OLD_BUILD)
+        self.assertEqual(result["replace"]["new_build"], NEW_BUILD)
+        self.assertEqual(result["replace"]["submission_id"], SUBMISSION_ID)
+        cancel_bodies = fake.writes_on(f"/reviewSubmissions/{SUBMISSION_ID}")
+        self.assertEqual(cancel_bodies, [{"data": {"type": "reviewSubmissions", "id": SUBMISSION_ID,
+                                                   "attributes": {"canceled": True}}}])
+        self.assertFalse(any(DRAFT_ID in route for _, route in fake.writes))
+        self.assertTrue(any(method == "POST" and route == "/reviewSubmissions"
+                            for method, route in fake.writes))
+        self.assertEqual(client.writes, len(fake.writes))
+
+    def test_nonblank_ready_draft_still_counts_as_active_and_blocks(self):
+        fake = self.draft_plus_target(draft_items=[version_item("i-draft")])
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_REPLACE_MULTIPLE"):
+            self.run_submit(fake, replace=OLD_BUILD)
+        self.assertEqual(fake.writes, [])
+
+    def test_failed_draft_items_read_blocks_instead_of_treating_draft_as_empty(self):
+        failed = asc.SubmissionError("BLOCKED_ASC_API: GET request failed with HTTP 500")
+        fake = self.draft_plus_target(draft_items=[], items_error=failed)
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_ASC_API"):
+            self.run_submit(fake, replace=OLD_BUILD)
+        self.assertEqual(fake.writes, [])
+
+    def test_malformed_draft_items_response_blocks_instead_of_treating_draft_as_empty(self):
+        fake = self.draft_plus_target(draft_items=[], items_malformed=True)
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_ASC_RESPONSE"):
+            self.run_submit(fake, replace=OLD_BUILD)
+        self.assertEqual(fake.writes, [])
+
+    def test_malformed_draft_item_row_blocks(self):
+        fake = self.draft_plus_target(
+            draft_items=[{"type": "reviewSubmissionItems", "id": "i-x", "relationships": {}}])
+        with self.assertRaisesRegex(asc.SubmissionError, "relationship data is missing or malformed"):
+            self.run_submit(fake, replace=OLD_BUILD)
+        self.assertEqual(fake.writes, [])
+
+    def test_draft_without_id_blocks_instead_of_treating_it_as_empty(self):
+        submissions = [
+            {"type": "reviewSubmissions", "attributes": {"state": "READY_FOR_REVIEW"}},
+            {"type": "reviewSubmissions", "id": SUBMISSION_ID, "attributes": {"state": "WAITING_FOR_REVIEW"}},
+        ]
+        fake = ReplacementAsc(submissions=submissions,
+                              items_by_submission={SUBMISSION_ID: [version_item()]})
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_REVIEW_SUBMISSION"):
+            self.run_submit(fake, replace=OLD_BUILD)
+        self.assertEqual(fake.writes, [])
+
+    def test_duplicate_target_items_fail_replacement(self):
+        fake = ReplacementAsc(items=[version_item("i1"), version_item("i2")])
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_REPLACE_ITEMS"):
+            self.run_submit(fake, replace=OLD_BUILD)
+        self.assertEqual(fake.writes, [])
 
 
 if __name__ == "__main__":
