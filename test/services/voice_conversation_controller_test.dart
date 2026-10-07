@@ -1212,6 +1212,169 @@ void main() {
       expect(occurrenceDate.day, dayAfterTomorrow.day);
     });
   });
+
+  group('그다음주 체이닝', () {
+    // 회귀 방지: "그다음주"를 반복 발화하면 매번 +7일씩 다음 주로 전진해야 한다.
+    // 파서는 stateless로 "그다음주"를 오늘+2주로 고정하지만 컨트롤러가 직전
+    // 주 조회 범위에 7일을 더해 체이닝한다. 날짜는 모두 내년 기준 상대값.
+    final year = DateTime.now().year + 1;
+    final now = DateTime(year, 7, 3, 10);
+    DateTime plus(DateTime from, int days) =>
+        DateTime(from.year, from.month, from.day + days);
+    final thisMonday = plus(now, -(now.weekday - 1));
+    final nextMonday = plus(thisMonday, 7);
+
+    test('"다음주" → "그다음주" → "그다음주"가 매번 +7일씩 다음 주로 전진한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('next-week', '다음주 회의', plus(nextMonday, 2)),
+          _event('week-after', '다다음주 회의', plus(nextMonday, 9)),
+          _event('week-after-2', '그다음주 회의', plus(nextMonday, 16)),
+        ],
+        now: () => now,
+      );
+
+      final first = controller.handle('다음주 일정 보여줘');
+      expect(first.action, VoiceConversationAction.showEvents);
+      expect(first.queryRange?.start, nextMonday);
+      expect(first.queryRange?.end, plus(nextMonday, 7));
+      expect(first.queryRange?.isMultiDay, isTrue);
+
+      final second = controller.handle('그다음주 일정 보여줘');
+      expect(second.action, VoiceConversationAction.showEvents);
+      expect(second.queryRange?.start, plus(nextMonday, 7));
+      expect(second.queryRange?.end, plus(nextMonday, 14));
+      expect(second.queryRange?.isMultiDay, isTrue);
+      expect(
+        second.visibleEvents.map((event) => event.id),
+        <String>['week-after'],
+      );
+
+      final third = controller.handle('그다음주 일정 보여줘');
+      expect(third.action, VoiceConversationAction.showEvents);
+      expect(third.queryRange?.start, plus(nextMonday, 14));
+      expect(third.queryRange?.end, plus(nextMonday, 21));
+      expect(third.queryRange?.isMultiDay, isTrue);
+      expect(
+        third.visibleEvents.map((event) => event.id),
+        <String>['week-after-2'],
+      );
+
+      final fourth = controller.handle('그다음주 일정 보여줘');
+      expect(fourth.queryRange?.start, plus(nextMonday, 21));
+      expect(fourth.queryRange?.end, plus(nextMonday, 28));
+    });
+
+    test('연 경계를 넘는 "그다음주" 체이닝도 정확히 +7일씩 전진한다', () {
+      final yearEnd = DateTime(year, 12, 25, 10);
+      final decNextMonday = plus(plus(yearEnd, -(yearEnd.weekday - 1)), 7);
+      final controller = VoiceConversationController(
+        events: <EventModel>[],
+        now: () => yearEnd,
+      );
+
+      final first = controller.handle('다음주 일정 보여줘');
+      expect(first.queryRange?.start, decNextMonday);
+
+      final second = controller.handle('그다음주 일정 보여줘');
+      expect(second.queryRange?.start, plus(decNextMonday, 7));
+      expect(second.queryRange?.end, plus(decNextMonday, 14));
+      // 다음 월요일(12/26~1/1) +7일은 항상 다음 해 1월이다.
+      expect(second.queryRange!.start.year, year + 1);
+      expect(second.queryRange!.start.month, 1);
+
+      final third = controller.handle('그다음주 일정 보여줘');
+      expect(third.queryRange?.start, plus(decNextMonday, 14));
+      expect(third.queryRange?.end, plus(decNextMonday, 21));
+    });
+
+    test('첫 발화에서 "그다음주"는 직전 맥락 없이 오늘 기준 2주 뒤로 해석한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[],
+        now: () => now,
+      );
+
+      final first = controller.handle('그다음주 일정 보여줘');
+      expect(first.action, VoiceConversationAction.showEvents);
+      expect(first.queryRange?.start, plus(thisMonday, 14));
+      expect(first.queryRange?.end, plus(thisMonday, 21));
+      expect(first.queryRange?.isMultiDay, isTrue);
+    });
+
+    test('단일일 조회 후 "그다음주"는 7일 주 범위가 아니므로 체이닝하지 않는다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('day-event', '특정 일일 일정', DateTime(year, 7, 10, 10)),
+        ],
+        now: () => now,
+      );
+
+      final day = controller.handle('7월 10일 일정 보여줘');
+      expect(day.action, VoiceConversationAction.showEvents);
+      expect(day.queryRange?.isMultiDay, isFalse);
+
+      final second = controller.handle('그다음주 일정 보여줘');
+      expect(second.action, VoiceConversationAction.showEvents);
+      expect(second.queryRange?.start, plus(thisMonday, 14));
+      expect(second.queryRange?.end, plus(thisMonday, 21));
+    });
+
+    test('"이번주" 후 "그다음주"는 직전 이번주 +7일(=다음주)로 해석한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('this-week', '이번주 일정', plus(thisMonday, 1)),
+          _event('next-week', '다음주 일정', plus(nextMonday, 1)),
+        ],
+        now: () => now,
+      );
+
+      final first = controller.handle('이번주 일정 보여줘');
+      expect(first.queryRange?.start, thisMonday);
+      expect(first.queryRange?.end, nextMonday);
+
+      final second = controller.handle('그다음주 일정 보여줘');
+      expect(second.action, VoiceConversationAction.showEvents);
+      expect(second.queryRange?.start, nextMonday);
+      expect(second.queryRange?.end, plus(nextMonday, 7));
+      expect(
+        second.visibleEvents.map((event) => event.id),
+        <String>['next-week'],
+      );
+    });
+
+    test('STT 공백이 섞인 "그 다음 주"도 동일하게 체이닝한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[],
+        now: () => now,
+      );
+
+      controller.handle('다음주 일정 보여줘');
+      final second = controller.handle('그 다음 주 일정 보여줘');
+      expect(second.action, VoiceConversationAction.showEvents);
+      expect(second.queryRange?.start, plus(nextMonday, 7));
+      expect(second.queryRange?.end, plus(nextMonday, 14));
+    });
+
+    test('"그다음주" 텍스트에 명시적 날짜가 끼면 그 명시적 날짜가 우선한다', () {
+      final march = DateTime(year, 3, 1, 10);
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('march-5', '3월 5일 일정', DateTime(year, 3, 5, 10)),
+        ],
+        now: () => march,
+      );
+
+      controller.handle('다음주 일정 보여줘');
+      final explicit = controller.handle('3월 5일 그다음주 일정 보여줘');
+      expect(explicit.action, VoiceConversationAction.showEvents);
+      expect(explicit.queryRange?.start, DateTime(year, 3, 5));
+      expect(explicit.queryRange?.end, DateTime(year, 3, 6));
+      expect(
+        explicit.visibleEvents.map((event) => event.id),
+        <String>['march-5'],
+      );
+    });
+  });
 }
 
 EventModel _event(String id, String title, DateTime localStart) {

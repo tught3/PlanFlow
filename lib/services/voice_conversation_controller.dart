@@ -1096,19 +1096,53 @@ class VoiceConversationController {
   /// 직전 조회 범위([_VoiceConversationState.lastQueryRange])가 있을 때
   /// "그 주"/"같은 주"는 그 범위 전체를, "그날"/"당일"은 그 범위가 단일일일
   /// 때만 그 하루를 가리킨다. 명시적 날짜가 있으면 항상 파서가 우선한다.
+  ///
+  /// 추가로 "그다음주"는 stateless 파서가 항상 오늘+2주로 고정해버려서
+  /// (P1 버그) "그다음주"를 반복 발화해도 같은 주로 멈춘다. 직전 조회 범위가
+  /// 7일짜리 주 범위일 때는 그 다음 주로 정채어서 "다음주"→"그다음주"→
+  /// "그다음주" 가 매번 +7일씩 전진하도록 한다. 텍스트에 명시적 날짜(예:
+  /// "3월 5일 그다음주")가 끼면 standalone "그다음주" 파싱 결과와 어긋나므로
+  /// 그때는 명시적 날짜가 우선한다(원래 파서 결과를 그대로 반환).
   VoiceConversationDateRange? _parseDateRangeWithContext(
     String text,
     _VoiceConversationState state,
   ) {
+    final compact = _compact(text);
     final direct = _parseDateRange(text);
     if (direct != null) {
+      if (compact.contains('그다음주')) {
+        final stateless = _parseDateRange('그다음주');
+        final hasExplicitDate = stateless == null ||
+            direct.start != stateless.start ||
+            direct.end != stateless.end ||
+            direct.isMultiDay != stateless.isMultiDay;
+        if (!hasExplicitDate) {
+          final context = state.lastQueryRange;
+          if (context != null &&
+              context.isMultiDay &&
+              _isSevenDayWeekRange(context)) {
+            return VoiceConversationDateRange(
+              start: DateTime(
+                context.start.year,
+                context.start.month,
+                context.start.day + 7,
+              ),
+              end: DateTime(
+                context.end.year,
+                context.end.month,
+                context.end.day + 7,
+              ),
+              isMultiDay: true,
+            );
+          }
+        }
+      }
       return direct;
     }
     final context = state.lastQueryRange;
     if (context == null) {
       return null;
     }
-    final compact = _compact(text);
     // '그다음주'는 파서가 "2주 뒤"로 이미 처리하므로('그주'와 부분일치하지
     // 않음) 여기 정규식에 걸리지 않는다.
     if (compact.contains('그주') || compact.contains('같은주')) {
@@ -1119,6 +1153,13 @@ class VoiceConversationController {
       return context;
     }
     return null;
+  }
+
+  /// 7일짜리 주간 범위인지(예: 다음주 7/6~7/13) 판정한다. _parseDateRangeWithContext의
+  /// "그다음주" 체이닝 가드에 사용한다 — 7일 단일이 아닌 단일일/멀티데이 범위를
+  /// 체이닝에 쓰면 잘못된 만큼 이동한다.
+  bool _isSevenDayWeekRange(VoiceConversationDateRange range) {
+    return range.end.difference(range.start).inDays == 7;
   }
 
   /// "그 주", "그날", "당일", "같은 주"처럼 직전 조회 맥락 없이는 해석할 수
