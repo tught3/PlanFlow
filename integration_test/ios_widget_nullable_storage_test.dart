@@ -34,7 +34,10 @@
 // 시뮬레이터에서 `scripts/ios/e2e_xctest_flow.sh`로 이 파일을 실행하고,
 // XCTest 로그에 IOS_NATIVE_WIDGET_NULL_PROBE_PASS 마커와 실행된 테스트
 // 증거가 모두 없으면 fail-closed로 실패한다.
-
+//
+// The storage probe has no accessibility assertions. Mute only the binding's
+// automatic semantics callback for this probe, then restore the original after
+// per-test framework verification so semantics-handle leak checks stay active.
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -74,6 +77,16 @@ const String _bufferKey = 'next_event_travel_buffer_minutes';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  final originalSemanticsCallback =
+      WidgetsBinding.instance.platformDispatcher.onSemanticsEnabledChanged;
+  // Storage-only probe, not accessibility coverage. This isolate-scoped mute
+  // does not affect app behavior; framework binding/leak verification remains
+  // enabled. Restore only after per-test verification via tearDownAll.
+  WidgetsBinding.instance.platformDispatcher.onSemanticsEnabledChanged = () {};
+  tearDownAll(() {
+    WidgetsBinding.instance.platformDispatcher.onSemanticsEnabledChanged =
+        originalSemanticsCallback;
+  });
   testWidgets(
     'native iOS UserDefaults stores null clears as empty/zero without NSNull SIGABRT',
     (WidgetTester tester) async {
