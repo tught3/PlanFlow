@@ -228,5 +228,9 @@ void main() {
         'date_clear=empty gw_clear=empty buffer=0',
       );
     },
+    // Storage-only native probe: no semantics assertions here, so the
+    // framework's automatic AX SemanticsHandle is unnecessary and would
+    // otherwise trip the end-of-test _verifySemanticsHandlesWereDisposed check.
+    semanticsEnabled: false,
   );
 }
