@@ -10,6 +10,7 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- 일정/알람 앱: Android 13+에서 정확 알람을 사용자 수동 설정 없이 허용받기 위함

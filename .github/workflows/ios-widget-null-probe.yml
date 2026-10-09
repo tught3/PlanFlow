@@ -1,0 +1,295 @@
+name: iOS Widget Null Storage Probe (Native)
+
+# HomeWidget nullable-storage 회귀(앱 심사 build195 (1.1.7): Dart null -> NSNull ->
+# HomeWidgetPlugin UserDefaults setValue SIGABRT)에 대한 네이티브 iOS
+# 시뮬레이터 프로브. 독립형 통합 테스트 하나를 Flutter 공식 XCTest 호스트
+# 러너로 실행하고, XCTest 로그에 네이티브 PASS 마커와 실행된 테스트 증거가
+# 모두 없으면 fail-closed로 실패한다. 빌드 성공만으로는 초록이 되지 않는다.
+#
+# 트리거 정책 (부모 승인된 고립형 임시 프로토콜):
+#   - workflow_dispatch: 병합 전/후 수동 실행용.
+#   - push: QA 브랜치 fix/pre-ring-departure-eta-20261008 에서, 프로브
+#     2개 신규 파일 + IO 패치 경로에만 자동 실행된다. main에는 어떤 자동
+#     잡도 없다. 배포/시크릿 쓰기는 전혀 없다(placeholder 정의만 사용).
+#
+# 실행 환경: macos-15 러너 위에서 설치된 Xcode 16 툴체인을 DEVELOPER_DIR로
+# 명시적으로 선택한다(16.4 우선, 없으면 임의의 Xcode 16* 중 선택, 그것도
+# 없으면 fail-closed). macos-15 기본 Xcode가 상위 세대로 바뀌어도 이 프로브는
+# 검증되지 않은 툴체인에서 조용히 실행되지 않는다. 도구 체인 설치는 하지
+# 않는다. 선택된 xcodebuild -version / iphonesimulator SDK 버전 / 시뮬레이터
+# 런타임 목록은 수령증으로 아티팩트에 영속된다. 이것은 iOS 26/27 런타임
+# 주장이 아니다. UserDefaults/NSNull property-list 실패는 OS 세대와 무관하게
+# 동일한 네이티브 경로에서 발생한다(SDK/OS 런타임 갭은 결과 보고에 명시됨).
+#
+# 매트릭스: 폰 + 태블릿 정확히 하나씩 (simctl_discover의 mainstream / ipad
+# 카테고리). 둘 중 하나라도 없으면 차단된다. 시뮬레이터는 자체 소유 UDID로
+# 생성/부팅하고, 항상 종료+삭제로 정리한다. 스크린샷 캡처는 추가하지 않는다.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - fix/pre-ring-departure-eta-20261008
+    paths:
+      - 'integration_test/ios_widget_nullable_storage_test.dart'
+      - 'scripts/ios/tests/ios_widget_null_probe_contract.sh'
+      - 'lib/services/home_widget_platform_io.dart'
+      - '.github/workflows/ios-widget-null-probe.yml'
+
+permissions:
+  contents: read
+
+env:
+  IOS_BUNDLE_ID: com.fluxstudio.planflow
+  PROBE_FLOW_FILE: integration_test/ios_widget_nullable_storage_test.dart
+  E2E_WATCHDOG_HEARTBEAT_INTERVAL: 30
+
+jobs:
+  preflight:
+    runs-on: macos-15
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select installed Xcode 16 toolchain (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=""
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            selected="/Applications/Xcode_16.4.app"
+          else
+            selected="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | tail -n 1 || true)"
+          fi
+          if [ -z "$selected" ] || [ ! -d "$selected" ]; then
+            echo "::error title=BLOCKED_XCODE16_MISSING::No Xcode 16 toolchain found under /Applications (preferred: Xcode_16.4.app; candidates: $(ls -d /Applications/Xcode*.app 2>/dev/null | tr '\n' ' ')). Refusing to run on an unvalidated toolchain."
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$selected/Contents/Developer" >> "$GITHUB_ENV"
+          echo "IOS_WIDGET_PROBE_XCODE_SELECT: $selected"
+
+      - name: Validate native probe contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ios/tests/ios_widget_null_probe_contract.sh
+
+      - name: Discover and filter phone/tablet probe matrix
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix_json="$(bash scripts/ios/simctl_discover.sh)"
+          [[ "$matrix_json" != "[]" ]] || {
+            echo "::error title=BLOCKED_NO_SIMULATOR_RUNTIME::No supported simulator was discovered."
+            exit 1
+          }
+          probe_matrix="$(printf '%s' "$matrix_json" | jq -c '[.[] | select(.category == "mainstream" or .category == "ipad")]')"
+          count="$(printf '%s' "$probe_matrix" | jq 'length')"
+          if [[ "$count" -ne 2 ]]; then
+            echo "::error title=BLOCKED_PROBE_PHONE_TABLET_REQUIRED::Probe requires exactly one mainstream (phone) and one ipad (tablet) simulator; discovered $count candidate(s): $(printf '%s' "$probe_matrix" | jq -c 'map(.category)')."
+            exit 1
+          fi
+          mainstream_count="$(printf '%s' "$probe_matrix" | jq '[.[] | select(.category == "mainstream")] | length')"
+          ipad_count="$(printf '%s' "$probe_matrix" | jq '[.[] | select(.category == "ipad")] | length')"
+          if [[ "$mainstream_count" -ne 1 || "$ipad_count" -ne 1 ]]; then
+            echo "::error title=BLOCKED_PROBE_PHONE_TABLET_REQUIRED::Probe requires exactly one mainstream and one ipad entry (mainstream=$mainstream_count ipad=$ipad_count)."
+            exit 1
+          fi
+          echo "matrix=$probe_matrix" >> "$GITHUB_OUTPUT"
+          echo "IOS_WIDGET_PROBE_MATRIX_PASS: categories=$(printf '%s' "$probe_matrix" | jq -c 'map(.category)')"
+
+  native-probe:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.matrix != '' && needs.preflight.outputs.matrix != '[]' }}
+    runs-on: macos-15
+    # 단일 플로우만 실행한다. 클린 APP_BUILD 변동을 감안해 스테이지 상한
+    # (900s)보다 넉넉하지만 검증된 e2e 매트릭스 잡(45m)보다는 짧다.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.preflight.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select installed Xcode 16 toolchain (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=""
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            selected="/Applications/Xcode_16.4.app"
+          else
+            selected="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | tail -n 1 || true)"
+          fi
+          if [ -z "$selected" ] || [ ! -d "$selected" ]; then
+            echo "::error title=BLOCKED_XCODE16_MISSING::No Xcode 16 toolchain found under /Applications (preferred: Xcode_16.4.app; candidates: $(ls -d /Applications/Xcode*.app 2>/dev/null | tr '\n' ' ')). Refusing to run on an unvalidated toolchain."
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$selected/Contents/Developer" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
+          {
+            echo "selected_xcode=$selected"
+            DEVELOPER_DIR="$selected/Contents/Developer" xcodebuild -version
+            DEVELOPER_DIR="$selected/Contents/Developer" xcrun --sdk iphonesimulator --show-sdk-version
+            DEVELOPER_DIR="$selected/Contents/Developer" xcrun simctl list runtimes
+          } > "$RUNNER_TEMP/e2e-artifacts/xcode-selection-receipt.txt" 2>&1
+          cat "$RUNNER_TEMP/e2e-artifacts/xcode-selection-receipt.txt"
+          echo "IOS_WIDGET_PROBE_XCODE_SELECT: $selected"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Prepare Flutter and CocoaPods (bounded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
+          E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/pub-get.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/pub-get.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 300 flutter pub get
+          E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/pod-install.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/pod-install.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 300 pod install --project-directory=ios
+
+      - name: Create and boot ${{ matrix.category }} simulator (${{ matrix.name }})
+        id: boot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
+          device_name="PlanFlow-WidgetProbe-${{ matrix.category }}-${{ github.run_id }}"
+          udid_file="$RUNNER_TEMP/e2e-artifacts/simulator-udid"
+          set +e
+          E2E_DEVICE_NAME="$device_name" \
+            E2E_DEVICE_TYPE="${{ matrix.devicetype_id }}" \
+            E2E_RUNTIME_ID="${{ matrix.runtime_id }}" \
+            E2E_UDID_FILE="$udid_file" \
+            E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/simulator-setup.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/simulator-setup.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 180 bash -c '
+              set -euo pipefail
+              created_udid="$(xcrun simctl create "$E2E_DEVICE_NAME" "$E2E_DEVICE_TYPE" "$E2E_RUNTIME_ID")"
+              printf "%s" "$created_udid" > "$E2E_UDID_FILE"
+              xcrun simctl boot "$created_udid"
+              xcrun simctl bootstatus "$created_udid" -b
+            '
+          status=$?
+          set -e
+          udid="$(cat "$udid_file" 2>/dev/null || true)"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          if [[ "$status" -ne 0 || -z "$udid" ]]; then
+            echo "::error title=BLOCKED_SIMULATOR_BOOT::Simulator create/boot watchdog exit=$status udid=${udid:-none}"
+            exit 1
+          fi
+          echo "E2E_STAGE stage=SIMULATOR_BOOT status=PASS evidence=simulator-setup.log"
+
+      - name: Run native null-storage probe through bounded XCTest stages
+        id: run_probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts"
+          flow_name="$(basename "$PROBE_FLOW_FILE" .dart)"
+          flow_artifact="$artifact_dir/$flow_name"
+          flow_derived="$RUNNER_TEMP/e2e-derived/$flow_name"
+          flow_result="$flow_artifact/$flow_name.xcresult"
+          mkdir -p "$flow_artifact"
+          set +e
+          bash scripts/ios/e2e_xctest_flow.sh \
+            "$PROBE_FLOW_FILE" \
+            "${{ steps.boot.outputs.udid }}" \
+            "$IOS_BUNDLE_ID" \
+            "$flow_derived" \
+            "$flow_result" \
+            "$flow_artifact" \
+            900
+          flow_status=$?
+          set -e
+          combined_log="$flow_artifact/e2e-combined.log"
+          : > "$combined_log"
+          while IFS= read -r log_file; do
+            printf '\n--- %s ---\n' "$log_file" >> "$combined_log"
+            cat "$log_file" >> "$combined_log"
+          done < <(find "$flow_artifact/stages" -type f -name '*.log' -print | sort)
+          if [[ -s "$combined_log" ]]; then
+            source scripts/ios/e2e_mask_secrets.sh
+            mask_secrets < "$combined_log" > "$combined_log.masked"
+            mv "$combined_log.masked" "$combined_log"
+          fi
+          bash scripts/ios/e2e_summarize.sh \
+            "${{ matrix.category }}" \
+            "$combined_log" \
+            "$flow_artifact/failure-summary.md" \
+            "$PROBE_FLOW_FILE" || true
+          echo "FLOW_RESULT flow=$flow_name status=$flow_status category=${{ matrix.category }}"
+          exit "$flow_status"
+
+      - name: Verify native probe evidence (fail-closed)
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          flow_name="$(basename "$PROBE_FLOW_FILE" .dart)"
+          combined_log="$RUNNER_TEMP/e2e-artifacts/$flow_name/e2e-combined.log"
+          if [[ ! -s "$combined_log" ]]; then
+            echo "::error title=BLOCKED_PROBE_LOG_MISSING::Combined stage log is missing or empty; no native evidence to verify."
+            exit 1
+          fi
+          if grep -qF 'IOS_NATIVE_WIDGET_NULL_PROBE_SKIPPED' "$combined_log"; then
+            echo "::error title=BLOCKED_PROBE_SKIPPED_NOT_GREEN::Probe reported SKIPPED; a skipped probe must never be reported as native green."
+            exit 1
+          fi
+          if ! grep -qF 'IOS_NATIVE_WIDGET_NULL_PROBE_PASS' "$combined_log"; then
+            echo "::error title=BLOCKED_PROBE_MARKER_MISSING::Native PASS marker absent; adapter assertions or typed readbacks did not complete (possible native crash)."
+            exit 1
+          fi
+          if ! grep -qE 'Executed [1-9][0-9]* tests?' "$combined_log"; then
+            echo "::error title=BLOCKED_PROBE_NO_TESTS_EXECUTED::Zero XCTest cases executed; build success alone is not probe success."
+            exit 1
+          fi
+          echo "IOS_WIDGET_PROBE_EVIDENCE_PASS: native PASS marker and executed XCTest evidence verified for ${{ matrix.category }}"
+
+      - name: Shutdown and delete simulator
+        if: ${{ always() && steps.boot.outputs.udid != '' }}
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/e2e-artifacts"
+          E2E_UDID="${{ steps.boot.outputs.udid }}" \
+            E2E_WATCHDOG_LOG_FILE="$RUNNER_TEMP/e2e-artifacts/teardown.log" \
+            E2E_WATCHDOG_TAIL_FILE="$RUNNER_TEMP/e2e-artifacts/teardown.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 120 bash -c '
+              shutdown_status=0
+              delete_status=0
+              xcrun simctl shutdown "$E2E_UDID" >/dev/null 2>&1 || shutdown_status=$?
+              xcrun simctl delete "$E2E_UDID" >/dev/null 2>&1 || delete_status=$?
+              if [[ "$delete_status" -ne 0 ]]; then
+                echo "simctl delete failed: shutdown_status=$shutdown_status delete_status=$delete_status" >&2
+                exit "$delete_status"
+              fi
+              if [[ "$shutdown_status" -ne 0 ]]; then
+                echo "simulator was already stopped or shutdown returned $shutdown_status; delete completed" >&2
+              fi
+              exit 0
+            '
+          status=$?
+          echo "E2E_STAGE stage=TEARDOWN status=$([[ "$status" -eq 0 ]] && echo PASS || echo FAIL) exit=$status"
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error title=BLOCKED_SIMULATOR_TEARDOWN::Simulator cleanup failed with watchdog exit=$status"
+            exit "$status"
+          fi
+
+      - name: Upload XCTest and stage evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: planflow-ios-widget-null-probe-${{ matrix.category }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 14

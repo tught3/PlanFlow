@@ -25,8 +25,17 @@ class _IoHomeWidgetPlatform extends HomeWidgetPlatform {
       return false;
     }
 
+    // UserDefaults cannot store NSNull. Preserve nullable-value clearing on
+    // iOS with the existing native reader defaults instead of forwarding null
+    // through home_widget's method channel. Android intentionally keeps null:
+    // its SharedPreferences contract removes the existing key.
+    final nativeValue =
+        defaultTargetPlatform == TargetPlatform.iOS && data == null
+            ? (id == 'next_event_travel_buffer_minutes' ? 0 : '')
+            : data;
+
     try {
-      return await HomeWidget.saveWidgetData<Object?>(id, data) ?? false;
+      return await HomeWidget.saveWidgetData<Object?>(id, nativeValue) ?? false;
     } catch (_) {
       return false;
     }

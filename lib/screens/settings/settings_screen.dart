@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:planflow_fresh_location/planflow_fresh_location.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
@@ -29,11 +30,13 @@ import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/ad_consent_service.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/calendar_sync_service.dart';
+import '../../services/critical_alarm_preflight_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/device_calendar_service.dart';
@@ -198,6 +201,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   String? _lastFeedbackAdminEmail;
   final GlobalKey _calendarSyncSectionKey = GlobalKey();
   NotificationPermissionStatus? _notificationPermissionStatus;
+  AppPermissionStatus? _backgroundLocationStatus;
+  bool _backgroundLocationOptedIn = false;
+  bool _isRequestingBackgroundLocation = false;
+  bool _isRevokingBackgroundLocationOptIn = false;
+  Map<String, int>? _backgroundLocationRestoreSummary;
+  int? _backgroundLocationCanceledRequestCount;
+  bool _backgroundLocationRestoreFailed = false;
 
   String? get _userId => widget._userId ?? authProvider.userId;
   bool get _isFeedbackAdmin {
@@ -254,6 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _naverCalendarPermissionService = widget._naverCalendarPermissionService;
 
     unawaited(_loadSettings());
+    unawaited(_refreshBackgroundLocationStatus());
     unawaited(_loadAppVersionInfo());
     unawaited(_loadWidgetDisplaySettings());
     final naverCalDavStateLoaded = _loadNaverCalDavState();
@@ -345,6 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshCalendarConnectionState(runAutoRetry: true));
+      unawaited(_refreshBackgroundLocationStatus());
     }
   }
 
@@ -2901,7 +2913,103 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Future<void> _refreshBackgroundLocationStatus() async {
+    final service = AppPermissionService();
+    final status = await service.checkBackgroundLocationPermissionStatus();
+    final optedIn = await service.isBackgroundLocationOptedIn();
+    if (mounted) {
+      setState(() {
+        _backgroundLocationStatus = status;
+        _backgroundLocationOptedIn = optedIn;
+      });
+    }
+  }
+
+  Future<void> _requestOptionalBackgroundLocation() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('강한 장소 알람 위치 권한'),
+        content: const Text(
+          '강한 장소 알람 직전에 이동 시간을 다시 계산하려면 앱을 사용하지 않는 동안에도 현재 위치를 확인할 수 있어야 합니다.\n\n'
+          '계속하려면 위치 권한을 별도로 허용하고, Android 설정에서 “항상 허용”을 선택해 주세요. 허용하지 않아도 기존 알람은 유지됩니다. 위치 권한이 있어도 운영체제의 제한으로 위치 확인이 지연되거나 실패할 수 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('나중에'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('계속'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final service = AppPermissionService();
+    await service.setBackgroundLocationOptIn(true);
+    if (!mounted) return;
+    setState(() {
+      _backgroundLocationOptedIn = true;
+      _isRequestingBackgroundLocation = true;
+    });
+    final status = await service.requestBackgroundLocationPermission();
+    if (!mounted) return;
+    setState(() {
+      _backgroundLocationStatus = status;
+      _isRequestingBackgroundLocation = false;
+    });
+  }
+
+  Future<void> _disableBackgroundLocationOptIn() async {
+    if (_isRevokingBackgroundLocationOptIn) return;
+    setState(() {
+      _isRevokingBackgroundLocationOptIn = true;
+      _backgroundLocationRestoreSummary = null;
+      _backgroundLocationCanceledRequestCount = null;
+      _backgroundLocationRestoreFailed = false;
+    });
+    try {
+      await AppPermissionService().setBackgroundLocationOptIn(false);
+      if (mounted) setState(() => _backgroundLocationOptedIn = false);
+      final canceled =
+          await PlanflowFreshLocation.cancelPendingBackgroundRequests();
+      if (mounted) {
+        setState(() => _backgroundLocationCanceledRequestCount = canceled);
+      }
+      final summary = await const CriticalAlarmPreflightService()
+          .restorePendingAfterConsentRevoked();
+      if (mounted) {
+        setState(() => _backgroundLocationRestoreSummary = summary);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Consent-revocation alarm restore failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _backgroundLocationOptedIn = false;
+          _backgroundLocationRestoreFailed = true;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isRevokingBackgroundLocationOptIn = false);
+    }
+  }
+
   Widget _buildSmartAlarmSettings() {
+    final statusText = switch (_backgroundLocationStatus) {
+      AppPermissionStatus.granted => '백그라운드 위치 허용됨',
+      AppPermissionStatus.unavailable => '이 기능은 Android에서만 지원됩니다',
+      AppPermissionStatus.settingsRequired => 'Android 설정에서 “항상 허용”을 선택해 주세요',
+      AppPermissionStatus.denied => _backgroundLocationOptedIn
+          ? '동의됨, Android “항상 허용” 설정이 필요합니다'
+          : '선택 사항: 앱을 사용하지 않을 때도 위치 확인 허용',
+      _ => '선택 사항: 앱을 사용하지 않을 때도 위치 확인 허용',
+    };
+    final backgroundActionBusy =
+        _isRequestingBackgroundLocation || _isRevokingBackgroundLocationOptIn;
     return _SectionCard(
       title: '스마트 출발 알림 설정',
       subtitle: '외부 일정마다 현재 위치와 이동시간을 다시 계산해 출발 시각을 알려줍니다.',
@@ -2909,6 +3017,79 @@ class _SettingsScreenState extends State<SettingsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildPlanFlowNotificationNotice(),
+          const SizedBox(height: 12),
+          Text(
+            '앱을 사용하지 않는 동안에도 강한 장소 알람 직전에 이동 시간을 다시 계산하기 위해 현재 위치를 확인할 수 있습니다. 권한을 허용해도 운영체제가 위치 확인을 지연하거나 제한할 수 있어 10초 내 확인은 보장되지 않습니다. 동의하지 않아도 기존 알람은 유지됩니다.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text(statusText)),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                key: const ValueKey('settings-background-location-opt-in'),
+                onPressed: backgroundActionBusy ||
+                        _backgroundLocationStatus == null ||
+                        _backgroundLocationStatus ==
+                            AppPermissionStatus.unavailable
+                    ? null
+                    : _backgroundLocationOptedIn &&
+                            _backgroundLocationStatus ==
+                                AppPermissionStatus.granted
+                        ? _disableBackgroundLocationOptIn
+                        : _requestOptionalBackgroundLocation,
+                child: Text(
+                  _isRevokingBackgroundLocationOptIn
+                      ? '해제 중…'
+                      : _isRequestingBackgroundLocation
+                          ? '확인 중…'
+                          : _backgroundLocationOptedIn &&
+                                  _backgroundLocationStatus ==
+                                      AppPermissionStatus.granted
+                              ? '사용 중지'
+                              : '권한 설정',
+                ),
+              ),
+              if (_backgroundLocationOptedIn &&
+                  _backgroundLocationStatus != AppPermissionStatus.granted &&
+                  _backgroundLocationStatus != AppPermissionStatus.unavailable)
+                TextButton(
+                  key: const ValueKey('settings-background-location-opt-out'),
+                  onPressed: backgroundActionBusy
+                      ? null
+                      : _disableBackgroundLocationOptIn,
+                  child: Text(
+                    _isRevokingBackgroundLocationOptIn ? '해제 중…' : '동의 해제',
+                  ),
+                ),
+            ],
+          ),
+          if (_backgroundLocationRestoreFailed ||
+              (_backgroundLocationRestoreSummary?['failed'] ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '일부 알람 복원 상태를 확인하지 못했습니다. 알람 설정을 다시 확인해 주세요.',
+                key: const ValueKey(
+                    'settings-background-location-restore-error'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+              ),
+            )
+          else if (_backgroundLocationRestoreSummary != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '진행 중 재계산 ${_backgroundLocationCanceledRequestCount ?? 0}개 취소. '
+                '알람 ${_backgroundLocationRestoreSummary!['restored'] ?? 0}개 복원, '
+                '${_backgroundLocationRestoreSummary!['skipped'] ?? 0}개 건너뜀',
+                key: const ValueKey(
+                    'settings-background-location-restore-summary'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
           const SizedBox(height: 16),
           _SmartAlarmControl(
             title: '출발 여유 시간',

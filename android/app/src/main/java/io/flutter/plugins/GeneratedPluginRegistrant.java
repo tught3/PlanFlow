@@ -121,6 +121,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin package_info_plus, dev.fluttercommunity.plus.packageinfo.PackageInfoPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new com.fluxstudio.planflow.freshlocation.PlanflowFreshLocationPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin planflow_fresh_location, com.fluxstudio.planflow.freshlocation.PlanflowFreshLocationPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.kasem.receive_sharing_intent.ReceiveSharingIntentPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin receive_sharing_intent, com.kasem.receive_sharing_intent.ReceiveSharingIntentPlugin", e);

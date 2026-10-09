@@ -11,6 +11,7 @@ import '../core/diag_logger.dart';
 import '../core/router.dart';
 import '../data/repositories/event_repository.dart';
 import 'critical_alarm_acknowledgement_store.dart';
+import 'critical_alarm_preflight_service.dart';
 import 'departure_acknowledgement_store.dart';
 
 enum NotificationScheduleStatus {
@@ -35,10 +36,13 @@ class NotificationScheduleResult {
 }
 
 class NotificationService {
-  NotificationService({FlutterLocalNotificationsPlugin? plugin})
+  NotificationService(
+      {FlutterLocalNotificationsPlugin? plugin,
+      this.allowPermissionRequests = true})
       : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
+  final bool allowPermissionRequests;
 
   Future<void>? _initializationFuture;
 
@@ -108,6 +112,7 @@ class NotificationService {
       semanticAction: SemanticAction.none,
     ),
   ];
+
   /// iOS 강한알람 커스텀 사운드. Runner 타겟 번들에 포함된 파일명(확장자 포함).
   /// Android와 동일한 wav를 ios/Runner/planflow_critical_alarm.wav 로 복사해
   /// Xcode Resources에 추가했다. UNNotificationSound는 파일명만 지정하면 된다.
@@ -557,6 +562,12 @@ class NotificationService {
   }
 
   Future<void> cancelEventNotifications(String eventId) async {
+    // 강한알람 preflight 체인(generation + 그 generation 소유 headless 알람/
+    // 소리 알림)을 먼저 무효화해 대기 중인 실행이 부활시키지 못하게 한다.
+    await CriticalAlarmPreflightService.cancelScheduledPreflight(
+      eventId,
+      notifications: this,
+    );
     await cancel(notificationIdFor('$eventId:push'));
     await cancel(notificationIdFor('$eventId:critical'));
     await cancel(notificationIdFor('$eventId:departure'));
@@ -570,6 +581,54 @@ class NotificationService {
   Future<void> cancelEventReminderNotifications(String eventId) async {
     await cancel(notificationIdFor('$eventId:push'));
     await cancel(notificationIdFor('$eventId:critical'));
+    await CriticalAlarmPreflightService.cancelScheduledPreflight(
+      eventId,
+      notifications: this,
+    );
+  }
+
+  /// 예약 대기 중 알림 목록(정리용). 테스트에서 대체할 수 있도록 분리했다.
+  @protected
+  Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async {
+    await initialize();
+    return _plugin.pendingNotificationRequests();
+  }
+
+  /// 동적 강한알람 체인이 출발 타이밍을 소유하는 일정에서, 이미 예약된
+  /// 스마트 준비/사전 액션의 "출발만" 안내(옛 이동시간 기준)를 취소한다.
+  /// 실제 준비 안내와 병합된 준비 문구는 보존한다. 취소 개수를 반환한다.
+  Future<int> cancelDepartureOnlyPreparationPrompts(String eventId) async {
+    final normalized = eventId.trim();
+    if (normalized.isEmpty) {
+      return 0;
+    }
+    final candidateIds = <int>{
+      for (var index = 0;
+          index < _maxSmartPreparationAlarmsPerEvent;
+          index += 1) ...<int>[
+        notificationIdFor('$normalized:smart_preparation:$index'),
+        notificationIdFor('$normalized:pre_action:$index'),
+      ],
+    };
+    final pending = await pendingRequestsForCleanup();
+    var cancelled = 0;
+    for (final request in pending) {
+      if (!candidateIds.contains(request.id)) {
+        continue;
+      }
+      final firstLine = (request.body ?? '').split('\n').first.trim();
+      const prefix = '스마트 준비 알람:';
+      final promptTitle = firstLine.startsWith(prefix)
+          ? firstLine.substring(prefix.length).trim()
+          : firstLine;
+      if (CriticalAlarmPreflightService.isDepartureOnlyPromptTitle(
+        promptTitle,
+      )) {
+        await cancel(request.id);
+        cancelled += 1;
+      }
+    }
+    return cancelled;
   }
 
   Future<void> cancelDepartureNotifications(String eventId) async {
@@ -979,6 +1038,10 @@ class NotificationService {
     String label,
     Future<void> Function() request,
   ) async {
+    if (!allowPermissionRequests) {
+      // headless/백그라운드 실행: 권한 요청 UI를 띄우지 않는다.
+      return;
+    }
     try {
       await request();
     } catch (error, stackTrace) {
@@ -1505,8 +1568,7 @@ Future<void> handleNotificationResponseAction(
       if (actionId == NotificationService.criticalAcknowledgedActionId) {
         await _persistCriticalAcknowledge(
           eventId: eventId,
-          criticalAlarmAcknowledgementStore:
-              criticalAlarmAcknowledgementStore,
+          criticalAlarmAcknowledgementStore: criticalAlarmAcknowledgementStore,
           eventRepository: eventRepository,
         );
         await notifications.cancelEventNotifications(eventId);
@@ -1530,8 +1592,7 @@ Future<void> handleNotificationResponseAction(
 /// 삼키고 알림 정지만 보장한다(다음 실행에서 재시도).
 Future<void> _persistCriticalAcknowledge({
   required String eventId,
-  required CriticalAlarmAcknowledgementStore?
-      criticalAlarmAcknowledgementStore,
+  required CriticalAlarmAcknowledgementStore? criticalAlarmAcknowledgementStore,
   required EventRepository? eventRepository,
 }) async {
   final store = criticalAlarmAcknowledgementStore ??

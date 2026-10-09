@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/models/pre_action_model.dart';
+import 'critical_alarm_preflight_service.dart';
 import 'notification_service.dart';
 
 class SmartPreparationAlarmService {
@@ -349,6 +350,11 @@ class SmartPreparationAlarmService {
     String? eventSource,
   }) async {
     final sourceLabel = _calendarSourceLabel(eventSource);
+    // 동적 강한알람(Android, 좌표 있는 강한 중요 일정) 체인이 출발 타이밍을
+    // 소유하면, 저장 시점 이동시간으로 계산된 "출발만" 안내는 오래된
+    // 시각에 따로 울리지 않도록 건너뛴다. 준비 안내는 그대로 예약한다.
+    final dynamicCriticalOwnsDeparture =
+        await CriticalAlarmPreflightService.isDynamicCriticalArmed(eventId);
     for (var index = 0; index < payloads.length; index += 1) {
       final payload = payloads[index];
       final notifyAt = _dateTimeValue(payload['notify_at']);
@@ -356,6 +362,10 @@ class SmartPreparationAlarmService {
         continue;
       }
       final title = _stringValue(payload['title']) ?? label;
+      if (dynamicCriticalOwnsDeparture &&
+          CriticalAlarmPreflightService.isDepartureOnlyPromptTitle(title)) {
+        continue;
+      }
       final isDeparturePrompt = _isDeparturePromptTitle(title);
       final bodySuffix = sourceLabel.isNotEmpty ? ' ($sourceLabel)' : '';
       await _notifications.scheduleEventReminder(

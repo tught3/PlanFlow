@@ -1,0 +1,12 @@
+group 'com.fluxstudio.planflow.freshlocation'
+version '1.0'
+apply plugin: 'com.android.library'
+android {
+    namespace 'com.fluxstudio.planflow.freshlocation'
+    compileSdk 35
+    defaultConfig { minSdk 23 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

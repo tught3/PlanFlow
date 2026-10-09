@@ -34,12 +34,16 @@ class MapService {
     String? naverClientSecret,
     http.Client Function()? httpClientFactory,
     ApiUsageGuard? usageGuard,
+    this.allowTransitCarFallback = true,
   })  : _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
         _naverProxyUrl = naverProxyUrl ?? AppEnv.naverMapProxyUrl,
         _naverClientId = naverClientId ?? AppEnv.naverMapClientId,
         _naverClientSecret = naverClientSecret ?? '',
         _httpClientFactory = httpClientFactory ?? http.Client.new,
         _usageGuard = usageGuard;
+
+  /// Legacy callers may fall back to driving; pre-ring ETA must keep the requested mode.
+  final bool allowTransitCarFallback;
 
   final String _tmapApiKey;
   final String _naverProxyUrl;
@@ -176,7 +180,7 @@ class MapService {
         destinationLng: destinationLng,
         mode: MapTravelMode.transit,
       );
-      if (transitMinutes != null) {
+      if (transitMinutes != null || !allowTransitCarFallback) {
         return transitMinutes;
       }
       return _tryNaverDurationForMode(

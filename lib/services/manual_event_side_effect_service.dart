@@ -7,6 +7,7 @@ import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'app_permission_service.dart';
 import 'critical_alarm_acknowledgement_store.dart';
+import 'critical_alarm_preflight_service.dart';
 import 'departure_alarm_service.dart';
 import 'location_lookup_service.dart';
 import 'map_service.dart';
@@ -131,8 +132,8 @@ class ManualEventSideEffectService {
     LocationLookupService? locationLookupService,
     Future<GeoPoint?> Function()? currentLocationProvider,
     DateTime Function()? now,
-    CriticalAlarmAcknowledgementStore?
-        criticalAlarmAcknowledgementStore,
+    CriticalAlarmAcknowledgementStore? criticalAlarmAcknowledgementStore,
+    CriticalAlarmPreflightService? criticalAlarmPreflightService,
   })  : _eventRepository = eventRepository,
         _departureAlarmService = departureAlarmService,
         _notificationService = notificationService,
@@ -140,8 +141,8 @@ class ManualEventSideEffectService {
         _locationLookupService = locationLookupService,
         _currentLocationProvider = currentLocationProvider,
         _now = now,
-        _criticalAlarmAcknowledgementStore =
-            criticalAlarmAcknowledgementStore;
+        _criticalAlarmAcknowledgementStore = criticalAlarmAcknowledgementStore,
+        _criticalAlarmPreflightService = criticalAlarmPreflightService;
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
   static const Duration criticalAlarmOffset = Duration(minutes: 60);
@@ -162,8 +163,8 @@ class ManualEventSideEffectService {
   final LocationLookupService? _locationLookupService;
   final Future<GeoPoint?> Function()? _currentLocationProvider;
   final DateTime Function()? _now;
-  final CriticalAlarmAcknowledgementStore?
-      _criticalAlarmAcknowledgementStore;
+  final CriticalAlarmAcknowledgementStore? _criticalAlarmAcknowledgementStore;
+  final CriticalAlarmPreflightService? _criticalAlarmPreflightService;
 
   EventRepository get _events => _eventRepository ?? EventRepository.supabase();
   DepartureAlarmService get _departureAlarms =>
@@ -178,6 +179,12 @@ class ManualEventSideEffectService {
   CriticalAlarmAcknowledgementStore get _criticalAcks =>
       _criticalAlarmAcknowledgementStore ??
       const SharedPreferencesCriticalAlarmAcknowledgementStore();
+
+  /// 강한알람 예약은 preflight(트리거 시각 재계산) 통로를 함께 쓴다.
+  /// Android+좌표 있는 강한알람만 preflight로 걸고 나머지는 기존 예약 그대로.
+  CriticalAlarmPreflightService get _criticalPreflight =>
+      _criticalAlarmPreflightService ??
+      CriticalAlarmPreflightService(notificationService: _notifications);
 
   Future<ManualEventSideEffectResult> syncAfterSave({
     required EventModel event,
@@ -223,7 +230,8 @@ class ManualEventSideEffectService {
         await _criticalAcks.clearAcknowledgement(event.id);
       }
     } catch (error) {
-      DiagLogger.log('ManualSideEffect', 'critical ack sentinel clear failed: $error');
+      DiagLogger.log(
+          'ManualSideEffect', 'critical ack sentinel clear failed: $error');
     }
     await _notifications.cancelEventNotifications(event.id);
 
@@ -636,6 +644,13 @@ class ManualEventSideEffectService {
         );
         await _notifications.cancel(
           _notifications.notificationIdFor('${event.id}:critical'),
+        );
+        // 동적 강한알람 체인(이전 generation의 headless/소리 알림)도 함께
+        // 무효화한다. 이후 ACK 등으로 재예약하지 않는 일정에 옛 watchdog이
+        // 남아 울리지 않게 한다.
+        await CriticalAlarmPreflightService.cancelScheduledPreflight(
+          event.id,
+          notifications: _notifications,
         );
       }
 
@@ -1168,11 +1183,17 @@ class ManualEventSideEffectService {
       if (await criticalAcks.isAcknowledged(event.id, startAt)) {
         return;
       }
-      final result = await _notifications.scheduleCriticalAlarmWithResult(
+      // Android+좌표 있는 강한알람은 트리거 시각에 조용히 preflight를 돌려
+      // 신선한 GPS·경로 API로 출발 시각을 재계산한 뒤 울린다(12:00 트리거가
+      // 12:30으로 재무장되는 식). 그 외(iOS/약한알람/무좌표)는 기존처럼
+      // 바로 예약한다. 결과 규약(isScheduled/throw)은 기존과 동일하다.
+      final result =
+          await _criticalPreflight.scheduleCriticalAlarmWithTravelRecalc(
+        event: event,
         id: _notifications.notificationIdFor('${event.id}:critical'),
         title: event.title,
-        body: '중요 일정이 곧 시작됩니다.',
         notifyAt: criticalNotifyAt,
+        body: '중요 일정이 곧 시작됩니다.',
         payload: 'event:${event.id}',
         useStrongAlarm: event.useStrongAlarm,
       );

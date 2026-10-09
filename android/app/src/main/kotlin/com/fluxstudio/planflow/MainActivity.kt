@@ -88,6 +88,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val REQUEST_MICROPHONE_PERMISSION = 4310
         private const val REQUEST_LOCATION_PERMISSION = 4311
+        private const val REQUEST_BACKGROUND_LOCATION_PERMISSION = 4313
         private const val REQUEST_CALENDAR_PERMISSION = 4312
     }
 
@@ -96,6 +97,7 @@ class MainActivity : FlutterActivity() {
     private var permissionsChannel: MethodChannel? = null
     private var microphonePermissionResult: MethodChannel.Result? = null
     private var locationPermissionResult: MethodChannel.Result? = null
+    private var backgroundLocationPermissionResult: MethodChannel.Result? = null
     private var calendarPermissionResult: MethodChannel.Result? = null
     private var currentLocationResult: MethodChannel.Result? = null
     private var currentLocationListener: LocationListener? = null
@@ -163,6 +165,8 @@ class MainActivity : FlutterActivity() {
                     "requestMicrophonePermission" -> requestMicrophonePermission(result)
                     "checkLocationPermission" -> result.success(hasLocationPermission())
                     "requestLocationPermission" -> requestLocationPermission(result)
+                    "checkBackgroundLocationPermission" -> result.success(backgroundLocationPermissionStatus())
+                    "requestBackgroundLocationPermission" -> requestBackgroundLocationPermission(result)
                     "checkCalendarPermission" -> result.success(hasCalendarPermission())
                     "requestCalendarPermission" -> requestCalendarPermission(result)
                     "getLastKnownLocation" -> result.success(getLastKnownLocationMap())
@@ -240,6 +244,10 @@ class MainActivity : FlutterActivity() {
             REQUEST_LOCATION_PERMISSION -> {
                 locationPermissionResult?.success(granted)
                 locationPermissionResult = null
+            }
+            REQUEST_BACKGROUND_LOCATION_PERMISSION -> {
+                backgroundLocationPermissionResult?.success(backgroundLocationPermissionStatus())
+                backgroundLocationPermissionResult = null
             }
             REQUEST_CALENDAR_PERMISSION -> {
                 calendarPermissionResult?.success(granted)
@@ -433,6 +441,44 @@ class MainActivity : FlutterActivity() {
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             ),
             REQUEST_LOCATION_PERMISSION,
+        )
+    }
+
+    private fun backgroundLocationPermissionStatus(): String {
+        if (!hasLocationPermission()) return "denied"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return "granted"
+        return if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) "granted" else "denied"
+    }
+
+    private fun requestBackgroundLocationPermission(result: MethodChannel.Result) {
+        if (!hasLocationPermission()) {
+            result.success("denied")
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            backgroundLocationPermissionStatus() == "granted"
+        ) {
+            result.success("granted")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val opened = openAppSettings()
+            result.success(if (opened) "settingsRequired" else "error")
+            return
+        }
+        if (backgroundLocationPermissionResult != null) {
+            result.success("denied")
+            return
+        }
+        backgroundLocationPermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+            REQUEST_BACKGROUND_LOCATION_PERMISSION,
         )
     }
 

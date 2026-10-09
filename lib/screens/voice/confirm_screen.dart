@@ -30,6 +30,7 @@ import '../../widgets/planflow_action_buttons.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/review_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
+import '../../services/critical_alarm_preflight_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/event_preparation_service.dart';
@@ -2473,8 +2474,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
 
     await _tryFollowUp(() async {
-      final result =
-          await widget.notificationService.scheduleCriticalAlarmWithResult(
+      // Android+좌표 있는 강한알람은 트리거 시각에 조용히 preflight를 돌려
+      // 신선한 GPS·경로 API로 재계산된 출발 시각에 재무장한다(예: 12:00 →
+      // 12:30). 그 외(iOS/약한알람/무좌표)는 기존 예약 그대로다.
+      final service = CriticalAlarmPreflightService(
+        notificationService: widget.notificationService,
+      );
+      final result = await service.scheduleCriticalAlarmWithTravelRecalc(
+        event: event,
         id: widget.notificationService.notificationIdFor(
           '${event.id}:critical',
         ),

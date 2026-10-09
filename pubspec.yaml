@@ -1,7 +1,7 @@
 name: planflow
 description: PlanFlow Flutter app scaffold.
 publish_to: "none"
-version: 1.1.7+195
+version: 1.1.7+196
 environment:
   sdk: ">=3.3.0 <4.0.0"
 
@@ -10,6 +10,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  planflow_fresh_location:
+    path: packages/planflow_fresh_location
   android_alarm_manager_plus: ^5.0.0
   app_links: ^7.0.0
   crypto: ^3.0.6

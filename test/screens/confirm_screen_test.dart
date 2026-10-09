@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -29,15 +30,159 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
+/// planflow/critical_alarm_ownership 채널(소유권 8종 RPC)의 즉시 응답 fixture.
+///
+/// ConfirmScreen 위젯 테스트는 논리적으로 Android(defaultTargetPlatform ==
+/// android)로 실행되므로 CriticalAlarmPreflightService의 정적 소유권 호출이
+/// 실제 채널을 향한다. 목업이 없으면 호출이 완료되지 않아 3초 RPC 타임아웃
+/// FakeTimer(readOwner/invalidateOwner)가 테스트 종료까지 남는다.
+/// 인메모리 저장소로 마이크로태스크에서 즉시 응답하고, 기본 상태는 소유권
+/// 부재(absence)다. 계약에 없는 메서드는 조용히 참을 돌려주지 않고
+/// PlatformException으로 크게 실패한다(fail loud, silent truthy 금지).
+class _CriticalAlarmOwnershipChannelStub {
+  static const MethodChannel channel =
+      MethodChannel('planflow/critical_alarm_ownership');
+
+  static final Map<String, Map<String, Object?>> _owners =
+      <String, Map<String, Object?>>{};
+
+  static void install() {
+    _owners.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, _handle);
+  }
+
+  static void uninstall() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+    _owners.clear();
+  }
+
+  static Future<Object?> _handle(MethodCall call) async {
+    final Object? arguments = call.arguments;
+    final Map<Object?, Object?> args =
+        arguments is Map ? arguments : const <Object?, Object?>{};
+    switch (call.method) {
+      case 'readOwner':
+        return _owners[args['eventId'] as String?];
+      case 'invalidateOwner':
+        return _owners.remove(args['eventId'] as String?);
+      case 'listOwners':
+        return Map<String, Object?>.of(_owners);
+      case 'updateOwner':
+        final previous = _owners[args['eventId'] as String?];
+        _storeOwner(args);
+        return previous;
+      case 'releaseIfOwner':
+        return _takeIfOwner(
+              args,
+              generation: args['generation'],
+              trigger: args['expectedTrigger'],
+            ) !=
+            null;
+      case 'claimTrigger':
+        final owner = _owners[args['eventId'] as String?];
+        // 소유권 부재는 오래된 실행이 아니다: 클레임 성공(fail-safe 재계산).
+        return owner == null ||
+            _matchesGenerationAndTrigger(
+              owner,
+              generation: args['generation'],
+              trigger: args['triggerAt'],
+            );
+      case 'replaceOwnerIfMatches':
+        if (!_matchesGenerationAndTrigger(
+          _owners[args['eventId'] as String?],
+          generation: args['expectedGeneration'],
+          trigger: args['expectedTrigger'],
+        )) {
+          return false;
+        }
+        _storeOwner(args);
+        return true;
+      case 'updateTriggerIfOwner':
+        final owner = _owners[args['eventId'] as String?];
+        if (!_matchesGenerationAndTrigger(
+          owner,
+          generation: args['generation'],
+          trigger: args['expectedTrigger'],
+        )) {
+          return false;
+        }
+        if (args['nextTrigger'] is! int) {
+          throw PlatformException(
+            code: 'invalid-next-trigger',
+            message: 'nextTrigger must be epoch millis int',
+          );
+        }
+        owner!['triggerAt'] = args['nextTrigger'] as int;
+        return true;
+      default:
+        throw PlatformException(
+          code: 'unhandled-method',
+          message: 'critical_alarm_ownership.${call.method} is not mocked',
+        );
+    }
+  }
+
+  static void _storeOwner(Map<Object?, Object?> args) {
+    if (args['eventId'] is! String ||
+        args['generation'] is! String ||
+        args['triggerAt'] is! int ||
+        args['originalNotifyAt'] is! int ||
+        args['metadataJson'] is! String) {
+      throw PlatformException(
+        code: 'invalid-owner-state',
+        message: 'owner state contract violated',
+      );
+    }
+    _owners[args['eventId'] as String] = <String, Object?>{
+      for (final entry in args.entries) entry.key as String: entry.value,
+    };
+  }
+
+  static Map<String, Object?>? _takeIfOwner(
+    Map<Object?, Object?> args, {
+    required Object? generation,
+    required Object? trigger,
+  }) {
+    final Object? eventId = args['eventId'];
+    if (eventId is! String) {
+      return null;
+    }
+    if (!_matchesGenerationAndTrigger(
+      _owners[eventId],
+      generation: generation,
+      trigger: trigger,
+    )) {
+      return null;
+    }
+    return _owners.remove(eventId);
+  }
+
+  static bool _matchesGenerationAndTrigger(
+    Map<String, Object?>? owner, {
+    required Object? generation,
+    required Object? trigger,
+  }) {
+    return owner != null &&
+        generation is String &&
+        trigger is int &&
+        owner['generation'] == generation &&
+        owner['triggerAt'] == trigger;
+  }
+}
+
 void main() {
   setUp(() {
     PlanFlowRegionController.instance.reset();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
+    _CriticalAlarmOwnershipChannelStub.install();
   });
 
   tearDown(() async {
+    _CriticalAlarmOwnershipChannelStub.uninstall();
     await AdRewardState.instance.clear(feature: 'schedule_parse');
     await AdRewardState.instance.clearPendingConsume(
       feature: 'schedule_parse',

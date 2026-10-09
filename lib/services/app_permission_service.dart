@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:planflow_fresh_location/planflow_fresh_location.dart';
 
 import 'battery_optimization_service.dart';
 import 'notification_service.dart';
@@ -22,6 +23,8 @@ class AppPermissionService {
   static const MethodChannel _iosPermissionsChannel =
       MethodChannel('planflow/ios_permissions');
   static const String _onboardingPrefix = 'planflow_permissions_onboarded_v1';
+  static const String _backgroundLocationOptInKey =
+      'planflow_background_location_opt_in_v1';
 
   final NotificationService _notificationService;
   final SharedPreferencesAsync? _preferences;
@@ -30,6 +33,21 @@ class AppPermissionService {
 
   SharedPreferencesAsync get _resolvedPreferences =>
       _preferences ?? SharedPreferencesAsync();
+
+  Future<bool> isBackgroundLocationOptedIn() async {
+    try {
+      return await _resolvedPreferences.getBool(_backgroundLocationOptInKey) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Background location opt-in read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  Future<void> setBackgroundLocationOptIn(bool optedIn) async {
+    await _resolvedPreferences.setBool(_backgroundLocationOptInKey, optedIn);
+  }
 
   Future<bool> isOnboardingCompleted(String userId) async {
     return await _resolvedPreferences.getBool(_onboardingKey(userId)) ?? false;
@@ -168,6 +186,43 @@ class AppPermissionService {
     }
   }
 
+  Future<AppPermissionStatus> checkBackgroundLocationPermissionStatus() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return AppPermissionStatus.unavailable;
+    }
+    try {
+      final value = await _androidPermissionsChannel
+          .invokeMethod<String>('checkBackgroundLocationPermission');
+      return AppPermissionStatus.fromNative(value);
+    } on TimeoutException {
+      return AppPermissionStatus.timeout;
+    } catch (error, stackTrace) {
+      debugPrint('Background location permission check failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return AppPermissionStatus.error;
+    }
+  }
+
+  Future<AppPermissionStatus> requestBackgroundLocationPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return AppPermissionStatus.unavailable;
+    }
+    // The optional background request is only offered after foreground consent.
+    if (!await checkLocationPermission()) return AppPermissionStatus.denied;
+    try {
+      final value = await _androidPermissionsChannel
+          .invokeMethod<String>('requestBackgroundLocationPermission')
+          .timeout(const Duration(seconds: 12));
+      return AppPermissionStatus.fromNative(value);
+    } on TimeoutException {
+      return AppPermissionStatus.timeout;
+    } catch (error, stackTrace) {
+      debugPrint('Background location permission request failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return AppPermissionStatus.error;
+    }
+  }
+
   Future<bool> checkLocationPermission() async {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       return await checkLocationPermissionStatus() ==
@@ -248,6 +303,65 @@ class AppPermissionService {
     } catch (error, stackTrace) {
       debugPrint('Last known location read failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  /// Headless-safe capability probe. Checks saved app opt-in and current OS
+  /// permission through the application-context plugin; never opens UI or GPS.
+  Future<bool> canUseBackgroundFreshLocation() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    if (!await isBackgroundLocationOptedIn()) return false;
+    return PlanflowFreshLocation.canUseBackgroundPermission();
+  }
+
+  /// Fail-closed fresh fix from the application-context auto-registered plugin.
+  /// Never invokes Activity-only permission checks or the legacy cache fallback.
+  Future<GeoPoint?> getFreshCurrentLocation({
+    bool requireBackgroundPermission = false,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
+    if (requireBackgroundPermission && !await isBackgroundLocationOptedIn()) {
+      return null;
+    }
+    final requestedAt = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final result = await PlanflowFreshLocation.getCurrentFix(
+        requireBackgroundPermission: requireBackgroundPermission,
+      );
+      if (result is! Map ||
+          result['isFresh'] != true ||
+          result['source'] != 'current_request') {
+        return null;
+      }
+      final time = result['timestampMillis'];
+      final requestAge = result['requestAgeMillis'];
+      final fixAge = result['fixAgeMillis'];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (time is! int ||
+          requestAge is! int ||
+          fixAge is! int ||
+          requestAge < 0 ||
+          requestAge > 10000 ||
+          fixAge < 0 ||
+          fixAge > requestAge ||
+          time < requestedAt - 2000 ||
+          time > now + 2000 ||
+          now - time > 10000) {
+        return null;
+      }
+      final lat = _doubleValue(result['latitude']);
+      final lng = _doubleValue(result['longitude']);
+      if (lat == null ||
+          lng == null ||
+          !lat.isFinite ||
+          !lng.isFinite ||
+          lat.abs() > 90 ||
+          lng.abs() > 180) {
+        return null;
+      }
+      return GeoPoint(latitude: lat, longitude: lng);
+    } catch (_) {
       return null;
     }
   }

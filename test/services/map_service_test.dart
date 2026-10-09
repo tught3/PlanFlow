@@ -15,6 +15,31 @@ void main() {
     ApiUsageGuard.resetForTesting();
   });
 
+  test('strict transit failure never uses a driving ETA', () async {
+    var calls = 0;
+    final service = MapService(
+      allowTransitCarFallback: false,
+      tmapApiKey: '',
+      naverProxyUrl: '',
+      naverClientId: 'naver-id',
+      naverClientSecret: 'naver-secret',
+      httpClientFactory: () => MockClient((request) async {
+        calls++;
+        expect(request.url.path, '/map-direction-15/v1/transit');
+        return http.Response('unavailable', 500);
+      }),
+    );
+    final estimate = await service.getTravelMinutes(
+      originLat: 37.5,
+      originLng: 127,
+      destinationLat: 37.6,
+      destinationLng: 127.1,
+      mode: MapTravelMode.transit,
+    );
+    expect(estimate, isNull);
+    expect(calls, 1);
+  });
+
   test('MapService uses Tmap first for car travel', () async {
     final service = MapService(
       tmapApiKey: 'tmap-key',

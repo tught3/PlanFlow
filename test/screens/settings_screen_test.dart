@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
@@ -32,6 +33,8 @@ import 'package:planflow/services/naver_open_api_calendar_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -63,6 +66,8 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
     PackageInfo.setMockInitialValues(
       appName: 'PlanFlow',
       packageName: 'com.fluxstudio.planflow',
@@ -159,6 +164,16 @@ void main() {
       await _scrollUntilHitTestable(tester, syncButton);
       expect(syncButton, findsOneWidget);
       expect(find.text('저장 누락 진단'), findsNothing);
+      final backgroundLocationOptIn = find.byKey(
+        const ValueKey('settings-background-location-opt-in'),
+      );
+      await _scrollUntilHitTestable(tester, backgroundLocationOptIn);
+      expect(backgroundLocationOptIn, findsOneWidget);
+      expect(
+        find.textContaining('10초 내 확인은 보장되지 않습니다'),
+        findsOneWidget,
+      );
+      expect(find.text('동의하지 않아도 기존 알람은 유지됩니다.'), findsNothing);
       expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
       expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
       expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
@@ -185,6 +200,92 @@ void main() {
       await _scrollUntilHitTestable(tester, featureTourButton);
       expect(featureTourButton, findsOneWidget);
       expect(settingsRepository.fetchUserIds.single, 'user-1');
+    },
+  );
+
+  testWidgets(
+    'background location opt-out cancels headless requests and restores alarms',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData({
+        'planflow_background_location_opt_in_v1': true,
+      });
+      const permissions = MethodChannel('planflow/android_permissions');
+      const fresh = MethodChannel('planflow/fresh_location');
+      const ownership = MethodChannel('planflow/critical_alarm_ownership');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      var cancelCalls = 0;
+      var restoreCalls = 0;
+      messenger.setMockMethodCallHandler(permissions, (call) async {
+        if (call.method == 'checkBackgroundLocationPermission') {
+          return 'granted';
+        }
+        return null;
+      });
+      messenger.setMockMethodCallHandler(fresh, (call) async {
+        expect(call.method, 'cancelPendingBackgroundRequests');
+        cancelCalls++;
+        return 2;
+      });
+      messenger.setMockMethodCallHandler(ownership, (call) async {
+        expect(call.method, 'listOwners');
+        restoreCalls++;
+        return <String, Object?>{};
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(permissions, null);
+        messenger.setMockMethodCallHandler(fresh, null);
+        messenger.setMockMethodCallHandler(ownership, null);
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.naver,
+                ),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final disable = find.byKey(
+        const ValueKey('settings-background-location-opt-in'),
+      );
+      await _scrollUntilHitTestable(tester, disable);
+      expect(find.descendant(of: disable, matching: find.text('사용 중지')),
+          findsOneWidget);
+      await tester.tap(disable);
+      await tester.pumpAndSettle();
+      expect(cancelCalls, 1);
+      expect(restoreCalls, 1);
+      expect(
+        await SharedPreferencesAsync().getBool(
+          'planflow_background_location_opt_in_v1',
+        ),
+        isFalse,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('settings-background-location-restore-summary'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
