@@ -805,6 +805,168 @@ abstract class AppLocalizations {
   /// In ko, this message translates to:
   /// **'App Store를 열지 못했습니다. 나중에 다시 시도해 주세요.'**
   String get appUpdateStoreOpenFailed;
+
+  /// No description provided for @featureTourSkip.
+  ///
+  /// In ko, this message translates to:
+  /// **'건너뛰기'**
+  String get featureTourSkip;
+
+  /// No description provided for @featureTourRestart.
+  ///
+  /// In ko, this message translates to:
+  /// **'다시 시작'**
+  String get featureTourRestart;
+
+  /// No description provided for @featureTourBack.
+  ///
+  /// In ko, this message translates to:
+  /// **'이전'**
+  String get featureTourBack;
+
+  /// No description provided for @featureTourNext.
+  ///
+  /// In ko, this message translates to:
+  /// **'다음'**
+  String get featureTourNext;
+
+  /// No description provided for @featureTourFinish.
+  ///
+  /// In ko, this message translates to:
+  /// **'완료'**
+  String get featureTourFinish;
+
+  /// No description provided for @featureTourStep.
+  ///
+  /// In ko, this message translates to:
+  /// **'3단계 중 {current}단계'**
+  String featureTourStep(int current);
+
+  /// No description provided for @featureTourSample.
+  ///
+  /// In ko, this message translates to:
+  /// **'연습용 예시 · 실제 일정이 아닙니다'**
+  String get featureTourSample;
+
+  /// No description provided for @featureTourCreateTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'연습 일정 만들기'**
+  String get featureTourCreateTitle;
+
+  /// No description provided for @featureTourCreateHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'제목을 입력하고 확인하면 다음 단계로 넘어갑니다.'**
+  String get featureTourCreateHint;
+
+  /// No description provided for @featureTourTitleLabel.
+  ///
+  /// In ko, this message translates to:
+  /// **'일정 제목'**
+  String get featureTourTitleLabel;
+
+  /// No description provided for @featureTourCreateAction.
+  ///
+  /// In ko, this message translates to:
+  /// **'연습 일정 만들기'**
+  String get featureTourCreateAction;
+
+  /// No description provided for @featureTourTitleRequired.
+  ///
+  /// In ko, this message translates to:
+  /// **'계속하려면 예시 제목을 입력하세요.'**
+  String get featureTourTitleRequired;
+
+  /// No description provided for @featureTourEditTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시 시간 바꾸기'**
+  String get featureTourEditTitle;
+
+  /// No description provided for @featureTourEditHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'시간을 고르거나 30분 뒤로 옮겨 보세요.'**
+  String get featureTourEditHint;
+
+  /// No description provided for @featureTourChooseTime.
+  ///
+  /// In ko, this message translates to:
+  /// **'시간 선택'**
+  String get featureTourChooseTime;
+
+  /// No description provided for @featureTourAddThirty.
+  ///
+  /// In ko, this message translates to:
+  /// **'30분 뒤로'**
+  String get featureTourAddThirty;
+
+  /// No description provided for @featureTourConfirmTime.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시 시간 확인'**
+  String get featureTourConfirmTime;
+
+  /// No description provided for @featureTourPreviewTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'알림 미리보기'**
+  String get featureTourPreviewTitle;
+
+  /// No description provided for @featureTourPreviewHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시일 뿐이며 알람이 설정되지 않습니다.'**
+  String get featureTourPreviewHint;
+
+  /// No description provided for @featureTourPrep.
+  ///
+  /// In ko, this message translates to:
+  /// **'준비 알림 · 15분 전'**
+  String get featureTourPrep;
+
+  /// No description provided for @featureTourDeparture.
+  ///
+  /// In ko, this message translates to:
+  /// **'출발 알림 · 이동 20분 + 여유 10분'**
+  String get featureTourDeparture;
+
+  /// No description provided for @featureTourSampleTime.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시 일정 시간'**
+  String get featureTourSampleTime;
+
+  /// No description provided for @featureTourDateLabel.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시 날짜'**
+  String get featureTourDateLabel;
+
+  /// No description provided for @featureTourRestarted.
+  ///
+  /// In ko, this message translates to:
+  /// **'연습을 다시 시작했어요'**
+  String get featureTourRestarted;
+
+  /// No description provided for @featureTourChooseDate.
+  ///
+  /// In ko, this message translates to:
+  /// **'날짜 선택'**
+  String get featureTourChooseDate;
+
+  /// No description provided for @featureTourSaveFailed.
+  ///
+  /// In ko, this message translates to:
+  /// **'완료 표시를 저장하지 못했어요. 다시 시도해 주세요.'**
+  String get featureTourSaveFailed;
+
+  /// No description provided for @featureTourSaveRetry.
+  ///
+  /// In ko, this message translates to:
+  /// **'다시 시도'**
+  String get featureTourSaveRetry;
 }
 
 class _AppLocalizationsDelegate

@@ -367,4 +367,87 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get appUpdateStoreOpenFailed => 'App Store를 열지 못했습니다. 나중에 다시 시도해 주세요.';
+
+  @override
+  String get featureTourSkip => '건너뛰기';
+
+  @override
+  String get featureTourRestart => '다시 시작';
+
+  @override
+  String get featureTourBack => '이전';
+
+  @override
+  String get featureTourNext => '다음';
+
+  @override
+  String get featureTourFinish => '완료';
+
+  @override
+  String featureTourStep(int current) {
+    return '3단계 중 $current단계';
+  }
+
+  @override
+  String get featureTourSample => '연습용 예시 · 실제 일정이 아닙니다';
+
+  @override
+  String get featureTourCreateTitle => '연습 일정 만들기';
+
+  @override
+  String get featureTourCreateHint => '제목을 입력하고 확인하면 다음 단계로 넘어갑니다.';
+
+  @override
+  String get featureTourTitleLabel => '일정 제목';
+
+  @override
+  String get featureTourCreateAction => '연습 일정 만들기';
+
+  @override
+  String get featureTourTitleRequired => '계속하려면 예시 제목을 입력하세요.';
+
+  @override
+  String get featureTourEditTitle => '예시 시간 바꾸기';
+
+  @override
+  String get featureTourEditHint => '시간을 고르거나 30분 뒤로 옮겨 보세요.';
+
+  @override
+  String get featureTourChooseTime => '시간 선택';
+
+  @override
+  String get featureTourAddThirty => '30분 뒤로';
+
+  @override
+  String get featureTourConfirmTime => '예시 시간 확인';
+
+  @override
+  String get featureTourPreviewTitle => '알림 미리보기';
+
+  @override
+  String get featureTourPreviewHint => '예시일 뿐이며 알람이 설정되지 않습니다.';
+
+  @override
+  String get featureTourPrep => '준비 알림 · 15분 전';
+
+  @override
+  String get featureTourDeparture => '출발 알림 · 이동 20분 + 여유 10분';
+
+  @override
+  String get featureTourSampleTime => '예시 일정 시간';
+
+  @override
+  String get featureTourDateLabel => '예시 날짜';
+
+  @override
+  String get featureTourRestarted => '연습을 다시 시작했어요';
+
+  @override
+  String get featureTourChooseDate => '날짜 선택';
+
+  @override
+  String get featureTourSaveFailed => '완료 표시를 저장하지 못했어요. 다시 시도해 주세요.';
+
+  @override
+  String get featureTourSaveRetry => '다시 시도';
 }

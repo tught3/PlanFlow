@@ -24,7 +24,9 @@
 //     (기존 flow07_widget_appgroup_test.dart는 _CapturingHomeWidgetPlatform
 //     인메모리 fake를 쓰므로 이 네이티브 크래시 경로를 증명할 수 없다.)
 //   - 전체 온보딩 UI E2E를 주장하지 않는다. 크래시가 난 것과 동일한
-//     네이티브 브리지만 검증한다.
+//     네이티브 브리지만 검증한다. Interactive feature-tour practice UI
+//     has a separate native probe and marker; it does not expand this storage
+//     probe's PASS claim.
 //
 // Fail-closed 게이트: `dart:io.Platform.isIOS` (디버그 오버라이드 없음).
 // iOS가 아닌 호스트에서는 IOS_NATIVE_WIDGET_NULL_PROBE_SKIPPED 마커를
@@ -46,6 +48,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:planflow/services/home_widget_platform_io.dart';
+import 'feature_tour_practice_native_probe.dart';
 
 /// `ios/Flutter/PlanFlow-Identity.xcconfig`의 `PLANFLOW_IOS_APP_GROUP`과 동기
 /// 되어야 한다 (Runner/PlanFlowWidget 엔타이틀먼트가 이 값을 참조). 동기는 정
@@ -246,4 +249,9 @@ void main() {
     // otherwise trip the end-of-test _verifySemanticsHandlesWereDisposed check.
     semanticsEnabled: false,
   );
+
+  // Separate functional UI probe. It keeps its own actual-iOS gate and PASS
+  // marker, without changing this storage probe's assertions or semantics
+  // callback mute/tearDownAll restoration.
+  registerFeatureTourPracticeNativeProbe();
 }

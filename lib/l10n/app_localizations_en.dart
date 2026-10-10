@@ -391,4 +391,91 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appUpdateStoreOpenFailed =>
       'Could not open the App Store. Please try again later.';
+
+  @override
+  String get featureTourSkip => 'Skip';
+
+  @override
+  String get featureTourRestart => 'Restart';
+
+  @override
+  String get featureTourBack => 'Back';
+
+  @override
+  String get featureTourNext => 'Next';
+
+  @override
+  String get featureTourFinish => 'Finish';
+
+  @override
+  String featureTourStep(int current) {
+    return 'Step $current of 3';
+  }
+
+  @override
+  String get featureTourSample => 'Practice sample · no real schedule';
+
+  @override
+  String get featureTourCreateTitle => 'Create a practice schedule';
+
+  @override
+  String get featureTourCreateHint => 'Enter a title and confirm to continue.';
+
+  @override
+  String get featureTourTitleLabel => 'Schedule title';
+
+  @override
+  String get featureTourCreateAction => 'Create practice schedule';
+
+  @override
+  String get featureTourTitleRequired => 'Enter a sample title to continue.';
+
+  @override
+  String get featureTourEditTitle => 'Change the sample time';
+
+  @override
+  String get featureTourEditHint =>
+      'Choose a time or move it forward by 30 minutes.';
+
+  @override
+  String get featureTourChooseTime => 'Choose time';
+
+  @override
+  String get featureTourAddThirty => 'Add 30 minutes';
+
+  @override
+  String get featureTourConfirmTime => 'Confirm sample time';
+
+  @override
+  String get featureTourPreviewTitle => 'Reminder preview';
+
+  @override
+  String get featureTourPreviewHint =>
+      'Examples only. No alarms will be created.';
+
+  @override
+  String get featureTourPrep => 'Preparation reminder · 15 minutes earlier';
+
+  @override
+  String get featureTourDeparture =>
+      'Leave reminder · travel 20 min + 10 min buffer';
+
+  @override
+  String get featureTourSampleTime => 'Sample schedule time';
+
+  @override
+  String get featureTourDateLabel => 'Sample date';
+
+  @override
+  String get featureTourRestarted => 'Practice restarted';
+
+  @override
+  String get featureTourChooseDate => 'Choose date';
+
+  @override
+  String get featureTourSaveFailed =>
+      'Could not save your completion mark. Please try again.';
+
+  @override
+  String get featureTourSaveRetry => 'Retry';
 }
