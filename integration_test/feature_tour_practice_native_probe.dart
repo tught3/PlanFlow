@@ -99,7 +99,7 @@ void registerFeatureTourPracticeNativeProbe() {
       await tester.ensureVisible(createButton);
       await tester.tap(createButton);
       await tester.pumpAndSettle();
-      expect(find.textContaining(sampleTitle), findsOneWidget,
+      expect(find.text('$sampleTitle · $initialStamp'), findsOneWidget,
           reason: 'sample creation must show the entered title');
       expect(prefs.get(_completedKey), isNull,
           reason: 'creating a practice sample must not write completion');
