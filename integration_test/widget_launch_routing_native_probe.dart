@@ -56,6 +56,8 @@ import 'package:planflow/services/stt_service.dart'
         SttNativeStatusEvent,
         SttService;
 
+import 'support/widget_probe_render_wait.dart';
+
 import '_harness/fakes/fake_auth_service.dart';
 import '_harness/seed/fixture_events.dart';
 
@@ -430,14 +432,75 @@ void registerWidgetLaunchRoutingNativeProbe() {
       final Uri calendarLocation = currentAppRouterLocation(qaRouter);
       expect(calendarLocation.path, AppRoutes.calendar);
       expect(calendarLocation.queryParameters['date'], chosenDayText);
-      expect(
-        find.byType(CalendarScreen),
-        findsOneWidget,
-        reason: 'the real Schedule tab (CalendarScreen) must be mounted at '
-            'the confirmed calendar route',
-      );
+      final Finder calendarFinder = find.byType(CalendarScreen);
+      final Set<String> renderStates = <String>{};
+      int renderDiagnosticLines = 0;
+      void recordRenderState() {
+        if (find.byType(LoginScreen).evaluate().isNotEmpty) {
+          loginBounceFrames.add(readinessClock.elapsedMilliseconds);
+        }
+        final Uri location = currentAppRouterLocation(qaRouter);
+        final List<Element> visible = calendarFinder.evaluate().toList();
+        final List<Element> all = find
+            .byType(CalendarScreen, skipOffstage: false)
+            .evaluate()
+            .toList();
+        final String date = visible.isEmpty
+            ? 'none'
+            : ((visible.single.widget as CalendarScreen)
+                    .initialDate
+                    ?.toIso8601String() ??
+                'null');
+        final String state = 'path=${location.path} query=${location.query} '
+            'visible=${visible.length} all=${all.length} date=$date '
+            'gate=${qaGate.widgetLaunchPending} '
+            'progress=${find.byType(CircularProgressIndicator).evaluate().length} '
+            'scheduled=${tester.binding.hasScheduledFrame} '
+            'phase=${tester.binding.schedulerPhase}';
+        if (renderStates.add(state) && renderDiagnosticLines < 4) {
+          renderDiagnosticLines++;
+          // ignore: avoid_print
+          print('WIDGET_NATIVE_RENDER_STATE $state');
+        }
+      }
+
+      try {
+        await waitForNativeRouteRender(
+          tester,
+          isRendered: () {
+            final List<Element> visible = calendarFinder.evaluate().toList();
+            if (visible.length != 1 || qaGate.widgetLaunchPending) return false;
+            final DateTime? date =
+                (visible.single.widget as CalendarScreen).initialDate;
+            final Uri location = currentAppRouterLocation(qaRouter);
+            return date != null &&
+                date.year == chosenDay.year &&
+                date.month == chosenDay.month &&
+                date.day == chosenDay.day &&
+                location.path == AppRoutes.calendar &&
+                location.queryParameters['date'] == chosenDayText;
+          },
+          onPump: recordRenderState,
+        );
+      } catch (_) {
+        recordRenderState();
+        rethrow;
+      }
+      recordRenderState();
+      expect(calendarFinder, findsOneWidget,
+          reason: 'the real CalendarScreen must be visible at the chosen date');
+      final CalendarScreen renderedCalendar = tester.widget(calendarFinder);
+      expect(renderedCalendar.initialDate!.year, chosenDay.year);
+      expect(renderedCalendar.initialDate!.month, chosenDay.month);
+      expect(renderedCalendar.initialDate!.day, chosenDay.day);
+      expect(currentAppRouterLocation(qaRouter).path, AppRoutes.calendar);
+      expect(currentAppRouterLocation(qaRouter).queryParameters['date'],
+          chosenDayText);
       expect(qaGate.widgetLaunchPending, isFalse,
           reason: 'the launch gate must complete after confirmation');
+      expect(loginBounceFrames, isEmpty,
+          reason:
+              'login must remain suppressed through visible route rendering');
 
       // Probe-level invariants for the placeholder init fix:
       // 1) No HTTP may leak through the blocking client — any non-zero
