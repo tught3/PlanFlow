@@ -201,7 +201,7 @@ jobs:
           flow_result="$flow_artifact/$flow_name.xcresult"
           mkdir -p "$flow_artifact"
           set +e
-          bash scripts/ios/e2e_xctest_flow.sh \
+          WIDGET_PROBE_VALID_QA_CONFIG=1 bash scripts/ios/e2e_xctest_flow.sh \
             "$PROBE_FLOW_FILE" \
             "${{ steps.boot.outputs.udid }}" \
             "$IOS_BUNDLE_ID" \

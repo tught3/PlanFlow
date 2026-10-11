@@ -216,12 +216,20 @@ if [ "$current_failure" -eq 0 ]; then
   # the simulator path explicitly so Flutter generates simulator config
   # instead of device-only ios-release signing material.
   E2E_FLOW_FILE="$flow_file" E2E_UDID="$udid" E2E_DERIVED_DATA="$derived_data" \
+    WIDGET_PROBE_VALID_QA_CONFIG="${WIDGET_PROBE_VALID_QA_CONFIG:-0}" \
     run_bounded APP_BUILD bash -c '
       set -euo pipefail
-      flutter build ios --config-only --simulator "$E2E_FLOW_FILE" \
-        --dart-define=E2E_MODE=1 \
-        --dart-define=SUPABASE_URL=https://your-project.supabase.co \
-        --dart-define=SUPABASE_ANON_KEY=your-supabase-anon-key
+      if [ "$WIDGET_PROBE_VALID_QA_CONFIG" = "1" ]; then
+        flutter build ios --config-only --simulator "$E2E_FLOW_FILE" \
+          --dart-define=E2E_MODE=1 \
+          --dart-define=SUPABASE_URL=https://widget-qa.invalid \
+          --dart-define=SUPABASE_ANON_KEY=widget-qa-dummy-key
+      else
+        flutter build ios --config-only --simulator "$E2E_FLOW_FILE" \
+          --dart-define=E2E_MODE=1 \
+          --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+          --dart-define=SUPABASE_ANON_KEY=your-supabase-anon-key
+      fi
       xcodebuild build-for-testing \
         -workspace ios/Runner.xcworkspace \
         -scheme Runner \

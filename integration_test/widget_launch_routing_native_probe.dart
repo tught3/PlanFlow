@@ -99,6 +99,16 @@ void registerWidgetLaunchRoutingNativeProbe() {
         return;
       }
 
+      // Compile-time QA defines must survive AppEnv's real validation before
+      // this fixture may initialize any SDK or construct a provider. This is
+      // not a readiness bypass: the owned placeholder SDK init below remains
+      // separately required and fail-closed.
+      if (!AppEnv.hasValidSupabaseConfig) {
+        throw StateError(
+          'Widget routing native QA requires valid compile-time Supabase QA defines',
+        );
+      }
+
       // ------------------------------------------------------------------
       // LEG 0 — real production pure functions (mapping + state machine).
       // ------------------------------------------------------------------
