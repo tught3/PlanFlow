@@ -49,6 +49,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:planflow/services/home_widget_platform_io.dart';
 import 'feature_tour_practice_native_probe.dart';
+import 'widget_launch_routing_native_probe.dart';
 
 /// `ios/Flutter/PlanFlow-Identity.xcconfig`의 `PLANFLOW_IOS_APP_GROUP`과 동기
 /// 되어야 한다 (Runner/PlanFlowWidget 엔타이틀먼트가 이 값을 참조). 동기는 정
@@ -254,4 +255,9 @@ void main() {
   // marker, without changing this storage probe's assertions or semantics
   // callback mute/tearDownAll restoration.
   registerFeatureTourPracticeNativeProbe();
+
+  // Widget-launch pending-route regression probe (same host pattern: own
+  // iOS gate and WIDGET_LAUNCH_ROUTING_PROBE_PASS marker, does not expand
+  // this storage probe's PASS claim).
+  registerWidgetLaunchRoutingNativeProbe();
 }

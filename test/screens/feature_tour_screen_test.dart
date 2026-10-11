@@ -341,13 +341,14 @@ void main() {
   });
 
   testWidgets(
-      'required first launch keeps skip visible and back does not complete',
-      (tester) async {
+      'required first launch hides skip; back does not complete; only the '
+      'practice Finish persists and hands over', (tester) async {
     final store = _MemoryFeatureTourStore();
     final base = DateTime.now();
     var done = false;
     await _pumpTour(
       tester,
+      presentAsRoute: true,
       screen: FeatureTourScreen(
         store: store,
         onCompleted: () => done = true,
@@ -355,26 +356,42 @@ void main() {
         nowProvider: () => base,
       ),
     );
-    expect(
-        find.byKey(const ValueKey('feature-tour-skip-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing);
     expect(find.byKey(const ValueKey('feature-tour-restart-button')),
         findsOneWidget);
 
     // System back is a no-op: no implicit completion, no route pop.
     await tester.binding.handlePopRoute();
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byType(FeatureTourScreen), findsOneWidget);
     expect(store.markCalls, 0);
     expect(store.saved, isFalse);
+    expect(done, isFalse);
 
-    // Explicit skip persists exactly once and hands over.
-    await tester.tap(find.byKey(const ValueKey('feature-tour-skip-button')));
+    // Real practice flow: create, next, +30/confirm, next, Finish.
+    final next = find.byKey(const ValueKey('feature-tour-next-button'));
+    await _createSample(tester);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    await _tapVisible(
+        tester, find.byKey(const ValueKey('feature-tour-plus-30-button')));
     await tester.pump();
+    await _tapVisible(
+        tester, find.byKey(const ValueKey('feature-tour-confirm-time-button')));
+    await tester.pump();
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing);
+    expect(store.markCalls, 0);
+    expect(store.saved, isFalse);
+
+    // Explicit Finish persists exactly once, hands over and pops.
+    await tester.tap(next);
+    await tester.pumpAndSettle();
     expect(store.markCalls, 1);
     expect(store.saved, isTrue);
-    expect(done, isTrue);
+    expect(done, isTrue); // host callback owns hand-over/pop
   });
-
   testWidgets('optional tour ignores system back and pops after explicit skip',
       (tester) async {
     final store = _MemoryFeatureTourStore();

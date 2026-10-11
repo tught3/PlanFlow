@@ -617,9 +617,15 @@ struct PlanFlowVerticalScheduleWidgetView: View {
           .foregroundColor(PlanFlowTheme.mutedText)
       } else {
         ForEach(Array(visible.enumerated()), id: \.element.id) { _, event in
+          // event.route is a Dart-supplied deep-link string (e.g.
+          // "planflow://schedule/<id>"). Run it through the same
+          // widget-marker helper so the WidgetKit tap is recognised by
+          // home_widget iOS, falling back to today's calendar only if the
+          // route is not parseable.
           Link(
             destination:
-              URL(string: event.route) ?? PlanFlowWidgetConfig.calendarURL()
+              PlanFlowWidgetConfig.withWidgetMarker(event.route)
+                ?? PlanFlowWidgetConfig.calendarURL()
           ) {
             event.line
           }
@@ -841,7 +847,7 @@ struct PlanFlowGroupCalendarWidgetView: View {
     if let group = PlanFlowWidgetStore.shared.loadGroupCalendar() {
       calendarBody(group)
     } else {
-      Link(destination: URL(string: "planflow://group-calendar")!) {
+      Link(destination: PlanFlowWidgetConfig.groupCalendarURL()) {
         Text("탭하여 그룹 선택")
           .font(.system(size: 13, weight: .semibold))
           .foregroundColor(PlanFlowTheme.eventText)
@@ -855,9 +861,8 @@ struct PlanFlowGroupCalendarWidgetView: View {
     let days = PlanFlowProjection.monthGridDays(monthStart: entry.date)
     return VStack(spacing: 2) {
       Link(
-        destination: URL(
-          string: "planflow://group-calendar?groupId=\(group.groupId)"
-        )!
+        destination:
+          PlanFlowWidgetConfig.groupCalendarURL(groupId: group.groupId)
       ) {
         HStack {
           Text(group.groupName)
@@ -943,10 +948,8 @@ struct PlanFlowGroupCalendarWidgetView: View {
         )
     )
     .link(
-      destination: URL(
-        string:
-          "planflow://group-calendar?groupId=\(group.groupId)&date=\(key)"
-      )!
+      destination:
+        PlanFlowWidgetConfig.groupCalendarURL(groupId: group.groupId, date: key)
     )
   }
 }

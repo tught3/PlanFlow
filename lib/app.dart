@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:go_router/go_router.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:planflow/l10n/app_localizations.dart';
@@ -16,7 +17,17 @@ import 'core/region_settings.dart';
 import 'core/router.dart';
 import 'core/safe_prefs.dart';
 import 'core/startup_route_gate.dart';
+import 'core/home_widget_route_coordinator.dart';
 import 'core/theme.dart';
+
+// 순수 헬퍼(enum/도착 확인 resolver/queryParametersEqual/소비 게이트)는
+// coordinator 파일로 이동했다. 기존에 app.dart에서 이 심볼들을 import하던
+// 경로의 호환을 위해 재노출한다.
+export 'core/home_widget_route_coordinator.dart'
+    show HomeWidgetArrivalCheckResult,
+        resolveHomeWidgetArrivalCheckResult,
+        shouldConsumeHomeWidgetLaunch,
+        queryParametersEqual;
 import 'data/repositories/settings_repository.dart';
 import 'features/groups/services/group_calendar_widget_service.dart';
 import 'providers/auth_provider.dart';
@@ -36,6 +47,87 @@ import 'services/ios_app_store_update_service.dart';
 import 'widgets/planflow_action_buttons.dart';
 import 'widgets/ios_app_store_update_prompt.dart';
 
+HomeWidgetRouteReadiness resolveAppHomeWidgetReadiness({
+  required AuthProvider auth,
+  required StartupRouteGate gate,
+  required bool supabaseReady,
+}) {
+  if (!supabaseReady || !auth.hasResolvedInitialSession) {
+    return HomeWidgetRouteReadiness.notReady;
+  }
+  if (!auth.isSignedIn) return HomeWidgetRouteReadiness.needsAuth;
+  return gate.requiredSetupCompleteFor(auth.userId)
+      ? HomeWidgetRouteReadiness.ready
+      : HomeWidgetRouteReadiness.notReady;
+}
+
+/// Visible top-of-stack location used for widget-route arrival checks.
+///
+/// `routeInformationProvider.value` is NOT reliable after an imperative
+/// push: once the pushed page is built, go_router (13.x, with
+/// optionURLReflectsImperativeAPIs=false) silently reports the base
+/// configuration uri (e.g. /home) back into the provider, so an arrival check
+/// that runs after the frame sees the base location and re-pushes the target.
+/// The delegate's current configuration keeps the pushed match.
+Uri currentAppRouterLocation(GoRouter router) {
+  final configuration = router.routerDelegate.currentConfiguration;
+  if (configuration.isEmpty) {
+    return router.routeInformationProvider.value.uri;
+  }
+  RouteMatchBase last = configuration.matches.last;
+  while (last is ShellRouteMatch && last.matches.isNotEmpty) {
+    last = last.matches.last;
+  }
+  if (last is ImperativeRouteMatch) {
+    return last.matches.uri;
+  }
+  return configuration.uri;
+}
+
+/// While a resolved signed-in account is still completing required setup
+/// (tour/permission onboarding in the Shell), the widget launch hold must not
+/// keep suppressing redirects: the app has to reach HOME so the Shell can run
+/// that setup. Releasing the hold neither consumes nor navigates the pending
+/// target (the coordinator retains it and replays on the gate's completion
+/// notification) and re-enables, not bypasses, the normal router guards.
+/// Returns true when the hold should be released.
+bool shouldReleaseWidgetHoldAwaitingRequiredSetup({
+  required HomeWidgetRouteReadiness readiness,
+  required AuthProvider auth,
+  required StartupRouteGate gate,
+  required bool supabaseReady,
+}) {
+  return readiness == HomeWidgetRouteReadiness.notReady &&
+      supabaseReady &&
+      auth.hasResolvedInitialSession &&
+      auth.isSignedIn &&
+      gate.widgetLaunchPending &&
+      !gate.requiredSetupCompleteFor(auth.userId);
+}
+
+/// Seeds HOME and queues one push owned by the current submission.
+/// Capture before seeding: router notifications may synchronously supersede it.
+void seedHomeAndDeferHomeWidgetPush({
+  required String route,
+  required HomeWidgetRouteCoordinator Function() currentCoordinator,
+  required bool Function() isMounted,
+  required VoidCallback seedHome,
+  required void Function(String route) push,
+}) {
+  final coordinator = currentCoordinator();
+  final generation = coordinator.generation;
+  seedHome();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!isMounted() ||
+        !identical(currentCoordinator(), coordinator) ||
+        coordinator.generation != generation ||
+        coordinator.pendingRoute != route) {
+      return;
+    }
+    push(route);
+  });
+}
+
 class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key});
 
@@ -47,6 +139,15 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   static const String _pendingUpdateRestoreRouteKey =
       'startup:update_restore_route';
   static const int _homeWidgetArrivalMaxAttempts = 10;
+  // 라우터/Supabase/세션이 모두 준비될 때까지 기다릴 최대 시간. 이 시간 안에
+  // ready가 되지 않으면 pending은 소비되지 않고 RETAINED로 보존된다(타임아웃이
+  // 곧 성공/소비를 의미하지 않는다). 도착 확인 재시도(1.2초)보다 훨씬 길게
+  // 잡아, 콜드스타트 직후 Supabase 초기화 지연/네트워크 지연으로 readiness가
+  // 늦게 도착하는 경우에도 pending URI(선택 date/voice autoStart 포함)가
+  // 사라지지 않게 한다.
+  static const Duration _homeWidgetReadinessMaxWait = Duration(seconds: 15);
+  // RETAINED 상태에서는 auth/gate 변화 또는 foreground resume으로 이벤트
+  // 기반 재시도하므로 로그인/온보딩에 무한 갇히지 않는다.
 
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   StreamSubscription<Uri>? _planFlowLinkSubscription;
@@ -69,11 +170,27 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       ActivityTrackingService();
   final InteractionIdleGate _interactionIdleGate = InteractionIdleGate.instance;
   late final AppLifecycleListener _lifecycleListener;
-  String? _pendingHomeWidgetRoute;
   String? _lastHandledHomeWidgetRoute;
   DateTime? _lastHandledHomeWidgetRouteAt;
-  int _homeWidgetRouteGeneration = 0;
   bool? _homeWidgetShouldSeedHomeBase;
+  // pending 위젯 라우트의 상태(pending target/generation/deferral/도착 확인/
+  // givingUp 보존)를 coordinator가 온전히 소유한다. 앱은 readiness 판정,
+  // 실제 네비게이션, 로그인 리다이렉트, 게이트 해제 콜백만 주입한다.
+  // givingUp은 이제 소비/clear가 아니라 RETAINED(보존)이며, auth/gate 변화
+  // 또는 foreground resume(kickPendingRoute) 때 이벤트 기반으로 재시도한다.
+  late final HomeWidgetRouteCoordinator _homeWidgetRouteCoordinator =
+      HomeWidgetRouteCoordinator(
+    readinessResolver: _resolveHomeWidgetReadiness,
+    wakeSignal: Listenable.merge(<Listenable>[authProvider, startupRouteGate]),
+    navigate: _navigatePendingHomeWidgetRoute,
+    currentUri: () => currentAppRouterLocation(appRouter),
+    consume: (route) =>
+        _consumeHomeWidgetLaunch(reason: 'arrival_confirmed route=$route'),
+    onDeferred: _onHomeWidgetRouteDeferred,
+    onTerminal: _onHomeWidgetRouteTerminal,
+    arrivalMaxAttempts: _homeWidgetArrivalMaxAttempts,
+    readinessTimeout: _homeWidgetReadinessMaxWait,
+  );
   final Map<String, Future<void>> _startupLifecycleJobs =
       <String, Future<void>>{};
 
@@ -83,6 +200,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _oauthCallbackHandler.start();
     authProvider.addListener(_onAuthProviderChange);
     startupRouteGate.addListener(_onStartupRouteGateChange);
+    // 보존(retained)된 위젯 라우트가 온보딩 완료 등으로 정확히 목적지에 도착한
+    // 경우 확인/소비할 수 있게 한다(확인 전용, 네비게이션/예산 리셋 없음).
+    appRouter.routeInformationProvider.addListener(_onRouterLocationChanged);
+    appRouter.routerDelegate.addListener(_onRouterLocationChanged);
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
         unawaited(_deferStartupLifecycleWork(
@@ -606,6 +727,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _onAuthProviderChange() {
+    if (!authProvider.isSignedIn) startupRouteGate.resetRequiredSetup();
     if (authProvider.hasResolvedInitialSession &&
         authProvider.hasAttemptedStartupSync &&
         authProvider.needsReauthentication &&
@@ -631,6 +753,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     unawaited(_scheduleDeferredUpdateCheck());
   }
 
+  void _onRouterLocationChanged() {
+    _homeWidgetRouteCoordinator.notifyLocationChanged();
+  }
+
   void _onStartupRouteGateChange() {
     unawaited(_scheduleDeferredSessionSync(reason: 'startup_gate'));
     unawaited(_scheduleDeferredUpdateCheck());
@@ -640,6 +766,11 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void dispose() {
     authProvider.removeListener(_onAuthProviderChange);
     startupRouteGate.removeListener(_onStartupRouteGateChange);
+    appRouter.routeInformationProvider
+        .removeListener(_onRouterLocationChanged);
+    appRouter.routerDelegate.removeListener(_onRouterLocationChanged);
+    // coordinator가 소유한 타이머/리스너와 pending 상태까지 함께 정리한다.
+    _homeWidgetRouteCoordinator.dispose();
     _homeWidgetClickSubscription?.cancel();
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
@@ -716,36 +847,53 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   Future<void> _routeInitialHomeWidgetLaunch() async {
-    final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
-    DiagLogger.log(
-      'WidgetRoute',
-      'initiallyLaunchedFromHomeWidget attempt=0 uri=${uri ?? "null"}',
-    );
-    _handleHomeWidgetUri(uri);
-    if (uri == null) {
+    try {
+      final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+      DiagLogger.log('WidgetRoute', 'initial probe uri=${uri ?? "null"}');
+      _handleHomeWidgetUri(uri);
+      if (uri == null) _retryInitialHomeWidgetLaunchProbe(attempt: 0);
+    } catch (error) {
+      DiagLogger.log(
+          'WidgetRoute', 'initial widget launch probe failed: $error');
       _retryInitialHomeWidgetLaunchProbe(attempt: 0);
     }
   }
 
   void _retryInitialHomeWidgetLaunchProbe({required int attempt}) {
-    if (!mounted || _pendingHomeWidgetRoute != null || attempt >= 6) {
+    if (!mounted || _homeWidgetRouteCoordinator.hasPendingRoute ||
+        attempt >= 6) {
       return;
     }
     // 첫 재시도는 50ms(플러그인 초기화 타이밍), 이후 150ms 간격
     final delayMs = attempt == 0 ? 50 : 150 * attempt;
     unawaited(
       Future<void>.delayed(Duration(milliseconds: delayMs), () async {
-        if (!mounted || _pendingHomeWidgetRoute != null) {
+        if (!mounted || _homeWidgetRouteCoordinator.hasPendingRoute) {
           return;
         }
-        final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
-        DiagLogger.log(
-          'WidgetRoute',
-          'initiallyLaunchedFromHomeWidget attempt=${attempt + 1} '
-              'uri=${uri ?? "null"}',
-        );
-        if (uri != null) {
-          _handleHomeWidgetUri(uri);
+        try {
+          final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+          DiagLogger.log(
+            'WidgetRoute',
+            'initiallyLaunchedFromHomeWidget attempt=${attempt + 1} '
+                'uri=${uri ?? "null"}',
+          );
+          if (uri != null) {
+            _handleHomeWidgetUri(uri);
+            return;
+          }
+        } catch (error) {
+          // 재시도 도중 플러그인 측 race condition(예: native bridge가 아직
+          // attach 되지 않음, MethodChannel 응답 누락)이 발생해도 다음 시도
+          // 기회를 유지해 cold-start launch를 놓치지 않게 한다. 첫 호출의
+          // catch는 _routeInitialHomeWidgetLaunch에 있지만 그 직후의 재시도
+          // 반복에서도 동일한 보호가 필요해 여기서도 catch한다.
+          DiagLogger.log(
+            'WidgetRoute',
+            'retry probe attempt=${attempt + 1} failed: $error',
+          );
+        }
+        if (!mounted || _homeWidgetRouteCoordinator.hasPendingRoute) {
           return;
         }
         _retryInitialHomeWidgetLaunchProbe(attempt: attempt + 1);
@@ -772,10 +920,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   /// warm-start fallback: widgetClicked 스트림이 유실된 경우 onResume에서 재확인
   Future<void> _resumeHomeWidgetCheck() async {
-    if (_pendingHomeWidgetRoute != null) return;
+    // pending 라우트가 보존 중이면(deferral/givingUp retained 포함) 네이티브
+    // probe로 같은 URI를 다루지 말고 이벤트 기반 재평가만 트리거한다.
+    if (_homeWidgetRouteCoordinator.hasPendingRoute) {
+      _homeWidgetRouteCoordinator.kickPendingRoute();
+      return;
+    }
     final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
     // async 대기 중 스트림이 처리했을 수 있으므로 재확인
-    if (_pendingHomeWidgetRoute != null) return;
+    if (_homeWidgetRouteCoordinator.hasPendingRoute) {
+      _homeWidgetRouteCoordinator.kickPendingRoute();
+      return;
+    }
     if (uri != null) {
       _handleHomeWidgetUri(uri);
     }
@@ -820,7 +976,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   /// gate(startupRouteGate)·재시도 메커니즘을 재사용한다.
   Future<void> _routeInitialNotificationLaunch() async {
     final route = await _notificationService.resolveColdStartLaunchRoute();
-    if (route == null || _pendingHomeWidgetRoute != null) {
+    if (route == null || _homeWidgetRouteCoordinator.hasPendingRoute) {
       return;
     }
     startupRouteGate.beginWidgetLaunch();
@@ -852,89 +1008,107 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       }
       _lastHandledHomeWidgetRoute = route;
       _lastHandledHomeWidgetRouteAt = now;
-      // native intent 소비(_consumeHomeWidgetLaunch)는 여기서 즉시 호출하지
-      // 않는다. 도착 확인(_applyPendingHomeWidgetRoute) 이전에 intent를
-      // 지우면, 같은 generation 안에서 아직 진행 중인 재시도 루프(retrying)
-      // 도중에 intent가 사라져 그 루프 자체가 무의미해진다(P5). 소비는
-      // 이 재시도 루프가 '터미널' 상태(confirmed 또는 givingUp)에 도달한
-      // 시점으로 옮긴다.
-      //
-      // (P5R, 리뷰 수정) givingUp에서도 반드시 소비해야 한다. 앱이 죽지
-      // 않고 살아있는 동안은 _resumeHomeWidgetCheck()(onResume fallback)로
-      // 재시도할 수도 있어 보이지만, 이 시점에는 이미 push가 한 번
-      // 실행된 뒤라(대개 auth 리다이렉트 등 구조적 실패) 재시도는 같은
-      // 실패를 반복하거나 최악의 경우 이미 표시 중인 화면(예: STT 진행
-      // 중인 VoiceInputScreen) 위에 같은 라우트를 또 push해 세션을
-      // 취소시키는 새 버그를 만들 수 있다. 반면 intent를 살려둔 채 앱
-      // 프로세스가 죽었다가 재시작되면, HomeWidgetPlugin.kt가 살아있는
-      // Activity intent를 그대로 재생(replay)해 이미 실패로 끝난 옛
-      // 목적지로 강제 이동시키는 확실한 오작동이 생긴다. 불확실한
-      // 세션 내 재시도 이득보다 확실한 stale-intent 재생 위험 제거를
-      // 우선해 givingUp에서도 소비하고 _pendingHomeWidgetRoute도
-      // 리셋한다(그래야 이 위젯 launch와 무관한
-      // _routeInitialNotificationLaunch/_retryInitialHomeWidgetLaunchProbe
-      // 같은 다른 초기 라우팅 복구 경로가 남은 세션 동안 영구히 막히지
-      // 않는다).
+      // native intent 소비(_consumeHomeWidgetLaunch)는 도착이 확인된
+      // (confirmed) 시점에만 coordinator가 실행한다. givingUp이 되어도
+      // 소비하지 않는다: pending 목적지(선택된 date/voice autoStart query
+      // 포함)는 RETAINED로 보존되어, auth/gate 변화 또는 foreground
+      // resume 때 이벤트 기반으로 재시도된다. 타임아웃/도착 실패가 곧
+      // 성공/소비를 의미하지 않는다(구 P5R givingUp-소비 계약 교체).
+      // 프로세스가 재시작되면 unconsumed intent가 재생될 수 있지만, 그
+      // 재생이 곧 사용자가 의도한 목적지 복원이므로 의도된 동작이다.
       startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
   }
 
   void _scheduleHomeWidgetRoute(String route) {
-    _pendingHomeWidgetRoute = route;
     _homeWidgetShouldSeedHomeBase = null;
-    final generation = ++_homeWidgetRouteGeneration;
+    // 첫 평가는 한 프레임 뒤에 실행해 기존 post-frame 적용 타이밍을 유지한다
+    // (라우터/첫 프레임 안정화 이후 readiness 판정). 이후 deferral/givingUp
+    // 보존/재시도는 전부 coordinator가 이벤트 기반으로 소유한다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyPendingHomeWidgetRoute(generation, attempt: 0);
+      if (!mounted) {
+        return;
+      }
+      unawaited(_homeWidgetRouteCoordinator.submitRoute(route));
     });
   }
 
-  void _applyPendingHomeWidgetRoute(
-    int generation, {
-    required int attempt,
-  }) {
-    if (!mounted || generation != _homeWidgetRouteGeneration) {
-      return;
-    }
-    final route = _pendingHomeWidgetRoute;
-    if (route == null) {
-      startupRouteGate.completeWidgetLaunch();
-      return;
-    }
-    if (!authProvider.hasResolvedInitialSession && attempt < 10) {
-      DiagLogger.log(
-        'WidgetRoute',
-        'auth session wait attempt=$attempt route=$route resolved=false',
+  /// coordinator가 pending 라우트 평가를 위해 호출하는 readiness 판정.
+  /// Supabase 준비 + 초기 세션 해석 + signed-in까지 왔을 때만 ready다.
+  /// resolved-signed-out은 needsAuth: coordinator는 pending을 계속 들고
+  /// 있고, 로그인 리다이렉트는 앱 소유 콜백(_onHomeWidgetRouteDeferred)이
+  /// 담당한다(로그인/온보딩 강제 유지, 보호 화면 우회 없음).
+  HomeWidgetRouteReadiness _resolveHomeWidgetReadiness() =>
+      resolveAppHomeWidgetReadiness(
+        auth: authProvider,
+        gate: startupRouteGate,
+        supabaseReady: AppEnv.isSupabaseReady,
       );
-      unawaited(
-        Future<void>.delayed(const Duration(milliseconds: 120), () {
-          _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
-        }),
-      );
+
+  /// pending 라우트가 readiness에 막혀 deferred될 때마다 호출된다.
+  /// resolved-signed-out 상태면 로그인 화면으로 안내한다(pending은
+  /// coordinator가 보존하므로 로그인 성공 시 이벤트 기반으로 재시도된다).
+  void _onHomeWidgetRouteDeferred(
+    String route,
+    HomeWidgetRouteReadiness readiness,
+  ) {
+    if (readiness == HomeWidgetRouteReadiness.notReady) {
+      // Deliver the gate notification outside the coordinator's evaluation
+      // (and any build); re-check the policy when it actually runs.
+      scheduleMicrotask(() {
+        if (mounted &&
+            shouldReleaseWidgetHoldAwaitingRequiredSetup(
+              readiness: _resolveHomeWidgetReadiness(),
+              auth: authProvider,
+              gate: startupRouteGate,
+              supabaseReady: AppEnv.isSupabaseReady,
+            )) {
+          DiagLogger.log('WidgetRoute',
+              'hold released while awaiting required setup route=$route');
+          startupRouteGate.completeWidgetLaunch();
+        }
+      });
       return;
     }
+    if (readiness != HomeWidgetRouteReadiness.needsAuth) {
+      return;
+    }
+    final currentPath = appRouter.routeInformationProvider.value.uri.path;
+    if (currentPath == AppRoutes.login) {
+      return;
+    }
+    DiagLogger.log(
+      'WidgetRoute',
+      'pending widget route deferred to login route=$route',
+    );
+    appRouter.go(AppRoutes.login);
+  }
+
+  /// coordinator가 도착 확인을 시작할 때 목적지 도달이 필요할 때만 호출하는
+  /// 실제 네비게이션. 콜드스타트(스택 없음)에서는 홈을 먼저 깔고 그 위에
+  /// 목표 화면을 push해 뒤로가기 시 앱 종료를 막는다(기존 seed-home-base
+  /// 로직 유지). 위젯 라우트 홀드(startupRouteGate.beginWidgetLaunch)도
+  /// 여기서 건다. 같은 목적지에 이미 도착해 있으면 coordinator가 네비게이션
+  /// 없이 도착 확인만 진행하므로 중복 push가 구조적으로 불가능하다.
+  void _navigatePendingHomeWidgetRoute(String route) {
+    // Navigate first, then raise the hold. beginWidgetLaunch() refreshes the
+    // router, which re-parses routeInformationProvider.value; right after a
+    // pop (e.g. the required tour/permission route closing at HOME) that value
+    // can still be the popped location until the next frame reports, so a
+    // refresh before the navigation could resurrect the popped onboarding
+    // route on top of the target. Navigation only runs when readiness is
+    // ready (signed in + required setup complete), so no redirect depends on
+    // the hold for this call.
+    try {
+      _navigatePendingHomeWidgetRouteUnheld(route);
+    } finally {
+      startupRouteGate.beginWidgetLaunch();
+    }
+  }
+
+  void _navigatePendingHomeWidgetRouteUnheld(String route) {
     if (_homeWidgetShouldSeedHomeBase == null) {
-      DiagLogger.log(
-        'WidgetRoute',
-        'auth session wait attempt=$attempt route=$route '
-            'resolved=${authProvider.hasResolvedInitialSession}',
-      );
-    }
-    // 실제 네비게이션(go/push)은 이 generation에서 딱 한 번만 실행한다.
-    // auth 세션 대기 재시도(위 hasResolvedInitialSession 루프)가 여러 번
-    // 돌면 이 지점에 처음 도달했을 때 이미 attempt > 0일 수 있으므로,
-    // "attempt == 0"이 아니라 "_homeWidgetShouldSeedHomeBase가 아직
-    // null인가"로 최초 1회를 판별해야 한다(attempt 기준이면 콜드스타트에서
-    // auth 대기가 있었던 바로 그 경우에 아래 로직을 건너뛰고 원래 버그인
-    // 단순 go(route)로 빠져 앱 종료가 재발한다). 이후 도착 확인 재시도는
-    // 네비게이션을 다시 실행하지 않고 아래 지연 확인만 반복한다.
-    if (_homeWidgetShouldSeedHomeBase == null) {
-      // 콜드스타트/백그라운드 상태에서 위젯을 탭해 진입하면 라우터 스택이
-      // 비어 있어(canPop()==false) go(route)가 유일한 스택 엔트리가 되고,
-      // 그 결과 뒤로가기 시 pop할 대상이 없어 앱이 종료된다. 이 경우 홈을
-      // 스택 베이스로 먼저 깔고 그 위에 목표 화면을 push해 back이 홈으로
-      // 돌아가게 한다. 반대로 앱을 이미 쓰던 중(정상 스택 보유) 위젯을
-      // 탭한 경우에는 기존 스택을 홈으로 초기화하지 않고 그냥 push만 한다.
       _homeWidgetShouldSeedHomeBase = shouldSeedHomeBaseForHomeWidgetRoute(
         route: route,
         canPop: appRouter.canPop(),
@@ -942,99 +1116,63 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       if (_homeWidgetShouldSeedHomeBase!) {
         // 콜드스타트에서는 홈을 먼저 실제로 마운트한 뒤 목표 화면을
         // push해야 초기 root redirect/라우터 복원과 경합하지 않는다.
-        // 동기 go()+push()는 앱이 아직 첫 프레임을 적용하기 전 새 route를
-        // 덮어써 1x1 위젯에서 앱만 열리고 음성 화면이 사라질 수 있다.
-        appRouter.go(AppRoutes.home);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted ||
-              generation != _homeWidgetRouteGeneration ||
-              _pendingHomeWidgetRoute != route) {
-            return;
-          }
-          appRouter.push(route);
-        });
-      } else if (Uri.parse(route).path == AppRoutes.home) {
-        appRouter.go(route);
-      } else {
-        appRouter.push(route);
+        seedHomeAndDeferHomeWidgetPush(
+          route: route,
+          currentCoordinator: () => _homeWidgetRouteCoordinator,
+          isMounted: () => mounted,
+          seedHome: () => appRouter.go(AppRoutes.home),
+          push: (target) => appRouter.push(target),
+        );
+        return;
       }
     }
-    unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 120), () {
-        if (!mounted || generation != _homeWidgetRouteGeneration) {
-          return;
-        }
-        final current = appRouter.routeInformationProvider.value.uri;
-        final expected = Uri.parse(route);
-        final arrivalResult = resolveHomeWidgetArrivalCheckResult(
-          arrived: current.path == expected.path,
-          attempt: attempt,
-          maxAttempts: _homeWidgetArrivalMaxAttempts,
-        );
-        switch (arrivalResult) {
-          case HomeWidgetArrivalCheckResult.confirmed:
-            DiagLogger.log(
-              'WidgetRoute',
-              'arrival confirmed route=$route attempt=$attempt',
-            );
-            _pendingHomeWidgetRoute = null;
-            // (P5R) native intent 소비는 도착이 확인된 여기, 그리고 아래
-            // givingUp 분기에서만 실행된다(둘 다 터미널 상태). 재시도
-            // 도중(retrying)에는 호출하지 않아 같은 generation 안의
-            // 재시도 루프가 intent 없이 헛돌지 않게 한다.
-            if (shouldConsumeHomeWidgetLaunch(arrivalResult)) {
-              unawaited(
-                _consumeHomeWidgetLaunch(
-                  reason: 'arrival_confirmed route=$route',
-                ),
-              );
-            }
-            unawaited(
-              Future<void>.delayed(const Duration(milliseconds: 700), () {
-                if (!mounted || generation != _homeWidgetRouteGeneration) {
-                  return;
-                }
-                startupRouteGate.completeWidgetLaunch();
-              }),
-            );
-            break;
-          case HomeWidgetArrivalCheckResult.retrying:
-            DiagLogger.log(
-              'WidgetRoute',
-              'arrival not confirmed route=$route attempt=$attempt '
-                  'current=${current.path} retrying=true',
-            );
-            _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
-            break;
-          case HomeWidgetArrivalCheckResult.givingUp:
-            DiagLogger.log(
-              'WidgetRoute',
-              'arrival not confirmed route=$route attempt=$attempt '
-                  'current=${current.path} retrying=false giving_up=true',
-            );
-            // (P5R, 리뷰 수정) 여기서도 pendingRoute를 리셋한다. 리셋하지
-            // 않으면 이 위젯 launch와 무관한
-            // _routeInitialNotificationLaunch/_retryInitialHomeWidgetLaunchProbe
-            // 가 남은 세션 동안 영구히 막힌다(둘 다 진입 가드로
-            // _pendingHomeWidgetRoute != null을 본다). native intent는
-            // shouldConsumeHomeWidgetLaunch(아래 문서 참고)가 true를
-            // 반환하므로 여기서 함께 소비되어, 리셋 이후 다른 경로가
-            // HomeWidget.initiallyLaunchedFromHomeWidget()을 다시 불러도
-            // 이미 실패한 이 URI를 또 재생하지 않는다(=session 내 재
-            // navigation은 의도적으로 일어나지 않는다).
-            _pendingHomeWidgetRoute = null;
-            if (shouldConsumeHomeWidgetLaunch(arrivalResult)) {
-              unawaited(
-                _consumeHomeWidgetLaunch(
-                  reason: 'giving_up route=$route',
-                ),
-              );
+    if (Uri.parse(route).path == AppRoutes.home) {
+      appRouter.go(route);
+    } else {
+      appRouter.push(route);
+    }
+  }
+
+  /// pending 라우트가 터미널 결과에 도달했을 때의 앱 소유 정책.
+  ///
+  /// - confirmed: 네이티브 intent 소비는 coordinator의 consume 콜백이 이미
+  ///   정확히 1회 실행했다. 게이트는 700ms 뒤 해제(기존 타이밍 유지).
+  /// - givingUp: pending은 coordinator가 RETAINED 보존한다(소비 없음).
+  ///   게이트를 즉시 해제해 로그인/온보딩 강제가 정상 동작하게 하고,
+  ///   auth/gate 변화·foreground resume(kickPendingRoute) 때 이벤트 기반
+  ///   으로 재시도된다. 타임아웃은 성공/소비가 아니다.
+  /// - cancelled: 새 요청으로 대체되었거나 cancel/dispose된 경우.
+  void _onHomeWidgetRouteTerminal(
+    String route,
+    HomeWidgetRouteOutcome outcome,
+  ) {
+    switch (outcome) {
+      case HomeWidgetRouteOutcome.confirmed:
+        DiagLogger.log('WidgetRoute', 'arrival confirmed route=$route');
+        final generation = _homeWidgetRouteCoordinator.generation;
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 700), () {
+            if (!mounted ||
+                generation != _homeWidgetRouteCoordinator.generation) {
+              return;
             }
             startupRouteGate.completeWidgetLaunch();
-            break;
-        }
-      }),
-    );
+          }),
+        );
+        break;
+      case HomeWidgetRouteOutcome.givingUp:
+        DiagLogger.log(
+          'WidgetRoute',
+          'arrival not confirmed route=$route '
+              'retained=true consume=false (givingUp keeps pending)',
+        );
+        // suppression bypass 방지: 보존 중에도 로그인/온보딩 강제는 정상
+        // 동작해야 하므로 위젯 홀드를 푼다.
+        startupRouteGate.completeWidgetLaunch();
+        break;
+      case HomeWidgetRouteOutcome.cancelled:
+        break;
+    }
   }
 
   @override
@@ -1176,68 +1314,6 @@ bool shouldIgnoreDuplicateHomeWidgetRoute({
       now.difference(previousHandledAt) < const Duration(seconds: 2);
 }
 
-/// [_PlanFlowAppState._applyPendingHomeWidgetRoute]의 도착 확인 재시도
-/// 루프가 한 번의 확인 시도에서 어떤 결과에 도달했는지를 나타낸다.
-///
-/// (P5R, 리뷰 수정) native intent 소비(`_consumeHomeWidgetLaunch`)는 이
-/// 재시도 루프가 '터미널' 상태에 도달했을 때만 일어난다: [confirmed]
-/// (성공)와 [givingUp](최종 실패) 둘 다 터미널이므로 소비하고, [retrying]
-/// (아직 같은 generation 안에서 재시도 중)에서는 소비하지 않는다.
-/// givingUp에서도 소비하는 이유는 [shouldConsumeHomeWidgetLaunch]의
-/// 문서를 참고 — 세션 내 재시도(`_resumeHomeWidgetCheck`)를 살려두는
-/// 것보다 프로세스가 죽었다 재시작될 때 native intent가 재생(replay)되어
-/// 이미 실패로 끝난 옛 목적지로 강제 이동하는 위험을 없애는 쪽이 더
-/// 안전하다고 판단했다.
-@visibleForTesting
-enum HomeWidgetArrivalCheckResult { confirmed, retrying, givingUp }
-
-/// 도착 확인 결과([arrived])와 현재 재시도 횟수([attempt])로부터, 이번
-/// 시도가 [HomeWidgetArrivalCheckResult]의 어떤 상태에 해당하는지 계산하는
-/// 순수 함수. `_applyPendingHomeWidgetRoute`의 arrival-check 콜백이 이
-/// 함수 하나로 분기하므로, 여기서 반환한 값이 곧 native intent 소비 여부를
-/// 결정한다(아래 [shouldConsumeHomeWidgetLaunch] 참고).
-@visibleForTesting
-HomeWidgetArrivalCheckResult resolveHomeWidgetArrivalCheckResult({
-  required bool arrived,
-  required int attempt,
-  required int maxAttempts,
-}) {
-  if (arrived) {
-    return HomeWidgetArrivalCheckResult.confirmed;
-  }
-  return attempt < maxAttempts
-      ? HomeWidgetArrivalCheckResult.retrying
-      : HomeWidgetArrivalCheckResult.givingUp;
-}
-
-/// 소비 게이트: [result]가 터미널 상태([HomeWidgetArrivalCheckResult.confirmed]
-/// 또는 [HomeWidgetArrivalCheckResult.givingUp])일 때만 native intent를
-/// 소비한다(=true). [HomeWidgetArrivalCheckResult.retrying]에서는 항상
-/// false를 반환해, 같은 generation 안에서 아직 진행 중인 재시도 루프
-/// 도중에 intent가 사라지지 않게 한다.
-///
-/// (P5R, 리뷰 수정 — 원래 P5는 confirmed에서만 소비했다) givingUp에서도
-/// 소비하도록 바꾼 이유:
-/// - givingUp에 도달했다는 것은 이미 이번 generation에서 push가 한 번
-///   실행됐지만(도착 확인 자체가 push 이후 시점에서만 이뤄짐) 최대
-///   재시도 횟수 안에 목표 경로 도착이 끝내 확인되지 않았다는 뜻이다.
-///   대부분 auth 리다이렉트 등 구조적 실패이므로, intent를 살려 세션
-///   내 `_resumeHomeWidgetCheck()`(onResume fallback)가 나중에 같은
-///   URI로 재시도해도 같은 실패가 반복되거나, 최악의 경우 이미 표시
-///   중인 화면(예: 음성 인식이 진행 중인 VoiceInputScreen) 위에 같은
-///   라우트를 또 push해 그 화면의 상태(진행 중인 STT 세션 등)를
-///   취소시키는 새 버그를 만들 수 있다.
-/// - 반대로 intent를 살려둔 채 앱 프로세스가 죽었다가 재시작되면,
-///   `HomeWidgetPlugin.kt`가 Activity에 남아있는 intent를 그대로
-///   읽어 재생(replay)하므로, 이미 실패로 끝난 옛 목적지로 강제
-///   이동하는 확실한 오작동이 생긴다(콜드스타트 stale intent 재생).
-/// 불확실한 세션 내 재시도 이득보다 확실한 stale-intent 재생 위험
-/// 제거를 우선했다.
-@visibleForTesting
-bool shouldConsumeHomeWidgetLaunch(HomeWidgetArrivalCheckResult result) {
-  return result != HomeWidgetArrivalCheckResult.retrying;
-}
-
 @visibleForTesting
 String? resolveHomeWidgetRoute(Uri? uri) {
   if (uri == null || uri.scheme != 'planflow') {
@@ -1247,9 +1323,8 @@ String? resolveHomeWidgetRoute(Uri? uri) {
   final query = uri.hasQuery ? '?${uri.query}' : '';
   switch (uri.host) {
     case 'schedule':
-      final scheduleId = uri.pathSegments.isNotEmpty
-          ? uri.pathSegments.first.trim()
-          : '';
+      final scheduleId =
+          uri.pathSegments.isNotEmpty ? uri.pathSegments.first.trim() : '';
       return scheduleId.isNotEmpty
           ? '${AppRoutes.eventDetail}/$scheduleId'
           : AppRoutes.calendar;

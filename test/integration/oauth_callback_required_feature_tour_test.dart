@@ -6,6 +6,7 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/core/router.dart';
 import 'package:planflow/core/startup_route_gate.dart';
+import 'package:planflow/l10n/app_localizations.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/onboarding/feature_tour_screen.dart';
 import 'package:planflow/screens/shell_screen.dart';
@@ -37,7 +38,7 @@ void main() {
   });
 
   testWidgets(
-      'OAuth callback follows production router into required three-page tour',
+      'OAuth callback follows production router into required three-step interactive practice tour',
       (tester) async {
     await Supabase.initialize(
       url: 'https://integration-test.supabase.co',
@@ -48,7 +49,10 @@ void main() {
     final authSession = _FakeAuthSessionClient();
     final auth = AuthProvider(authService: authSession);
     final routeGate = StartupRouteGate();
-    final tourStore = _MemoryFeatureTourStore();
+    // Use the real production store: the OAuth callback path runs against
+    // SharedPreferencesFeatureTourStore so the test asserts the actual
+    // `feature_tour_completed_v1` key rather than a parallel mock surface.
+    final tourStore = const SharedPreferencesFeatureTourStore();
     final callbackAdapter = _FakeOAuthCallbackSessionAdapter(authSession);
     auth.start();
     final handler = OAuthCallbackHandler(
@@ -72,7 +76,17 @@ void main() {
       routeGate.dispose();
       authSession.dispose();
     });
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      MaterialApp.router(
+        routerConfig: router,
+        // FeatureTourScreen calls AppLocalizations.of(context) on build; the
+        // production router assumes the host shell installs these delegates
+        // and locales. Mirror that here so the test exercises the same
+        // localization surface the app uses.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    );
     await _pumpUntil(tester,
         () => router.routeInformationProvider.value.uri.path == AppRoutes.login);
     expect(router.routeInformationProvider.value.uri.path, AppRoutes.login);
@@ -87,54 +101,138 @@ void main() {
         'integration-test-code');
     expect(auth.isSignedIn, isTrue);
     expect(find.byType(FeatureTourScreen), findsOneWidget);
-    expect(find.byType(FeatureTourScreen), findsOneWidget);
-    expect(find.text('말하면 일정이 정리돼요'), findsOneWidget);
-    expect(tourStore.completed, isFalse);
-    expect(
-        find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing);
+    // The required tour hides the optional Skip shortcut.
+    expect(find.byKey(const ValueKey('feature-tour-skip-button')),
+        findsNothing);
+    // Tour has not been completed before the user interacts with it.
+    expect(await tourStore.shouldShow(), isTrue);
 
-    await tester.tap(find.byKey(const ValueKey('feature-tour-next-button')));
-    await _pumpUntil(tester, () => find.text('AI 대화로 일정도 고쳐요')
-        .evaluate()
-        .isNotEmpty);
-    expect(find.text('AI 대화로 일정도 고쳐요'), findsOneWidget);
-    expect(tourStore.completed, isFalse);
+    // Step 1: the next button stays disabled until the sample is explicitly
+    // created. The previous copy asserted on stale 3-page titles; instead we
+    // assert on the interactive practice copy and the real disabled state.
+    final l10n = AppLocalizations.of(
+        tester.element(find.byType(FeatureTourScreen)));
+    expect(find.text(l10n.featureTourCreateTitle), findsOneWidget);
+    final nextButton =
+        find.byKey(const ValueKey('feature-tour-next-button'));
+    expect(tester.widget<FilledButton>(nextButton).onPressed, isNull);
 
-    await tester.tap(find.byKey(const ValueKey('feature-tour-next-button')));
-    await _pumpUntil(tester, () => find.text('출발과 브리핑을 챙겨드려요')
-        .evaluate()
-        .isNotEmpty);
-    expect(find.text('출발과 브리핑을 챙겨드려요'), findsOneWidget);
-    expect(tourStore.completed, isFalse);
+    await tester.enterText(
+        find.byKey(const ValueKey('feature-tour-title-field')), 'Dentist');
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    // Ensure the create button is on-screen (the keyboard overlay can
+    // otherwise leave it clipped under the keyboard rect).
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('feature-tour-create-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey('feature-tour-create-button')));
+    await tester.pump();
+    expect(tester.widget<FilledButton>(nextButton).onPressed, isNotNull);
 
-    await tester.tap(find.byKey(const ValueKey('feature-tour-next-button')));
+    // Step 2: explicit quick edit so the user really exercises the practice
+    // tour rather than slamming next three times.
+    await tester.tap(nextButton);
+    await _pumpUntil(tester,
+        () => find.text(l10n.featureTourEditTitle).evaluate().isNotEmpty);
+    expect(find.text(l10n.featureTourEditTitle), findsOneWidget);
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('feature-tour-plus-30-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey('feature-tour-plus-30-button')));
+    await tester.pump();
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('feature-tour-confirm-time-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey('feature-tour-confirm-time-button')));
+    await tester.pump();
+
+    // Step 3: live preview of the example values.
+    await tester.tap(nextButton);
+    await _pumpUntil(tester,
+        () => find.text(l10n.featureTourPreviewTitle).evaluate().isNotEmpty);
+    expect(find.text(l10n.featureTourPreviewTitle), findsOneWidget);
+    expect(find.text(l10n.featureTourPrep), findsOneWidget);
+    expect(find.text(l10n.featureTourDeparture), findsOneWidget);
+
+    // Finish on the last step: the FilledButton is bound to _completeTour
+    // when isLastStep is true, so a tap on next-button here is the explicit
+    // Done action that persists the completion marker.
+    await tester.tap(nextButton);
+    await _pumpUntil(tester,
+        () => router.routeInformationProvider.value.uri.path == AppRoutes.home);
+    // The route flips to home inside the Navigator pop, but the ShellScreen
+    // build happens on a later frame. Pump until the protected shell is
+    // actually in the tree.
+    await _pumpUntil(
+        tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
     await tester.pump(const Duration(milliseconds: 400));
-    expect(tourStore.completed, isTrue);
+
+    // Real persistence assertion: the production store key is written.
+    expect(await tourStore.shouldShow(), isFalse);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(SharedPreferencesFeatureTourStore.completedKey),
+        isTrue);
+    expect(
+        prefs.getBool(SharedPreferencesFeatureTourStore.completedKey),
+        equals(true));
+
+    // OAuth callback path: the required tour gate releases and the user
+    // reaches the protected shell/calendar home.
     expect(router.routeInformationProvider.value.uri.path, AppRoutes.home);
     expect(find.byType(ShellScreen), findsOneWidget);
   });
+
+  testWidgets('optional/profile tour (default) still shows Skip and completes',
+      (tester) async {
+    final store = _SkipProbeStore();
+    await _pumpTourScreen(tester, FeatureTourScreen(store: store));
+    final skip = find.byKey(const ValueKey('feature-tour-skip-button'));
+    expect(skip, findsOneWidget);
+    await tester.tap(skip);
+    await tester.pumpAndSettle();
+    expect(store.saved, isTrue);
+  });
+
+  testWidgets('required tour hides Skip and does not persist on build',
+      (tester) async {
+    final store = _SkipProbeStore();
+    await _pumpTourScreen(
+        tester, FeatureTourScreen(store: store, requireFinalConfirmation: true));
+    expect(find.byKey(const ValueKey('feature-tour-skip-button')),
+        findsNothing);
+    expect(store.saved, isFalse);
+  });
 }
 
-Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
-  for (var attempt = 0; attempt < 20 && !condition(); attempt++) {
-    await tester.pump(const Duration(milliseconds: 100));
-  }
-}
-
-class _MemoryFeatureTourStore extends FeatureTourStore {
-  bool completed = false;
-
+class _SkipProbeStore extends FeatureTourStore {
+  bool saved = false;
   @override
-  Future<bool> shouldShow() async => !completed;
-
+  Future<bool> shouldShow() async => !saved;
   @override
-  Future<void> markCompleted() async => completed = true;
-
+  Future<void> markCompleted() async => saved = true;
   @override
-  Future<bool> shouldShowTip(String tipId) async => false;
-
+  Future<bool> shouldShowTip(String tipId) async => true;
   @override
   Future<void> markTipShown(String tipId) async {}
+}
+
+Future<void> _pumpTourScreen(WidgetTester tester, FeatureTourScreen screen) =>
+    tester.pumpWidget(MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: screen,
+    ));
+
+Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
+  for (var attempt = 0; attempt < 40 && !condition(); attempt++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 class _FakeOAuthCallbackSessionAdapter implements OAuthCallbackSessionAdapter {

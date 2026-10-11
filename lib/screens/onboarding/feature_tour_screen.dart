@@ -267,11 +267,12 @@ class _FeatureTourScreenState extends State<FeatureTourScreen> {
                       icon: const Icon(Icons.refresh),
                       label: Text(l10n.featureTourRestart),
                     ),
-                    TextButton(
-                      key: const ValueKey('feature-tour-skip-button'),
-                      onPressed: busy ? null : _completeTour,
-                      child: Text(l10n.featureTourSkip),
-                    ),
+                    if (!widget.requireFinalConfirmation)
+                      TextButton(
+                        key: const ValueKey('feature-tour-skip-button'),
+                        onPressed: busy ? null : _completeTour,
+                        child: Text(l10n.featureTourSkip),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 4),

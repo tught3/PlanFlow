@@ -249,12 +249,48 @@ jobs:
             echo "::error title=BLOCKED_PROBE_MARKER_MISSING::Native PASS marker absent; adapter assertions or typed readbacks did not complete (possible native crash)."
             exit 1
           fi
+          if grep -qF 'WIDGET_LAUNCH_ROUTING_PROBE_SKIPPED' "$combined_log"; then
+            echo "::error title=BLOCKED_PROBE_SKIPPED_NOT_GREEN::Widget-launch routing probe reported SKIPPED; a skipped probe must never be reported as native green."
+            exit 1
+          fi
+          if ! grep -qF 'WIDGET_LAUNCH_ROUTING_PROBE_PASS' "$combined_log"; then
+            echo "::error title=BLOCKED_PROBE_MARKER_MISSING::Widget-launch routing PASS marker absent; pending-route regression legs did not complete (possible coordinator or readiness-survival failure)."
+            exit 1
+          fi
+          for marker in NATIVE_TUTORIAL_PRACTICE_PASS WIDGET_SHARED_ROUTING_DELAYED_AUTH_PASS WIDGET_CALENDAR_DAY_SHEET_PASS WIDGET_VOICE_AUTOSTART_FAKE_STT_PASS; do
+            grep -qF "$marker" "$combined_log" || {
+              echo "::error title=BLOCKED_NATIVE_LEG_MISSING::Missing genuine completed leg: $marker"
+              exit 1
+            }
+          done
           if ! grep -qE 'Executed [1-9][0-9]* tests?' "$combined_log"; then
             echo "::error title=BLOCKED_PROBE_NO_TESTS_EXECUTED::Zero XCTest cases executed; build success alone is not probe success."
             exit 1
           fi
           echo "IOS_WIDGET_PROBE_EVIDENCE_PASS: native PASS marker and executed XCTest evidence verified for ${{ matrix.category }}"
 
+      - name: Build actual widget extension and isolated transport entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/e2e-artifacts/transport"
+          mkdir -p "$artifact_dir"
+          E2E_WATCHDOG_LOG_FILE="$artifact_dir/build.log" \
+            E2E_WATCHDOG_TAIL_FILE="$artifact_dir/build.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 900 flutter build ios --simulator --debug --no-pub \
+              --target=tool/widget_launch_qa/transport_entry.dart
+          app="$GITHUB_WORKSPACE/build/ios/iphonesimulator/Runner.app"
+          extension="$app/PlugIns/PlanFlowWidgetExtension.appex"
+          test -d "$extension"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$extension/Info.plist")
+          test -s "$extension/$executable"
+          file "$extension/$executable" | tee "$artifact_dir/extension-binary.txt"
+          echo 'IOS_ACTUAL_WIDGET_EXTENSION_BUILD_PASS scope=compiled_embedded_not_tap_test'
+          QA_OWNED_SIMULATOR_UDID='${{ steps.boot.outputs.udid }}' \
+            QA_TRANSPORT_APP="$app" QA_TRANSPORT_OUT="$artifact_dir" \
+            E2E_WATCHDOG_LOG_FILE="$artifact_dir/runner.log" \
+            E2E_WATCHDOG_TAIL_FILE="$artifact_dir/runner.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 240 bash tool/widget_launch_qa/run_transport.sh
       - name: Shutdown and delete simulator
         if: ${{ always() && steps.boot.outputs.udid != '' }}
         shell: bash

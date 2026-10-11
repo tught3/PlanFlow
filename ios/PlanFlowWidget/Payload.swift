@@ -14,6 +14,22 @@ enum PlanFlowWidgetConfig {
   static let legacyTitleKey = "widget_schedule_title"
   static let monthOffsetKey = "planflow_ios_month_widget_offset"
 
+  // MARK: Widget URL marker
+  //
+  // The home_widget iOS plugin (0.9.3+) keys off a `homeWidget` query item
+  // when deciding whether a URL it received came from a WidgetKit tap
+  // (and therefore should be reported via HomeWidget.widgetClicked / show
+  // up in initiallyLaunchedFromHomeWidget) or from a generic deep link
+  // (in which case the URL falls through to the app_links universal-link
+  // handler). Every URL that originates from inside the PlanFlowWidget
+  // extension MUST carry that marker; otherwise every widget tap is
+  // misrouted and the app never observes the widget click.
+  //
+  // Locked down by test/ios_widget_url_delivery_contract_test.dart.
+  static let schemeName = "planflow"
+  static let homeWidgetMarkerName = "homeWidget"
+  static let homeWidgetMarkerValue = "1"
+
   static var appGroup: String? {
     Bundle.main.object(forInfoDictionaryKey: "PlanFlowAppGroup") as? String
   }
@@ -23,23 +39,107 @@ enum PlanFlowWidgetConfig {
     return UserDefaults(suiteName: group)
   }
 
+  /// Single source of the home_widget iOS marker. Every WidgetKit URL helper
+  /// below routes its `queryItems` through this so the marker is added
+  /// exactly once, in a stable order, regardless of which builder produced
+  /// the URL.
+  static func widgetMarkerItem() -> URLQueryItem {
+    URLQueryItem(name: homeWidgetMarkerName, value: homeWidgetMarkerValue)
+  }
+
+  /// Appends the home_widget iOS marker to an existing URL string (e.g. a
+  /// Dart-supplied `event.route` of `planflow://schedule/<id>` that needs to
+  /// round-trip through WidgetKit). Idempotent: if the marker is already
+  /// present, the URL is returned unchanged. Returns nil if the input is
+  /// not a valid URL.
+  static func withWidgetMarker(_ raw: String) -> URL? {
+    guard var components = URLComponents(string: raw) else { return nil }
+    let existing = components.queryItems ?? []
+    if existing.contains(where: { $0.name == homeWidgetMarkerName }) {
+      return components.url
+    }
+    var appended = existing
+    appended.append(widgetMarkerItem())
+    components.queryItems = appended
+    return components.url
+  }
+
   static func dayURL(_ date: Date = Date()) -> URL {
-    URL(string: "planflow://day/\(ymd(date))")!
+    var components = URLComponents()
+    components.scheme = schemeName
+    components.host = "day"
+    components.path = "/" + ymd(date)
+    components.queryItems = [widgetMarkerItem()]
+    return components.url ?? URL(
+      string: "\(schemeName)://day/\(ymd(date))"
+        + "?\(homeWidgetMarkerName)=\(homeWidgetMarkerValue)"
+    )!
   }
 
   static func calendarURL(_ date: Date? = nil) -> URL {
-    guard let date = date else {
-      return URL(string: "planflow://calendar")!
+    var components = URLComponents()
+    components.scheme = schemeName
+    components.host = "calendar"
+    var items: [URLQueryItem] = [widgetMarkerItem()]
+    var fallback = "\(schemeName)://calendar"
+      + "?\(homeWidgetMarkerName)=\(homeWidgetMarkerValue)"
+    if let date = date {
+      items.append(URLQueryItem(name: "date", value: ymd(date)))
+      fallback = "\(schemeName)://calendar"
+        + "?date=\(ymd(date))&\(homeWidgetMarkerName)=\(homeWidgetMarkerValue)"
     }
-    return URL(string: "planflow://calendar?date=\(ymd(date))")!
+    components.queryItems = items
+    return components.url ?? URL(string: fallback)!
   }
 
-  static let voiceURL = URL(string: "planflow://voice-launcher")!
+  static let voiceURL: URL = {
+    var components = URLComponents()
+    components.scheme = schemeName
+    components.host = "voice-launcher"
+    components.queryItems = [widgetMarkerItem()]
+    return components.url ?? URL(
+      string: "\(schemeName)://voice-launcher"
+        + "?\(homeWidgetMarkerName)=\(homeWidgetMarkerValue)"
+    )!
+  }()
 
   static func eventURL(_ id: String) -> URL? {
     let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
-    return URL(string: "planflow://event/\(trimmed)")
+    var components = URLComponents()
+    components.scheme = schemeName
+    components.host = "event"
+    components.path = "/" + trimmed
+    components.queryItems = [widgetMarkerItem()]
+    // eventURL already returns URL?, so the unencodable-id edge case
+    // (e.g. a stray "%" that defeats percent-encoding) is expressed as nil
+    // instead of a force-unwrapped string fallback that would crash on the
+    // same arbitrary id. Callers (Views.swift) already bind with `if let`.
+    return components.url
+  }
+
+  /// Group calendar deep link (group picker tap → no id; day-cell tap →
+  /// id + date). Mirrors the inline `URL(string:)` calls previously in
+  /// `PlanFlowGroupCalendarWidgetView` so the `homeWidget` marker is added
+  /// by the same helper every other WidgetKit URL uses.
+  static func groupCalendarURL(groupId: String? = nil, date: String? = nil) -> URL {
+    var components = URLComponents()
+    components.scheme = schemeName
+    components.host = "group-calendar"
+    var items: [URLQueryItem] = [widgetMarkerItem()]
+    if let groupId = groupId?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !groupId.isEmpty {
+      items.append(URLQueryItem(name: "groupId", value: groupId))
+    }
+    if let date = date?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !date.isEmpty {
+      items.append(URLQueryItem(name: "date", value: date))
+    }
+    components.queryItems = items
+    return components.url ?? URL(
+      string: "\(schemeName)://group-calendar"
+        + "?\(homeWidgetMarkerName)=\(homeWidgetMarkerValue)"
+    )!
   }
 
   static func ymd(_ date: Date) -> String {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +32,17 @@ import 'calendar/calendar_screen.dart';
 import 'home/home_screen.dart';
 import 'settings/settings_screen.dart';
 import '../widgets/planflow_action_buttons.dart';
+
+bool completeShellRequiredSetup({
+  required bool flowCompleted,
+  required String flowUserId,
+  required AuthProvider auth,
+  required StartupRouteGate gate,
+}) {
+  if (!flowCompleted || !auth.isSignedIn || auth.userId != flowUserId) return false;
+  gate.completeRequiredSetup(flowUserId);
+  return gate.requiredSetupCompleteFor(flowUserId);
+}
 
 const _shellDestinations = <_ShellDestination>[
   _ShellDestination(
@@ -245,6 +257,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _sessionOnboardingFlow = null;
     _sessionOnboardingFlowUserId = null;
     _sessionDeferredWorkUserId = null;
+    _sessionAuthEpoch = 0;
   }
 
   AuthProvider get _authProvider => widget.authProviderOverride ?? authProvider;
@@ -259,6 +272,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   static Future<void>? _sessionOnboardingFlow;
   static String? _sessionOnboardingFlowUserId;
   static String? _sessionDeferredWorkUserId;
+  // Bumped on every observed auth identity transition. An onboarding flow may
+  // only record required-setup completion when no transition happened while
+  // it ran (a->b->a must not let the stale 'a' flow complete the new 'a').
+  static int _sessionAuthEpoch = 0;
 
   late int _currentIndex;
   late final List<Widget?> _tabChildren;
@@ -289,6 +306,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _checkedGoogleCalendarAutoPrompt = false;
   bool _checkedFeatureTour = false;
   bool _requiredFeatureTourConfirmed = true;
+  bool _requiredPermissionConfirmed = true;
   bool _postOnboardingStartupTasksQueued = false;
   final OnboardingStartupGate _startupGate = OnboardingStartupGate();
   final InteractionIdleGate _interactionIdleGate = InteractionIdleGate.instance;
@@ -328,6 +346,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     if (_onboardingDecisionPending) {
       _routeGate.beginStartupWorkDeferral();
+    }
+    if (_observedUserId != null && _observedUserId!.isNotEmpty) {
+      // Silent, idempotent account-scoped claim (safe during build).
+      _routeGate.beginRequiredSetup(_observedUserId!);
     }
     WidgetsBinding.instance.addObserver(this);
     _authProvider.addListener(_handleAuthChanged);
@@ -409,11 +431,18 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
 
     _observedUserId = currentUserId;
+    _sessionAuthEpoch += 1;
+    if (currentUserId != null && currentUserId.isNotEmpty) {
+      _routeGate.beginRequiredSetup(currentUserId);
+    } else {
+      _runOutsideBuild(_routeGate.resetRequiredSetup);
+    }
     _checkedPermissionOnboarding = false;
     _checkedExternalCalendarGuide = false;
     _checkedGoogleCalendarAutoPrompt = false;
     _checkedFeatureTour = false;
     _requiredFeatureTourConfirmed = true;
+    _requiredPermissionConfirmed = true;
     _postOnboardingStartupTasksQueued = false;
     _startupGate.reset();
     _startupWorkGeneration += 1;
@@ -453,10 +482,20 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       _clearOnboardingGate();
       return;
     }
+    _routeGate.beginRequiredSetup(userId);
     if (_sessionOnboardingUserId == userId) {
       if (mounted && _onboardingDecisionPending) {
         setState(() => _onboardingDecisionPending = false);
       }
+      // Already-complete early return: this account finished the required
+      // chain earlier in this process. Record it through the same seam (the
+      // gate may have been reset by a sign-out while no Shell was mounted).
+      completeShellRequiredSetup(
+        flowCompleted: true,
+        flowUserId: userId,
+        auth: _authProvider,
+        gate: _routeGate,
+      );
       return;
     }
     final inFlight = _sessionOnboardingFlow;
@@ -500,6 +539,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     required String userId,
   }) async {
     final startedAt = DateTime.now();
+    final authEpoch = _sessionAuthEpoch;
     var flowCompleted = false;
     try {
       // 단계는 선언 순서대로 순차 실행된다(투어가 끝나야 권한 온보딩이 뜬다).
@@ -530,7 +570,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         shouldContinue: () =>
             mounted &&
             _authProvider.userId == userId &&
-            _requiredFeatureTourConfirmed,
+            _requiredFeatureTourConfirmed &&
+            _requiredPermissionConfirmed,
         releaseGate: () {
           if (mounted &&
               _observedUserId == userId &&
@@ -568,7 +609,11 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       if (_observedUserId == userId && _authProvider.userId == userId) {
         _clearOnboardingGate();
       }
-      if (flowCompleted && _authProvider.userId == userId) {
+      if (completeShellRequiredSetup(
+          flowCompleted: flowCompleted && authEpoch == _sessionAuthEpoch,
+          flowUserId: userId,
+          auth: _authProvider,
+          gate: _routeGate)) {
         _sessionOnboardingUserId = userId;
       }
       DiagLogger.log(
@@ -903,6 +948,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
     _checkedPermissionOnboarding = true;
+    _requiredPermissionConfirmed = false;
 
     final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
@@ -915,7 +961,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // 되므로 "로딩 중"에 갇히는 쪽보다 안전하다.
       final completed = await _permissionService
           .isOnboardingCompleted(userId)
-          .timeout(_onboardingProbeTimeout, onTimeout: () => true);
+          .timeout(_onboardingProbeTimeout);
       if (!mounted) {
         return;
       }
@@ -923,15 +969,42 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // 올라오기 전에 홈이 1~2 프레임 깜빡인다(2026-08-12 회귀). 직후에는 이미
       // 라우트가 스택에 올라가 있어 깜빡임이 없고, push가 렌더되지 못한 실패
       // 경로에서도 "로딩 중"이 분 단위로 남지 않는다.
+      _requiredPermissionConfirmed = completed;
       if (!completed && mounted) {
         await _presentInteractive(
           () => context.push(AppRoutes.permissionOnboarding),
         );
+        // A popped route is not completion. Read back the typed flag the
+        // permission screen persists on its finish path (denied optional
+        // permissions still finish onboarding); cancel/error stays false.
+        if (_authProvider.userId != userId) return;
+        final confirmed = await _permissionService
+            .isOnboardingCompleted(userId)
+            .timeout(_onboardingProbeTimeout);
+        if (_authProvider.userId != userId) return;
+        _requiredPermissionConfirmed = confirmed;
+        if (!confirmed) {
+          DiagLogger.log(
+            'Onboarding',
+            'permission onboarding not confirmed; session remains incomplete',
+          );
+        }
       }
     } catch (error, stackTrace) {
       debugPrint('Permission onboarding check failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  /// Gate notifications wake the widget-route coordinator and app listeners;
+  /// never deliver them while the widget tree is building.
+  void _runOutsideBuild(VoidCallback action) {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => action());
+      return;
+    }
+    action();
   }
 
   void _clearOnboardingGate() {

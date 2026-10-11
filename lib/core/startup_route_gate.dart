@@ -4,6 +4,39 @@ import 'dart:async';
 import '../services/interaction_idle_gate.dart';
 
 class StartupRouteGate extends ChangeNotifier {
+  String? _requiredSetupUserId;
+  bool _requiredSetupCompleted = false;
+
+  bool requiredSetupCompleteFor(String? userId) =>
+      userId != null && userId.isNotEmpty &&
+      _requiredSetupUserId == userId && _requiredSetupCompleted;
+
+  /// Account-scoped evidence, independent of visual loading/gate release.
+  ///
+  /// Called by the Shell at the actual signed-in onboarding decision. It is
+  /// idempotent for the current owner (repeated auth notifications or Shell
+  /// recreation never reset an already-completed account) and silent: for
+  /// the newly owned account [requiredSetupCompleteFor] was already false, so
+  /// readiness cannot change and no listener runs (safe during build).
+  void beginRequiredSetup(String userId) {
+    if (userId.isEmpty || _requiredSetupUserId == userId) return;
+    _requiredSetupUserId = userId;
+    _requiredSetupCompleted = false;
+  }
+
+  void completeRequiredSetup(String userId) {
+    if (_requiredSetupUserId != userId || _requiredSetupCompleted) return;
+    _requiredSetupCompleted = true;
+    notifyListeners();
+  }
+
+  void resetRequiredSetup() {
+    if (_requiredSetupUserId == null && !_requiredSetupCompleted) return;
+    _requiredSetupUserId = null;
+    _requiredSetupCompleted = false;
+    notifyListeners();
+  }
+
   bool _widgetLaunchPending = false;
   bool _startupWorkDeferred = false;
   final ChangeNotifier _redirectRefresh = ChangeNotifier();
