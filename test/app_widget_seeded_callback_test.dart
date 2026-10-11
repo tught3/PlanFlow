@@ -17,6 +17,15 @@ class _Harness {
   void Function()? onSeed;
   late HomeWidgetRouteCoordinator coordinator = makeCoordinator();
 
+  /// When true (default), the `seedHome` callback mirrors the legacy shared
+  /// HOME seed path and schedules a frame itself. When false, `seedHome` is a
+  /// no-op for frame scheduling so a regression test can prove that the
+  /// helper itself requests the visual update via `ensureVisualUpdate()`
+  /// instead of relying on the seed to do it.
+  final bool seedHomeSchedulesFrame;
+
+  _Harness({this.seedHomeSchedulesFrame = true});
+
   HomeWidgetRouteCoordinator makeCoordinator() => HomeWidgetRouteCoordinator(
         readinessResolver: () => HomeWidgetRouteReadiness.ready,
         navigate: (route) => seedHomeAndDeferHomeWidgetPush(
@@ -25,7 +34,9 @@ class _Harness {
           isMounted: () => mounted,
           seedHome: () {
             seeds++;
-            WidgetsBinding.instance.scheduleFrame();
+            if (seedHomeSchedulesFrame) {
+              WidgetsBinding.instance.scheduleFrame();
+            }
             onSeed?.call();
           },
           push: (target) {
@@ -140,6 +151,61 @@ void main() {
     await tester.pump();
     expect(h.pushes, [_voice]);
     expect(h.consumed, isEmpty);
+    h.coordinator.dispose();
+  });
+
+  testWidgets(
+      'helper requests frame when binding is idle and pushes selected-date URI exactly once',
+      (tester) async {
+    final h = _Harness(seedHomeSchedulesFrame: false);
+    addTearDown(() => h.coordinator.dispose());
+
+    // Drain any leftover frame work from the binding so the helper's
+    // own request becomes observable as a fresh false -> true transition.
+    var safety = 5;
+    while (WidgetsBinding.instance.hasScheduledFrame && safety-- > 0) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(WidgetsBinding.instance.hasScheduledFrame, isFalse,
+        reason: 'binding must be idle before submission to make the '
+            'helper-owned frame request observable');
+
+    // Submit the selected-date URI: `_other` carries date=2026-10-11 so the
+    // helper must push exactly that, with no extras.
+    final outcome = h.coordinator.submitRoute(_other);
+
+    // Without `ensureVisualUpdate()` after the postframe registration, no
+    // visual update is requested by the helper (addPostFrameCallback itself
+    // does not schedule a frame, and seedHome is intentionally a no-op here),
+    // so the postframe may never fire in production. With the fix, the
+    // helper requests the frame itself.
+    expect(WidgetsBinding.instance.hasScheduledFrame, isTrue,
+        reason: 'helper must request a visual update to drive the '
+            'postframe callback when the binding is idle');
+
+    expect(h.seeds, 1);
+    expect(h.pushes, isEmpty,
+        reason: 'push is deferred to the postframe callback');
+    expect(h.consumed, isEmpty,
+        reason: 'no consume before arrival confirmation');
+
+    await tester.pump();
+    expect(h.pushes, [_other],
+        reason: 'exactly one push and the URI must carry date=2026-10-11');
+    expect(h.consumed, isEmpty,
+        reason: 'consume only after arrival, never pre-arrival');
+
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(await outcome, HomeWidgetRouteOutcome.confirmed,
+        reason: 'outcome confirmed only after arrival');
+    expect(h.consumed, [_other],
+        reason: 'exactly one consume after arrival, no premature consume');
+    expect(h.coordinator.pendingRoute, isNull,
+        reason: 'queue cleared after confirmed consume');
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(h.pushes, [_other],
+        reason: 'no additional pushes after consume');
     h.coordinator.dispose();
   });
 }

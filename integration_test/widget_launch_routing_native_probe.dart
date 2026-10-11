@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:planflow/app.dart'
@@ -25,6 +26,7 @@ import 'package:planflow/app.dart'
         shouldConsumeHomeWidgetLaunch,
         shouldIgnoreDuplicateHomeWidgetRoute,
         shouldSeedHomeBaseForHomeWidgetRoute;
+import 'package:planflow/core/env.dart' show AppEnv;
 import 'package:planflow/core/home_widget_route_coordinator.dart'
     show
         HomeWidgetRouteCoordinator,
@@ -35,6 +37,7 @@ import 'package:planflow/core/router.dart' show createAppRouter;
 import 'package:planflow/core/startup_route_gate.dart' show StartupRouteGate;
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/l10n/app_localizations.dart' show AppLocalizations;
 import 'package:planflow/providers/auth_provider.dart' show AuthProvider;
 import 'package:planflow/screens/auth/login_screen.dart' show LoginScreen;
 import 'package:planflow/screens/calendar/calendar_screen.dart'
@@ -70,6 +73,10 @@ const MethodChannel _speechToTextChannel =
 /// AuthProvider._bootstrapInitialSession's first-event timeout (2s) so the
 /// signed-in event deterministically wins the bootstrap wait.
 const Duration _readinessDelay = Duration(milliseconds: 1600);
+
+/// Hard cap on timestamped trace lines printed by the QA recorder. Trace
+/// lines are diagnostic only — they MUST NOT be treated as pass criteria.
+const int _maxTraceEvents = 20;
 
 /// Register alongside the HomeWidget storage probe and the feature-tour
 /// practice probe. Each probe keeps its own PASS marker and platform gate.
@@ -189,7 +196,34 @@ void registerWidgetLaunchRoutingNativeProbe() {
       // LEG 1 + LEG 3a — shared production pending-route controller
       // driving the REAL production router/screens with in-memory auth.
       // ------------------------------------------------------------------
-      await _ensurePlaceholderSupabase();
+      final Stopwatch readinessClock = Stopwatch()..start();
+      final _QaTrace trace = _QaTrace(
+        clock: readinessClock,
+        emit: (line) {
+          // ignore: avoid_print
+          print(line);
+        },
+      );
+      trace.add('leg1_setup');
+
+      // Prove ownership before shared mutation or AuthProvider construction.
+      expect(
+          _hasPriorSupabaseOwnershipConflict(
+              appReady: true, sdkInitialized: false),
+          isTrue);
+      expect(
+          _hasPriorSupabaseOwnershipConflict(
+              appReady: false, sdkInitialized: true),
+          isTrue);
+      final _NoNetworkHttpClient blockingClient =
+          await _ensurePlaceholderSupabase();
+      trace.add(
+        'placeholder_ready',
+        <String, Object?>{
+          'appenv_ready': AppEnv.isSupabaseReady,
+          'attempts': blockingClient.attempts,
+        },
+      );
 
       final FakeAuthService authClient = FakeAuthService();
       final AuthProvider qaAuth = AuthProvider(authService: authClient);
@@ -214,16 +248,18 @@ void registerWidgetLaunchRoutingNativeProbe() {
       int consumeCalls = 0;
       int navigationCalls = 0;
       int firstNavigationElapsedMs = -1;
-      final Stopwatch readinessClock = Stopwatch()..start();
       // Isolated test lifetime only, not production PlanFlowAppState.mounted.
       bool probeLifetimeActive = true;
       late final HomeWidgetRouteCoordinator coordinator;
       coordinator = HomeWidgetRouteCoordinator(
-        readinessResolver: () => !qaAuth.hasResolvedInitialSession
-            ? HomeWidgetRouteReadiness.notReady
-            : qaAuth.isSignedIn
-                ? HomeWidgetRouteReadiness.ready
-                : HomeWidgetRouteReadiness.needsAuth,
+        readinessResolver: () {
+          final resolved = qaAuth.hasResolvedInitialSession;
+          final signed = qaAuth.isSignedIn;
+          if (!resolved) return HomeWidgetRouteReadiness.notReady;
+          return signed
+              ? HomeWidgetRouteReadiness.ready
+              : HomeWidgetRouteReadiness.needsAuth;
+        },
         wakeSignal: qaAuth,
         currentUri: () => currentAppRouterLocation(qaRouter),
         navigate: (route) {
@@ -231,6 +267,15 @@ void registerWidgetLaunchRoutingNativeProbe() {
           if (firstNavigationElapsedMs < 0) {
             firstNavigationElapsedMs = readinessClock.elapsedMilliseconds;
           }
+          trace.add(
+            'navigate',
+            <String, Object?>{
+              'route': route,
+              'delegate': currentAppRouterLocation(qaRouter).toString(),
+              'phase': coordinator.phase.toString(),
+              'generation': coordinator.generation,
+            },
+          );
           if (shouldSeedHomeBaseForHomeWidgetRoute(
               route: route, canPop: qaRouter.canPop())) {
             seedHomeAndDeferHomeWidgetPush(
@@ -244,12 +289,39 @@ void registerWidgetLaunchRoutingNativeProbe() {
             unawaited(qaRouter.push<void>(route));
           }
         },
-        consume: (_) async {
+        consume: (route) async {
           consumeCalls++;
+          trace.add(
+            'consume',
+            <String, Object?>{'route': route, 'n': consumeCalls},
+          );
+        },
+        onDeferred: (route, readiness) {
+          trace.add(
+            'deferred',
+            <String, Object?>{
+              'route': route,
+              'readiness': readiness.toString(),
+              'phase': coordinator.phase.toString(),
+              'has_pending': coordinator.hasPendingRoute,
+              'session_status': qaAuth.sessionStatus.toString(),
+              'ready': AppEnv.isSupabaseReady,
+            },
+          );
         },
         onTerminal: (route, outcome) {
           terminal = outcome;
           terminalRoute = route;
+          trace.add(
+            'terminal',
+            <String, Object?>{
+              'route': route,
+              'outcome': outcome.toString(),
+              'phase': coordinator.phase.toString(),
+              'nav': navigationCalls,
+              'consume': consumeCalls,
+            },
+          );
           if (outcome == HomeWidgetRouteOutcome.confirmed) {
             qaGate.completeWidgetLaunch();
           }
@@ -271,12 +343,31 @@ void registerWidgetLaunchRoutingNativeProbe() {
       // Gate before first router mount: unresolved auth must not show login.
       qaGate.beginWidgetLaunch();
 
+      // Subscribe FakeAuth BEFORE scheduling the delayed emit AND BEFORE
+      // pumpWidget, so the broadcast stream has a listener by the time the
+      // 1.6s timer fires (broadcast streams do not buffer late events).
+      expect(
+        qaAuth.hasResolvedInitialSession,
+        isFalse,
+        reason: 'qaAuth must start unresolved; AuthProvider.bootstrap has '
+            'not yet observed the first AuthState event',
+      );
+      qaAuth.start();
+      trace.add(
+        'qaAuth_started',
+        <String, Object?>{
+          'has_resolved': qaAuth.hasResolvedInitialSession,
+          'session_status': qaAuth.sessionStatus.toString(),
+        },
+      );
+
       // Delayed readiness: no session events at all until 1.6s, then a
       // signed-in session. hasResolvedInitialSession stays false for the
       // whole window that used to kill the pending route after ~1.2s.
       unawaitedTestSafe(
         Future<void>.delayed(_readinessDelay, () {
           authClient.emitSignedIn(FixtureSession.build());
+          trace.add('emit_signed_in');
         }),
       );
 
@@ -284,10 +375,14 @@ void registerWidgetLaunchRoutingNativeProbe() {
         MaterialApp.router(
           routerConfig: qaRouter,
           locale: const Locale('ko', 'KR'),
-          supportedLocales: const <Locale>[Locale('ko', 'KR')],
+          // Production Material/Cupertino + AppLocalizations delegates
+          // silence the Korean delegate warning exposed in native phone
+          // logs and keep the rendered widget tree aligned with real
+          // navigator behaviors.
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
         ),
       );
-      qaAuth.start();
       submit(NotificationRouteContract.day(chosenDay));
 
       // While the launch is pending, the login screen must never appear.
@@ -334,11 +429,38 @@ void registerWidgetLaunchRoutingNativeProbe() {
       expect(qaGate.widgetLaunchPending, isFalse,
           reason: 'the launch gate must complete after confirmation');
 
+      // Probe-level invariants for the placeholder init fix:
+      // 1) No HTTP may leak through the blocking client — any non-zero
+      //    attempt means a real backend host was reached and the probe
+      //    MUST NOT report native green.
+      // 2) AuthProvider resolved the initial session via the FakeAuth
+      //    subscription (proven by isSignedIn == true after the 1.6s
+      //    delay) so the resolution chain survived the readiness window.
+      // 3) QA trace buffer never grew beyond its hard cap.
+      expect(
+        qaAuth.hasResolvedInitialSession,
+        isTrue,
+        reason: 'AuthProvider must have resolved the initial session '
+            'via the FakeAuth subscription within the bootstrap 2s window',
+      );
+      expect(
+        qaAuth.isSignedIn,
+        isTrue,
+        reason: 'AuthProvider must be signed in after the 1.6s delayed emit',
+      );
+      expect(
+        trace.lines.length,
+        lessThanOrEqualTo(_maxTraceEvents),
+        reason: 'trace buffer must respect its hard cap',
+      );
+
       // ignore: avoid_print
       print('WIDGET_SHARED_ROUTING_DELAYED_AUTH_PASS '
           'controller=production delay_ms=$firstNavigationElapsedMs '
           'navigation_calls=$navigationCalls consume_calls=$consumeCalls '
-          'production_app_state=false');
+          'production_app_state=false '
+          'blocking_attempts=${blockingClient.attempts} '
+          'trace_lines=${trace.lines.length}');
 
       // Warm submitted URI on the same live router (not external delivery).
       final List<MethodCall> speechCalls = <MethodCall>[];
@@ -507,6 +629,12 @@ void registerWidgetLaunchRoutingNativeProbe() {
       expect(tester.takeException(), isNull,
           reason: 'probe legs must complete without UI exceptions');
 
+      expect(
+        blockingClient.attempts,
+        0,
+        reason: 'HTTP attempts were blocked locally and not transmitted; '
+            'attempts=${blockingClient.attempts}',
+      );
       // ignore: avoid_print
       print(
         '$_probePassMarker '
@@ -614,22 +742,160 @@ class _CompletedTourStore implements FeatureTourStore {
   Future<void> markTipShown(String tipId) async {}
 }
 
-/// Placeholder Supabase client so Supabase.instance is non-null when the
-/// router-mounted screens evaluate signed-out states. The `.invalid` host is
-/// never resolvable and is never queried: the probe signs in only through
-/// the in-memory AuthSessionClient, and no repository call is issued with it
-/// (LEG 2 uses the in-memory repository; LEG 1 never signs the placeholder
-/// client in, so CalendarScreen early-returns to its signed-out state).
-Future<void> _ensurePlaceholderSupabase() async {
-  try {
-    await Supabase.initialize(
-      url: 'https://planflow-qa-placeholder.invalid',
-      anonKey: 'qa-placeholder-anon-key',
+/// Local no-network HTTP client injected into the placeholder Supabase
+/// initialize so any unintended HTTP attempt is recorded and short-circuited
+/// (fail-closed). Increments [attempts] before throwing so the probe can
+/// assert zero outbound traffic. Disposal is owned by the test fixture and
+/// limited to this client only — the shared `Supabase.instance` is never
+/// disposed by the probe (the SDK may be shared with other probes in the
+/// same test binary).
+class _NoNetworkHttpClient extends http.BaseClient {
+  int attempts = 0;
+  String? lastMethod;
+  String? lastHost;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    attempts++;
+    lastMethod = request.method;
+    lastHost = request.url.host;
+    throw StateError(
+      'QA HTTP attempt blocked locally and not transmitted '
+      '(method=$lastMethod host=$lastHost)',
     );
-  } catch (_) {
-    // Already initialized in this process (an earlier probe or the host).
   }
 }
+
+/// Capped timestamped QA recorder. Lines print via [emit] (typically
+/// `print`) but the recorder never serves as a pass criterion — pass is
+/// always asserted via `expect(...)` on the actual state.
+class _QaTrace {
+  _QaTrace({required this.clock, required this.emit});
+
+  final Stopwatch clock;
+  final void Function(String line) emit;
+  final List<String> lines = <String>[];
+
+  void add(String event,
+      [Map<String, Object?> extras = const <String, Object?>{}]) {
+    if (lines.length >= _maxTraceEvents) {
+      return;
+    }
+    final int elapsed = clock.elapsedMilliseconds;
+    final List<String> parts = <String>[
+      '$event t=${elapsed}ms',
+    ];
+    extras.forEach((String key, Object? value) {
+      parts.add('$key=$value');
+    });
+    final String line = 'WIDGET_LAUNCH_QA_TRACE ${parts.join(' ')}';
+    lines.add(line);
+    emit(line);
+  }
+}
+
+/// Placeholder Supabase client so `Supabase.instance` is non-null when the
+/// router-mounted screens evaluate signed-out states. The `.invalid` host is
+/// never resolvable and must never be queried; the probe signs in only
+/// through the in-memory FakeAuthService and uses the in-memory repository
+/// for LEG 2 (LEG 1 never signs the placeholder client in via Supabase, so
+/// CalendarScreen early-returns to its signed-out state).
+///
+/// The init takes ownership of the placeholder and only then flips
+/// `AppEnv.markSupabaseInitialized()`. Failure modes:
+///
+///   * Real init errors propagate (`rethrow`) — they are never swallowed.
+///   * If the blocking client observed any HTTP attempt during init, the
+///     fixture reports this in trace and refuses to flip ready (fail-closed).
+///   * When `AppEnv.isSupabaseReady` was already true on entry (i.e. init
+///     was a no-op returning the existing instance), the fixture cannot
+///     prove ownership of the placeholder and also refuses to flip ready.
+///
+/// Both disposals are registered as teardowns:
+///   * Restore the prior `AppEnv.isSupabaseReady` flag without falsifying
+///     an already-ready shared client.
+///   * Close only the OWNED blocking HTTP client; never dispose the
+///     shared `Supabase.instance`.
+/// Supabase 2.12.4 public API: `instance` documents an AssertionError until
+/// initialized, and the returned instance exposes `isInitialized`.
+Future<_NoNetworkHttpClient> _ensurePlaceholderSupabase() async {
+  if (AppEnv.isSupabaseReady) {
+    throw StateError('Refusing QA init: AppEnv already reports ready');
+  }
+  Supabase? priorInstance;
+  try {
+    priorInstance = Supabase.instance;
+  } on AssertionError catch (error) {
+    if (!error.toString().contains(
+          'You must initialize the supabase instance before calling Supabase.instance',
+        )) {
+      rethrow;
+    }
+  }
+  if (priorInstance != null && priorInstance.isInitialized) {
+    throw StateError('Refusing QA init: existing usable Supabase client');
+  }
+
+  final _NoNetworkHttpClient client = _NoNetworkHttpClient();
+  Supabase? createdInstance;
+  bool appEnvMarkedByUs = false;
+  try {
+    createdInstance = await Supabase.initialize(
+      url: 'https://planflow-qa-placeholder.invalid',
+      anonKey: 'qa-placeholder-anon-key',
+      httpClient: client,
+      debug: false,
+    );
+    if (!createdInstance.isInitialized || client.attempts != 0) {
+      throw StateError(
+        'Refusing QA AuthProvider setup: owned init failed clean checks '
+        '(initialized=${createdInstance.isInitialized} attempts=${client.attempts})',
+      );
+    }
+    AppEnv.markSupabaseInitialized();
+    appEnvMarkedByUs = true;
+    if (!AppEnv.isSupabaseReady) {
+      throw StateError('Owned init failed to mark AppEnv ready');
+    }
+  } catch (_) {
+    Supabase? partialInstance = createdInstance;
+    if (partialInstance == null) {
+      try {
+        final Supabase candidate = Supabase.instance;
+        if (candidate.isInitialized) partialInstance = candidate;
+      } on AssertionError catch (error) {
+        if (!error.toString().contains(
+              'You must initialize the supabase instance before calling Supabase.instance',
+            )) {
+          rethrow;
+        }
+      }
+    }
+    if (partialInstance != null && partialInstance.isInitialized) {
+      await partialInstance.dispose();
+    }
+    client.close();
+    if (appEnvMarkedByUs) {
+      AppEnv.resetSupabaseInitializationState();
+    }
+    rethrow;
+  }
+
+  // First registered teardown runs last: provider/router cleanup precedes
+  // disposal of only the instance just created here.
+  addTearDown(() async {
+    await createdInstance!.dispose();
+    client.close();
+    AppEnv.resetSupabaseInitializationState();
+  });
+  return client;
+}
+
+bool _hasPriorSupabaseOwnershipConflict({
+  required bool appReady,
+  required bool sdkInitialized,
+}) =>
+    appReady || sdkInitialized;
 
 Future<void> _pumpUntil(
   WidgetTester tester,

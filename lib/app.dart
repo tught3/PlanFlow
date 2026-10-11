@@ -126,6 +126,15 @@ void seedHomeAndDeferHomeWidgetPush({
     }
     push(route);
   });
+  // The post-frame callback only fires when the scheduler next produces a
+  // frame. If the binding is idle (e.g. the shared HOME seed is a no-op
+  // because the router is already on /home), nothing else requests a new
+  // frame, so the queued push is silently dropped. Ask the binding for a
+  // visual update AFTER registering the callback so a frame is guaranteed
+  // regardless of the binding's prior state. The mounted/coordinator/
+  // generation/exact-pending guards remain inside the callback and own the
+  // actual push; this line only requests the frame the callback relies on.
+  WidgetsBinding.instance.ensureVisualUpdate();
 }
 
 class PlanFlowApp extends StatefulWidget {

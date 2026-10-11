@@ -71,6 +71,8 @@ void registerFeatureTourPracticeNativeProbe() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('feature-tour-step-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing,
+          reason: 'required practice must not offer Skip');
       expect(prefs.get(_completedKey), isNull,
           reason: 'opening the tour must not complete it');
 
@@ -160,25 +162,101 @@ void registerFeatureTourPracticeNativeProbe() {
       expect(prefs.get(_completedKey), isNull,
           reason: 'Restart must not write the completion marker');
 
-      // Required-final-confirmation mode still offers an explicit Skip. This
-      // real production-store path must persist true before calling back.
+      expect(find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing,
+          reason: 'Restart must retain required-final-confirmation mode');
+
+      // Repeat the existing practice actions after Restart, then complete only
+      // via the actual final Finish control in required mode.
+      await tester.enterText(
+        find.byKey(const ValueKey('feature-tour-title-field')),
+        sampleTitle,
+      );
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      final String restartedStamp = _visibleStamp(tester);
+      final DateTime restartedTime = _parseStampNear(restartedStamp, actualNow);
+      final Finder restartedCreate =
+          find.byKey(const ValueKey('feature-tour-create-button'));
+      await tester.ensureVisible(restartedCreate);
+      await tester.tap(restartedCreate);
+      await tester.pumpAndSettle();
+      expect(find.text('$sampleTitle \u00B7 $restartedStamp'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('feature-tour-next-button')));
+      await tester.pumpAndSettle();
+      final Finder restartedPlusThirty =
+          find.byKey(const ValueKey('feature-tour-plus-30-button'));
+      await tester.ensureVisible(restartedPlusThirty);
+      await tester.tap(restartedPlusThirty);
+      await tester.pumpAndSettle();
+      final DateTime restartedEditedTime =
+          restartedTime.add(const Duration(minutes: 30));
+      final String restartedEditedStamp = _formatStamp(restartedEditedTime);
+      expect(find.text(restartedEditedStamp), findsOneWidget);
+      final Finder restartedConfirm =
+          find.byKey(const ValueKey('feature-tour-confirm-time-button'));
+      await tester.ensureVisible(restartedConfirm);
+      await tester.tap(restartedConfirm);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('feature-tour-next-button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('feature-tour-step-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing);
+      expect(prefs.get(_completedKey), isNull,
+          reason: 'required practice stays incomplete until Finish');
+      expect(callbackCount, 0,
+          reason: 'required practice callback waits until Finish');
+      final Finder finishButton =
+          find.byKey(const ValueKey('feature-tour-next-button'));
+      await tester.ensureVisible(finishButton);
+      await tester.tap(finishButton);
+      await tester.pumpAndSettle();
+      expect(prefs.getBool(_completedKey), isTrue,
+          reason: 'required Finish persists the real completion marker');
+      expect(callbackCount, 1,
+          reason: 'required Finish invokes the callback exactly once');
+      expect(tester.takeException(), isNull,
+          reason: 'required practice should complete without UI exceptions');
+
+      // Preserve Skip coverage as a fresh optional tour with isolated callback
+      // state; it must remain an explicit, exactly-once completion path.
+      await prefs.remove(_completedKey);
+      expect(prefs.get(_completedKey), isNull);
+      var optionalCallbackCount = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('ko'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: FeatureTourScreen(
+            key: const ValueKey('optional-feature-tour-skip-probe'),
+            store: const SharedPreferencesFeatureTourStore(),
+            requireFinalConfirmation: false,
+            nowProvider: () => actualNow,
+            onCompleted: () => optionalCallbackCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('feature-tour-skip-button')),
           findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('feature-tour-skip-button')));
       await tester.pumpAndSettle();
       expect(prefs.getBool(_completedKey), isTrue,
-          reason: 'explicit Skip persists the real completion marker');
-      expect(callbackCount, 1,
-          reason: 'explicit completion invokes the callback exactly once');
+          reason: 'optional explicit Skip persists the production marker');
+      expect(optionalCallbackCount, 1,
+          reason: 'optional Skip invokes its callback exactly once');
       expect(tester.takeException(), isNull,
-          reason: 'practice flow should complete without UI exceptions');
+          reason: 'optional Skip should complete without UI exceptions');
 
       // ignore: avoid_print
       print(
         '$_nativeTutorialPracticePass '
         'os=${Platform.operatingSystemVersion} '
         'created=true edit_plus_30=true preview_arithmetic=true '
-        'restart_no_marker=true explicit_skip_marker=true callbacks=$callbackCount',
+        'restart_no_marker=true required_no_skip=true '
+        'required_finish_marker=true required_callbacks=1 '
+        'explicit_skip_marker=true optional_callbacks=1',
       );
     },
     // This is functional UI coverage, not an accessibility semantics test.
