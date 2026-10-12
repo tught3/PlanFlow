@@ -55,6 +55,7 @@ import 'package:planflow/services/stt_service.dart'
         SttNativeStatusEvent,
         SttService;
 
+import 'support/widget_probe_calendar_sheet_finder.dart';
 import 'support/widget_probe_render_wait.dart';
 import 'support/widget_probe_speech_stub.dart';
 
@@ -827,7 +828,7 @@ void registerWidgetLaunchRoutingNativeProbe() {
             'initialDate (the production day-agenda sheet)',
       );
       expect(
-        find.text(sheetEvent.title),
+        findWidgetProbeCalendarDaySheetEventTitle(sheetEvent.title),
         findsOneWidget,
         reason: 'the fixture event for the chosen date must be listed in '
             'the day sheet',
