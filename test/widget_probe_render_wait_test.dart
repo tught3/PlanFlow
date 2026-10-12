@@ -15,10 +15,14 @@ import 'package:planflow/providers/auth_provider.dart' show AuthProvider;
 import 'package:planflow/screens/auth/login_screen.dart' show LoginScreen;
 import 'package:planflow/screens/calendar/calendar_screen.dart'
     show CalendarScreen;
+import 'package:planflow/data/models/event_model.dart' show EventModel;
+import 'package:planflow/data/repositories/event_repository.dart'
+    show EventRepository;
 import 'package:planflow/services/feature_tour_service.dart'
     show FeatureTourStore;
 import '../integration_test/support/widget_probe_render_wait.dart';
 import '../integration_test/support/widget_probe_http_attempt_trace.dart';
+import '../integration_test/support/widget_probe_calendar_aux_memory.dart';
 
 final _date = DateTime(DateTime.now().year + 1, 10, 14);
 final _location = '/calendar?date=${_date.toIso8601String().split('T').first}';
@@ -117,6 +121,56 @@ class _NoNetworkHttpClient extends http.BaseClient {
   void close() {
     closed = true;
     super.close();
+  }
+}
+
+/// Read-only in-memory personal `EventRepository` for the modified positive
+/// render-ready fixture. The screen is mounted with an explicit non-empty
+/// `userId`, so without an injected repository the screen would fall back
+/// to `EventRepository.supabase()` and the `_NoNetworkHttpClient` would
+/// record a blocked attempt. We provide this stub so the personal-day
+/// load path stays in-process; the supported public method
+/// (`listEvents`) returns the constructor list and increments the
+/// call counter, every other path is fail-closed with
+/// `UnsupportedError`.
+class _RenderWaitPersonalEventRepository extends EventRepository {
+  _RenderWaitPersonalEventRepository(this._events);
+
+  final List<EventModel> _events;
+  int listEventsCalls = 0;
+  int fetchEventCalls = 0;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    listEventsCalls++;
+    return List<EventModel>.of(_events);
+  }
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    fetchEventCalls++;
+    return null;
+  }
+
+  @override
+  Future<EventModel> createEvent(EventModel event) {
+    throw UnsupportedError(
+      '_RenderWaitPersonalEventRepository is read-only; createEvent is fail-closed.',
+    );
+  }
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) {
+    throw UnsupportedError(
+      '_RenderWaitPersonalEventRepository is read-only; updateEvent is fail-closed.',
+    );
+  }
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) {
+    throw UnsupportedError(
+      '_RenderWaitPersonalEventRepository is read-only; deleteEvent is fail-closed.',
+    );
   }
 }
 
@@ -290,6 +344,65 @@ void main() {
       gate.dispose();
       auth.dispose();
       await client.dispose();
+    }
+
+    // A second phase in the same case exercises the real calendar public DI
+    // seams without replacing the delayed-router positive control above.
+    final memory = CalendarAuxMemory();
+    final personalRepo =
+        _RenderWaitPersonalEventRepository(const <EventModel>[]);
+    try {
+      await tester.pumpWidget(MaterialApp(
+        home: CalendarScreen(
+          eventRepository: personalRepo,
+          userId: 'render-wait-test',
+          initialDate: _date,
+          groupCalendarOverlayProvider: memory.overlay,
+          groupInstructionInboxService: memory.inbox,
+        ),
+      ));
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        const Duration(seconds: 5),
+      );
+      expect(find.byType(CalendarScreen), findsOneWidget);
+      expect(_chosenDateVisible(), isTrue);
+      // Observe screen-originated reads before any explicit post-unmount load.
+      expect(personalRepo.listEventsCalls, greaterThanOrEqualTo(1));
+      expect(memory.memoryGroups.listGroupsCalls, greaterThanOrEqualTo(1));
+      expect(memory.memoryComments.unconfirmedForUserCalls,
+          greaterThanOrEqualTo(1));
+      expect(memory.context.error, isNull);
+      expect(memory.overlay.error, isNull);
+      expect(AppEnv.isSupabaseReady, isTrue);
+      debugPrint('LOCAL_RENDER_READY_AUX_PASS '
+          'group_list_calls=${memory.memoryGroups.listGroupsCalls} '
+          'comment_unconfirmed_calls=${memory.memoryComments.unconfirmedForUserCalls} '
+          'personal_list_calls=${personalRepo.listEventsCalls} '
+          'context_error=${memory.context.error} '
+          'overlay_error=${memory.overlay.error} '
+          'ready=${AppEnv.isSupabaseReady}');
+    } finally {
+      try {
+        await tester.pumpWidget(const SizedBox.shrink());
+        void noopListener() {}
+        expect(() => memory.overlay.addListener(noopListener), returnsNormally,
+            reason: 'CalendarScreen must not dispose a borrowed overlay');
+        memory.overlay.removeListener(noopListener);
+        final previousListCalls = memory.memoryGroups.listGroupsCalls;
+        await memory.overlay.loadForMonth(
+          'render-wait-test',
+          DateTime(_date.year, _date.month),
+        );
+        expect(memory.memoryGroups.listGroupsCalls,
+            greaterThan(previousListCalls));
+        expect(memory.context.error, isNull);
+        expect(memory.overlay.error, isNull);
+        debugPrint('LOCAL_AUX_CALLER_OWNERSHIP_PASS postUnmountLoad=true');
+      } finally {
+        await memory.disposeAfterWidgetUnmount();
+      }
     }
   });
 

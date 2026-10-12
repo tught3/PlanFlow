@@ -434,6 +434,7 @@ class CalendarScreen extends StatefulWidget {
     this.eventRepository,
     this.userId,
     this.groupCalendarOverlayProvider,
+    this.groupInstructionInboxService,
   });
 
   final DateTime? initialDate;
@@ -444,7 +445,11 @@ class CalendarScreen extends StatefulWidget {
   final bool? briefingIsMorning;
   final EventRepository? eventRepository;
   final String? userId;
+  /// Optional caller-owned provider. The screen disposes only its own default.
   final GroupCalendarOverlayProvider? groupCalendarOverlayProvider;
+
+  /// Optional data dependency; default SDK readiness checks still apply.
+  final GroupInstructionInboxService? groupInstructionInboxService;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -477,6 +482,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final Map<String, _CalendarMonthProjection> _monthProjectionCache =
       <String, _CalendarMonthProjection>{};
   GroupCalendarOverlayProvider? _groupOverlayProvider;
+  bool _ownsGroupOverlayProvider = false;
 
   /// 미확인 리더 지시가 있는 개인 이벤트 id 집합
   Set<String> _instructionEventIds = const <String>{};
@@ -568,7 +574,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void dispose() {
     _briefingCancelled = true;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
-    _groupOverlayProvider?.dispose();
+    if (_ownsGroupOverlayProvider) _groupOverlayProvider?.dispose();
     _briefingRunning.dispose();
     _briefingSheetRevision.dispose();
     _searchController.dispose();
@@ -1012,7 +1018,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     // Supabase 미초기화(테스트 등)면 스킵 — _loadGroupOverlay와 동일 가드.
     if (!AppEnv.isSupabaseReady) return;
     try {
-      final service = GroupInstructionInboxService();
+      final service =
+          widget.groupInstructionInboxService ?? GroupInstructionInboxService();
       final ids = await service.unconfirmedPersonalEventIds(userId: userId);
       if (mounted) {
         setState(() {
@@ -1042,8 +1049,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _briefingSheetRevision.value++;
         return;
       }
-      _groupOverlayProvider ??=
-          widget.groupCalendarOverlayProvider ?? GroupCalendarOverlayProvider();
+      if (_groupOverlayProvider == null) {
+        _groupOverlayProvider =
+            widget.groupCalendarOverlayProvider ?? GroupCalendarOverlayProvider();
+        _ownsGroupOverlayProvider = widget.groupCalendarOverlayProvider == null;
+      }
       final resolvedUserId = userId ?? _resolveCalendarUserId();
       if (resolvedUserId == null || resolvedUserId.isEmpty) {
         await _groupOverlayProvider!.clear();

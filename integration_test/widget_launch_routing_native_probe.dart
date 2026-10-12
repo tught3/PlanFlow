@@ -55,6 +55,7 @@ import 'package:planflow/services/stt_service.dart'
         SttNativeStatusEvent,
         SttService;
 
+import 'support/widget_probe_calendar_aux_memory.dart';
 import 'support/widget_probe_calendar_sheet_finder.dart';
 import 'support/widget_probe_render_wait.dart';
 import 'support/widget_probe_http_attempt_trace.dart';
@@ -790,6 +791,20 @@ void registerWidgetLaunchRoutingNativeProbe() {
       // ------------------------------------------------------------------
       // LEG 2 — actual chosen-date bottom sheet via the real CalendarScreen
       // constructor seam + in-memory repository (no network, no Supabase).
+      //
+      // The aux memory fixture (groups / group_events / group_event_comments)
+      // is the same `CalendarAuxMemory` helper the unit-side probe uses.
+      // Read methods return empty lists with per-call counters; writes are
+      // fail-closed. The CALLER (this test) owns the injected overlay, and
+      // `disposeAfterWidgetUnmount` runs after the widget is unmounted so
+      // the screen's `_ownsGroupOverlayProvider=false` rule keeps the
+      // borrowed `context` reachable for the screen's lifetime.
+      //
+      // The original 0 HTTP-attempt guard for the standalone leg MUST stay 0.
+      // With the memory fixture, the only path that ever reached the
+      // Supabase client for `groups` + `group_event_comments` now resolves
+      // in-process. Mounted-loader counters and the unchanged HTTP-zero
+      // guard jointly verify isolation; a new native run is still required.
       // ------------------------------------------------------------------
       blockingClient.enterLeg(WidgetProbeHttpLeg.standaloneCalendarSheet);
       final EventModel sheetEvent = FixtureEvents.simple(
@@ -806,41 +821,100 @@ void registerWidgetLaunchRoutingNativeProbe() {
           reason: 'rendered in-memory sheet must match submitted chosen date');
       final _ProbeEventRepository sheetRepo =
           _ProbeEventRepository(<EventModel>[sheetEvent]);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CalendarScreen(
-            eventRepository: sheetRepo,
-            userId: 'qa-widget-user',
-            initialDate: sheetDay,
+      final CalendarAuxMemory memory = CalendarAuxMemory();
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CalendarScreen(
+              eventRepository: sheetRepo,
+              userId: 'qa-widget-user',
+              initialDate: sheetDay,
+              groupCalendarOverlayProvider: memory.overlay,
+              groupInstructionInboxService: memory.inbox,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle(
-        const Duration(milliseconds: 100),
-        EnginePhase.sendSemanticsUpdate,
-        const Duration(seconds: 30),
-      );
-      expect(
-        sheetRepo.listCalls,
-        greaterThanOrEqualTo(1),
-        reason: 'the in-memory repository must have served the day load',
-      );
-      expect(
-        find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
-        findsOneWidget,
-        reason: 'the real chosen-date bottom sheet must open for '
-            'initialDate (the production day-agenda sheet)',
-      );
-      expect(
-        findWidgetProbeCalendarDaySheetEventTitle(sheetEvent.title),
-        findsOneWidget,
-        reason: 'the fixture event for the chosen date must be listed in '
-            'the day sheet',
-      );
+        );
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 100),
+          EnginePhase.sendSemanticsUpdate,
+          const Duration(seconds: 30),
+        );
+        expect(
+          sheetRepo.listCalls,
+          greaterThanOrEqualTo(1),
+          reason: 'the in-memory repository must have served the day load',
+        );
+        expect(
+          memory.memoryGroups.listGroupsCalls,
+          greaterThanOrEqualTo(1),
+          reason: 'the in-memory group repository must have served the '
+              'overlay listGroups() load (call counter observed ≥ 1)',
+        );
+        expect(
+          memory.memoryComments.unconfirmedForUserCalls,
+          greaterThanOrEqualTo(1),
+          reason: 'the in-memory comment repository must have served the '
+              'inbox unconfirmedForUser() load (call counter observed ≥ 1)',
+        );
+        expect(memory.context.error, isNull,
+            reason: 'the real memory-backed group context must load cleanly');
+        expect(memory.overlay.error, isNull,
+            reason: 'a caught loader error must not masquerade as isolation');
+        expect(
+          find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
+          findsOneWidget,
+          reason: 'the real chosen-date bottom sheet must open for '
+              'initialDate (the production day-agenda sheet)',
+        );
+        expect(
+          findWidgetProbeCalendarDaySheetEventTitle(sheetEvent.title),
+          findsOneWidget,
+          reason: 'the fixture event for the chosen date must be listed in '
+              'the day sheet',
+        );
+        // Receipt: no SDK initializer / Supabase HTTP path was exercised
+        // for groups + group_event_comments in this leg; the aux served
+        // reads in-process. The 0-attempt guard below is preserved.
+        // ignore: avoid_print
+        print(
+            'WIDGET_CALENDAR_DAY_SHEET_PASS_AUX_RECEIPT '
+            'repository=in_memory '
+            'group_list_calls=${memory.memoryGroups.listGroupsCalls} '
+            'group_member_calls=${memory.memoryGroups.listMembersCalls} '
+            'group_fetch_calls=${memory.memoryGroups.fetchGroupCalls} '
+            'group_events_calls=${memory.memoryGroupEvents.getEventsForGroupCalls} '
+            'group_fetch_event_calls=${memory.memoryGroupEvents.fetchGroupEventCalls} '
+            'comment_unconfirmed_calls=${memory.memoryComments.unconfirmedForUserCalls} '
+            'date=$chosenDayText rendered_sheet=true');
+      } finally {
+        // Unmount FIRST so the screen's dispose() can run while the
+        // borrowed overlay/context are still reachable. The helper then
+        // disposes both.
+        try {
+          await tester.pumpWidget(const SizedBox.shrink());
+        } finally {
+          await memory.disposeAfterWidgetUnmount();
+        }
+      }
 
+      // The original guard for this standalone leg is preserved: the
+      // blocking client still observed no attempts in the in-memory
+      // repository path. Native 8 regression guard (run 38204908587,
+      // the 2 blocked `/rest/v1/groups` + `/rest/v1/group_event_comments`
+      // attempts) MUST NOT reappear here.
+      final standaloneCalendarHttpAttempts = blockingClient.attempts;
+      expect(
+        standaloneCalendarHttpAttempts,
+        0,
+        reason: 'standalone CalendarScreen leg MUST keep the 0-attempt '
+            'guard intact after switching groups + group_event_comments '
+            'reads to the in-process memory fixture',
+      );
       // ignore: avoid_print
       print('WIDGET_CALENDAR_DAY_SHEET_PASS repository=in_memory '
-          'date=$chosenDayText rendered_sheet=true');
+          'aux=memory_overlay_and_inbox '
+          'date=$chosenDayText rendered_sheet=true '
+          'standalone_leg_http_attempts=${blockingClient.attempts}');
 
       // ------------------------------------------------------------------
       // LEG 3b — autoStart drives the real VoiceInputScreen lifecycle with
