@@ -18,6 +18,7 @@ import 'package:planflow/screens/calendar/calendar_screen.dart'
 import 'package:planflow/services/feature_tour_service.dart'
     show FeatureTourStore;
 import '../integration_test/support/widget_probe_render_wait.dart';
+import '../integration_test/support/widget_probe_http_attempt_trace.dart';
 
 final _date = DateTime(DateTime.now().year + 1, 10, 14);
 final _location = '/calendar?date=${_date.toIso8601String().split('T').first}';
@@ -99,12 +100,17 @@ class _MemoryAuthStorage extends GotrueAsyncStorage {
 
 class _NoNetworkHttpClient extends http.BaseClient {
   int attempts = 0;
+  final httpTrace = WidgetProbeHttpAttemptTrace();
   bool closed = false;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     attempts++;
+    httpTrace.record(method: request.method, uri: request.url);
+    if (httpTrace.total <= WidgetProbeHttpAttemptTrace.maxRecords) {
+      debugPrint('LOCAL_HTTP_BLOCKED ${httpTrace.records.last}');
+    }
     throw StateError('Local fixture blocked HTTP before send: '
-        '${request.method} ${request.url.host}');
+        'attempts=$attempts');
   }
 
   @override
@@ -136,6 +142,7 @@ void main() {
     final client = _NoNetworkHttpClient();
     blockingClient = client;
     expect(client.attempts, 0);
+    debugPrint('LOCAL_CONFIG valid=${AppEnv.hasValidSupabaseConfig}');
     final sdk = await Supabase.initialize(
       url: 'https://planflow-render-wait.invalid',
       anonKey: 'local-noncredential-dummy-key',
@@ -162,6 +169,9 @@ void main() {
     final sdk = ownedSdk;
     final client = blockingClient;
     try {
+      client?.httpTrace.leg = WidgetProbeHttpLeg.teardown;
+      debugPrint(
+          'LOCAL_HTTP_TOTAL attempts=${client?.attempts} trace=${client?.httpTrace.total}');
       if (sdk != null) {
         expect(identical(Supabase.instance, sdk), isTrue);
         expect(client!.attempts, 0);
@@ -194,15 +204,18 @@ void main() {
   setUp(() {
     expect(ownedSdk, isNotNull);
     expect(identical(Supabase.instance, ownedSdk), isTrue);
+    expect(blockingClient!.httpTrace.total, blockingClient!.attempts);
     expect(blockingClient!.attempts, 0);
     expect(ownedSdk!.client.auth.currentUser, isNull);
     expect(AppEnv.isSupabaseReady, isTrue);
+    blockingClient!.httpTrace.leg = WidgetProbeHttpLeg.delayedAuthCalendarRoute;
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
     ShellScreen.resetSessionOnboardingStateForTest();
   });
   tearDown(() {
     SharedPreferencesAsyncPlatform.instance = priorPreferences;
+    expect(blockingClient!.httpTrace.total, blockingClient!.attempts);
     expect(blockingClient!.attempts, 0);
     expect(ownedSdk!.client.auth.currentUser, isNull);
     expect(AppEnv.isSupabaseReady, isTrue);

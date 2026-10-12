@@ -57,6 +57,7 @@ import 'package:planflow/services/stt_service.dart'
 
 import 'support/widget_probe_calendar_sheet_finder.dart';
 import 'support/widget_probe_render_wait.dart';
+import 'support/widget_probe_http_attempt_trace.dart';
 import 'support/widget_probe_speech_stub.dart';
 
 import '_harness/fakes/fake_auth_service.dart';
@@ -241,6 +242,7 @@ void registerWidgetLaunchRoutingNativeProbe() {
         },
       );
 
+      blockingClient.enterLeg(WidgetProbeHttpLeg.delayedAuthCalendarRoute);
       final FakeAuthService authClient = FakeAuthService();
       final AuthProvider qaAuth = AuthProvider(authService: authClient);
       final StartupRouteGate qaGate = StartupRouteGate();
@@ -559,6 +561,7 @@ void registerWidgetLaunchRoutingNativeProbe() {
       speechStub.installDebugPrintCapture(speechState);
       addTearDown(() => speechStub.removeDebugPrintCapture(speechState));
 
+      blockingClient.enterLeg(WidgetProbeHttpLeg.voiceSdk);
       final String? warmVoiceRoute = resolveHomeWidgetRoute(
         Uri.parse('planflow://voice-launcher'),
       );
@@ -788,6 +791,7 @@ void registerWidgetLaunchRoutingNativeProbe() {
       // LEG 2 — actual chosen-date bottom sheet via the real CalendarScreen
       // constructor seam + in-memory repository (no network, no Supabase).
       // ------------------------------------------------------------------
+      blockingClient.enterLeg(WidgetProbeHttpLeg.standaloneCalendarSheet);
       final EventModel sheetEvent = FixtureEvents.simple(
         id: 'qa-widget-day-sheet-event',
         title: 'QA 위젯 라우팅 일정',
@@ -842,6 +846,7 @@ void registerWidgetLaunchRoutingNativeProbe() {
       // LEG 3b — autoStart drives the real VoiceInputScreen lifecycle with
       // a stub SttService (the same DI seam flow06 uses). No native mic.
       // ------------------------------------------------------------------
+      blockingClient.enterLeg(WidgetProbeHttpLeg.voiceFake);
       final _StubSttService stubStt = _StubSttService();
       await tester.pumpWidget(
         MaterialApp(
@@ -872,6 +877,8 @@ void registerWidgetLaunchRoutingNativeProbe() {
       // ignore: avoid_print
       print('WIDGET_VOICE_AUTOSTART_FAKE_STT_PASS listen_calls=1 '
           'real_screen=true native_recording=false');
+      blockingClient.emitSnapshot();
+      expect(blockingClient.httpTrace.total, blockingClient.attempts);
       expect(tester.takeException(), isNull,
           reason: 'probe legs must complete without UI exceptions');
 
@@ -997,17 +1004,35 @@ class _CompletedTourStore implements FeatureTourStore {
 /// same test binary).
 class _NoNetworkHttpClient extends http.BaseClient {
   int attempts = 0;
-  String? lastMethod;
-  String? lastHost;
+  final httpTrace = WidgetProbeHttpAttemptTrace();
+  WidgetProbeHttpAttemptSnapshot? _previousSnapshot;
+
+  void emitSnapshot() {
+    final current = httpTrace.snapshot();
+    // ignore: avoid_print
+    print('WIDGET_HTTP_SNAPSHOT leg=${current.leg.name} total=${current.total} '
+        'clientAttempts=$attempts delta=${current.total - (_previousSnapshot?.total ?? 0)} '
+        'records=${httpTrace.records.length}');
+    _previousSnapshot = current;
+  }
+
+  void enterLeg(WidgetProbeHttpLeg leg) {
+    emitSnapshot();
+    httpTrace.leg = leg;
+    emitSnapshot();
+  }
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     attempts++;
-    lastMethod = request.method;
-    lastHost = request.url.host;
+    httpTrace.record(method: request.method, uri: request.url);
+    if (httpTrace.total <= WidgetProbeHttpAttemptTrace.maxRecords) {
+      // ignore: avoid_print
+      print('WIDGET_HTTP_BLOCKED ${httpTrace.records.last}');
+    }
     throw StateError(
       'QA HTTP attempt blocked locally and not transmitted '
-      '(method=$lastMethod host=$lastHost)',
+      '(attempts=$attempts)',
     );
   }
 }
@@ -1085,6 +1110,7 @@ Future<_NoNetworkHttpClient> _ensurePlaceholderSupabase() async {
   final _NoNetworkHttpClient client = _NoNetworkHttpClient();
   Supabase? createdInstance;
   bool appEnvMarkedByUs = false;
+  client.emitSnapshot();
   try {
     createdInstance = await Supabase.initialize(
       url: 'https://planflow-qa-placeholder.invalid',
@@ -1092,6 +1118,7 @@ Future<_NoNetworkHttpClient> _ensurePlaceholderSupabase() async {
       httpClient: client,
       debug: false,
     );
+    client.emitSnapshot();
     if (!createdInstance.isInitialized || client.attempts != 0) {
       throw StateError(
         'Refusing QA AuthProvider setup: owned init failed clean checks '
@@ -1104,6 +1131,7 @@ Future<_NoNetworkHttpClient> _ensurePlaceholderSupabase() async {
       throw StateError('Owned init failed to mark AppEnv ready');
     }
   } catch (_) {
+    client.emitSnapshot();
     Supabase? partialInstance = createdInstance;
     if (partialInstance == null) {
       try {
@@ -1130,7 +1158,9 @@ Future<_NoNetworkHttpClient> _ensurePlaceholderSupabase() async {
   // First registered teardown runs last: provider/router cleanup precedes
   // disposal of only the instance just created here.
   addTearDown(() async {
+    client.enterLeg(WidgetProbeHttpLeg.teardown);
     await createdInstance!.dispose();
+    client.emitSnapshot();
     client.close();
     AppEnv.resetSupabaseInitializationState();
   });
