@@ -75,6 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/ios/tests/ios_widget_null_probe_contract.sh
+          node --test tool/widget_launch_qa/*.test.mjs tool/widget_launch_qa/open_confirmation/*.test.mjs
 
       - name: Discover and filter phone/tablet probe matrix
         id: discover
@@ -268,6 +269,31 @@ jobs:
             exit 1
           fi
           echo "IOS_WIDGET_PROBE_EVIDENCE_PASS: native PASS marker and executed XCTest evidence verified for ${{ matrix.category }}"
+
+      - name: Build standalone exact Open confirmation driver (no AUT)
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTIONS" == true ]]
+          owned='${{ steps.boot.outputs.udid }}'
+          qa="$GITHUB_WORKSPACE/tool/widget_launch_qa/open_confirmation"
+          derived="$RUNNER_TEMP/e2e-artifacts/open-confirmation-products"
+          mkdir "$derived"
+          E2E_WATCHDOG_LOG_FILE="$derived/build.log" \
+            E2E_WATCHDOG_TAIL_FILE="$derived/build.tail.log" \
+            bash scripts/ios/e2e_watchdog.sh 180 xcodebuild build-for-testing \
+              -project "$qa/OpenConfirmation.xcodeproj" -scheme OpenConfirmation \
+              -destination "platform=iOS Simulator,id=$owned" -derivedDataPath "$derived" \
+              CODE_SIGNING_ALLOWED=NO
+          products="$derived/Build/Products"
+          shopt -s nullglob
+          metadata=("$products"/*.xctestrun)
+          [[ ${#metadata[@]} == 1 ]]
+          plutil -convert json -o "$products/generated.json" "${metadata[0]}"
+          node "$qa/helper.mjs" metadata "$products/generated.json" "$products" "$products/guarded.json"
+          plutil -convert xml1 -o "$products/guarded.xctestrun" "$products/guarded.json"
+          echo "QA_OPEN_PRODUCTS=$products" >> "$GITHUB_ENV"
+          echo "QA_OPEN_XCTESTRUN=$products/guarded.xctestrun" >> "$GITHUB_ENV"
 
       - name: Build actual widget extension and isolated transport entry
         shell: bash

@@ -9,6 +9,7 @@ UDID="$QA_OWNED_SIMULATOR_UDID"
 BUNDLE_ID="${IOS_BUNDLE_ID:-com.fluxstudio.planflow}"
 DIAGNOSTICS="$(cd "$(dirname "$0")" && pwd)/host_diagnostics.mjs"
 CHECKER="$(cd "$(dirname "$0")" && pwd)/verify_transport_receipts.mjs"
+source "$(cd "$(dirname "$0")" && pwd)/open_confirmation/driver.sh"
 mkdir -p "$QA_TRANSPORT_OUT"
 # Do not overwrite prior native artifacts even if the output folder is reused.
 RUN_OUT="$QA_TRANSPORT_OUT/receipts-$(node "$CHECKER" nonce)"
@@ -24,6 +25,7 @@ finish_transport() {
     FAILURE_CAPTURED=1
     node "$DIAGNOSTICS" failure "$UDID" "$RUN_OUT/$ACTIVE_CASE-failure.png" "$RUN_OUT/$ACTIVE_CASE-host-failure.json" "$RECEIPTS" >/dev/null 2>&1 || true
   fi
+  open_driver_cleanup || { echo BLOCKED_OPEN_CONFIRMATION_CLEANUP; [[ "$original" != 0 ]] || original=1; }
   kill "$LOGGER" 2>/dev/null || true
   exit "$original"
 }
@@ -109,9 +111,20 @@ for plugin in applinks homewidget; do
   cold_nonce="$(node "$CHECKER" nonce)"
   warm_nonce="$(node "$CHECKER" nonce)"
   # This OS openURL is the first launch in this case: no manual launch/attach.
+  ACTIVE_CASE="${plugin}-cold"
+  open_driver_start || exit 1
+  prove_absent || exit 1
+  cp "$RUN_OUT/lifecycle-current.txt" "$RUN_OUT/$ACTIVE_CASE-driver-absence.txt"
+  node "$OPEN_HELPER" unchanged "$RECEIPTS" "$BOUNDARY" || exit 1
+  open_driver_guard_pre_url || { echo BLOCKED_OPEN_CONFIRMATION_NOT_LIVE; exit 1; }
   open_qa_url "${plugin}-cold" "planflow://day/2026-10-14?qaNonce=${cold_nonce}${marker}"
+  open_driver_finish cold || exit 1
   wait_receipt "$RECEIPTS" "$BOUNDARY" "$plugin" "$cold_nonce" cold "$RUN_OUT/${plugin}-cold.json" ""
+  ACTIVE_CASE="${plugin}-warm"
+  open_driver_start || exit 1
+  open_driver_guard_pre_url || { echo BLOCKED_OPEN_CONFIRMATION_NOT_LIVE; exit 1; }
   open_qa_url "${plugin}-warm" "planflow://voice-launcher?qaNonce=${warm_nonce}${marker}"
+  open_driver_finish warm || exit 1
   wait_receipt "$RECEIPTS" "$BOUNDARY" "$plugin" "$warm_nonce" warm "$RUN_OUT/${plugin}-warm.json" "$RUN_OUT/${plugin}-cold.json"
   node "$CHECKER" snapshot "$RECEIPTS" "$RUN_OUT/${plugin}-safe-receipts.json"
   xcrun simctl io "$UDID" screenshot "$RUN_OUT/${plugin}-warm.png" >/dev/null
