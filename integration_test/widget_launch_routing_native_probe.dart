@@ -604,6 +604,42 @@ void registerWidgetLaunchRoutingNativeProbe() {
             'autoStartOverride=true for autoStart=1',
       );
 
+      // Observe another retry interval after the existing three-second window.
+      await _pumpFor(tester, const Duration(milliseconds: 700));
+      // Capped non-secret receipt of the pinned-protocol counts observed
+      // by the shared helper. Trace cap mirrors the existing
+      // _maxTraceEvents = 20 contract: this line is diagnostic only and
+      // never serves as a pass criterion. Counts are bounded integers;
+      // the receiptBounded() variant adds per-ordinal init coverage
+      // and the rejection getters so a third attempt or a missing
+      // post-start initialize would show up in the diagnostic line
+      // before the assertion fired (preserved VP/old M3 evidence).
+      final Map<String, Object> boundedReceipt = speechState.receiptBounded();
+      final List<int> receiptOrdinals =
+          (boundedReceipt['start_ordinals'] as List<dynamic>).cast<int>();
+      final Map<int, int> receiptCoverage =
+          (boundedReceipt['init_after_by_ordinal'] as Map<dynamic, dynamic>)
+              .cast<int, int>();
+      // ignore: avoid_print
+      print(
+          'WIDGET_SPEECH_PROBE_RECEIPT_BOUNDED init=${boundedReceipt['init']} '
+          'listen=${boundedReceipt['listen']} '
+          'start_attempt=${boundedReceipt['start_attempt']} '
+          'init_before_start=${boundedReceipt['init_before_start']} '
+          'init_after_start=${boundedReceipt['init_after_start']} '
+          'start_ordinals=${receiptOrdinals.join(',')} '
+          'init_after_by_ordinal=${receiptCoverage.entries.map((e) => '${e.key}:${e.value}').join(',')} '
+          'excess_retry=${boundedReceipt['excess_retry']} '
+          'same_gen_repeated=${boundedReceipt['same_gen_repeated']} '
+          'missing_post_coverage=${boundedReceipt['missing_post_coverage']} '
+          'post_start_bounded_retry=${speechState.postStartBoundedRetry} '
+          'pinned_channel=${WidgetProbeSpeechStub.pinnedChannelName} '
+          'has_permission_method='
+          '${WidgetProbeSpeechStub.pinnedHasPermissionMethod} '
+          'initialize_method='
+          '${WidgetProbeSpeechStub.pinnedInitializeMethod} '
+          'cap=$_maxTraceEvents');
+
       // Existing legacy assert 601 RETAINed. Method name resolved via
       // the shared helper const so the fixture and the unit test assert
       // against the same pinned identity (the legacy wrong
@@ -624,26 +660,113 @@ void registerWidgetLaunchRoutingNativeProbe() {
             'issued: no microphone recording in QA',
       );
 
-      // startAttempt EXACT ONE: the post-frame _startVoiceFlow path
-      // must have observed exactly one [STT] phase=start /
-      // attempt=normal trace. warmUp-only init (count == 0) and
-      // repeated autoStart attempts (count > 1) both fail.
+      // Finite-2 bounded-retry policy: the VoiceInputScreen autoStart
+      // path under the pinned-channel-unavailable policy issues
+      // `_startVoiceFlow` exactly twice (gen=1 then gen=2) with a
+      // 650 ms screen-level delay between them. The recursive
+      // `_startVoiceFlow()` call drops the `autoRetryOnEarlyFailure`
+      // flag (default `false`), so a third attempt is structurally
+      // impossible. warmUp-only init (0 starts) and any third
+      // attempt (count > 2) both fail the bounded-retry guard.
       expect(
         speechState.startAttempt,
-        1,
-        reason: 'exactly one public [STT] phase=start / attempt=normal trace '
-            'must be observed; warmUp-only init would observe 0, '
-            'repeated autoStart attempts would observe > 1',
+        2,
+        reason: 'exactly two public [STT] phase=start / attempt=normal '
+            'traces must be observed (the bounded retry budget: gen=1 '
+            'then gen=2 with a 650 ms screen-level delay); warmUp-only '
+            'init would observe 0, and the recursive call drops the '
+            'autoRetryOnEarlyFailure flag so a third attempt is '
+            'structurally impossible and must NOT be observed',
       );
-      // warmUp (initState) + autoStart (post-frame listen) must both
-      // have invoked initialize on the pinned channel. warmUp-only
-      // init (count == 1) fails this guard.
+      // The two traces must come from two DISTINCT
+      // `_activeListenGeneration` ordinals. A same-gen doubling
+      // (startAttempt > startOrdinalsSeen.length) cannot satisfy the
+      // bounded-retry guard.
+      expect(
+        speechState.startOrdinalsSeen,
+        <int>{1, 2},
+        reason: 'two distinct start ordinals (gen=1 and gen=2) must be '
+            'observed; a same-gen doubling '
+            'must NOT pass',
+      );
+      // Per-attempt init coverage: each `_listenWithSpeechToText`
+      // entry calls `SpeechToText().initialize` AFTER logging the
+      // matching `[STT] phase=start` trace, so each in-progress
+      // ordinal captures its own init handler post coverage. A
+      // total `initCount >= 2` proxy would pass for warmUp + warmUp,
+      // so the regression asserts per ordinal, not the total.
+      expect(
+        speechState.initAfterStartByOrdinal[1],
+        greaterThanOrEqualTo(1),
+        reason: 'ordinal 1 must see at least one post-start initialize '
+            'handler call on the pinned channel',
+      );
+      expect(
+        speechState.initAfterStartByOrdinal[2],
+        greaterThanOrEqualTo(1),
+        reason: 'ordinal 2 must see at least one post-start initialize '
+            'handler call on the pinned channel',
+      );
+      expect(
+        speechState.missingPostCoverage,
+        isFalse,
+        reason: 'every observed ordinal must have at least one '
+            'post-start initialize handler coverage',
+      );
+      // warmUp (initState) + first autoStart listen + second retry
+      // listen must all have invoked initialize on the pinned
+      // channel. warmUp-only init (count == 1) and a single
+      // autoStart (count == 2) both fail this guard.
       expect(
         speechState.initCount,
-        greaterThanOrEqualTo(2),
-        reason: 'pinned initialize must have been called by both warmUp and '
-            'the post-frame autoStart path; warmUp-only init cannot '
-            'prove autoStart',
+        greaterThanOrEqualTo(3),
+        reason: 'pinned initialize must have been called by warmUp AND '
+            'the first autoStart listen AND the bounded retry listen; '
+            'warmUp-only init or single autoStart cannot prove the '
+            'bounded-retry budget',
+      );
+      expect(
+        speechState.initAfterStart,
+        2,
+        reason: 'two post-start initializes must be observed (one per '
+            'listen attempt within the bounded retry budget)',
+      );
+      expect(
+        speechState.initBeforeStart,
+        1,
+        reason: 'warmUp is the only pre-start initialize',
+      );
+      // Bounded-retry guard: finite-2 expected policy (not a
+      // startAttempt == 1 proxy and not a total initCount >= 2
+      // proxy). The screen issues exactly two `_startVoiceFlow`
+      // calls; this getter encodes that contract using start
+      // ordinal and per-ordinal init coverage.
+      expect(
+        speechState.postStartBoundedRetry,
+        isTrue,
+        reason: 'finite-2 bounded-retry guard requires startAttempt == 2 '
+            'and startOrdinalsSeen.length == 2 and each ordinal to '
+            'have at least one post-start initialize handler call; '
+            'warmUp-only, single autoStart, missing post-start init '
+            'coverage, same-gen doubling, or excess retry must NOT '
+            'pass',
+      );
+      // Rejection getters exposed for diagnostic clarity: a third
+      // attempt (excessRetry > 0) or a same-gen doubling
+      // (sameGenRepeated > 0) would mean the screen policy is
+      // broken; neither may flip in this leg.
+      expect(
+        speechState.excessRetry,
+        isFalse,
+        reason: 'no third attempt may slip through the bounded retry; '
+            'two attempts is the structural maximum',
+      );
+      expect(
+        speechState.sameGenRepeated,
+        isFalse,
+        reason: 'two observed ordinals (gen=1 and gen=2) must be '
+            'distinct; a same-gen doubling would not satisfy the '
+            'bounded-retry guard',
       );
       // Speech calls listen ZERO remains required: no native mic.
       expect(
@@ -652,13 +775,12 @@ void registerWidgetLaunchRoutingNativeProbe() {
         reason: 'with initialize() returning false, the production listen '
             'path must abort before reaching the native listen API',
       );
-      // Correct actual post-start availability verify.
+      // Compatibility getter must enforce the same finite policy.
       expect(
         speechState.postStartAvailability,
         isTrue,
-        reason: 'post-start availability requires exactly one start trace '
-            'and at least one initialize observed after that trace; '
-            'pre-start warmUp counts alone must NOT pass',
+        reason: 'compatibility guard requires the same two ordered starts '
+            'and actual per-attempt post-start RPC coverage',
       );
 
       // ------------------------------------------------------------------
@@ -751,26 +873,6 @@ void registerWidgetLaunchRoutingNativeProbe() {
           'real_screen=true native_recording=false');
       expect(tester.takeException(), isNull,
           reason: 'probe legs must complete without UI exceptions');
-
-      // Capped non-secret receipt of the pinned-protocol counts observed
-      // by the shared helper. Trace cap mirrors the existing
-      // _maxTraceEvents = 20 contract: this line is diagnostic only and
-      // never serves as a pass criterion. Counts are bounded integers;
-      // no message text is recorded.
-      final Map<String, int> receipt = speechState.receipt();
-      // ignore: avoid_print
-      print('WIDGET_SPEECH_PROBE_RECEIPT init=${receipt['init']} '
-          'listen=${receipt['listen']} '
-          'start_attempt=${receipt['start_attempt']} '
-          'init_before_start=${receipt['init_before_start']} '
-          'init_after_start=${receipt['init_after_start']} '
-          'post_start_availability=${speechState.postStartAvailability} '
-          'pinned_channel=${WidgetProbeSpeechStub.pinnedChannelName} '
-          'has_permission_method='
-          '${WidgetProbeSpeechStub.pinnedHasPermissionMethod} '
-          'initialize_method='
-          '${WidgetProbeSpeechStub.pinnedInitializeMethod} '
-          'cap=$_maxTraceEvents');
 
       expect(
         blockingClient.attempts,
