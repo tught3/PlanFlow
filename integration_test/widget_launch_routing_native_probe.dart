@@ -10,7 +10,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -57,6 +56,7 @@ import 'package:planflow/services/stt_service.dart'
         SttService;
 
 import 'support/widget_probe_render_wait.dart';
+import 'support/widget_probe_speech_stub.dart';
 
 import '_harness/fakes/fake_auth_service.dart';
 import '_harness/seed/fixture_events.dart';
@@ -64,11 +64,14 @@ import '_harness/seed/fixture_events.dart';
 const String _probePassMarker = 'WIDGET_LAUNCH_ROUTING_PROBE_PASS';
 const String _probeSkipMarker = 'WIDGET_LAUNCH_ROUTING_PROBE_SKIPPED';
 
-/// speech_to_text plugin base channel (iOS path used by SttService
-/// `_listenWithSpeechToText`; the Android-only `planflow/native_stt` channel
-/// is not exercised on an iOS host).
-const MethodChannel _speechToTextChannel =
-    MethodChannel('cjcodezonye.github.io/speech_to_text');
+// Pinned protocol identity (channel + method names) lives on the shared
+// `WidgetProbeSpeechStub` helper so the fixture and the desktop unit
+// test assert against the same exact consts. The legacy inline
+// `MethodChannel('cjcodezonye.github.io/speech_to_text')` and
+// `hasPermission` (camelCase) mock identities were a channel-identity
+// bug: the real `speech_to_text_platform_interface` 2.3.0 plugin
+// installs at `plugin.csdcorp.com/speech_to_text` and uses
+// `has_permission` (snake_case). The helper closes that gap.
 
 /// Readiness delay for the in-memory auth session. Must be strictly greater
 /// than the legacy 1.2s production cliff (10 x 120ms) and strictly less than
@@ -536,22 +539,24 @@ void registerWidgetLaunchRoutingNativeProbe() {
           'trace_lines=${trace.lines.length}');
 
       // Warm submitted URI on the same live router (not external delivery).
-      final List<MethodCall> speechCalls = <MethodCall>[];
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(_speechToTextChannel, (call) async {
-        speechCalls.add(call);
-        switch (call.method) {
-          case 'initialize':
-            return false; // speech unavailable -> listen aborts cleanly
-          case 'hasPermission':
-            return true;
-        }
-        return null;
-      });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(_speechToTextChannel, null);
-      });
+      // Install the pinned speech_to_text protocol mock through the
+      // shared helper so both this fixture and
+      // `test/widget_probe_speech_stub_test.dart` assert against the
+      // same exact channel/method identity. The helper enforces:
+      //   * `initialize` returns false (unavailable) on every call.
+      //   * `has_permission` preserves the regression-original true.
+      //   * `listen` is forbidden: counted and discarded, no recording.
+      final WidgetProbeSpeechStub speechStub = WidgetProbeSpeechStub();
+      final WidgetProbeSpeechStubState speechState = speechStub.install();
+      addTearDown(speechStub.remove);
+
+      // Capture public [STT] phase=start / attempt=normal traces that
+      // `SttService._logPhase` emits via debugPrint. The capture is
+      // installed BEFORE the warm voice route is submitted and removed
+      // in an outer `addTearDown` so the original `debugPrint` is
+      // restored even if the surrounding test fails.
+      speechStub.installDebugPrintCapture(speechState);
+      addTearDown(() => speechStub.removeDebugPrintCapture(speechState));
 
       final String? warmVoiceRoute = resolveHomeWidgetRoute(
         Uri.parse('planflow://voice-launcher'),
@@ -598,17 +603,62 @@ void registerWidgetLaunchRoutingNativeProbe() {
         reason: 'the router must construct VoiceInputScreen with '
             'autoStartOverride=true for autoStart=1',
       );
+
+      // Existing legacy assert 601 RETAINed. Method name resolved via
+      // the shared helper const so the fixture and the unit test assert
+      // against the same pinned identity (the legacy wrong
+      // `cjcodezonye.github.io/speech_to_text` channel + `hasPermission`
+      // camelCase name would never have observed this call).
       expect(
-        speechCalls.any((call) => call.method == 'initialize'),
+        speechState.calls.any((call) =>
+            call.method == WidgetProbeSpeechStub.pinnedInitializeMethod),
         isTrue,
         reason: 'the autoStart listen attempt must have reached the '
-            'speech_to_text availability check',
+            'speech_to_text availability check on the pinned channel',
       );
+      // Existing legacy assert RETAINed verbatim.
       expect(
-        speechCalls.any((call) => call.method == 'listen'),
+        speechState.calls.any((call) => call.method == 'listen'),
         isFalse,
         reason: 'with initialize() unavailable, no native listen may be '
             'issued: no microphone recording in QA',
+      );
+
+      // startAttempt EXACT ONE: the post-frame _startVoiceFlow path
+      // must have observed exactly one [STT] phase=start /
+      // attempt=normal trace. warmUp-only init (count == 0) and
+      // repeated autoStart attempts (count > 1) both fail.
+      expect(
+        speechState.startAttempt,
+        1,
+        reason: 'exactly one public [STT] phase=start / attempt=normal trace '
+            'must be observed; warmUp-only init would observe 0, '
+            'repeated autoStart attempts would observe > 1',
+      );
+      // warmUp (initState) + autoStart (post-frame listen) must both
+      // have invoked initialize on the pinned channel. warmUp-only
+      // init (count == 1) fails this guard.
+      expect(
+        speechState.initCount,
+        greaterThanOrEqualTo(2),
+        reason: 'pinned initialize must have been called by both warmUp and '
+            'the post-frame autoStart path; warmUp-only init cannot '
+            'prove autoStart',
+      );
+      // Speech calls listen ZERO remains required: no native mic.
+      expect(
+        speechState.listenCount,
+        0,
+        reason: 'with initialize() returning false, the production listen '
+            'path must abort before reaching the native listen API',
+      );
+      // Correct actual post-start availability verify.
+      expect(
+        speechState.postStartAvailability,
+        isTrue,
+        reason: 'post-start availability requires exactly one start trace '
+            'and at least one initialize observed after that trace; '
+            'pre-start warmUp counts alone must NOT pass',
       );
 
       // ------------------------------------------------------------------
@@ -701,6 +751,26 @@ void registerWidgetLaunchRoutingNativeProbe() {
           'real_screen=true native_recording=false');
       expect(tester.takeException(), isNull,
           reason: 'probe legs must complete without UI exceptions');
+
+      // Capped non-secret receipt of the pinned-protocol counts observed
+      // by the shared helper. Trace cap mirrors the existing
+      // _maxTraceEvents = 20 contract: this line is diagnostic only and
+      // never serves as a pass criterion. Counts are bounded integers;
+      // no message text is recorded.
+      final Map<String, int> receipt = speechState.receipt();
+      // ignore: avoid_print
+      print('WIDGET_SPEECH_PROBE_RECEIPT init=${receipt['init']} '
+          'listen=${receipt['listen']} '
+          'start_attempt=${receipt['start_attempt']} '
+          'init_before_start=${receipt['init_before_start']} '
+          'init_after_start=${receipt['init_after_start']} '
+          'post_start_availability=${speechState.postStartAvailability} '
+          'pinned_channel=${WidgetProbeSpeechStub.pinnedChannelName} '
+          'has_permission_method='
+          '${WidgetProbeSpeechStub.pinnedHasPermissionMethod} '
+          'initialize_method='
+          '${WidgetProbeSpeechStub.pinnedInitializeMethod} '
+          'cap=$_maxTraceEvents');
 
       expect(
         blockingClient.attempts,
