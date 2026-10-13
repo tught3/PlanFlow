@@ -9,11 +9,31 @@ import {prepare,markers,unchanged,checkLog,checkLog as _checkLog,writeOwnership,
 import {boundary} from '../verify_transport_receipts.mjs';
 const here=path.dirname(new URL(import.meta.url).pathname).replace(/^\/(.:)/,'$1');
 const temp=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'open-fixture-')));
-const host=path.join(temp,'OpenConfirmation-Runner.app');fs.mkdirSync(host);const bundle=path.join(host,'OpenConfirmation.xctest');fs.mkdirSync(bundle);
-const target=()=>({BlueprintName:'OpenConfirmation',IsUITestBundle:true,TestHostPath:host,TestBundlePath:bundle,TestHostBundleIdentifier:'com.fluxstudio.qa.openconfirmation.xctrunner'});
+const products=path.join(temp,'products');fs.mkdirSync(products);const host=path.join(products,'Debug-iphonesimulator','OpenConfirmation-Runner.app');fs.mkdirSync(host,{recursive:true});const plugins=path.join(host,'PlugIns');fs.mkdirSync(plugins);const bundle=path.join(plugins,'OpenConfirmation.xctest');fs.mkdirSync(bundle);
+
+// === native13: real on-disk host/test Info.plist files for identity verification ===
+const HOST_INFO_PLIST_XML=`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n<key>CFBundleIdentifier</key><string>com.fluxstudio.qa.openconfirmation.xctrunner</string>\n<key>CFBundleExecutable</key><string>OpenConfirmation-Runner</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>DTPlatformVersion</key><string>iphonesimulator18.4.internal</string>\n</dict>\n</plist>`;
+const TEST_INFO_PLIST_XML=`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n<key>CFBundleIdentifier</key><string>com.fluxstudio.qa.openconfirmation</string>\n<key>CFBundleExecutable</key><string>OpenConfirmation</string>\n<key>CFBundlePackageType</key><string>BNDL</string>\n<key>XCTContainsUITests</key><true/>\n</dict>\n</plist>`;
+fs.writeFileSync(path.join(host,'Info.plist'),HOST_INFO_PLIST_XML);
+fs.writeFileSync(path.join(bundle,'Info.plist'),TEST_INFO_PLIST_XML);
+
+// Small portable test-only plist reader seam: bounded to local own files, no general bplist architecture.
+const testReadPlist=(file)=>{
+ const content=fs.readFileSync(file,'utf8');const out={};
+ const re=/<key>([^<]+)<\/key>\s*<string>([^<]*)<\/string>|<key>([^<]+)<\/key>\s*<true\s*\/>|<key>([^<]+)<\/key>\s*<false\s*\/>|<key>([^<]+)<\/key>\s*<integer>(-?\d+)<\/integer>/g;
+ let m;while((m=re.exec(content))){
+  if(m[1]!==undefined)out[m[1]]=m[2];
+  else if(m[3]!==undefined)out[m[3]]=true;
+  else if(m[4]!==undefined)out[m[4]]=false;
+  else if(m[5]!==undefined)out[m[5]]=Number(m[6]);
+ }
+ return out;
+};
+
+const target=()=>structuredClone(JSON.parse(fs.readFileSync(path.join(here,'fixtures','xctestrun-noaut-v1.json'),'utf8')).OpenConfirmation);
 for(const version of [1,2])test('metadata accepted v'+version,()=>{
  const j=version===1?{OpenConfirmation:target()}:{__xctestrun_metadata__:{FormatVersion:2},TestConfigurations:[{TestTargets:[target()]}]};
- assert.ok(prepare(j,temp));
+ assert.ok(prepare(j,products,{plistRead:testReadPlist}));
 });
 for(const field of ['UITargetAppPath','UITargetAppBundleIdentifier','TargetApplication','TEST_HOST','TargetTestID'])test('reject AUT '+field,()=>{const t=target();t[field]='Runner';assert.throws(()=>prepare({OpenConfirmation:t},temp));});
 test('reject dependency and extra target',()=>{const t=target();t.DependentProductPaths=['Runner.app'];assert.throws(()=>prepare({OpenConfirmation:t},temp));assert.throws(()=>prepare({OpenConfirmation:target(),Other:target()},temp));});
@@ -52,14 +72,17 @@ test('pinned log separate CLI rejects dev/ino mismatch on opened FD',()=>{
  // The recorded dev/ino is stale. The freshly opened FD's fstat will not match the recorded identity.
  assert.throws(()=>checkLog(log,'cold'),/HOST_UI_BLOCKED/);
 });
-test('pinned log read error yields static FAIL not pass or crash',()=>{
- // The owner record path is part of the bounded check. A missing owner record must surface
- // as a static FAIL (HOST_UI_BLOCKED) rather than a crash or accidental pass.
+test('pinned payload readSync EIO with valid owner and FD yields static FAIL',()=>{
+ const {log,dev,ino}=makeOwnedLog('cli-payload-eio','HOST_UI_READY\nHOST_UI_ACK\n');
+ const fd=fs.openSync(log,fs.constants.O_RDONLY),ownerPath=log+'.owner',originalReadSync=fs.readSync;let intercepted=0;
+ const owner=JSON.parse(fs.readFileSync(ownerPath,'utf8'));assert.equal(owner.dev,dev);assert.equal(owner.ino,ino);
+ fs.readSync=function(targetFd,...args){if(targetFd===fd){intercepted++;const error=new Error('simulated payload read failure');error.code='EIO';throw error;}return originalReadSync.call(fs,targetFd,...args);};
+ try{assert.throws(()=>checkLog(log,'cold',fd),/HOST_UI_BLOCKED/);assert.equal(intercepted,1);assert.equal(fs.existsSync(ownerPath),true);const stillOpen=fs.fstatSync(fd);assert.ok(stillOpen.isFile());assert.equal(String(stillOpen.dev),dev);assert.equal(String(stillOpen.ino),ino);}finally{fs.readSync=originalReadSync;fs.closeSync(fd);}
+});
+test('pinned log owner absence yields static FAIL, not pass or crash',()=>{
  const f=path.join(temp,'cli-no-owner.log');fs.writeFileSync(f,'HOST_UI_READY\nHOST_UI_ACK\n');
  assert.throws(()=>checkLog(f,'cold'),/HOST_UI_BLOCKED/);
- // Same for a closed FD: opening the check path on a non-existent file must reject.
- const missing=path.join(temp,'cli-missing.log');
- assert.throws(()=>checkLog(missing,'cold'),/HOST_UI_BLOCKED/);
+ const missing=path.join(temp,'cli-missing.log');assert.throws(()=>checkLog(missing,'cold'),/HOST_UI_BLOCKED/);
 });
 test('pinned log accepts freshly opened FD when identity matches',()=>{
  const {log}=makeOwnedLog('cli-match','HOST_UI_READY\nHOST_UI_ACK\n');
@@ -129,7 +152,7 @@ test('actual default signal adapter sends negative group and two arguments',()=>
  h.alive(4567);h.signal(4567,'SIGTERM');h.signal(4567,'SIGKILL');
  assert.deepEqual(calls,[[-4567,0],[-4567,'SIGTERM'],[-4567,'SIGKILL']]);
 });
-for(const mode of ['normal','replace','truncate','oversize','readerror','timeout','leader-descendants','deadline'])test('actual supervisor owned stub '+mode,async()=>{
+for(const mode of ['normal','replace','truncate','oversize','ownerabsent','timeout','leader-descendants','deadline'])test('actual supervisor owned stub '+mode,async()=>{
  const d=fs.mkdtempSync(path.join(temp,'supervisor-'));const products=path.join(d,'products');fs.mkdirSync(products);const meta=path.join(products,'OpenConfirmation.xctestrun');fs.writeFileSync(meta,'{}');
  const oldCI=process.env.GITHUB_ACTIONS,oldProducts=process.env.QA_OPEN_PRODUCTS;process.env.GITHUB_ACTIONS='true';process.env.QA_OPEN_PRODUCTS=products;
  let child,descendants=mode==='leader-descendants'||mode==='deadline',dead=false;const signals=[];let timer;
@@ -140,10 +163,13 @@ for(const mode of ['normal','replace','truncate','oversize','readerror','timeout
     assert.equal(command,'xcodebuild');assert.equal(args[2],meta);assert.equal(opts.detached,true);
     child=spawn(process.execPath,['-e',mode==='timeout'?'setTimeout(()=>{},100)':"console.log('HOST_UI_READY');setTimeout(()=>{console.log('HOST_UI_ACK')},70);setTimeout(()=>{},100)"],{stdio:opts.stdio,windowsHide:true});
     child.on('exit',()=>{dead=true;});
-    if(['replace','truncate','oversize','readerror'].includes(mode)){
+    if(mode==='ownerabsent'){
+     // Deterministic fail-closed case: invalidate the owner record before the first poll.
+     fs.unlinkSync(path.join(d,'driver.log.owner'));
+    }else if(['replace','truncate','oversize'].includes(mode)){
      const mutate=()=>{
       const log=path.join(d,'driver.log');if(!fs.existsSync(log)||fs.statSync(log).size===0){timer=setTimeout(mutate,5);return;}
-      timer=setTimeout(()=>{if(mode==='replace'){fs.renameSync(log,log+'.old');fs.writeFileSync(log,'HOST_UI_READY\nHOST_UI_ACK\n');}if(mode==='truncate')fs.truncateSync(log,0);if(mode==='oversize')fs.truncateSync(log,4*1024*1024);if(mode==='readerror')fs.unlinkSync(log+'.owner');},20);
+      timer=setTimeout(()=>{if(mode==='replace'){fs.renameSync(log,log+'.old');fs.writeFileSync(log,'HOST_UI_READY\nHOST_UI_ACK\n');}if(mode==='truncate')fs.truncateSync(log,0);if(mode==='oversize')fs.truncateSync(log,4*1024*1024);},20);
      };timer=setTimeout(mutate,5);
     }
     return child;
@@ -208,9 +234,9 @@ test('publication failure plus cleanup failure leaves passive actionable emergen
 });
 test('actual sourced driver complete start/finish and start/cleanup through actual run CLI fixture',()=>{
  const bash=process.env.WIDGET_QA_BASH||(process.platform==='win32'?'C:/Program Files/Git/bin/bash.exe':'/bin/bash');
- const d=fs.mkdtempSync(path.join(temp,'driver-cli-'));const products=path.join(d,'products');fs.mkdirSync(products);const meta=path.join(products,'meta');fs.writeFileSync(meta,'{}');
+ const env=fixtureEnv('driver-cli');const d=env.d,products=env.products,meta=path.join(products,'meta');const fixture=JSON.parse(fs.readFileSync(path.join(here,'fixtures','xctestrun-noaut-v1.json'),'utf8'));fs.writeFileSync(meta,JSON.stringify(fixture));
  const adapter=path.join(d,'adapter.mjs');
- const code="import {cli} from "+JSON.stringify(new URL('./helper.mjs',import.meta.url).href)+";import {spawn} from 'node:child_process';let child,dead=false;process.exitCode=await cli(process.argv.slice(3),{publishOwnership:process.env.FAIL_PUBLISH==='true'?()=>{throw Error('STUB_PUBLICATION');}:undefined,timeoutMs:1500,pollMs:5,termMs:1,reapMs:10,launch:(cmd,args,cfg)=>{child=spawn(process.execPath,['-e',\"console.log('HOST_UI_READY');setTimeout(()=>{console.log('HOST_UI_ACK')},1000);setTimeout(()=>{},2000)\"],{stdio:cfg.stdio,windowsHide:true});child.on('exit',()=>dead=true);return child;},hooks:{alive:()=>!dead,signal:(g,s)=>{if(g!==child.pid)throw Error('not owned');dead=true;child.kill(s);}}});";
+ const code="import {cli,prepare} from "+JSON.stringify(new URL('./helper.mjs',import.meta.url).href)+";import {spawn} from 'node:child_process';import fs from 'node:fs';let child,dead=false;const args=process.argv.slice(3);if(args[0]==='metadata'){const j=JSON.parse(fs.readFileSync(args[1],'utf8'));prepare(j,args[2],{plistRead:"+testReadPlist.toString()+"});fs.writeFileSync(args[3],JSON.stringify(j),{flag:'wx'});process.exitCode=0;}else process.exitCode=await cli(args,{publishOwnership:process.env.FAIL_PUBLISH==='true'?()=>{throw Error('STUB_PUBLICATION');}:undefined,timeoutMs:1500,pollMs:5,termMs:1,reapMs:10,launch:(cmd,args,cfg)=>{child=spawn(process.execPath,['-e',\"console.log('HOST_UI_READY');setTimeout(()=>{console.log('HOST_UI_ACK')},1000);setTimeout(()=>{},5000)\"],{stdio:cfg.stdio,windowsHide:true});child.on('exit',()=>dead=true);return child;},hooks:{alive:()=>!dead,signal:(g,s)=>{if(g!==child.pid)throw Error('not owned');dead=true;child.kill(s);}}});";
  fs.writeFileSync(adapter,code);
  const q=s=>"'"+s.replaceAll('\\','/')+"'";
  const script=['set -eu','source '+q(path.join(here,'driver.sh')),
@@ -219,7 +245,7 @@ test('actual sourced driver complete start/finish and start/cleanup through actu
  'open_driver_start || exit 10','open_driver_guard_pre_url || exit 11','open_driver_finish cold || exit 12','[[ -z "$OPEN_PID" ]] || exit 13',
  'ACTIVE_CASE=cleanup','open_driver_start || exit 14','open_driver_guard_pre_url || exit 15','open_driver_cleanup || exit 16','[[ -z "$OPEN_PID" && ! -e "$OPEN_DIR/ownership.json" ]] || exit 17',
  '[[ $(cat "$OPEN_DIR/exit") != 0 ]] || exit 18','export FAIL_PUBLISH=true','ACTIVE_CASE=publication','if open_driver_start; then exit 19; fi','open_driver_cleanup || exit 20','[[ -z "$OPEN_PID" && ! -e "$OPEN_DIR/ownership.json" && $(cat "$OPEN_DIR/exit") != 0 ]] || exit 21'].join('\n');
- const result=spawnSync(bash,['--noprofile','--norc','-c',script],{encoding:'utf8',windowsHide:true,timeout:10000});assert.equal(result.status,0,result.stdout+result.stderr);
+ const result=spawnSync(bash,['--noprofile','--norc','-c',script],{encoding:'utf8',windowsHide:true,timeout:15000});assert.equal(result.status,0,result.stdout+result.stderr);
 });
 for(const cause of ['disconnect','lease','stop','leader-exit-descendants'])test('actual owned controller containment '+cause+' uses self-only injected signals',async()=>{
  const channel=new EventEmitter();const messages=[];channel.send=m=>messages.push(m);const token='a'.repeat(48);let child,dead=false;const signals=[];
@@ -306,4 +332,182 @@ for(const variant of ['stale-15-split','wrong-target','escaped-result','wrong-de
   await assert.rejects(()=>ownedController(args,token,{channel:quietChannel(),signal:()=>{}}),/HOST_UI_BLOCKED/);
  }finally{restore();}
 });
+
+// === native13: real captured metadata fixture + mutation regression suite ===
+// The fixture file is the authoritative shape; tests load it and only mutate what the
+// diagnosis calls out, so the validator is exercised against the real captured shape.
+
+function fixtureEnv(name){
+ const d=fs.mkdtempSync(path.join(temp,'fx-'+name+'-'));
+ const products=path.join(d,'products');fs.mkdirSync(products);
+ const host=path.join(products,'Debug-iphonesimulator','OpenConfirmation-Runner.app');
+ fs.mkdirSync(host,{recursive:true});
+ const pluginsDir=path.join(host,'PlugIns');fs.mkdirSync(pluginsDir);
+ const bundle=path.join(pluginsDir,'OpenConfirmation.xctest');fs.mkdirSync(bundle);
+ fs.writeFileSync(path.join(host,'Info.plist'),HOST_INFO_PLIST_XML);
+ fs.writeFileSync(path.join(bundle,'Info.plist'),TEST_INFO_PLIST_XML);
+ return {d,products,host,bundle};
+}
+function loadFixture(products){
+ const resolved=JSON.parse(fs.readFileSync(path.join(here,'fixtures','xctestrun-noaut-v1.json'),'utf8'));
+ const resolvedHost=resolved.OpenConfirmation.TestHostPath.replace('__TESTROOT__',products);
+ const resolvedBundle=resolved.OpenConfirmation.TestBundlePath.replace('__TESTHOST__',resolvedHost);
+ return {resolved,target:resolved.OpenConfirmation,products,resolvedHost,resolvedBundle};
+}
+function wrapV2(resolved){
+ return {__xctestrun_metadata__:{FormatVersion:2},TestConfigurations:[{TestTargets:[resolved.OpenConfirmation]}]};
+}
+
+test('fixture accepted v1 with real captured metadata',()=>{
+ const {products}=fixtureEnv('acc-v1');
+ const {resolved}=loadFixture(products);
+ assert.ok(prepare(resolved,products,{plistRead:testReadPlist}));
+});
+test('fixture accepted v2 with real captured metadata',()=>{
+ const {products}=fixtureEnv('acc-v2');
+ const {resolved}=loadFixture(products);
+ assert.ok(prepare(wrapV2(resolved),products,{plistRead:testReadPlist}));
+});
+
+for(const [label,mutate] of [
+ ['IsXCTRunnerHostedTestBundle=false',t=>{t.IsXCTRunnerHostedTestBundle=false;}],
+ ['IsXCTRunnerHostedTestBundle missing',t=>{delete t.IsXCTRunnerHostedTestBundle;}],
+ ['UseUITargetAppProvidedByTests=false',t=>{t.UseUITargetAppProvidedByTests=false;}],
+ ['UITargetAppCommandLineArguments has args',t=>{t.UITargetAppCommandLineArguments=['-arg','value'];}],
+ ['UITargetAppEnvironmentVariables is string not object',t=>{t.UITargetAppEnvironmentVariables='DYLD_INSERT_LIBRARIES=foo';}],
+ ['UITargetAppMainThreadCheckerEnabled=false',t=>{t.UITargetAppMainThreadCheckerEnabled=false;}],
+ ['extra UITargetAppPath at target level',t=>{t.UITargetAppPath='/path/to/Runner.app';}],
+ ['extra UITargetAppBundleIdentifier actual AUT',t=>{t.UITargetAppBundleIdentifier='com.fluxstudio.planflow';}],
+ ['nested UseUITargetAppProvidedByTests',t=>{t.Nested={UseUITargetAppProvidedByTests:true};}],
+ ['nested TEST_HOST',t=>{t.Nested={TEST_HOST:'Runner'};}],
+ ['nested TargetApplication',t=>{t.Nested={TargetApplication:'Runner'};}],
+ ['TEST_HOST at target level',t=>{t.TEST_HOST='Runner';}],
+ ['TargetTestID at target level',t=>{t.TargetTestID='X';}],
+ ['TargetApplication at target level',t=>{t.TargetApplication='Runner';}],
+ ['env var key with invalid characters',t=>{t.UITargetAppEnvironmentVariables={'BAD-KEY!':'value'};}],
+ ['env var value is empty string',t=>{t.UITargetAppEnvironmentVariables={DYLD_INSERT_LIBRARIES:''};}],
+ ['env var value with forbidden Runner path',t=>{t.UITargetAppEnvironmentVariables={DYLD_INSERT_LIBRARIES:'/Runner.app'};}],
+ ['env var additional TEST_HOST',t=>{t.UITargetAppEnvironmentVariables.TEST_HOST='/AUT/PlanFlow.app';}],
+ ['env var AUT bundle identity',t=>{t.UITargetAppEnvironmentVariables.DYLD_LIBRARY_PATH='com.fluxstudio.planflow';}],
+ ['env var changed scheme',t=>{t.UITargetAppEnvironmentVariables.XCODE_SCHEME_NAME='ForeignAUT';}],
+ ['env var removed defaults',t=>{t.UITargetAppEnvironmentVariables={};}],
+ ['target args injection',t=>{t.CommandLineArguments=['--target=AUT'];}],
+ ['target env injection',t=>{t.EnvironmentVariables.EXTRA_AUT='/Applications/PlanFlow.app';}],
+ ['testing env injection',t=>{t.TestingEnvironmentVariables.EXTRA_AUT='/Applications/PlanFlow.app';}],
+])test('fixture rejects '+label,()=>{
+ const {products}=fixtureEnv('mut-'+label.replace(/[^A-Za-z0-9]+/g,'-'));
+ const {resolved,target}=loadFixture(products);
+ mutate(target);
+ assert.throws(()=>prepare(resolved,products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+
+test('fixture rejects second target',()=>{
+ const {products}=fixtureEnv('mut-2targets');
+ const {resolved}=loadFixture(products);
+ const j={OpenConfirmation:resolved.OpenConfirmation,Other:JSON.parse(JSON.stringify(resolved.OpenConfirmation))};
+ assert.throws(()=>prepare(j,products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+
+for(const [label,mutate] of [
+ ['foreign dependency path',t=>{t.DependentProductPaths=[t.TestHostPath,t.TestHostPath+'/Foreign.xctest'];}],
+ ['missing test bundle dependency',t=>{t.DependentProductPaths=[t.TestHostPath];}],
+ ['duplicate host dependency',t=>{t.DependentProductPaths=[t.TestHostPath,t.TestHostPath];}],
+ ['extra third dependency',t=>{t.DependentProductPaths=[t.TestHostPath,t.TestBundlePath,'/extra/foreign.app'];}],
+])test('fixture rejects '+label,()=>{
+ const {products}=fixtureEnv('dep-'+label.replace(/[^A-Za-z0-9]+/g,'-'));
+ const {resolved,target}=loadFixture(products);
+ mutate(target);
+ assert.throws(()=>prepare(resolved,products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+
+for(const [label,mutatePlist] of [
+ ['host Info.plist wrong bundleId',xml=>xml.replace('com.fluxstudio.qa.openconfirmation.xctrunner','com.fluxstudio.qa.openconfirmation')],
+ ['host Info.plist wrong executable',xml=>xml.replace('<string>OpenConfirmation-Runner</string>','<string>OtherRunner</string>')],
+ ['host Info.plist wrong packageType',xml=>xml.replace('<string>APPL</string>','<string>BNDL</string>')],
+ ['test Info.plist wrong bundleId',xml=>xml.replace('<string>com.fluxstudio.qa.openconfirmation</string>','<string>com.fluxstudio.qa.openconfirmation.xctrunner</string>')],
+ ['test Info.plist wrong executable',xml=>xml.replace('<string>OpenConfirmation</string>','<string>Other</string>')],
+ ['test Info.plist wrong packageType',xml=>xml.replace('<string>BNDL</string>','<string>APPL</string>')],
+ ['test Info.plist missing XCTContainsUITests',xml=>xml.replace(/<key>XCTContainsUITests<\/key><true\/>/,'')],
+])test('fixture rejects '+label,()=>{
+ const env=fixtureEnv('plist-'+label.replace(/[^A-Za-z0-9]+/g,'-'));
+ fs.writeFileSync(path.join(env.host,'Info.plist'),mutatePlist(HOST_INFO_PLIST_XML));
+ fs.writeFileSync(path.join(env.bundle,'Info.plist'),mutatePlist(TEST_INFO_PLIST_XML));
+ const {resolved}=loadFixture(env.products);
+ assert.throws(()=>prepare(resolved,env.products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+
+test('fixture rejects symlink escape on host path',()=>{
+ const env=fixtureEnv('sym-escape');
+ const {resolved,target,resolvedHost}=loadFixture(env.products);
+ const realHost=path.join(env.products,'RealHost.app');fs.mkdirSync(realHost);
+ fs.writeFileSync(path.join(realHost,'Info.plist'),HOST_INFO_PLIST_XML);
+ try{fs.unlinkSync(resolvedHost);fs.symlinkSync(realHost,resolvedHost,'dir');}catch(e){if(e.code!=='EPERM'&&e.code!=='EEXIST')throw e;}
+ target.TestHostPath=resolvedHost;
+ target.DependentProductPaths=[resolvedHost,path.join(resolvedHost,'OpenConfirmation.xctest')];
+ assert.throws(()=>prepare(resolved,env.products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+test('fixture rejects symlinked own Info.plist',()=>{
+ const env=fixtureEnv('plist-symlink');const {resolved}=loadFixture(env.products);const outside=path.join(env.d,'outside.plist');fs.writeFileSync(outside,HOST_INFO_PLIST_XML);const ownInfo=path.join(env.host,'Info.plist');fs.unlinkSync(ownInfo);try{fs.symlinkSync(outside,ownInfo);}catch(e){if(e.code==='EPERM'||e.code==='EACCES')return;throw e;}assert.throws(()=>prepare(resolved,env.products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+test('production reader rejects pathname inode replacement during pinned read',()=>{
+ const env=fixtureEnv('reader-path-race');const {resolved}=loadFixture(env.products);const ownInfo=path.join(env.host,'Info.plist');const originalReadSync=fs.readSync,platformDescriptor=Object.getOwnPropertyDescriptor(process,'platform');let replaced=false;
+ Object.defineProperty(process,'platform',{...platformDescriptor,value:'darwin'});
+ fs.readSync=function(...args){const count=originalReadSync(...args);if(!replaced){replaced=true;fs.renameSync(ownInfo,ownInfo+'.held');fs.writeFileSync(ownInfo,HOST_INFO_PLIST_XML);}return count;};
+ try{assert.throws(()=>prepare(resolved,env.products),/HOST_UI_BLOCKED/);assert.equal(replaced,true);}finally{fs.readSync=originalReadSync;Object.defineProperty(process,'platform',platformDescriptor);}
+});
+test('fixture rejects traversal escape outside products',()=>{
+ const env=fixtureEnv('traversal');
+ const {resolved,target,resolvedHost,resolvedBundle}=loadFixture(env.products);
+ const escaped=path.join(path.dirname(env.products),'outside','OpenConfirmation-Runner.app');
+ fs.mkdirSync(escaped,{recursive:true});fs.mkdirSync(path.join(escaped,'OpenConfirmation.xctest'));
+ fs.writeFileSync(path.join(escaped,'Info.plist'),HOST_INFO_PLIST_XML);
+ fs.writeFileSync(path.join(escaped,'OpenConfirmation.xctest','Info.plist'),TEST_INFO_PLIST_XML);
+ target.TestHostPath=escaped;
+ target.TestBundlePath=escaped+path.sep+'OpenConfirmation.xctest';
+ target.DependentProductPaths=[escaped,escaped+path.sep+'OpenConfirmation.xctest'];
+ assert.throws(()=>prepare(resolved,env.products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+test('fixture rejects suffix and wrong layout alias even with valid identities',()=>{
+ const env=fixtureEnv('suffix-valid-identity');const {resolved,target}=loadFixture(env.products);const fakeHost=path.join(env.products,'FakeOpenConfirmationSuffix.app');const fakeBundle=path.join(fakeHost,'Elsewhere','SuffixOpenConfirmation.xctest');fs.mkdirSync(fakeBundle,{recursive:true});fs.writeFileSync(path.join(fakeHost,'Info.plist'),HOST_INFO_PLIST_XML);fs.writeFileSync(path.join(fakeBundle,'Info.plist'),TEST_INFO_PLIST_XML);target.TestHostPath=fakeHost;target.TestBundlePath=fakeBundle;target.DependentProductPaths=[fakeHost,fakeBundle];assert.throws(()=>prepare(resolved,env.products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+test('fixture rejects suffix spoof with OpenConfirmation substring but wrong identity',()=>{
+ const env=fixtureEnv('spoof');
+ const {resolved,target}=loadFixture(env.products);
+ const spoof=path.join(env.products,'Debug-iphonesimulator','OpenConfirmation-Runner-fake.app');
+ fs.mkdirSync(spoof,{recursive:true});fs.mkdirSync(path.join(spoof,'OpenConfirmation.xctest'));
+ fs.writeFileSync(path.join(spoof,'Info.plist'),HOST_INFO_PLIST_XML.replace('OpenConfirmation-Runner','FakeRunner'));
+ fs.writeFileSync(path.join(spoof,'OpenConfirmation.xctest','Info.plist'),TEST_INFO_PLIST_XML);
+ target.TestHostPath=spoof;
+ target.TestBundlePath=spoof+path.sep+'OpenConfirmation.xctest';
+ target.DependentProductPaths=[spoof,spoof+path.sep+'OpenConfirmation.xctest'];
+ assert.throws(()=>prepare(resolved,env.products,{plistRead:testReadPlist}),/HOST_UI_BLOCKED/);
+});
+
+test('non-Darwin production metadata CLI fails closed without writing output',{skip:process.platform==='darwin'},()=>{
+ const env=fixtureEnv('cli-unsupported');const {resolved}=loadFixture(env.products);const input=path.join(env.d,'fixture.json');fs.writeFileSync(input,JSON.stringify(resolved));const output=path.join(env.products,'guarded.json');const r=spawnSync(process.execPath,[path.join(here,'helper.mjs'),'metadata',input,env.products,output],{encoding:'utf8',windowsHide:true});assert.equal(r.status,1);assert.match(r.stderr,/HOST_UI_BLOCKED/);assert.equal(fs.existsSync(output),false);
+});
+test('production CLI metadata accepts captured fixture v1',{skip:process.platform!=='darwin'},()=>{
+ const env=fixtureEnv('cli-v1');
+ const {resolved}=loadFixture(env.products);
+ const fixturePath=path.join(env.d,'fixture.json');fs.writeFileSync(fixturePath,JSON.stringify(resolved));
+ const outputPath=path.join(env.products,'guarded.json');
+ const r=spawnSync(process.execPath,[path.join(here,'helper.mjs'),'metadata',fixturePath,env.products,outputPath],{encoding:'utf8',windowsHide:true});
+ assert.equal(r.status,0,r.stdout+r.stderr);
+ assert.ok(fs.existsSync(outputPath));
+ const guarded=JSON.parse(fs.readFileSync(outputPath,'utf8'));
+ assert.equal(guarded.OpenConfirmation.UseUITargetAppProvidedByTests,true);
+ assert.deepEqual(guarded.OpenConfirmation.UITargetAppCommandLineArguments,[]);
+ assert.equal(guarded.OpenConfirmation.UITargetAppMainThreadCheckerEnabled,true);
+});
+test('production CLI metadata accepts captured fixture v2',{skip:process.platform!=='darwin'},()=>{
+ const env=fixtureEnv('cli-v2');
+ const {resolved}=loadFixture(env.products);
+ const wrapped=wrapV2(resolved);
+ const fixturePath=path.join(env.d,'fixture.json');fs.writeFileSync(fixturePath,JSON.stringify(wrapped));
+ const outputPath=path.join(env.products,'guarded.json');
+ const r=spawnSync(process.execPath,[path.join(here,'helper.mjs'),'metadata',fixturePath,env.products,outputPath],{encoding:'utf8',windowsHide:true});
+ assert.equal(r.status,0,r.stdout+r.stderr);
+ assert.ok(fs.existsSync(outputPath));
+});
+
 process.on('exit',()=>{try{fs.rmSync(temp,{recursive:true,force:true});}catch{}});

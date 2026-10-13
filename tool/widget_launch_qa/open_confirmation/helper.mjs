@@ -1,18 +1,119 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {read,boundary} from '../verify_transport_receipts.mjs';
 const need=x=>{if(!x)throw Error('HOST_UI_BLOCKED');};
 const staticFail=()=>{throw Error('HOST_UI_BLOCKED');};
-export function prepare(j,products){
+
+// Exact 4 no-AUT target-level keys allowlisted for the no-AUT captured metadata shape.
+// Each is shape+value+location validated; nested or top-level additions fail closed.
+const NO_AUT_KEYS=Object.freeze(['UseUITargetAppProvidedByTests','UITargetAppCommandLineArguments','UITargetAppEnvironmentVariables','UITargetAppMainThreadCheckerEnabled']);
+const noAutKeySet=new Set(NO_AUT_KEYS);
+const CAPTURED_TARGET_KEYS=Object.freeze(['IsXCTRunnerHostedTestBundle','BundleIdentifiersForCrashReportEmphasis','IsUITestBundle','TestBundlePath','TestHostBundleIdentifier','BlueprintProviderRelativePath','UseUITargetAppProvidedByTests','ToolchainsSettingValue','ProductModuleName','TestLanguage','UITargetAppCommandLineArguments','DefaultTestExecutionTimeAllowance','BlueprintProviderName','UITargetAppEnvironmentVariables','UserAttachmentLifetime','DiagnosticCollectionPolicy','UITargetAppMainThreadCheckerEnabled','TestHostPath','RunOrder','EnvironmentVariables','CommandLineArguments','SystemAttachmentLifetime','TestingEnvironmentVariables','BlueprintName','TestRegion','PreferredScreenCaptureFormat','TestTimeoutsEnabled','DependentProductPaths']);
+const NO_AUT_ENV=Object.freeze({
+ DYLD_LIBRARY_PATH:'__TESTROOT__/Debug-iphonesimulator',
+ DYLD_FRAMEWORK_PATH:'__TESTROOT__/Debug-iphonesimulator',
+ XCODE_SCHEME_NAME:'OpenConfirmation',
+ __XPC_DYLD_LIBRARY_PATH:'__TESTROOT__/Debug-iphonesimulator',
+ APP_DISTRIBUTOR_ID_OVERRIDE:'com.apple.AppStore',
+ __XCODE_BUILT_PRODUCTS_DIR_PATHS:'__TESTROOT__/Debug-iphonesimulator',
+ __XPC_DYLD_FRAMEWORK_PATH:'__TESTROOT__/Debug-iphonesimulator',
+});
+const TARGET_ENV=Object.freeze({OS_ACTIVITY_DT_MODE:'YES',APP_DISTRIBUTOR_ID_OVERRIDE:'com.apple.AppStore',TERM:'dumb',SQLITE_ENABLE_THREAD_ASSERTIONS:'1'});
+const TESTING_ENV=Object.freeze({
+ DYLD_LIBRARY_PATH:'__TESTROOT__/Debug-iphonesimulator:__PLATFORMS__/iPhoneSimulator.platform/Developer/usr/lib',
+ DYLD_FRAMEWORK_PATH:'__TESTROOT__/Debug-iphonesimulator:__PLATFORMS__/iPhoneSimulator.platform/Developer/Library/Frameworks',
+ XCODE_SCHEME_NAME:'OpenConfirmation',
+ DYLD_INSERT_LIBRARIES:'__SIMRUNTIMEROOT__/usr/lib/libMainThreadChecker.dylib',
+ __XPC_DYLD_LIBRARY_PATH:'__TESTROOT__/Debug-iphonesimulator',
+ __XCODE_BUILT_PRODUCTS_DIR_PATHS:'__TESTROOT__/Debug-iphonesimulator',
+ MTC_CRASH_ON_REPORT:'1',
+ __XPC_DYLD_FRAMEWORK_PATH:'__TESTROOT__/Debug-iphonesimulator',
+});
+const exactMap=(actual,expected)=>!!actual&&typeof actual==='object'&&!Array.isArray(actual)&&Object.keys(actual).length===Object.keys(expected).length&&Object.keys(expected).every(k=>Object.hasOwn(actual,k)&&actual[k]===expected[k]);
+const NO_AUT_KEY_VALIDATORS=Object.freeze({
+ UseUITargetAppProvidedByTests:(v)=>v===true,
+ UITargetAppCommandLineArguments:(v)=>Array.isArray(v)&&v.length===0,
+ UITargetAppEnvironmentVariables:(v)=>{
+  return exactMap(v,NO_AUT_ENV);
+ },
+ UITargetAppMainThreadCheckerEnabled:(v)=>v===true,
+});
+
+// Default plist reader: macOS built-in plutil. The conversion is bounded to local own
+// files; the parser is not part of the validation surface so no general bplist parser
+// is built. Other platforms fail closed without any external architecture.
+function defaultReadPlist(file){
+ if(process.platform!=='darwin')staticFail();
+ try{
+  const st=fs.lstatSync(file);need(st.isFile()&&!st.isSymbolicLink()&&st.size>0&&st.size<=256*1024);
+  const canonical=fs.realpathSync(file);need(canonical===file);
+  const fd=fs.openSync(file,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW??0));
+  let bytes;
+  try{const current=fs.fstatSync(fd);need(current.isFile()&&current.dev===st.dev&&current.ino===st.ino&&current.size===st.size);bytes=Buffer.alloc(current.size);let n=0;while(n<bytes.length){const got=fs.readSync(fd,bytes,n,bytes.length-n,n);need(got>0);n+=got;}const after=fs.fstatSync(fd);need(after.dev===current.dev&&after.ino===current.ino&&after.size===current.size);const pathAfter=fs.lstatSync(file);need(pathAfter.isFile()&&!pathAfter.isSymbolicLink()&&pathAfter.dev===after.dev&&pathAfter.ino===after.ino&&pathAfter.size===after.size);need(fs.realpathSync(file)===canonical);}finally{fs.closeSync(fd);}
+  const r=spawnSync('/usr/bin/plutil',['-convert','json','-o','-','--','-'],{input:bytes,encoding:'utf8',windowsHide:true,timeout:2000,maxBuffer:256*1024});
+  if(r.error||r.status!==0||typeof r.stdout!=='string'||r.stdout.length>256*1024)staticFail();
+  return JSON.parse(r.stdout);
+ }catch{staticFail();}
+}
+
+// Small portable test seam: tests may inject a readPlist function for local XML plists.
+// Validation still runs in full; only the byte->object conversion is replaced.
+function readPlistWith(file,plistRead){
+ if(typeof plistRead==='function')return plistRead(file);
+ return defaultReadPlist(file);
+}
+function validateHostInfoPlist(plist){
+ need(plist&&typeof plist==='object'&&!Array.isArray(plist));
+ need(typeof plist.CFBundleIdentifier==='string'&&plist.CFBundleIdentifier==='com.fluxstudio.qa.openconfirmation.xctrunner');
+ need(typeof plist.CFBundleExecutable==='string'&&plist.CFBundleExecutable==='OpenConfirmation-Runner');
+ need(typeof plist.CFBundlePackageType==='string'&&plist.CFBundlePackageType==='APPL');
+}
+function validateTestInfoPlist(plist){
+ need(plist&&typeof plist==='object'&&!Array.isArray(plist));
+ need(typeof plist.CFBundleIdentifier==='string'&&plist.CFBundleIdentifier==='com.fluxstudio.qa.openconfirmation');
+ need(typeof plist.CFBundleExecutable==='string'&&plist.CFBundleExecutable==='OpenConfirmation');
+ need(typeof plist.CFBundlePackageType==='string'&&plist.CFBundlePackageType==='BNDL');
+ need(plist.XCTContainsUITests===true);
+}
+export function prepare(j,products,options={}){
  need(j&&typeof j==='object');const version=j.__xctestrun_metadata__?.FormatVersion??1;need(version===1||version===2);let targets;
  if(version===2){need(j.TestConfigurations?.length===1);targets=j.TestConfigurations[0].TestTargets;}else targets=Object.entries(j).filter(([k])=>k!=='__xctestrun_metadata__').map(([k,v])=>({...v,BlueprintName:v.BlueprintName??k}));
- need(Array.isArray(targets)&&targets.length===1);const t=targets[0];need(t.BlueprintName==='OpenConfirmation'&&t.IsUITestBundle===true);
- function scan(o){for(const [k,v] of Object.entries(o)){need(!/UITargetApp|TargetApplication|TestTargetName|TargetTestID|TEST_HOST|TEST_TARGET_NAME/i.test(k));if(/dependenc/i.test(k))need(Array.isArray(v)&&v.length===0);if(typeof v==='string')need(!/(^|[/\\])Runner(?:\.app|\.xctest|$)|com\.fluxstudio\.planflow/i.test(v));if(v&&typeof v==='object')scan(v);}}scan(j);
- for(const k of ['TestHostPath','TestBundlePath']){need(typeof t[k]==='string');const p=path.resolve(t[k].replaceAll('__TESTROOT__',products).replaceAll('__TESTHOST__',t.TestHostPath.replaceAll('__TESTROOT__',products)));need(p.startsWith(path.resolve(products)+path.sep)&&/OpenConfirmation/.test(p));need(process.platform==='win32'?fs.realpathSync(p).toLowerCase()===p.toLowerCase():fs.realpathSync(p)===p);}
- need(t.TestHostBundleIdentifier==='com.fluxstudio.qa.openconfirmation.xctrunner');t.EnvironmentVariables={...(t.EnvironmentVariables??{}),QA_OPEN_CONFIRMATION_GATE:'ci-owned-exact-open-v1'};if(version===1)j.OpenConfirmation=t;return j;
+ need(Array.isArray(targets)&&targets.length===1);const t=targets[0];need(Object.keys(t).length===CAPTURED_TARGET_KEYS.length&&CAPTURED_TARGET_KEYS.every(k=>Object.hasOwn(t,k)));need(t.BlueprintName==='OpenConfirmation'&&t.IsUITestBundle===true&&t.IsXCTRunnerHostedTestBundle===true);
+ need(Array.isArray(t.CommandLineArguments)&&t.CommandLineArguments.length===0&&exactMap(t.EnvironmentVariables,TARGET_ENV)&&exactMap(t.TestingEnvironmentVariables,TESTING_ENV));
+ // No-AUT allowlist: exactly 4 target-level keys with shape/value validation.
+ for(const key of NO_AUT_KEYS){need(Object.hasOwn(t,key));need(NO_AUT_KEY_VALIDATORS[key](t[key]));}
+ // Reject any other UITargetApp* keys at target level (e.g. UITargetAppPath, UITargetAppBundleIdentifier).
+ for(const k of Object.keys(t)){if(k.startsWith('UITargetApp')&&!noAutKeySet.has(k))staticFail();}
+ // DependentProductPaths: exactly own host and own test bundle, no foreign/missing/duplicate/extra.
+ const deps=t.DependentProductPaths;need(Array.isArray(deps)&&deps.length===2);
+ const hostRel='__TESTROOT__/Debug-iphonesimulator/OpenConfirmation-Runner.app';
+ const bundleRel='__TESTHOST__/PlugIns/OpenConfirmation.xctest';
+ need(t.TestHostPath===hostRel&&t.TestBundlePath===bundleRel);
+ need(deps[0]===hostRel&&deps[1]==='__TESTROOT__/Debug-iphonesimulator/OpenConfirmation-Runner.app/PlugIns/OpenConfirmation.xctest');
+ const root=fs.realpathSync(products);need(root===path.resolve(products));
+ const resolvedHost=path.join(root,'Debug-iphonesimulator','OpenConfirmation-Runner.app');
+ const resolvedBundle=path.join(resolvedHost,'PlugIns','OpenConfirmation.xctest');
+ need(path.resolve(t.TestHostPath.replace('__TESTROOT__',root))===resolvedHost);
+ need(path.resolve(t.TestBundlePath.replace('__TESTHOST__',resolvedHost))===resolvedBundle);
+ // Scan rest of j, skipping the target's no-AUT keys (already validated) and DependentProductPaths (already validated).
+ // Deep-copy keeps the original `j` untouched and removes only the allowlisted target-level keys
+ // so the blanket forbidden-key scan still rejects nested occurrences and arbitrary additional keys.
+ const scanJ=JSON.parse(JSON.stringify(j));
+ if(version===2){const target=scanJ.TestConfigurations[0].TestTargets[0];for(const key of NO_AUT_KEYS)delete target[key];delete target.DependentProductPaths;}
+ else{for(const k of Object.keys(scanJ)){if(k==='__xctestrun_metadata__')continue;const target=scanJ[k];for(const key of NO_AUT_KEYS)delete target[key];delete target.DependentProductPaths;break;}}
+ function scan(o){for(const [k,v] of Object.entries(o)){need(!/UITargetApp|TargetApplication|TestTargetName|TargetTestID|TEST_HOST|TEST_TARGET_NAME/i.test(k));if(/dependenc/i.test(k))staticFail();if(typeof v==='string')need(!/(^|[/\\])Runner(?:\.app|\.xctest|$)|com\.fluxstudio\.planflow/i.test(v));if(v&&typeof v==='object')scan(v);}}scan(scanJ);
+ need(fs.realpathSync(resolvedHost)===resolvedHost&&fs.realpathSync(resolvedBundle)===resolvedBundle);
+ for(const p of [resolvedHost,resolvedBundle]){const st=fs.lstatSync(p);need(st.isDirectory()&&!st.isSymbolicLink());}
+ need(t.TestHostBundleIdentifier==='com.fluxstudio.qa.openconfirmation.xctrunner');
+ // Info.plists must be regular, canonical, bounded files inside the exact owned products.
+ const hostInfo=path.join(resolvedHost,'Info.plist'),testInfo=path.join(resolvedBundle,'Info.plist');
+ for(const [f,base] of [[hostInfo,resolvedHost],[testInfo,resolvedBundle]]){const st=fs.lstatSync(f);need(st.isFile()&&!st.isSymbolicLink()&&st.size>0&&st.size<=256*1024);const canonical=fs.realpathSync(f);need(canonical===f&&canonical.startsWith(base+path.sep));}
+ validateHostInfoPlist(readPlistWith(hostInfo,options.plistRead));
+ validateTestInfoPlist(readPlistWith(testInfo,options.plistRead));
+ t.EnvironmentVariables={...(t.EnvironmentVariables??{}),QA_OPEN_CONFIRMATION_GATE:'ci-owned-exact-open-v1'};if(version===1)j.OpenConfirmation=t;return j;
 }
 export function unchanged(file,bfile){const b=JSON.parse(fs.readFileSync(bfile,'utf8'));need(JSON.stringify(boundary(fs.existsSync(file)?read(file):[]))===JSON.stringify(b));}
 export function markers(text,phase){need(!text.includes('HOST_UI_FAIL')&&!text.includes('HOST_UI_BLOCKED'));const count=m=>(text.match(new RegExp('^'+m+'\\r?$','gm'))??[]).length;need(count('HOST_UI_READY')===1);if(phase==='ready')return;need((count('HOST_UI_ACK')===1&&count('HOST_UI_NO_ALERT')===0)||(phase==='warm'&&count('HOST_UI_ACK')===0&&count('HOST_UI_NO_ALERT')===1));}
@@ -249,7 +350,7 @@ export async function run(udid,meta,dir,options={}){
 export async function cli(args,options={}){
  try{
   const [cmd,...a]=args;
-  if(cmd==='metadata'){const j=prepare(JSON.parse(fs.readFileSync(a[0],'utf8')),a[1]);fs.writeFileSync(a[2],JSON.stringify(j),{flag:'wx'});}
+  if(cmd==='metadata'){need(a.length===3);const st=fs.lstatSync(a[0]);need(st.isFile()&&!st.isSymbolicLink()&&st.size>0&&st.size<=1024*1024);const fd=fs.openSync(a[0],fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW??0));let text;try{const s=fs.fstatSync(fd);need(s.isFile()&&s.size===st.size);const b=Buffer.alloc(s.size);let n=0;while(n<b.length){const got=fs.readSync(fd,b,n,b.length-n,n);need(got>0);n+=got;}need(fs.fstatSync(fd).size===s.size);text=b.toString('utf8');}finally{fs.closeSync(fd);}const j=prepare(JSON.parse(text),a[1]);fs.writeFileSync(a[2],JSON.stringify(j),{flag:'wx'});}
   else if(cmd==='unchanged')unchanged(...a);
   else if(cmd==='check'){checkLog(a[0],a[1]);console.log('OK');}
   else if(cmd==='alive')need(Number.isSafeInteger(Number(a[0]))&&Number(a[0])>1&&helperAlive(Number(a[0]))&&!terminalExit(a[1]));
