@@ -6,6 +6,21 @@ import {fileURLToPath} from 'node:url';
 import {read,boundary} from '../verify_transport_receipts.mjs';
 const need=x=>{if(!x)throw Error('HOST_UI_BLOCKED');};
 const staticFail=()=>{throw Error('HOST_UI_BLOCKED');};
+const DIAG_SOURCES=new Set(['helper','controller','driver','transport']);
+const DIAG_REASONS=new Set(['NONE','START_PRECONDITION','START_DIRECTORY','START_OWNER_PUBLISH','START_TERMINAL','START_PROXY_READ','START_PROXY_LIVE','START_READY_TIMEOUT','START_READY_LOG_GUARD','POST_READY_PID_EMPTY','POST_READY_LIVE_GUARD','POST_READY_LOG_GUARD','COLD_ACK_PREDICATE','MARKER_PREDICATE','LOG_GUARD_BLOCKED','STARTUP_DEADLINE','READY_ACCEPTED','READY_REJECTED','TARGET_START_ERROR','TARGET_EXIT_NONZERO','CONTROL_DISCONNECT','CONTROL_SIGNAL','CONTROL_STOP','LEASE_EXPIRED','CLEANUP_REQUEST','CONTAINMENT_UNVERIFIED','OS_REQUEST_FAILED','OS_REQUEST_ACCEPTED','PRE_URL_GUARD_PASSED','FINISH_TIMEOUT','FINISH_EXIT','FINISH_OWNERSHIP','FINISH_STATUS','COLD_FINISH_BLOCKED','WARM_FINISH_BLOCKED','COLD_FINISH','WARM_FINISH','FORMAT_BOUNDED']);
+const DIAG_PHASES=new Set(['UNKNOWN','STARTUP','READY','COLD','WARM','CONTAINMENT','TERMINAL']);
+const DIAG_ERRORS=new Set(['NONE','BLOCKED','EIO','ENOENT','EACCES','OTHER']);
+const DIAG_NUMBERS=['elapsedMs','readyElapsedMs','phaseElapsedMs','readyCount','ackCount','noAlertCount','failCount','targetExitCode'];
+const DIAG_FLAGS=['ownerPresent','proxyValid','helperLive','terminalPresent','fdRegular','fdIdentityValid','readyAccepted','targetExited','released','deadlineExpired'];
+export function formatDiagnostic(value){
+ const input=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+ const row={kind:'WIDGET_QA_DIAG_V1',source:DIAG_SOURCES.has(input.source)?input.source:'helper',reason:DIAG_REASONS.has(input.reason)?input.reason:'FORMAT_BOUNDED',firstFailure:DIAG_REASONS.has(input.firstFailure)?input.firstFailure:'NONE',phase:DIAG_PHASES.has(input.phase)?input.phase:'UNKNOWN'};
+ for(const key of DIAG_NUMBERS){const n=input[key];if(Number.isFinite(n)){const lo=key.endsWith('Count')?0:-1;row[key]=Math.max(lo,Math.min(60000,Math.trunc(n)));}}
+ for(const key of DIAG_FLAGS){if(typeof input[key]==='boolean')row[key]=input[key];}
+ row.errorClass=DIAG_ERRORS.has(input.errorClass)?input.errorClass:'NONE';
+ const text=JSON.stringify(row);return Buffer.byteLength(text,'utf8')<=768?text:'{"kind":"WIDGET_QA_DIAG_V1","source":"helper","reason":"FORMAT_BOUNDED","firstFailure":"NONE","phase":"UNKNOWN","errorClass":"NONE"}';
+}
+function emitDiagnostic(value){try{process.stderr.write(formatDiagnostic(value)+'\n');}catch{}}
 
 // Exact 4 no-AUT target-level keys allowlisted for the no-AUT captured metadata shape.
 // Each is shape+value+location validated; nested or top-level additions fail closed.
@@ -117,6 +132,9 @@ export function prepare(j,products,options={}){
 }
 export function unchanged(file,bfile){const b=JSON.parse(fs.readFileSync(bfile,'utf8'));need(JSON.stringify(boundary(fs.existsSync(file)?read(file):[]))===JSON.stringify(b));}
 export function markers(text,phase){need(!text.includes('HOST_UI_FAIL')&&!text.includes('HOST_UI_BLOCKED'));const count=m=>(text.match(new RegExp('^'+m+'\\r?$','gm'))??[]).length;need(count('HOST_UI_READY')===1);if(phase==='ready')return;need((count('HOST_UI_ACK')===1&&count('HOST_UI_NO_ALERT')===0)||(phase==='warm'&&count('HOST_UI_ACK')===0&&count('HOST_UI_NO_ALERT')===1));}
+const markerFacts=text=>{const count=m=>(text.match(new RegExp('^'+m+'\\r?$','gm'))??[]).length;return {readyCount:count('HOST_UI_READY'),ackCount:count('HOST_UI_ACK'),noAlertCount:count('HOST_UI_NO_ALERT'),failCount:count('HOST_UI_FAIL')};};
+const safeErrorClass=e=>DIAG_ERRORS.has(e?.code)?e.code:(e?.code?'OTHER':'BLOCKED');
+const safePhase=phase=>phase==='ready'?'READY':phase==='cold'?'COLD':phase==='warm'?'WARM':'UNKNOWN';
 export function helperAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
 export function terminalExit(dir){try{const s=fs.lstatSync(path.join(dir,'exit'));return s.isFile()&&!s.isSymbolicLink();}catch{return false;}}
 export function writeOwnership(dir,record){
@@ -128,19 +146,20 @@ export function readOwnership(dir){
 export function clearOwnership(dir){
  try{fs.unlinkSync(path.join(dir,'ownership.json'));return true;}catch{return false;}
 }
-export function readOwnedLog(file,ownedFd,minSize=0){
+export function readOwnedLog(file,ownedFd,minSize=0,diagnostic){
  let fd=ownedFd,opened=false;
  try{
   const owned=JSON.parse(fs.readFileSync(file+'.owner','utf8'));
   if(ownedFd===undefined){fd=fs.openSync(file,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW??0));opened=true;}
   const before=fs.fstatSync(fd);
   const lst=fs.lstatSync(file);
+  if(diagnostic){diagnostic.fdRegular=before.isFile()&&lst.isFile()&&!lst.isSymbolicLink();diagnostic.fdIdentityValid=before.dev===lst.dev&&before.ino===lst.ino&&String(before.dev)===owned.dev&&String(before.ino)===owned.ino;}
   need(before.isFile()&&lst.isFile()&&!lst.isSymbolicLink()&&before.dev===lst.dev&&before.ino===lst.ino&&String(before.dev)===owned.dev&&String(before.ino)===owned.ino&&before.size>=minSize&&before.size<4*1024*1024);
   const b=Buffer.alloc(before.size);
   let n=0;
   while(n<b.length){
    let r=0;
-   try{r=fs.readSync(fd,b,n,b.length-n,n);}catch{staticFail();}
+   try{r=fs.readSync(fd,b,n,b.length-n,n);}catch(e){if(diagnostic)diagnostic.errorClass=safeErrorClass(e);staticFail();}
    need(r>0);n+=r;
   }
   let after;
@@ -149,10 +168,12 @@ export function readOwnedLog(file,ownedFd,minSize=0){
   const lst2=fs.lstatSync(file);
   need(!lst2.isSymbolicLink()&&lst2.dev===after.dev&&lst2.ino===after.ino);
   return b.toString('utf8');
- }catch{throw Error('HOST_UI_BLOCKED');}
+ }catch(e){if(diagnostic&&!diagnostic.errorClass)diagnostic.errorClass=safeErrorClass(e);throw Error('HOST_UI_BLOCKED');}
  finally{if(opened&&fd!==undefined)try{fs.closeSync(fd);}catch{}}
 }
-export function checkLog(file,phase,ownedFd){markers(readOwnedLog(file,ownedFd,1),phase);return true;}
+export function checkLog(file,phase,ownedFd,diagnostic){
+ const text=readOwnedLog(file,ownedFd,1,diagnostic);if(diagnostic)Object.assign(diagnostic,markerFacts(text));markers(text,phase);return true;
+}
 // No implicit numeric-PID signalling backend. Used only with explicitly injected test primitives.
 export function defaultHooks(kill){
  need(typeof kill==='function');
@@ -210,28 +231,37 @@ export async function ownedController(args,token,options={}){
   need(path.basename(args[13])==='driver.xcresult');
  }
  let started=false,closing=false,target,killTimer,lease,resolveDone;
- const schedule=deadlineSchedule(options.now??(()=>Number(process.hrtime.bigint())/1e6),options.deadlineScale??1,options.leaseMs??DEADLINES.startupMs);
+ const controllerNow=options.now??(()=>Number(process.hrtime.bigint())/1e6);
+ const schedule=deadlineSchedule(controllerNow,options.deadlineScale??1,options.leaseMs??DEADLINES.startupMs);
+ let firstFailure='NONE',readyAccepted=false,diagnosticEmitted=false;
+ const markControllerFailure=code=>{if(firstFailure==='NONE')firstFailure=code;};
  const done=new Promise(resolve=>{resolveDone=resolve;});
- const armLease=()=>{clearTimeout(lease);lease=setTimeout(stop,Math.max(1,schedule.deadline-(options.now??(()=>Number(process.hrtime.bigint())/1e6))()));};
- const dispose=()=>{clearTimeout(lease);clearTimeout(killTimer);channel.removeListener('SIGTERM',stop);channel.removeListener('SIGINT',stop);channel.removeListener('disconnect',stop);channel.removeListener('message',messageHandler);};
- const stop=()=>{
-  if(closing)return;closing=true;
+ const armLease=()=>{clearTimeout(lease);lease=setTimeout(()=>stop('LEASE_EXPIRED'),Math.max(1,schedule.deadline-controllerNow()));};
+ const dispose=()=>{clearTimeout(lease);clearTimeout(killTimer);channel.removeListener('SIGTERM',onTerm);channel.removeListener('SIGINT',onInt);channel.removeListener('disconnect',stop);channel.removeListener('message',messageHandler);};
+ const stop=(reason='CONTROL_DISCONNECT')=>{
+  if(closing)return;closing=true;if(reason!=='CONTROL_STOP')markControllerFailure(reason);
+  if(!diagnosticEmitted){diagnosticEmitted=true;const elapsed=Math.max(0,Math.round(controllerNow()-schedule.started));emitDiagnostic({source:'controller',reason:firstFailure,firstFailure,phase:readyAccepted?'READY':'STARTUP',elapsedMs:elapsed,readyElapsedMs:schedule.readyAt===null?-1:Math.max(0,Math.round(schedule.readyAt-schedule.started)),phaseElapsedMs:elapsed,targetExited:!!target&&(target.exitCode!==null&&target.exitCode!==undefined),targetExitCode:Number.isInteger(target?.exitCode)?target.exitCode:-1,readyAccepted,helperLive:true});}
   try{signal('SIGTERM');}catch{}
   killTimer=setTimeout(()=>{try{signal('SIGKILL');}catch{}finally{dispose();resolveDone(1);}},Math.min(options.termMs??1000,1000));
  };
+ const onTerm=()=>stop('CONTROL_SIGNAL'),onInt=()=>stop('CONTROL_SIGNAL');
  const messageHandler=message=>{
   if(message?.token!==token)return;
-  if(message.command==='stop'){stop();return;}
-  if(message.command==='phase-ready'){if(!started||closing||!schedule.advance(true))return;armLease();return;}
+  if(message.command==='phase-ready'){
+   if(!started||closing)return;
+   if(!schedule.advance(true)){markControllerFailure('READY_REJECTED');if(!diagnosticEmitted){diagnosticEmitted=true;const elapsed=Math.max(0,Math.round(controllerNow()-schedule.started));emitDiagnostic({source:'controller',reason:firstFailure,firstFailure,phase:'STARTUP',elapsedMs:elapsed,readyElapsedMs:-1,phaseElapsedMs:elapsed,readyAccepted:false,deadlineExpired:schedule.expired(),helperLive:true});}return;}
+   readyAccepted=true;const elapsed=Math.max(0,Math.round(controllerNow()-schedule.started));emitDiagnostic({source:'controller',reason:'READY_ACCEPTED',firstFailure,phase:'READY',elapsedMs:elapsed,readyElapsedMs:Math.max(0,Math.round(schedule.readyAt-schedule.started)),phaseElapsedMs:0,readyAccepted:true,helperLive:true});armLease();return;
+  }
+  if(message.command==='stop'){stop('CONTROL_STOP');return;}
   if(message.command!=='start'||started||closing)return;started=true;
   try{
    target=launch('xcodebuild',args,{detached:false,stdio:['ignore',1,2]});
-   target.on('error',()=>{try{channel.send({event:'target-error'});}catch{}stop();});
+   target.on('error',()=>{try{channel.send({event:'target-error'});}catch{}stop('TARGET_START_ERROR');});
    target.on('exit',code=>{try{channel.send({event:'target-exit',code});}catch{}/* retain group leader until cleanup */});
-   if(!Number.isSafeInteger(target.pid)){try{channel.send({event:'target-error'});}catch{}stop();}
-  }catch{try{channel.send({event:'target-error'});}catch{}stop();}
+   if(!Number.isSafeInteger(target.pid)){try{channel.send({event:'target-error'});}catch{}stop('TARGET_START_ERROR');}
+  }catch{try{channel.send({event:'target-error'});}catch{}stop('TARGET_START_ERROR');}
  };
- channel.on('SIGTERM',stop);channel.on('SIGINT',stop);channel.on('disconnect',stop);channel.on('message',messageHandler);
+ channel.on('SIGTERM',onTerm);channel.on('SIGINT',onInt);channel.on('disconnect',stop);channel.on('message',messageHandler);
  // No target inherits IPC; EOF or a bounded lease contains the group after supervisor loss.
  armLease();
  return await done;
@@ -252,19 +282,22 @@ export async function requestCleanup(dir,{timeoutMs=20000,pollMs=50}={}){
 export async function run(udid,meta,dir,options={}){
  need(process.env.GITHUB_ACTIONS==='true'&&/^[a-f0-9-]{36}$/i.test(udid));need(fs.realpathSync(meta).startsWith(fs.realpathSync(process.env.QA_OPEN_PRODUCTS)+path.sep));
  const log=path.join(dir,'driver.log'),token=randomBytes(24).toString('hex');
- let fd,child,group,reader,ready=false,phaseSent=false,closing=false,failed=false,lastSize=0,publication=false;
+ let fd,child,group,reader,ready=false,phaseSent=false,closing=false,failed=false,lastSize=0,publication=false,targetExitCode=null;
  const now=options.now??(()=>Number(process.hrtime.bigint())/1e6);
  const schedule=deadlineSchedule(now,options.deadlineScale??1,options.deadlineMs??DEADLINES.startupMs);
+ const diag={source:'helper',phase:'STARTUP',reason:'NONE',firstFailure:'NONE'};
+ const markFailure=code=>{if(diag.firstFailure==='NONE')diag.firstFailure=code;diag.reason=diag.firstFailure;};
  let resolveDone;
  const done=new Promise(resolve=>{resolveDone=resolve;});
  const injected=typeof options.launch==='function';
  let exited=false,closeSeen=false;
  const inspect=()=>{
-  const text=readOwnedLog(log,fd,lastSize);lastSize=Buffer.byteLength(text);
+  const text=readOwnedLog(log,fd,lastSize,diag);lastSize=Buffer.byteLength(text);Object.assign(diag,markerFacts(text));
   need(!text.includes('HOST_UI_FAIL')&&!text.includes('HOST_UI_BLOCKED'));
   if(/^HOST_UI_READY\r?$/m.test(text)){markers(text,'ready');ready=true;if(!phaseSent){need(schedule.advance(true));phaseSent=true;if(!injected)child.send({command:'phase-ready',token});}}
   if(ready)markers(text,'ready');
  };
+ const observeFailure=()=>schedule.expired()?'STARTUP_DEADLINE':ready&&!phaseSent?'READY_REJECTED':diag.errorClass&&diag.errorClass!=='NONE'?'LOG_GUARD_BLOCKED':'MARKER_PREDICATE';
  const contain=async()=>{
   if(!child)return true;
   if(injected){
@@ -301,20 +334,22 @@ export async function run(udid,meta,dir,options={}){
  const finish=async code=>{
   if(closing)return done;closing=true;clearInterval(reader);
   let released=false;
-  try{released=await contain();}catch{failed=true;}
+  try{released=await contain();}catch{failed=true;markFailure('CONTAINMENT_UNVERIFIED');}
   process.removeListener('SIGTERM',interrupted);process.removeListener('SIGINT',interrupted);
   if(released&&publication&&(!injected||fs.existsSync(path.join(dir,'ownership.json')))&&!clearOwnership(dir)){failed=true;released=false;}
   if(!released){
-   failed=true;
+   failed=true;markFailure('CONTAINMENT_UNVERIFIED');
    // Actionable diagnostic state only: it cannot authorize any external group/PID signal.
    try{fs.writeFileSync(path.join(dir,'emergency.json'),JSON.stringify({diagnosticOnly:true,controllerPid:group??null,controllerExited:exited,reason:'OWNED_CONTAINMENT_UNVERIFIED'}),{flag:'wx'});}catch{}
   }
   if(fd!==undefined)try{fs.closeSync(fd);}catch{failed=true;}
   const status=failed||code!==0||!released?1:0;
-  try{fs.writeFileSync(path.join(dir,'exit'),String(status),{flag:'wx'});}catch{resolveDone(1);return done;}
+  if(code!==0&&diag.firstFailure==='NONE')markFailure('TARGET_EXIT_NONZERO');
+  try{fs.writeFileSync(path.join(dir,'exit'),String(status),{flag:'wx'});}catch{failed=true;markFailure('FINISH_STATUS');resolveDone(1);return done;}
+  const elapsed=Math.max(0,Math.round(now()-schedule.started));diag.phase=ready?'TERMINAL':'STARTUP';diag.elapsedMs=elapsed;diag.readyElapsedMs=schedule.readyAt===null?-1:Math.max(0,Math.round(schedule.readyAt-schedule.started));diag.phaseElapsedMs=diag.readyElapsedMs<0?elapsed:Math.max(0,elapsed-diag.readyElapsedMs);diag.ownerPresent=publication&&!released;diag.proxyValid=publication&&Number.isSafeInteger(group);diag.helperLive=true;diag.terminalPresent=true;diag.released=released;diag.targetExited=exited;diag.targetExitCode=Number.isInteger(targetExitCode)?targetExitCode:(Number.isInteger(code)?code:-1);emitDiagnostic(diag);
   resolveDone(status);return done;
  };
- const interrupted=()=>{failed=true;void finish(1);};
+ const interrupted=()=>{failed=true;markFailure('CONTROL_SIGNAL');void finish(1);};
  process.on('SIGTERM',interrupted);process.on('SIGINT',interrupted);
  try{
   fd=fs.openSync(log,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR);
@@ -322,10 +357,10 @@ export async function run(udid,meta,dir,options={}){
   const args=['test-without-building','-xctestrun',meta,'-destination','platform=iOS Simulator,id='+udid,'-only-testing:OpenConfirmation/OpenConfirmation/testExactPlanFlowOpen','-parallel-testing-enabled','NO','-maximum-concurrent-test-simulator-destinations','1','-maximum-parallel-testing-workers','1','-resultBundlePath',path.join(dir,'driver.xcresult')];
   child=injected?options.launch('xcodebuild',args,{detached:true,stdio:['ignore',fd,fd],windowsHide:true}):spawn(process.execPath,[fileURLToPath(import.meta.url),'owned-controller',JSON.stringify(args),token],{detached:true,stdio:['ignore',fd,fd,'ipc'],windowsHide:true});
   // Install lifecycle handlers immediately, before any fallible disk publication.
-  child.on('error',()=>{failed=true;void finish(1);});
+  child.on('error',()=>{failed=true;markFailure('TARGET_START_ERROR');void finish(1);});
   child.on('close',()=>{closeSeen=true;});
-  child.on('exit',code=>{exited=true;if(closing)return;if(injected){try{inspect();need(ready);need(!schedule.expired());}catch{failed=true;}void finish(code??1);}else{failed=true;void finish(1);}});
-  if(!injected)child.on('message',message=>{if(message?.event==='target-error'){failed=true;void finish(1);}else if(message?.event==='target-exit'){try{inspect();need(ready);need(!schedule.expired());}catch{failed=true;}void finish(message.code??1);}});
+  child.on('exit',code=>{exited=true;targetExitCode=code??1;if(closing)return;if(injected){try{inspect();need(ready);need(!schedule.expired());}catch{failed=true;markFailure(observeFailure());}void finish(code??1);}else{failed=true;markFailure('TARGET_EXIT_NONZERO');void finish(1);}});
+  if(!injected)child.on('message',message=>{if(message?.event==='target-error'){failed=true;markFailure('TARGET_START_ERROR');void finish(1);}else if(message?.event==='target-exit'){targetExitCode=message.code??1;try{inspect();need(ready);need(!schedule.expired());}catch{failed=true;markFailure(observeFailure());}void finish(message.code??1);}});
   group=child.pid;
   if(child.exitCode!==null&&child.exitCode!==undefined)exited=true;
   if(child.signalCode!==null&&child.signalCode!==undefined)exited=true;
@@ -339,12 +374,12 @@ export async function run(udid,meta,dir,options={}){
     const request=path.join(dir,'cleanup.request');
     if(fs.existsSync(request)){
      const stat=fs.lstatSync(request);need(stat.isFile()&&!stat.isSymbolicLink()&&stat.size===48);
-     need(fs.readFileSync(request,'utf8')===token);failed=true;void finish(1);return;
+     need(fs.readFileSync(request,'utf8')===token);failed=true;markFailure('CLEANUP_REQUEST');void finish(1);return;
     }
-    inspect();need(!schedule.expired());
-   }catch{failed=true;void finish(1);}
+    inspect();if(schedule.expired()){failed=true;markFailure('STARTUP_DEADLINE');need(false);}
+   }catch{failed=true;if(diag.firstFailure==='NONE')markFailure(diag.errorClass&&diag.errorClass!=='NONE'?'LOG_GUARD_BLOCKED':'MARKER_PREDICATE');void finish(1);}
   },options.pollMs??100);
- }catch{failed=true;void finish(1);}
+ }catch{failed=true;if(diag.firstFailure==='NONE')markFailure(fd===undefined?'START_DIRECTORY':publication?'TARGET_START_ERROR':'START_OWNER_PUBLISH');void finish(1);}
  return await done;
 }
 export async function cli(args,options={}){
@@ -352,9 +387,13 @@ export async function cli(args,options={}){
   const [cmd,...a]=args;
   if(cmd==='metadata'){need(a.length===3);const st=fs.lstatSync(a[0]);need(st.isFile()&&!st.isSymbolicLink()&&st.size>0&&st.size<=1024*1024);const fd=fs.openSync(a[0],fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW??0));let text;try{const s=fs.fstatSync(fd);need(s.isFile()&&s.size===st.size);const b=Buffer.alloc(s.size);let n=0;while(n<b.length){const got=fs.readSync(fd,b,n,b.length-n,n);need(got>0);n+=got;}need(fs.fstatSync(fd).size===s.size);text=b.toString('utf8');}finally{fs.closeSync(fd);}const j=prepare(JSON.parse(text),a[1]);fs.writeFileSync(a[2],JSON.stringify(j),{flag:'wx'});}
   else if(cmd==='unchanged')unchanged(...a);
-  else if(cmd==='check'){checkLog(a[0],a[1]);console.log('OK');}
-  else if(cmd==='alive')need(Number.isSafeInteger(Number(a[0]))&&Number(a[0])>1&&helperAlive(Number(a[0]))&&!terminalExit(a[1]));
-  else if(cmd==='proxy'){const o=readOwnership(a[0]);need(Number.isSafeInteger(o.helperPid)&&o.helperPid>1);process.stdout.write(String(o.helperPid)+'\n');}
+  else if(cmd==='check'){
+   const d={source:'helper',phase:safePhase(a[1]),reason:'NONE',firstFailure:'NONE'};
+   try{checkLog(a[0],a[1],undefined,d);console.log('OK');}
+   catch(e){const coldMiss=d.phase==='COLD'&&d.readyCount===1&&d.ackCount===0&&d.noAlertCount===1;d.reason=coldMiss?'COLD_ACK_PREDICATE':d.errorClass&&d.errorClass!=='NONE'?'LOG_GUARD_BLOCKED':'MARKER_PREDICATE';d.firstFailure=d.reason;if(a[2]!=='wait')emitDiagnostic(d);throw e;}
+  }
+  else if(cmd==='alive'){const valid=Number.isSafeInteger(Number(a[0]))&&Number(a[0])>1;let live=false,terminal=false;if(valid){live=helperAlive(Number(a[0]));if(live)terminal=terminalExit(a[1]);}if(!valid||!live||terminal)emitDiagnostic({source:'helper',reason:'POST_READY_LIVE_GUARD',firstFailure:'POST_READY_LIVE_GUARD',phase:'READY',helperLive:!!live,terminalPresent:valid&&live?!!terminal:undefined});need(valid&&live&&!terminal);}
+  else if(cmd==='proxy'){try{const o=readOwnership(a[0]);need(Number.isSafeInteger(o.helperPid)&&o.helperPid>1);process.stdout.write(String(o.helperPid)+'\n');}catch(e){emitDiagnostic({source:'helper',reason:'START_PROXY_READ',firstFailure:'START_PROXY_READ',phase:'STARTUP',errorClass:safeErrorClass(e)});throw e;}}
   else if(cmd==='ownership'){const o=readOwnership(a[0]);need(Number.isSafeInteger(o.pid)&&o.pid>1);process.stdout.write(String(o.pid)+'\n');}
   else if(cmd==='cleanup')return await requestCleanup(a[0],options)?0:1;
   else if(cmd==='owned-controller')return await ownedController(JSON.parse(a[0]),a[1]);

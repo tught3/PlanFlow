@@ -60,10 +60,12 @@ open_qa_url() {
   node "$DIAGNOSTICS" launch "$UDID" "$2" "$RUN_OUT/$ACTIVE_CASE-host-launch.json" || launch_status=$?
   # A failed OS request remains failed, independently of diagnostic capture.
   if [[ "$launch_status" != 0 ]]; then
+    if declare -F open_driver_diag_transport >/dev/null 2>&1; then open_driver_diag_transport OS_REQUEST_FAILED || :; fi
     # A failed request can still leave an app process; observe without masking it.
     observe_first_process || true
     exit "$launch_status"
   fi
+  if declare -F open_driver_diag_transport >/dev/null 2>&1; then open_driver_diag_transport OS_REQUEST_ACCEPTED || :; fi
   observe_first_process
 }
 prove_absent() {
