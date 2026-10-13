@@ -29,10 +29,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// parser can be pointed at a materialized older revision of `ios/` to prove
 /// this guard actually rejects the broken state (see the phase report).
 void main() {
-  final root = Platform.environment['PLANFLOW_CONTRACT_ROOT']?.trim().isNotEmpty
-          == true
-      ? Platform.environment['PLANFLOW_CONTRACT_ROOT']!.trim()
-      : Directory.current.path;
+  final root =
+      Platform.environment['PLANFLOW_CONTRACT_ROOT']?.trim().isNotEmpty == true
+          ? Platform.environment['PLANFLOW_CONTRACT_ROOT']!.trim()
+          : Directory.current.path;
 
   String readFile(String relativePath) =>
       File('$root${Platform.pathSeparator}$relativePath')
@@ -57,7 +57,8 @@ void main() {
     final includePattern = RegExp(r'^\s*#include\??\s+"([^"]+)"');
     final assignPattern = RegExp(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$');
 
-    for (final rawLine in file.readAsStringSync().replaceAll('\r\n', '\n').split('\n')) {
+    for (final rawLine
+        in file.readAsStringSync().replaceAll('\r\n', '\n').split('\n')) {
       final line = rawLine.trim();
       if (line.isEmpty || line.startsWith('//')) continue;
 
@@ -75,9 +76,8 @@ void main() {
     return settings;
   }
 
-  final pbxproj =
-      readFile('ios${Platform.pathSeparator}Runner.xcodeproj'
-          '${Platform.pathSeparator}project.pbxproj');
+  final pbxproj = readFile('ios${Platform.pathSeparator}Runner.xcodeproj'
+      '${Platform.pathSeparator}project.pbxproj');
 
   // Every XCBuildConfiguration block, keyed by its configuration name.
   final blockPattern = RegExp(
@@ -189,7 +189,8 @@ void main() {
   }
 
   test('widget version literals stay in sync with pubspec.yaml', () {
-    final pubspecVersion = RegExp(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$',
+    final pubspecVersion = RegExp(
+            r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$',
             multiLine: true)
         .firstMatch(readFile('pubspec.yaml'));
     expect(pubspecVersion, isNotNull,
@@ -202,9 +203,9 @@ void main() {
   });
 
   group('widget schedule payload v2 contract', () {
-    String contract() => readFile(
-        'lib${Platform.pathSeparator}services${Platform.pathSeparator}'
-        'widget_schedule_contract.dart');
+    String contract() =>
+        readFile('lib${Platform.pathSeparator}services${Platform.pathSeparator}'
+            'widget_schedule_contract.dart');
 
     test('schema version is bumped to 2', () {
       expect(
@@ -244,7 +245,10 @@ void main() {
     const expectedKinds = <(String, String)>[
       ('PlanFlowWidget', 'PlanFlowHomeWidgetProvider'),
       ('PlanFlowMonthlyWidget', 'PlanFlowMonthlyWidgetProvider'),
-      ('PlanFlowVerticalScheduleWidget', 'PlanFlowVerticalScheduleWidgetProvider'),
+      (
+        'PlanFlowVerticalScheduleWidget',
+        'PlanFlowVerticalScheduleWidgetProvider'
+      ),
       ('PlanFlowWeeklyWidget', 'PlanFlowWeeklyWidgetProvider'),
       ('PlanFlowWeeklyListWidget', 'PlanFlowWeeklyListWidgetProvider'),
       ('PlanFlowMicWidget', 'PlanFlowMicWidgetProvider'),
@@ -252,8 +256,7 @@ void main() {
     ];
 
     String widgetSources() {
-      final dir = Directory(
-          '$root${Platform.pathSeparator}ios'
+      final dir = Directory('$root${Platform.pathSeparator}ios'
           '${Platform.pathSeparator}PlanFlowWidget');
       return dir
           .listSync(recursive: true)
@@ -280,7 +283,9 @@ void main() {
       expect(groupService, contains("'PlanFlowGroupCalendarWidget'"));
     });
 
-    test('monthly widget offers the iOS 27 portrait extra-large family without dropping legacy sizes', () {
+    test(
+        'monthly widget offers the iOS 27 portrait extra-large family without dropping legacy sizes',
+        () {
       final source = widgetSources();
       expect(source, contains('planFlowMonthlySupportedFamilies'));
       expect(source, contains('.systemMedium'));
@@ -292,21 +297,77 @@ void main() {
       expect(
         source,
         contains('family == .systemExtraLargePortrait'),
-        reason: 'The tall monthly layout must only activate for the new iOS 27 portrait family.',
+        reason:
+            'The tall monthly layout must only activate for the new iOS 27 portrait family.',
       );
     });
 
     test('payload decoder keeps the v1 fallback and deep-link hosts', () {
       final source = widgetSources();
+      // v1/v2 payload keys stay so old data still renders.
       expect(source, contains('widget_schedule_payload_v1'),
           reason: 'The decoder must fall back to the v1 payload key so old '
               'data keeps rendering.');
       expect(source, contains('widget_schedule_payload_v2'));
-      expect(source, contains('planflow://voice-launcher'));
-      expect(source, contains('planflow://calendar'));
-      expect(source, contains('planflow://event/'));
-      expect(source, contains('planflow://day/'));
-      expect(source, contains('planflow://group-calendar'));
+      // Scheme: every URL builder assigns URLComponents.scheme = schemeName.
+      expect(
+        source,
+        contains('static let schemeName = "planflow"'),
+        reason: 'schemeName must be the single-source "planflow" constant '
+            'so the WidgetKit URL scheme stays consistent across builders.',
+      );
+      expect(
+        source,
+        contains('components.scheme = schemeName'),
+        reason: 'Every URL builder must assign components.scheme = schemeName '
+            'so the planflow:// scheme cannot drift per-builder.',
+      );
+      // Hosts: voice-launcher / calendar / event / day / group-calendar.
+      expect(
+        source,
+        contains('components.host = "voice-launcher"'),
+        reason: 'voiceURL must set components.host = "voice-launcher" so '
+            "the Flutter router's voice-launcher canonicalisation keeps working.",
+      );
+      expect(
+        source,
+        contains('components.host = "calendar"'),
+        reason: 'calendarURL must set components.host = "calendar" so the '
+            'router lands on the calendar screen.',
+      );
+      expect(
+        source,
+        contains('components.host = "event"'),
+        reason: 'eventURL must set components.host = "event" so the Dart '
+            "router's `case 'event':` branch still triggers.",
+      );
+      expect(
+        source,
+        contains('components.host = "day"'),
+        reason: 'dayURL must set components.host = "day" so the router lands '
+            'on the day screen with the date path.',
+      );
+      expect(
+        source,
+        contains('components.host = "group-calendar"'),
+        reason: 'groupCalendarURL must set components.host = "group-calendar" '
+            'so the Flutter router opens the right group events screen.',
+      );
+      // Paths: day uses ymd(date), event uses the trimmed id.
+      expect(
+        source,
+        contains('components.path = "/" + ymd(date)'),
+        reason: 'dayURL must keep the ymd(date) path so the canonical '
+            'planflow://day/YYYY-MM-DD payload survives.',
+      );
+      expect(
+        source,
+        contains('components.path = "/" + trimmed'),
+        reason: 'eventURL must carry the trimmed id in the path so the Dart '
+            "router's `case 'event':` branch still sees the id.",
+      );
+      // iOS 17+ container background (retained from the prior version of
+      // this guard).
       expect(source, contains('containerBackground(for: .widget)'),
           reason: 'iOS 17+ widgets must declare a container background '
               '(fixes the accidental black container).');
