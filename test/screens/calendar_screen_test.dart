@@ -1080,14 +1080,25 @@ void main() {
       //    sheet also keeps the synced event in its pre-captured events
       //    list, so we scope the holiday-label check to the mini month
       //    cell, which is the part the production fix invalidates.
+      //
+      //    The synced row's title is rendered bare ("개천절", no "종일 "
+      //    prefix) so the post-fix behavior makes the title substring
+      //    visible in the cell. The canonical-renderer-not-drawn guarantee
+      //    is therefore re-expressed via the absent "종일 " form: a
+      //    pre-revision cell cannot legitimately carry the pre-fix prefix.
       final dayKey = const ValueKey('calendar-mini-day-2099-10-3');
       final cellKey = const ValueKey('calendar-mini-events-2099-10-3');
       final dayNumberBefore = tester.widget<Text>(find.byKey(dayKey));
       expect(dayNumberBefore.style?.color, isNot(calendarHolidayColor));
       expect(
-        find.descendant(of: find.byKey(cellKey), matching: find.text('개천절')),
+        find.descendant(of: find.byKey(cellKey), matching: find.text('종일 개천절')),
         findsNothing,
-        reason: 'No holiday label in the mini month before KASI loads',
+        reason: 'No legacy "종일 " prefix on the synced row before KASI loads',
+      );
+      expect(
+        find.descendant(of: find.byKey(cellKey), matching: find.text('종일개천절')),
+        findsNothing,
+        reason: 'No un-spaced "종일" prefix on the synced row before KASI loads',
       );
       expect(
         find.byKey(
@@ -1107,11 +1118,11 @@ void main() {
       expect(dayNumberAfter.style?.color, calendarHolidayColor);
 
       // 5. Canonical holiday label is plain "개천절" in the mini month cell
-      //    and rendered in the same red. There is no "종일" prefix on
-      //    canonical holidays — the all-day label is reserved for ordinary
-      //    user events. Production prepends "종일 " (with trailing space) on
-      //    ordinary all-day events, so the canonical holiday must never be
-      //    prefixed with either the spaced or the un-spaced form.
+      //    and rendered in the same red. The mini month renderer no longer
+      //    prepends an all-day prefix to ordinary user events, so the
+      //    canonical holiday must never be prefixed with either the spaced
+      //    or the un-spaced form. Either form would mean the renderer is
+      //    leaking an all-day marker into the holiday name.
       final cellEvents = find.byKey(cellKey);
       final holidayLabelFinder = find.descendant(
         of: cellEvents,
@@ -1121,22 +1132,21 @@ void main() {
       expect(
         find.descendant(of: cellEvents, matching: find.text('종일 개천절')),
         findsNothing,
-        reason: 'Canonical holiday must not carry the all-day "종일 " prefix',
+        reason: 'Canonical holiday must not carry an all-day "종일 " prefix',
       );
       expect(
         find.descendant(of: cellEvents, matching: find.text('종일개천절')),
         findsNothing,
-        reason: 'No-spaced variant of the all-day prefix must also be absent',
+        reason: 'No-spaced variant of an all-day prefix must also be absent',
       );
       final holidayLabel = tester.widget<Text>(holidayLabelFinder);
       expect(holidayLabel.style?.color, calendarHolidayColor);
 
       // 5b. Strengthened: the same no-prefix guarantee must hold for the
       //     *entire* visible CalendarScreen (mini month + selected-day
-      //     sheet) after the revision. The spaced form is the production
-      //     all-day label, so any "종일 개천절" anywhere in the visible
-      //     tree would mean the canonical renderer is leaking the
-      //     ordinary-event prefix into the holiday name.
+      //     sheet) after the revision. Any "종일 " or "종일" anywhere in
+      //     the visible tree would mean the renderer is leaking the
+      //     marker into the holiday name.
       expect(
         find.text('종일 개천절'),
         findsNothing,
@@ -1178,15 +1188,29 @@ void main() {
       );
 
       // 7. Manual all-day 회의 and the timed 개인 일정 are both retained.
-      //    The mini month renderer keeps the "종일 " prefix for ordinary
-      //    all-day user events.
+      //    The mini month renderer does NOT prepend an all-day prefix to
+      //    ordinary user events, so ordinary all-day events are rendered
+      //    by title only. The timed event likewise renders by title only;
+      //    the time is communicated by the time label above the title.
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('회의')),
+        findsOneWidget,
+        reason: 'Ordinary all-day event must render by title only in the mini cell',
+      );
       expect(
         find.descendant(of: cellEvents, matching: find.text('종일 회의')),
-        findsOneWidget,
+        findsNothing,
+        reason: 'Ordinary all-day event must not carry the "종일 " prefix',
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일회의')),
+        findsNothing,
+        reason: 'No-spaced "종일" form must also be absent on ordinary all-day',
       );
       expect(
         find.descendant(of: cellEvents, matching: find.text('개인 일정')),
         findsOneWidget,
+        reason: 'Timed event must render by title only in the mini cell',
       );
 
       // 8. Unmount the screen, then trigger another revision. The
@@ -1203,6 +1227,120 @@ void main() {
 
       // Cleanup so the next test starts with the documented KASI dataset.
       KoreanHolidays.applyLiveData(uniqueYear, const <(int, int), String>{});
+    },
+  );
+
+  // Direct regression for the "no 종일 prefix" rule. The previous production
+  // build prepended "종일 " to ordinary all-day event titles in the mini
+  // month cell. That prefix is removed now; ordinary all-day events must
+  // render by title only (matching the Android home widget, the iOS widget,
+  // and the selected-day agenda card). Timed events and multi-day all-day
+  // events must keep rendering by title only and must not gain a prefix
+  // either. Canonical holidays continue to render plain and red.
+  testWidgets(
+    'CalendarScreen mini month renders ordinary all-day, timed, and multi-day events without any "종일" prefix',
+    (tester) async {
+      const year = 2098;
+      final focusedDay = DateTime(year, 10, 7, 9);
+      final ordinaryAllDay = EventModel(
+        id: 'ordinary-all-day',
+        userId: 'user-1',
+        title: '팀 회의',
+        startAt: DateTime(year, 10, 7, 0),
+        endAt: DateTime(year, 10, 7, 23, 59),
+        isAllDay: true,
+      );
+      final timedEvent = EventModel(
+        id: 'timed-event',
+        userId: 'user-1',
+        title: '점심 약속',
+        startAt: DateTime(year, 10, 7, 12),
+        endAt: DateTime(year, 10, 7, 13),
+      );
+      final multiDayAllDay = EventModel(
+        id: 'multi-day-all-day',
+        userId: 'user-1',
+        title: '출장',
+        startAt: DateTime(year, 10, 7, 0),
+        endAt: DateTime(year, 10, 9, 23, 59),
+        isAllDay: true,
+        isMultiDay: true,
+      );
+      final repository = _AsyncEventRepository([
+        Future.value(<EventModel>[
+          ordinaryAllDay,
+          timedEvent,
+          multiDayAllDay,
+        ]),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'all-day-label-user',
+            initialDate: focusedDay,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final cellKey = ValueKey('calendar-mini-events-$year-10-7');
+      final cellEvents = find.byKey(cellKey);
+
+      // Ordinary all-day event renders by title only (no "종일 " prefix).
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('팀 회의')),
+        findsOneWidget,
+        reason: 'Ordinary all-day event must render by title only in mini cell',
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일 팀 회의')),
+        findsNothing,
+        reason: 'Spaced "종일 " prefix must not appear on ordinary all-day',
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일팀 회의')),
+        findsNothing,
+        reason: 'No-spaced "종일" form must also be absent on ordinary all-day',
+      );
+
+      // Timed event renders by title only.
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('점심 약속')),
+        findsOneWidget,
+        reason: 'Timed event must render by title only in mini cell',
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일 점심 약속')),
+        findsNothing,
+        reason: 'Timed event must not gain an all-day prefix',
+      );
+
+      // Multi-day all-day event renders its title on the first segment day
+      // only, and that title is plain (no "종일 " prefix). The mini cell
+      // decides multi-day via calendarEventSpansMultipleLocalDays from
+      // startAt/endAt, so the test fixture's Oct 7 → Oct 9 span is
+      // correctly classified as multi-day regardless of the persisted
+      // isMultiDay flag.
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('출장')),
+        findsOneWidget,
+        reason: 'Multi-day all-day event must show its title on the first segment day',
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일 출장')),
+        findsNothing,
+        reason: 'Multi-day all-day event must not carry the "종일 " prefix',
+      );
+
+      // Whole-screen sanity: no "종일 " or "종일" prefix on any of the
+      // visible event titles. The selected-day agenda card uses the same
+      // title-span helper, so any leak in the visible tree would surface
+      // here.
+      expect(find.text('종일 팀 회의'), findsNothing);
+      expect(find.text('종일 점심 약속'), findsNothing);
+      expect(find.text('종일 출장'), findsNothing);
     },
   );
 }

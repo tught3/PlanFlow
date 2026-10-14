@@ -18,8 +18,8 @@
 // This file pins the *source* contract that ties them together: the Swift
 // fallback path must treat any holiday present in the canonical holiday
 // date map as a red day off, must render the day number in the same red,
-// and must never paint the Android "종일" prefix on a canonical holiday
-// label rendered by `monthEventTitle`.
+// and must never prepend "종일" to calendar titles, matching the app and
+// both native widgets.
 
 import 'dart:io';
 
@@ -99,9 +99,9 @@ void main() {
         contains(
             'cell.isDayOff ? PlanFlowTheme.holidayText : PlanFlowTheme.mutedText'));
 
-    // monthEventTitle must not inject a "종일" all-day marker. The Android
-    // renderer reserves that prefix for ordinary all-day user events; the
-    // iOS widget inherits the same semantics.
+    // monthEventTitle must not inject a "종일" all-day marker. Ordinary
+    // all-day titles stay unprefixed in the app and both native widgets;
+    // the all-day scheduling flag itself is preserved.
     final monthEventTitleStart = views.indexOf('func monthEventTitle(');
     expect(monthEventTitleStart, isNonNegative,
         reason: 'Expected monthEventTitle helper to be defined');
@@ -118,7 +118,7 @@ void main() {
     // cannot silently reintroduce it in a different helper.
     expect(views, isNot(contains('종일')),
         reason:
-            'iOS widget must not use the Korean 종일 all-day prefix; that label is owned by the app calendar renderer.');
+            'iOS widget titles must stay unprefixed, matching the app and Android widget.');
   });
 
   test(

@@ -1044,8 +1044,13 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             useStrongAlarm: event.useStrongAlarm,
                             isRecurring: isRecurring,
                             semanticColor: fg,
-                            leadingText:
-                                event.isAllDay && !isMultiDay ? '종일 ' : null,
+                            // Display-only prefix removed: ordinary all-day
+                            // events render by title only, matching the
+                            // Android home widget and the selected-day agenda
+                            // card. isAllDay scheduling/editor form controls,
+                            // voice parser, group tile badges, and the
+                            // holiday normalizer are untouched.
+                            leadingText: null,
                             markerFontSize: calendarRecurringMarkerFontSize,
                             strongAlarmMarkerFontSize:
                                 calendarStrongAlarmMarkerFontSize,
