@@ -23,6 +23,22 @@ void main() {
     expect(KoreanHolidays.isDayOff(DateTime(confirmedYear, 10, 9)), isFalse);
   });
 
+  test('revision changes only when successful data differs', () {
+    const year = 2096;
+    var notifications = 0;
+    void listener() => notifications += 1;
+    KoreanHolidays.revision.addListener(listener);
+    try {
+      KoreanHolidays.applyLiveData(year, {(1, 1): '신정'});
+      KoreanHolidays.applyLiveData(year, {(1, 1): '신정'});
+      expect(notifications, 1);
+      KoreanHolidays.applyLiveData(year, {(1, 1): '새해'});
+      expect(notifications, 2);
+    } finally {
+      KoreanHolidays.revision.removeListener(listener);
+    }
+  });
+
   test('valid empty KASI data is distinct from unloaded data', () {
     const emptyYear = 2093;
     KoreanHolidays.applyLiveData(emptyYear, const {});

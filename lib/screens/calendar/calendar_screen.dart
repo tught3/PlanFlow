@@ -531,6 +531,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
     }
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
+    KoreanHolidays.revision.addListener(_handleHolidayRevision);
     _searchController.addListener(_handleSearchChanged);
     _seedPrefetchedEvents();
     _loadEvents(focusDate: widget.initialDate);
@@ -574,11 +575,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void dispose() {
     _briefingCancelled = true;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    KoreanHolidays.revision.removeListener(_handleHolidayRevision);
     if (_ownsGroupOverlayProvider) _groupOverlayProvider?.dispose();
     _briefingRunning.dispose();
     _briefingSheetRevision.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleHolidayRevision() {
+    if (!mounted) return;
+    _monthProjectionCache.clear();
+    _calendarInputRevision += 1;
+    _refreshCalendarViewCache();
   }
 
   String? get _selectedDateHolidayName =>
@@ -1171,6 +1180,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final events = personalEvents ?? _selectedDateEventsCache;
     final resolvedGroupEvents = groupEvents ?? _selectedDateGroupEventsCache;
     final groupOverlayProvider = _groupOverlayProvider;
+    final sheetRevisionListeners = <Listenable>[KoreanHolidays.revision];
+    if (groupOverlayProvider != null) {
+      sheetRevisionListeners.add(groupOverlayProvider);
+    }
+    final sheetRevision = Listenable.merge(sheetRevisionListeners);
     final sheetFuture = showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1189,7 +1203,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Widget sheetBuilder() {
             return DayEventsSheet(
               day: day,
-              personalEvents: events,
+              personalEvents: omitSyncedPublicHolidayDuplicates(events),
               groupEvents: resolvedGroupEvents,
               scrollController: scrollController,
               holidayName: KoreanHolidays.holidayName(day),
@@ -1229,11 +1243,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             );
           }
 
-          if (groupOverlayProvider == null) {
-            return sheetBuilder();
-          }
           return AnimatedBuilder(
-            animation: groupOverlayProvider,
+            animation: sheetRevision,
             builder: (context, _) => sheetBuilder(),
           );
         },

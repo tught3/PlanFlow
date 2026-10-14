@@ -8,6 +8,7 @@ EventModel _event({
   String? externalId = 'provider-event-1',
   String? externalCalendarId = 'google:holidays',
   DateTime? startAt,
+  bool isAllDay = true,
 }) {
   final holidayYear = DateTime.now().year;
   return EventModel(
@@ -17,6 +18,7 @@ EventModel _event({
     startAt: startAt ?? DateTime(holidayYear, 8, 15, 9),
     externalId: externalId,
     externalCalendarId: externalCalendarId,
+    isAllDay: isAllDay,
   );
 }
 
@@ -56,6 +58,29 @@ void main() {
         _event(externalId: null),
       ),
       isTrue,
+    );
+  });
+
+  test('requires all-day and exact title for holiday deduplication', () {
+    expect(isSyncedPublicHolidayDuplicate(_event(isAllDay: false)), isFalse);
+    expect(isSyncedPublicHolidayDuplicate(_event(isAllDay: true)), isTrue);
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '종일 광복절', isAllDay: true),
+      ),
+      isTrue,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '종일 광복절 준비회의', isAllDay: true),
+      ),
+      isFalse,
+    );
+    expect(
+      isSyncedPublicHolidayDuplicate(
+        _event(title: '종일 광복절', isAllDay: false),
+      ),
+      isFalse,
     );
   });
 

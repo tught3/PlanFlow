@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Korean official days off as published by the Korea Astronomy and Space
 /// Science Institute (KASI) special-days API.
 ///
@@ -11,12 +13,17 @@ class KoreanHolidays {
   /// KASI data keyed by year. An empty map is meaningful: it means a valid
   /// KASI response was received and that response contained no day-off rows.
   static final Map<int, Map<(int, int), String>> _liveData = {};
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   /// Applies a parsed KASI response. The empty map is intentionally stored
   /// instead of being treated as "not loaded", so a valid empty response
   /// cannot fall back to a guessed calendar.
   static void applyLiveData(int year, Map<(int, int), String> dayOff) {
-    _liveData[year] = Map.unmodifiable(dayOff);
+    final next = Map<(int, int), String>.unmodifiable(dayOff);
+    final current = _liveData[year];
+    if (current != null && mapEquals(current, next)) return;
+    _liveData[year] = next;
+    revision.value += 1;
   }
 
   /// Provider titles equivalent to the KASI title confirmed on [date].

@@ -13,7 +13,8 @@ import 'korean_holidays.dart';
 bool isSyncedPublicHolidayDuplicate(EventModel event) {
   final externalId = event.externalId?.trim() ?? '';
   final externalCalendarId = event.externalCalendarId?.trim() ?? '';
-  if ((externalId.isEmpty && externalCalendarId.isEmpty) ||
+  if (!event.isAllDay ||
+      (externalId.isEmpty && externalCalendarId.isEmpty) ||
       event.startAt == null) {
     return false;
   }
@@ -22,9 +23,12 @@ bool isSyncedPublicHolidayDuplicate(EventModel event) {
   if (aliases.isEmpty) {
     return false;
   }
-  final title = _normalize(event.title);
+  final rawTitle = _normalize(event.title);
+  final hasAllDayPrefix = rawTitle.startsWith('종일');
+  if (hasAllDayPrefix && !event.isAllDay) return false;
+  final title = hasAllDayPrefix ? rawTitle.substring('종일'.length) : rawTitle;
   return aliases.map(_normalize).contains(title) ||
-      _genericHolidayTitles.contains(title);
+      (!hasAllDayPrefix && _genericHolidayTitles.contains(title));
 }
 
 String _normalize(String value) => value.replaceAll(RegExp(r'\s+'), '').trim();

@@ -521,6 +521,7 @@ void main() {
             startAt: DateTime(holidayYear, 8, 15, 9),
             externalId: 'provider-1',
             externalCalendarId: 'google:holidays',
+            isAllDay: true,
           ),
           EventModel(
             id: 'manual-holiday-note',
@@ -1017,6 +1018,191 @@ void main() {
       // Supabase 미초기화 환경(테스트)에서는 _loadGroupInstructionBadges가
       // AppEnv.isSupabaseReady 가드로 스킵되므로 badge 없이 이벤트 카드만 보인다.
       expect(find.text('지시받은 일정'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'CalendarScreen applies KASI live revision after mount and redraws the mini month red',
+    (tester) async {
+      // Unique year: setUp only loads 2026 and DateTime.now().year. 2099
+      // is intentionally untouched so the screen mounts before KASI has any
+      // data for the focused month. banned-ok: 고정 fixture 연도(시한폭탄 아님).
+      const uniqueYear = 2099;
+      final initialDate = DateTime(uniqueYear, 10, 3, 9);
+      final providerSynced = EventModel(
+        id: 'synced-gaechunjeol-2099',
+        userId: 'user-1',
+        title: '개천절',
+        startAt: initialDate,
+        externalId: 'provider-2099-1',
+        externalCalendarId: 'google:holidays',
+        isAllDay: true,
+      );
+      final userAllDayMeeting = EventModel(
+        id: 'user-all-day-meeting',
+        userId: 'user-1',
+        title: '회의',
+        startAt: DateTime(uniqueYear, 10, 3, 0),
+        endAt: DateTime(uniqueYear, 10, 3, 23, 59),
+        isAllDay: true,
+      );
+      final userTimed = EventModel(
+        id: 'user-timed-2099',
+        userId: 'user-1',
+        title: '개인 일정',
+        startAt: DateTime(uniqueYear, 10, 3, 11),
+        endAt: DateTime(uniqueYear, 10, 3, 12),
+      );
+      final repository = _AsyncEventRepository([
+        Future.value(<EventModel>[
+          providerSynced,
+          userAllDayMeeting,
+          userTimed,
+        ]),
+      ]);
+
+      // 1. Mount before KASI has data for uniqueYear.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'holiday-revision-user',
+            initialDate: initialDate,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 2. Pre-revision: predicate isSyncedPublicHolidayDuplicate requires
+      //    a KASI alias for the date, which 2099-10-3 does not have yet.
+      //    The synced row is therefore retained in the mini month cell and
+      //    the canonical holiday renderer has nothing to draw. The day
+      //    sheet also keeps the synced event in its pre-captured events
+      //    list, so we scope the holiday-label check to the mini month
+      //    cell, which is the part the production fix invalidates.
+      final dayKey = const ValueKey('calendar-mini-day-2099-10-3');
+      final cellKey = const ValueKey('calendar-mini-events-2099-10-3');
+      final dayNumberBefore = tester.widget<Text>(find.byKey(dayKey));
+      expect(dayNumberBefore.style?.color, isNot(calendarHolidayColor));
+      expect(
+        find.descendant(of: find.byKey(cellKey), matching: find.text('개천절')),
+        findsNothing,
+        reason: 'No holiday label in the mini month before KASI loads',
+      );
+      expect(
+        find.byKey(
+          const ValueKey(
+              'calendar-mini-event-synced-gaechunjeol-2099-2099-10-3'),
+        ),
+        findsOneWidget,
+      );
+
+      // 3. Apply KASI live data AFTER mount. The screen listens to
+      //    KoreanHolidays.revision and rebuilds the mini month.
+      KoreanHolidays.applyLiveData(uniqueYear, {(10, 3): '개천절'});
+      await tester.pumpAndSettle();
+
+      // 4. Day number is now painted red (calendarHolidayColor).
+      final dayNumberAfter = tester.widget<Text>(find.byKey(dayKey));
+      expect(dayNumberAfter.style?.color, calendarHolidayColor);
+
+      // 5. Canonical holiday label is plain "개천절" in the mini month cell
+      //    and rendered in the same red. There is no "종일" prefix on
+      //    canonical holidays — the all-day label is reserved for ordinary
+      //    user events. Production prepends "종일 " (with trailing space) on
+      //    ordinary all-day events, so the canonical holiday must never be
+      //    prefixed with either the spaced or the un-spaced form.
+      final cellEvents = find.byKey(cellKey);
+      final holidayLabelFinder = find.descendant(
+        of: cellEvents,
+        matching: find.text('개천절'),
+      );
+      expect(holidayLabelFinder, findsOneWidget);
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일 개천절')),
+        findsNothing,
+        reason: 'Canonical holiday must not carry the all-day "종일 " prefix',
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일개천절')),
+        findsNothing,
+        reason: 'No-spaced variant of the all-day prefix must also be absent',
+      );
+      final holidayLabel = tester.widget<Text>(holidayLabelFinder);
+      expect(holidayLabel.style?.color, calendarHolidayColor);
+
+      // 5b. Strengthened: the same no-prefix guarantee must hold for the
+      //     *entire* visible CalendarScreen (mini month + selected-day
+      //     sheet) after the revision. The spaced form is the production
+      //     all-day label, so any "종일 개천절" anywhere in the visible
+      //     tree would mean the canonical renderer is leaking the
+      //     ordinary-event prefix into the holiday name.
+      expect(
+        find.text('종일 개천절'),
+        findsNothing,
+        reason: 'Spaced "종일 " prefix must not appear on the canonical '
+            'holiday anywhere in the visible CalendarScreen after revision',
+      );
+      expect(
+        find.text('종일개천절'),
+        findsNothing,
+        reason: 'Un-spaced "종일" prefix must not appear on the canonical '
+            'holiday anywhere in the visible CalendarScreen after revision',
+      );
+
+      // 6. Provider duplicate disappears after the revision. The synced
+      //    all-day row now matches the new KASI alias and the mini month
+      //    projection (which reads from the live KoreanHolidays data) hides
+      //    it from the focused cell.
+      expect(
+        find.byKey(
+          const ValueKey(
+              'calendar-mini-event-synced-gaechunjeol-2099-2099-10-3'),
+        ),
+        findsNothing,
+      );
+
+      // 6b. The selected-day list (modal bottom sheet) must also drop the
+      //     provider row. Each event card in the sheet is keyed
+      //     `calendar-personal-event-${id}` (calendar_widgets.dart). If
+      //     the sheet still shows the synced row it means the day-sheet
+      //     builder captured the pre-revision events list and never
+      //     re-read the live KoreanHolidays cache.
+      expect(
+        find.byKey(
+          const ValueKey('calendar-personal-event-synced-gaechunjeol-2099'),
+        ),
+        findsNothing,
+        reason:
+            'Selected-day list must not still show the provider duplicate after revision',
+      );
+
+      // 7. Manual all-day 회의 and the timed 개인 일정 are both retained.
+      //    The mini month renderer keeps the "종일 " prefix for ordinary
+      //    all-day user events.
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('종일 회의')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: cellEvents, matching: find.text('개인 일정')),
+        findsOneWidget,
+      );
+
+      // 8. Unmount the screen, then trigger another revision. The
+      //    CalendarScreen.dispose() removes the KoreanHolidays listener,
+      //    so applyLiveData must not call setState on a disposed widget.
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(
+        () => KoreanHolidays.applyLiveData(uniqueYear, {
+          (10, 3): '개천절',
+          (10, 9): '한글날',
+        }),
+        returnsNormally,
+      );
+
+      // Cleanup so the next test starts with the documented KASI dataset.
+      KoreanHolidays.applyLiveData(uniqueYear, const <(int, int), String>{});
     },
   );
 }

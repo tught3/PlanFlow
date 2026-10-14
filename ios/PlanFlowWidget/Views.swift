@@ -485,7 +485,7 @@ struct PlanFlowMonthlyWidgetView: View {
         day: Calendar.current.component(.day, from: day),
         inMonth: PlanFlowProjection.isSameMonth(day, monthStart),
         holidayName: holidays?[PlanFlowWidgetConfig.ymd(day)],
-        isDayOff: false,
+        isDayOff: holidays?[PlanFlowWidgetConfig.ymd(day)] != nil,
         overflowCount: max(0, dayEvents.count - 4),
         events: Array(dayEvents.prefix(4))
       )

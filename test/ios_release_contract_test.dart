@@ -439,6 +439,16 @@ void main() {
     final firebaseMapping =
         'FIREBASE_PLIST_BASE64: \${{ secrets.PLANFLOW_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}';
     expect(audit.split(firebaseMapping).length - 1, 1);
+    expect(
+      release,
+      contains(
+          r'KASI_HOLIDAY_API_KEY: ${{ secrets.PLANFLOW_KASI_HOLIDAY_API_KEY }}'),
+    );
+    expect(release, contains('KASI_HOLIDAY_API_KEY'));
+    expect(
+      release,
+      contains(r'--dart-define=KASI_HOLIDAY_API_KEY="$KASI_HOLIDAY_API_KEY"'),
+    );
 
     final requiredNames = RegExp(r'for name in ([^;]+); do')
         .firstMatch(audit)!

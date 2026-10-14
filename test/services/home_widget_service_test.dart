@@ -699,6 +699,10 @@ void main() {
   test(
       'HomeWidget payload omits synced canonical holidays but keeps manual events',
       () {
+    // fixture intent: a provider-sourced all-day holiday row that the widget
+    // must drop (KASI 2026 setUp already registered 8/15 as 광복절). The
+    // new allDay+external predicate is the contract; do not weaken it just
+    // because this row used to be filtered by a different rule.
     final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
       now: DateTime.utc(2026, 8, 15, 0),
       events: <EventModel>[
@@ -709,6 +713,7 @@ void main() {
           startAt: DateTime.utc(2026, 8, 15, 0),
           externalId: 'provider-holiday-1',
           externalCalendarId: 'google:holidays',
+          isAllDay: true,
         ),
         EventModel(
           id: 'manual-holiday-event',
@@ -722,18 +727,27 @@ void main() {
           title: '개인 일정',
           startAt: DateTime.utc(2026, 8, 15, 2),
         ),
+        EventModel(
+          id: 'timed-meeting',
+          userId: 'user-1',
+          title: '회의',
+          startAt: DateTime.utc(2026, 8, 15, 3),
+          endAt: DateTime.utc(2026, 8, 15, 4),
+        ),
       ],
     );
 
     expect(payload.rawEvents.map((event) => event['id']), <String>[
       'manual-holiday-event',
       'personal-event',
+      'timed-meeting',
     ]);
     final august15 = payload.monthCells.firstWhere((cell) => cell.day == 15);
     expect(august15.holidayName, '광복절');
     expect(august15.events.map((event) => event.eventId), <String>[
       'manual-holiday-event',
       'personal-event',
+      'timed-meeting',
     ]);
   });
 
