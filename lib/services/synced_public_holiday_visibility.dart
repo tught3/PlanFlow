@@ -1,6 +1,7 @@
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import 'korean_holidays.dart';
+import 'calendar_platform.dart';
 
 /// Returns true when [event] is the provider copy of a holiday that PlanFlow
 /// already renders from its canonical holiday table.
@@ -13,8 +14,7 @@ import 'korean_holidays.dart';
 bool isSyncedPublicHolidayDuplicate(EventModel event) {
   final externalId = event.externalId?.trim() ?? '';
   final externalCalendarId = event.externalCalendarId?.trim() ?? '';
-  if (!event.isAllDay ||
-      (externalId.isEmpty && externalCalendarId.isEmpty) ||
+  if ((externalId.isEmpty && externalCalendarId.isEmpty) ||
       event.startAt == null) {
     return false;
   }
@@ -24,8 +24,17 @@ bool isSyncedPublicHolidayDuplicate(EventModel event) {
     return false;
   }
   final rawTitle = _normalize(event.title);
+  if (!isNativeIOS) {
+    // Non-iOS (Android) keeps the f26 baseline: the raw normalized title is
+    // compared unchanged, with no all-day gate and no "종일 " prefix removal.
+    // A canonical title or generic holiday label with a "종일 " prefix does
+    // not match on Android, so prefixed provider rows ("종일 신정",
+    // "종일 공휴일") fall through and stay visible.
+    return aliases.map(_normalize).contains(rawTitle) ||
+        _genericHolidayTitles.contains(rawTitle);
+  }
+  if (!event.isAllDay) return false;
   final hasAllDayPrefix = rawTitle.startsWith('종일');
-  if (hasAllDayPrefix && !event.isAllDay) return false;
   final title = hasAllDayPrefix ? rawTitle.substring('종일'.length) : rawTitle;
   return aliases.map(_normalize).contains(title) ||
       (!hasAllDayPrefix && _genericHolidayTitles.contains(title));

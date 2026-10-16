@@ -1044,13 +1044,21 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                             useStrongAlarm: event.useStrongAlarm,
                             isRecurring: isRecurring,
                             semanticColor: fg,
-                            // Display-only prefix removed: ordinary all-day
-                            // events render by title only, matching the
-                            // Android home widget and the selected-day agenda
-                            // card. isAllDay scheduling/editor form controls,
+                            // iOS-only display rule: ordinary all-day
+                            // events render by title only, dropping the
+                            // "종일 " prefix to match the iOS home widget
+                            // and the selected-day agenda card. The non-iOS
+                            // (Android) branch keeps the "종일 " prefix for
+                            // ordinary all-day events per the f26 baseline.
+                            // isAllDay scheduling/editor form controls,
                             // voice parser, group tile badges, and the
-                            // holiday normalizer are untouched.
-                            leadingText: null,
+                            // holiday normalizer are untouched on both
+                            // platforms.
+                            leadingText: isNativeIOS
+                                ? null
+                                : (event.isAllDay && !isMultiDay
+                                    ? '종일 '
+                                    : null),
                             markerFontSize: calendarRecurringMarkerFontSize,
                             strongAlarmMarkerFontSize:
                                 calendarStrongAlarmMarkerFontSize,

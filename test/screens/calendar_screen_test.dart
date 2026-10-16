@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -1024,6 +1025,7 @@ void main() {
   testWidgets(
     'CalendarScreen applies KASI live revision after mount and redraws the mini month red',
     (tester) async {
+
       // Unique year: setUp only loads 2026 and DateTime.now().year. 2099
       // is intentionally untouched so the screen mounts before KASI has any
       // data for the focused month. banned-ok: 고정 fixture 연도(시한폭탄 아님).
@@ -1195,7 +1197,8 @@ void main() {
       expect(
         find.descendant(of: cellEvents, matching: find.text('회의')),
         findsOneWidget,
-        reason: 'Ordinary all-day event must render by title only in the mini cell',
+        reason:
+            'Ordinary all-day event must render by title only in the mini cell',
       );
       expect(
         find.descendant(of: cellEvents, matching: find.text('종일 회의')),
@@ -1228,6 +1231,7 @@ void main() {
       // Cleanup so the next test starts with the documented KASI dataset.
       KoreanHolidays.applyLiveData(uniqueYear, const <(int, int), String>{});
     },
+    variant: const TargetPlatformVariant({TargetPlatform.iOS}),
   );
 
   // Direct regression for the "no 종일 prefix" rule. The previous production
@@ -1326,7 +1330,8 @@ void main() {
       expect(
         find.descendant(of: cellEvents, matching: find.text('출장')),
         findsOneWidget,
-        reason: 'Multi-day all-day event must show its title on the first segment day',
+        reason:
+            'Multi-day all-day event must show its title on the first segment day',
       );
       expect(
         find.descendant(of: cellEvents, matching: find.text('종일 출장')),
@@ -1342,6 +1347,83 @@ void main() {
       expect(find.text('종일 점심 약속'), findsNothing);
       expect(find.text('종일 출장'), findsNothing);
     },
+    variant: const TargetPlatformVariant({TargetPlatform.iOS}),
+  );
+
+  // Paired coverage for the ordinary all-day rendering rule. The Android
+  // home widget / KASI tile path keeps the "종일 " prefix on a single-day
+  // all-day event (f26 baseline in calendar_widgets.dart), while iOS drops
+  // it (84cb behavior, leadingText: null). Timed events and multi-day
+  // all-day events stay title-only on both platforms; the dedicated iOS
+  // regression test above covers those.
+  testWidgets(
+    'CalendarScreen renders ordinary all-day events with platform-specific "종일 " prefix',
+    (tester) async {
+      const year = 2098;
+      final focusedDay = DateTime(year, 10, 7, 9);
+      final ordinaryAllDay = EventModel(
+        id: 'paired-ordinary-all-day',
+        userId: 'user-1',
+        title: '회의',
+        startAt: DateTime(year, 10, 7, 0),
+        endAt: DateTime(year, 10, 7, 23, 59),
+        isAllDay: true,
+      );
+      final repository = _AsyncEventRepository([
+        Future.value(<EventModel>[ordinaryAllDay]),
+      ]);
+
+      // F26 was the Android baseline; it never fires revision
+      // notifications. Reset the KASI live data so a previous iOS test
+      // cannot leak revision state into this Android leg.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'paired-prefix-user',
+            initialDate: focusedDay,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final cellKey = const ValueKey('calendar-mini-events-$year-10-7');
+      final cellEvents = find.byKey(cellKey);
+
+      final isIOS = debugDefaultTargetPlatformOverride == TargetPlatform.iOS;
+      if (isIOS) {
+        expect(
+          find.descendant(of: cellEvents, matching: find.text('회의')),
+          findsOneWidget,
+          reason: 'iOS must render ordinary all-day by title only',
+        );
+        expect(
+          find.descendant(of: cellEvents, matching: find.text('종일 회의')),
+          findsNothing,
+          reason: 'iOS must NOT prepend "종일 " to ordinary all-day events',
+        );
+        expect(
+          find.descendant(of: cellEvents, matching: find.text('종일회의')),
+          findsNothing,
+          reason: 'iOS must NOT prepend the un-spaced "종일" prefix either',
+        );
+      } else {
+        expect(debugDefaultTargetPlatformOverride, TargetPlatform.android);
+        expect(
+          find.descendant(of: cellEvents, matching: find.text('종일 회의')),
+          findsOneWidget,
+          reason: 'Android must keep the f26 "종일 " prefix on ordinary all-day',
+        );
+        expect(
+          find.descendant(of: cellEvents, matching: find.text('회의')),
+          findsNothing,
+          reason: 'Bare title must not be rendered alongside the prefixed one',
+        );
+      }
+    },
+    variant: const TargetPlatformVariant(
+      <TargetPlatform>{TargetPlatform.android, TargetPlatform.iOS},
+    ),
   );
 }
 

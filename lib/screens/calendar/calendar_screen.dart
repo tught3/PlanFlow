@@ -21,6 +21,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/korean_holidays.dart';
+import '../../services/calendar_platform.dart';
 import '../../services/synced_public_holiday_visibility.dart';
 import '../../services/voice_conversation_launcher.dart';
 import '../../widgets/planflow_global_fabs.dart';
@@ -531,7 +532,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
     }
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
-    KoreanHolidays.revision.addListener(_handleHolidayRevision);
+    if (isNativeIOS) {
+      KoreanHolidays.revision.addListener(_handleHolidayRevision);
+    }
     _searchController.addListener(_handleSearchChanged);
     _seedPrefetchedEvents();
     _loadEvents(focusDate: widget.initialDate);
@@ -575,6 +578,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void dispose() {
     _briefingCancelled = true;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    // Always remove safely, even if a scoped platform override changed.
     KoreanHolidays.revision.removeListener(_handleHolidayRevision);
     if (_ownsGroupOverlayProvider) _groupOverlayProvider?.dispose();
     _briefingRunning.dispose();
@@ -1180,11 +1184,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final events = personalEvents ?? _selectedDateEventsCache;
     final resolvedGroupEvents = groupEvents ?? _selectedDateGroupEventsCache;
     final groupOverlayProvider = _groupOverlayProvider;
-    final sheetRevisionListeners = <Listenable>[KoreanHolidays.revision];
+    final sheetRevisionListeners = <Listenable>[];
+    if (isNativeIOS) sheetRevisionListeners.add(KoreanHolidays.revision);
     if (groupOverlayProvider != null) {
       sheetRevisionListeners.add(groupOverlayProvider);
     }
-    final sheetRevision = Listenable.merge(sheetRevisionListeners);
     final sheetFuture = showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1203,7 +1207,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Widget sheetBuilder() {
             return DayEventsSheet(
               day: day,
-              personalEvents: omitSyncedPublicHolidayDuplicates(events),
+              personalEvents: isNativeIOS
+                  ? omitSyncedPublicHolidayDuplicates(events)
+                  : events,
               groupEvents: resolvedGroupEvents,
               scrollController: scrollController,
               holidayName: KoreanHolidays.holidayName(day),
@@ -1243,8 +1249,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             );
           }
 
+          if (sheetRevisionListeners.isEmpty) return sheetBuilder();
           return AnimatedBuilder(
-            animation: sheetRevision,
+            animation: Listenable.merge(sheetRevisionListeners),
             builder: (context, _) => sheetBuilder(),
           );
         },

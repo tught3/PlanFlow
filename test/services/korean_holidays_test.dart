@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/korean_holidays.dart';
 
@@ -23,7 +24,9 @@ void main() {
     expect(KoreanHolidays.isDayOff(DateTime(confirmedYear, 10, 9)), isFalse);
   });
 
-  test('revision changes only when successful data differs', () {
+  test('revision changes only when successful data differs on iOS', () {
+    final previous = debugDefaultTargetPlatformOverride;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     const year = 2096;
     var notifications = 0;
     void listener() => notifications += 1;
@@ -36,6 +39,7 @@ void main() {
       expect(notifications, 2);
     } finally {
       KoreanHolidays.revision.removeListener(listener);
+      debugDefaultTargetPlatformOverride = previous;
     }
   });
 

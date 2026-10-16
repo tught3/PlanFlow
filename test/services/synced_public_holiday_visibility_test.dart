@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/korean_holidays.dart';
@@ -61,7 +62,10 @@ void main() {
     );
   });
 
-  test('requires all-day and exact title for holiday deduplication', () {
+  test('requires all-day and exact title for holiday deduplication on iOS', () {
+    final previous = debugDefaultTargetPlatformOverride;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = previous);
     expect(isSyncedPublicHolidayDuplicate(_event(isAllDay: false)), isFalse);
     expect(isSyncedPublicHolidayDuplicate(_event(isAllDay: true)), isTrue);
     expect(

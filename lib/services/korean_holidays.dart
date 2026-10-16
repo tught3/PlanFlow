@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'calendar_platform.dart';
+
 /// Korean official days off as published by the Korea Astronomy and Space
 /// Science Institute (KASI) special-days API.
 ///
@@ -20,6 +22,10 @@ class KoreanHolidays {
   /// cannot fall back to a guessed calendar.
   static void applyLiveData(int year, Map<(int, int), String> dayOff) {
     final next = Map<(int, int), String>.unmodifiable(dayOff);
+    if (!isNativeIOS) {
+      _liveData[year] = next;
+      return;
+    }
     final current = _liveData[year];
     if (current != null && mapEquals(current, next)) return;
     _liveData[year] = next;
