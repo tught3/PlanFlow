@@ -1,0 +1,151 @@
+{
+  "task_id": "TASK_20260831_152439",
+  "original_request": "PlanFlow iOS 90683 macOS audit-only workflow; no Build16 or App Store Connect upload",
+  "status": "COMPLETE",
+  "final_verdict": "STATIC_SOURCE_CONTRACT_PASS; LIVE_MACOS_AUDIT_BLOCKED_HOLD",
+  "current_phase": "integrated",
+  "initial_difficulty": "high_risk",
+  "current_difficulty": "high_risk",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "PASS",
+    "checked_at": "2026-10-20T14:06:18+09:00",
+    "errors": [],
+    "evidence": "Central model-routing.json entries matched each deployed flux_*.toml before dispatch."
+  },
+  "authority": {
+    "initial_selection": "High-risk delivery loop",
+    "transition_approval": "Integrator",
+    "dispatch": "Root Codex"
+  },
+  "interpreted_requirements": [
+    "Audit the existing iOS 90683 macOS audit-only workflow locally.",
+    "Do not dispatch Build 16 or rebuild an IPA.",
+    "Do not upload to App Store Connect or access Apple credentials."
+  ],
+  "non_requirements": [
+    "No source release change unless an audit finding requires an in-scope correction.",
+    "No macOS build, App Store Connect query, upload, or production deployment."
+  ],
+  "allowed_files": [
+    ".codex/tasks/TASK_20260831_152439.json",
+    "E:/FluxStudio/.fluxos/queue/TASK_20260831_152439_done.md"
+  ],
+  "forbidden_files_or_actions": [
+    "Build 16 dispatch",
+    "IPA rebuild",
+    "App Store Connect upload or query",
+    "Apple credential access",
+    "Unrelated source changes"
+  ],
+  "evidence": {
+    "head": "2e7cbd4b2735e53747d72ef695a308e99c037fc1",
+    "source_files": [
+      ".github/workflows/ios-privacy-audit.yml",
+      "test/ios_release_contract_test.dart",
+      "scripts/verify-ios-privacy-surface.py",
+      "docs/ios/release-readiness.md"
+    ],
+    "test_commands": [
+      {
+        "command": "flutter pub get",
+        "exit_code": 0,
+        "result": "Resolved local Flutter package configuration needed for the no-pub test."
+      },
+      {
+        "command": "flutter test --no-pub test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "result": "15 tests passed; includes Build 15-only gate and audit-only no-upload contract."
+      },
+      {
+        "command": "python -m py_compile scripts/verify-ios-privacy-surface.py",
+        "exit_code": 0,
+        "result": "Python syntax verification passed."
+      },
+      {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "result": "No whitespace errors; final tracked source diff is empty."
+      }
+    ],
+    "cleanup": "flutter pub get transiently rewrote seven tracked generated registrant files; all seven were restored before final diff verification."
+  },
+  "initial_receipt": {
+    "receipt_type": "initial",
+    "classification": "high_risk",
+    "planned_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "PLANNED"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "PLANNED"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "PLANNED"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "model_reasoning_effort": "high", "status": "PLANNED"}
+    ],
+    "executed_roles": [],
+    "not_run_roles": [],
+    "emitted_at": "2026-10-20T14:06:18+09:00"
+  },
+  "final_receipt": {
+    "receipt_type": "final",
+    "classification": "high_risk",
+    "planned_roles": [],
+    "executed_roles": [
+      {"role": "Explorer", "agent": "flux_explorer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "Planner", "agent": "flux_planner", "model": "gpt-5.6-terra", "model_reasoning_effort": "high", "status": "RAN"},
+      {"role": "Complex Implementer", "agent": "flux_complex_implementer", "model": "gpt-6-luna", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "Test Executor", "agent": "flux_test_executor", "model": "gpt-6-luna", "model_reasoning_effort": "low", "status": "RAN"},
+      {"role": "Reviewer", "agent": "flux_reviewer", "model": "gpt-6-luna", "model_reasoning_effort": "high", "status": "RAN", "recovery_dispatch": "flux_reviewer_recovery"},
+      {"role": "Integrator", "agent": "flux_integrator", "model": "gpt-5.6-terra", "model_reasoning_effort": "medium", "status": "RAN"},
+      {"role": "High-risk Escalation", "agent": "flux_high_risk_reviewer", "model": "gpt-6-sol", "model_reasoning_effort": "high", "status": "RAN"}
+    ],
+    "not_run_roles": [],
+    "notes": "The first Reviewer dispatch stalled and was interrupted; the recovery dispatch completed the required independent read-only review.",
+    "emitted_at": "2026-10-20T14:27:00+09:00"
+  },
+  "role_reports": {
+    "Explorer": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "Existing workflow is manual macOS audit-only, Build 15 only, validates one IPA and provenance, and avoids rebuild/upload."
+    },
+    "Planner": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "No source edit permitted or required; live audit needs authoritative Build 15 artifact inputs."
+    },
+    "Complex Implementer": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "NO_CHANGE_JUSTIFIED after verifying the existing workflow satisfies the static source contract."
+    },
+    "Test Executor": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "Python compile and diff check passed. Initial no-pub Flutter test lacked a resolved package configuration; after flutter pub get, the same targeted test passed 15 tests."
+    },
+    "Reviewer": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "Source contract PASS; live macOS/Apple audit BLOCKED_HOLD without exact Build 15 IPA, provenance, and macOS audit evidence."
+    },
+    "Integrator": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "Static source delivery PASS; live audit remains external-evidence hold and does not authorize release."
+    },
+    "High-risk Escalation": {
+      "status": "RAN",
+      "changed_files": [],
+      "result": "No source blocker for audit-only contract. Do not treat diagnostic gap arrays or an input-consistent artifact as release readiness proof."
+    }
+  },
+  "unresolved_items": [
+    "LIVE_MACOS_AUDIT_BLOCKED_HOLD: an authenticated, authorized macOS run needs the exact preserved Build 15 IPA, provenance.json, run ID, artifact name, SHA-256, source commit, and resulting audit report.",
+    "Any non-empty frameworkKeyGaps or symbolKeyGaps in a future report is HOLD, not release PASS.",
+    "The supplied artifact tuple must be established as the canonical 90683 artifact before interpreting a successful audit as a product conclusion."
+  ],
+  "next_step": "Do not dispatch automatically. Await separately authorized authenticated GitHub macOS audit evidence; do not Build 16 or contact App Store Connect."
+}
