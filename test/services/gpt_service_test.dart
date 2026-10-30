@@ -64,6 +64,8 @@ void main() {
       ('G4', '매월 마지막 금요일 회의', 'FREQ=MONTHLY;BYDAY=-1FR'),
       ('G5', '매월 첫째 월요일', 'FREQ=MONTHLY;BYDAY=1MO'),
       ('G7', '3달마다 점검', 'FREQ=MONTHLY;INTERVAL=3'),
+      ('G8', '매달마다 회의', 'FREQ=MONTHLY'),
+      ('G9', '매달에 한 번 점검', 'FREQ=MONTHLY'),
     ];
     for (final (id, input, expected) in monthlyCases) {
       test('$id local monthly recurrence: $input', () async {
@@ -79,6 +81,18 @@ void main() {
         expect(result['recurrence_rule'], isNot(startsWith('FREQ=MONTHLY')));
       }
     });
+
+    for (final input in [
+      '매달기',
+      '매달아 두기',
+      '매달려 있는 물건 정리',
+      '매달리기 훈련',
+    ]) {
+      test('monthly suffix does not recognize verb: $input', () async {
+        final result = await monthlyLocalService().parseSchedule(input);
+        expect(result['recurrence_rule'], isNull);
+      });
+    }
 
     test('defaults an AI-supplied time to 09:00 when the request has no time',
         () async {

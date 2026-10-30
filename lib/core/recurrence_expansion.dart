@@ -185,6 +185,11 @@ List<DateTime>? monthlyRecurrenceCandidates({
 }) {
   final byMonthDay =
       RegExp(r'(?:^|;)BYMONTHDAY=([^;]*)').firstMatch(rule)?.group(1);
+  final requestedDay =
+      byMonthDay == null ? localStartAt.day : int.tryParse(byMonthDay);
+  if (requestedDay == null || requestedDay < 1 || requestedDay > 31) {
+    return null;
+  }
   final byDay = RegExp(r'(?:^|;)BYDAY=([^;]*)').firstMatch(rule)?.group(1);
   final ordinalDays = _parseMonthlyOrdinalByDays(byDay);
   if (byMonthDay == null && byDay != null && ordinalDays.isEmpty) {
@@ -204,13 +209,9 @@ List<DateTime>? monthlyRecurrenceCandidates({
     final lastDay = DateTime(month.year, month.month + 1, 0).day;
     final candidateDays = <int>{};
     if (byMonthDay != null || byDay == null) {
-      final requestedDay =
-          byMonthDay == null ? localStartAt.day : int.tryParse(byMonthDay);
-      if (requestedDay != null) {
-        final day = _monthlyDayForPolicy(requestedDay, lastDay);
-        if (day != null) {
-          candidateDays.add(day);
-        }
+      final day = _monthlyDayForPolicy(requestedDay, lastDay);
+      if (day != null) {
+        candidateDays.add(day);
       }
     } else {
       for (final ordinalDay in ordinalDays) {
