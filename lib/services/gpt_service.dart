@@ -1403,7 +1403,7 @@ $_scheduleSystemPrompt
       return 'FREQ=WEEKLY${weekday == null ? '' : ';BYDAY=$weekday'}';
     }
     final monthlyOrdinal = RegExp(
-            r'매월\s*(첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*([월화수목금토일])요일')
+            r'(?:매월|매달(?![가-힣]))\s*(첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*([월화수목금토일])요일')
         .firstMatch(text);
     if (monthlyOrdinal != null) {
       final ordinal = switch (monthlyOrdinal.group(1)?.replaceAll(' ', '')) {
@@ -1419,11 +1419,12 @@ $_scheduleSystemPrompt
         return 'FREQ=MONTHLY;BYDAY=$ordinal$day';
       }
     }
-    final monthlyDay = RegExp(r'매월\s*(\d{1,2})일').firstMatch(text);
+    final monthlyDay = RegExp(r'(?:매월|매달(?![가-힣]))\s*(\d{1,2})일')
+        .firstMatch(text);
     if (monthlyDay != null) {
       return 'FREQ=MONTHLY;BYMONTHDAY=${monthlyDay.group(1)}';
     }
-    if (text.contains('매월')) {
+    if (RegExp(r'(?:매월|매달(?![가-힣]))').hasMatch(text)) {
       return 'FREQ=MONTHLY';
     }
     final yearly = RegExp(r'매년\s*(\d{1,2})월\s*(\d{1,2})일').firstMatch(text);

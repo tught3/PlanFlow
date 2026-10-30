@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/local_time.dart';
+import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'home_widget_platform.dart';
@@ -777,6 +778,28 @@ class HomeWidgetSchedulePayloadBuilder {
             }
           }
           weekStart = weekStart.add(Duration(days: 7 * interval));
+        }
+        return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+      }
+    }
+
+    if (freq == 'MONTHLY') {
+      final dates = monthlyRecurrenceCandidates(
+        rule: rule,
+        localStartAt: localStartAt,
+        hardEnd: hardEnd,
+        interval: interval,
+      );
+      if (dates != null) {
+        for (final current in dates) {
+          final candidate = _copyWidgetEventWithTime(
+            event,
+            startAt: current,
+            endAt: duration == null ? null : current.add(duration),
+          );
+          if (_widgetEventIntersectsRange(candidate, rangeStart, rangeEnd)) {
+            occurrences.add(candidate);
+          }
         }
         return occurrences.isEmpty ? <EventModel>[event] : occurrences;
       }

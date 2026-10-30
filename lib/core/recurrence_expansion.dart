@@ -110,6 +110,31 @@ List<EventModel> expandRecurringEvent({
     }
   }
 
+  if (freq == 'MONTHLY') {
+    final dates = monthlyRecurrenceCandidates(
+      rule: rule,
+      localStartAt: localStartAt,
+      hardEnd: hardEnd,
+      interval: interval,
+    );
+    if (dates != null) {
+      for (final current in dates) {
+        if (_isDeletedLocalDay(deletedDays, current)) {
+          continue;
+        }
+        final candidate = _copyEventWithTime(
+          event,
+          startAt: current,
+          endAt: duration == null ? null : current.add(duration),
+        );
+        if (include(candidate, rangeStart, rangeEnd)) {
+          occurrences.add(candidate);
+        }
+      }
+      return occurrences;
+    }
+  }
+
   var current = localStartAt;
   var safety = 0;
   while (current.isBefore(hardEnd) && safety < 420) {
@@ -148,6 +173,115 @@ List<EventModel> expandRecurringEvent({
     };
   }
   return occurrences;
+}
+
+/// 월간 후보를 시작 월 기준으로 생성한다. 서수 없는 BYDAY는 기존 경로를
+/// 유지하도록 null을 반환한다. [hardEnd]는 배타적이며 최대 420개월을 검사한다.
+List<DateTime>? monthlyRecurrenceCandidates({
+  required String rule,
+  required DateTime localStartAt,
+  required DateTime hardEnd,
+  required int interval,
+}) {
+  final byMonthDay =
+      RegExp(r'(?:^|;)BYMONTHDAY=([^;]*)').firstMatch(rule)?.group(1);
+  final byDay = RegExp(r'(?:^|;)BYDAY=([^;]*)').firstMatch(rule)?.group(1);
+  final ordinalDays = _parseMonthlyOrdinalByDays(byDay);
+  if (byMonthDay == null && byDay != null && ordinalDays.isEmpty) {
+    return null;
+  }
+
+  final result = <DateTime>[];
+  if (localStartAt.isBefore(hardEnd)) {
+    result.add(localStartAt);
+  }
+  for (var k = 0; k < 420; k++) {
+    final month =
+        DateTime(localStartAt.year, localStartAt.month + k * interval);
+    if (!month.isBefore(hardEnd)) {
+      break;
+    }
+    final lastDay = DateTime(month.year, month.month + 1, 0).day;
+    final candidateDays = <int>{};
+    if (byMonthDay != null || byDay == null) {
+      final requestedDay =
+          byMonthDay == null ? localStartAt.day : int.tryParse(byMonthDay);
+      if (requestedDay != null) {
+        final day = _monthlyDayForPolicy(requestedDay, lastDay);
+        if (day != null) {
+          candidateDays.add(day);
+        }
+      }
+    } else {
+      for (final ordinalDay in ordinalDays) {
+        final int day;
+        if (ordinalDay.ordinal == -1) {
+          final weekday = DateTime(month.year, month.month, lastDay).weekday;
+          day = lastDay - (weekday - ordinalDay.weekday + 7) % 7;
+        } else if (ordinalDay.ordinal >= 1 && ordinalDay.ordinal <= 5) {
+          day = 1 +
+              (ordinalDay.weekday - month.weekday + 7) % 7 +
+              7 * (ordinalDay.ordinal - 1);
+        } else {
+          continue;
+        }
+        if (day >= 1 && day <= lastDay) {
+          candidateDays.add(day);
+        }
+      }
+    }
+    final sortedDays = candidateDays.toList()..sort();
+    for (final day in sortedDays) {
+      final current = DateTime(
+        month.year,
+        month.month,
+        day,
+        localStartAt.hour,
+        localStartAt.minute,
+        localStartAt.second,
+        localStartAt.millisecond,
+        localStartAt.microsecond,
+      );
+      if (!current.isAfter(localStartAt) || !current.isBefore(hardEnd)) {
+        continue;
+      }
+      result.add(current);
+    }
+  }
+  return result;
+}
+
+// 정책 A: 해당 월에 없는 날짜는 건너뛴다.
+int? _monthlyDayForPolicy(int day, int lastDay) =>
+    day >= 1 && day <= lastDay ? day : null;
+
+List<({int ordinal, int weekday})> _parseMonthlyOrdinalByDays(String? raw) {
+  if (raw == null) {
+    return const [];
+  }
+  final result = <({int ordinal, int weekday})>[];
+  for (final token in raw.split(',')) {
+    final match = RegExp(r'^(-?\d+)(MO|TU|WE|TH|FR|SA|SU)$').firstMatch(token);
+    if (match == null) {
+      continue;
+    }
+    final ordinal = int.tryParse(match.group(1)!);
+    if (ordinal == null) {
+      continue;
+    }
+    final weekday = switch (match.group(2)) {
+      'MO' => DateTime.monday,
+      'TU' => DateTime.tuesday,
+      'WE' => DateTime.wednesday,
+      'TH' => DateTime.thursday,
+      'FR' => DateTime.friday,
+      'SA' => DateTime.saturday,
+      'SU' => DateTime.sunday,
+      _ => throw StateError('Invalid weekday'),
+    };
+    result.add((ordinal: ordinal, weekday: weekday));
+  }
+  return result;
 }
 
 /// [includeOccurrence]가 주어지지 않았을 때 쓰는 기본 범위 판정.

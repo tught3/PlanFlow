@@ -59,6 +59,248 @@ String _untilRuleValue(DateTime date) {
 }
 
 void main() {
+  group('monthly recurrence regression', () {
+    List<DateTime> dates(
+      String rule,
+      DateTime start,
+      DateTime end, {
+      DateTime? rangeStart,
+      List<DateTime>? deleted,
+    }) {
+      final event = _event(
+        startAt: planflowLocalDateTimeToUtc(start),
+        recurrenceRule: rule,
+        deletedOccurrenceDates:
+            deleted?.map(planflowLocalDateTimeToUtc).toList(growable: false),
+      );
+      return expandRecurringEvent(
+        event: event,
+        rangeStart: rangeStart ?? DateTime(start.year, start.month),
+        rangeEnd: end,
+      ).map((event) => planflowLocal(event.startAt!)).toList();
+    }
+
+    test('E1 last Friday remains on the last Friday', () {
+      expect(DateTime(2027, 1, 29).weekday, DateTime.friday); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(
+          dates('FREQ=MONTHLY;BYDAY=-1FR', DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2027, 2)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 11, 27, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2027, 1, 29, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E2 first Monday follows the calendar', () {
+      for (final date in [
+        DateTime(2026, 11, 2), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2026, 12, 7), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2027, 1, 4) // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      ]) {
+        expect(date.weekday, DateTime.monday);
+      }
+      expect(
+          dates('FREQ=MONTHLY;BYDAY=1MO', DateTime(2026, 11, 2, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2027, 2)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 11, 2, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 12, 7, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2027, 1, 4, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E3 interval two is anchored to the start month', () {
+      expect(DateTime(2027, 2, 26).weekday, DateTime.friday); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(
+          dates('FREQ=MONTHLY;INTERVAL=2;BYDAY=-1FR',
+              DateTime(2026, 10, 30, 10), DateTime(2027, 3)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2027, 2, 26, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E4 absent fifth Friday is skipped', () {
+      final start = DateTime(2026, 10, 30, 10); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      const rule = 'FREQ=MONTHLY;BYDAY=5FR';
+      expect(DateTime(2027, 4, 30).weekday, DateTime.friday); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(dates(rule, start, DateTime(2027, 4)), <DateTime>[ // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        start,
+        DateTime(2027, 1, 29, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      ]);
+      expect(dates(rule, start, DateTime(2027, 5)), <DateTime>[ // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        start,
+        DateTime(2027, 1, 29, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2027, 4, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      ]);
+    });
+
+    test('E5 BYMONTHDAY 31 skips missing days without drift', () {
+      expect(
+          dates('FREQ=MONTHLY;BYMONTHDAY=31', DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2026, 9)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 3, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 5, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 7, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 8, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E6 plain monthly on 15 retains existing dates', () {
+      expect(
+          dates('FREQ=MONTHLY', DateTime(2026, 1, 15, 10), DateTime(2026, 4)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 1, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 2, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 3, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E7 plain monthly on 31 skips missing days without drift', () {
+      expect(
+          dates('FREQ=MONTHLY', DateTime(2026, 1, 31, 10), DateTime(2026, 9)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 3, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 5, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 7, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 8, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E8 BYMONTHDAY 15 retains existing dates', () {
+      expect(
+          dates('FREQ=MONTHLY;BYMONTHDAY=15', DateTime(2026, 10, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2027)),
+          <DateTime>[
+            DateTime(2026, 10, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 11, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 12, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E9 deleted monthly occurrence is omitted', () {
+      expect(
+          dates('FREQ=MONTHLY;BYDAY=-1FR', DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2027, 2), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              deleted: [DateTime(2026, 11, 27, 10)]), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2027, 1, 29, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E10 UNTIL includes December but excludes later months', () {
+      expect(
+          dates('FREQ=MONTHLY;BYDAY=-1FR;UNTIL=20261231T000000Z',
+              DateTime(2026, 10, 30, 10), DateTime(2027, 3)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 11, 27, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('E11 only the requested month is returned', () {
+      expect(
+          dates('FREQ=MONTHLY;BYDAY=-1FR', DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2027),
+              rangeStart: DateTime(2026, 12)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[DateTime(2026, 12, 25, 10)]); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+    });
+
+    test('E12 fifth-Friday expansion terminates over ten years', () {
+      final result = dates('FREQ=MONTHLY;BYDAY=5FR', DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2036, 11)); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(result, isNotEmpty);
+      expect(result.length, lessThanOrEqualTo(420));
+      expect(
+          result.every(
+              (day) => day.hour == 10 && day.minute == 0 && day.second == 0),
+          isTrue);
+    });
+
+    test('E13 daily weekly BYDAY and yearly baseline is unchanged', () {
+      final daily =
+          dates('FREQ=DAILY', DateTime(2026, 11, 2, 10), DateTime(2026, 11, 5)); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(daily, [
+        DateTime(2026, 11, 2, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2026, 11, 3, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2026, 11, 4, 10) // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      ]);
+      final weekly = dates('FREQ=WEEKLY;BYDAY=MO,WE', DateTime(2026, 11, 2, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 11, 12)); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(weekly, [
+        DateTime(2026, 11, 2, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2026, 11, 4, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2026, 11, 9, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2026, 11, 11, 10) // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      ]);
+      final yearly =
+          dates('FREQ=YEARLY', DateTime(2026, 8, 3, 10), DateTime(2029)); // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      expect(yearly, [
+        DateTime(2026, 8, 3, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2027, 8, 3, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        DateTime(2028, 8, 3, 10) // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      ]);
+    });
+
+    test('E14 unmatched start is retained before later same-month candidate',
+        () {
+      expect(
+          dates('FREQ=MONTHLY;BYDAY=-1FR', DateTime(2026, 10, 29, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+              DateTime(2026, 12)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          <DateTime>[
+            DateTime(2026, 10, 29, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 11, 27, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          ]);
+    });
+
+    test('monthly multiple ordinal weekdays are sorted and deduplicated', () {
+      expect(
+        dates('FREQ=MONTHLY;BYDAY=-1FR,1MO,1MO',
+            DateTime(2026, 11, 2, 10), DateTime(2027)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        [
+          DateTime(2026, 11, 2, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 11, 27, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 12, 7, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        ],
+      );
+    });
+
+    test('monthly BYMONTHDAY takes precedence over ordinal BYDAY', () {
+      expect(
+        dates('FREQ=MONTHLY;BYMONTHDAY=15;BYDAY=-1FR',
+            DateTime(2026, 10, 15, 10), DateTime(2027)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        [
+          DateTime(2026, 10, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 11, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 12, 15, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        ],
+      );
+    });
+
+    test('monthly BYDAY without ordinal retains the original loop', () {
+      expect(
+        dates('FREQ=MONTHLY;BYDAY=MO', DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+            DateTime(2026, 5)), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        [
+          DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 3, 3, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 4, 3, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        ],
+      );
+    });
+  });
+
   group('expandRecurringEvent', () {
     test('WEEKLY + BYDAY 반복이 범위 안에서 올바른 요일에 회차 생성', () {
       // 매주 월/수요일 반복. 요일 계산이 연도가 바뀌어도 항상 올바르도록

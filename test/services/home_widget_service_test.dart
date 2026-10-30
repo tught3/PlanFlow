@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/local_time.dart';
+import 'package:planflow/core/recurrence_expansion.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
@@ -877,6 +879,83 @@ void main() {
     };
     expect(byId['team-event']?['is_team'], isTrue);
     expect(byId['recurring-event']?['is_recurring'], isTrue);
+  });
+
+  group('HomeWidget monthly recurrence', () {
+    DateTime firstGridCell(DateTime month) {
+      final first = DateTime(month.year, month.month);
+      return first.subtract(Duration(days: first.weekday % 7));
+    }
+
+    void expectWidgetMatchesCore({
+      required DateTime start,
+      required String rule,
+      required DateTime now,
+      required List<DateTime> expected,
+      required List<int> expectedCurrentMonthDays,
+    }) {
+      final event = EventModel(
+        id: 'monthly-series',
+        userId: 'user-1',
+        title: 'Monthly series',
+        startAt: planflowLocalDateTimeToUtc(start),
+        recurrenceRule: rule,
+      );
+      final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+        now: planflowLocalDateTimeToUtc(now),
+        events: [event],
+      );
+      final widgetDates = payload.rawEvents
+          .map((item) =>
+              planflowLocal(DateTime.parse(item['start_at']! as String)))
+          .toList()
+        ..sort();
+      final rangeStart = firstGridCell(DateTime(now.year, now.month - 1));
+      final rangeEnd = firstGridCell(DateTime(now.year, now.month + 1))
+          .add(const Duration(days: 42));
+      final appDates = expandRecurringEvent(
+        event: event,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+      ).map((item) => planflowLocal(item.startAt!)).toList()
+        ..sort();
+      expect(widgetDates, expected);
+      expect(appDates, expected);
+      expect(widgetDates, appDates);
+      expect(
+        payload.monthCells
+            .where((cell) =>
+                cell.inMonth &&
+                cell.events.any((entry) => entry.title == event.title))
+            .map((cell) => cell.day)
+            .toList(),
+        expectedCurrentMonthDays,
+      );
+    }
+
+    test('W1 last Friday agrees with app dates', () {
+      expectWidgetMatchesCore(
+        start: DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        rule: 'FREQ=MONTHLY;BYDAY=-1FR',
+        now: DateTime(2026, 11, 15), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        expected: [
+          DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 11, 27, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        ],
+        expectedCurrentMonthDays: [27],
+      );
+    });
+
+    test('W5 day 31 skips short months and agrees with app dates', () {
+      expectWidgetMatchesCore(
+        start: DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        rule: 'FREQ=MONTHLY;BYMONTHDAY=31',
+        now: DateTime(2026, 6, 15), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        expected: [DateTime(2026, 5, 31, 10), DateTime(2026, 7, 31, 10)], // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        expectedCurrentMonthDays: [],
+      );
+    });
   });
 
   test(

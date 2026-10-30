@@ -38,6 +38,48 @@ void main() {
   });
 
   group('GptService', () {
+    GptService monthlyLocalService() {
+      final client = MockClient((request) async => http.Response(
+            jsonEncode(<String, dynamic>{
+              'choices': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message': <String, dynamic>{'content': 'not valid json'},
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          ));
+      return GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 1, 9), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+      );
+    }
+
+    final monthlyCases = <(String, String, String)>[
+      ('G1', '매달 마지막 금요일 회의', 'FREQ=MONTHLY;BYDAY=-1FR'),
+      ('G2', '매달 15일 병원', 'FREQ=MONTHLY;BYMONTHDAY=15'),
+      ('G3', '매달 회비 납부', 'FREQ=MONTHLY'),
+      ('G4', '매월 마지막 금요일 회의', 'FREQ=MONTHLY;BYDAY=-1FR'),
+      ('G5', '매월 첫째 월요일', 'FREQ=MONTHLY;BYDAY=1MO'),
+      ('G7', '3달마다 점검', 'FREQ=MONTHLY;INTERVAL=3'),
+    ];
+    for (final (id, input, expected) in monthlyCases) {
+      test('$id local monthly recurrence: $input', () async {
+        final result = await monthlyLocalService().parseSchedule(input);
+        expect(result['recurrence_rule'], expected);
+      });
+    }
+
+    test('G6 매달다 verb forms do not become monthly recurrence', () async {
+      final service = monthlyLocalService();
+      for (final input in ['현수막 매달기', '풍선 매달아 두기']) {
+        final result = await service.parseSchedule(input);
+        expect(result['recurrence_rule'], isNot(startsWith('FREQ=MONTHLY')));
+      }
+    });
+
     test('defaults an AI-supplied time to 09:00 when the request has no time',
         () async {
       final reference = DateTime(DateTime.now().year + 1, 8, 1, 14, 20);
