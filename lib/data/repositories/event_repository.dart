@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/local_time.dart';
+import '../../core/recurrence_expansion.dart' show monthlyRecurrenceCandidates;
 import '../models/event_model.dart';
 
 abstract class EventRepository {
@@ -398,6 +399,28 @@ List<EventModel> expandEventOccurrencesForOverlap(
           }
         }
         weekStart = weekStart.add(Duration(days: 7 * interval));
+      }
+      return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+    }
+  }
+
+  if (freq == 'MONTHLY') {
+    final dates = monthlyRecurrenceCandidates(
+      rule: rule,
+      localStartAt: localStartAt,
+      hardEnd: hardEnd,
+      interval: interval,
+    );
+    if (dates != null) {
+      for (final current in dates) {
+        final candidate = _copyEventWithTime(
+          event,
+          startAt: current,
+          endAt: current.add(duration),
+        );
+        if (_eventIntersectsOverlapRange(candidate, rangeStart, rangeEnd)) {
+          occurrences.add(candidate);
+        }
       }
       return occurrences.isEmpty ? <EventModel>[event] : occurrences;
     }
