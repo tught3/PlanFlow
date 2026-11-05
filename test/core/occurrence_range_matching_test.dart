@@ -5,8 +5,14 @@ import 'package:planflow/data/models/event_model.dart';
 /// [eventHasOccurrenceInRange] / [occurrenceLocalDaysInRange] 테스트.
 /// 절대 날짜 리터럴 금지 규칙에 따라 항상 현재 시점 기준 상대 날짜를 쓴다.
 void main() {
+  // lib 코드는 clock 주입을 지원하지 않으므로, 테스트 쪽에서만 기준일을
+  // `--dart-define=PLANFLOW_TEST_TODAY=YYYY-MM-DD` 로 고정해 요일 조합별로
+  // 검증할 수 있게 한다. 미지정이면 실제 오늘.
+  const fixedToday = String.fromEnvironment('PLANFLOW_TEST_TODAY');
+
   DateTime today() {
-    final now = DateTime.now();
+    final now =
+        fixedToday.isEmpty ? DateTime.now() : DateTime.parse(fixedToday);
     return DateTime(now.year, now.month, now.day);
   }
 
@@ -170,7 +176,12 @@ void main() {
         today().add(const Duration(days: 3)),
         DateTime.wednesday,
       );
-      final far = today().add(const Duration(days: 40));
+      // 매주 수요일 반복이므로 far 가 수요일이면 회차가 걸린다. 요일을 항상
+      // 목요일로 보정해 오늘 날짜와 무관하게 회차가 없는 날이 되도록 한다.
+      final far = onOrAfterWeekday(
+        today().add(const Duration(days: 40)),
+        DateTime.thursday,
+      );
       expect(
         occurrenceLocalDaysInRange(
           event: weeklyEvent(dayAt(first, 9)),
