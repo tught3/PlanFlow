@@ -1305,6 +1305,34 @@ $eventXmlItems
     );
   });
 
+  test('exportEvent skips ICS-imported rows', () async {
+    final client = _FakePropfindClient(responses: <int>[500]);
+    final repository = _FakeEventRepository();
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.exportEvent(
+      EventModel(
+        id: 'ics-import-1',
+        userId: 'user-1',
+        title: 'ICS 가져온 일정',
+        source: 'naver_ics',
+        startAt: DateTime.utc(2026, 5, 8, 9),
+      ),
+    );
+
+    expect(result, isTrue);
+    expect(client.requests, isEmpty);
+    expect(repository.updated, isEmpty);
+  });
+
   test('getCalendars tries home path when calendar root is empty', () async {
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],

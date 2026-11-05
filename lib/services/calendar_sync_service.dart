@@ -1857,6 +1857,7 @@ class CalendarSyncService {
   bool _isExternalCalendarSource(String source) {
     return source == 'google' ||
         source == 'naver' ||
+        source == 'naver_ics' ||
         source == 'naver_caldav' ||
         source == 'naver_device' ||
         source == 'device_calendar';
