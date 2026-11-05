@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
@@ -7,6 +10,76 @@ import 'package:planflow/services/korean_holidays.dart';
 
 void main() {
   group('NaverIcsImportService', () {
+    test('imports a UTF-8 BOM file without retaining the BOM', () async {
+      final directory = await Directory.systemTemp.createTemp();
+      addTearDown(() => directory.delete(recursive: true));
+      final repository = _FakeEventRepository();
+      final service = NaverIcsImportService(eventRepository: repository);
+      final file = File('${directory.path}${Platform.pathSeparator}bom.ics');
+      await file.writeAsBytes(
+          <int>[0xef, 0xbb, 0xbf, ...utf8.encode(_sampleIcs(uid: 'bom-uid'))]);
+
+      final result = await service.importFile(file.path, userId: 'user-1');
+
+      expect(result.imported, 1);
+      expect(repository.events.single.title, '공임나라 방문');
+    });
+
+    test('rejects non-UTF-8 ICS bytes with a safe message', () async {
+      final directory = await Directory.systemTemp.createTemp();
+      addTearDown(() => directory.delete(recursive: true));
+      final repository = _FakeEventRepository();
+      final service = NaverIcsImportService(eventRepository: repository);
+      final content = _sampleIcs(uid: 'bad-encoding')
+          .replaceFirst('공임나라 방문', 'PLACEHOLDER');
+      final bytes = utf8
+          .encode(content.replaceFirst('PLACEHOLDER', ''))
+          .toList(growable: true);
+      final summaryIndex =
+          bytes.indexOf(utf8.encode('SUMMARY:').last) + 'SUMMARY:'.length;
+      bytes.insertAll(summaryIndex, <int>[0xb0, 0xa1]);
+      final file =
+          File('${directory.path}${Platform.pathSeparator}invalid.ics');
+      await file.writeAsBytes(bytes);
+
+      final result = await service.importFile(file.path, userId: 'user-1');
+
+      expect(result.success, isFalse);
+      expect(result.message, naverIcsUnsupportedEncodingMessage);
+      expect(repository.createCount, 0);
+    });
+
+    test('decodes UTF-8 and rejects UTF-16 BOM bytes', () {
+      expect(decodeIcsBytes(<int>[0xff, 0xfe, 0x41, 0]), isNull);
+      expect(decodeIcsBytes(utf8.encode('ICS text')), 'ICS text');
+      expect(
+          decodeIcsBytes(<int>[0xef, 0xbb, 0xbf, ...utf8.encode('ICS text')]),
+          'ICS text');
+    });
+
+    test('keeps the missing-file failure message', () async {
+      final service =
+          NaverIcsImportService(eventRepository: _FakeEventRepository());
+      final result = await service
+          .importFile('missing-${DateTime.now().microsecondsSinceEpoch}.ics');
+      expect(result.message, 'ICS 파일을 찾지 못했습니다.');
+    });
+
+    test('merge preserves a failure message when no events were imported', () {
+      const seed =
+          NaverIcsImportResult(success: false, message: '아직 가져온 일정이 없습니다.');
+      final failure = seed.merge(const NaverIcsImportResult.failure(
+          message: naverIcsUnsupportedEncodingMessage));
+      expect(failure.message, naverIcsUnsupportedEncodingMessage);
+      expect(failure.success, isFalse);
+      expect(
+          seed
+              .merge(const NaverIcsImportResult(
+                  success: true, message: 'x', imported: 2, total: 2))
+              .message,
+          '네이버 ICS에서 2개를 가져왔어요. 중복 0개는 건너뛰었습니다.');
+    });
+
     test('parses ICS event fields into a PlanFlow event draft', () {
       final service = NaverIcsImportService(
         eventRepository: _FakeEventRepository(),

@@ -12,6 +12,30 @@ import '../data/repositories/event_repository.dart';
 import 'external_event_import_classifier.dart';
 import 'synced_public_holiday_visibility.dart';
 
+const naverIcsReadFailedMessage = 'ICS 파일을 읽지 못했습니다.';
+const naverIcsUnsupportedEncodingMessage =
+    'ICS 파일의 글자 형식(UTF-8)을 읽지 못했어요. 캘린더 앱에서 다시 내보낸 파일로 시도해 주세요.';
+const naverIcsImportUnexpectedErrorMessage =
+    'ICS 파일을 가져오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
+
+String? decodeIcsBytes(List<int> bytes) {
+  if (bytes.length >= 2 &&
+      ((bytes[0] == 0xff && bytes[1] == 0xfe) ||
+          (bytes[0] == 0xfe && bytes[1] == 0xff))) {
+    return null;
+  }
+  final hasUtf8Bom = bytes.length >= 3 &&
+      bytes[0] == 0xef &&
+      bytes[1] == 0xbb &&
+      bytes[2] == 0xbf;
+  try {
+    return utf8.decode(hasUtf8Bom ? bytes.sublist(3) : bytes,
+        allowMalformed: false);
+  } on FormatException {
+    return null;
+  }
+}
+
 class NaverIcsImportService {
   NaverIcsImportService({
     EventRepository? eventRepository,
@@ -35,7 +59,21 @@ class NaverIcsImportService {
         message: 'ICS 파일을 찾지 못했습니다.',
       );
     }
-    final content = await file.readAsString();
+    late final List<int> bytes;
+    try {
+      bytes = await file.readAsBytes();
+    } on FileSystemException catch (error) {
+      debugPrint('Naver ICS read failed type=${error.runtimeType}');
+      return const NaverIcsImportResult.failure(
+        message: naverIcsReadFailedMessage,
+      );
+    }
+    final content = decodeIcsBytes(bytes);
+    if (content == null) {
+      return const NaverIcsImportResult.failure(
+        message: naverIcsUnsupportedEncodingMessage,
+      );
+    }
     return importContent(content, userId: userId, sourcePath: path);
   }
 
@@ -375,9 +413,11 @@ class NaverIcsImportResult {
     return NaverIcsImportResult(
       success:
           success || other.success || importedCount > 0 || skippedCount > 0,
-      message: failedCount > 0
-          ? '네이버 ICS에서 $importedCount개를 가져오고, $skippedCount개는 중복이라 건너뛰었어요. $failedCount개는 저장하지 못했습니다.'
-          : '네이버 ICS에서 $importedCount개를 가져왔어요. 중복 $skippedCount개는 건너뛰었습니다.',
+      message: importedCount + skippedCount + failedCount == 0 && !other.success
+          ? other.message
+          : failedCount > 0
+              ? '네이버 ICS에서 $importedCount개를 가져오고, $skippedCount개는 중복이라 건너뛰었어요. $failedCount개는 저장하지 못했습니다.'
+              : '네이버 ICS에서 $importedCount개를 가져왔어요. 중복 $skippedCount개는 건너뛰었습니다.',
       imported: importedCount,
       skipped: skippedCount,
       failed: failedCount,
