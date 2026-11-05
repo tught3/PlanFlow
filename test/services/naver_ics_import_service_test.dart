@@ -136,6 +136,62 @@ void main() {
       expect(planflowLocal(events.single.startAt).hour, 0);
     });
 
+    test('marks date-only events all-day with exclusive end dates', () {
+      final service = NaverIcsImportService(
+        eventRepository: _FakeEventRepository(),
+      );
+
+      final singleDay = service
+          .parseEvents(_sampleIcsWithDate(
+            uid: 'single-day',
+            startLine: 'DTSTART;VALUE=DATE:20260815',
+            endLine: 'DTEND;VALUE=DATE:20260816',
+          ))
+          .single;
+      final threeDays = service
+          .parseEvents(_sampleIcsWithDate(
+            uid: 'three-days',
+            startLine: 'DTSTART;VALUE=DATE:20260815',
+            endLine: 'DTEND;VALUE=DATE:20260818',
+          ))
+          .single;
+      final noEnd = service
+          .parseEvents(_sampleIcsWithDate(
+            uid: 'no-end',
+            startLine: 'DTSTART:20260815',
+            endLine: '',
+          ))
+          .single;
+      final sameEnd = service
+          .parseEvents(_sampleIcsWithDate(
+            uid: 'same-end',
+            startLine: 'DTSTART:20260815',
+            endLine: 'DTEND:20260815',
+          ))
+          .single;
+      final dateTime = service
+          .parseEvents(_sampleIcsWithDate(
+            uid: 'date-time',
+            startLine: 'DTSTART;VALUE=DATE-TIME:20260815T100000',
+            endLine: 'DTEND;VALUE=DATE-TIME:20260816T110000',
+          ))
+          .single;
+
+      expect(singleDay.isAllDay, isTrue);
+      expect(singleDay.isMultiDay, isFalse);
+      expect(singleDay.startAt, DateTime.utc(2026, 8, 14, 15));
+      expect(singleDay.endAt, DateTime.utc(2026, 8, 15, 15));
+      expect(threeDays.isAllDay, isTrue);
+      expect(threeDays.isMultiDay, isTrue);
+      expect(threeDays.endAt, DateTime.utc(2026, 8, 17, 15));
+      expect(noEnd.isAllDay, isTrue);
+      expect(noEnd.endAt, DateTime.utc(2026, 8, 15, 15));
+      expect(noEnd.isMultiDay, isFalse);
+      expect(sameEnd.endAt, DateTime.utc(2026, 8, 15, 15));
+      expect(dateTime.isAllDay, isFalse);
+      expect(dateTime.isMultiDay, isFalse);
+    });
+
     test('marks important ICS buckets as critical', () {
       final service = NaverIcsImportService(
         eventRepository: _FakeEventRepository(),
@@ -176,6 +232,24 @@ END:VCALENDAR
       expect(result.imported, 1);
       expect(repository.events.single.source, 'naver_ics');
       expect(repository.events.single.externalId, 'naver-ics:uid:stable-uid');
+    });
+
+    test('persists all-day flags on imported events', () async {
+      final repository = _FakeEventRepository();
+      final service = NaverIcsImportService(eventRepository: repository);
+
+      final result = await service.importContent(
+        _sampleIcsWithDate(
+          uid: 'persisted-all-day',
+          startLine: 'DTSTART;VALUE=DATE:20260815',
+          endLine: 'DTEND;VALUE=DATE:20260818',
+        ),
+        userId: 'user-1',
+      );
+
+      expect(result.imported, 1);
+      expect(repository.events.single.isAllDay, isTrue);
+      expect(repository.events.single.isMultiDay, isTrue);
     });
 
     test('skips canonical public holidays but keeps personal events', () async {
@@ -370,6 +444,8 @@ class _FakeEventRepository extends EventRepository {
       externalEtag: event.externalEtag,
       externalUpdatedAt: event.externalUpdatedAt,
       lastSyncedAt: event.lastSyncedAt,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
     );
     events.add(saved);
     return saved;
