@@ -146,6 +146,50 @@ void main() {
       expect(requests, isEmpty);
     });
 
+    test('does not export ICS-imported rows to Naver Calendar', () async {
+      final requests = <http.Request>[];
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: _FakeEventRepository(events: <EventModel>[
+          EventModel(
+            id: 'ics-import-1',
+            userId: 'user-1',
+            title: 'ICS 가져온 일정',
+            startAt: DateTime.now().add(const Duration(hours: 2)),
+            source: 'naver_ics',
+          ),
+          EventModel(
+            id: 'manual-1',
+            userId: 'user-1',
+            title: '직접 만든 일정',
+            startAt: DateTime.now().add(const Duration(hours: 3)),
+          ),
+        ]),
+        naverStatusProvider: () async {
+          return const NaverCalendarPermissionResult(
+            status: NaverCalendarPermissionStatus.granted,
+            message: '권한 확인',
+          );
+        },
+        naverAccessTokenProvider: () async => 'naver-token',
+        naverStatusSaver: (_) async {},
+        httpClientFactory: () => MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"result":"ok"}', 200);
+        }),
+      );
+
+      final result = await service.syncNaverCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(result.syncedItems, 1);
+      expect(requests, hasLength(1));
+      expect(requests.single.bodyFields['scheduleIcalString'],
+          contains('SUMMARY:직접 만든 일정'));
+      expect(requests.single.bodyFields['scheduleIcalString'],
+          isNot(contains('ICS 가져온 일정')));
+    });
+
     test('does not call Naver API when calendar permission is missing',
         () async {
       var requestCount = 0;

@@ -327,6 +327,28 @@ void main() {
     expect(gateway.exportedEvents, isEmpty);
   });
 
+  test('ICS imports are not exported back to device calendars', () async {
+    final gateway = _FakeDeviceCalendarGateway();
+    final service = DeviceCalendarService(
+      gateway: gateway,
+      eventRepository: _FakeEventRepository(),
+      currentUserId: 'user-1',
+    );
+
+    final exported = await service.exportEvent(
+      EventModel(
+        id: 'ics-import-1',
+        userId: 'user-1',
+        title: 'ICS 가져온 일정',
+        source: 'naver_ics',
+        startAt: DateTime.now().toUtc().add(const Duration(days: 30)),
+      ),
+    );
+
+    expect(exported, isTrue);
+    expect(gateway.exportedEvents, isEmpty);
+  });
+
   test('Android native device export keeps event-only policy', () {
     final nativeFile = File(
       'android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt',

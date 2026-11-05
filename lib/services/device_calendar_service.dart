@@ -643,6 +643,7 @@ class DeviceCalendarService {
   Future<bool> exportEvent(EventModel event) async {
     if (event.source == 'google' ||
         event.source == 'naver' ||
+        event.source == 'naver_ics' ||
         event.source == 'naver_caldav' ||
         event.source == 'naver_device' ||
         event.source == 'ios_device' ||
