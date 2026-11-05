@@ -235,7 +235,7 @@ class _IntroCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '네이버에서 공유하면 PlanFlow가 자동으로 저장해요',
+                    '캘린더 파일(.ics)로 일정 가져오기',
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: PlanFlowColors.primary,
                       fontWeight: FontWeight.w800,
@@ -246,7 +246,7 @@ class _IntroCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '수동으로 해야 하는 일은 딱 두 번입니다. 네이버 캘린더에서 내보내기 화면을 열고, 공유 대상에서 PlanFlow를 선택해 주세요.',
+              '캘린더 앱에서 내보낸 .ics 파일을 직접 선택해 가져올 수 있어요. Android에서는 다른 앱의 공유 메뉴에서 PlanFlow를 골라도 됩니다.',
             ),
           ],
         ),
@@ -265,18 +265,19 @@ class _GuidePager extends StatelessWidget {
     final steps = const <_GuideStep>[
       _GuideStep(
         icon: Icons.open_in_new,
-        title: '1. 네이버 캘린더 앱 열기',
-        body: '아래 버튼으로 네이버 캘린더 앱을 열고, 메뉴에서 내보내기 화면으로 이동합니다.',
+        title: '1. 캘린더 앱에서 내보내기',
+        body: '사용하는 캘린더 앱에서 일정을 .ics 파일로 내보내 주세요. 메뉴 이름과 위치는 앱마다 다를 수 있어요.',
       ),
       _GuideStep(
         icon: Icons.ios_share,
-        title: '2. 공유 탭 선택',
-        body: '내보내기에서 파일 저장이 아니라 공유 탭을 선택합니다.',
+        title: '2. PlanFlow로 보내기',
+        body:
+            'Android에서는 공유 대상에서 PlanFlow를 고르면 바로 가져오기를 시작해요. 공유가 안 되면 파일로 저장해 두세요.',
       ),
       _GuideStep(
         icon: Icons.check_circle_outline,
-        title: '3. PlanFlow 선택',
-        body: '공유 대상에서 PlanFlow를 선택하면 ICS 파일을 자동으로 읽고 중복 없이 저장합니다.',
+        title: '3. 파일 직접 선택',
+        body: '아래 "ICS 파일 직접 선택"으로 저장한 파일을 고르세요. 이미 있는 일정과 날짜·제목이 같으면 건너뜁니다.',
       ),
     ];
     return SizedBox(
