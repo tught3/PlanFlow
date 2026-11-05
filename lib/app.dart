@@ -38,6 +38,8 @@ import 'services/event_reminder_channel_migration_service.dart';
 import 'services/activity_tracking_service.dart';
 import 'services/smart_preparation_payload_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
+import 'services/naver_ics_share_filter.dart';
+import 'services/launch_signal_ledger.dart';
 import 'services/notification_service.dart';
 import 'services/notification_route_contract.dart';
 import 'services/interaction_idle_gate.dart';
@@ -795,27 +797,93 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _sharedIcsSubscription = ReceiveSharingIntent.instance
         .getMediaStream()
         .listen(_handleSharedMediaFiles, onError: (Object error, stackTrace) {
-      debugPrint('Shared ICS stream failed: $error');
-      debugPrintStack(stackTrace: stackTrace as StackTrace?);
+      DiagLogger.log('LaunchSignal',
+          'ics-share source=stream files=0 candidates=0 mimes=[] exts=[] decision=no-candidate');
     });
 
     final initialMedia = await ReceiveSharingIntent.instance.getInitialMedia();
     if (initialMedia.isNotEmpty) {
-      await _handleSharedMediaFiles(initialMedia);
-      await ReceiveSharingIntent.instance.reset();
+      try {
+        await _handleSharedMediaFiles(initialMedia, source: 'initial');
+      } finally {
+        await ReceiveSharingIntent.instance.reset();
+      }
     }
   }
 
-  Future<void> _handleSharedMediaFiles(List<SharedMediaFile> files) async {
+  Future<void> _handleSharedMediaFiles(List<SharedMediaFile> files,
+      {String source = 'stream'}) async {
     final paths = files
         .where(_isIcsShare)
         .map((file) => file.path.trim())
         .where((path) => path.isNotEmpty)
         .toSet()
         .toList(growable: false);
+    void logDecision(String decision) {
+      const knownMimes = <String>{
+        'text/calendar',
+        'text/x-vcalendar',
+        'application/ics',
+        'application/octet-stream',
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+      };
+      final mimes = files
+          .map((file) {
+            final mime = file.mimeType?.trim().toLowerCase() ?? '';
+            return mime.isEmpty
+                ? 'none'
+                : knownMimes.contains(mime)
+                    ? mime
+                    : 'other';
+          })
+          .toSet()
+          .toList()
+        ..sort();
+      final exts = files
+          .map((file) {
+            final path = file.path.trim().toLowerCase();
+            for (final ext in const [
+              'ics',
+              'pdf',
+              'png',
+              'jpg',
+              'jpeg',
+              'txt'
+            ]) {
+              if (path.endsWith('.$ext')) return ext;
+            }
+            return 'other';
+          })
+          .toSet()
+          .toList()
+        ..sort();
+      DiagLogger.log(
+          'LaunchSignal',
+          'ics-share source=$source files=${files.length} candidates=${paths.length} '
+              'mimes=$mimes exts=$exts decision=$decision');
+    }
+
     if (paths.isEmpty) {
+      logDecision('no-candidate');
       return;
     }
+
+    final ledger = LaunchSignalLedger();
+    final key = await LaunchSignalLedger.computeShareKey(paths);
+    if (source == 'initial') {
+      if (key == null) {
+        logDecision('skip-missing-file');
+        return;
+      }
+      if (await ledger.hasShareKey(key)) {
+        logDecision('skip-already-handled');
+        return;
+      }
+    }
+    if (key != null) await ledger.recordShareKey(key);
+    logDecision('route');
 
     if (!await _waitForInitialAuthResolution()) {
       await _naverIcsShareStore.savePendingPaths(paths);
@@ -846,13 +914,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   bool _isIcsShare(SharedMediaFile file) {
-    final path = file.path.toLowerCase();
-    final mimeType = file.mimeType?.toLowerCase() ?? '';
-    return path.endsWith('.ics') ||
-        mimeType == 'text/calendar' ||
-        mimeType == 'text/x-vcalendar' ||
-        mimeType == 'application/ics' ||
-        mimeType == 'application/octet-stream';
+    return isIcsShareCandidate(path: file.path, mimeType: file.mimeType);
   }
 
   Future<void> _routeInitialHomeWidgetLaunch() async {
