@@ -18,6 +18,38 @@ const naverIcsUnsupportedEncodingMessage =
 const naverIcsImportUnexpectedErrorMessage =
     'ICS 파일을 가져오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
 
+String normalizeIcsText(String content) {
+  var normalized =
+      content.startsWith('\uFEFF') ? content.substring(1) : content;
+  normalized = normalized.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  normalized = normalized.replaceAll(RegExp(r'\n[ \t]'), '');
+  return normalized
+      .split('\n')
+      .where((line) => line.trim().isNotEmpty)
+      .join('\n');
+}
+
+List<int> _unfoldIcsBytes(List<int> bytes) {
+  final unfolded = <int>[];
+  for (var index = 0; index < bytes.length; index += 1) {
+    if (bytes[index] == 0x0d &&
+        index + 2 < bytes.length &&
+        bytes[index + 1] == 0x0a &&
+        (bytes[index + 2] == 0x20 || bytes[index + 2] == 0x09)) {
+      index += 2;
+      continue;
+    }
+    if (bytes[index] == 0x0a &&
+        index + 1 < bytes.length &&
+        (bytes[index + 1] == 0x20 || bytes[index + 1] == 0x09)) {
+      index += 1;
+      continue;
+    }
+    unfolded.add(bytes[index]);
+  }
+  return unfolded;
+}
+
 String? decodeIcsBytes(List<int> bytes) {
   if (bytes.length >= 2 &&
       ((bytes[0] == 0xff && bytes[1] == 0xfe) ||
@@ -29,8 +61,8 @@ String? decodeIcsBytes(List<int> bytes) {
       bytes[1] == 0xbb &&
       bytes[2] == 0xbf;
   try {
-    return utf8.decode(hasUtf8Bom ? bytes.sublist(3) : bytes,
-        allowMalformed: false);
+    final source = hasUtf8Bom ? bytes.sublist(3) : bytes;
+    return utf8.decode(_unfoldIcsBytes(source), allowMalformed: false);
   } on FormatException {
     return null;
   }
@@ -203,7 +235,7 @@ class NaverIcsImportService {
   }
 
   List<NaverIcsParsedEvent> parseEvents(String content) {
-    final json = ICal.toJson(content);
+    final json = ICal.toJson(normalizeIcsText(content));
     final rawEvents = json['VEVENT'];
     if (rawEvents is! List) {
       return const <NaverIcsParsedEvent>[];
