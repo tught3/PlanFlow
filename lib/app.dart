@@ -798,7 +798,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         .getMediaStream()
         .listen(_handleSharedMediaFiles, onError: (Object error, stackTrace) {
       DiagLogger.log('LaunchSignal',
-          'ics-share source=stream files=0 candidates=0 mimes=[] exts=[] decision=no-candidate');
+          'ics-share source=stream files=0 candidates=0 mimes=[] exts=[] decision=stream-error');
     });
 
     final initialMedia = await ReceiveSharingIntent.instance.getInitialMedia();
@@ -865,25 +865,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               'mimes=$mimes exts=$exts decision=$decision');
     }
 
-    if (paths.isEmpty) {
-      logDecision('no-candidate');
-      return;
-    }
-
-    final ledger = LaunchSignalLedger();
-    final key = await LaunchSignalLedger.computeShareKey(paths);
-    if (source == 'initial') {
-      if (key == null) {
-        logDecision('skip-missing-file');
-        return;
-      }
-      if (await ledger.hasShareKey(key)) {
-        logDecision('skip-already-handled');
-        return;
-      }
-    }
-    if (key != null) await ledger.recordShareKey(key);
-    logDecision('route');
+    final decision = await decideIcsShare(
+      source: source,
+      paths: paths,
+      ledger: LaunchSignalLedger(),
+    );
+    logDecision(switch (decision) {
+      IcsShareDecision.noCandidate => 'no-candidate',
+      IcsShareDecision.skipMissingFile => 'skip-missing-file',
+      IcsShareDecision.skipAlreadyHandled => 'skip-already-handled',
+      IcsShareDecision.route => 'route',
+    });
+    if (decision != IcsShareDecision.route) return;
 
     if (!await _waitForInitialAuthResolution()) {
       await _naverIcsShareStore.savePendingPaths(paths);
@@ -1046,7 +1039,11 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   /// launch details로 목적지 라우트를 복구한다. 홈위젯 라우트와 동일한
   /// gate(startupRouteGate)·재시도 메커니즘을 재사용한다.
   Future<void> _routeInitialNotificationLaunch() async {
+    // Pending widget routes discard this alert, so do not consume its token.
+    if (_homeWidgetRouteCoordinator.hasPendingRoute) return;
+
     final route = await _notificationService.resolveColdStartLaunchRoute();
+    // The pending route may have changed while the notification was resolving.
     if (route == null || _homeWidgetRouteCoordinator.hasPendingRoute) {
       return;
     }
