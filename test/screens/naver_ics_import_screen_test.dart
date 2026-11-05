@@ -46,6 +46,32 @@ void main() {
     expect(find.text('가져오기 완료'), findsOneWidget);
     expect(find.text('ICS 파일을 읽고 일정을 저장하는 중입니다.'), findsNothing);
   });
+
+  testWidgets(
+      'shows corrected guide copy across all three pages without overflow',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: NaverIcsImportScreen(
+        importService: _ScriptedImportService(const []),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, 1200));
+    await tester.pumpAndSettle();
+    expect(find.text('캘린더 파일(.ics)로 일정 가져오기'), findsOneWidget);
+    expect(find.text('네이버에서 공유하면 PlanFlow가 자동으로 저장해요'), findsNothing);
+    expect(find.textContaining('중복 없이'), findsNothing);
+
+    await tester.drag(find.byType(PageView), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2. PlanFlow로 보내기'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.drag(find.byType(PageView), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('3. 파일 직접 선택'), findsOneWidget);
+    expect(find.textContaining('중복 없이'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _ScriptedImportService extends Fake implements NaverIcsImportService {
