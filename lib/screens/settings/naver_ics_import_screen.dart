@@ -108,24 +108,37 @@ class _NaverIcsImportScreenState extends State<NaverIcsImportScreen> {
       success: false,
       message: '아직 가져온 일정이 없습니다.',
     );
-    for (final path in paths) {
-      final result = await _importService.importFile(path);
-      merged = merged.merge(result);
-    }
+    try {
+      for (final path in paths) {
+        late final NaverIcsImportResult result;
+        try {
+          result = await _importService.importFile(path);
+        } catch (error) {
+          debugPrint('Naver ICS import failed type=${error.runtimeType}');
+          result = const NaverIcsImportResult.failure(
+            message: naverIcsImportUnexpectedErrorMessage,
+          );
+        }
+        merged = merged.merge(result);
+      }
 
-    if (merged.imported + merged.skipped > 0) {
-      unawaited(NaverIcsImportHistoryStore()
-          .recordImportNow()
-          .catchError((Object _) {}));
+      if (merged.imported + merged.skipped > 0) {
+        unawaited(NaverIcsImportHistoryStore()
+            .recordImportNow()
+            .catchError((Object _) {}));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _lastResult = merged;
+          _isImporting = false;
+        });
+      }
     }
 
     if (!mounted) {
       return;
     }
-    setState(() {
-      _lastResult = merged;
-      _isImporting = false;
-    });
     _showSnack(merged.message);
     if (merged.imported > 0 || merged.skipped > 0) {
       EventRefreshBus.instance.notifyChanged(reason: 'naver_ics_import');
