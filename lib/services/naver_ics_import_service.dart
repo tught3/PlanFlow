@@ -193,6 +193,8 @@ class NaverIcsImportService {
           location: parsed.location,
           memo: parsed.description,
           isCritical: parsed.isCritical,
+          isAllDay: parsed.isAllDay,
+          isMultiDay: parsed.isMultiDay,
           source: 'naver_ics',
           externalId: externalId,
           externalCalendarId: 'naver-ics',
@@ -255,7 +257,7 @@ class NaverIcsImportService {
         continue;
       }
       final hasEndRaw = _hasProperty(data, 'DTEND');
-      final endAt = _dateTimeProperty(data, 'DTEND');
+      var endAt = _dateTimeProperty(data, 'DTEND');
       if (hasEndRaw && endAt == null) {
         debugPrint(
           'Naver ICS event skipped because DTEND failed to parse: '
@@ -263,6 +265,15 @@ class NaverIcsImportService {
         );
         continue;
       }
+      final isAllDay = RegExp(r'^\d{8}$')
+          .hasMatch(_textProperty(data, 'DTSTART')?.trim() ?? '');
+      if (isAllDay && (endAt == null || endAt.isAtSameMomentAs(startAt))) {
+        endAt = startAt.add(const Duration(days: 1));
+      }
+      final isMultiDay = isAllDay &&
+          endAt != null &&
+          planflowLocalDay(endAt.subtract(const Duration(microseconds: 1)))
+              .isAfter(planflowLocalDay(startAt));
       final uid = _textProperty(data, 'UID')?.trim();
       events.add(
         NaverIcsParsedEvent(
@@ -270,6 +281,8 @@ class NaverIcsImportService {
           title: _unescapeText(title),
           startAt: startAt,
           endAt: endAt,
+          isAllDay: isAllDay,
+          isMultiDay: isMultiDay,
           location: _blankToNull(
             _unescapeText(_textProperty(data, 'LOCATION') ?? ''),
           ),
@@ -385,6 +398,8 @@ class NaverIcsParsedEvent {
     this.location,
     this.description,
     this.isCritical = false,
+    this.isAllDay = false,
+    this.isMultiDay = false,
     this.lastModifiedAt,
   });
 
@@ -395,6 +410,8 @@ class NaverIcsParsedEvent {
   final String? location;
   final String? description;
   final bool isCritical;
+  final bool isAllDay;
+  final bool isMultiDay;
   final DateTime? lastModifiedAt;
 
   String get externalId {
