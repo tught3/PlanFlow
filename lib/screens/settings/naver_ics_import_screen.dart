@@ -10,6 +10,7 @@ import '../../widgets/app_back_button.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/naver_calendar_launch_service.dart';
 import '../../services/naver_ics_import_service.dart';
+import '../../services/naver_ics_reminder_policy.dart';
 
 class NaverIcsImportScreen extends StatefulWidget {
   const NaverIcsImportScreen({
@@ -110,6 +111,12 @@ class _NaverIcsImportScreenState extends State<NaverIcsImportScreen> {
     for (final path in paths) {
       final result = await _importService.importFile(path);
       merged = merged.merge(result);
+    }
+
+    if (merged.imported + merged.skipped > 0) {
+      unawaited(NaverIcsImportHistoryStore()
+          .recordImportNow()
+          .catchError((Object _) {}));
     }
 
     if (!mounted) {

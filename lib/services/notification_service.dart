@@ -13,6 +13,8 @@ import '../data/repositories/event_repository.dart';
 import 'critical_alarm_acknowledgement_store.dart';
 import 'critical_alarm_preflight_service.dart';
 import 'departure_acknowledgement_store.dart';
+import 'launch_signal_ledger.dart';
+import 'naver_ics_reminder_policy.dart';
 
 enum NotificationScheduleStatus {
   scheduled,
@@ -38,11 +40,21 @@ class NotificationScheduleResult {
 class NotificationService {
   NotificationService(
       {FlutterLocalNotificationsPlugin? plugin,
-      this.allowPermissionRequests = true})
-      : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+      this.allowPermissionRequests = true,
+      LaunchSignalLedger? launchSignalLedger,
+      NaverIcsImportHistoryStore? naverIcsImportHistory,
+      DateTime Function()? now})
+      : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
+        _launchSignalLedger = launchSignalLedger ?? LaunchSignalLedger(),
+        _naverIcsImportHistory =
+            naverIcsImportHistory ?? NaverIcsImportHistoryStore(),
+        _now = now ?? DateTime.now;
 
   final FlutterLocalNotificationsPlugin _plugin;
   final bool allowPermissionRequests;
+  final LaunchSignalLedger _launchSignalLedger;
+  final NaverIcsImportHistoryStore _naverIcsImportHistory;
+  final DateTime Function() _now;
 
   Future<void>? _initializationFuture;
 
@@ -265,15 +277,22 @@ class NotificationService {
     await scheduleMonthlyNaverIcsReminder();
   }
 
-  Future<void> scheduleMonthlyNaverIcsReminder({DateTime? now}) {
-    final basis = now ?? DateTime.now();
-    final nextReminder = _nextMonthlyNaverIcsReminderAt(basis);
-    return scheduleEventReminder(
+  /// 가져오기 이력이 있을 때만 예약하며, 이력이 없으면 기존 예약도 취소한다.
+  Future<void> scheduleMonthlyNaverIcsReminder({DateTime? now}) async {
+    final nextReminder = nextNaverIcsReminderAt(
+      now: now ?? _now(),
+      lastImportAt: await _naverIcsImportHistory.lastImportAt(),
+    );
+    if (nextReminder == null) {
+      await cancel(notificationIdFor(naverIcsReminderPayloadPrefix));
+      return;
+    }
+    await scheduleEventReminder(
       id: notificationIdFor('naver_ics_monthly_reminder'),
       title: '네이버 캘린더 가져오기',
       body: '새 일정이 있을 수 있어요. 다시 가져올까요?',
       notifyAt: nextReminder,
-      payload: 'naver_ics_monthly_reminder',
+      payload: naverIcsReminderPayload(nextReminder),
     );
   }
 
@@ -1333,21 +1352,77 @@ class NotificationService {
   Future<String?> resolveColdStartLaunchRoute() async {
     final launchDetails = await _plugin.getNotificationAppLaunchDetails();
     if (launchDetails == null || !launchDetails.didNotificationLaunchApp) {
+      DiagLogger.log('LaunchSignal',
+          'notification cold-start kind=none decision=passthrough');
       return null;
     }
     final response = launchDetails.notificationResponse;
     if (response == null) {
+      DiagLogger.log('LaunchSignal',
+          'notification cold-start kind=none decision=passthrough');
       return null;
     }
     // Cold-start body taps use this path instead of the foreground callback;
     // apply the same cancellation semantics before returning the route.
     await handleNotificationResponseAction(response, notificationService: this);
+    final kind = classifyNaverIcsReminderPayload(response.payload);
+    if (kind == NaverIcsReminderPayloadKind.legacy) {
+      DiagLogger.log('LaunchSignal',
+          'notification cold-start kind=naver_ics_legacy decision=skip-legacy');
+      return null;
+    }
+    if (kind == NaverIcsReminderPayloadKind.malformed) {
+      DiagLogger.log('LaunchSignal',
+          'notification cold-start kind=naver_ics_malformed decision=skip-malformed');
+      return null;
+    }
+    if (kind == NaverIcsReminderPayloadKind.tokened) {
+      // banned-ok: reminder payload is a calendar date marker, not an API credential.
+      final token = response.payload!;
+      if (await _launchSignalLedger.lastNaverReminderToken() == token) {
+        DiagLogger.log('LaunchSignal',
+            'notification cold-start kind=naver_ics_tokened decision=skip-already-handled');
+        return null;
+      }
+      final date = naverIcsReminderDateFromPayload(token)!;
+      final scheduled = DateTime(date.year, date.month, date.day, 9);
+      final now = _now();
+      if (now.difference(scheduled) > const Duration(days: 7)) {
+        DiagLogger.log('LaunchSignal',
+            'notification cold-start kind=naver_ics_tokened decision=skip-stale');
+        return null;
+      }
+      if (scheduled.difference(now) > const Duration(days: 1)) {
+        DiagLogger.log('LaunchSignal',
+            'notification cold-start kind=naver_ics_tokened decision=skip-future');
+        return null;
+      }
+      await _launchSignalLedger.markNaverReminderToken(token);
+      DiagLogger.log('LaunchSignal',
+          'notification cold-start kind=naver_ics_tokened decision=route');
+      return AppRoutes.naverIcsImport;
+    }
+    final payload = response.payload ?? '';
+    final otherKind = payload.isEmpty
+        ? 'none'
+        : payload.startsWith('briefing:')
+            ? 'briefing'
+            : payload.startsWith('event:')
+                ? 'event'
+                : payload.startsWith('departure:')
+                    ? 'departure'
+                    : 'other';
+    DiagLogger.log('LaunchSignal',
+        'notification cold-start kind=$otherKind decision=passthrough');
     return routeForNotificationResponse(response);
   }
 
   @visibleForTesting
   static String? routeForNotificationResponse(NotificationResponse response) {
-    if (response.payload == 'naver_ics_monthly_reminder') {
+    if (classifyNaverIcsReminderPayload(response.payload) ==
+            NaverIcsReminderPayloadKind.legacy ||
+        classifyNaverIcsReminderPayload(response.payload) ==
+            NaverIcsReminderPayloadKind.tokened) {
       return AppRoutes.naverIcsImport;
     }
 
@@ -1439,14 +1514,6 @@ class NotificationService {
     }
 
     return hash == 0 ? 1 : hash;
-  }
-
-  DateTime _nextMonthlyNaverIcsReminderAt(DateTime now) {
-    var reminder = DateTime(now.year, now.month, 1, 9);
-    if (!reminder.isAfter(now)) {
-      reminder = DateTime(now.year, now.month + 1, 1, 9);
-    }
-    return reminder;
   }
 
   String _criticalAlarmPermissionMessage(NotificationPermissionStatus status) {
