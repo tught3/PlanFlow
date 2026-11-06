@@ -1859,12 +1859,15 @@ class CalendarSyncService {
     return id;
   }
 
+  // ios_device(iOS 휴대폰 캘린더)와 naver_api(과거 Open API 가져오기)도 외부 원본이라 다시 내보내지 않는다.
   bool _isExternalCalendarSource(String source) {
     return source == 'google' ||
         source == 'naver' ||
         source == 'naver_ics' ||
         source == 'naver_caldav' ||
         source == 'naver_device' ||
+        source == 'ios_device' ||
+        source == 'naver_api' ||
         source == 'device_calendar';
   }
 

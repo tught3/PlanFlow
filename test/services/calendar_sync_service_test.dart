@@ -146,6 +146,67 @@ void main() {
       expect(requests, isEmpty);
     });
 
+    test('does not export iOS device or Naver API rows to Naver Calendar',
+        () async {
+      final requests = <http.Request>[];
+      final now = DateTime.now();
+      final repo = _FakeEventRepository(events: <EventModel>[
+        EventModel(
+          id: 'ios-1',
+          userId: 'user-1',
+          title: 'iOS 캘린더 일정',
+          source: 'ios_device',
+          externalId: 'ios:cal-1:evt-1',
+          externalCalendarId: 'ios:cal-1',
+          startAt: now.add(const Duration(hours: 2)),
+        ),
+        EventModel(
+          id: 'naver-api-1',
+          userId: 'user-1',
+          title: '네이버 API 일정',
+          source: 'naver_api',
+          externalId: 'naver-api:sched-1',
+          externalCalendarId: 'naver-api:defaultCalendarId',
+          startAt: now.add(const Duration(hours: 3)),
+        ),
+        EventModel(
+          id: 'manual-1',
+          userId: 'user-1',
+          title: '직접 만든 일정',
+          startAt: now.add(const Duration(hours: 4)),
+        ),
+      ]);
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        naverStatusProvider: () async {
+          return const NaverCalendarPermissionResult(
+            status: NaverCalendarPermissionStatus.granted,
+            message: '권한 확인',
+          );
+        },
+        naverAccessTokenProvider: () async => 'naver-token',
+        naverStatusSaver: (_) async {},
+        httpClientFactory: () => MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"result":"ok"}', 200);
+        }),
+      );
+
+      final result = await service.syncNaverCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(result.syncedItems, 1);
+      expect(requests, hasLength(1));
+      expect(requests.single.bodyFields['scheduleIcalString'],
+          contains('UID:planflow-manual-1@planflow'));
+      expect(repo.updatedEvents.map((event) => event.id), equals(['manual-1']));
+      expect(repo.events.singleWhere((event) => event.id == 'ios-1')
+          .externalCalendarId, 'ios:cal-1');
+      expect(repo.events.singleWhere((event) => event.id == 'naver-api-1')
+          .externalCalendarId, 'naver-api:defaultCalendarId');
+    });
+
     test('does not export ICS-imported rows to Naver Calendar', () async {
       final requests = <http.Request>[];
       final service = CalendarSyncService(
