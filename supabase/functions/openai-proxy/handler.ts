@@ -303,7 +303,7 @@ export function createHandler(dependencies: ProxyDependencies) {
   const enforceModels =
     env("OPENAI_PROXY_MODEL_ENFORCE")?.trim().toLowerCase() === "true";
   const configuredAnonKey = env("OPENAI_PROXY_ALLOW_ANON") === "true"
-    ? env("SUPABASE_ANON_KEY")
+    ? env("OPENAI_PROXY_ANON_TOKEN") ?? env("SUPABASE_ANON_KEY")
     : undefined;
   const anonKey = configuredAnonKey
     ? encoder.encode(configuredAnonKey)

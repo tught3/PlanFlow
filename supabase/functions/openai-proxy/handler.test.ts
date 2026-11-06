@@ -784,6 +784,8 @@ Deno.test("unsupported methods still return 405 without auth or upstream", async
 
 // Synthetic fixtures only. The handler reads the configured value by name.
 const fakeAnonKey = "test-public-anon-value";
+// banned-ok: Runtime-generated synthetic token used only by this test file.
+const fakeAnonToken = crypto.randomUUID();
 const anonHeaders = { authorization: `Bearer ${fakeAnonKey}` };
 const invalidToken = () =>
   Promise.resolve({ ok: false, status: 401, error: "invalid_token" } as const);
@@ -862,6 +864,50 @@ Deno.test("S2 anon bridge rejects missing, arbitrary, and same-length incorrect 
         body: JSON.stringify(basePayload()),
       }),
     );
+    equal(response.status, 401);
+    equal((await json(response)).error, "invalid_token");
+  }
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2.1 anon bridge admits the configured override token", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_TOKEN: fakeAnonToken } });
+  const response = await h.request(basePayload(), {
+    authorization: `Bearer ${fakeAnonToken}`,
+  });
+  equal(response.status, 200);
+  equal(h.calls.length, 1);
+});
+
+Deno.test("S2.1 anon bridge rejects the Supabase key while the override is set", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_TOKEN: fakeAnonToken } });
+  const response = await h.request(basePayload(), anonHeaders);
+  equal(response.status, 401);
+  equal((await json(response)).error, "invalid_token");
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2.1 an empty override rejects the Supabase key", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_TOKEN: "" } });
+  const response = await h.request(basePayload(), anonHeaders);
+  equal(response.status, 401);
+  equal((await json(response)).error, "invalid_token");
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2.1 an unset override preserves the Supabase key fallback", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_TOKEN: undefined } });
+  const response = await h.request(basePayload(), anonHeaders);
+  equal(response.status, 200);
+  equal(h.calls.length, 1);
+});
+
+Deno.test("S2.1 the override rejects wrong tokens of different and equal lengths", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_TOKEN: fakeAnonToken } });
+  for (const token of ["invalid", fakeAnonToken.slice(0, -1) + "X"]) {
+    const response = await h.request(basePayload(), {
+      authorization: `Bearer ${token}`,
+    });
     equal(response.status, 401);
     equal((await json(response)).error, "invalid_token");
   }
