@@ -30,6 +30,7 @@ type HarnessOptions = {
   verifyUser?: ProxyDependencies["verifyUser"];
   response?: Response;
   fetchError?: Error;
+  fetch?: ProxyDependencies["fetch"];
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -63,6 +64,7 @@ function harness(options: HarnessOptions = {}) {
         init: init ?? {},
         payload: JSON.parse(String(init?.body)),
       });
+      if (options.fetch) return await options.fetch(input, init);
       return options.response?.clone() ?? new Response(
         JSON.stringify({
           choices: [{ message: { content: "ok" } }],
@@ -737,6 +739,7 @@ Deno.test("logs contain aggregates without prompt, userId, key, or raw headers",
   }
   const allowed = new Set([
     "event",
+    "caller_type",
     "caller_hash",
     "model",
     "max_tokens",
@@ -777,4 +780,472 @@ Deno.test("unsupported methods still return 405 without auth or upstream", async
   );
   equal(h.authCalls(), 0);
   equal(h.calls.length, 0);
+});
+
+// Synthetic fixtures only. The handler reads the configured value by name.
+const fakeAnonKey = "test-public-anon-value";
+const anonHeaders = { authorization: `Bearer ${fakeAnonKey}` };
+const invalidToken = () =>
+  Promise.resolve({ ok: false, status: 401, error: "invalid_token" } as const);
+
+function bridgeHarness(options: HarnessOptions = {}) {
+  return harness({
+    verifyUser: invalidToken,
+    ...options,
+    env: {
+      OPENAI_PROXY_ALLOW_ANON: "true",
+      SUPABASE_ANON_KEY: fakeAnonKey,
+      ...options.env,
+    },
+  });
+}
+
+function forwarded(ip: string) {
+  return { ...anonHeaders, "x-forwarded-for": ip };
+}
+
+async function rateLimited(response: Response, seconds: number) {
+  equal(response.status, 429);
+  equal(response.headers.get("retry-after"), String(seconds));
+  equal((await json(response)).error, "rate_limited");
+}
+
+Deno.test("S2 anon bridge requires the exact opt-in switch", async () => {
+  for (const value of [undefined, "false", "TRUE", " true "]) {
+    const h = bridgeHarness({ env: { OPENAI_PROXY_ALLOW_ANON: value } });
+    const response = await h.request(basePayload(), anonHeaders);
+    equal(response.status, 401);
+    equal((await json(response)).error, "invalid_token");
+    equal(h.calls.length, 0);
+  }
+});
+
+Deno.test("S2 anon bridge admits the exact key and applies existing payload limits", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_MAX_TOKENS: "80" } });
+  const response = await h.request({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: "text", extra: "drop" }],
+    max_tokens: 200,
+    max_completion_tokens: 300,
+    n: 4,
+    stream: true,
+    tools: [{}],
+  }, anonHeaders);
+  equal(response.status, 200);
+  equal(h.authCalls(), 1);
+  equal(h.calls.length, 1);
+  equal(h.calls[0].payload, {
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: "text" }],
+    n: 1,
+    stream: false,
+    max_tokens: 80,
+    max_completion_tokens: 80,
+  });
+});
+
+Deno.test("S2 anon bridge rejects missing, arbitrary, and same-length incorrect bearer tokens", async () => {
+  const h = bridgeHarness();
+  for (
+    const authorization of [
+      undefined,
+      "Bearer invalid",
+      `Bearer ${fakeAnonKey.slice(0, -1)}X`,
+      `Bearer ${fakeAnonKey},${fakeAnonKey}`,
+      `Basic ${fakeAnonKey}`,
+    ]
+  ) {
+    const response = await h.handler(
+      new Request("https://proxy.test", {
+        method: "POST",
+        headers: authorization ? { authorization } : {},
+        body: JSON.stringify(basePayload()),
+      }),
+    );
+    equal(response.status, 401);
+    equal((await json(response)).error, "invalid_token");
+  }
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2 anon bridge rejects an absent or empty configured key", async () => {
+  for (const key of [undefined, ""]) {
+    const h = bridgeHarness({ env: { SUPABASE_ANON_KEY: key } });
+    const response = await h.request(basePayload(), anonHeaders);
+    equal(response.status, 401);
+    equal((await json(response)).error, "invalid_token");
+    equal(h.calls.length, 0);
+  }
+});
+
+Deno.test("S2 anon bridge does not relax other auth failures or exceptions", async () => {
+  for (
+    const [status, error] of [
+      [500, "auth_not_configured"],
+      [401, "missing_authorization"],
+      [500, "invalid_token"],
+    ] as const
+  ) {
+    const h = bridgeHarness({
+      verifyUser: () => Promise.resolve({ ok: false, status, error }),
+    });
+    const response = await h.request(basePayload(), anonHeaders);
+    equal(response.status, status);
+    equal((await json(response)).error, error);
+    equal(h.calls.length, 0);
+  }
+  const h = bridgeHarness({
+    verifyUser: () => {
+      throw new Error("mock auth failure");
+    },
+  });
+  equal((await h.request(basePayload(), anonHeaders)).status, 401);
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2 anon model allowlist is enforced even when user enforcement is false", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_MODEL_ENFORCE: "false" } });
+  const response = await h.request({
+    ...basePayload(),
+    model: "outside-the-list",
+  }, anonHeaders);
+  equal(response.status, 400);
+  equal((await json(response)).error, "model_not_allowed");
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2 verified users keep model log-only behavior when the bridge is enabled", async () => {
+  const h = bridgeHarness({
+    verifyUser: () => Promise.resolve({ ok: true, userId: "verified-user" }),
+    env: { OPENAI_PROXY_MODEL_ENFORCE: "false" },
+  });
+  const response = await h.request({
+    ...basePayload(),
+    model: "outside-the-list",
+  }, anonHeaders);
+  equal(response.status, 200);
+  equal(h.calls.length, 1);
+  equal(h.logs[0].event, "model_not_allowed_log_only");
+  equal(h.logs[0].caller_type, "user");
+});
+
+Deno.test("S2 rejected anon model values do not appear in logs", async () => {
+  const h = bridgeHarness();
+  const ip = "192.0.2.123";
+  const response = await h.request({
+    ...basePayload(),
+    model: ip,
+  }, forwarded(ip));
+  equal(response.status, 400);
+  equal((await json(response)).error, "model_not_allowed");
+  equal(h.calls.length, 0);
+  equal(h.logs.length, 1);
+  equal(h.logs[0].caller_type, "anon");
+  assert(!JSON.stringify(h.logs).includes(ip), "raw IP was logged");
+});
+
+Deno.test("S2 anon IP minute quota prefers CF and otherwise uses the first forwarded IP", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_PER_MINUTE: "1" } });
+  const request = (headers: Record<string, string>) =>
+    h.request(basePayload(), { ...anonHeaders, ...headers });
+  equal(
+    (await request({
+      "cf-connecting-ip": "192.0.2.1",
+      "x-forwarded-for": "192.0.2.9",
+    })).status,
+    200,
+  );
+  await rateLimited(
+    await request({
+      "cf-connecting-ip": "192.0.2.1",
+      "x-forwarded-for": "192.0.2.8",
+    }),
+    60,
+  );
+  equal(
+    (await request({ "x-forwarded-for": "192.0.2.9, 192.0.2.8" })).status,
+    200,
+  );
+  await rateLimited(
+    await request({ "x-forwarded-for": "192.0.2.9, 192.0.2.7" }),
+    60,
+  );
+  equal(h.calls.length, 2);
+  h.advance(60_000);
+  equal((await request({ "x-forwarded-for": "192.0.2.9" })).status, 200);
+});
+
+Deno.test("S2 anon requests with no IP share the unknown bucket", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_PER_MINUTE: "1" } });
+  equal((await h.request(basePayload(), anonHeaders)).status, 200);
+  await rateLimited(await h.request(basePayload(), anonHeaders), 60);
+  await rateLimited(await h.request(basePayload(), forwarded("unknown")), 60);
+  equal(h.calls.length, 1);
+});
+
+Deno.test("S2 anon IP day quota outlasts the minute window", async () => {
+  const h = bridgeHarness({ env: { OPENAI_PROXY_ANON_PER_DAY: "1" } });
+  const ip = forwarded("192.0.2.1");
+  equal((await h.request(basePayload(), ip)).status, 200);
+  h.advance(60_000);
+  await rateLimited(await h.request(basePayload(), ip), 86_340);
+  equal((await h.request(basePayload(), forwarded("192.0.2.2"))).status, 200);
+  h.advance(86_340_000);
+  equal((await h.request(basePayload(), ip)).status, 200);
+  equal(h.calls.length, 3);
+});
+
+Deno.test("S2 anon global minute quota caps concurrent callers rotating IPs", async () => {
+  const h = bridgeHarness({
+    env: { OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE: "2" },
+  });
+  const responses = await Promise.all(
+    [1, 2, 3].map((i) => h.request(basePayload(), forwarded(`192.0.2.${i}`))),
+  );
+  equal(responses.map(({ status }) => status).sort(), [200, 200, 429]);
+  await rateLimited(responses.find(({ status }) => status === 429)!, 60);
+  equal(h.calls.length, 2);
+  h.advance(60_000);
+  equal((await h.request(basePayload(), forwarded("192.0.2.4"))).status, 200);
+});
+
+Deno.test("S2 anon global day quota cannot be bypassed by rotating IPs", async () => {
+  const h = bridgeHarness({
+    env: { OPENAI_PROXY_ANON_GLOBAL_PER_DAY: "2" },
+  });
+  for (const i of [1, 2]) {
+    equal(
+      (await h.request(basePayload(), forwarded(`192.0.2.${i}`))).status,
+      200,
+    );
+    h.advance(60_000);
+  }
+  await rateLimited(
+    await h.request(basePayload(), forwarded("192.0.2.3")),
+    86_280,
+  );
+  equal(h.calls.length, 2);
+  h.advance(86_280_000);
+  equal((await h.request(basePayload(), forwarded("192.0.2.4"))).status, 200);
+});
+
+Deno.test("S2 anon quota rejections do not charge the other window ledger", async () => {
+  const h = bridgeHarness({
+    env: {
+      OPENAI_PROXY_ANON_PER_MINUTE: "1",
+      OPENAI_PROXY_ANON_PER_DAY: "1",
+      OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE: "2",
+    },
+  });
+  const request = (i: number) =>
+    h.request(basePayload(), forwarded(`192.0.2.${i}`));
+  equal((await request(1)).status, 200);
+  await rateLimited(await request(1), 86_400);
+  equal((await request(2)).status, 200);
+  await rateLimited(await request(3), 60);
+  h.advance(60_000);
+  equal((await request(3)).status, 200);
+  equal(h.calls.length, 3);
+});
+
+Deno.test("S2 anon and authenticated quotas stay isolated in both directions", async () => {
+  const ip = "192.0.2.7";
+  for (const anonFirst of [true, false]) {
+    const h = bridgeHarness({
+      verifyUser: (req) =>
+        req.headers.get("authorization") === anonHeaders.authorization
+          ? invalidToken()
+          : Promise.resolve({ ok: true, userId: ip }),
+      env: {
+        OPENAI_PROXY_RATE_LIMIT_PER_MINUTE: "1",
+        OPENAI_PROXY_ANON_PER_MINUTE: "1",
+        OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE: "1",
+      },
+    });
+    const anon = () => h.request(basePayload(), forwarded(ip));
+    const user = () => h.request(basePayload(), { "x-forwarded-for": ip });
+    const [first, second] = anonFirst ? [anon, user] : [user, anon];
+    equal((await first()).status, 200);
+    await rateLimited(await first(), 60);
+    equal((await second()).status, 200);
+    await rateLimited(await second(), 60);
+    equal(h.calls.length, 2);
+    equal(
+      h.logs.map((entry) => entry.caller_type),
+      anonFirst
+        ? ["anon", "anon", "user", "user"]
+        : ["user", "user", "anon", "anon"],
+    );
+  }
+});
+
+Deno.test("S2 anon ledger caps active IP entries without eviction", async () => {
+  const h = bridgeHarness({
+    env: {
+      OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE: "20000",
+      OPENAI_PROXY_ANON_GLOBAL_PER_DAY: "20000",
+    },
+  });
+  const request = (index: number) =>
+    h.request(null, forwarded(`2001:db8::${index.toString(16)}`));
+  for (let i = 0; i < 10_000; i++) {
+    equal((await request(i)).status, 400);
+  }
+  await rateLimited(await request(10_000), 86_400);
+  equal((await request(0)).status, 400);
+  await rateLimited(await request(10_000), 86_400);
+  h.advance(86_400_000);
+  equal((await request(10_000)).status, 400);
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2 anon logs include caller type and IP hash without raw inputs", async () => {
+  const h = bridgeHarness();
+  const ip = "192.0.2.123";
+  const prompt = "private anon prompt phrase";
+  const response = await h.request({
+    ...basePayload(),
+    messages: [{ role: "user", content: prompt }],
+  }, forwarded(ip));
+  equal(response.status, 200);
+  equal(h.logs.length, 1);
+  equal(h.logs[0].caller_type, "anon");
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(ip),
+  );
+  equal(
+    h.logs[0].caller_hash,
+    Array.from(
+      new Uint8Array(hash),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join(""),
+  );
+  const logs = JSON.stringify(h.logs);
+  for (const privateInput of [ip, fakeAnonKey, prompt, "test-upstream-key"]) {
+    assert(!logs.includes(privateInput), "private input was logged");
+  }
+});
+
+function trackedBody(headers: Record<string, string> = {}) {
+  let pulls = 0;
+  const request = new Request("https://proxy.test", {
+    method: "POST",
+    headers,
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(
+          new TextEncoder().encode(JSON.stringify(basePayload())),
+        );
+        controller.close();
+      },
+    }, { highWaterMark: 0 }),
+  });
+  return { request, pulls: () => pulls };
+}
+
+Deno.test("S2 auth rejection does not pull a request body stream", async () => {
+  const h = harness({ verifyUser: invalidToken });
+  const body = trackedBody();
+  equal((await h.handler(body.request)).status, 401);
+  equal(body.pulls(), 0);
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2 auth rejection takes precedence over malformed JSON", async () => {
+  const h = harness({ verifyUser: invalidToken });
+  const response = await h.handler(
+    new Request("https://proxy.test", {
+      method: "POST",
+      body: "{",
+    }),
+  );
+  equal(response.status, 401);
+  equal((await json(response)).error, "invalid_token");
+  equal(h.calls.length, 0);
+});
+
+Deno.test("S2 user quota rejection does not pull a request body stream", async () => {
+  const h = harness({ env: { OPENAI_PROXY_RATE_LIMIT_PER_MINUTE: "1" } });
+  equal((await h.request()).status, 200);
+  const body = trackedBody();
+  await rateLimited(await h.handler(body.request), 60);
+  equal(body.pulls(), 0);
+  equal(h.calls.length, 1);
+});
+
+Deno.test("S2 anon global quota rejection does not pull a request body stream", async () => {
+  const h = bridgeHarness({
+    env: { OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE: "1" },
+  });
+  equal((await h.request(basePayload(), forwarded("192.0.2.1"))).status, 200);
+  const body = trackedBody(forwarded("192.0.2.2"));
+  await rateLimited(await h.handler(body.request), 60);
+  equal(body.pulls(), 0);
+  equal(h.calls.length, 1);
+});
+
+Deno.test("S2 upstream timeout aborts fetch and returns a sanitized 504", async () => {
+  const h = harness({
+    env: { OPENAI_PROXY_UPSTREAM_TIMEOUT_MS: "10" },
+    fetch: async (_input, init) => {
+      const signal = init?.signal;
+      assert(signal instanceof AbortSignal, "upstream fetch must get a signal");
+      await new Promise<never>((_resolve, reject) => {
+        const onAbort = () => {
+          clearTimeout(watchdog);
+          reject(new Error("private upstream timeout details"));
+        };
+        const watchdog = setTimeout(() => {
+          signal.removeEventListener("abort", onAbort);
+          reject(new Error("upstream signal did not abort"));
+        }, 500);
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+      });
+      throw new Error("unreachable");
+    },
+  });
+  const response = await h.request();
+  equal(response.status, 504);
+  equal(await json(response), {
+    error: "upstream_timeout",
+    request_id: "test-request-id",
+  });
+  equal(h.calls.length, 1);
+  equal(h.logs[0].status, 504);
+  assert(!JSON.stringify(h.logs).includes("private upstream timeout details"));
+});
+
+Deno.test("S2 upstream timeout signal preserves normal successful responses", async () => {
+  const h = harness({
+    fetch: (_input, init) => {
+      assert(init?.signal instanceof AbortSignal);
+      assert(!init.signal.aborted);
+      return Promise.resolve(new Response('{"result":"ok"}'));
+    },
+  });
+  const response = await h.request();
+  equal(response.status, 200);
+  equal(await json(response), { result: "ok" });
+  equal(h.calls.length, 1);
+});
+
+Deno.test("S2 missing or invalid upstream timeout settings use 30 seconds", async () => {
+  const timeout = AbortSignal.timeout;
+  const delays: number[] = [];
+  AbortSignal.timeout = (delay) => {
+    delays.push(delay);
+    return timeout(delay);
+  };
+  try {
+    for (const value of [undefined, "0", "-1", "1.5", "bad", "2147483648"]) {
+      const h = harness({ env: { OPENAI_PROXY_UPSTREAM_TIMEOUT_MS: value } });
+      equal((await h.request()).status, 200);
+    }
+    equal(delays, Array(6).fill(30_000));
+  } finally {
+    AbortSignal.timeout = timeout;
+  }
 });

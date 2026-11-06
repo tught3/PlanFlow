@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 export type AuthResult =
   | { ok: true; userId: string }
   | { ok: false; status: number; error: string };
@@ -15,6 +17,12 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const HERMES_LOCAL_API_KEY = "hermes-local";
 const MINUTE_MS = 60_000;
 const DAY_MS = 86_400_000;
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 30_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const MAX_ANON_IPS = 10_000;
+const ANON_GLOBAL_BUCKET = "all";
+const BEARER_PREFIX = "bearer ";
+const encoder = new TextEncoder();
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const MESSAGE_ROLES = new Set(["system", "developer", "user", "assistant"]);
 
@@ -26,10 +34,17 @@ type Validation<T> = { ok: true; value: T } | {
   status: number;
 };
 
-function positiveInteger(env: Env, name: string, fallback: number): number {
+function positiveInteger(
+  env: Env,
+  name: string,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number {
   const raw = env(name)?.trim();
   const value = raw && /^\d+$/.test(raw) ? Number(raw) : NaN;
-  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+  return Number.isSafeInteger(value) && value > 0 && value <= max
+    ? value
+    : fallback;
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -179,25 +194,31 @@ function normalizePayload(
 }
 
 class SlidingWindowLimiter {
-  private readonly users = new Map<string, number[]>();
+  private readonly callers = new Map<string, number[]>();
   private lastSweep = -Infinity;
 
   constructor(
     private perMinute: number,
     private perDay: number,
-    private maxUsers: number,
+    private maxCallers: number,
   ) {}
 
-  // No await may be introduced between the quota check and insertion.
-  consume(userId: string, now: number): number | undefined {
+  // Check and charge both limits synchronously. Rejected attempts charge neither.
+  consume(
+    callerId: string,
+    now: number,
+    shared?: SlidingWindowLimiter,
+  ): number | undefined {
     const cutoff = now - DAY_MS;
-    if (now - this.lastSweep >= MINUTE_MS || this.users.size >= this.maxUsers) {
-      for (const [key, times] of this.users) {
-        if (times[times.length - 1] <= cutoff) this.users.delete(key);
+    if (
+      now - this.lastSweep >= MINUTE_MS || this.callers.size >= this.maxCallers
+    ) {
+      for (const [key, times] of this.callers) {
+        if (times[times.length - 1] <= cutoff) this.callers.delete(key);
       }
       this.lastSweep = now;
     }
-    const times = (this.users.get(userId) ?? []).filter((time) =>
+    const times = (this.callers.get(callerId) ?? []).filter((time) =>
       time > cutoff
     );
     if (times.length >= this.perDay) {
@@ -207,23 +228,41 @@ class SlidingWindowLimiter {
     if (minuteTimes.length >= this.perMinute) {
       return Math.max(1, Math.ceil((minuteTimes[0] + MINUTE_MS - now) / 1000));
     }
-    if (!this.users.has(userId) && this.users.size >= this.maxUsers) {
+    if (!this.callers.has(callerId) && this.callers.size >= this.maxCallers) {
       let earliest = now + DAY_MS;
-      for (const entries of this.users.values()) {
+      for (const entries of this.callers.values()) {
         earliest = Math.min(earliest, entries[entries.length - 1] + DAY_MS);
       }
       return Math.max(1, Math.ceil((earliest - now) / 1000));
     }
+    const sharedRetryAfter = shared?.consume(ANON_GLOBAL_BUCKET, now);
+    if (sharedRetryAfter !== undefined) return sharedRetryAfter;
     times.push(now);
-    this.users.set(userId, times);
+    this.callers.set(callerId, times);
     return undefined;
   }
 }
 
-async function hashUser(userId: string): Promise<string> {
+function matchesAnonBearer(req: Request, key?: Uint8Array): boolean {
+  const header = req.headers.get("authorization");
+  if (
+    key === undefined ||
+    header?.slice(0, BEARER_PREFIX.length).toLowerCase() !== BEARER_PREFIX
+  ) return false;
+  const presented = encoder.encode(header.slice(BEARER_PREFIX.length));
+  return presented.length === key.length && timingSafeEqual(presented, key);
+}
+
+function anonIp(req: Request): string {
+  return req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",", 1)[0].trim() ||
+    "unknown";
+}
+
+async function hashCaller(callerId: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(userId),
+    encoder.encode(callerId),
   );
   return Array.from(
     new Uint8Array(digest),
@@ -263,10 +302,32 @@ export function createHandler(dependencies: ProxyDependencies) {
   );
   const enforceModels =
     env("OPENAI_PROXY_MODEL_ENFORCE")?.trim().toLowerCase() === "true";
-  const limiter = new SlidingWindowLimiter(
+  const configuredAnonKey = env("OPENAI_PROXY_ALLOW_ANON") === "true"
+    ? env("SUPABASE_ANON_KEY")
+    : undefined;
+  const anonKey = configuredAnonKey
+    ? encoder.encode(configuredAnonKey)
+    : undefined;
+  const userLimiter = new SlidingWindowLimiter(
     positiveInteger(env, "OPENAI_PROXY_RATE_LIMIT_PER_MINUTE", 20),
     positiveInteger(env, "OPENAI_PROXY_RATE_LIMIT_PER_DAY", 300),
     positiveInteger(env, "OPENAI_PROXY_RATE_LIMIT_MAX_USERS", 10_000),
+  );
+  const anonLimiter = new SlidingWindowLimiter(
+    positiveInteger(env, "OPENAI_PROXY_ANON_PER_MINUTE", 5),
+    positiveInteger(env, "OPENAI_PROXY_ANON_PER_DAY", 60),
+    MAX_ANON_IPS,
+  );
+  const anonGlobalLimiter = new SlidingWindowLimiter(
+    positiveInteger(env, "OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE", 30),
+    positiveInteger(env, "OPENAI_PROXY_ANON_GLOBAL_PER_DAY", 600),
+    1,
+  );
+  const upstreamTimeoutMs = positiveInteger(
+    env,
+    "OPENAI_PROXY_UPSTREAM_TIMEOUT_MS",
+    DEFAULT_UPSTREAM_TIMEOUT_MS,
+    MAX_TIMER_DELAY_MS,
   );
 
   return async (req: Request): Promise<Response> => {
@@ -281,6 +342,7 @@ export function createHandler(dependencies: ProxyDependencies) {
       );
       headers.set("access-control-allow-methods", "POST, OPTIONS");
     }
+    let callerType: "anon" | "user" | undefined = undefined;
     let callerHash: string | undefined = undefined;
     let payload: Payload | undefined = undefined;
     let modelLogOnly = false;
@@ -290,6 +352,7 @@ export function createHandler(dependencies: ProxyDependencies) {
       tokens?: number,
     ) => {
       const entry: Record<string, unknown> = { event, status, request_id: id };
+      if (callerType !== undefined) entry.caller_type = callerType;
       if (callerHash !== undefined) entry.caller_hash = callerHash;
       if (payload !== undefined) {
         entry.model = payload.model;
@@ -337,17 +400,32 @@ export function createHandler(dependencies: ProxyDependencies) {
     } catch {
       return error("invalid_token", 401);
     }
-    if (!auth.ok) return error(auth.error, auth.status);
-    callerHash = await hashUser(auth.userId);
-    const retryAfter = limiter.consume(auth.userId, now());
+    let retryAfter: number | undefined;
+    if (auth.ok) {
+      callerType = "user";
+      callerHash = await hashCaller(auth.userId);
+      retryAfter = userLimiter.consume(auth.userId, now());
+    } else {
+      if (
+        auth.status !== 401 || auth.error !== "invalid_token" ||
+        !matchesAnonBearer(req, anonKey)
+      ) return error(auth.error, auth.status);
+      callerType = "anon";
+      callerHash = await hashCaller(anonIp(req));
+      retryAfter = anonLimiter.consume(callerHash, now(), anonGlobalLimiter);
+    }
     if (retryAfter !== undefined) return error("rate_limited", 429, retryAfter);
 
     const raw = await readPayload(req, maxBytes);
     if (!raw.ok) return error(raw.error, raw.status);
     const normalized = normalizePayload(raw.value, maxMessages, maxTokens);
     if (!normalized.ok) return error(normalized.error, normalized.status);
+    const modelAllowed = models.has(normalized.value.model);
+    if (!modelAllowed && callerType === "anon") {
+      return error("model_not_allowed", 400);
+    }
     payload = normalized.value;
-    if (!models.has(payload.model)) {
+    if (!modelAllowed) {
       if (enforceModels) return error("model_not_allowed", 400);
       modelLogOnly = true;
     }
@@ -360,6 +438,7 @@ export function createHandler(dependencies: ProxyDependencies) {
       (baseUrlValue ? HERMES_LOCAL_API_KEY : undefined);
     if (!apiKey) return error("service_unavailable", 500);
 
+    const signal = AbortSignal.timeout(upstreamTimeoutMs);
     try {
       const response = await fetchUpstream(`${baseUrl}/chat/completions`, {
         method: "POST",
@@ -368,6 +447,7 @@ export function createHandler(dependencies: ProxyDependencies) {
           "content-type": "application/json",
         },
         body: JSON.stringify(payload),
+        signal,
       });
       if (!response.ok) {
         await response.body?.cancel().catch(() => {});
@@ -381,6 +461,7 @@ export function createHandler(dependencies: ProxyDependencies) {
       record(response.status, undefined, responseTokens(rawBody));
       return new Response(rawBody, { status: response.status, headers });
     } catch {
+      if (signal.aborted) return error("upstream_timeout", 504);
       return error("upstream_unavailable", 502);
     }
   };
