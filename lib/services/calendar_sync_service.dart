@@ -418,6 +418,11 @@ class CalendarSyncService {
       final providerKey = _providerKey(provider);
       final events = await _eventRepository.listEvents(userId: userId);
       for (final event in events) {
+        // ICS로 가져온 일정은 어떤 공급자 연동에도 속하지 않는다. 과거 내보내기로
+        // externalCalendarId가 'naver:default' 등으로 덮어써졌어도 지우지 않는다.
+        if (event.source == 'naver_ics') {
+          continue;
+        }
         final isImportedProviderEvent = event.source == providerKey;
         final isLinkedProviderEvent =
             (event.externalCalendarId ?? '').startsWith('$providerKey:');

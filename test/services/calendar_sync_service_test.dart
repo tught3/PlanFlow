@@ -891,6 +891,147 @@ void main() {
       },
     );
   });
+
+  group('disconnectProvider', () {
+    List<EventModel> naverEvents() {
+      final now = DateTime.now();
+      return <EventModel>[
+        EventModel(
+          id: 'naver-1',
+          userId: 'user-1',
+          title: 'Naver event',
+          source: 'naver',
+          externalCalendarId: 'naver:default',
+          startAt: now.add(const Duration(hours: 2)),
+        ),
+        EventModel(
+          id: 'manual-linked',
+          userId: 'user-1',
+          title: 'Linked manual event',
+          externalId: 'planflow-manual-linked@planflow',
+          externalCalendarId: 'naver:default',
+          startAt: now.add(const Duration(hours: 3)),
+        ),
+        EventModel(
+          id: 'manual-plain',
+          userId: 'user-1',
+          title: 'Plain manual event',
+          startAt: now.add(const Duration(hours: 4)),
+        ),
+        EventModel(
+          id: 'ics-original',
+          userId: 'user-1',
+          title: 'Original ICS event',
+          source: 'naver_ics',
+          externalId: 'naver-ics:uid:orig',
+          externalCalendarId: 'naver-ics',
+          startAt: now.add(const Duration(hours: 5)),
+        ),
+        EventModel(
+          id: 'ics-overwritten',
+          userId: 'user-1',
+          title: 'Overwritten ICS event',
+          source: 'naver_ics',
+          externalId: 'planflow-ics-overwritten@planflow',
+          externalCalendarId: 'naver:default',
+          startAt: now.add(const Duration(hours: 6)),
+        ),
+      ];
+    }
+
+    _FakeCalendarConnectionRepository connectionRepository(String provider) {
+      return _FakeCalendarConnectionRepository(
+        initial: CalendarConnectionModel(
+          userId: 'user-1',
+          provider: provider,
+          status: CalendarConnectionStatus.connected,
+        ),
+      );
+    }
+
+    test('Naver disconnect with event deletion keeps ICS-imported rows',
+        () async {
+      final repo = _DeleteRecordingEventRepository(events: naverEvents());
+      final connections = connectionRepository('naver');
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        calendarConnectionRepository: connections,
+      );
+
+      await service.disconnectProvider(
+        CalendarProvider.naver,
+        deleteProviderEvents: true,
+      );
+
+      expect(repo.deletedIds, unorderedEquals(['naver-1', 'manual-linked']));
+      expect(connections.connection, isNull);
+    });
+
+    test('Naver disconnect without event deletion deletes no rows', () async {
+      final repo = _DeleteRecordingEventRepository(events: naverEvents());
+      final connections = connectionRepository('naver');
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        calendarConnectionRepository: connections,
+      );
+
+      await service.disconnectProvider(
+        CalendarProvider.naver,
+        deleteProviderEvents: false,
+      );
+
+      expect(repo.deletedIds, isEmpty);
+      expect(connections.connection, isNull);
+    });
+
+    test('Google disconnect with event deletion keeps ICS-imported rows',
+        () async {
+      final now = DateTime.now();
+      final repo = _DeleteRecordingEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'google-1',
+            userId: 'user-1',
+            title: 'Google event',
+            source: 'google',
+            externalCalendarId: 'google:primary',
+            startAt: now.add(const Duration(hours: 2)),
+          ),
+          EventModel(
+            id: 'ics-google-linked',
+            userId: 'user-1',
+            title: 'Defensive linked ICS event',
+            source: 'naver_ics',
+            externalId: 'naver-ics:uid:g',
+            externalCalendarId: 'google:primary',
+            startAt: now.add(const Duration(hours: 3)),
+          ),
+          EventModel(
+            id: 'manual-plain',
+            userId: 'user-1',
+            title: 'Plain manual event',
+            startAt: now.add(const Duration(hours: 4)),
+          ),
+        ],
+      );
+      final connections = connectionRepository('google');
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        calendarConnectionRepository: connections,
+        googleSignIn: _FakeGoogleSignIn(),
+      );
+
+      await service.disconnectProvider(
+        CalendarProvider.google,
+        deleteProviderEvents: true,
+      );
+
+      expect(repo.deletedIds, equals(['google-1']));
+    });
+  });
 }
 
 class _FakeGoogleSignIn extends GoogleSignIn {
@@ -1010,5 +1151,16 @@ class _FakeCalendarConnectionRepository extends CalendarConnectionRepository {
     required String provider,
   }) async {
     _connection = null;
+  }
+}
+
+class _DeleteRecordingEventRepository extends _FakeEventRepository {
+  _DeleteRecordingEventRepository({required super.events});
+
+  final List<String> deletedIds = <String>[];
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {
+    deletedIds.add(eventId);
   }
 }
