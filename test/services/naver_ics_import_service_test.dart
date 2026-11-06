@@ -80,6 +80,90 @@ void main() {
           '네이버 ICS에서 2개를 가져왔어요. 중복 0개는 건너뛰었습니다.');
     });
 
+    test('merge reports failed files after a partial import', () {
+      const seed =
+          NaverIcsImportResult(success: false, message: '아직 가져온 일정이 없습니다.');
+      const encFail = NaverIcsImportResult.failure(
+          message: naverIcsUnsupportedEncodingMessage);
+      const imported = NaverIcsImportResult(
+          success: true, message: 'x', imported: 2, total: 2);
+      const expected =
+          '네이버 ICS에서 2개를 가져왔어요. 중복 0개는 건너뛰었습니다. 파일 1개는 가져오지 못했습니다.';
+
+      final failureFirst = seed.merge(encFail).merge(imported);
+      final successFirst = seed.merge(imported).merge(encFail);
+
+      expect(failureFirst.message, expected);
+      expect(failureFirst.success, isTrue);
+      expect(failureFirst.failed, 0);
+      expect(successFirst.message, expected);
+      expect(successFirst.success, isTrue);
+      expect(successFirst.failed, 0);
+    });
+
+    test('merge appends failed files after event save failures', () {
+      const seed =
+          NaverIcsImportResult(success: false, message: '아직 가져온 일정이 없습니다.');
+      const encFail = NaverIcsImportResult.failure(
+          message: naverIcsUnsupportedEncodingMessage);
+
+      final result = seed
+          .merge(const NaverIcsImportResult(
+              success: true, message: 'x', imported: 1, failed: 2, total: 3))
+          .merge(encFail);
+
+      expect(result.message,
+          '네이버 ICS에서 1개를 가져오고, 0개는 중복이라 건너뛰었어요. 2개는 저장하지 못했습니다. 파일 1개는 가져오지 못했습니다.');
+      expect(result.failed, 2);
+    });
+
+    test('merge counts a file with no events as a failed file', () {
+      const seed =
+          NaverIcsImportResult(success: false, message: '아직 가져온 일정이 없습니다.');
+
+      final result = seed
+          .merge(const NaverIcsImportResult(
+              success: true, message: 'x', imported: 1, total: 1))
+          .merge(const NaverIcsImportResult(
+              success: false, message: 'ICS 파일에서 가져올 일정을 찾지 못했습니다.'));
+
+      expect(result.message,
+          '네이버 ICS에서 1개를 가져왔어요. 중복 0개는 건너뛰었습니다. 파일 1개는 가져오지 못했습니다.');
+    });
+
+    test('merge does not count a file whose events failed to save as a failed file',
+        () {
+      const seed =
+          NaverIcsImportResult(success: false, message: '아직 가져온 일정이 없습니다.');
+
+      final result = seed
+          .merge(const NaverIcsImportResult(
+              success: true, message: 'x', imported: 1, total: 1))
+          .merge(const NaverIcsImportResult(
+              success: false, message: 'y', failed: 2, total: 2));
+
+      expect(result.message,
+          '네이버 ICS에서 1개를 가져오고, 0개는 중복이라 건너뛰었어요. 2개는 저장하지 못했습니다.');
+    });
+
+    test('merge counts failed files separately from failed events', () {
+      const seed =
+          NaverIcsImportResult(success: false, message: '아직 가져온 일정이 없습니다.');
+      const encFail = NaverIcsImportResult.failure(
+          message: naverIcsUnsupportedEncodingMessage);
+
+      final partial = seed.merge(encFail).merge(const NaverIcsImportResult(
+          success: true, message: 'x', imported: 2, total: 2));
+      expect(partial.failedFiles, 1);
+      expect(partial.failed, 0);
+
+      final allFailed = seed.merge(encFail).merge(
+          const NaverIcsImportResult.failure(message: naverIcsReadFailedMessage));
+      expect(allFailed.message, naverIcsReadFailedMessage);
+      expect(allFailed.failedFiles, 2);
+      expect(allFailed.success, isFalse);
+    });
+
     test('parses ICS event fields into a PlanFlow event draft', () {
       final service = NaverIcsImportService(
         eventRepository: _FakeEventRepository(),

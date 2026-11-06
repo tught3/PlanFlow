@@ -47,6 +47,58 @@ void main() {
     expect(find.text('ICS 파일을 읽고 일정을 저장하는 중입니다.'), findsNothing);
   });
 
+  testWidgets('reports failed file count after a partial import',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: NaverIcsImportScreen(
+      initialPaths: const ['a.ics', 'b.ics'],
+      importService: _ScriptedImportService([
+        const NaverIcsImportResult.failure(
+            message: naverIcsUnsupportedEncodingMessage),
+        const NaverIcsImportResult(
+            success: true, message: 'ok', imported: 1, total: 1),
+      ]),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(
+            '네이버 ICS에서 1개를 가져왔어요. 중복 0개는 건너뛰었습니다. 파일 1개는 가져오지 못했습니다.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('a.ics'), findsNothing);
+    expect(find.textContaining('b.ics'), findsNothing);
+    expect(find.text('실패 0개'), findsOneWidget);
+  });
+
+  testWidgets('reports failed file count when a file throws', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: NaverIcsImportScreen(
+      initialPaths: const ['a.ics', 'b.ics'],
+      importService: _ScriptedImportService([
+        StateError('private detail'),
+        const NaverIcsImportResult(
+            success: true, message: 'ok', imported: 1, total: 1),
+      ]),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(
+            '네이버 ICS에서 1개를 가져왔어요. 중복 0개는 건너뛰었습니다. 파일 1개는 가져오지 못했습니다.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('private detail'), findsNothing);
+  });
+
   testWidgets(
       'shows corrected guide copy across all three pages without overflow',
       (tester) async {

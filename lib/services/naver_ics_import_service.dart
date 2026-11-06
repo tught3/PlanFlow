@@ -433,6 +433,7 @@ class NaverIcsImportResult {
     this.imported = 0,
     this.skipped = 0,
     this.failed = 0,
+    this.failedFiles = 0,
     this.total = 0,
     this.sourcePath,
   });
@@ -443,6 +444,7 @@ class NaverIcsImportResult {
         imported = 0,
         skipped = 0,
         failed = 0,
+        failedFiles = 0,
         total = 0,
         sourcePath = null;
 
@@ -451,6 +453,7 @@ class NaverIcsImportResult {
   final int imported;
   final int skipped;
   final int failed;
+  final int failedFiles;
   final int total;
   final String? sourcePath;
 
@@ -459,17 +462,35 @@ class NaverIcsImportResult {
     final skippedCount = skipped + other.skipped;
     final failedCount = failed + other.failed;
     final totalCount = total + other.total;
+    // 아무것도 남기지 못한 파일 1개(파일 없음, 읽기 실패, UTF-8 아님, 일정 없음,
+    // 화면 예외 대체 결과)를 실패 파일로 센다. 일정 단위 저장 실패(failed)가
+    // 있는 결과는 이미 failedCount로 알리므로 세지 않는다.
+    final otherIsFailedFile = !other.success &&
+        other.imported == 0 &&
+        other.skipped == 0 &&
+        other.failed == 0 &&
+        other.failedFiles == 0;
+    final failedFilesCount =
+        failedFiles + other.failedFiles + (otherIsFailedFile ? 1 : 0);
+    final String message;
+    if (importedCount + skippedCount + failedCount == 0 && !other.success) {
+      message = other.message;
+    } else {
+      final base = failedCount > 0
+          ? '네이버 ICS에서 $importedCount개를 가져오고, $skippedCount개는 중복이라 건너뛰었어요. $failedCount개는 저장하지 못했습니다.'
+          : '네이버 ICS에서 $importedCount개를 가져왔어요. 중복 $skippedCount개는 건너뛰었습니다.';
+      message = failedFilesCount > 0
+          ? '$base 파일 $failedFilesCount개는 가져오지 못했습니다.'
+          : base;
+    }
     return NaverIcsImportResult(
       success:
           success || other.success || importedCount > 0 || skippedCount > 0,
-      message: importedCount + skippedCount + failedCount == 0 && !other.success
-          ? other.message
-          : failedCount > 0
-              ? '네이버 ICS에서 $importedCount개를 가져오고, $skippedCount개는 중복이라 건너뛰었어요. $failedCount개는 저장하지 못했습니다.'
-              : '네이버 ICS에서 $importedCount개를 가져왔어요. 중복 $skippedCount개는 건너뛰었습니다.',
+      message: message,
       imported: importedCount,
       skipped: skippedCount,
       failed: failedCount,
+      failedFiles: failedFilesCount,
       total: totalCount,
       sourcePath: other.sourcePath ?? sourcePath,
     );
