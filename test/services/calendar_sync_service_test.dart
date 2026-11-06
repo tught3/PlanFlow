@@ -15,6 +15,7 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/korean_holidays.dart';
+import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 
 void main() {
@@ -1091,6 +1092,238 @@ void main() {
       );
 
       expect(repo.deletedIds, equals(['google-1']));
+    });
+  });
+
+  group('disconnectProvider Naver CalDAV', () {
+    const path = '/calendars/user/default/';
+    String calDavId(String uid, {String calendarPath = path}) =>
+        'naver-caldav:${base64Url.encode(utf8.encode('$calendarPath::$uid'))}';
+    const calId = 'naver-caldav:$path';
+
+    List<EventModel> naverEvents(DateTime now) {
+      return <EventModel>[
+        EventModel(
+          id: 'naver-1',
+          userId: 'user-1',
+          title: 'Naver event',
+          source: 'naver',
+          externalCalendarId: 'naver:default',
+          startAt: now.add(const Duration(hours: 1)),
+        ),
+        EventModel(
+          id: 'caldav-imported',
+          userId: 'user-1',
+          title: 'Imported CalDAV event',
+          source: 'naver_caldav',
+          externalId: calDavId('naver-uid-1'),
+          externalCalendarId: calId,
+          startAt: now.add(const Duration(hours: 2)),
+        ),
+        EventModel(
+          id: 'manual-caldav-exported',
+          userId: 'user-1',
+          title: 'Exported manual event',
+          externalId: calDavId('planflow-manual-caldav-exported@planflow'),
+          externalCalendarId: calId,
+          startAt: now.add(const Duration(hours: 3)),
+        ),
+        EventModel(
+          id: 'manual-reflected-relabeled',
+          userId: 'user-1',
+          title: 'Reflected manual event',
+          source: 'naver_caldav',
+          externalId: calDavId('planflow-manual-reflected-relabeled@planflow'),
+          externalCalendarId: calId,
+          startAt: now.add(const Duration(hours: 4)),
+        ),
+        EventModel(
+          id: 'caldav-with-people',
+          userId: 'user-1',
+          title: 'CalDAV event with participants',
+          source: 'naver_caldav',
+          externalId: calDavId('naver-uid-2'),
+          externalCalendarId: calId,
+          participants: ['엄마'],
+          startAt: now.add(const Duration(hours: 5)),
+        ),
+        EventModel(
+          id: 'caldav-group',
+          userId: 'user-1',
+          title: 'CalDAV group event',
+          source: 'naver_caldav',
+          externalId: calDavId('naver-uid-3'),
+          externalCalendarId: calId,
+          groupEventId: 'group-event-1',
+          startAt: now.add(const Duration(hours: 6)),
+        ),
+        EventModel(
+          id: 'caldav-strong-alarm',
+          userId: 'user-1',
+          title: 'CalDAV event with strong alarm',
+          source: 'naver_caldav',
+          externalId: calDavId('naver-uid-4'),
+          externalCalendarId: calId,
+          useStrongAlarm: true,
+          startAt: now.add(const Duration(hours: 7)),
+        ),
+        EventModel(
+          id: 'caldav-undecodable',
+          userId: 'user-1',
+          title: 'CalDAV event with invalid key',
+          source: 'naver_caldav',
+          externalId: 'naver-caldav:%%%not-base64',
+          externalCalendarId: calId,
+          startAt: now.add(const Duration(hours: 8)),
+        ),
+        EventModel(
+          id: 'caldav-path-mismatch',
+          userId: 'user-1',
+          title: 'CalDAV event with mismatched path',
+          source: 'naver_caldav',
+          externalId: calDavId(
+            'naver-uid-5',
+            calendarPath: '/calendars/user/other/',
+          ),
+          externalCalendarId: calId,
+          startAt: now.add(const Duration(hours: 9)),
+        ),
+        EventModel(
+          id: 'caldav-no-calendar-id',
+          userId: 'user-1',
+          title: 'CalDAV event without calendar ID',
+          source: 'naver_caldav',
+          externalId: calDavId('naver-uid-6'),
+          startAt: now.add(const Duration(hours: 10)),
+        ),
+        EventModel(
+          id: 'ics-original',
+          userId: 'user-1',
+          title: 'Original ICS event',
+          source: 'naver_ics',
+          externalId: 'naver-ics:uid:orig',
+          externalCalendarId: 'naver-ics',
+          startAt: now.add(const Duration(hours: 11)),
+        ),
+        EventModel(
+          id: 'manual-plain',
+          userId: 'user-1',
+          title: 'Plain manual event',
+          startAt: now.add(const Duration(hours: 12)),
+        ),
+        EventModel(
+          id: 'caldav-critical',
+          userId: 'user-1',
+          title: 'Critical CalDAV event',
+          source: 'naver_caldav',
+          externalId: calDavId('naver-uid-7'),
+          externalCalendarId: calId,
+          isCritical: true,
+          startAt: now.add(const Duration(hours: 13)),
+        ),
+      ];
+    }
+
+    _FakeCalendarConnectionRepository connectionRepository(String provider) {
+      return _FakeCalendarConnectionRepository(
+        initial: CalendarConnectionModel(
+          userId: 'user-1',
+          provider: provider,
+          status: CalendarConnectionStatus.connected,
+        ),
+      );
+    }
+
+    test(
+      'Naver disconnect with event deletion removes only certain CalDAV imports',
+      () async {
+        final repo = _DeleteRecordingEventRepository(
+          events: naverEvents(DateTime.now()),
+        );
+        final connections = connectionRepository('naver');
+        final service = CalendarSyncService(
+          currentUserId: 'user-1',
+          eventRepository: repo,
+          calendarConnectionRepository: connections,
+        );
+
+        await service.disconnectProvider(
+          CalendarProvider.naver,
+          deleteProviderEvents: true,
+        );
+
+        expect(repo.deletedIds, unorderedEquals(['naver-1', 'caldav-imported']));
+        expect(connections.connection, isNull);
+      },
+    );
+
+    test('Google disconnect with event deletion keeps Naver CalDAV imports',
+        () async {
+      final now = DateTime.now();
+      final repo = _DeleteRecordingEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'google-1',
+            userId: 'user-1',
+            title: 'Google event',
+            source: 'google',
+            externalCalendarId: 'google:primary',
+            startAt: now.add(const Duration(hours: 1)),
+          ),
+          naverEvents(now).singleWhere((event) => event.id == 'caldav-imported'),
+        ],
+      );
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        calendarConnectionRepository: connectionRepository('google'),
+        googleSignIn: _FakeGoogleSignIn(),
+      );
+
+      await service.disconnectProvider(
+        CalendarProvider.google,
+        deleteProviderEvents: true,
+      );
+
+      expect(repo.deletedIds, equals(['google-1']));
+    });
+
+    test('Naver disconnect without event deletion keeps Naver CalDAV imports',
+        () async {
+      final repo = _DeleteRecordingEventRepository(
+        events: naverEvents(DateTime.now()),
+      );
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        calendarConnectionRepository: connectionRepository('naver'),
+      );
+
+      await service.disconnectProvider(
+        CalendarProvider.naver,
+        deleteProviderEvents: false,
+      );
+
+      expect(repo.deletedIds, isEmpty);
+    });
+
+    test('CalDAV test external ids match the production key format', () {
+      final event = NaverCalDavEvent(
+        uid: 'naver-uid-1',
+        href: '${path}event-1.ics',
+        etag: '"e1"',
+        icsData: '',
+        title: '네이버 일정',
+        startAt: DateTime.utc(2026, 12, 1, 1),
+      ).toEventModel(
+        userId: 'user-1',
+        calendarPath: path,
+        syncedAt: DateTime.utc(2026, 11, 6),
+      );
+
+      expect(event.externalId, calDavId('naver-uid-1'));
+      expect(event.externalCalendarId, calId);
+      expect(event.source, 'naver_caldav');
     });
   });
 }

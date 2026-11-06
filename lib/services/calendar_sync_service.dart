@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -426,7 +427,11 @@ class CalendarSyncService {
         final isImportedProviderEvent = event.source == providerKey;
         final isLinkedProviderEvent =
             (event.externalCalendarId ?? '').startsWith('$providerKey:');
-        if (isImportedProviderEvent || isLinkedProviderEvent) {
+        final isNaverCalDavImport = provider == CalendarProvider.naver &&
+            _isCertainNaverCalDavImport(event);
+        if (isImportedProviderEvent ||
+            isLinkedProviderEvent ||
+            isNaverCalDavImport) {
           await _eventRepository.deleteEvent(event.id, userId: userId);
         }
       }
@@ -439,6 +444,60 @@ class CalendarSyncService {
 
     if (provider == CalendarProvider.google) {
       await _googleSignInInstance.signOut();
+    }
+  }
+
+  /// 네이버 해제 '일정 삭제'에서 지울 CalDAV 행인지 판정한다.
+  /// CalDAV에서 가져와 만든 행이라고 확실할 때만 true. 확실하지 않으면 false(보존).
+  static bool _isCertainNaverCalDavImport(EventModel event) {
+    const prefix = 'naver-caldav:';
+    if (event.source != 'naver_caldav') {
+      return false;
+    }
+    final externalId = event.externalId?.trim() ?? '';
+    final externalCalendarId = event.externalCalendarId?.trim() ?? '';
+    if (!externalId.startsWith(prefix) ||
+        !externalCalendarId.startsWith(prefix)) {
+      return false;
+    }
+    final uid = _naverCalDavUidFromExternalKey(
+      externalId.substring(prefix.length),
+      calendarPath: externalCalendarId.substring(prefix.length),
+    );
+    if (uid == null) {
+      return false;
+    }
+    // PlanFlow에서 보낸 일정이 되돌아와 연결된 행은 사용자가 만든 일정이다.
+    if (uid.startsWith('planflow-')) {
+      return false;
+    }
+    // 제목+시각 중복으로 연결된 수동 일정일 수 있는 흔적이 있으면 남긴다.
+    if ((event.groupEventId?.trim().isNotEmpty ?? false) ||
+        event.participants.isNotEmpty ||
+        event.targets.isNotEmpty ||
+        event.isCritical ||
+        event.useStrongAlarm) {
+      return false;
+    }
+    return true;
+  }
+
+  /// naver_caldav_service.dart `_stableExternalKey`의 역변환. 형식이 다르면 null.
+  static String? _naverCalDavUidFromExternalKey(
+    String encodedKey, {
+    required String calendarPath,
+  }) {
+    try {
+      final decoded =
+          utf8.decode(base64Url.decode(base64Url.normalize(encodedKey)));
+      final head = '$calendarPath::';
+      if (!decoded.startsWith(head)) {
+        return null;
+      }
+      final uid = decoded.substring(head.length).trim();
+      return uid.isEmpty ? null : uid;
+    } on FormatException {
+      return null;
     }
   }
 
