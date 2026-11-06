@@ -30,14 +30,21 @@ void main() {
       addTearDown(() => directory.delete(recursive: true));
       final repository = _FakeEventRepository();
       final service = NaverIcsImportService(eventRepository: repository);
-      final content = _sampleIcs(uid: 'bad-encoding')
-          .replaceFirst('공임나라 방문', 'PLACEHOLDER');
-      final bytes = utf8
-          .encode(content.replaceFirst('PLACEHOLDER', ''))
-          .toList(growable: true);
-      final summaryIndex =
-          bytes.indexOf(utf8.encode('SUMMARY:').last) + 'SUMMARY:'.length;
-      bytes.insertAll(summaryIndex, <int>[0xb0, 0xa1]);
+      final content =
+          _sampleIcs(uid: 'bad-encoding').replaceFirst('공임나라 방문', '');
+      final summaryKeyIndex = content.indexOf('SUMMARY:');
+      expect(summaryKeyIndex, greaterThanOrEqualTo(0));
+      final summaryValueStart = summaryKeyIndex + 'SUMMARY:'.length;
+      final bytes = <int>[
+        ...utf8.encode(content.substring(0, summaryValueStart)),
+        0xb0,
+        0xa1,
+        ...utf8.encode(content.substring(summaryValueStart)),
+      ];
+      expect(
+        utf8.decode(bytes, allowMalformed: true),
+        contains('SUMMARY:\uFFFD'),
+      );
       final file =
           File('${directory.path}${Platform.pathSeparator}invalid.ics');
       await file.writeAsBytes(bytes);
