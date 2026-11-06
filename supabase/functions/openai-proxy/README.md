@@ -42,6 +42,7 @@ No settings are changed by this implementation.
 | `OPENAI_PROXY_RATE_LIMIT_PER_DAY`     | `300`                                                                                  |
 | `OPENAI_PROXY_RATE_LIMIT_MAX_USERS`   | `10000` active user entries per instance                                               |
 | `OPENAI_PROXY_ALLOW_ANON`             | `false`; only the exact value `true` enables the temporary bridge                      |
+| `OPENAI_PROXY_ANON_TOKEN`             | Overrides `SUPABASE_ANON_KEY` when set. Empty disables anonymous access.               |
 | `OPENAI_PROXY_ANON_PER_MINUTE`        | `5` per IP                                                                             |
 | `OPENAI_PROXY_ANON_PER_DAY`           | `60` per IP                                                                            |
 | `OPENAI_PROXY_ANON_GLOBAL_PER_MINUTE` | `30` across anonymous callers in one instance                                          |
@@ -52,7 +53,7 @@ No settings are changed by this implementation.
 | `OPENAI_BASE_URL`                     | Existing optional base URL override; existing Hermes local key fallback is preserved   |
 | `SUPABASE_URL`                        | Existing authentication helper setting                                                 |
 | `SUPABASE_SERVICE_ROLE_KEY`           | Existing authentication helper setting                                                 |
-| `SUPABASE_ANON_KEY`                   | Existing Supabase public key. A nonempty value is required to admit anonymous callers. |
+| `SUPABASE_ANON_KEY`                   | Existing Supabase public key. Fallback only when `OPENAI_PROXY_ANON_TOKEN` is not set. |
 
 Numeric controls require positive safe integers. The timeout also has a maximum
 of 2,147,483,647 milliseconds. Invalid settings use the listed defaults. A model
@@ -86,9 +87,10 @@ caller receives 429 with Retry-After. Active entries retain their quota history.
 Set `OPENAI_PROXY_ALLOW_ANON=true` only while released clients still need to
 call the proxy with the anon key. The handler first calls `verifyUser`. A 401
 `invalid_token` response permits the anonymous path only if the bearer token
-exactly matches `SUPABASE_ANON_KEY`. Anonymous callers must use an allowlisted
-model even when `OPENAI_PROXY_MODEL_ENFORCE` is disabled. Confirm the released
-clients' model configuration is on the list before enabling the bridge.
+exactly matches `OPENAI_PROXY_ANON_TOKEN` if set or `SUPABASE_ANON_KEY` if
+unset. Anonymous callers must use an allowlisted model even when
+`OPENAI_PROXY_MODEL_ENFORCE` is disabled. Confirm the released clients' model
+configuration is on the list before enabling the bridge.
 
 Anonymous calls use both an IP quota and an instance-wide anonymous quota,
 independent of user quotas. The IP bucket uses `cf-connecting-ip`, then the
