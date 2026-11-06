@@ -164,16 +164,16 @@ function normalizePayload(
       payload[field] = number;
     }
   }
-  if (value.response_format !== undefined) {
+  const responseFormat = value.response_format;
+  if (responseFormat !== undefined) {
     if (
-      !isObject(value.response_format) ||
-      !["text", "json_object", "json_schema"].includes(
-        String(value.response_format.type),
-      )
+      !isObject(responseFormat) ||
+      typeof responseFormat.type !== "string" ||
+      !["text", "json_object", "json_schema"].includes(responseFormat.type)
     ) {
       return invalid("invalid_response_format");
     }
-    payload.response_format = value.response_format;
+    payload.response_format = responseFormat;
   }
   return { ok: true, value: payload };
 }

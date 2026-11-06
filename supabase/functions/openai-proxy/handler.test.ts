@@ -441,6 +441,28 @@ for (
 }
 
 for (
+  const { name, type } of [
+    { name: "an object", type: { toString: null } },
+    { name: "an array", type: ["json_object"] },
+  ]
+) {
+  Deno.test(`response_format rejects ${name} as its type`, async () => {
+    const h = harness();
+    const response = await h.request({
+      ...basePayload(),
+      response_format: { type },
+    });
+    equal(response.status, 400);
+    equal(await json(response), {
+      error: "invalid_response_format",
+      request_id: "test-request-id",
+    });
+    equal(response.headers.get("x-request-id"), "test-request-id");
+    equal(h.calls.length, 0);
+  });
+}
+
+for (
   const messages of [[], null, {}, [{ role: "tool", content: "tool result" }], [
     {
       role: "user",
