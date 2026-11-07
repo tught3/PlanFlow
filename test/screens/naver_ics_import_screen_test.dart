@@ -108,6 +108,8 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    expect(find.text('캘린더 파일 가져오기'), findsOneWidget);
+    expect(find.text('캘린더 앱 열기'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, 1200));
     await tester.pumpAndSettle();
     expect(find.text('캘린더 파일(.ics)로 일정 가져오기'), findsOneWidget);

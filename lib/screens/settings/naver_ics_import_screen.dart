@@ -157,7 +157,7 @@ class _NaverIcsImportScreenState extends State<NaverIcsImportScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(fallbackLocation: AppRoutes.settings),
-        title: const Text('네이버 캘린더 가져오기'),
+        title: const Text('캘린더 파일 가져오기'),
       ),
       body: SafeArea(
         child: ListView(
@@ -344,7 +344,7 @@ class _ImportActions extends StatelessWidget {
         FilledButton.icon(
           onPressed: isImporting ? null : onOpenNaver,
           icon: const Icon(Icons.calendar_month_outlined),
-          label: const Text('네이버 캘린더 열기'),
+          label: const Text('캘린더 앱 열기'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
