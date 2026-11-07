@@ -205,6 +205,60 @@ void main() {
       expect(departure.clearedAcknowledgementEventIds, ['event-3']);
     });
 
+    test('batch delete cleans each event and recalculates once', () async {
+      final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
+      final events = _CountingEventRepository();
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: events,
+        departureAlarmService: departure,
+        notificationService: notifications,
+      );
+
+      await service.cleanupAfterBatchDelete(['one', 'two'], userId: 'user-1');
+
+      expect(departure.clearedAcknowledgementEventIds, ['one', 'two']);
+      expect(notifications.cancelledEventIds, ['one', 'two']);
+      expect(events.listCallCount, 1);
+    });
+
+    test('batch delete skips recalculation without a user', () async {
+      final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
+      final events = _CountingEventRepository();
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: events,
+        departureAlarmService: departure,
+        notificationService: notifications,
+      );
+
+      await service.cleanupAfterBatchDelete(['one', 'two']);
+
+      expect(departure.clearedAcknowledgementEventIds, ['one', 'two']);
+      expect(notifications.cancelledEventIds, ['one', 'two']);
+      expect(events.listCallCount, 0);
+    });
+
+    test('batch delete continues after individual cleanup failures', () async {
+      final notifications = _FailingBatchNotificationService();
+      final departure = _FailingBatchDepartureAlarmService();
+      final events = _CountingEventRepository();
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: events,
+        departureAlarmService: departure,
+        notificationService: notifications,
+      );
+
+      await service.cleanupAfterBatchDelete(['one', 'two'], userId: 'user-1');
+
+      expect(departure.attempts, ['one', 'two']);
+      expect(notifications.attempts, ['one', 'two']);
+      expect(events.listCallCount, 1);
+    });
+
     test('syncAfterSave recalculates prep and departure alarms for the day',
         () async {
       final gateway = _FakeManualEventGateway();
@@ -1234,13 +1288,10 @@ void main() {
     // 않아야 한다. 이 게이트가 없으면 캘린더 재동기화/채널 마이그레이션이
     // 확인한 일정의 알람을 다시 띄우는 회귀가 발생한다.
 
-    test(
-        'scheduleLocalNotifications는 acked 일정의 강한알람을 재예약하지 않는다',
-        () async {
+    test('scheduleLocalNotifications는 acked 일정의 강한알람을 재예약하지 않는다', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       final startAt = DateTime.now().add(const Duration(hours: 3));
       await store.markAcknowledged('event-acked', startAt);
       final event = EventModel(
@@ -1270,8 +1321,7 @@ void main() {
         '재예약한다 (편집 후 다시 울림)', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       final oldStartAt = DateTime.now().add(const Duration(hours: 3));
       final newStartAt = DateTime.now().add(const Duration(hours: 4));
       await store.markAcknowledged('event-edited', oldStartAt);
@@ -1302,8 +1352,7 @@ void main() {
         '재예약하지 않는다 (startAt 조회 실패 케이스)', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       // sentinel을 강제로 저장해 startAt이 정의되지 않은 ack를 시뮬레이션.
       await store.markAcknowledged('event-sentinel', unknownStartSentinel);
 
@@ -1334,8 +1383,7 @@ void main() {
         '다시 울린다', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       await store.markAcknowledged('event-adopt', unknownStartSentinel);
       final firstStart = DateTime.now().add(const Duration(hours: 3));
       final laterStart = DateTime.now().add(const Duration(hours: 6));
@@ -1375,8 +1423,7 @@ void main() {
         () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       await store.markAcknowledged('event-save-sentinel', unknownStartSentinel);
       final service = ManualEventSideEffectService(
         gateway: _FakeManualEventGateway(),
@@ -1401,16 +1448,13 @@ void main() {
       expect(await store.hasAcknowledgement('event-save-sentinel'), isFalse);
       expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
     });
-    test(
-        '1시간 이내 시작 일정의 now+10s 클램프도 acked면 재예약하지 않는다',
-        () async {
+    test('1시간 이내 시작 일정의 now+10s 클램프도 acked면 재예약하지 않는다', () async {
       // 핵심 회귀: 알림 60분 전 시각이 과거인 일정은 _resolveCriticalNotifyAt가
       // now+10s로 클램프해 강한알람을 즉시 예약한다. 이 클램프 경로가 acked
       // 이벤트도 무차별로 다시 울리던 버그를 막아야 한다.
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       final startAt = DateTime.now().add(const Duration(minutes: 30));
       await store.markAcknowledged('event-soon-acked', startAt);
       final event = EventModel(
@@ -1440,8 +1484,7 @@ void main() {
         '(캘린더 재동기화 회귀 방지)', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final notifications = _FakeNotificationService();
-      final store =
-          const SharedPreferencesCriticalAlarmAcknowledgementStore();
+      final store = const SharedPreferencesCriticalAlarmAcknowledgementStore();
       final startAt = DateTime.now().add(const Duration(hours: 5));
       await store.markAcknowledged('event-acked-resync', startAt);
       final event = EventModel(
@@ -1623,6 +1666,36 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) async {
     updatedEvents.add(event);
     return event;
+  }
+}
+
+class _CountingEventRepository extends _FakeEventRepository {
+  int listCallCount = 0;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    listCallCount++;
+    return super.listEvents(userId: userId);
+  }
+}
+
+class _FailingBatchNotificationService extends _FakeNotificationService {
+  final attempts = <String>[];
+
+  @override
+  Future<void> cancelEventNotifications(String eventId) async {
+    attempts.add(eventId);
+    if (eventId == 'two') throw StateError('cancel failed');
+  }
+}
+
+class _FailingBatchDepartureAlarmService extends _FakeDepartureAlarmService {
+  final attempts = <String>[];
+
+  @override
+  Future<void> clearAcknowledgement(String eventId) async {
+    attempts.add(eventId);
+    if (eventId == 'one') throw StateError('ack failed');
   }
 }
 

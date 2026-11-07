@@ -419,6 +419,44 @@ class ManualEventSideEffectService {
     );
   }
 
+  /// Clears per-event state, then recalculates alarms once for the batch.
+  Future<void> cleanupAfterBatchDelete(
+    Iterable<String> eventIds, {
+    String? userId,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+    String travelMode = 'car',
+  }) async {
+    for (final eventId in eventIds) {
+      try {
+        await _departureAlarms.clearAcknowledgement(eventId);
+      } catch (error) {
+        DiagLogger.log(
+            'DIAG', 'batch clear acknowledgement failed: ${error.runtimeType}');
+      }
+      try {
+        await _notifications.cancelEventNotifications(eventId);
+      } catch (error) {
+        DiagLogger.log(
+            'DIAG', 'batch cancel notifications failed: ${error.runtimeType}');
+      }
+    }
+    final resolvedUserId = userId ?? _currentSupabaseUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) return;
+    await recalculateUpcomingAlarmsForUser(
+      userId: resolvedUserId,
+      prepTimeMin: prepTimeMin,
+      prepPreAlarmOffset: prepPreAlarmOffset,
+      departPreAlarmOffset: departPreAlarmOffset,
+      departureSafetyMargin: departureSafetyMargin,
+      travelMode: travelMode,
+    );
+  }
+
   Future<ManualEventAlarmRecalculationResult> recalculateUpcomingAlarmsForUser({
     required String userId,
     Iterable<EventModel> seedEvents = const <EventModel>[],

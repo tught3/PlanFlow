@@ -14,6 +14,11 @@ import 'package:planflow/data/repositories/calendar_connection_repository.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/departure_alarm_service.dart';
+import 'package:planflow/services/event_refresh_bus.dart';
+import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/manual_event_side_effect_service.dart';
+import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/services/korean_holidays.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
@@ -202,10 +207,16 @@ void main() {
       expect(requests.single.bodyFields['scheduleIcalString'],
           contains('UID:planflow-manual-1@planflow'));
       expect(repo.updatedEvents.map((event) => event.id), equals(['manual-1']));
-      expect(repo.events.singleWhere((event) => event.id == 'ios-1')
-          .externalCalendarId, 'ios:cal-1');
-      expect(repo.events.singleWhere((event) => event.id == 'naver-api-1')
-          .externalCalendarId, 'naver-api:defaultCalendarId');
+      expect(
+          repo.events
+              .singleWhere((event) => event.id == 'ios-1')
+              .externalCalendarId,
+          'ios:cal-1');
+      expect(
+          repo.events
+              .singleWhere((event) => event.id == 'naver-api-1')
+              .externalCalendarId,
+          'naver-api:defaultCalendarId');
     });
 
     test('does not export ICS-imported rows to Naver Calendar', () async {
@@ -1015,10 +1026,15 @@ void main() {
         () async {
       final repo = _DeleteRecordingEventRepository(events: naverEvents());
       final connections = connectionRepository('naver');
+      final cleanup = _RecordingBatchCleanup();
+      final widget = _RecordingHomeWidget();
+      final beforeSignal = EventRefreshBus.instance.latest.value?.sequence ?? 0;
       final service = CalendarSyncService(
         currentUserId: 'user-1',
         eventRepository: repo,
         calendarConnectionRepository: connections,
+        manualEventSideEffectService: cleanup,
+        homeWidgetService: widget,
       );
 
       await service.disconnectProvider(
@@ -1028,15 +1044,29 @@ void main() {
 
       expect(repo.deletedIds, unorderedEquals(['naver-1', 'manual-linked']));
       expect(connections.connection, isNull);
+      expect(cleanup.calls, 1);
+      expect(cleanup.ids, unorderedEquals(['naver-1', 'manual-linked']));
+      expect(cleanup.userId, 'user-1');
+      expect(widget.calls, 1);
+      expect(widget.payload!.rawEvents.map((e) => e['id']),
+          containsAll(['manual-plain', 'ics-original', 'ics-overwritten']));
+      expect(widget.payload!.rawEvents.map((e) => e['id']),
+          isNot(contains('naver-1')));
+      expect(EventRefreshBus.instance.latest.value!.sequence, beforeSignal + 1);
     });
 
     test('Naver disconnect without event deletion deletes no rows', () async {
       final repo = _DeleteRecordingEventRepository(events: naverEvents());
       final connections = connectionRepository('naver');
+      final cleanup = _RecordingBatchCleanup();
+      final widget = _RecordingHomeWidget();
+      final beforeSignal = EventRefreshBus.instance.latest.value?.sequence ?? 0;
       final service = CalendarSyncService(
         currentUserId: 'user-1',
         eventRepository: repo,
         calendarConnectionRepository: connections,
+        manualEventSideEffectService: cleanup,
+        homeWidgetService: widget,
       );
 
       await service.disconnectProvider(
@@ -1046,6 +1076,29 @@ void main() {
 
       expect(repo.deletedIds, isEmpty);
       expect(connections.connection, isNull);
+      expect(cleanup.calls, 0);
+      expect(widget.calls, 0);
+      expect(
+          EventRefreshBus.instance.latest.value?.sequence ?? 0, beforeSignal);
+    });
+
+    test('follow-up errors do not fail disconnect', () async {
+      final repo = _DeleteRecordingEventRepository(events: naverEvents());
+      final connections = connectionRepository('naver');
+      final cleanup = _RecordingBatchCleanup(throws: true);
+      final widget = _RecordingHomeWidget(throws: true);
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repo,
+        calendarConnectionRepository: connections,
+        manualEventSideEffectService: cleanup,
+        homeWidgetService: widget,
+      );
+      await service.disconnectProvider(CalendarProvider.naver,
+          deleteProviderEvents: true);
+      expect(connections.connection, isNull);
+      expect(cleanup.calls, 1);
+      expect(widget.calls, 1);
     });
 
     test('Google disconnect with event deletion keeps ICS-imported rows',
@@ -1252,7 +1305,8 @@ void main() {
           deleteProviderEvents: true,
         );
 
-        expect(repo.deletedIds, unorderedEquals(['naver-1', 'caldav-imported']));
+        expect(
+            repo.deletedIds, unorderedEquals(['naver-1', 'caldav-imported']));
         expect(connections.connection, isNull);
       },
     );
@@ -1270,7 +1324,8 @@ void main() {
             externalCalendarId: 'google:primary',
             startAt: now.add(const Duration(hours: 1)),
           ),
-          naverEvents(now).singleWhere((event) => event.id == 'caldav-imported'),
+          naverEvents(now)
+              .singleWhere((event) => event.id == 'caldav-imported'),
         ],
       );
       final service = CalendarSyncService(
@@ -1326,6 +1381,53 @@ void main() {
       expect(event.source, 'naver_caldav');
     });
   });
+}
+
+class _RecordingBatchCleanup extends ManualEventSideEffectService {
+  _RecordingBatchCleanup({this.throws = false});
+  final bool throws;
+  int calls = 0;
+  List<String> ids = [];
+  String? userId;
+
+  @override
+  Future<void> cleanupAfterBatchDelete(
+    Iterable<String> eventIds, {
+    String? userId,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+    String travelMode = 'car',
+  }) async {
+    calls++;
+    ids = eventIds.toList();
+    this.userId = userId;
+    if (throws) throw StateError('cleanup failed');
+  }
+}
+
+class _RecordingHomeWidget extends HomeWidgetService {
+  _RecordingHomeWidget({this.throws = false});
+  final bool throws;
+  int calls = 0;
+  HomeWidgetSchedulePayload? payload;
+
+  @override
+  Future<bool> updateSchedulePayload(
+    HomeWidgetSchedulePayload payload, {
+    String widgetName = HomeWidgetService.defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    calls++;
+    this.payload = payload;
+    if (throws) throw StateError('widget failed');
+    return true;
+  }
 }
 
 class _FakeGoogleSignIn extends GoogleSignIn {
@@ -1454,7 +1556,12 @@ class _DeleteRecordingEventRepository extends _FakeEventRepository {
   final List<String> deletedIds = <String>[];
 
   @override
+  Future<List<EventModel>> listEvents({String? userId}) async =>
+      List<EventModel>.of(events);
+
+  @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {
     deletedIds.add(eventId);
+    events.removeWhere((event) => event.id == eventId);
   }
 }

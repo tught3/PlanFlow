@@ -16,11 +16,18 @@ import '../core/log_text.dart';
 import '../core/local_time.dart';
 import '../data/models/calendar_connection_model.dart';
 import '../data/models/event_model.dart';
+import '../data/models/user_settings_model.dart';
 import '../data/repositories/calendar_connection_repository.dart';
 import '../data/repositories/event_repository.dart';
+import '../data/repositories/settings_repository.dart';
 import 'api_usage_guard.dart';
+import 'departure_alarm_service.dart';
+import 'event_refresh_bus.dart';
 import 'external_event_import_classifier.dart';
+import 'home_widget_service.dart';
+import 'manual_event_side_effect_service.dart';
 import 'naver_calendar_permission_service.dart';
+import 'smart_preparation_alarm_service.dart';
 import 'synced_public_holiday_visibility.dart';
 
 enum CalendarProvider {
@@ -240,6 +247,8 @@ class CalendarSyncService {
     TargetPlatform? googleTargetPlatform,
     http.Client Function()? httpClientFactory,
     ApiUsageGuard? usageGuard,
+    ManualEventSideEffectService? manualEventSideEffectService,
+    HomeWidgetService? homeWidgetService,
   })  : _googleClientId = googleClientId,
         _googleServerClientId = googleServerClientId,
         _googleScopes = List<String>.unmodifiable(googleScopes),
@@ -260,7 +269,10 @@ class CalendarSyncService {
         _googlePlatformSupportedOverride = googlePlatformSupported,
         _googleTargetPlatformOverride = googleTargetPlatform,
         _httpClientFactory = httpClientFactory ?? http.Client.new,
-        _usageGuard = usageGuard;
+        _usageGuard = usageGuard,
+        _manualEventSideEffectService = manualEventSideEffectService ??
+            const ManualEventSideEffectService(),
+        _homeWidgetService = homeWidgetService ?? HomeWidgetService();
 
   final String? _googleClientId;
   final String? _googleServerClientId;
@@ -280,6 +292,8 @@ class CalendarSyncService {
   final int _naverExportLimit;
   final String? _currentUserIdOverride;
   final ApiUsageGuard? _usageGuard;
+  final ManualEventSideEffectService _manualEventSideEffectService;
+  final HomeWidgetService _homeWidgetService;
 
   /// API 사용량 가드 인스턴스. 테스트 주입 우선, 없으면 싱글톤 사용.
   ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
@@ -415,6 +429,7 @@ class CalendarSyncService {
     required bool deleteProviderEvents,
   }) async {
     final userId = _currentUserId();
+    final deletedEventIds = <String>[];
     if (deleteProviderEvents) {
       final providerKey = _providerKey(provider);
       final events = await _eventRepository.listEvents(userId: userId);
@@ -433,6 +448,7 @@ class CalendarSyncService {
             isLinkedProviderEvent ||
             isNaverCalDavImport) {
           await _eventRepository.deleteEvent(event.id, userId: userId);
+          deletedEventIds.add(event.id);
         }
       }
     }
@@ -445,6 +461,49 @@ class CalendarSyncService {
     if (provider == CalendarProvider.google) {
       await _googleSignInInstance.signOut();
     }
+
+    if (deletedEventIds.isEmpty) return;
+
+    UserSettingsModel? settings;
+    try {
+      settings = await SettingsRepository.supabase().fetchSettings(userId);
+    } catch (error) {
+      DiagLogger.log(
+          'DIAG', 'disconnect settings lookup failed: ${error.runtimeType}');
+    }
+    try {
+      await _manualEventSideEffectService.cleanupAfterBatchDelete(
+        deletedEventIds,
+        userId: userId,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        departureSafetyMargin: Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        ),
+        travelMode: settings?.travelMode ?? 'car',
+      );
+    } catch (error) {
+      DiagLogger.log(
+          'DIAG', 'disconnect alarm cleanup failed: ${error.runtimeType}');
+    }
+    try {
+      final events = await _eventRepository.listEvents(userId: userId);
+      await _homeWidgetService.updateSchedulePayload(
+        HomeWidgetSchedulePayloadBuilder.fromEvents(
+          events: events,
+          now: DateTime.now(),
+        ),
+      );
+    } catch (error) {
+      DiagLogger.log(
+          'DIAG', 'disconnect widget update failed: ${error.runtimeType}');
+    }
+    EventRefreshBus.instance.notifyChanged(reason: 'calendar_disconnect');
   }
 
   /// 네이버 해제 '일정 삭제'에서 지울 CalDAV 행인지 판정한다.
