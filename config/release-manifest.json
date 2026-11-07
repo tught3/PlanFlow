@@ -15,7 +15,7 @@
     "releaseRef": "main",
     "distribution": "appstore",
     "successMarker": "APP_STORE_SUBMITTED",
-    "approvedVersionTrain": "1.1.9"
+    "approvedVersionTrain": "1.1.10"
   },
   "version": {
     "source": "pubspec.yaml",
