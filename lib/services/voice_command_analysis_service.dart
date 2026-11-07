@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../core/event_metadata.dart';
@@ -161,10 +162,12 @@ class VoiceCommandAnalysisService {
     Uri? endpoint,
     DateTime Function()? now,
     int maxAiRequests = 3,
+    @visibleForTesting Future<String?> Function()? accessTokenForTesting,
   })  : _client = client,
         _endpoint = endpoint ??
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
         _now = now ?? planflowNow,
+        _accessTokenForTesting = accessTokenForTesting, // banned-ok: test injection callback parameter
         _sessionBudget = VoiceAnalysisRequestBudget(
           maxAiRequests: maxAiRequests,
         );
@@ -172,6 +175,7 @@ class VoiceCommandAnalysisService {
   final http.Client? _client;
   final Uri _endpoint;
   final DateTime Function() _now;
+  final Future<String?> Function()? _accessTokenForTesting;
   final VoiceAnalysisRequestBudget _sessionBudget;
   final Map<String, VoiceCommandAnalysisResult> _aiCache =
       <String, VoiceCommandAnalysisResult>{};
@@ -1155,10 +1159,22 @@ class VoiceCommandAnalysisService {
   }) async {
     final client = _client ?? http.Client();
     try {
+      String? accessToken;
+      try {
+        accessToken = _accessTokenForTesting != null // banned-ok: runtime lookup via the test callback or the current session
+            ? await _accessTokenForTesting()
+            : Supabase.instance.client.auth.currentSession?.accessToken;
+      } catch (_) {
+        accessToken = null;
+      }
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('VoiceCommandAnalysisService stage=anon_fallback');
+        accessToken = AppEnv.supabaseAnonKey; // banned-ok: AppEnv accessor reference
+      }
       final response = await client.post(
         _endpoint,
         headers: <String, String>{
-          'Authorization': 'Bearer ${AppEnv.supabaseAnonKey}',
+          'Authorization': 'Bearer $accessToken',
           'apikey': AppEnv.supabaseAnonKey,
           'Content-Type': 'application/json',
         },
