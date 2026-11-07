@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -38,6 +39,55 @@ void main() {
   });
 
   group('GptService', () {
+    const sessionValue = 'fixture-user-access';
+    const lookupErrorMarker = 'fixture-auth-lookup-detail';
+    final authCases = <(String, Future<String?> Function(), bool)>[
+      ('a signed-in session', () async => sessionValue, false),
+      ('no session', () async => null, true),
+      ('an empty access token', () async => '', true),
+      ('a failed lookup', () async => throw StateError(lookupErrorMarker), true),
+    ];
+
+    for (final (description, readAccessToken, usesAnon) in authCases) {
+      test('sends proxy authorization headers with $description', () async {
+        final logs = <String?>[];
+        final originalDebugPrint = debugPrint;
+        debugPrint = (message, {wrapWidth}) => logs.add(message);
+        addTearDown(() {
+          debugPrint = originalDebugPrint;
+        });
+        final requests = <http.Request>[];
+        final client = MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            '{"choices":[{"message":{"content":"Test briefing"}}]}',
+            200,
+          );
+        });
+        addTearDown(client.close);
+        final service = GptService(
+          client: client,
+          endpoint: Uri.parse(_proxyEndpoint),
+          accessTokenForTesting: readAccessToken,
+        );
+
+        expect(await service.generateMorningBriefing('Today'), 'Test briefing');
+
+        final request = requests.single;
+        final expectedCredential =
+            usesAnon ? AppEnv.supabaseAnonKey : sessionValue;
+        expect(request.headers['authorization'], 'Bearer $expectedCredential');
+        expect(request.headers['apikey'], AppEnv.supabaseAnonKey);
+        expect(request.body, isNot(contains(sessionValue)));
+        expect(
+          logs.where((line) => line?.contains('stage=anon_fallback') ?? false),
+          usesAnon ? const ['GptService parse_completion stage=anon_fallback'] : isEmpty,
+        );
+        expect(logs.join('\n'), isNot(contains(sessionValue)));
+        expect(logs.join('\n'), isNot(contains(lookupErrorMarker)));
+      });
+    }
+
     GptService monthlyLocalService() {
       final client = MockClient((request) async => http.Response(
             jsonEncode(<String, dynamic>{

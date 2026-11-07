@@ -55,6 +55,7 @@ class GptService {
     VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository,
     VoiceCorrectionLearningService? voiceCorrectionLearningService,
     ApiUsageGuard? usageGuard,
+    @visibleForTesting Future<String?> Function()? accessTokenForTesting,
   })  : _client = client,
         _endpoint = endpoint ??
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
@@ -65,7 +66,8 @@ class GptService {
         _voiceCorrectionRuleRepository = voiceCorrectionRuleRepository,
         _voiceCorrectionLearningService = voiceCorrectionLearningService ??
             const VoiceCorrectionLearningService(),
-        _usageGuard = usageGuard;
+        _usageGuard = usageGuard,
+        _accessTokenForTesting = accessTokenForTesting; // banned-ok: test injection callback parameter
 
   final http.Client? _client;
   final Uri _endpoint;
@@ -79,6 +81,7 @@ class GptService {
   final VoiceCorrectionRuleRepository? _voiceCorrectionRuleRepository;
   final VoiceCorrectionLearningService _voiceCorrectionLearningService;
   final ApiUsageGuard? _usageGuard;
+  final Future<String?> Function()? _accessTokenForTesting;
   static const VoiceScheduleStructureService _voiceScheduleStructureService =
       VoiceScheduleStructureService();
 
@@ -341,14 +344,23 @@ class GptService {
         return null;
       }
 
-      final accessToken =
-          Supabase.instance.client.auth.currentSession?.accessToken;
+      String? accessToken;
+      try {
+        accessToken = _accessTokenForTesting != null // banned-ok: runtime lookup via the test callback or the current session
+            ? await _accessTokenForTesting()
+            : Supabase.instance.client.auth.currentSession?.accessToken;
+      } catch (_) {
+        accessToken = null;
+      }
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('GptService parse_completion stage=anon_fallback');
+        accessToken = AppEnv.supabaseAnonKey; // banned-ok: AppEnv accessor reference
+      }
       final response = await client
           .post(
             _endpoint,
             headers: <String, String>{
-              'Authorization':
-                  'Bearer ${accessToken ?? AppEnv.supabaseAnonKey}',
+              'Authorization': 'Bearer $accessToken',
               'apikey': AppEnv.supabaseAnonKey,
               'Content-Type': 'application/json',
             },
