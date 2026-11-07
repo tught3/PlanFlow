@@ -65,7 +65,8 @@ String disconnectPolicyMessage({required bool mentionsIcsKept}) {
   if (!mentionsIcsKept) {
     return base;
   }
-  return '$base\n\nICS 파일로 직접 가져온 일정은 어느 쪽을 골라도 삭제되지 않고 PlanFlow에 남아요.';
+  return '$base\n\nICS 파일로 직접 가져온 일정은 어느 쪽을 골라도 삭제되지 않고 PlanFlow에 남아요.\n'
+      '네이버 CalDAV 일정 중 강한 알림, 참석자, 그룹, 중요 표시 등이 있는 일정은 삭제를 골라도 남을 수 있어요.';
 }
 
 class SettingsScreen extends StatefulWidget {
