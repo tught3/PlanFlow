@@ -103,6 +103,47 @@ val releaseArtifactRequested = requestedTasks.any { taskName ->
     isRelease && isArtifactTask && !isPublishLikeTask
 }
 val releasePublishRequested = publishLikeTaskRequested
+
+// --- PlanFlow isolated guide-QA opt-in (DEBUG ONLY) ---
+// Reads Flutter-encoded --dart-define=PLANFLOW_ISOLATED_GUIDE_QA=true via
+// readDartDefineValue(). On a debug artifact task only, this:
+//   - sets applicationIdSuffix = ".guideqa" so the install has a distinct
+//     applicationId (com.fluxstudio.planflow.guideqa) and may coexist with the
+//     prod build on the same device,
+//   - sets a debugAppLabel manifest placeholder so the debug manifest can
+//     override android:label to "PlanFlowGuideQA" via tools:replace,
+//   - flips the google-services plugin's built-in `disable` flag (via
+//     reflection on its registered extension) so the plugin still applies
+//     but skips google-services.json parsing and the package_name validation
+//     that would otherwise reject the .guideqa applicationId. Crashlytics
+//     stays applied per the directive (NOT release-skipped, only debug opt-in);
+//     its FirebaseOptions lookup degrades gracefully in this build, matching
+//     the existing QA manual-app fence (analytics disabled already).
+// Plugin application timing for google-services and crashlytics is intentionally
+// unchanged across debug, release, and opt-in — only `disable` flips.
+// Namespace, default applicationId, and the release build path are untouched.
+// When optin=false, manifestPlaceholders still resolve to the prod label so the
+// merged manifest is identical to the baseline.
+// Package isolation is on-device only. Existing QA manual flow already uses the
+// dedicated QA Firebase project (not separate production data) plus dedicated
+// Supabase UID, strict RLS, hard budget 0/3, analytics disabled — this change
+// does NOT introduce a new backend.
+val debugArtifactRequested = requestedTasks.any { taskName ->
+    val isDebug = taskName.contains("debug")
+    val isArtifact = taskName.contains("assemble") ||
+        taskName.contains("install") ||
+        taskName.contains("bundle") ||
+        taskName.contains("package")
+    isDebug && isArtifact
+}
+val isolatedGuideQaFlag = readDartDefineValue("PLANFLOW_ISOLATED_GUIDE_QA").lowercase()
+val isolatedGuideQaRequested = isolatedGuideQaFlag == "true" ||
+    isolatedGuideQaFlag == "1" ||
+    isolatedGuideQaFlag == "yes"
+val applyIsolatedGuideQaDebug = isolatedGuideQaRequested &&
+    debugArtifactRequested &&
+    !releaseArtifactRequested
+
 val planflowPlayTrack = providers.gradleProperty("planflowPlayTrack")
     .orNull
     ?.trim()
@@ -266,6 +307,22 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("release")
+            if (applyIsolatedGuideQaDebug) {
+                // Debug-only opt-in: gives the install a distinct applicationId
+                // so it can coexist with the prod build on the same device.
+                // Release builds and default debug builds (no opt-in) keep the
+                // baseline com.fluxstudio.planflow applicationId.
+                applicationIdSuffix = ".guideqa"
+            }
+            // Even when optin=false, the placeholder resolves to the prod label
+            // so the debug manifest override is a no-op for default debug builds.
+            // When optin=true, this lets the debug <application> android:label
+            // override main's "PlanFlow" with "PlanFlowGuideQA".
+            manifestPlaceholders["debugAppLabel"] = if (applyIsolatedGuideQaDebug) {
+                "PlanFlowGuideQA"
+            } else {
+                "PlanFlow"
+            }
         }
 
         release {
@@ -277,6 +334,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+    }
+
+    // Isolated guide QA only: no google-services.json exists for the .guideqa
+    // package, so skip the known debug google-services task. Default debug and
+    // all release paths keep the static plugins and run the task normally.
+    if (applyIsolatedGuideQaDebug) {
+        project.tasks.configureEach {
+            if (name == "processDebugGoogleServices") {
+                enabled = false
+            }
         }
     }
 }

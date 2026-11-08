@@ -594,6 +594,8 @@ END:VCALENDAR
 
     final result = await service.syncAll(
       mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
       onProgress: progress.add,
     );
 
@@ -652,7 +654,11 @@ END:VCALENDAR
       currentUserId: 'user-1',
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     expect(result.success, isTrue);
     expect(result.createdOrUpdated, 0);
@@ -699,7 +705,11 @@ END:VCALENDAR
       currentUserId: 'user-1',
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     expect(result.success, isTrue);
     expect(result.createdOrUpdated, 1);
@@ -745,7 +755,11 @@ END:VCALENDAR
       currentUserId: 'user-1',
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     expect(result.success, isTrue);
     expect(result.createdOrUpdated, 0);
@@ -800,7 +814,11 @@ END:VCALENDAR
       currentUserId: 'user-1',
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     expect(result.createdOrUpdated, 1);
     expect(result.skipped, 0);
@@ -918,6 +936,8 @@ END:VCALENDAR
 
     final result = await service.syncAll(
       mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
       diagnosticImport: true,
     );
 
@@ -967,7 +987,11 @@ END:VCALENDAR
       currentUserId: 'user-1',
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     expect(result.success, isTrue);
     expect(result.createdOrUpdated, 0);
@@ -1136,7 +1160,11 @@ $eventXmlItems
       currentUserId: 'user-1',
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     expect(result.success, isTrue);
     expect(result.createdOrUpdated, n);
@@ -1222,7 +1250,11 @@ $eventXmlItems
       usageGuard: guard,
     );
 
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
 
     // 첫 배치(8개)만 저장되고 나머지는 가드가 막아 저장되지 않는다.
     expect(result.success, isTrue);
@@ -1256,7 +1288,11 @@ $eventXmlItems
         },
       ),
     );
-    final result2 = await service2.syncAll(mode: NaverCalDavSyncMode.quick);
+    final result2 = await service2.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
     expect(result2.createdOrUpdated, n,
         reason: '넉넉한 rateLimit에서는 전체 $n개가 저장되어야 한다');
     expect(repository2.upserted, hasLength(n));

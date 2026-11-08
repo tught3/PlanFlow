@@ -1,4 +1,10 @@
 import 'dart:async';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
+import '../../onboarding/real_ui_guide/guide_guards.dart';
+import '../../onboarding/real_ui_guide/guide_route_recovery.dart';
+import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../widgets/guided_anchor.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +25,7 @@ import '../../features/groups/repositories/group_repository.dart';
 import '../../features/groups/services/group_event_share_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
+import '../../services/event_range_utils.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/location_lookup_service.dart';
@@ -58,6 +65,9 @@ class VoiceConversationScreen extends StatefulWidget {
     this.autoStart = false,
     this.initialText,
     this.entryGrant,
+    this.guideEntryPermit,
+    this.guideInitialVoiceEvidence,
+    this.guideRouteRecovery,
     this.sideEffectService,
   });
 
@@ -95,6 +105,9 @@ class VoiceConversationScreen extends StatefulWidget {
   /// 게이트를 거치지 않고 이 화면이 직접 열린 경우에는 null이며, 이 경우 화면이
   /// 스스로 게이트를 호출한다(initState의 self-gate 참조).
   final VoiceConversationEntryGrant? entryGrant;
+  final GuidePermit? guideEntryPermit;
+  final Map<String, Object?>? guideInitialVoiceEvidence;
+  final GuideRouteRecovery? guideRouteRecovery;
 
   @override
   State<VoiceConversationScreen> createState() =>
@@ -118,13 +131,111 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   late final GroupEventRepository _groupEventRepository =
       widget.groupEventRepository ?? GroupEventRepository.supabase();
   late final VoiceConversationController _conversation =
-      VoiceConversationController(events: const <EventModel>[]);
+      VoiceConversationController(
+          events: const <EventModel>[],
+          guideSnapshot: () => _guide?.state.value);
   // 개인 일정 일간 motion에서 알림/외부 캘린더/위젯 재동기화를 위해 사용하는
   // 사이드 이펙트 서비스. 테스트에서는 [sideEffectService] 주입으로 가짜
   // 구현을 넣어 호출 횟수와 인자를 검증한다. 이벤트 편집 화면과 동일한
   // 기본 구현([ManualEventSideEffectService])을 쓴다.
   late final ManualEventSideEffectService _sideEffectService =
       widget.sideEffectService ?? const ManualEventSideEffectService();
+
+  GuideCoordinator? _guide;
+  GuideVisibleBinding? _guideBinding;
+  bool _foreground = true;
+  int? _guideResultsMessageIndex;
+  bool _guideSessionEntered = false;
+  bool _didRestoreGuideResults = false;
+
+  void _restoreGuideResultsReadOnly() {
+    final recovery = widget.guideRouteRecovery;
+    if (_didRestoreGuideResults || recovery == null) return;
+    _didRestoreGuideResults = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false) ||
+          !recovery.restoresResults ||
+          !recovery.isCurrent(_guide, authProvider.userId)) {
+        return;
+      }
+      final s = _guide!.state.value;
+      final binding = _conversation.bindGuideResults(s, [recovery.event]);
+      if (!GuideResultOrder.validForOrdinalEdit(
+          guide: s, binding: binding, expectedRevision: s.revision)) {
+        return;
+      }
+      setState(() {
+        _events = binding.ordered;
+        _conversation.replaceEvents(binding.ordered);
+        _guideBinding = binding;
+        _guideResultsMessageIndex = _messages.length;
+        _messages.add(_ConversationMessage.assistant(
+            '저장한 일정이에요. 마이크를 누르면 시간 변경을 이어갈 수 있어요.',
+            events: binding.ordered));
+        _isLoading = false;
+        _keepListening = false;
+        _voicePausedByUser = true;
+      });
+    });
+  }
+  bool get _guideMode =>
+      _guideSessionEntered ||
+      (_guide?.state.value.isInProgress ?? false) ||
+      widget.guideEntryPermit != null;
+  bool get _guideCanListen =>
+      !_guideMode ||
+      (_foreground &&
+          (_guide?.state.value.run == GuideRun.active) &&
+          _guide?.state.value.uid == authProvider.userId &&
+          (ModalRoute.of(context)?.isCurrent ?? false) &&
+          !_voicePausedByUser);
+
+  Future<GuidePermit?> _authorizeGuideTurn() async {
+    final coordinator = _guide;
+    final s = coordinator?.state.value;
+    if (coordinator == null ||
+        s == null ||
+        s.sessionId == null ||
+        s.uid != authProvider.userId ||
+        s.run != GuideRun.active) {
+      return null;
+    }
+    final op =
+        s.step == GuideStep.changeSpeech || s.step == GuideStep.editPreview
+            ? GuideOperation.changeTime
+            : GuideOperation.query;
+    final access = await coordinator.authorize(
+        context: GuideChargeContext(
+            uid: s.uid,
+            version: s.version,
+            sessionId: s.sessionId!,
+            kind: GuideChargeKind.voiceConversation,
+            operation: op,
+            phase: s.step,
+            revision: s.revision,
+            serverRevision: s.serverRevision,
+            createdEventId: s.createdEventId),
+        operationId:
+            'conversation:${s.sessionId}:${s.revision}:${DateTime.now().microsecondsSinceEpoch}');
+    final current = coordinator.state.value;
+    if (!mounted ||
+        authProvider.userId != s.uid ||
+        current.uid != s.uid ||
+        current.sessionId != s.sessionId ||
+        current.revision != s.revision) {
+      return null;
+    }
+    final p = access.permit;
+    return access.status == GuideAccessStatus.granted &&
+            p != null &&
+            p.uid == s.uid &&
+            p.sessionId == s.sessionId &&
+            p.operation == op &&
+            p.kind == GuideChargeKind.voiceConversation &&
+            p.expiresAtUtc.isAfter(DateTime.now().toUtc())
+        ? p
+        : null;
+  }
 
   List<EventModel> _events = const <EventModel>[];
   // 그룹 일정을 개인 EventModel로 변환해 음성 후보 목록에 병합할 때, id로
@@ -207,7 +318,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         unawaited(_resolveEntryGrantViaSelfGate());
       });
     }
-    unawaited(_loadEvents().then((_) => _submitInitialTextIfNeeded()));
+    if (widget.guideRouteRecovery == null) {
+      unawaited(_loadEvents().then((_) => _submitInitialTextIfNeeded()));
+    }
     if (widget.autoStart && (widget.initialText ?? '').trim().isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_autoStartListeningAfterEntryGrantReady());
@@ -237,6 +350,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// - 게이트가 실제로 진입을 거부한 경우(광고 실패 등 정책상 거부)에는
   ///   화면을 닫고 안내 스낵바를 보여준다.
   Future<void> _resolveEntryGrantViaSelfGate() async {
+    if (_guideMode) {
+      _completeEntryGrantReadyIfNeeded();
+      return;
+    }
     if (!mounted) {
       _completeEntryGrantReadyIfNeeded();
       return;
@@ -297,6 +414,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 분석 이벤트를 남긴다. 소비 자체가 실패해도(fail-open) 세션 시작
   /// 이벤트는 항상 남긴다.
   Future<void> _consumeEntitlement(VoiceConversationEntryGrant grant) async {
+    if (_guideMode) return;
     // adFailedFreePass는 광고도 무료횟수도 소진된 상태에서의 예외 통과다
     // (VoiceConversationAdGate.maybeFreePassGrant 참조). 이 경로는 정상적인
     // 무료소진이 아니므로 consume()을 호출하지 않는다.
@@ -339,6 +457,35 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
   }
 
+  bool _validInitialGuideCapture(String text) {
+    final e = widget.guideInitialVoiceEvidence;
+    final p = widget.guideEntryPermit;
+    final s = _guide?.state.value;
+    if (e == null || p == null || s == null) return false;
+    final timestamp = DateTime.tryParse(e['capturedAtUtc']?.toString() ?? '');
+    final age = timestamp == null
+        ? null
+        : DateTime.now().toUtc().difference(timestamp.toUtc());
+    return s.run == GuideRun.active &&
+        s.uid == authProvider.userId &&
+        e['uid'] == s.uid &&
+        e['sessionId'] == s.sessionId &&
+        e['source'] == 'stt_service_capture' &&
+        e['operation'] == 'query' &&
+        e['inputText'] == text &&
+        e['captureId'] is String &&
+        (e['captureId'] as String).trim().isNotEmpty &&
+        e['operationId'] == p.operationId &&
+        p.uid == s.uid &&
+        p.sessionId == s.sessionId &&
+        p.operation == GuideOperation.query &&
+        p.kind == GuideChargeKind.voiceConversation &&
+        p.expiresAtUtc.isAfter(DateTime.now().toUtc()) &&
+        age != null &&
+        age.inSeconds >= 0 &&
+        age.inMinutes < 5;
+  }
+
   Future<void> _submitInitialTextIfNeeded() async {
     if (!mounted || _didSubmitInitialText) {
       return;
@@ -356,7 +503,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     debugPrint('VoiceConversationScreen initialText submit: $text');
     _didSubmitInitialText = true;
-    await _submitText(text);
+    await _submitText(text,
+        fromGuideInitialCapture: _validInitialGuideCapture(text));
     if (!mounted || !widget.autoStart) {
       return;
     }
@@ -373,6 +521,16 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground && _guideMode) {
+      _listenGeneration += 1;
+      _inputTurnGeneration += 1;
+      _isListening = false;
+      unawaited(widget.sttService.cancelActiveListen());
+    }
+    if (!_foreground && _guideMode) {
+      _guide?.suspend(GuidePauseReason.background);
+    }
     // 백그라운드/전화/화면잠금 시 음성인식 즉시 종료 (좀비 세션·띠링 방지)
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
@@ -389,6 +547,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   @override
   void deactivate() {
+    _listenGeneration += 1;
+    _inputTurnGeneration += 1;
+    if (_guideMode) _voicePausedByUser = true;
     // 페이지를 벗어나는 즉시(pop 직전) STT 무조건 종료
     _keepListening = false;
     _restartListenTimer?.cancel();
@@ -402,8 +563,22 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    authProvider.removeListener(_handleGuideAuthChange);
+    authProvider.addListener(_handleGuideAuthChange);
+    _guide = GuideScope.maybeOf(context);
+    if (_guide?.state.value.isInProgress ?? false) _guideSessionEntered = true;
+    _restoreGuideResultsReadOnly();
+    if (_guideMode && !_guideCanListen && (_isListening || _keepListening)) {
+      unawaited(_pauseVoiceInput());
+    }
     if (MediaQuery.of(context).viewInsets.bottom > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    }
+  }
+
+  void _handleGuideAuthChange() {
+    if (_guideMode && _guide?.state.value.uid != authProvider.userId) {
+      unawaited(_pauseVoiceInput());
     }
   }
 
@@ -415,6 +590,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (!_usageConsumedForSession) {
       unawaited(AnalyticsService.logVoiceConvSessionAbandonedBeforeUse());
     }
+    authProvider.removeListener(_handleGuideAuthChange);
     WidgetsBinding.instance.removeObserver(this);
     _keepListening = false;
     _restartListenTimer?.cancel();
@@ -542,6 +718,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   Future<void> _submitText(
     String? overrideText, {
     bool fromVoiceFinal = false,
+    bool fromGuideInitialCapture = false,
     bool inputGenerationAlreadyInvalidated = false,
   }) async {
     // self-gate(딥링크 등 entryGrant 미보유 진입)가 아직 끝나지 않았는데
@@ -577,7 +754,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     // 정확히 1회만 소비하도록 동기적으로 먼저 플래그를 선점한 뒤, 실제
     // RPC 소비는 블로킹 없이 fire-and-forget으로 진행한다(소비 실패해도
     // 사용자 명령 처리 자체는 막지 않음 — fail-open).
-    if (!_usageConsumedForSession) {
+    final guidePermit = _guideMode ? await _authorizeGuideTurn() : null;
+    if (_guideMode && guidePermit == null) return;
+    if (!_guideMode && !_usageConsumedForSession) {
       _usageConsumedForSession = true;
       final grant = _effectiveEntryGrant;
       if (grant != null) {
@@ -649,6 +828,53 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       }
       _conversation.replaceEvents(_events);
       final result = _conversation.handle(text);
+      if (_guideMode &&
+          result.action != VoiceConversationAction.showEvents &&
+          result.action != VoiceConversationAction.none) {
+        final s = _guide?.state.value;
+        final b = _guideBinding;
+        final target = result.targetEvent;
+        final start = result.draftEvent?.startAt;
+        if (s == null ||
+            b == null ||
+            target == null ||
+            start == null ||
+            authProvider.userId != s.uid ||
+            !GuideResultOrder.validForOrdinalEdit(
+                guide: s, binding: b, expectedRevision: s.revision) ||
+            target.id != s.createdEventId ||
+            !fromVoiceFinal ||
+            guidePermit?.operation != GuideOperation.changeTime ||
+            !result.canAutoApplyDateChange ||
+            start == target.startAt) {
+          return;
+        }
+        await _guide!.dispatch(EditPreviewObserved(
+            uid: s.uid,
+            sessionId: s.sessionId!,
+            expectedRevision: s.revision,
+            targetEventId: target.id,
+            requestedStartLocal: start));
+        final now = _guide!.state.value;
+        if (!mounted ||
+            authProvider.userId != s.uid ||
+            now.uid != s.uid ||
+            now.sessionId != s.sessionId ||
+            now.run != GuideRun.active ||
+            now.step != GuideStep.editPreview ||
+            now.expectedUpdatedStartLocal != start) {
+          return;
+        }
+        await _stopVoiceBeforeNavigation();
+        if (!mounted) return;
+        await context.push(
+            '${AppRoutes.eventEdit}/${Uri.encodeComponent(target.id)}',
+            extra: <String, Object>{
+              'event': _canonicalOriginalFor(target.id) ?? target,
+              'initialGuideStartLocal': start
+            });
+        return;
+      }
       debugPrint(
         'VoiceConversationScreen result: '
         'action=${result.action.name} visible=${result.visibleEvents.length}',
@@ -805,6 +1031,39 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           ),
         );
       });
+      if (_guideMode &&
+          result.action == VoiceConversationAction.showEvents &&
+          guidePermit != null &&
+          (fromVoiceFinal || fromGuideInitialCapture)) {
+        final s = _guide!.state.value;
+        final binding = _conversation.bindGuideResults(s, result.visibleEvents);
+        _guideResultsMessageIndex = _messages.length - 1;
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted ||
+              authProvider.userId != s.uid ||
+              _guide!.state.value.revision != s.revision ||
+              !(ModalRoute.of(context)?.isCurrent ?? false) ||
+              realUiGuideAnchorRegistry
+                  .keyFor('query.results')
+                  ?.currentContext
+                  ?.findRenderObject() is! RenderBox) {
+            return;
+          }
+          await _guide!.dispatch(QueryObserved(
+              uid: s.uid,
+              sessionId: s.sessionId!,
+              expectedRevision: s.revision,
+              binding: binding,
+              operationId: guidePermit.operationId));
+          if (!mounted ||
+              authProvider.userId != s.uid ||
+              _guide!.state.value.sessionId != s.sessionId) {
+            return;
+          }
+          _guideBinding = _conversation.bindGuideResults(
+              _guide!.state.value, binding.ordered);
+        });
+      }
     } catch (error) {
       debugPrint('VoiceConversationScreen submit failed: $error');
       if (!mounted) return;
@@ -832,6 +1091,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<void> _listenOnce() async {
+    if (!_guideCanListen) return;
     if (_isListening) {
       debugPrint('VoiceConversationScreen listen ignored: already listening');
       return;
@@ -1093,13 +1353,23 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   void _scheduleAutoRestartListen({
     Duration delay = const Duration(milliseconds: 700),
   }) {
-    if (!_keepListening || _voicePausedByUser || !mounted) {
+    if ((_guideMode && !(_guide?.state.value.mayListenContinuously ?? false)) ||
+        !_guideCanListen ||
+        !_keepListening ||
+        _voicePausedByUser ||
+        !mounted) {
       return;
     }
     _isRestartPending = true;
     _restartListenTimer?.cancel();
     _restartListenTimer = Timer(delay, () {
-      if (_keepListening && !_voicePausedByUser && mounted && !_isListening) {
+      if (_guideCanListen &&
+          (!_guideMode ||
+              (_guide?.state.value.mayListenContinuously ?? false)) &&
+          _keepListening &&
+          !_voicePausedByUser &&
+          mounted &&
+          !_isListening) {
         _isRestartPending = false;
         unawaited(_listenOnce());
       }
@@ -1169,6 +1439,16 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       // 여기서 추가 안내는 불필요.)
       return;
     }
+    if (resetRetryPolicy &&
+        _guideMode &&
+        _foreground &&
+        _guide?.state.value.run == GuideRun.paused) {
+      final s = _guide!.state.value;
+      if (s.uid != authProvider.userId || s.sessionId == null) return;
+      await _guide!.dispatch(ResumeRequested(
+          uid: s.uid, sessionId: s.sessionId!, expectedRevision: s.revision));
+    }
+    if (resetRetryPolicy && _foreground) _voicePausedByUser = false;
     if (resetRetryPolicy) {
       _didRetryConversationEarlyFailure = false;
       _didRetrySilentNativeStart = false;
@@ -1363,7 +1643,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   ///    개인 사본을 가진 일정). 본 적 목록(_events)에 없는 id이거나
   ///    [_groupEventById] 레지스트리에 존재하는 그룹 일정이면 false.
   /// 3) 반복 일정(rrule)이 아니고 그룹 일정 연결(groupEventId)도 없는 일정.
-  /// 4) 드래프트가 시작 시각을 가지고 있고 원본과 실제 다른 값을 가지고 있다.
+  /// 4) 원본과 드래프트에 시작 시각이 있고 서로 다른 값이다.
   /// 5) 결과에 다른 필드 변경(locationText, criticalValue)이 함께 실려
   ///    있지 않다(동시 변경은 컨트롤러 쪽에서 requiresEditScreenNavigation을
   ///    세우지만, 방어 차원에서 한 번 더 검사한다).
@@ -1387,11 +1667,16 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (result.criticalValue != null) {
       return false;
     }
+    // 종료/구간/기간/종일/N박 발화는 시작 단독 자동 저장 대상이 아니다.
+    if (utteranceHasExplicitEndOrDurationCue(result.inputText)) {
+      return false;
+    }
     final draft = result.draftEvent;
     if (draft == null || draft.startAt == null) {
       return false;
     }
-    if (targetEvent.startAt == draft.startAt) {
+    final originalStart = targetEvent.startAt;
+    if (originalStart == null || originalStart == draft.startAt) {
       return false;
     }
     final rule = targetEvent.recurrenceRule?.trim();
@@ -1546,6 +1831,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     required VoiceConversationResult result,
     required EventModel targetEvent,
   }) async {
+    if (_guideMode) return false;
     // 위젯 경로를 거치지 않고 직접 호출되는 경우에도 가드를 다시 통과시킨다.
     // 가드가 거부하면 저장 없이 false 로 fail-closed 한다.
     if (!_canApplyDateChangeAuto(result: result, targetEvent: targetEvent)) {
@@ -1553,22 +1839,14 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     final draft = result.draftEvent!;
     final newStart = draft.startAt!;
-    final originalStart = targetEvent.startAt;
-    final originalEnd = targetEvent.endAt;
-    final originalDuration = (originalStart != null && originalEnd != null)
-        ? originalEnd.difference(originalStart)
-        : const Duration(hours: 1);
-    final fallbackEnd = newStart.add(
-      originalDuration.isNegative || originalDuration == Duration.zero
-          ? const Duration(hours: 1)
-          : originalDuration,
+    // 가드를 통과한 시작 단독 변경은 새 시작 기준 기본 종료를 사용한다.
+    final newEnd = shiftEventEndWhenStartChanges(
+      previousStart: targetEvent.startAt!,
+      newStart: newStart,
+      currentEnd: draft.endAt,
+      endEditedByUser: false,
     );
-    // 드래프트 종료가 없거나 새 시작보다 과거(원본 날짜의 오래된 endAt 이
-    // 남은 경우)면, 원본 시각/길이를 보존해 새 시작 기준으로 재계산한다.
-    final draftEnd = draft.endAt;
-    final newEnd = (draftEnd != null && draftEnd.isAfter(newStart))
-        ? draftEnd
-        : fallbackEnd;
+    if (newEnd == null) return false;
 
     try {
       final overlappingEvents = await _repository.findOverlappingEvents(
@@ -1580,12 +1858,13 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       if (!mounted) {
         return false;
       }
-      final candidateDraft = targetEvent.copyWith(
+      final updated = targetEvent.copyWith(
         startAt: newStart,
         endAt: newEnd,
+        isMultiDay: !planflowIsSameLocalDay(newStart, newEnd),
       );
       final duplicateWarningEvents = filterDuplicateWarningEvents(
-        draft: candidateDraft,
+        draft: updated,
         candidates: overlappingEvents,
       );
       if (duplicateWarningEvents.isNotEmpty) {
@@ -1600,8 +1879,6 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           return false;
         }
       }
-
-      final updated = targetEvent.copyWith(startAt: newStart, endAt: newEnd);
 
       // 기존 push 리마인더의 개별 오프셋은 '저장 이전'에 복원한다. 복원이
       // 실패하면 예외가 던져져 아래 updateEvent에 도달하지 못하고 fail-closed
@@ -1676,6 +1953,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   Future<bool> _applyConversationEventUpdate(
     VoiceConversationResult result,
   ) async {
+    if (_guideMode) return false;
     final event = result.targetEvent;
     if (event == null) {
       return false;
@@ -1758,6 +2036,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     VoiceConversationResult result,
     GroupEventModel groupEvent,
   ) async {
+    if (_guideMode) return false;
     var updated = groupEvent;
     var changed = false;
 
@@ -1847,6 +2126,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 그룹 일정 음성 삭제. 그룹 일정은 하드 삭제 API가 없으므로
   /// [GroupEventRepository.cancelGroupEvent]로 소프트 취소한다.
   Future<bool> _cancelGroupEvent(GroupEventModel groupEvent) async {
+    if (_guideMode) return false;
     try {
       await _groupEventRepository.cancelGroupEvent(groupEvent.id);
       _groupEventById.remove(groupEvent.id);
@@ -1891,6 +2171,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 개인 일정 생성이 실패하면 방금 취소한 그룹 일정을 다시 active로
   /// 되돌려(보상 롤백) 데이터가 양쪽 모두에서 사라지지 않게 한다.
   Future<bool> _convertGroupEventToPersonal(GroupEventModel g) async {
+    if (_guideMode) return false;
     GroupEventModel cancelled;
     try {
       cancelled = await _groupEventRepository.cancelGroupEvent(g.id);
@@ -2006,6 +2287,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 다시 켠다. 사용자가 직접 정지했거나(_voicePausedByUser) 대화 세션을
   /// 나가는 중이면(_isExitingConversation) 재개하지 않는다.
   void _resumeListeningAfterNavigation() {
+    if (_guideMode) return;
     if (!mounted ||
         _voicePausedByUser ||
         _isExitingConversation ||
@@ -2018,6 +2300,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<bool> _deleteEvent(EventModel event) async {
+    if (_guideMode) return false;
     try {
       await _repository.deleteEvent(event.id, userId: authProvider.userId);
       _deletedEventIds.add(event.id);
@@ -2069,6 +2352,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     EventModel event,
     DateTime occurrenceDate,
   ) async {
+    if (_guideMode) return false;
     try {
       final anchor = await _repository.fetchEvent(
         event.id,
@@ -2178,6 +2462,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   // 자동 재개하지 않는다(사용자가 카드 액션시트를 눌러 명시적으로 음성을
   // 멈춘 흐름이기 때문). 여기 별도 분기를 추가하지 말 것.
   Future<void> _openEditEvent(EventModel event) async {
+    if (_guideMode) return;
     await _stopVoiceBeforeNavigation();
     if (!mounted) return;
     // 반복 일정이 아닐 때만 로컬 캐논컬 원본을 회복해 함께 넘긴다(날짜 자동
@@ -2615,7 +2900,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                       itemBuilder: (context, index) {
                         if (index < _messages.length) {
                           final message = _messages[index];
-                          return _MessageBubble(
+                          final bubble = _MessageBubble(
                             message: message,
                             deletedEventIds: _deletedEventIds,
                             onEventTap: _showEventActionSheet,
@@ -2640,6 +2925,17 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                                           message.deleteOccurrenceDate!,
                                         ),
                           );
+                          if (_guideMode &&
+                              index == _guideResultsMessageIndex &&
+                              message.events.isNotEmpty &&
+                              (ModalRoute.of(context)?.isCurrent ?? false)) {
+                            return GuidedAnchor(
+                              id: 'query.results',
+                              registry: realUiGuideAnchorRegistry,
+                              child: bubble,
+                            );
+                          }
+                          return bubble;
                         }
                         final tail = index - _messages.length;
                         if (showProcessing && tail == 0) {

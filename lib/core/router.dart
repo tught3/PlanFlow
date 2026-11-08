@@ -1,3 +1,4 @@
+import '../onboarding/real_ui_guide/guide_contract.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -253,6 +254,13 @@ GoRouter createAppRouter({
             autoStart: _isAutoStart(state),
             initialText: extra['initial_text']?.toString(),
             entryGrant: entryGrant,
+            guideInitialVoiceEvidence: extra['guideInitialVoiceEvidence'] is Map
+                ? Map<String, Object?>.from(
+                    extra['guideInitialVoiceEvidence'] as Map)
+                : null,
+            guideEntryPermit: extra['guideEntryPermit'] is GuidePermit
+                ? extra['guideEntryPermit'] as GuidePermit
+                : null,
           );
         },
       ),
@@ -320,10 +328,16 @@ GoRouter createAppRouter({
         path: AppRoutes.eventEdit,
         builder: (context, state) {
           final extra = state.extra;
-          final payload = extra is EventEditRoutePayload ? extra : null;
-          final event = payload?.draft ?? (extra is EventModel ? extra : null);
+          final map =
+              extra is Map<String, dynamic> ? extra : const <String, dynamic>{};
+          final raw = map['event'] ?? extra;
+          final payload = raw is EventEditRoutePayload ? raw : null;
+          final event = payload?.draft ?? (raw is EventModel ? raw : null);
           return EventEditScreen(
             event: event,
+            initialGuideStartLocal: map['initialGuideStartLocal'] is DateTime
+                ? map['initialGuideStartLocal'] as DateTime
+                : null,
             originalEvent: payload?.original,
             originalOccurrenceStartAt: payload?.originalOccurrenceStartAt,
             eventId: _resolveEventId(state, event),
@@ -335,10 +349,16 @@ GoRouter createAppRouter({
         path: AppRoutes.eventEditWithId,
         builder: (context, state) {
           final extra = state.extra;
-          final payload = extra is EventEditRoutePayload ? extra : null;
-          final event = payload?.draft ?? (extra is EventModel ? extra : null);
+          final map =
+              extra is Map<String, dynamic> ? extra : const <String, dynamic>{};
+          final raw = map['event'] ?? extra;
+          final payload = raw is EventEditRoutePayload ? raw : null;
+          final event = payload?.draft ?? (raw is EventModel ? raw : null);
           return EventEditScreen(
             event: event,
+            initialGuideStartLocal: map['initialGuideStartLocal'] is DateTime
+                ? map['initialGuideStartLocal'] as DateTime
+                : null,
             originalEvent: payload?.original,
             originalOccurrenceStartAt: payload?.originalOccurrenceStartAt,
             eventId: _resolveEventId(state, event),

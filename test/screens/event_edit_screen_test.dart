@@ -26,7 +26,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 // UI 음성 테스트와 동일한 규칙: 1월 1일이 목요일인 윤년 아닌 미래 연도.
 // 과거 기준 연도와 같은 요일 배치를 보존해 날짜 칩의 요일 접미사(목/월/금/수)가 유지된다.
 int _alignedFutureFixtureYear() {
-  for (var year = DateTime.now().year + 1; ; year++) {
+  for (var year = DateTime.now().year + 1;; year++) {
     if (DateTime(year, 1, 1).weekday == DateTime.thursday &&
         !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
       return year;
@@ -646,7 +646,8 @@ void main() {
     expect(find.text('${_fixtureYear % 100}. 6. 15.(월)'), findsWidgets);
   });
 
-  testWidgets('EventEditScreen keeps duration when start date changes',
+  testWidgets(
+      'EventEditScreen resets end to one hour after start on start change',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -672,8 +673,50 @@ void main() {
     editor.onStartChanged(DateTime(_fixtureYear, 6, 10, 9));
     await tester.pumpAndSettle();
 
+    final updatedEditor = tester.widget<CalendarStyleEventEditor>(
+      find.byType(CalendarStyleEventEditor),
+    );
+    // 시작 단독 변경은 원본 길이를 이어가지 않고 새 시작+1시간으로 재계산된다.
+    expect(updatedEditor.startAt, DateTime(_fixtureYear, 6, 10, 9));
+    expect(updatedEditor.endAt, DateTime(_fixtureYear, 6, 10, 10));
     expect(find.text('${_fixtureYear % 100}. 6. 10.(수)'), findsWidgets);
     expect(find.text('${_fixtureYear % 100}. 6. 12.(금)'), findsNothing);
+  });
+
+  testWidgets(
+      'EventEditScreen preserves explicitly edited end when start changes',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          event: EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '김창민 만나기',
+            startAt: DateTime.utc(_fixtureYear, 6, 12, 9),
+            endAt: DateTime.utc(_fixtureYear, 6, 12, 10),
+            category: '개인',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final editor = tester.widget<CalendarStyleEventEditor>(
+      find.byType(CalendarStyleEventEditor),
+    );
+    // 사용자가 종료를 직접 수정한 뒤(_endEditedByUser = true) 시작을 옮기면
+    // 명시적으로 수정한 종료가 그대로 보존된다.
+    editor.onEndChanged(DateTime(_fixtureYear, 6, 12, 15));
+    await tester.pumpAndSettle();
+    editor.onStartChanged(DateTime(_fixtureYear, 6, 10, 9));
+    await tester.pumpAndSettle();
+
+    final updatedEditor = tester.widget<CalendarStyleEventEditor>(
+      find.byType(CalendarStyleEventEditor),
+    );
+    expect(updatedEditor.startAt, DateTime(_fixtureYear, 6, 10, 9));
+    expect(updatedEditor.endAt, DateTime(_fixtureYear, 6, 12, 15));
   });
 
   testWidgets(

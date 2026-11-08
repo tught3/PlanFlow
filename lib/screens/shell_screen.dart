@@ -1,11 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../onboarding/real_ui_guide/guide_contract.dart';
+import '../onboarding/real_ui_guide/guide_scope.dart';
+import '../onboarding/real_ui_guide/guide_guards.dart';
+import '../onboarding/real_ui_guide/guide_host.dart';
+import '../onboarding/real_ui_guide/guide_providers.dart';
+import 'onboarding/legacy_intro_screen.dart';
 import '../core/constants.dart';
 import '../core/diag_logger.dart';
 import '../core/env.dart';
@@ -39,7 +46,9 @@ bool completeShellRequiredSetup({
   required AuthProvider auth,
   required StartupRouteGate gate,
 }) {
-  if (!flowCompleted || !auth.isSignedIn || auth.userId != flowUserId) return false;
+  if (!flowCompleted || !auth.isSignedIn || auth.userId != flowUserId) {
+    return false;
+  }
   gate.completeRequiredSetup(flowUserId);
   return gate.requiredSetupCompleteFor(flowUserId);
 }
@@ -264,7 +273,11 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   StartupRouteGate get _routeGate =>
       widget.startupRouteGateOverride ?? startupRouteGate;
   FeatureTourStore get _tourStore =>
-      widget.featureTourStore ?? const SharedPreferencesFeatureTourStore();
+      widget.featureTourStore ??
+      GuideAccountFeatureTourStore(
+          uidProvider: () => _authProvider.userId,
+          progress: ProviderScope.containerOf(context, listen: false)
+              .read(realUiGuideProgressStoreProvider));
   // GoRouter may recreate ShellScreen for each bottom-tab route. These
   // process/session claims keep that implementation detail from rerunning
   // onboarding and expensive post-onboarding work for the same account.
@@ -547,39 +560,48 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // 해제는 상호작용 화면을 띄우는 순간(_presentInteractive) 또는 체인이
       // 끝나는 순간 중 먼저 오는 쪽에서 일어나고, 완료 판정은 아래 finally에서
       // 체인 전체가 중단 없이 끝났을 때만 한다.
-      flowCompleted = await runOnboardingStageChain(
-        stages: <OnboardingStage>[
-          OnboardingStage(
-            'feature_tour',
-            () => _maybeOpenFeatureTour(),
-          ),
-          if (widget.runPostTourOnboardingStages) ...<OnboardingStage>[
-            OnboardingStage(
-              'permission_onboarding',
-              () => _maybeOpenPermissionOnboarding(),
-            ),
-            OnboardingStage(
-              'external_calendar_guide',
-              () => _maybeShowExternalCalendarSyncGuide(),
-            ),
-          ],
-        ],
-        // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
-        // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
-        // 게이트는 그래도 풀린다.
-        shouldContinue: () =>
+      // The guide holds calendar imports only, never auth/session/profile reads.
+      _routeGate.completeStartupWorkDeferral();
+      flowCompleted = await runGuideStartupSequence(
+        ready: () => waitForGuideState(
+            coordinator: GuideScope.maybeOf(context)!,
+            uid: userId,
+            auth: _authProvider,
+            currentUid: () => _authProvider.userId,
+            ready: (s) => s.uid == userId),
+        intro: _maybeOpenFeatureTour,
+        introConfirmed: () => _requiredFeatureTourConfirmed,
+        guide: () => _waitForRealGuide(userId),
+        sameAccount: () =>
             mounted &&
             _authProvider.userId == userId &&
-            _requiredFeatureTourConfirmed &&
-            _requiredPermissionConfirmed,
-        releaseGate: () {
-          if (mounted &&
-              _observedUserId == userId &&
-              _authProvider.userId == userId) {
-            _clearOnboardingGate();
-          }
-        },
-        presentationTimeout: _onboardingPresentationTimeout,
+            authEpoch == _sessionAuthEpoch,
+        syncChoice: () => runOnboardingStageChain(
+          stages: <OnboardingStage>[
+            if (widget.runPostTourOnboardingStages) ...<OnboardingStage>[
+              OnboardingStage(
+                'external_calendar_guide',
+                () => _maybeShowExternalCalendarSyncGuide(),
+              ),
+            ],
+          ],
+          // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
+          // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
+          // 게이트는 그래도 풀린다.
+          shouldContinue: () =>
+              mounted &&
+              _authProvider.userId == userId &&
+              _requiredFeatureTourConfirmed &&
+              _requiredPermissionConfirmed,
+          releaseGate: () {
+            if (mounted &&
+                _observedUserId == userId &&
+                _authProvider.userId == userId) {
+              _clearOnboardingGate();
+            }
+          },
+          presentationTimeout: _onboardingPresentationTimeout,
+        ),
       );
     } catch (error, stackTrace) {
       // 어떤 예외도 게이트 해제를 막아선 안 된다. 호출부가 unawaited라
@@ -756,7 +778,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       _requiredFeatureTourConfirmed = false;
       // push 호출 즉시 로딩 게이트를 내린다(화면이 닫히기를 기다리지 않는다).
       await _presentInteractive(
-        () => context.push('${AppRoutes.featureTour}?required=true'),
+        () => Navigator.of(context, rootNavigator: true).push<void>(
+          MaterialPageRoute(builder: (_) => LegacyIntroScreen(store: store)),
+        ),
       );
       // Do not treat an externally dismissed route (for example, navigation
       // replacing the stack) as completion. Only the tour's final confirmation
@@ -775,6 +799,31 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     } else {
       _requiredFeatureTourConfirmed = true;
     }
+  }
+
+  Future<void> _waitForRealGuide(String uid) async {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) throw StateError('Root guide scope unavailable');
+    _clearOnboardingGate();
+    // No time-based Next: only actual detail acknowledgement or explicit Skip
+    // can open the existing calendar choice. Auth changes cancel this waiter.
+    Future<void> waitUntil(bool Function(GuideSnapshot) ready) =>
+        waitForGuideState(
+            coordinator: coordinator,
+            uid: uid,
+            auth: _authProvider,
+            currentUid: () => _authProvider.userId,
+            ready: ready);
+    await waitUntil((s) => s.uid == uid);
+    if (!mounted || _authProvider.userId != uid) return;
+    var s = coordinator.state.value;
+    if (s.step == GuideStep.intro) {
+      await coordinator
+          .dispatch(IntroFinished(uid: uid, expectedRevision: s.revision));
+    }
+    await waitUntil((s) =>
+        s.uid == uid &&
+        (s.step == GuideStep.syncChoice || s.run == GuideRun.terminal));
   }
 
   Future<void> _maybeRecalculateAllAlarms() async {
@@ -805,6 +854,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       );
       return;
     }
+    if (_routeGate.calendarSyncHeldFor(_authProvider.userId)) return;
     _checkedGoogleCalendarAutoPrompt = true;
 
     // Google 계정이 아니면 스킵
@@ -943,6 +993,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Retained for contextual permission flows; never inserted into the guide.
+  // ignore: unused_element
   Future<void> _maybeOpenPermissionOnboarding() async {
     if (_checkedPermissionOnboarding || !mounted) {
       return;
@@ -1032,9 +1084,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
     // 이 판정은 prefs + 연동 캘린더 조회를 타므로 네트워크에 걸릴 수 있다.
     // 상한을 넘기면 안내를 건너뛴다.
-    final shouldShow = await _externalCalendarGuideService
-        .shouldShowForUser(userId)
-        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
+    final pendingGuideChoice = _routeGate.calendarSyncHeldFor(userId) ||
+        !await GuideSyncChoiceStore().isClosed(userId);
+    final shouldShow = pendingGuideChoice ||
+        await _externalCalendarGuideService
+            .shouldShowForUser(userId)
+            .timeout(_onboardingProbeTimeout, onTimeout: () => false);
     if (!shouldShow || !mounted) {
       return;
     }
@@ -1072,6 +1127,24 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           },
         ));
 
+    if (!mounted || _authProvider.userId != userId) return;
+    await GuideSyncChoiceStore().close(userId);
+    if (!mounted || _authProvider.userId != userId) return;
+    final coordinator = GuideScope.maybeOf(context);
+    final s = coordinator?.state.value;
+    if (s != null &&
+        s.uid == userId &&
+        s.step == GuideStep.syncChoice &&
+        s.sessionId != null) {
+      await coordinator!.dispatch(SyncChoiceClosed(
+          uid: userId, sessionId: s.sessionId!, expectedRevision: s.revision));
+    }
+    if (!mounted || _authProvider.userId != userId) return;
+    if (coordinator == null ||
+        coordinator.state.value.run != GuideRun.terminal) {
+      throw StateError('Guide completion not confirmed');
+    }
+    _routeGate.closeGuideChoice(userId);
     await _externalCalendarGuideService.markSeen(userId).timeout(
           _onboardingProbeTimeout,
           onTimeout: () {},

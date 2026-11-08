@@ -478,4 +478,166 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get featureTourSaveRetry => 'Retry';
+
+  @override
+  String voiceTourStep(Object current) {
+    return 'Step $current of 4';
+  }
+
+  @override
+  String get voiceTourPhaseCreateTitle => 'Create a schedule by voice';
+
+  @override
+  String get voiceTourPhaseCreateHint =>
+      'Tap the mic and say the example sentence. Nothing is saved until you press Save.';
+
+  @override
+  String get voiceTourExampleCreate => 'Example: 내일 오전 9시에 강남역에서 팀장님과 면담';
+
+  @override
+  String get voiceTourPhaseQueryTitle => 'Ask for your schedule by voice';
+
+  @override
+  String get voiceTourPhaseQueryHint =>
+      'Ask about the schedule you just saved.';
+
+  @override
+  String get voiceTourExampleQuery => 'Example: 내일 일정 보여줘';
+
+  @override
+  String get voiceTourPhaseEditTitle => 'Change a time by voice';
+
+  @override
+  String get voiceTourPhaseEditHint =>
+      'Move the first listed schedule\'s time. It stays unchanged until you save.';
+
+  @override
+  String get voiceTourExampleEdit => 'Example: 첫 번째 일정 오후 1시로 미뤄줘';
+
+  @override
+  String get voiceTourPhaseDetailTitle => 'Check the saved schedule';
+
+  @override
+  String get voiceTourPhaseDetailHint =>
+      'Open the edited schedule and see what was actually stored.';
+
+  @override
+  String get voiceTourMicStart => 'Speak with the mic';
+
+  @override
+  String get voiceTourMicStop => 'Finish speaking';
+
+  @override
+  String get voiceTourCancelMic => 'Cancel';
+
+  @override
+  String get voiceTourPreparing => 'Preparing. Please wait a moment.';
+
+  @override
+  String get voiceTourListening => 'Listening';
+
+  @override
+  String get voiceTourTranscriptHint => 'Recognized speech appears here';
+
+  @override
+  String get voiceTourCreatePreviewTitle => 'Recognized schedule';
+
+  @override
+  String get voiceTourPreviewTitleLabel => 'Title';
+
+  @override
+  String get voiceTourPreviewDate => 'Date';
+
+  @override
+  String get voiceTourPreviewTime => 'Time';
+
+  @override
+  String get voiceTourPreviewLocation => 'Location';
+
+  @override
+  String get voiceTourPreviewLocationEmpty => 'None';
+
+  @override
+  String get voiceTourPreviewNote => 'Not saved yet. Press Save to apply it.';
+
+  @override
+  String get voiceTourSaveCreate => 'Save this schedule';
+
+  @override
+  String get voiceTourResultsTitle => 'Saved schedules';
+
+  @override
+  String get voiceTourResultsEmpty => 'No matching schedules.';
+
+  @override
+  String get voiceTourEditPreviewTitle => 'Time change preview';
+
+  @override
+  String get voiceTourEditPreviewFrom => 'Current time';
+
+  @override
+  String get voiceTourEditPreviewTo => 'New time';
+
+  @override
+  String get voiceTourEditPreviewNote =>
+      'The current time stays until you save.';
+
+  @override
+  String get voiceTourSaveEdit => 'Save the change';
+
+  @override
+  String get voiceTourOpenUpdated => 'Open the saved schedule';
+
+  @override
+  String get voiceTourDetailSavedTitle => 'Saved schedule';
+
+  @override
+  String get voiceTourDetailEventTime => 'Schedule time';
+
+  @override
+  String get voiceTourDetailDeparture => 'Departure time';
+
+  @override
+  String get voiceTourDetailPreparation => 'Preparation time';
+
+  @override
+  String get voiceTourExampleNote =>
+      'Example values only. No real route ETA, real calendar entry, or notification is created. (Travel 20 + buffer 10, prep 15 minutes before)';
+
+  @override
+  String get voiceTourFinishLocked =>
+      'Open the saved schedule to unlock Finish.';
+
+  @override
+  String get voiceTourErrorPermission =>
+      'Microphone permission is needed. Allow it and try again.';
+
+  @override
+  String get voiceTourErrorLocale =>
+      'Voice practice is not available in this language.';
+
+  @override
+  String get voiceTourErrorSilence =>
+      'No speech was recognized. Please try again.';
+
+  @override
+  String get voiceTourErrorUnavailable =>
+      'Voice input is unavailable right now. Try again shortly, or practice by typing.';
+
+  @override
+  String get voiceTourUnsupported =>
+      'Could not understand that sentence. Please include a date and a time like the example.';
+
+  @override
+  String get voiceTourTextMode => 'Practice by typing';
+
+  @override
+  String get voiceTourTextLabel => 'Typed input (not voice)';
+
+  @override
+  String get voiceTourTextHint =>
+      'Type the example sentence. It is processed exactly like voice.';
+
+  @override
+  String get voiceTourTextSubmit => 'Submit';
 }

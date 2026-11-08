@@ -8,8 +8,10 @@ class StartupRouteGate extends ChangeNotifier {
   bool _requiredSetupCompleted = false;
 
   bool requiredSetupCompleteFor(String? userId) =>
-      userId != null && userId.isNotEmpty &&
-      _requiredSetupUserId == userId && _requiredSetupCompleted;
+      userId != null &&
+      userId.isNotEmpty &&
+      _requiredSetupUserId == userId &&
+      _requiredSetupCompleted;
 
   /// Account-scoped evidence, independent of visual loading/gate release.
   ///
@@ -34,6 +36,27 @@ class StartupRouteGate extends ChangeNotifier {
     if (_requiredSetupUserId == null && !_requiredSetupCompleted) return;
     _requiredSetupUserId = null;
     _requiredSetupCompleted = false;
+    notifyListeners();
+  }
+
+  String? _guideChoiceUid;
+  bool _guideChoiceClosed = false;
+
+  /// Fail closed before async progress loading and between Skip and the modal.
+  bool calendarSyncHeldFor(String? uid) =>
+      uid != null &&
+      uid.isNotEmpty &&
+      (_guideChoiceUid != uid || !_guideChoiceClosed);
+
+  void beginGuideChoice(String uid) {
+    if (_guideChoiceUid == uid) return;
+    _guideChoiceUid = uid;
+    _guideChoiceClosed = false;
+  }
+
+  void closeGuideChoice(String uid) {
+    if (_guideChoiceUid != uid || _guideChoiceClosed) return;
+    _guideChoiceClosed = true;
     notifyListeners();
   }
 

@@ -118,10 +118,86 @@ class EventModel {
 
   bool get hasLocationText => location?.trim().isNotEmpty == true;
 
+  /// 저장된 좌표가 "유효한 쌍"인지 판정한다. 위도/경도는 둘 다 있어야
+  /// 의미 있는 좌표다(한쪽만 있으면 미지정으로 취급).
+  bool get hasValidLocationCoordinates =>
+      EventModel.hasValidCoordinatePair(lat: locationLat, lng: locationLng);
+
   bool get hasResolvedLocation =>
-      hasLocationText && locationLat != null && locationLng != null;
+      hasLocationText && hasValidLocationCoordinates;
 
   bool get hasUnresolvedLocation => hasLocationText && !hasResolvedLocation;
+
+  /// 위도/경도 쌍이 모두 있을 때만 true.
+  static bool hasValidCoordinatePair({double? lat, double? lng}) =>
+      lat != null &&
+      lng != null &&
+      lat.isFinite &&
+      lng.isFinite &&
+      lat.abs() <= 90 &&
+      lng.abs() <= 180;
+
+  /// 장소 텍스트가 같은지 비교한다(앞뒤 공백 무시). 둘 다 비어 있으면
+  /// "변경 없음"으로 본다.
+  static bool isSameLocationText(String? left, String? right) {
+    final normalizedLeft = left?.trim() ?? '';
+    final normalizedRight = right?.trim() ?? '';
+    return normalizedLeft == normalizedRight;
+  }
+
+  /// 저장돼 있던 유효 좌표 쌍을 그대로 유지해야 하는지 판정한다.
+  ///
+  /// - 다음 쓰기 값에 이미 좌표 쌍이 있으면 유지 대상이 아니다(사용자가 새로
+  ///   지정하거나 재검색으로 얻은 좌표).
+  /// - 저장된 쌍이 유효하고 장소 텍스트가 그대로면 유지한다(좌표는 그대로인데
+  ///   경로상 좌표만 빠진 채 저장되는 회귀 방지).
+  /// - 장소 텍스트가 실제로 바뀌었으면 유지하지 않는다(옛 장소의 좌표를 새
+  ///   장소에 붙이지 않는다 → 다음 재검색으로 다시 잡는다).
+  static bool shouldPreserveStoredCoordinates({
+    required String? storedLocation,
+    required double? storedLat,
+    required double? storedLng,
+    required String? nextLocation,
+    required double? nextLat,
+    required double? nextLng,
+  }) {
+    if (hasValidCoordinatePair(lat: nextLat, lng: nextLng)) {
+      return false;
+    }
+    if (!hasValidCoordinatePair(lat: storedLat, lng: storedLng)) {
+      return false;
+    }
+    return isSameLocationText(storedLocation, nextLocation);
+  }
+
+  /// 저장에 실제로 쓸 좌표 쌍을 계산한다.
+  ///
+  /// 규칙: 다음 좌표가 있으면 그것을 쓰고, 없더라도 저장된 유효 쌍이 있고
+  /// 장소 텍스트가 같으면 저장된 쌍을 유지한다, 그 외에는 비운다.
+  /// 좌표를 새로 만들어내지는 않는다.
+  static ({double? lat, double? lng}) resolveCoordinatesForWrite({
+    required String? storedLocation,
+    required double? storedLat,
+    required double? storedLng,
+    required String? nextLocation,
+    required double? nextLat,
+    required double? nextLng,
+  }) {
+    if (hasValidCoordinatePair(lat: nextLat, lng: nextLng)) {
+      return (lat: nextLat, lng: nextLng);
+    }
+    if (shouldPreserveStoredCoordinates(
+      storedLocation: storedLocation,
+      storedLat: storedLat,
+      storedLng: storedLng,
+      nextLocation: nextLocation,
+      nextLat: nextLat,
+      nextLng: nextLng,
+    )) {
+      return (lat: storedLat, lng: storedLng);
+    }
+    return (lat: null, lng: null);
+  }
 
   Map<String, dynamic> toJson({bool includeId = true}) {
     return <String, dynamic>{
@@ -344,6 +420,11 @@ class EventModel {
   }
 
   static double? _doubleValue(Object? value) {
+    return parseCoordinateValue(value);
+  }
+
+  /// DB/JSON에서 온 위경도 값을 double로 파싱한다. 숫자 문자열도 허용한다.
+  static double? parseCoordinateValue(Object? value) {
     if (value == null) {
       return null;
     }
@@ -353,7 +434,11 @@ class EventModel {
     if (value is num) {
       return value.toDouble();
     }
-    return double.tryParse(value.toString());
+    final text = value.toString().trim();
+    if (text.isEmpty || text == 'null') {
+      return null;
+    }
+    return double.tryParse(text);
   }
 
   static List<DateTime>? _dateTimeListValue(Object? value) {

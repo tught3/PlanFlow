@@ -1,3 +1,13 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="${debugAppLabel}"
+        tools:replace="android:label">
+        <activity
+            android:name="com.fluxstudio.planflow.GuideSpeechModelDownloadActivity"
+            android:exported="true"
+            android:label="Guide speech model QA" />
+    </application>
 </manifest>

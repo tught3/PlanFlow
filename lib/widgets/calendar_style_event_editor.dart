@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../core/event_metadata.dart';
 import '../core/theme.dart';
+import '../onboarding/real_ui_guide/guide_bubble_visibility.dart';
+import '../onboarding/real_ui_guide/guide_providers.dart';
+import 'guided_anchor.dart';
 import 'location_resolution_status.dart';
 import 'recurrence_selector.dart';
 import 'reminder_offset_selector.dart';
@@ -120,10 +123,71 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
     _criticalAlarmExpanded = widget.initiallyExpandCriticalAlarm;
     _titleFocusNode.addListener(_handleTitleFocusChange);
     _locationFocusNode.addListener(_handleLocationFocusChange);
+    // 저장 화면 안내가 뜨면 '중요한 일정' 영역을 펼쳐 실제 토글을 누를 수 있게 한다.
+    guideSaveStageActive.addListener(_onGuideSaveStageActiveChanged);
+    guideSaveStage.addListener(_onGuideSaveStageChanged);
+    guideConfirmReady.addListener(_onGuideSaveStageActiveChanged);
+    guideConfirmUserScrolled.addListener(_onGuideSaveStageActiveChanged);
+    _onGuideSaveStageActiveChanged();
+  }
+
+  void _onGuideSaveStageActiveChanged() {
+    if (!mounted || !guideSaveStageActive.value || !guideConfirmReady.value) {
+      return;
+    }
+    _advancePastCompletedSwitches();
+    if (_criticalAlarmExpanded || !guideConfirmUserScrolled.value) return;
+    // 안내가 막 뜬 직후에는 아직 build 중일 수 있으므로 다음 프레임으로 미룬다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _criticalAlarmExpanded ||
+          !guideSaveStageActive.value ||
+          !guideConfirmSpotlightEligible(
+              ready: guideConfirmReady.value,
+              userScrolled: guideConfirmUserScrolled.value)) return;
+      setState(() => _criticalAlarmExpanded = true);
+    });
+  }
+
+  void _onGuideSaveStageChanged() {
+    _advancePastCompletedSwitches();
+  }
+
+  bool _stageSyncScheduled = false;
+
+  /// 이미 켜져 있는 스위치는 다시 누르게 하지 않는다. 그대로 누르면
+  /// 꺼지면서 안내 단계가 진행되지 않으므로, 완료된 단계는 건너뛴다.
+  /// 체크박스/파싱 값 자체는 절대 바꾸지 않는다.
+  void _advancePastCompletedSwitches() {
+    if (!mounted ||
+        !guideSaveStageActive.value ||
+        !guideConfirmReady.value ||
+        _stageSyncScheduled) {
+      return;
+    }
+    _stageSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stageSyncScheduled = false;
+      if (!mounted || !guideSaveStageActive.value || !guideConfirmReady.value) {
+        return;
+      }
+      var stage = guideSaveStage.value;
+      if (stage == GuideSaveStage.important && widget.isCritical) {
+        guideSaveStage.value = GuideSaveStage.strong;
+        stage = GuideSaveStage.strong;
+      }
+      if (stage == GuideSaveStage.strong && widget.useStrongAlarm) {
+        guideSaveStage.value = GuideSaveStage.save;
+      }
+    });
   }
 
   @override
   void dispose() {
+    guideSaveStageActive.removeListener(_onGuideSaveStageActiveChanged);
+    guideSaveStage.removeListener(_onGuideSaveStageChanged);
+    guideConfirmReady.removeListener(_onGuideSaveStageActiveChanged);
+    guideConfirmUserScrolled.removeListener(_onGuideSaveStageActiveChanged);
     _titleFocusNode.removeListener(_handleTitleFocusChange);
     _locationFocusNode.removeListener(_handleLocationFocusChange);
     _titleFocusNode.dispose();
@@ -190,7 +254,8 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   /// 있었으면(바뀌기 전 조각이 비어 있으면) null — 그런 경우 반대쪽 필드에
   /// 뭘 찾아 바꿔야 할지 알 수 없다.
   (String, String)? _diffMiddle(String oldText, String newText) {
-    final minLen = oldText.length < newText.length ? oldText.length : newText.length;
+    final minLen =
+        oldText.length < newText.length ? oldText.length : newText.length;
     var prefixLen = 0;
     while (prefixLen < minLen && oldText[prefixLen] == newText[prefixLen]) {
       prefixLen += 1;
@@ -543,99 +608,120 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             ),
           ),
           const SizedBox(height: 10),
-          _EditorSection(
-            key: _criticalAlarmSectionKey,
-            icon: Icons.priority_high_rounded,
-            title: '중요한 일정',
-            subtitle:
-                _criticalAlarmSummary(widget.isCritical, widget.useStrongAlarm),
-            collapsible: true,
-            expanded: _criticalAlarmExpanded,
-            onExpansionChanged: (value) => _setExpandableSection(
+          GuidedAnchor(
+            id: 'confirm.criticalSection',
+            registry: realUiGuideAnchorRegistry,
+            child: _EditorSection(
               key: _criticalAlarmSectionKey,
-              expanded: value,
-              apply: () => _criticalAlarmExpanded = value,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                CheckboxListTile(
-                  key: _criticalCheckboxKey,
-                  tileColor: widget.isCritical
-                      ? const Color(0xFFFFE3DD)
-                      : PlanFlowColors.surfaceFaint,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(
-                      color: widget.isCritical
-                          ? const Color(0xFFB42318)
-                          : PlanFlowColors.primaryFaint,
-                      width: widget.isCritical ? 1.2 : 0.5,
+              icon: Icons.priority_high_rounded,
+              title: '중요한 일정',
+              subtitle: _criticalAlarmSummary(
+                  widget.isCritical, widget.useStrongAlarm),
+              collapsible: true,
+              expanded: _criticalAlarmExpanded,
+              onExpansionChanged: (value) => _setExpandableSection(
+                key: _criticalAlarmSectionKey,
+                expanded: value,
+                apply: () => _criticalAlarmExpanded = value,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GuidedAnchor(
+                    id: 'confirm.critical',
+                    registry: realUiGuideAnchorRegistry,
+                    child: CheckboxListTile(
+                      key: _criticalCheckboxKey,
+                      tileColor: widget.isCritical
+                          ? const Color(0xFFFFE3DD)
+                          : PlanFlowColors.surfaceFaint,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(
+                          color: widget.isCritical
+                              ? const Color(0xFFB42318)
+                              : PlanFlowColors.primaryFaint,
+                          width: widget.isCritical ? 1.2 : 0.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      secondary: Icon(
+                        widget.isCritical
+                            ? Icons.priority_high_rounded
+                            : Icons.flag_outlined,
+                        color: widget.isCritical
+                            ? const Color(0xFFE53935)
+                            : PlanFlowColors.textSecondary,
+                      ),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      checkColor: Colors.white,
+                      activeColor: const Color(0xFFE53935),
+                      title: const Text('중요한 일정으로 표시'),
+                      subtitle: const Text('캘린더에서 빨간색으로 표시됩니다.'),
+                      value: widget.isCritical,
+                      onChanged: (v) {
+                        widget.onCriticalChanged(v ?? false);
+                        if (v == true) {
+                          // 실제 화면을 누른 순서대로 안내 대상을 바꾼다.
+                          if (guideSaveStageActive.value) {
+                            guideSaveStage.value = GuideSaveStage.strong;
+                          }
+                          unawaited(_scrollToRevealTrailingContent());
+                        }
+                      },
                     ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  secondary: Icon(
-                    widget.isCritical
-                        ? Icons.priority_high_rounded
-                        : Icons.flag_outlined,
-                    color: widget.isCritical
-                        ? const Color(0xFFE53935)
-                        : PlanFlowColors.textSecondary,
-                  ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  checkColor: Colors.white,
-                  activeColor: const Color(0xFFE53935),
-                  title: const Text('중요한 일정으로 표시'),
-                  subtitle: const Text('캘린더에서 빨간색으로 표시됩니다.'),
-                  value: widget.isCritical,
-                  onChanged: (v) {
-                    widget.onCriticalChanged(v ?? false);
-                    if (v == true) {
-                      unawaited(_scrollToRevealTrailingContent());
-                    }
-                  },
-                ),
-                if (widget.isCritical) ...[
-                  const SizedBox(height: 8),
-                  SwitchListTile.adaptive(
-                    tileColor: widget.useStrongAlarm
-                        ? const Color(0xFFFFE3DD)
-                        : PlanFlowColors.surfaceFaint,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(
-                        color: widget.useStrongAlarm
-                            ? const Color(0xFFB42318)
-                            : PlanFlowColors.primaryFaint,
-                        width: widget.useStrongAlarm ? 1.2 : 0.5,
+                  if (widget.isCritical) ...[
+                    const SizedBox(height: 8),
+                    GuidedAnchor(
+                      id: 'confirm.strong',
+                      registry: realUiGuideAnchorRegistry,
+                      child: SwitchListTile.adaptive(
+                        tileColor: widget.useStrongAlarm
+                            ? const Color(0xFFFFE3DD)
+                            : PlanFlowColors.surfaceFaint,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(
+                            color: widget.useStrongAlarm
+                                ? const Color(0xFFB42318)
+                                : PlanFlowColors.primaryFaint,
+                            width: widget.useStrongAlarm ? 1.2 : 0.5,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        secondary: Icon(
+                          widget.useStrongAlarm
+                              ? Icons.volume_up_rounded
+                              : Icons.volume_off_outlined,
+                          color: widget.useStrongAlarm
+                              ? const Color(0xFFB42318)
+                              : PlanFlowColors.textSecondary,
+                        ),
+                        title: const Text('강한 알람'),
+                        subtitle: const Text(
+                          '일정 시작 시 큰 소리·진동·전체화면으로 알립니다. 정확한 알람 권한이 필요합니다.',
+                        ),
+                        activeThumbColor: const Color(0xFFB42318),
+                        activeTrackColor: const Color(0xFFFFC9BE),
+                        value: widget.useStrongAlarm,
+                        onChanged: (v) {
+                          widget.onStrongAlarmChanged(v);
+                          if (v && guideSaveStageActive.value) {
+                            guideSaveStage.value = GuideSaveStage.save;
+                          }
+                        },
                       ),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    secondary: Icon(
-                      widget.useStrongAlarm
-                          ? Icons.volume_up_rounded
-                          : Icons.volume_off_outlined,
-                      color: widget.useStrongAlarm
-                          ? const Color(0xFFB42318)
-                          : PlanFlowColors.textSecondary,
-                    ),
-                    title: const Text('강한 알람'),
-                    subtitle: const Text(
-                      '일정 시작 시 큰 소리·진동·전체화면으로 알립니다. 정확한 알람 권한이 필요합니다.',
-                    ),
-                    activeThumbColor: const Color(0xFFB42318),
-                    activeTrackColor: const Color(0xFFFFC9BE),
-                    value: widget.useStrongAlarm,
-                    onChanged: widget.onStrongAlarmChanged,
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ],

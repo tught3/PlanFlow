@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,7 @@ import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
+import '../../onboarding/real_ui_guide/guide_bubble_visibility.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/voice_correction_rule.dart';
 import '../../data/repositories/event_repository.dart';
@@ -57,6 +59,12 @@ import '../../services/ad_service.dart';
 import '../../services/ad_reward_state.dart';
 import '../../services/schedule_parse_ad_gate.dart';
 import '../../services/schedule_parse_entitlement.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
+import '../../onboarding/real_ui_guide/guide_guards.dart';
+import '../../onboarding/real_ui_guide/guide_create_location_policy.dart';
+import '../../widgets/guided_anchor.dart';
 part 'confirm_widgets.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -112,6 +120,21 @@ class ConfirmScreen extends StatefulWidget {
 
   @override
   State<ConfirmScreen> createState() => _ConfirmScreenState();
+
+  /// 격리된 디버그 가이드 QA 실행에서만 선택적 지도(지오코딩) 조회를
+  /// 건너뛸 수 있게 하는 순수 가드.
+  ///
+  /// 네 조건(디버그 빌드, 가이드 QA opt-in, 격리 QA, 명시적 지도 제외)이
+  /// 모두 참이어야 한다. 릴리스 빌드나 단독 QA 플래그로는 절대로 우회할 수
+  /// 없고, 위치 권한 요청·저장 흐름에는 어떤 영향도 주지 않는다.
+  @visibleForTesting
+  static bool canSkipGuideMapLookup({
+    required bool debug,
+    required bool guideQa,
+    required bool isolatedQa,
+    required bool skipMap,
+  }) =>
+      debug && guideQa && isolatedQa && skipMap;
 }
 
 abstract class ConfirmScreenBackend {
@@ -311,6 +334,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
+  /// QA 전용 지도 조회 생략 여부(격리 디버그 가이드 QA에서만 true).
+  bool get _skipOptionalMapLookupForQa => ConfirmScreen.canSkipGuideMapLookup(
+        debug: kDebugMode,
+        guideQa: const bool.fromEnvironment('PLANFLOW_GUIDE_QA'),
+        isolatedQa: const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'),
+        skipMap: const bool.fromEnvironment('PLANFLOW_GUIDE_QA_SKIP_MAP'),
+      );
+
   DateTime _localNow() {
     final now = widget.nowProvider?.call();
     return now == null ? planflowNow() : (now.isUtc ? planflowLocal(now) : now);
@@ -358,6 +389,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       text: _stringValue(widget.parsedSchedule['memo']) ?? '',
     );
     _newSupplyController = TextEditingController();
+    // 저장 화면에 새로 들어오면 '중요한 일정' 안내부터 다시 시작한다.
+    guideConfirmUserScrolled.value = false;
+    guideConfirmReady.value = false;
+    guideSaveStage.value = GuideSaveStage.important;
     _supplies = _stringListValue(
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
@@ -953,11 +988,22 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   Future<void> _resolveLocationCoordinatesIfNeeded() async {
+    if (_skipOptionalMapLookupForQa) {
+      // 격리 디버그 가이드 QA에서만 선택적 지도 조회를 생략한다.
+      // 권한 요청·저장 흐름은 그대로 진행된다.
+      debugPrint('[GeoResolve] stage=skip reason=qa_map_skip');
+      return;
+    }
     final query = _locationController.text.trim();
     if (_locationEditedByUser ||
         query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
         (_locationLat != null && _locationLng != null)) {
+      // 좌표가 비어 있는데 조회를 건너뛴 이유를 기기 로그로 남긴다.
+      debugPrint('[GeoResolve] stage=skip '
+          'edited=$_locationEditedByUser empty=${query.isEmpty} '
+          'alias=${query.isNotEmpty && _shouldSkipAutomaticLocationResolution(query)} '
+          'hasCoords=${_locationLat != null && _locationLng != null}');
       return;
     }
 
@@ -983,6 +1029,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _locationEditedByUser ||
           query != _locationController.text.trim() ||
           results.isEmpty) {
+        debugPrint('[GeoResolve] stage=no_result '
+            'mounted=$mounted edited=$_locationEditedByUser '
+            'queryChanged=${query != _locationController.text.trim()} '
+            'count=${results.length}');
         return;
       }
 
@@ -1004,7 +1054,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         resolvedLocationText: _resolvedLocationLabel,
       );
     } catch (error) {
-      debugPrint('ConfirmScreen automatic location resolution failed: $error');
+      debugPrint(
+          'ConfirmScreen automatic location resolution failed: ${error.runtimeType}');
     } finally {
       if (mounted) {
         setState(() {
@@ -1022,6 +1073,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     required EventModel? savedEvent,
     required EventRepository repository,
   }) async {
+    if (_skipOptionalMapLookupForQa) {
+      debugPrint('[GeoResolve] stage=skip reason=qa_map_skip after_save');
+      return;
+    }
     final query = _locationController.text.trim();
     if (query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
@@ -1160,7 +1215,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return false;
   }
 
-  void _maybeHydrateParsedSchedule() {
+  void _maybeHydrateParsedSchedule({GuidePermit? guidePermit}) {
     if (widget.parsedSchedule['manual_text_confirmed'] == true &&
         widget.parsedSchedule['parse_pending'] != true) {
       return;
@@ -1174,7 +1229,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!shouldHydrate || rawText == null || rawText.isEmpty) {
       return;
     }
-    _hydrateParsedSchedule(rawText);
+    _hydrateParsedSchedule(rawText, guidePermit: guidePermit);
   }
 
   /// GPT 자동 파싱이 필요한 진입인지 판단하고, Remote Config가 광고 활성이라면
@@ -1268,9 +1323,36 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 있으면 광고 다이얼로그 없이 즉시 onEnterAllowed가 호출되고, 소진된
     // 경우에만 다이얼로그 → 광고 순으로 진행한다(게이트 내부에서 처리).
     bool overlayVisible = false;
+    // 이 진입(요청)의 가이드 레인. permit은 승인 콜백에서 로컬로만 잡아
+    // dispatch 시점에 _hydrateParsedSchedule으로 직접 전달한다. 필드에
+    // 캐시하지 않으므로 다음 재시도/재파싱이 이전 permit을 재사용할 수
+    // 없고, 매 시도는 게이트에서 새 서버 승인(고유 operationId)을 받는다.
+    GuidePermit? freshGuidePermit;
     try {
+      final guideCoordinator = GuideScope.maybeOf(context);
+      final guideState = guideCoordinator?.state.value;
+      final guideParseAttempt = guideState != null &&
+          guideState.run == GuideRun.active &&
+          guideState.uid.isNotEmpty &&
+          guideState.sessionId != null;
       await ScheduleParseAdGate.instance.tryEnterScheduleParse(
         context: context,
+        guideCoordinator: guideParseAttempt ? guideCoordinator : null,
+        guideOperation: guideParseAttempt ? GuideOperation.createParse : null,
+        onGuideAllowed: (permit) {
+          freshGuidePermit = permit;
+          _parseAuthorized = true;
+        },
+        onGuideDenied: (_) {
+          if (!mounted) return;
+          setState(() {
+            widget.parsedSchedule['parse_pending'] = false;
+            widget.parsedSchedule['parse_failed'] = true;
+            _isHydratingParsedSchedule = false;
+            _showInitialHydrationLoader = false;
+            _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
+          });
+        },
         onAdProgress: (stage) {
           if (!mounted) {
             return;
@@ -1319,7 +1401,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         return;
       }
 
-      if (_scheduleParseGrant != null) {
+      if (freshGuidePermit != null) {
+        _maybeHydrateParsedSchedule(guidePermit: freshGuidePermit);
+      } else if (_scheduleParseGrant != null) {
         await AdRewardState.instance.bindActiveGrant(
           binding: parseBinding,
           feature: 'schedule_parse',
@@ -1346,7 +1430,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
-  void _retryAiHydration() {
+  Future<void> _retryAiHydration() async {
     if (_parseConsumptionPending) {
       unawaited(_retryPendingParseConsumption());
       return;
@@ -1356,6 +1440,163 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
     _adGateHandled = true;
+
+    // 재시도마다 "지금" 가이드가 살아 있는지 실제 스냅숏으로 다시 확인한다.
+    // 저장해 둔 모드 플래그나 이전 permit으로 레인을 정하지 않는다. 가이드가
+    // 살아 있으면 이번 시도도 게이트에서 새 서버 승인(고유 operationId)을
+    // 받아야 하며, 승인 거절(만료/uid 불일치/phase 불일치/replay)은 일반
+    // 무료 사용이나 AI 호출로 절대 대체하지 않는다(fail-closed).
+    final guideCoordinator = GuideScope.maybeOf(context);
+    final guideState = guideCoordinator?.state.value;
+    final guideParseAttempt = guideState != null &&
+        guideState.run == GuideRun.active &&
+        guideState.uid.isNotEmpty &&
+        guideState.sessionId != null;
+
+    if (guideParseAttempt) {
+      GuidePermit? retryPermit;
+      try {
+        await ScheduleParseAdGate.instance.tryEnterScheduleParse(
+          context: context,
+          guideCoordinator: guideCoordinator,
+          guideOperation: GuideOperation.createParse,
+          // 가이드 경로는 onEnterAllowed에 절대 도달하지 않는다(fail-closed).
+          // 콜백 시그니처상 필수이므로 불변식 감시용 카운터만 둔다.
+          onEnterAllowed: (_) {
+            assert(false, 'guide path must never reach onEnterAllowed');
+          },
+          onGuideAllowed: (permit) {
+            retryPermit = permit;
+            _parseAuthorized = true;
+          },
+          onGuideDenied: (_) {
+            if (!mounted) return;
+            setState(() {
+              widget.parsedSchedule['parse_pending'] = false;
+              widget.parsedSchedule['parse_failed'] = true;
+              _isHydratingParsedSchedule = false;
+              _showInitialHydrationLoader = false;
+              _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
+            });
+          },
+        );
+      } catch (error, stackTrace) {
+        debugPrint('ConfirmScreen guided parse retry failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        if (mounted) {
+          setState(() {
+            widget.parsedSchedule['parse_pending'] = false;
+            widget.parsedSchedule['parse_failed'] = true;
+            _isHydratingParsedSchedule = false;
+            _showInitialHydrationLoader = false;
+            _hydrateMessage = 'AI 정리를 시작하지 못했어요. 입력 내용을 확인하고 다시 시도해 주세요.';
+          });
+        }
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      if (retryPermit == null) {
+        // onGuideDenied가 이미 fail-closed 상태를 반영했다. 일반 전환 없음.
+        return;
+      }
+      setState(() {
+        widget.parsedSchedule['parse_pending'] = true;
+        widget.parsedSchedule['parse_failed'] = false;
+        _hydrateMessage = null;
+        _showInitialHydrationLoader = true;
+      });
+      // dispatch 시점에 잡은 permit을 이 요청의 레인으로 고정한다. 응답을
+      // 기다리는 동안 가이드가 skip/종료되어도 이 요청은 일반 소비로
+      // 전환되지 않는다(_hydrateParsedSchedule은 파라미터로만 판단).
+      unawaited(
+          _hydrateParsedSchedule(rawText.trim(), guidePermit: retryPermit));
+      return;
+    }
+
+    // 가이드 밖 재시도. 남아 있는 일반 grant가 있으면 기존과 동일하게 같은
+    // 승인을 재사용한다(성공 시 정확히 1회 consume). grant가 없는데 가이드도
+    // 이미 끝났다면 이 요청은 새로운 유료 대상 요청이므로 일반 게이트에서
+    // 새 승인을 받고 성공 시 일반 사용량을 정확히 1회 소비해야 한다.
+    final parseBinding = _scheduleParseBinding(rawText);
+    if (_scheduleParseGrant == null) {
+      bool overlayVisible = false;
+      try {
+        await ScheduleParseAdGate.instance.tryEnterScheduleParse(
+          context: context,
+          onEnterAllowed: (grant) {
+            _scheduleParseGrant = grant;
+            if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
+              unawaited(
+                AnalyticsService.logAdFeatureSuccess(
+                  requestId: grant.sessionId,
+                ),
+              );
+            }
+          },
+          onDenied: (reason) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              widget.parsedSchedule['parse_pending'] = false;
+              widget.parsedSchedule['manual_text_confirmed'] = true;
+              widget.parsedSchedule['parse_failed'] = true;
+              _hydrateMessage = scheduleParseGateDenialMessage(reason);
+              if (_titleController.text.trim().isEmpty) {
+                _titleController.text = rawText;
+              }
+              _isHydratingParsedSchedule = false;
+              _showInitialHydrationLoader = false;
+            });
+          },
+          onAdProgress: (stage) {
+            if (!mounted) {
+              return;
+            }
+            RewardedAdLoadingOverlay.hide();
+            overlayVisible = false;
+            if (stage == 'shown' || stage == 'loading') {
+              RewardedAdLoadingOverlay.show(context, stage: stage);
+              overlayVisible = true;
+            }
+          },
+        );
+        if (!mounted) {
+          return;
+        }
+        final freshGrant = _scheduleParseGrant;
+        if (freshGrant != null &&
+            freshGrant.source == ScheduleParseEntitlementSource.adRewarded) {
+          await AdRewardState.instance.bindActiveGrant(
+            binding: parseBinding,
+            feature: 'schedule_parse',
+          );
+        }
+      } catch (error, stackTrace) {
+        debugPrint('ConfirmScreen normal parse retry failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        if (mounted) {
+          setState(() {
+            widget.parsedSchedule['parse_pending'] = false;
+            widget.parsedSchedule['parse_failed'] = true;
+            _isHydratingParsedSchedule = false;
+            _showInitialHydrationLoader = false;
+            _hydrateMessage = 'AI 정리를 시작하지 못했어요. 입력 내용을 확인하고 다시 시도해 주세요.';
+          });
+        }
+        return;
+      } finally {
+        if (overlayVisible) {
+          RewardedAdLoadingOverlay.hide();
+        }
+      }
+      if (_scheduleParseGrant == null) {
+        // 승인 거절: onDenied가 수동 입력 상태로 전환했다.
+        return;
+      }
+    }
     setState(() {
       widget.parsedSchedule['parse_pending'] = true;
       widget.parsedSchedule['parse_failed'] = false;
@@ -1380,6 +1621,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         _hydrateMessage = null;
       });
     }
+    // 보류된 소비 재시도는 항상 일반 레인의 연속이다: _parseConsumptionPending은
+    // 일반 grant의 파싱이 성공한 뒤 consume RPC가 실패했을 때만 설정된다. 과거
+    // 가이드 permit 필드가 있었다고 해서 이 소비를 건너뛰지 않는다(캐시된
+    // permit 재사용 금지, 미납 소비 누수 방지).
     final grant = _scheduleParseGrant!;
     final consumed =
         await ScheduleParseEntitlementService.instance.consume(grant.sessionId);
@@ -1408,7 +1653,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _hydrateParsedSchedule(rawText.trim());
   }
 
-  Future<void> _hydrateParsedSchedule(String rawText) async {
+  Future<void> _hydrateParsedSchedule(
+    String rawText, {
+    GuidePermit? guidePermit,
+  }) async {
     if (_isHydratingParsedSchedule) {
       return;
     }
@@ -1421,6 +1669,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // grant.sessionId로 consume()을 호출한다(서버가 같은 sessionId 재호출을
     // 멱등 처리). 재시도 버튼은 같은 승인 grant를 재사용하므로, 새 광고나
     // 무료 횟수 차감 없이 성공한 한 번만 consume한다.
+    //
+    // guidePermit은 이 요청의 dispatch 시점에 고정된 가이드 레인이다. 응답을
+    // 기다리는 동안 가이드가 skip·종료·단계 변경돼도 이 파라미터는 바뀌지
+    // 않으므로, 승인받은 가이드 파싱이 일반 소비로 전환되지 않는다. 가이드
+    // 종료 이후의 "새" 요청은 이 값을 전달받지 않으므로 정상적으로 1회
+    // 소비한다.
     final grant = _scheduleParseGrant;
 
     setState(() {
@@ -1444,6 +1698,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       // 결과에서는 grant를 유지해 사용자가 재시도할 수 있고, 광고 보상
       // grant도 같은 시도에서 중복 소비되지 않는다.
       if (parsed['parse_failed'] != true &&
+          guidePermit == null &&
           grant != null &&
           grant.source != ScheduleParseEntitlementSource.adFailedFreePass) {
         // Persist the server-side idempotent consume before clearing the
@@ -1669,11 +1924,158 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     );
   }
 
+  bool _confirmSaveInFlight = false;
+  bool _confirmCreateAttempted = false;
+  GuideSnapshot? _confirmGuideOwner;
+  String? _confirmAuthUid;
+  EventModel? _confirmPersistedEvent;
+  String? _confirmOperationId;
+
+  bool _sameGuideOwner(GuideSnapshot owner, {bool revision = false}) {
+    if (!mounted ||
+        _resolveUserId() != owner.uid ||
+        (authProvider.userId != _confirmAuthUid)) {
+      return false;
+    }
+    final current = GuideScope.maybeOf(context)?.state.value;
+    return current != null &&
+        current.uid == owner.uid &&
+        current.sessionId == owner.sessionId &&
+        current.run != GuideRun.terminal &&
+        (!revision || current.revision == owner.revision);
+  }
+
   Future<void> _save() async {
+    if (_confirmSaveInFlight) return;
+    _confirmSaveInFlight = true;
+    try {
+      final current = GuideScope.maybeOf(context)?.state.value;
+      if (_confirmGuideOwner != null && !_sameGuideOwner(_confirmGuideOwner!)) {
+        return;
+      }
+      if (current != null && current.run != GuideRun.terminal) {
+        if (_confirmGuideOwner == null) {
+          _confirmAuthUid = authProvider.userId;
+          _confirmGuideOwner = current;
+        }
+        if (!_sameGuideOwner(_confirmGuideOwner!) ||
+            current.sessionId == null) {
+          _showMessage('안내 로그인 상태를 확인해 주세요.');
+          return;
+        }
+        // A real saved ID must never re-enter createEvent, even after remount.
+        if (_confirmPersistedEvent != null || current.createdEventId != null) {
+          _confirmOperationId ??= current.savedCreateOperationId;
+          final id = _confirmPersistedEvent?.id ?? current.createdEventId!;
+          if (_confirmOperationId == null) {
+            // Never leave the save tap silently doing nothing: the persisted
+            // id exists but the guide operation binding is missing, so a
+            // retry cannot be matched. Ask the user to check the list.
+            _showMessage('이미 저장된 일정이에요. 일정 목록에서 확인해 주세요.');
+            return;
+          }
+          _confirmPersistedEvent ??= await _resolveEventRepository()
+              ?.fetchEvent(id, userId: current.uid);
+          if (!_sameGuideOwner(_confirmGuideOwner!) ||
+              _confirmPersistedEvent == null ||
+              _confirmPersistedEvent!.id != id) {
+            return;
+          }
+          if (await _dispatchGuideSaveObserved(_confirmPersistedEvent!)) {
+            _navigateAfterSave();
+          }
+          return;
+        }
+        if (_confirmCreateAttempted) {
+          _showMessage('저장 요청 결과가 불확실해요. 일정 목록에서 확인해 주세요. 중복 생성은 하지 않아요.');
+          return;
+        }
+        if (current.run != GuideRun.active ||
+            current.errorCode != null ||
+            current.step != GuideStep.correctAndSave) {
+          _showMessage('안내가 준비되지 않아 저장할 수 없어요.');
+          return;
+        }
+      }
+      await _saveActual();
+    } catch (error) {
+      // 제목·시작시간 같은 모호한 값으로 저장 여부를 추정하지 않는다.
+      // 재연결 근거는 저장소 응답으로 확인된 실제 일정(또는 정식 ID)뿐이다.
+      final recovered = _confirmPersistedEvent;
+      if (!mounted) {
+        return;
+      }
+      if (recovered != null) {
+        _confirmPersistedEvent = recovered;
+        _confirmOperationId ??= _confirmSavedOperationId();
+        var observed = false;
+        try {
+          observed = await _dispatchGuideSaveObserved(recovered);
+        } catch (guideError) {
+          debugPrint('Guide save reconnect failed: $guideError');
+        }
+        if (observed) {
+          EventRefreshBus.instance.notifyChanged(
+              reason: 'confirm_saved',
+              eventId: recovered.id,
+              startAt: recovered.startAt);
+          _navigateAfterSave();
+          return;
+        }
+        _showMessage('일정은 저장했어요. 안내 연결만 다시 시도해 주세요.');
+        return;
+      }
+      if (mounted) {
+        _showMessage(_confirmPersistedEvent != null
+            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
+            : '저장 상태를 확인하지 못했어요. 잠시 후 확인해 주세요.');
+      }
+    } finally {
+      _confirmSaveInFlight = false;
+    }
+  }
+
+  static const bool _allowUnresolvedGuideCoordinates = kDebugMode &&
+      bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
+      bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA');
+
+  Future<void> _saveActual() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       _showMessage('제목을 입력해 주세요.');
       return;
+    }
+
+    // Real UI guide: when the coordinator is bound at correctAndSave, the
+    // review section requires a real place + resolved destination coords
+    // (or an explicit manual picker selection) before save can advance. The
+    // guide must NOT overwrite the user's actual sentence — the title and
+    // location text remain exactly what the user typed.
+    final guideCoordinator = GuideScope.maybeOf(context);
+    final guideSnapshot = guideCoordinator?.state.value;
+    final guideGateActive = guideSnapshot != null &&
+        guideSnapshot.uid.isNotEmpty &&
+        guideSnapshot.sessionId != null &&
+        guideSnapshot.run == GuideRun.active &&
+        guideSnapshot.step == GuideStep.correctAndSave;
+    if (guideGateActive) {
+      final locationText = _locationController.text.trim();
+      // A manual picker selection is signalled by resolved coords already
+      // (LocationPickFlow writes lat/lng on selection). Coords from the GPT
+      // hydration also qualify when the user has not edited the place.
+      final placeSatisfied = guideCreateLocationAllowed(
+        location: locationText,
+        latitude: _locationLat,
+        longitude: _locationLng,
+        allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
+      );
+      if (!placeSatisfied) {
+        _showMessage(
+          '일정 정의를 보려면 장소와 좌표가 필요해요. '
+          '장소를 선택하거나 지도에서 위치를 골라 주세요.',
+        );
+        return;
+      }
     }
 
     if (AppEnv.isSupabaseReady) {
@@ -1699,7 +2101,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    await _maybePromptLeaderAutoShareIfNeeded(userId);
+    if (_confirmGuideOwner == null) {
+      await _maybePromptLeaderAutoShareIfNeeded(userId);
+    }
     if (!mounted) {
       return;
     }
@@ -1757,13 +2161,67 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       category: _category,
     );
 
+    if (_confirmGuideOwner != null &&
+        !_allowGuideCreate(draftEvent, _confirmGuideOwner!)) {
+      return;
+    }
+
+    // Ask for foreground location only in response to this explicit Save tap,
+    // and only when a personal, one-off future event already has destination
+    // coordinates. Permission is optional: denial or platform errors must not
+    // block persistence or fabricate an origin/ETA.
+    final recurrenceRule = draftEvent.recurrenceRule?.trim();
+    final isOneOff = recurrenceRule == null || recurrenceRule.isEmpty;
+    final eventStartForPermission = draftEvent.startAt ?? _startAt;
+    final isFutureEvent = eventStartForPermission.isAfter(_localNow());
+    final hasResolvedDestination = draftEvent.locationLat != null &&
+        draftEvent.locationLng != null;
+    if (_shouldSavePersonalEvent &&
+        isOneOff &&
+        isFutureEvent &&
+        hasResolvedDestination) {
+      final ownerBeforePermission = _resolveUserId();
+      try {
+        final alreadyGranted =
+            await _permissionService.checkLocationPermission();
+        if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+        if (!alreadyGranted) {
+          await _permissionService.requestLocationPermission();
+          if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+          // Keep session state fresh after the OS prompt before persisting.
+          if (AppEnv.isSupabaseReady) {
+            try {
+              await authProvider.syncCurrentSession();
+            } catch (error) {
+              debugPrint('ConfirmScreen session sync after location prompt failed: $error');
+            }
+            if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+          }
+        }
+      } catch (error) {
+        // Location is an optional preparation enhancement, never a save gate.
+        debugPrint('ConfirmScreen location permission request skipped: $error');
+        if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+      }
+    }
     if (_shouldSavePersonalEvent) {
       final eventStart = draftEvent.startAt ?? _startAt;
-      final overlappingEvents = await repository.findOverlappingEvents(
-        rangeStart: eventStart,
-        rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
-        userId: userId,
-      );
+      // 중복 시간대 조회는 경고용이다. 네트워크 오류로 조회가 실패해도
+      // 저장 자체를 막지 않는다(이전에는 이 단계 예외가 '저장 상태를 확인하지
+      // 못했어요'로 보이며 저장이 아예 중단됐다).
+      List<EventModel> overlappingEvents = const <EventModel>[];
+      try {
+        overlappingEvents = await repository.findOverlappingEvents(
+          rangeStart: eventStart,
+          rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
+          userId: userId,
+        );
+      } catch (error) {
+        debugPrint('Overlap lookup skipped before save: $error');
+      }
+      if (!mounted) {
+        return;
+      }
       final duplicateWarningEvents = filterDuplicateWarningEvents(
         draft: draftEvent,
         candidates: overlappingEvents,
@@ -1785,13 +2243,32 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     setState(() {
       _isSaving = true;
     });
-
     try {
       EventModel? savedEvent;
+      if (_confirmGuideOwner != null &&
+          !_allowGuideCreate(draftEvent, _confirmGuideOwner!)) {
+        return;
+      }
       if (_shouldSavePersonalEvent) {
+        if (_confirmGuideOwner != null) _confirmCreateAttempted = true;
         savedEvent = await repository.createEvent(draftEvent);
       }
 
+      if (_confirmGuideOwner != null && savedEvent != null) {
+        // Retain the real repository insert response before any fallible work.
+        _confirmPersistedEvent = savedEvent;
+        _confirmOperationId ??= _confirmSavedOperationId();
+        if (!_sameGuideOwner(_confirmGuideOwner!) ||
+            !await _dispatchGuideSaveObserved(savedEvent)) {
+          return;
+        }
+        EventRefreshBus.instance.notifyChanged(
+            reason: 'confirm_saved',
+            eventId: savedEvent.id,
+            startAt: savedEvent.startAt);
+        _navigateAfterSave();
+        return;
+      }
       if (_shouldSaveGroupEvent) {
         final targetGroups = _selectedGroupsForSharing;
         if (savedEvent == null) {
@@ -1884,7 +2361,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     } on StateError catch (error) {
       debugPrint('ConfirmScreen save state error: $error');
       if (mounted) {
-        _showMessage(_messageForSaveStateError(error));
+        _showMessage(_confirmPersistedEvent != null
+            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
+            : _messageForSaveStateError(error));
       }
     } on PostgrestException catch (error) {
       debugPrint(
@@ -1892,13 +2371,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         'code=${error.code} message=${error.message} details=${error.details}',
       );
       if (mounted) {
-        _showMessage(_messageForPostgrestError(error));
+        _showMessage(_confirmPersistedEvent != null
+            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
+            : _messageForPostgrestError(error));
       }
     } catch (error, stackTrace) {
       debugPrint('ConfirmScreen save failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
-        _showMessage('저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+        _showMessage(_confirmPersistedEvent != null
+            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
+            : '저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
       }
     } finally {
       if (mounted) {
@@ -2025,6 +2508,129 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 저장 후 일정탭으로 이동 (음성입력 화면으로 돌아가지 않음)
     context.go(AppRoutes.calendar);
   }
+
+  // ---- Real UI guide integration ----
+  // SaveObserved is dispatched only with the actual returned String ID and
+  // readback EventModel. A late checkpoint failure does not undo the real
+  // event — core retains createdEventId/savedCreateOperationId so the same
+  // retry can reconnect without recreating the event.
+
+  String _confirmSavedOperationId() =>
+      'confirmSave:$_parseAttemptId:${identityHashCode(this)}';
+
+  bool _allowGuideCreate(EventModel draft, GuideSnapshot owner) {
+    final current = GuideScope.maybeOf(context)?.state.value;
+    final allowed = _sameGuideOwner(owner, revision: true) &&
+        current != null &&
+        current.sessionId != null &&
+        current.errorCode == null &&
+        draft.userId == owner.uid &&
+        !draft.isMultiDay &&
+        _saveTarget == ScheduleSaveTarget.personalOnly &&
+        guideCreateLocationAllowed(
+          location: _locationController.text,
+          latitude: _locationLat,
+          longitude: _locationLng,
+          allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
+        ) &&
+        GuideMutationPolicy.check(
+                guide: current,
+                intent: GuideMutationIntent(
+                    kind: GuideWriteKind.createPersonal,
+                    operationId: _confirmSavedOperationId(),
+                    isPersonal: true,
+                    isRecurrence: draft.recurrenceRule != null,
+                    changedFields: const <String>{},
+                    userConfirmed: true))
+            .allowed;
+    if (!allowed && mounted) {
+      _showMessage('안내 저장 조건을 확인해 주세요. 개인 단일 일정과 장소가 필요해요.');
+    }
+    return allowed;
+  }
+
+  Future<bool> _dispatchGuideSaveObserved(EventModel persistedEvent) async {
+    final owner = _confirmGuideOwner;
+    if (owner == null || !_sameGuideOwner(owner)) return false;
+    final coordinator = GuideScope.maybeOf(context)!;
+    final state = coordinator.state.value;
+    if (persistedEvent.id.isEmpty ||
+        persistedEvent.userId != owner.uid ||
+        persistedEvent.groupEventId != null ||
+        persistedEvent.externalId != null ||
+        persistedEvent.recurrenceRule != null ||
+        persistedEvent.isMultiDay) {
+      return false;
+    }
+    final result = await coordinator.dispatch(SaveObserved(
+        uid: owner.uid,
+        sessionId: owner.sessionId!,
+        expectedRevision: state.revision,
+        persistedEvent: persistedEvent,
+        operationId: _confirmOperationId!));
+    final accepted = _sameGuideOwner(owner) &&
+        result.run == GuideRun.active &&
+        result.step == GuideStep.savedDetail &&
+        result.createdEventId == persistedEvent.id &&
+        result.savedCreateOperationId == _confirmOperationId;
+    if (!accepted && mounted && _sameGuideOwner(owner)) {
+      // 격리된 QA 빌드에서만, 실제로 저장된 일정이 있으면 안내 단계를 다음으로
+      // 넘겨 나머지 튜토리얼을 시험할 수 있게 한다. 본앱은 기존 재시도 안내를
+      // 그대로 유지한다.
+      if (_qaUnconfirmedSaveContinuationAllowed) {
+        try {
+          var current = coordinator.state.value;
+          if (_sameGuideOwner(owner) && current.uid == owner.uid &&
+              current.sessionId == owner.sessionId &&
+              current.run == GuideRun.blocked &&
+              current.errorCode == guideCreatedCheckpointPendingCode &&
+              current.createdEventId == persistedEvent.id &&
+              current.savedCreateOperationId == _confirmOperationId) {
+            // Retry the identical idempotent server bind before QA-local continuation.
+            final rebound = await coordinator.dispatch(SaveObserved(
+                uid: current.uid,
+                sessionId: current.sessionId!,
+                expectedRevision: current.revision,
+                persistedEvent: persistedEvent,
+                operationId: _confirmOperationId!));
+            if (_sameGuideOwner(owner) &&
+                rebound.step == GuideStep.savedDetail &&
+                rebound.createdEventId == persistedEvent.id) {
+              return true;
+            }
+            current = coordinator.state.value;
+            if (_sameGuideOwner(owner) && current.uid == owner.uid &&
+                current.sessionId == owner.sessionId &&
+                current.run == GuideRun.blocked &&
+                current.errorCode == guideCreatedCheckpointPendingCode &&
+                current.createdEventId == persistedEvent.id &&
+                current.savedCreateOperationId == _confirmOperationId) {
+              final local = await coordinator.dispatch(SaveUnconfirmedObserved(
+                  uid: current.uid,
+                  sessionId: current.sessionId!,
+                  expectedRevision: current.revision,
+                  persistedEvent: persistedEvent,
+                  operationId: _confirmOperationId!));
+              if (_sameGuideOwner(owner) &&
+                  local.step == GuideStep.savedDetail &&
+                  local.createdEventId == persistedEvent.id) {
+                _showMessage('일정은 저장됐어요. 안내 연결 없이 다음 단계로 넘어갑니다.');
+                return true;
+              }
+            }
+          }
+        } catch (error) {
+          debugPrint('QA guide continuation failed: $error');
+        }
+      }
+      _showMessage('일정은 저장했어요. 저장 버튼으로 안내 연결만 다시 시도해 주세요.');
+    }
+    return accepted;
+  }
+
+  /// 저장 확인(서버 바인딩) 없이도 QA에서 안내를 이어갈 수 있는 빌드인가.
+  /// kDebugMode + 격리 QA 플래그 두 개가 모두 있어야 한다.
+  bool get _qaUnconfirmedSaveContinuationAllowed => guideQaAdvanceEnabled;
 
   /// 저장 전 오전/오후 확인은 [_showTimePeriodClarificationDialog] 모달이
   /// 담당한다(자동 1회 표시). 이 버튼은 사용자가 모달을 닫아버렸거나
@@ -2955,6 +3561,31 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     );
   }
 
+  /// 저장 화면 안내(스포트라이트)를 화면에 띄워도 되는 상태인가.
+  ///
+  /// AI 파싱과 하이드레이션이 끝나야 실제 편집기 내용이 화면에 있다.
+  /// 그전에는 화면이 흐려진 상태라 안내가 그 위를 덮으면 안 된다.
+  bool get _guideConfirmReadyNow =>
+      !_isHydratingParsedSchedule &&
+      widget.parsedSchedule['parse_pending'] != true;
+
+  /// 파싱 상태 변화가 안내 호스트에 반영되도록 다음 프레임에 갱신한다.
+  ///
+  /// build 중에는 `ValueNotifier` 를 바꾸지 않는다. 안내 호스트가 알림을
+  /// 받고 `setState` 을 호출하면 build 중 setState 오류가 난다.
+  void _scheduleGuideConfirmReadySync() {
+    if (guideConfirmReady.value == _guideConfirmReadyNow) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ready = _guideConfirmReadyNow;
+      if (guideConfirmReady.value != ready) {
+        guideConfirmReady.value = ready;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2962,6 +3593,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         widget.parsedSchedule['parse_pending'] == true &&
             (_showInitialHydrationLoader || _isHydratingParsedSchedule);
 
+    _scheduleGuideConfirmReadySync();
     final scaffold = Scaffold(
       appBar: AppBar(
         title: const Text('일정 생성'),
@@ -2976,25 +3608,29 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: FilledButton.icon(
-              onPressed: (_isSaving ||
-                      showParsePendingLoader ||
-                      _parseConsumptionPending)
-                  ? null
-                  : _save,
-              icon: _isSaving
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined, size: 18),
-              label: const Text('저장'),
-              style: FilledButton.styleFrom(
-                backgroundColor: PlanFlowColors.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(92, 40),
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                visualDensity: VisualDensity.compact,
+            child: GuidedAnchor(
+              id: 'confirm.save.top',
+              registry: realUiGuideAnchorRegistry,
+              child: FilledButton.icon(
+                onPressed: (_isSaving ||
+                        showParsePendingLoader ||
+                        _parseConsumptionPending)
+                    ? null
+                    : _save,
+                icon: _isSaving
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined, size: 18),
+                label: const Text('저장'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: PlanFlowColors.primary,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(92, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ),
           ),
@@ -3009,209 +3645,223 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(AppConstants.defaultPadding),
-                child: ResponsiveContent(
-                  maxWidth: context.planflowWindowInfo.contentMaxWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.briefing,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white,
+              child: NotificationListener<ScrollNotification>(
+                onNotification: guideHandleUserScrollNotification,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                  child: ResponsiveContent(
+                    maxWidth: context.planflowWindowInfo.contentMaxWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
                           ),
-                        ),
-                      ),
-                      if (_isHydratingParsedSchedule ||
-                          _hydrateMessage != null) ...[
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                        Card(
-                          color: const Color(0xFFF7F9FF),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
+                          decoration: BoxDecoration(
+                            color: PlanFlowColors.briefing,
                             borderRadius: BorderRadius.circular(10),
-                            side: const BorderSide(
-                              color: PlanFlowColors.primaryFaint,
-                              width: 0.5,
+                          ),
+                          child: Text(
+                            'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.white,
                             ),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                if (_isHydratingParsedSchedule)
-                                  const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                else
-                                  const Icon(
-                                    Icons.info_outline,
-                                    color: PlanFlowColors.primaryMid,
-                                  ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _hydrateMessage ??
-                                            'AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.',
-                                        style:
-                                            theme.textTheme.bodySmall?.copyWith(
-                                          color: PlanFlowColors.textSecondary,
-                                        ),
+                        ),
+                        if (_isHydratingParsedSchedule ||
+                            _hydrateMessage != null) ...[
+                          const SizedBox(height: AppConstants.sectionSpacing),
+                          Card(
+                            color: const Color(0xFFF7F9FF),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              side: const BorderSide(
+                                color: PlanFlowColors.primaryFaint,
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  if (_isHydratingParsedSchedule)
+                                    const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
-                                      if (_parseAuthorized &&
-                                          !_isHydratingParsedSchedule &&
-                                          _hydrateMessage != null)
-                                        TextButton(
-                                          key: const ValueKey('retry-ai-parse'),
-                                          onPressed: _retryAiHydration,
-                                          child: const Text('AI로 다시 정리'),
+                                    )
+                                  else
+                                    const Icon(
+                                      Icons.info_outline,
+                                      color: PlanFlowColors.primaryMid,
+                                    ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _hydrateMessage ??
+                                              'AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: PlanFlowColors.textSecondary,
+                                          ),
                                         ),
-                                    ],
+                                        if (_parseAuthorized &&
+                                            !_isHydratingParsedSchedule &&
+                                            _hydrateMessage != null)
+                                          TextButton(
+                                            key: const ValueKey(
+                                                'retry-ai-parse'),
+                                            onPressed: _retryAiHydration,
+                                            child: const Text('AI로 다시 정리'),
+                                          ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                        if (_parseFailed)
+                          Card(
+                            color: theme.colorScheme.errorContainer,
+                            child: const Padding(
+                              padding: EdgeInsets.all(
+                                AppConstants.defaultPadding,
+                              ),
+                              child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
+                            ),
+                          ),
+                        if (_shouldShowTimePeriodClarification) ...[
+                          const SizedBox(height: AppConstants.sectionSpacing),
+                          _buildTimePeriodClarificationReopenButton(),
+                        ],
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                        _buildSaveTargetCard(context),
+                        if (_selectedGroupForSharing != null)
+                          const SizedBox(height: AppConstants.sectionSpacing),
+                        GuidedAnchor(
+                          id: 'confirm.review',
+                          registry: realUiGuideAnchorRegistry,
+                          child: CalendarStyleEventEditor(
+                            titleController: _titleController,
+                            locationController: _locationController,
+                            memoController: _memoController,
+                            startAt: _startAt,
+                            endAt: _endAt,
+                            category: _category,
+                            recurrence: _recurrenceSelection,
+                            reminderOffset: _reminderOffset,
+                            isCritical: _isCritical,
+                            useStrongAlarm: _strongAlarm,
+                            isLookingUpLocation: _isLookingUpLocation,
+                            isSearchingLocation: _isLookingUpLocation,
+                            locationLat: _locationLat,
+                            locationLng: _locationLng,
+                            locationHelperText:
+                                '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                            initiallyExpandClassification:
+                                !_recurrenceSelection.isNone,
+                            initiallyExpandDetails: false,
+                            initiallyExpandAlarm: true,
+                            initiallyExpandCriticalAlarm:
+                                _isCritical || guideSaveStageActive.value,
+                            onLocationTextChanged: _handleLocationTextChanged,
+                            onStartChanged: (value) {
+                              setState(() {
+                                final previousStart = _startAt;
+                                _startEditedByUser = true;
+                                _startAt = value;
+                                _endAt = shiftEventEndWhenStartChanges(
+                                  previousStart: previousStart,
+                                  newStart: _startAt,
+                                  currentEnd: _endAt,
+                                  endEditedByUser: _endEditedByUser,
+                                );
+                                if (_endAt != null &&
+                                    _endAt!.isBefore(_startAt)) {
+                                  _endAt = _startAt;
+                                }
+                              });
+                            },
+                            onEndChanged: (value) {
+                              setState(() {
+                                _endEditedByUser = true;
+                                _endAt = value;
+                              });
+                            },
+                            onCategoryChanged: (value) {
+                              setState(() {
+                                _category = value;
+                              });
+                            },
+                            onRecurrenceChanged: (value) {
+                              setState(() {
+                                _recurrenceSelection = value;
+                              });
+                            },
+                            onReminderChanged: (value) {
+                              setState(() {
+                                _reminderOffset = value;
+                              });
+                            },
+                            onCriticalChanged: (value) {
+                              setState(() {
+                                _isCritical = value;
+                                if (!value) _strongAlarm = false;
+                              });
+                            },
+                            onStrongAlarmChanged: (value) {
+                              setState(() {
+                                _strongAlarm = value;
+                              });
+                            },
+                            onLocationPick: _lookupLocation,
+                            extraAfterLocation: KeyedSubtree(
+                              key: _suppliesKey,
+                              child: _SuppliesEditor(
+                                supplies: _supplies,
+                                newSupplyController: _newSupplyController,
+                                newSupplyFocusNode: _newSupplyFocusNode,
+                                errorText: _supplyErrorText,
+                                onAdd: _addSupplyFromInput,
+                                onRemove: _removeSupply,
+                              ),
                             ),
                           ),
                         ),
+                        const SizedBox(height: 24),
+                        GuidedAnchor(
+                            id: 'confirm.save',
+                            registry: realUiGuideAnchorRegistry,
+                            child: FilledButton.icon(
+                              onPressed: (_isSaving ||
+                                      showParsePendingLoader ||
+                                      _parseConsumptionPending)
+                                  ? null
+                                  : _save,
+                              icon: _isSaving
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save),
+                              label: Text(_isSaving ? '저장 중' : '일정 저장'),
+                            )),
                       ],
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      if (_parseFailed)
-                        Card(
-                          color: theme.colorScheme.errorContainer,
-                          child: const Padding(
-                            padding: EdgeInsets.all(
-                              AppConstants.defaultPadding,
-                            ),
-                            child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
-                          ),
-                        ),
-                      if (_shouldShowTimePeriodClarification) ...[
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                        _buildTimePeriodClarificationReopenButton(),
-                      ],
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      _buildSaveTargetCard(context),
-                      if (_selectedGroupForSharing != null)
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                      CalendarStyleEventEditor(
-                        titleController: _titleController,
-                        locationController: _locationController,
-                        memoController: _memoController,
-                        startAt: _startAt,
-                        endAt: _endAt,
-                        category: _category,
-                        recurrence: _recurrenceSelection,
-                        reminderOffset: _reminderOffset,
-                        isCritical: _isCritical,
-                        useStrongAlarm: _strongAlarm,
-                        isLookingUpLocation: _isLookingUpLocation,
-                        isSearchingLocation: _isLookingUpLocation,
-                        locationLat: _locationLat,
-                        locationLng: _locationLng,
-                        locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
-                        initiallyExpandClassification:
-                            !_recurrenceSelection.isNone,
-                        initiallyExpandDetails: false,
-                        initiallyExpandAlarm: true,
-                        initiallyExpandCriticalAlarm: _isCritical,
-                        onLocationTextChanged: _handleLocationTextChanged,
-                        onStartChanged: (value) {
-                          setState(() {
-                            final previousStart = _startAt;
-                            _startEditedByUser = true;
-                            _startAt = value;
-                            _endAt = shiftEventEndWhenStartChanges(
-                              previousStart: previousStart,
-                              newStart: _startAt,
-                              currentEnd: _endAt,
-                              endEditedByUser: _endEditedByUser,
-                            );
-                            if (_endAt != null && _endAt!.isBefore(_startAt)) {
-                              _endAt = _startAt;
-                            }
-                          });
-                        },
-                        onEndChanged: (value) {
-                          setState(() {
-                            _endEditedByUser = true;
-                            _endAt = value;
-                          });
-                        },
-                        onCategoryChanged: (value) {
-                          setState(() {
-                            _category = value;
-                          });
-                        },
-                        onRecurrenceChanged: (value) {
-                          setState(() {
-                            _recurrenceSelection = value;
-                          });
-                        },
-                        onReminderChanged: (value) {
-                          setState(() {
-                            _reminderOffset = value;
-                          });
-                        },
-                        onCriticalChanged: (value) {
-                          setState(() {
-                            _isCritical = value;
-                            if (!value) _strongAlarm = false;
-                          });
-                        },
-                        onStrongAlarmChanged: (value) {
-                          setState(() {
-                            _strongAlarm = value;
-                          });
-                        },
-                        onLocationPick: _lookupLocation,
-                        extraAfterLocation: KeyedSubtree(
-                          key: _suppliesKey,
-                          child: _SuppliesEditor(
-                            supplies: _supplies,
-                            newSupplyController: _newSupplyController,
-                            newSupplyFocusNode: _newSupplyFocusNode,
-                            errorText: _supplyErrorText,
-                            onAdd: _addSupplyFromInput,
-                            onRemove: _removeSupply,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton.icon(
-                        onPressed: (_isSaving ||
-                                showParsePendingLoader ||
-                                _parseConsumptionPending)
-                            ? null
-                            : _save,
-                        icon: _isSaving
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.save),
-                        label: Text(_isSaving ? '저장 중' : '일정 저장'),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),

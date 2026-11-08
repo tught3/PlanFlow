@@ -1517,12 +1517,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final requestedStartLocal = _inferRequestedStartLocal(event);
     if (requestedStartLocal != null) {
       final newStart = planflowLocalDateTimeToUtc(requestedStartLocal);
-      final originalDuration = updated.endAt.difference(updated.startAt);
-      final newEnd = newStart.add(
-        originalDuration.isNegative || originalDuration == Duration.zero
-            ? const Duration(hours: 1)
-            : originalDuration,
-      );
+      // 시작 단독 변경은 원본 길이(오래된 1박2일 종료 포함)를 이어가지 않고
+      // 새 시작 기준 1시간 기본 길이로 재계산한다.
+      final newEnd = newStart.add(const Duration(hours: 1));
       updated = updated.copyWith(startAt: newStart, endAt: newEnd);
       changed = true;
     }
@@ -2122,13 +2119,6 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return event;
     }
 
-    final originalStartLocal =
-        event.startAt == null ? null : planflowLocal(event.startAt!);
-    final originalEndLocal =
-        event.endAt == null ? null : planflowLocal(event.endAt!);
-    final duration = originalStartLocal == null || originalEndLocal == null
-        ? null
-        : originalEndLocal.difference(originalStartLocal);
     final nextStartUtc = requestedStartLocal == null
         ? event.startAt
         : planflowLocalDateTimeToUtc(requestedStartLocal);
@@ -2142,10 +2132,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       nextIsMultiDay = nextStartUtc != null &&
           !planflowIsSameLocalDay(nextStartUtc, nextEndUtc);
     } else if (requestedStartLocal != null) {
-      nextEndUtc =
-          duration == null || duration.isNegative || duration == Duration.zero
-              ? event.endAt
-              : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration));
+      nextEndUtc = planflowLocalDateTimeToUtc(
+        requestedStartLocal.add(const Duration(hours: 1)),
+      );
+      // 원본의 오래된 isMultiDay 플래그를 이어가지 않고 저장 범위로 재계산해
+      // 1시간 기본 길이가 멀티데이로 오분류되지 않게 한다.
+      nextIsMultiDay = nextStartUtc != null &&
+          !planflowIsSameLocalDay(nextStartUtc, nextEndUtc);
     } else {
       nextEndUtc = event.endAt;
     }

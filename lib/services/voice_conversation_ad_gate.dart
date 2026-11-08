@@ -6,9 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/analytics_service.dart';
 import '../core/env.dart';
 import '../core/diag_logger.dart';
+import '../onboarding/real_ui_guide/guide_contract.dart';
 import '../widgets/voice_conversation_ad_dialog.dart';
 import 'ad_consent_service.dart';
 import 'ad_service.dart';
+import 'guide_quota_adapter.dart';
 import 'remote_config_service.dart';
 import 'voice_conversation_entitlement.dart';
 
@@ -93,10 +95,47 @@ class VoiceConversationAdGate {
     required String userId,
     required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
     void Function(VoiceConversationGateDenialReason reason)? onDenied,
+
+    // Additive optional guide-aware parameters. When [guideCoordinator]
+    // is provided the gate routes through [GuideQuotaRuntime] before
+    // running its own grant — and NEVER invokes [onEnterAllowed] while
+    // the bound guide is active/paused/blocked.
+    GuideCoordinator? guideCoordinator,
+    GuideOperation? guideOperation,
+    void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideAccess access)? onGuideDenied,
   }) async {
     lastDenialReason = null;
     if (_inFlight.contains(userId)) {
       // 이미 진행 중이면 사일런트하게 무시 (사용자 인지 불필요).
+      return;
+    }
+    if (guideCoordinator != null && guideOperation != null) {
+      final GuideAccess access = await _tryGuidePath(
+        context: context,
+        userId: userId,
+        coordinator: guideCoordinator,
+        operation: guideOperation,
+        onGuideAllowed: onGuideAllowed,
+        onGuideDenied: onGuideDenied,
+      );
+      // Outside guide (no binding, terminal, or non-voiceConversation
+      // context) keeps existing gate semantics. VoiceConversation gate
+      // is the only one that maps [GuideOperation] -> kind voiceConversation.
+      if (access.status == GuideAccessStatus.granted ||
+          access.status == GuideAccessStatus.denied ||
+          access.status == GuideAccessStatus.expired ||
+          access.status == GuideAccessStatus.retryLater) {
+        return;
+      }
+      // `unavailable` with reasonCode != 'guide_unbound' means the
+      // binding was active but the server was unreachable. We do not
+      // fall through to a paid/ad grant in that case.
+      if (access.reasonCode == 'guide_unavailable_paid_bypass_blocked') {
+        return;
+      }
+    }
+    if (!context.mounted) {
       return;
     }
     _inFlight.add(userId);
@@ -110,6 +149,58 @@ class VoiceConversationAdGate {
     } finally {
       _inFlight.remove(userId);
     }
+  }
+
+  Future<GuideAccess> _tryGuidePath({
+    required BuildContext context,
+    required String userId,
+    required GuideCoordinator coordinator,
+    required GuideOperation operation,
+    void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideAccess access)? onGuideDenied,
+  }) async {
+    final live = GuideQuotaRuntime.current(() => userId);
+    if (live == null || !identical(live, coordinator)) {
+      // Bound but terminal / stale UID / missing binding — outside
+      // guide semantics. Caller falls through to the normal gate.
+      return const GuideAccess(
+          status: GuideAccessStatus.unavailable, reasonCode: 'guide_unbound');
+    }
+    final snapshot = coordinator.state.value;
+    if (snapshot.uid != userId ||
+        snapshot.sessionId == null ||
+        snapshot.sessionId!.isEmpty) {
+      return const GuideAccess(
+          status: GuideAccessStatus.denied, reasonCode: 'stale_session');
+    }
+    final GuideStep phase = switch (operation) {
+      GuideOperation.createParse => GuideStep.correctAndSave,
+      GuideOperation.query => GuideStep.queryResults,
+      GuideOperation.changeTime => GuideStep.editPreview,
+    };
+    final GuideAdapterContext adapterContext = GuideAdapterContext(
+      coordinator: coordinator,
+      kind: GuideChargeKind.voiceConversation,
+      operation: operation,
+      phase: phase,
+      uid: snapshot.uid,
+      version: snapshot.version,
+      sessionId: snapshot.sessionId!,
+      revision: snapshot.revision,
+      serverRevision: snapshot.serverRevision,
+      createdEventId: snapshot.createdEventId,
+    );
+    final GuideAccess access = await guideAuthorize(
+      context: adapterContext,
+      operationId: 'voice_conv:$userId:${operation.name}',
+      authUidProvider: () => userId,
+    );
+    if (access.status == GuideAccessStatus.granted && access.permit != null) {
+      onGuideAllowed?.call(access.permit!);
+    } else {
+      onGuideDenied?.call(access);
+    }
+    return access;
   }
 
   Future<void> _runGate({

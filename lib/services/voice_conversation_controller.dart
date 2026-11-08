@@ -1,6 +1,9 @@
+import '../onboarding/real_ui_guide/guide_contract.dart';
+import '../onboarding/real_ui_guide/guide_guards.dart';
 import '../core/local_time.dart';
 import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
+import 'event_range_utils.dart';
 import 'gpt_service.dart';
 import 'voice_command_router.dart';
 import 'voice_date_range_parser.dart';
@@ -205,12 +208,24 @@ class VoiceConversationController {
     Iterable<EventModel> events = const <EventModel>[],
     VoiceConversationNow? now,
     VoiceCommandRouter? router,
+    this.guideSnapshot,
   })  : _initialEvents = events,
         _now = now,
         _router = router ?? const VoiceCommandRouter();
 
   static final Expando<_VoiceConversationState> _states =
       Expando<_VoiceConversationState>('VoiceConversationController');
+
+  final GuideSnapshot? Function()? guideSnapshot;
+
+  /// Rebind after QueryObserved changes the local revision. This exact list
+  /// drives both rendered cards and subsequent ordinal interpretation.
+  GuideVisibleBinding bindGuideResults(
+      GuideSnapshot guide, List<EventModel> results) {
+    final binding = GuideResultOrder.bind(guide: guide, results: results);
+    _state.visibleEvents = binding.ordered;
+    return binding;
+  }
 
   final Iterable<EventModel> _initialEvents;
   final VoiceConversationNow? _now;
@@ -824,6 +839,7 @@ class VoiceConversationController {
           draftEvent: draftEvent,
           locationText: null,
           criticalValue: null,
+          rawText: input,
         );
         if (autoApply && draftEvent != null && draftEvent.startAt != null) {
           return _finish(
@@ -913,6 +929,7 @@ class VoiceConversationController {
             draftEvent: draftEvent,
             locationText: null,
             criticalValue: null,
+            rawText: input,
           );
           if (autoApply && draftEvent != null && draftEvent.startAt != null) {
             return _finish(
@@ -1110,6 +1127,16 @@ class VoiceConversationController {
     VoiceConversationSession? externalSession,
     VoiceConversationResult result,
   ) {
+    final guide = guideSnapshot?.call();
+    final visible = guide != null &&
+            guide.isInProgress &&
+            result.action == VoiceConversationAction.showEvents
+        ? GuideResultOrder.bind(guide: guide, results: result.visibleEvents)
+            .ordered
+        : result.visibleEvents;
+    if (result.action == VoiceConversationAction.showEvents) {
+      state.visibleEvents = visible;
+    }
     final nextSession = state.toSession();
     if (externalSession == null) {
       _states[this] = state;
@@ -1118,7 +1145,7 @@ class VoiceConversationController {
       action: result.action,
       inputText: result.inputText,
       queryRange: result.queryRange,
-      visibleEvents: result.visibleEvents,
+      visibleEvents: visible,
       selectedEvents: result.selectedEvents,
       targetEvent: result.targetEvent,
       draftEvent: result.draftEvent,
@@ -1941,23 +1968,14 @@ class VoiceConversationController {
       route: resolvedRoute,
     );
     if (requestedStartLocal != null) {
-      final originalStartLocal =
-          event.startAt == null ? null : planflowLocal(event.startAt!);
-      final originalEndLocal =
-          event.endAt == null ? null : planflowLocal(event.endAt!);
-      final duration = originalStartLocal == null || originalEndLocal == null
-          ? null
-          : originalEndLocal.difference(originalStartLocal);
-
       // draft은 원본 일정의 모든 메타데이터(useStrongAlarm, overriddenOccurrenceDate,
       // deletedOccurrenceDates, groupEventId 등)를 보존해야 한다. 필드를 수동으로
       // 나열하면 신규 필드 추가 시 누락 회귀가 생기므로 copyWith로만 파생한다.
       return event.copyWith(
         startAt: planflowLocalDateTimeToUtc(requestedStartLocal),
-        endAt:
-            duration == null || duration.isNegative || duration == Duration.zero
-                ? event.endAt
-                : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration)),
+        endAt: planflowLocalDateTimeToUtc(
+          requestedStartLocal.add(const Duration(hours: 1)),
+        ),
         recurrenceRule: requestedRecurrenceRule ?? event.recurrenceRule,
       );
     }
@@ -1976,14 +1994,15 @@ class VoiceConversationController {
     final shiftedStart = planflowLocal(
       event.startAt!,
     ).add(Duration(days: shiftDays));
-    final shiftedEnd = event.endAt == null
-        ? null
-        : planflowLocal(event.endAt!).add(Duration(days: shiftDays));
+    // 날짜 단독 이동도 시작 단독 변경과 같은 규칙을 적용한다. 원본 종료를 일
+    // 단위로 끌고 가면 오래된 1박2일 종료가 재현되므로, 새 시작 기준 1시간
+    // 기본 길이로 재계산한다.
+    final shiftedEnd = shiftedStart.add(const Duration(hours: 1));
 
     // 위 분기와 동일하게 copyWith로 파생해 메타데이터 플래그를 모두 보존한다.
     return event.copyWith(
       startAt: planflowLocalDateTimeToUtc(shiftedStart),
-      endAt: shiftedEnd == null ? null : planflowLocalDateTimeToUtc(shiftedEnd),
+      endAt: planflowLocalDateTimeToUtc(shiftedEnd),
       recurrenceRule: requestedRecurrenceRule ?? event.recurrenceRule,
     );
   }
@@ -2029,8 +2048,11 @@ class VoiceConversationController {
     required EventModel? draftEvent,
     required String? locationText,
     required bool? criticalValue,
+    String? rawText,
   }) {
     if (locationText != null) return false;
+    // 발화에 종료/구간/기간/종일/N박 의도가 있으면 시작 단독 자동 저장에서 제외한다.
+    if (utteranceHasExplicitEndOrDurationCue(rawText)) return false;
     if (criticalValue != null) return false;
     final changes = route.requestedChanges;
     if (changes.length != 1 || !changes.contains('start_at')) return false;

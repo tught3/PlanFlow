@@ -881,6 +881,9 @@ private class PlanFlowSttChannel(
     private var sessionId = 0
     private var restartAttempts = 0
     private var startGeneration = 0
+    // A11: 청취 시도(attempt)별 리스너 신원. 매 rearm/restart마다 단조 증가하며,
+    // 이전 시도에서 발생한 지연 콜백이 새 시도 이벤트로 오인되는 것을 차단한다.
+    private var activeAttemptEpoch = 0L
     private var lastRestartAtMs = 0L
     private var listenMode = "dictation"
     private var listenSilenceMs = 30000L
@@ -1023,11 +1026,7 @@ private class PlanFlowSttChannel(
 
         listening = false
         startGeneration += 1
-        val oldRecognizer = recognizer
-        recognizer = null
-        oldRecognizer?.setRecognitionListener(null)
-        oldRecognizer?.cancel()
-        oldRecognizer?.destroy()
+        invalidateCurrentAttempt()
 
         listening = true
         userRequestedStop = false
@@ -1039,19 +1038,114 @@ private class PlanFlowSttChannel(
         startGeneration += 1
         logPhase("start", mapOf("silenceMs" to listenSilenceMs))
         muteRecognitionSounds()  // 시작음(띠링) 억제
-        ensureRecognizer()
+        rearmFreshRecognizer()
         startListening(attempt = "first")
     }
 
-    private fun ensureRecognizer() {
-        if (recognizer != null) {
-            return
-        }
+    /**
+     * 이전 청취 시도(attempt)를 즉시 무효화하고 정리한다(새 인스턴스 arm은 없음).
+     * 순서가 핵심: (1) epoch 무효화가 최우선. cancel/destroy 이후에도 서비스 큐에서
+     * 배달되는 이전 시도의 지연 콜백이 어떤 log/상태/publish/재시작에도 도달하지
+     * 않게 한다. (2) 그다음 리스너 탈착 -> cancel -> destroy.
+     * start / restartSoon / cancel / dispose / restart_exhausted의 teardown으로 사용.
+     */
+    private fun invalidateCurrentAttempt() {
+        activeAttemptEpoch += 1
+        val oldRecognizer = recognizer
+        recognizer = null
+        try { oldRecognizer?.setRecognitionListener(null) } catch (_: Exception) {}
+        try { oldRecognizer?.cancel() } catch (_: Exception) {}
+        try { oldRecognizer?.destroy() } catch (_: Exception) {}
+    }
+
+    /**
+     * 매 rearm/restart마다 새 SpeechRecognizer 인스턴스로 arm한다. 같은 인스턴스에
+     * 리스너만 갈아끼우지 않는다: Android 내부 ListenerBinder가 큐에 남은 이전
+     * 요청의 콜백을 '새 리스너'로 위임 배달할 수 있어(A11 로그 03.055/03.111),
+     * 인스턴스 자체가 새것이어야 이전 시도와 완전히 분리된다. 등록되는 리스너도
+     * 채널(this)이 아니라 epoch+인스턴스에 묶인 가드 어댑터다.
+     */
+    private fun rearmFreshRecognizer() {
+        invalidateCurrentAttempt()
         // 기본 RecognitionService 사용 (ASI createOnDeviceSpeechRecognizer 대신).
         // ASI 온디바이스 엔진은 짧은 발화마다 끊고 시작음(beep)을 내므로,
         // 기본 엔진 + EXTRA_PREFER_OFFLINE=true로 끊김/beep을 줄이고 오프라인 유지.
-        recognizer = SpeechRecognizer.createSpeechRecognizer(activity)
-        recognizer?.setRecognitionListener(this)
+        val freshRecognizer = SpeechRecognizer.createSpeechRecognizer(activity)
+        recognizer = freshRecognizer
+        freshRecognizer.setRecognitionListener(
+            AttemptListener(epoch = activeAttemptEpoch, owningRecognizer = freshRecognizer),
+        )
+    }
+
+    /** 콜백 신원 검사: 현재 시도의 epoch이자 현재 recognizer 인스턴스일 때만 true. */
+    private fun isAttemptCurrent(epoch: Long, owningRecognizer: SpeechRecognizer): Boolean =
+        epoch == activeAttemptEpoch && owningRecognizer === recognizer
+
+    /**
+     * 시도(attempt)마다 새로 등록되는 가드 어댑터. 신원이 현재 시도와 일치할 때만
+     * 채널 핸들러로 넘긴다. 이전 시도의 지연 콜백은 로그/상태/publish/재시작
+     * 어디에도 쓰지 않고 조용히 버린다(부수효과 없음).
+     */
+    private inner class AttemptListener(
+        private val epoch: Long,
+        private val owningRecognizer: SpeechRecognizer,
+    ) : RecognitionListener {
+        private fun active(): Boolean = isAttemptCurrent(epoch, owningRecognizer)
+
+        override fun onReadyForSpeech(params: Bundle?) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onReadyForSpeech(params)
+        }
+
+        override fun onBeginningOfSpeech() {
+            if (!active()) return
+            this@PlanFlowSttChannel.onBeginningOfSpeech()
+        }
+
+        override fun onRmsChanged(rmsdB: Float) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onRmsChanged(rmsdB)
+        }
+
+        override fun onBufferReceived(buffer: ByteArray?) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onBufferReceived(buffer)
+        }
+
+        override fun onEndOfSpeech() {
+            if (!active()) return
+            this@PlanFlowSttChannel.onEndOfSpeech()
+        }
+
+        override fun onError(error: Int) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onError(error)
+        }
+
+        override fun onResults(results: Bundle?) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onResults(results)
+        }
+
+        override fun onPartialResults(partialResults: Bundle?) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onPartialResults(partialResults)
+        }
+
+        override fun onSegmentResults(segmentResults: Bundle) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onSegmentResults(segmentResults)
+        }
+
+        override fun onEndOfSegmentedSession() {
+            if (!active()) return
+            this@PlanFlowSttChannel.onEndOfSegmentedSession()
+        }
+
+        override fun onEvent(eventType: Int, params: Bundle?) {
+            if (!active()) return
+            this@PlanFlowSttChannel.onEvent(eventType, params)
+        }
     }
 
     private fun startListening(attempt: String = "retry") {
@@ -1125,17 +1219,16 @@ private class PlanFlowSttChannel(
                 "restart_exhausted",
                 mapOf("reason" to reason, "attempts" to restartAttempts),
             )
+            // 종료 상태 진입: 잔여 recognizer의 지연 콜백도 차단.
+            invalidateCurrentAttempt()
             unmuteRecognitionSounds()
             invokeIfActive("error", mapOf("text" to latestPartialText, "sessionId" to sessionId))
             return
         }
-        if (recreateRecognizer) {
-            recognizer?.cancel()
-            recognizer?.destroy()
-            recognizer = null
-        } else {
-            recognizer?.cancel()
-        }
+        // 재시작 종류와 무관히 '즉시' 이전 attempt를 무효화/정리한다(신원 무효화가
+        // cancel/destroy보다 선행). postDelayed에서는 항상 새 인스턴스로 arm하므로
+        // 같은 인스턴스/같은 리스너 재사용 경로(recreate=false)는 더 이상 없다.
+        invalidateCurrentAttempt()
         val generation = ++startGeneration
         // 재시작 gap 최소화: recognizer 재생성이 필요할 때만 짧게 지연, 그 외엔 즉시.
         // (기존 conversation 4.5초 지연이 발화 유실의 원인 → 제거)
@@ -1148,7 +1241,7 @@ private class PlanFlowSttChannel(
         invokeIfActive("restarted", mapOf("sessionId" to sessionId, "reason" to reason))
         activity.window.decorView.postDelayed({
             if (listening && !userRequestedStop && generation == startGeneration) {
-                ensureRecognizer()
+                rearmFreshRecognizer()
                 startListening(attempt = reason)
             }
         }, restartDelay)
@@ -1174,11 +1267,8 @@ private class PlanFlowSttChannel(
         stopSnapshotText = latestPartialText
         logPhase("cancel", mapOf("text" to latestPartialText.take(80)))
         // 좀비 recognizer 완전 정리 → 다음 start 시 ERROR_RECOGNIZER_BUSY 방지
-        val old = recognizer
-        recognizer = null
-        old?.setRecognitionListener(null)
-        old?.cancel()
-        old?.destroy()
+        // epoch 무효화가 detach/cancel/destroy보다 먼저 실행된다.
+        invalidateCurrentAttempt()
         unmuteRecognitionSounds()
         invokeIfActive("cancelled", mapOf("text" to latestPartialText, "sessionId" to sessionId))
     }
@@ -1187,12 +1277,9 @@ private class PlanFlowSttChannel(
         isDisposed = true
         listening = false
         startGeneration += 1
-        val old = recognizer
-        recognizer = null
         logPhase("dispose")
-        old?.setRecognitionListener(null)
-        old?.cancel()
-        old?.destroy()
+        // epoch 무효화 선행 후 detach/cancel/destroy (지연 콜백 차단).
+        invalidateCurrentAttempt()
         unmuteRecognitionSounds()
         channel.setMethodCallHandler(null)
     }

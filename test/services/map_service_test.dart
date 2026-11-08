@@ -104,17 +104,22 @@ void main() {
   test('MapService uses Naver proxy without client secret headers', () async {
     final service = MapService(
       naverProxyUrl: 'https://example.supabase.co/functions/v1/naver-geocode',
+      allowTransitCarFallback: false,
+      proxyHeadersBuilder: () => <String, String>{
+        'accept': 'application/json',
+        'Authorization': 'Bearer session-token',
+        'apikey': 'anon-key',
+      },
       httpClientFactory: () => MockClient((request) async {
+        expect(request.headers['Authorization'], 'Bearer session-token');
+        expect(request.headers['apikey'], 'anon-key');
         expect(request.url.host, 'example.supabase.co');
         expect(request.url.queryParameters['start'], '126.978,37.5665');
         expect(request.url.queryParameters['goal'], '127.0276,37.4979');
         expect(request.url.queryParameters['mode'], 'transit');
         expect(request.url.queryParameters.containsKey('option'), isFalse);
         expect(request.headers.containsKey('X-NCP-APIGW-API-KEY'), isFalse);
-        return http.Response(
-          '{"result":{"path":[{"summary":{"duration":1920000}}]}}',
-          200,
-        );
+        return http.Response('{"error":"Transit directions are not supported by this proxy."}', 501);
       }),
     );
 
@@ -126,9 +131,7 @@ void main() {
       mode: MapTravelMode.transit,
     );
 
-    expect(estimate, isNotNull);
-    expect(estimate!.provider, MapTravelProvider.naver);
-    expect(estimate.minutes, 32);
+    expect(estimate, isNull);
   });
 
   test('MapService uses Naver first for transit mode', () async {

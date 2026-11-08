@@ -31,6 +31,10 @@ import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_conversation_launcher.dart';
 import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
+import '../../widgets/guided_anchor.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 part 'home_widgets.dart';
 
 enum _HomeLoadState {
@@ -497,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           (e) =>
               e.location != null &&
               e.location!.trim().isNotEmpty &&
-              e.locationLat == null,
+              !e.hasValidLocationCoordinates,
         )
         .toList();
     if (missing.isEmpty) return;
@@ -554,36 +558,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             continue;
           }
           final best = results.first;
-          await repository.updateEvent(EventModel(
-            id: event.id,
-            userId: event.userId,
-            title: event.title,
-            startAt: event.startAt,
-            endAt: event.endAt,
-            location: event.location,
-            locationLat: best.latitude,
-            locationLng: best.longitude,
-            memo: event.memo,
-            supplies: event.supplies,
-            suppliesChecked: event.suppliesChecked,
-            participants: event.participants,
-            targets: event.targets,
-            isCritical: event.isCritical,
-            useStrongAlarm: event.useStrongAlarm,
-            recurrenceRule: event.recurrenceRule,
-            isAllDay: event.isAllDay,
-            isMultiDay: event.isMultiDay,
-            parentEventId: event.parentEventId,
-            category: event.category,
-            source: event.source,
-            externalId: event.externalId,
-            externalCalendarId: event.externalCalendarId,
-            externalEtag: event.externalEtag,
-            externalUpdatedAt: event.externalUpdatedAt,
-            lastSyncedAt: event.lastSyncedAt,
-            createdAt: event.createdAt,
-            updatedAt: event.updatedAt,
-          ));
+          // 좌표만 채운다. 나머지 필드(그룹 연결, 반복 회차 메타 등)는
+          // 그대로 유지해야 다른 설정이 증발하지 않는다.
+          await repository.updateEvent(
+            event.copyWith(
+              locationLat: best.latitude,
+              locationLng: best.longitude,
+            ),
+          );
           resolvedAny = true;
         } catch (e) {
           // 예외(인증 실패 등)도 시도로 기록해 쿨다운 동안 재호출을 막는다.
@@ -1009,6 +991,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _todayEvents.isEmpty &&
             _upcomingEvents.isEmpty &&
             _pastTodayEvents.isEmpty,
+        voiceActionBuilder: (voiceFabBuilder) {
+          final coordinator = GuideScope.maybeOf(context);
+          if (coordinator == null) {
+            return voiceFabBuilder(() => context.push(AppRoutes.voice));
+          }
+          final snapshot = coordinator.state.value;
+          final isQueryMicStep = snapshot.step == GuideStep.queryMic &&
+              snapshot.run == GuideRun.active &&
+              snapshot.uid.isNotEmpty;
+          final anchorId = isQueryMicStep ? 'query.mic' : 'home.mic';
+          return GuidedAnchor(
+            id: anchorId,
+            registry: realUiGuideAnchorRegistry,
+            child: Builder(builder: (innerContext) {
+              return voiceFabBuilder(() {
+                if (isQueryMicStep) {
+                  final state = coordinator.state.value;
+                  if (state.uid.isNotEmpty &&
+                      state.sessionId != null &&
+                      state.run != GuideRun.terminal) {
+                    unawaited(coordinator.dispatch(QueryMicTapped(
+                      uid: state.uid,
+                      sessionId: state.sessionId!,
+                      expectedRevision: state.revision,
+                    )));
+                  }
+                } else {
+                  final state = coordinator.state.value;
+                  if (state.uid.isNotEmpty &&
+                      state.sessionId != null &&
+                      state.run != GuideRun.active) {
+                    // guide is in a non-active terminal/paused/blocked state,
+                    // do not synthesize a HomeMicTapped from a UI tap.
+                  } else if (state.uid.isNotEmpty &&
+                      state.sessionId != null &&
+                      state.run == GuideRun.active &&
+                      state.step == GuideStep.homeMic) {
+                    unawaited(coordinator.dispatch(HomeMicTapped(
+                      uid: state.uid,
+                      sessionId: state.sessionId!,
+                      expectedRevision: state.revision,
+                    )));
+                  }
+                }
+                context.push(AppRoutes.voice);
+              });
+            }),
+          );
+        },
       ),
     );
   }

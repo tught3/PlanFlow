@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,9 @@ import 'package:planflow/core/env.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
+import 'package:planflow/widgets/guided_anchor.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
@@ -34,6 +39,103 @@ void main() {
         ),
       );
     }
+  });
+
+  testWidgets('saved detail guide is visible for text-only place readback',
+      (tester) async {
+    final saved = EventModel(
+      id: 'saved-guide',
+      userId: 'guide-owner',
+      title: 'Saved title',
+      startAt: DateTime(2030, 1, 2, 10),
+      location: 'North Station',
+      locationLat: null,
+      locationLng: null,
+    );
+    final guide = _DetailGuide(savedEventId: saved.id, uid: saved.userId);
+    await tester.pumpWidget(MaterialApp(
+      home: GuideScope(
+        coordinator: guide,
+        child: EventDetailScreen(
+          event: saved,
+          eventRepository: _DetailReadbackRepository(saved),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final summary = find.byWidgetPredicate(
+        (widget) => widget is GuidedAnchor && widget.id == 'saved.summary');
+    expect(summary, findsOneWidget);
+    expect(find.text('Saved title'), findsWidgets);
+    expect(find.text('North Station'), findsWidgets);
+    await tester.drag(find.byType(ListView), const Offset(0, -800));
+    await tester.pumpAndSettle();
+    expect(find.text('준비·출발 안내 확인'), findsOneWidget);
+    // The guide explains the feature, not QA/debug infrastructure, in either build.
+    expect(find.textContaining('저장한 일정과 장소를 확인해 주세요.'), findsOneWidget);
+    expect(find.textContaining('QA 전용:'), findsNothing);
+    expect(find.textContaining('지도 위치 조회를 건너뛴'), findsNothing);
+    expect(guide.ackCalls, 0);
+  });
+
+  testWidgets('wrong saved id or owner does not show stored-detail guide',
+      (tester) async {
+    for (final event in [
+      EventModel(
+          id: 'foreign-id',
+          userId: 'guide-owner',
+          title: 'Foreign',
+          startAt: DateTime(2030, 1, 2, 10),
+          location: 'Station'),
+      EventModel(
+          id: 'saved-guide',
+          userId: 'foreign-owner',
+          title: 'Foreign owner',
+          startAt: DateTime(2030, 1, 2, 10),
+          location: 'Station'),
+    ]) {
+      final guide =
+          _DetailGuide(savedEventId: 'saved-guide', uid: 'guide-owner');
+      await tester.pumpWidget(MaterialApp(
+        home: GuideScope(
+          coordinator: guide,
+          child: EventDetailScreen(
+            event: event,
+            eventRepository: _DetailReadbackRepository(null),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('준비·출발 안내 확인'), findsNothing);
+      expect(
+          find.byWidgetPredicate((widget) =>
+              widget is GuidedAnchor && widget.id == 'saved.summary'),
+          findsNothing);
+    }
+  });
+
+  testWidgets('unconfirmed readback does not claim saved detail',
+      (tester) async {
+    final saved = EventModel(
+        id: 'saved-guide',
+        userId: 'guide-owner',
+        title: 'Saved title',
+        startAt: DateTime(2030, 1, 2, 10),
+        location: 'Station');
+    final guide = _DetailGuide(savedEventId: saved.id, uid: saved.userId);
+    await tester.pumpWidget(MaterialApp(
+      home: GuideScope(
+        coordinator: guide,
+        child: EventDetailScreen(
+          event: saved,
+          eventRepository: _DetailReadbackRepository(null),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('준비·출발 안내 확인'), findsNothing);
+    expect(guide.ackCalls, 0);
   });
 
   testWidgets('EventDetailScreen back falls back to home when opened directly',
@@ -263,6 +365,9 @@ void main() {
             event: event,
             eventRepository: _FakeEventRepository(event),
             showCriticalAckButton: true,
+            // 실제 알림 플러그인은 테스트 환경에서 플랫폼 채널 응답을 받을 수
+            // 없다. 버튼 스타일과 확인 표시에 집중하므로 알림 정리는 가짜를 넣는다.
+            notificationService: _FakeNotificationService(),
           ),
         ),
       ],
@@ -299,6 +404,43 @@ void main() {
 
     // 버튼을 탭하면 알림 취소가 실제로 호출되고, 버튼이 사라지며,
     // 확인 스낵바가 뜨는지 검증한다.
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('확인(출발)'), findsNothing);
+    expect(find.text('알림을 확인했어요.'), findsOneWidget);
+  });
+
+  testWidgets(
+      'EventDetailScreen critical ack confirmation is not blocked by slow '
+      'notification cleanup', (tester) async {
+    final event = EventModel(
+      id: 'event-5b',
+      userId: 'user-1',
+      title: '알림 정리 지연 확인',
+      startAt: DateTime.utc(2026, 5, 13, 0),
+      endAt: DateTime.utc(2026, 5, 13, 1),
+      isCritical: true,
+    );
+    final router = GoRouter(
+      initialLocation: '${AppRoutes.eventDetail}/${event.id}',
+      routes: [
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, __) => EventDetailScreen(
+            event: event,
+            eventRepository: _FakeEventRepository(event),
+            showCriticalAckButton: true,
+            // 알림 정리가 끝나지 않아도 사용자에게 확인이 먼저 보여야 한다.
+            notificationService: _HangingNotificationService(),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('확인(출발)'));
     await tester.pumpAndSettle();
 
@@ -391,8 +533,7 @@ void main() {
     );
   });
 
-  testWidgets(
-      'EventDetailScreen 확인(출발) 더블 탭은 멱등이다 (취소 한 번만 호출)',
+  testWidgets('EventDetailScreen 확인(출발) 더블 탭은 멱등이다 (취소 한 번만 호출)',
       (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final event = EventModel(
@@ -441,6 +582,42 @@ void main() {
             '한 번만 호출돼야 한다.');
     expect(find.text('알림을 확인했어요.'), findsOneWidget);
   });
+}
+
+class _DetailGuide implements GuideCoordinator {
+  _DetailGuide({required String savedEventId, required String uid})
+      : state = ValueNotifier(GuideSnapshot(
+          uid: uid,
+          revision: 1,
+          serverRevision: 1,
+          version: 'real_ui_v1',
+          sessionId: 'detail-session',
+          run: GuideRun.active,
+          step: GuideStep.savedDetail,
+          createdEventId: savedEventId,
+        ));
+
+  @override
+  final ValueNotifier<GuideSnapshot> state;
+  int ackCalls = 0;
+  @override
+  Future<GuideSnapshot> dispatch(GuideSignal signal) async {
+    if (signal is DetailObserved) ackCalls++;
+    return state.value;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _DetailReadbackRepository extends EventRepository {
+  _DetailReadbackRepository(this.readback);
+  final EventModel? readback;
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
+      readback?.id == eventId ? readback : null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _FakeEventRepository extends EventRepository {
@@ -552,10 +729,12 @@ class _FakeGroupRepository extends GroupRepository {
   Future<List<GroupModel>> listGroups() async => const [];
 
   @override
-  Future<GroupModel> createGroup(GroupModel group) => throw UnimplementedError();
+  Future<GroupModel> createGroup(GroupModel group) =>
+      throw UnimplementedError();
 
   @override
-  Future<GroupModel> updateGroup(GroupModel group) => throw UnimplementedError();
+  Future<GroupModel> updateGroup(GroupModel group) =>
+      throw UnimplementedError();
 
   @override
   Future<List<GroupMemberModel>> listMembers(String groupId) async => const [];
@@ -590,5 +769,21 @@ class _FakeNotificationService extends NotificationService {
   @override
   Future<void> cancelEventReminderNotifications(String eventId) async {
     cancelledReminderEventIds.add(eventId);
+  }
+}
+
+/// 알림 정리가 끝나지 않는(플랫폼 응답이 없는) 상황을 흉내낸다.
+class _HangingNotificationService extends NotificationService {
+  final cancelledEventIds = <String>[];
+
+  @override
+  Future<void> cancelEventNotifications(String eventId) {
+    cancelledEventIds.add(eventId);
+    return Completer<void>().future;
+  }
+
+  @override
+  Future<void> cancelEventReminderNotifications(String eventId) async {
+    cancelledEventIds.add(eventId);
   }
 }

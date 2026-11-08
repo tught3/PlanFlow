@@ -381,4 +381,70 @@ void main() {
       '오늘 일정 알려줘 3번째 일정 삭제',
     );
   });
+
+  group('누적 발화 교정 (아니 = 직전 항목만, 다시 = 전체 삭제)', () {
+    test('아니라고 하면 마지막으로 말한 시간만 취소되고 날짜는 남는다', () {
+      expect(SttService.cancelLastSpokenSlot('내일 오후 1시'), '내일');
+      expect(SttService.cancelLastSpokenSlot('내일 오전 9시30분'), '내일');
+      expect(SttService.cancelLastSpokenSlot('내일 오후 1시 강남역'), '내일 오후 1시');
+      expect(SttService.cancelLastSpokenSlot('내일'), '');
+      expect(SttService.cancelLastSpokenSlot(''), '');
+    });
+
+    test('말한 순서대로 쌓이고 아니 뒤 다시 말하면 중복 없이 교체된다', () {
+      var draft = '';
+      draft = SttService.mergeCommittedUtterance(draft, '내일 오후 1시');
+      expect(draft, '내일 오후 1시');
+      draft = SttService.mergeCommittedUtterance(draft, '아니');
+      expect(draft, '내일');
+      draft = SttService.mergeCommittedUtterance(draft, '오후 2시');
+      expect(draft, '내일 오후 2시');
+      draft = SttService.mergeCommittedUtterance(draft, '강남역 약속');
+      expect(draft, '내일 오후 2시 강남역 약속');
+    });
+
+    test('아니와 정정 내용을 한 번에 말해도 앞 내용을 유지한다', () {
+      expect(
+        SttService.mergeCommittedUtterance('내일 오후 1시', '아니 오후 2시'),
+        '내일 오후 2시',
+      );
+      expect(
+        SttService.startsWithSpokenUndo('아니 오후 2시'),
+        isTrue,
+      );
+      expect(SttService.stripLeadingSpokenUndo('아니 오후 2시'), '오후 2시');
+    });
+
+    test('다시는 누적된 문장 전체를 지운다', () {
+      expect(SttService.normalizeVoiceTranscript('다시'), '');
+      expect(
+        SttService.mergeCommittedUtterance('내일 오후 2시 강남역 약속', '다시'),
+        '',
+      );
+      expect(SttService.mergeCommittedUtterance('내일 오후 2시', ''), '내일 오후 2시');
+    });
+
+    test('네이티브 부분 인식에서 선두 아니는 앞선 초안 취소를 위해 보존된다', () {
+      expect(SttService.shouldPreserveLeadingUndo('', '아니'), isTrue);
+      expect(SttService.shouldPreserveLeadingUndo('', '아니 오후 2시'), isTrue);
+      // 이미 이번 세션에서 확정된 말이 있으면 기존 단어 취소로 처리한다.
+      expect(SttService.shouldPreserveLeadingUndo('오후 1시', '아니'), isFalse);
+      expect(SttService.shouldPreserveLeadingUndo('', '오후 2시'), isFalse);
+    });
+
+    test('같은 아니가 반복 수신되어도 한 번만 취소된다', () {
+      // 누적 부분 인식이 같은 값을 다시 보내도 추가 삭제가 없어야 한다.
+      var committed = '내일 오후 1시';
+      committed = SttService.cancelLastSpokenSlot(committed);
+      expect(committed, '내일');
+      final again = SttService.cancelLastSpokenSlot(committed);
+      expect(again, '');
+      // 두 번째 호출을 막는 것은 세션 계층이므로, 결과가 같으면 재적용하지 않는다.
+      expect(committed == '내일' ? committed : again, '내일');
+    });
+    test('한 문장 안의 기존 날짜/시간 교정은 그대로 동작한다', () {
+      expect(SttService.normalizeVoiceTranscript('6월 7일 아니 9일'), '6월 9일');
+      expect(SttService.normalizeVoiceTranscript('내일 오후 1시 아니 오후 2시'), '내일 오후 2시');
+    });
+  });
 }

@@ -580,6 +580,17 @@ class NotificationService {
     await _plugin.cancel(id: id);
   }
 
+  /// Cancels the exact notification that delivered an action response. Android
+  /// actions can arrive in a headless Flutter engine after process death; the
+  /// response ID is the authoritative identity and must be dismissed before any
+  /// event lookup or preference persistence can delay/fail.
+  Future<void> cancelResponseNotification(int? notificationId) async {
+    if (notificationId == null) return;
+    // Android cancellation does not require callback/channel initialization.
+    // A headless action must not wait for channel setup or permission prompts.
+    await _plugin.cancel(id: notificationId);
+  }
+
   Future<void> cancelEventNotifications(String eventId) async {
     // 강한알람 preflight 체인(generation + 그 generation 소유 headless 알람/
     // 소리 알림)을 먼저 무효화해 대기 중인 실행이 부활시키지 못하게 한다.
@@ -1601,11 +1612,13 @@ Future<void> handleNotificationResponseAction(
     if (eventId.isNotEmpty) {
       final store = departureAcknowledgementStore ??
           const SharedPreferencesDepartureAcknowledgementStore();
+      final notifications = notificationService ??
+          NotificationService(allowPermissionRequests: false);
+      await notifications.cancelResponseNotification(response.id);
+      await notifications.cancelDepartureNotifications(eventId);
+      // Persist only after dismissal so slow/unavailable preferences cannot
+      // leave the currently sounding notification posted.
       await store.markAcknowledged(eventId);
-      await (notificationService ?? NotificationService())
-          .cancelDepartureNotifications(eventId);
-      // cancelNotification: true 로 알림은 자동 취소됨
-      // 다음 모니터 실행(30분 이내)에서 isAcknowledged() → skip
     }
     return;
   }
@@ -1628,17 +1641,29 @@ Future<void> handleNotificationResponseAction(
               NotificationResponseType.selectedNotification)) {
     final eventId = NotificationService._eventIdFromEventPayload(payload);
     if (eventId.isNotEmpty) {
-      final notifications = notificationService ?? NotificationService();
+      final notifications = notificationService ??
+          NotificationService(allowPermissionRequests: false);
       // 중요 알람 액션은 같은 event로 묶인 모든 로컬 알림(푸시/중요/출발/
       // 스마트 준비/사전 액션)을 함께 취소한다. 단순 body 탭은 리마인더만
       // 취소해 출발/스마트 준비는 유지한다(사용자 의도 분리).
       if (actionId == NotificationService.criticalAcknowledgedActionId) {
-        await _persistCriticalAcknowledge(
-          eventId: eventId,
-          criticalAlarmAcknowledgementStore: criticalAlarmAcknowledgementStore,
-          eventRepository: eventRepository,
-        );
-        await notifications.cancelEventNotifications(eventId);
+        // Cancel the exact posted alarm first. This dismisses Android's
+        // sound/vibration with the notification and remains safe to repeat.
+        // Event-derived sibling cancellation is additional cleanup, not the
+        // identity source for the notification that invoked this action.
+        await notifications.cancelResponseNotification(response.id);
+        try {
+          await notifications.cancelEventNotifications(eventId);
+        } finally {
+          // Even a failed sibling cleanup must not leave this event eligible
+          // for a later preflight re-ring when the acknowledgement can persist.
+          await _persistCriticalAcknowledge(
+            eventId: eventId,
+            criticalAlarmAcknowledgementStore:
+                criticalAlarmAcknowledgementStore,
+            eventRepository: eventRepository,
+          );
+        }
       } else {
         await notifications.cancelEventReminderNotifications(eventId);
       }

@@ -29,7 +29,7 @@ import 'package:planflow/services/voice_conversation_entitlement.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 int _alignedFutureFixtureYear() {
-  for (var year = DateTime.now().year + 1; ; year++) {
+  for (var year = DateTime.now().year + 1;; year++) {
     if (DateTime(year, 1, 1).weekday == DateTime.thursday &&
         !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
       return year;
@@ -2602,6 +2602,7 @@ void main() {
     bool? criticalValue,
     String? recurrenceRule,
     String? groupEventId,
+    String inputText = '그 일정 다음 주로',
   }) {
     final draft = targetEvent.copyWith(
       startAt: newStart,
@@ -2613,7 +2614,7 @@ void main() {
     );
     return VoiceConversationResult(
       action: VoiceConversationAction.confirmedEdit,
-      inputText: '그 일정 다음 주로',
+      inputText: inputText,
       targetEvent: targetEvent,
       draftEvent: draft,
       visibleEvents: <EventModel>[targetEvent],
@@ -2655,6 +2656,62 @@ void main() {
         result: result,
         targetEvent: originalEvent,
       ),
+      isTrue,
+    );
+  });
+
+  testWidgets('음성 자동 저장 가드는 종료/구간/기간 발화면 거부하고 저장하지 않는다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-end-cue',
+        userId: 'user-1',
+        title: '회의',
+        startAt: DateTime(_voiceFixtureYear, 5, 22, 9).toUtc(),
+        endAt: DateTime(_voiceFixtureYear, 5, 22, 10).toUtc(),
+      ),
+    ]);
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+    final original = repository.events.single;
+    final newStart = DateTime(_voiceFixtureYear, 5, 23, 11).toUtc();
+    for (final text in <String>[
+      '내일 9시부터 11시까지로 변경',
+      '아홉시부터 열한시까지로 변경',
+      '내일 11시 2시간 동안으로 바꿔',
+      '내일 11시 종료로 변경',
+    ]) {
+      final result = buildDateAutoResult(
+        targetEvent: original,
+        newStart: newStart,
+        inputText: text,
+      );
+      expect(
+        state.debugCanApplyDateChangeAuto(
+            result: result, targetEvent: original),
+        isFalse,
+        reason: text,
+      );
+      expect(
+        await state.debugApplyConversationDateAutoSave(
+            result: result, targetEvent: original),
+        isFalse,
+        reason: text,
+      );
+    }
+    expect(repository.events.single.startAt, original.startAt);
+    expect(repository.events.single.endAt, original.endAt);
+    final offset = buildDateAutoResult(
+      targetEvent: original,
+      newStart: newStart,
+      inputText: '한 시간 뒤로 미뤄줘',
+    );
+    expect(
+      state.debugCanApplyDateChangeAuto(result: offset, targetEvent: original),
       isTrue,
     );
   });
@@ -3400,7 +3457,8 @@ void main() {
     );
   });
 
-  testWidgets('음성 자동 저장은 원본 시각/길이를 보존해 새 시작 기준 종료를 계산한다', (tester) async {
+  testWidgets('음성 자동 저장은 시작 단독 변경 시 원본 종료와 무관하게 1시간 기본 길이로 저장한다',
+      (tester) async {
     final repository = _FakeEventRepository(<EventModel>[
       EventModel(
         id: 'event-duration',
@@ -3427,7 +3485,7 @@ void main() {
 
     final originalEvent = repository.events.single;
     // 드래프트가 원본 날짜의 오래된 종료(endAt)를 간직한 채 오는 경우에도
-    // 새 시작 기준으로 원본 길이(90분)를 보존해 재계산한다.
+    // 시작 단독 변경은 새 시작 기준 1시간 기본 길이로 재계산한다(90분 보존 폐지).
     final voiceResult = buildDateAutoResult(
       targetEvent: originalEvent,
       newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
@@ -3438,9 +3496,54 @@ void main() {
     );
     expect(saved, isTrue);
     final updated = repository.updatedEvents.single;
-    // 시각 보존: 9시 → 9시. 길이 보존: 90분 → 종료 10:30.
+    // 시각: 9시 → 9시. 길이: 90분 보존 대신 1시간 → 종료 10:00.
     expect(updated.startAt, DateTime.utc(_voiceFixtureYear, 5, 29, 9));
-    expect(updated.endAt, DateTime.utc(_voiceFixtureYear, 5, 29, 10, 30));
+    expect(updated.endAt, DateTime.utc(_voiceFixtureYear, 5, 29, 10));
+  });
+
+  testWidgets('음성 자동 저장은 오래된 1박2일 종료와 멀티데이 플래그를 재계산한다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-stale-overnight',
+        userId: 'user-1',
+        title: '오래된 연속 일정',
+        startAt: DateTime.utc(_voiceFixtureYear, 5, 22, 9),
+        endAt: DateTime.utc(_voiceFixtureYear, 5, 23, 18),
+        isMultiDay: true,
+      ),
+    ]);
+    final sideEffects = _FakeManualEventSideEffectService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        sideEffectService: sideEffects,
+        settingsRepository:
+            _FakeSettingsRepository(const Duration(minutes: 30)),
+        reminderNotifyAtReader: _fakeReminderReader(repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(VoiceConversationScreen))
+        as VoiceConversationScreenState;
+
+    final originalEvent = repository.events.single;
+    expect(originalEvent.isMultiDay, isTrue);
+    final voiceResult = buildDateAutoResult(
+      targetEvent: originalEvent,
+      newStart: DateTime.utc(_voiceFixtureYear, 5, 29, 9),
+    );
+    final saved = await state.debugApplyConversationDateAutoSave(
+      result: voiceResult,
+      targetEvent: originalEvent,
+    );
+    expect(saved, isTrue);
+    final updated = repository.updatedEvents.single;
+    // 오래된 다음날 종료(5/23 18:00)를 이어가지 않고 새 시작+1시간으로 저장하며,
+    // 저장 범위가 같은 날이므로 isMultiDay 플래그도 false 로 재계산된다.
+    expect(updated.startAt, DateTime.utc(_voiceFixtureYear, 5, 29, 9));
+    expect(updated.endAt, DateTime.utc(_voiceFixtureYear, 5, 29, 10));
+    expect(updated.isMultiDay, isFalse);
   });
 
   testWidgets('음성 자동 저장 후 같은 일정을 다시 옮기면 갱신된 날짜 기준으로 저장된다', (tester) async {
@@ -3507,7 +3610,8 @@ void main() {
       repository.updatedEvents.last.startAt,
       DateTime.utc(_voiceFixtureYear, 5, 30, 9),
     );
-    expect(repository.updatedEvents.last.endAt, DateTime.utc(_voiceFixtureYear, 5, 30, 10));
+    expect(repository.updatedEvents.last.endAt,
+        DateTime.utc(_voiceFixtureYear, 5, 30, 10));
   });
 
   testWidgets('저장 성공 후 사이드 이펙트가 실패해도 저장은 유지된다', (tester) async {
@@ -3549,7 +3653,8 @@ void main() {
     expect(saved, isTrue);
     expect(repository.updatedEvents, hasLength(1));
     expect(sideEffects.syncAfterSaveCalls, hasLength(1));
-    expect(repository.events.single.startAt, DateTime.utc(_voiceFixtureYear, 5, 29, 9));
+    expect(repository.events.single.startAt,
+        DateTime.utc(_voiceFixtureYear, 5, 29, 9));
   });
 
   testWidgets('개별 30분 알림(전역 60분)은 이동 후 새 시작(+7일) 기준 30분 전으로 재계산된다',
@@ -3946,7 +4051,8 @@ void main() {
     // 내비 검증 자체가 없었다).
     final payload = receivedExtra as EventEditRoutePayload;
     expect(payload.draft.id, event.id);
-    expect(planflowLocal(payload.draft.startAt!), DateTime(_voiceFixtureYear, 5, 8, 9));
+    expect(planflowLocal(payload.draft.startAt!),
+        DateTime(_voiceFixtureYear, 5, 8, 9));
     expect(
       planflowLocal(payload.original.startAt!),
       DateTime(_voiceFixtureYear, 5, 7, 9),
@@ -4033,7 +4139,8 @@ void main() {
     // 여기서는 개별 회차가 없으므로 occurrence는 null이다.
     final payload = receivedExtra as EventEditRoutePayload;
     expect(payload.draft.id, event.id);
-    expect(planflowLocal(payload.draft.startAt!), DateTime(_voiceFixtureYear, 5, 8, 9));
+    expect(planflowLocal(payload.draft.startAt!),
+        DateTime(_voiceFixtureYear, 5, 8, 9));
     expect(
       planflowLocal(payload.original.startAt!),
       DateTime(_voiceFixtureYear, 5, 7, 9),

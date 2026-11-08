@@ -123,6 +123,33 @@ class SttService {
   @visibleForTesting
   static int get debugActiveListenGeneration => _activeListenGeneration;
 
+  /// Test-only reader for the active native session id. Lets the
+  /// retired-session fence regression assert the exact field that
+  /// `_clearActiveListenState` overwrites in the redundant-detach
+  /// path. Existing `debugHasActiveListen` collapses seven fields
+  /// into a bool and cannot distinguish fence value.
+  @visibleForTesting
+  static int? get debugActiveNativeSessionId => _activeNativeSessionId;
+
+  /// Test-only reader for the retired-session fence id. With the
+  /// `_expelledNativeSessionId = _activeNativeSessionId` assignment
+  /// the redundant second clear wipes this value from N to null;
+  /// with the `?? _expelledNativeSessionId` fallback the value
+  /// survives. This getter is the direct observer for the bug.
+  @visibleForTesting
+  static int? get debugExpelledNativeSessionId => _expelledNativeSessionId;
+
+  /// Test-only writer that seeds the active native session id
+  /// without going through `acceptsEvent`. Lets the redundant-
+  /// detach regression reproduce the exact pre-fence sequence
+  /// `active=1 -> first clear (fence=1, active=null) -> second
+  /// clear (BUG wipes fence to null; FIX preserves fence=1)` from
+  /// outside the production messenger.
+  @visibleForTesting
+  static set debugActiveNativeSessionId(int? value) =>
+      _activeNativeSessionId = value;
+
+
   @visibleForTesting
   static Duration debugListenForForMode(SttListenMode mode) {
     return _listenForForMode(mode);
@@ -647,6 +674,111 @@ class SttService {
     );
   }
 
+  /// 발화 시작이 교정 명령("아니")인지 판별한다. 화면은 누적 초안에 이 명령을
+  /// 적용해야 하므로 정규화로 토큰이 사라지기 전에 원문에서 확인한다.
+  static bool startsWithSpokenUndo(String text) {
+    final words = text.trim().split(RegExp(r'\s+'));
+    if (words.isEmpty || words.first.isEmpty) {
+      return false;
+    }
+    return _undoLastWordCommandTokens
+        .contains(_normalizeTranscriptToken(words.first));
+  }
+
+  /// 선두 교정 명령 토큰만 제거한 나머지 발화를 돌려준다.
+  static String stripLeadingSpokenUndo(String text) {
+    final words = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (words.isEmpty) {
+      return '';
+    }
+    if (_undoLastWordCommandTokens
+        .contains(_normalizeTranscriptToken(words.first))) {
+      return words.skip(1).join(' ');
+    }
+    return words.join(' ');
+  }
+
+  /// 누적 초안에서 "방금 말한 항목" 하나만 취소한다.
+  ///
+  /// 우선순위: 끝에 붙은 시간(오후 1시) → 날짜(내일/6월 7일) → 마지막 단어.
+  /// 예) '내일 오후 1시' → '내일', '내일 오후 1시 강남역' → '내일 오후 1시'.
+  /// 전체 삭제("다시")와 달리 앞서 말한 내용은 그대로 둔다.
+  static String cancelLastSpokenSlot(String text) {
+    final words = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (words.isEmpty) {
+      return '';
+    }
+    var end = words.length;
+    final last = _normalizeTranscriptToken(words[end - 1]);
+    if (_spokenTimePattern.hasMatch(last)) {
+      end -= 1;
+      if (end > 0 &&
+          _timePrefixTokens.contains(_normalizeTranscriptToken(words[end - 1]))) {
+        end -= 1;
+      }
+    } else if (_timePrefixTokens.contains(last)) {
+      // "오후"까지만 말한 상태에서 취소해도 앞의 날짜는 남긴다.
+      end -= 1;
+    } else if (_isDateToken(last) ||
+        _relativeDayTokens.contains(last) ||
+        _weekdayPattern.hasMatch(last)) {
+      end -= 1;
+      if (end > 0 && _isDateToken(_normalizeTranscriptToken(words[end - 1]))) {
+        end -= 1;
+      }
+    } else {
+      end -= 1;
+    }
+    return words.take(end).join(' ');
+  }
+
+  /// 누적된 앞선 발화([committed])에 새 발화([utterance])를 합친다.
+  /// 새 발화가 "아니"로 시작하면 앞선 발화의 마지막 항목만 취소한 뒤 이어 붙인다.
+  /// 화면과 시험이 같은 경로를 쓰도록 여기에만 규칙을 둔다.
+  /// 네이티브 부분 인식에서 선두 "아니"를 명령으로 소비하지 않고 화면으로 넘길지 결정한다.
+  /// 이 세션에서 아직 확정된 텍스트가 없으면 취소할 대상은 앞선 초안(prefix)뿐이므로
+  /// 명령을 소비하지 않고 올려보내야 한다.
+  static bool shouldPreserveLeadingUndo(String committed, String incoming) {
+    return committed.trim().isEmpty && startsWithSpokenUndo(incoming);
+  }
+
+  static String mergeCommittedUtterance(String committed, String utterance) {
+    // "다시"는 문장 전체를 비우는 명령이라 앞선 발화를 남기지 않는다.
+    // banned-ok: Normalizes a spoken word from the current utterance.
+    final commandToken = _normalizeTranscriptToken(utterance.trim());
+    if (_clearAllCommandTokens.contains(commandToken)) {
+      return '';
+    }
+    final corrected = startsWithSpokenUndo(utterance)
+        ? cancelLastSpokenSlot(committed)
+        : committed;
+    final base = corrected.trim();
+    final next = normalizeVoiceTranscript(
+      stripLeadingSpokenUndo(utterance),
+    ).trim();
+    if (base.isEmpty) {
+      return next;
+    }
+    if (next.isEmpty || base == next) {
+      return base;
+    }
+    if (next.startsWith(base)) {
+      return next;
+    }
+    if (base.endsWith(next)) {
+      return base;
+    }
+    return mergeTranscriptSegment(base, next);
+  }
+
   static String mergeTranscriptSegment(String committedText, String segment) {
     final normalizedSegment = segment.trim();
     if (normalizedSegment.isEmpty) {
@@ -770,7 +902,8 @@ class SttService {
   }
 
   static void _clearActiveListenState({required bool clearHandler}) {
-    _expelledNativeSessionId = _activeNativeSessionId;
+    _expelledNativeSessionId =
+        _activeNativeSessionId ?? _expelledNativeSessionId;
     _activeSpeech = null;
     _activeCompleter = null;
     _activeRecognizedText = null;
@@ -1260,6 +1393,9 @@ class SttService {
     final listenGeneration = ++_activeListenGeneration;
     final committedSegments = <String>[];
     String latestRecognizedText = '';
+    // 같은 "아니"가 누적 부분 인식으로 반복 수신돼도 한 번만 취소되도록,
+    // 직전 취소 결과를 기억한다.
+    String? lastUndoResult;
     var restartCount = 0;
     _activeNativeListen = true;
     _activeCommittedSegments = committedSegments;
@@ -1396,21 +1532,53 @@ class SttService {
       if (recognizedWords.isEmpty) {
         return;
       }
-      if (handleNativeVoiceControlCommand(recognizedWords)) {
+      final committedText = committedSegments.join(' ').trim();
+      final startsWithUndo = SttService.startsWithSpokenUndo(recognizedWords);
+      // 한 번에 말한 문장이 이번 세션에 쌓여 있으면 "아니"는 그 문장의 마지막
+      // 항목만 취소해야 한다. 여기서 전체를 지우면 실기기에서 문장이 통째로
+      // 사라지므로, 슬롯 단위 취소 결과를 세션 텍스트로 되돌린다.
+      if (startsWithUndo && committedText.isNotEmpty) {
+        // 이미 취소가 적용된 결과가 그대로 다시 온 경우에는 또 지우지 않는다.
+        final alreadyCorrected =
+            lastUndoResult != null && committedText == lastUndoResult;
+        final rest = SttService.stripLeadingSpokenUndo(recognizedWords);
+        final corrected = alreadyCorrected
+            ? committedText
+            : SttService.cancelLastSpokenSlot(committedText);
+        if (!alreadyCorrected) {
+          committedSegments
+            ..clear()
+            ..add(corrected);
+          lastUndoResult = corrected;
+        }
+        final mergedText = [
+          if (corrected.isNotEmpty) corrected,
+          if (rest.isNotEmpty) rest,
+        ].join(' ').trim();
+        _activeNativeSessionText = rest;
+        latestRecognizedText = mergedText;
+        _activeRecognizedText = mergedText;
+        onPartialResult?.call(mergedText);
         return;
       }
-      final committedText = committedSegments.join(' ').trim();
+      final pendingUndoCommand = SttService.shouldPreserveLeadingUndo(
+          committedText, recognizedWords);
+      if (!pendingUndoCommand && handleNativeVoiceControlCommand(recognizedWords)) {
+        return;
+      }
       final newSpeech = appendOnlyNewSpeech(committedText, recognizedWords);
-      if (handleNativeVoiceControlCommand(
-        newSpeech,
-        includeCancel: recognizedWords == newSpeech,
-      )) {
+      if (!pendingUndoCommand &&
+          handleNativeVoiceControlCommand(
+            newSpeech,
+            includeCancel: recognizedWords == newSpeech,
+          )) {
         return;
       }
       final mergedText = [
         if (committedText.isNotEmpty) committedText,
         if (newSpeech.isNotEmpty) newSpeech,
       ].join(' ').trim();
+      lastUndoResult = null;
       _activeNativeSessionText = newSpeech;
       latestRecognizedText = mergedText;
       _activeRecognizedText = mergedText;
@@ -1606,6 +1774,19 @@ const Set<String> _timePrefixTokens = <String>{
 };
 
 final RegExp _dateTokenPattern = RegExp(r'^\d+(?:월|일)$');
+
+/// "1시", "1시30분", "12시에"처럼 끝에 붙은 시간 표현.
+final RegExp _spokenTimePattern = RegExp(r'^\d{1,2}(?:시|분)');
+
+/// "월요일" 같은 요일 표현.
+final RegExp _weekdayPattern = RegExp(r'^(?:월|화|수|목|금|토|일)요일$');
+
+const Set<String> _relativeDayTokens = <String>{
+  '오늘',
+  '내일',
+  '모레',
+  '글피',
+};
 
 /// "6월", "7일" 같은 숫자형 날짜 토큰인지 판별한다.
 bool _isDateToken(String token) => _dateTokenPattern.hasMatch(token);

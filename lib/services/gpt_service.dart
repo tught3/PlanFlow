@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/app_http.dart';
 import '../core/env.dart';
 import '../core/event_metadata.dart';
 import '../core/local_time.dart';
@@ -336,11 +337,20 @@ class GptService {
     String? model,
     int? maxTokens,
   }) async {
-    final client = _client ?? http.Client();
+    final client = _client ?? AppHttp.create();
     try {
       // GPT API 호출빈도 가드 확인 (20회/분 한도)
-      if (!await _guard.tryConsume(ApiName.gpt)) {
-        debugPrint('ApiUsageGuard: gpt blocked — rate limit exceeded');
+      // 실패 단계를 분명히 남긴다: 이 경로는 네트워크 요청 전에 끝나므로,
+      // 요청이 하나도 보이지 않는 경우 원인을 여기서만 구분할 수 있다.
+      final bool guardAllowed;
+      try {
+        guardAllowed = await _guard.tryConsume(ApiName.gpt);
+      } catch (error) {
+        debugPrint('[GptParse] stage=guard_error type=${error.runtimeType}');
+        return null;
+      }
+      if (!guardAllowed) {
+        debugPrint('[GptParse] stage=guard_blocked');
         return null;
       }
 
@@ -383,6 +393,8 @@ class GptService {
           .timeout(_completionTimeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint(
+            '[GptParse] stage=http_status status=${response.statusCode}');
         if (throwOnFailure) {
           throw GptCompletionException(
             'http_${response.statusCode}',
@@ -464,6 +476,7 @@ class GptService {
       }
       return null;
     } catch (error) {
+      debugPrint('[GptParse] stage=dispatch_error type=${error.runtimeType}');
       if (throwOnFailure) {
         throw GptCompletionException(
           'network_or_parse_error',
