@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/models/pre_action_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/event/event_detail_screen.dart';
+import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/widgets/guided_anchor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,7 +35,11 @@ Future<_Guide> _pump(WidgetTester tester, EventModel saved,
   await tester.pumpWidget(MaterialApp(
     home: GuideScope(
       coordinator: guide,
-      child: EventDetailScreen(event: saved, eventRepository: repo),
+      child: EventDetailScreen(
+        event: saved,
+        eventRepository: repo,
+        smartPreparationAlarmService: const _EmptySmartPreparationAlarmService(),
+      ),
     ),
   ));
   await tester.pumpAndSettle();
@@ -184,4 +190,15 @@ class _Repo extends EventRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _EmptySmartPreparationAlarmService extends SmartPreparationAlarmService {
+  const _EmptySmartPreparationAlarmService();
+
+  @override
+  Future<List<PreActionModel>> listForEvent({
+    required String eventId,
+    required String userId,
+  }) async =>
+      const <PreActionModel>[];
 }

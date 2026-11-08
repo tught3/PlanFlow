@@ -8,7 +8,7 @@ import 'package:planflow/services/voice_conversation_controller.dart';
 // 아닌 미래 연도를 고른다. 과거 기준 연도와 같은 요일 배치(5/7 목, 5/22 금 등)를
 // 보존하므로 기존 월/일/요일 기반 픽스처 참조가 모두 유효하게 유지된다.
 int _alignedFutureFixtureYear() {
-  for (var year = DateTime.now().year + 1; ; year++) {
+  for (var year = DateTime.now().year + 1;; year++) {
     if (DateTime(year, 1, 1).weekday == DateTime.thursday &&
         !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
       return year;
@@ -1409,6 +1409,40 @@ void main() {
     final DateTime nextMonday = anchorNow
         .add(Duration(days: (DateTime.monday - anchorNow.weekday) % 7));
     // 다음 해 첫 월요일은 year-12-28 다음 주 월요일로 동적 계산.
+
+    test('종료/구간 발화는 시작 단독 자동 저장 대신 편집 화면으로 보낸다', () {
+      for (final utterance in <String>[
+        '이 일정 6월 19일 9시부터 11시까지로 변경해줘',
+        '이 일정 6월 19일 아홉시부터 열한시까지로 변경해줘',
+        '이 일정 6월 19일 11시 2시간 동안으로 바꿔줘',
+      ]) {
+        final controller = VoiceConversationController(
+          events: <EventModel>[
+            _event('target', '단기렌트', DateTime(year, 7, 19, 9)),
+          ],
+          now: () => DateTime(year, 6, 7, 8),
+        );
+        controller.handle('7월 19일 일정 보여줘');
+        final result = controller.handle(utterance);
+        expect(result.canAutoApplyDateChange, isFalse, reason: utterance);
+        expect(result.action, VoiceConversationAction.openEditScreen,
+            reason: utterance);
+      }
+    });
+
+    test('오후 3시 단독 시작 변경은 자동 저장되고 종료는 1시간 뒤다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('target', '단기렌트', DateTime(year, 7, 19, 9)),
+        ],
+        now: () => DateTime(year, 6, 7, 8),
+      );
+      controller.handle('7월 19일 일정 보여줘');
+      final result = controller.handle('이 일정 6월 19일 오후 3시로 바꿔줘');
+      expect(result.canAutoApplyDateChange, isTrue);
+      expect(
+          planflowLocal(result.draftEvent!.endAt!), DateTime(year, 6, 19, 16));
+    });
 
     test('명시적 목적지일 변경은 자동으로 저장된다 (확정 날짜 우선)', () {
       final controller = VoiceConversationController(

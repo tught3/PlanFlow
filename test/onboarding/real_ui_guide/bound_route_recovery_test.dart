@@ -60,6 +60,37 @@ void main() {
       c.state.dispose();
     });
   }
+  test('equivalent saved date offsets recover the same local day', () async {
+    final localDate = DateTime.fromMillisecondsSinceEpoch(1893515400000)
+        .toIso8601String()
+        .split('T')
+        .first;
+    const representations = [
+      // banned-ok: Fixed timestamp for the offset equivalence fixture.
+      '2030-01-02T01:30:00+09:00',
+      // banned-ok: Fixed timestamp for the offset equivalence fixture.
+      '2030-01-01T16:30:00+00:00',
+      // banned-ok: Fixed timestamp for the offset equivalence fixture.
+      '2030-01-01T11:30:00-05:00',
+      // banned-ok: Fixed timestamp for the offset equivalence fixture.
+      '2030-01-01T16:30:00Z',
+    ];
+
+    for (final input in representations) {
+      final c = ReadOnlyCoordinator(snapshot(GuideStep.savedDetail)
+          .copyWith(savedLocalDate: DateTime.parse(input)));
+      addTearDown(c.state.dispose);
+      final recovery = await GuideRouteRecovery.load(
+        coordinator: c,
+        currentUid: () => 'u',
+        attachedToRoute: () => true,
+        read: (_, __) async => [event],
+      );
+
+      expect(recovery?.location, '/calendar?date=$localDate', reason: input);
+    }
+  });
+
   for (final kind in ['uid', 'session', 'revision', 'id', 'detached', 'coordinator']) {
     test('late read rejects $kind', () async {
       final c = ReadOnlyCoordinator(snapshot(GuideStep.changeSpeech));

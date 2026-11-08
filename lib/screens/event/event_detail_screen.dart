@@ -313,6 +313,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       debugPrint('Critical ack store write failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+    // 2) 사용자에게 확인을 먼저 보여준다. 알림 정리는 플랫폼 응답에 따라
+    //    지연될 수 있으므로, 정리 완료 여부가 확인 표시를 막지 않게 한다.
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('알림을 확인했어요.')),
+    );
+    // 3) 같은 event 묶음의 로컬 알림(푸시/중요/출발/스마트 준비/사전 액션)을 정리한다.
     try {
       await widget.notificationService.cancelEventNotifications(eventId);
     } catch (error, stackTrace) {

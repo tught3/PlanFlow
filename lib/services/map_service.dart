@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_http.dart';
 import '../core/env.dart';
@@ -35,13 +36,15 @@ class MapService {
     String? naverClientSecret,
     http.Client Function()? httpClientFactory,
     ApiUsageGuard? usageGuard,
+    Map<String, String> Function()? proxyHeadersBuilder,
     this.allowTransitCarFallback = true,
   })  : _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
         _naverProxyUrl = naverProxyUrl ?? AppEnv.naverMapProxyUrl,
         _naverClientId = naverClientId ?? AppEnv.naverMapClientId,
         _naverClientSecret = naverClientSecret ?? '',
         _httpClientFactory = httpClientFactory ?? AppHttp.create,
-        _usageGuard = usageGuard;
+        _usageGuard = usageGuard,
+        _proxyHeadersBuilder = proxyHeadersBuilder ?? _defaultProxyHeaders;
 
   /// Legacy callers may fall back to driving; pre-ring ETA must keep the requested mode.
   final bool allowTransitCarFallback;
@@ -52,6 +55,21 @@ class MapService {
   final String _naverClientSecret;
   final http.Client Function() _httpClientFactory;
   final ApiUsageGuard? _usageGuard;
+  final Map<String, String> Function() _proxyHeadersBuilder;
+
+  static Map<String, String> _defaultProxyHeaders() {
+    String? token;
+    try {
+      token = Supabase.instance.client.auth.currentSession?.accessToken;
+    } catch (_) {
+      token = null;
+    }
+    return <String, String>{
+      'accept': 'application/json',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      'apikey': AppEnv.supabaseAnonKey,
+    };
+  }
 
   ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
@@ -242,9 +260,7 @@ class MapService {
                     'X-NCP-APIGW-API-KEY': _naverClientSecret,
                     'accept': 'application/json',
                   }
-                : const <String, String>{
-                    'accept': 'application/json',
-                  },
+                : _proxyHeadersBuilder(),
           )
           .timeout(const Duration(seconds: 8));
 
