@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xml/xml.dart';
 
+import '../core/deferred_http_client.dart';
 import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/local_time.dart';
@@ -594,7 +595,7 @@ class NaverCalDavService {
     Duration timeout = const Duration(seconds: 10),
     Uri? baseUri,
     ApiUsageGuard? usageGuard,
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _httpClient = httpClient ?? DeferredHttpClient(),
         _ownsHttpClient = httpClient == null,
         _credentialStore = credentialStore ?? _defaultCredentialStore(client),
         _eventRepositoryOverride = eventRepository,

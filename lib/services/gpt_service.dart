@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/app_http.dart';
 import '../core/env.dart';
 import '../core/event_metadata.dart';
 import '../core/local_time.dart';
@@ -333,7 +334,7 @@ class GptService {
     String? model,
     int? maxTokens,
   }) async {
-    final client = _client ?? http.Client();
+    final client = _client ?? AppHttp.create();
     try {
       // GPT API 호출빈도 가드 확인 (20회/분 한도)
       if (!await _guard.tryConsume(ApiName.gpt)) {

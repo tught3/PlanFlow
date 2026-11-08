@@ -19,6 +19,7 @@ import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
 import '../../features/groups/repositories/group_repository.dart';
 import '../../features/groups/widgets/group_multi_select_sheet.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/app_feedback_service.dart';
 import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -30,6 +31,10 @@ import '../../widgets/planflow_action_buttons.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/location_resolution_status.dart';
+import '../../widgets/guided_anchor.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 
 class EventDetailScreen extends StatefulWidget {
   EventDetailScreen({
@@ -55,9 +60,8 @@ class EventDetailScreen extends StatefulWidget {
         departureAlarmService =
             departureAlarmService ?? const DepartureAlarmService(),
         notificationService = notificationService ?? NotificationService(),
-        criticalAlarmAcknowledgementStore =
-            criticalAlarmAcknowledgementStore ??
-                const SharedPreferencesCriticalAlarmAcknowledgementStore();
+        criticalAlarmAcknowledgementStore = criticalAlarmAcknowledgementStore ??
+            const SharedPreferencesCriticalAlarmAcknowledgementStore();
 
   final EventModel? event;
   final String? eventId;
@@ -83,6 +87,8 @@ class EventDetailScreen extends StatefulWidget {
 class _EventDetailScreenState extends State<EventDetailScreen> {
   EventModel? _event;
   bool _isLoading = false;
+  bool _guideReadbackReady = false;
+  bool _guideUpdateDispatching = false;
   bool _isDeleting = false;
   bool _isSavingSupplies = false;
   bool _departurePromptShown = false;
@@ -105,6 +111,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
+
+  /// 현재 사용자 id를 읽는다. 테스트처럼 저장소가 주입된 경우에는 id가 없을
+  /// 수 있으므로 null을 허용한다.
+  String? _currentUserIdForRead() {
+    final fromAuthProvider = authProvider.userId;
+    if (fromAuthProvider != null && fromAuthProvider.trim().isNotEmpty) {
+      return fromAuthProvider.trim();
+    }
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
 
   // 그룹 연동 레포는 실제 사용 시점에만 생성한다(테스트 등 미초기화 환경에서
   // Supabase.instance를 만지지 않도록 lazy + guard 유지).
@@ -140,15 +160,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Future<void> _loadLatestEvent() async {
     final eventId = _resolvedEventId;
-    if (eventId == null || eventId.isEmpty || !AppEnv.isSupabaseReady) {
+    if (eventId == null || eventId.isEmpty) {
+      setState(() {
+        _loadError = _event == null ? '일정 정보를 불러오지 못했습니다.' : null;
+      });
+      return;
+    }
+    final hasInjectedRepository = widget.eventRepository != null;
+    if (!hasInjectedRepository && !AppEnv.isSupabaseReady) {
       setState(() {
         _loadError = _event == null ? '일정 정보를 불러오지 못했습니다.' : null;
       });
       return;
     }
 
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
+    final userId = _currentUserIdForRead();
+    if (!hasInjectedRepository && (userId == null || userId.isEmpty)) {
       setState(() {
         _loadError = _event == null ? '로그인 후 일정 정보를 다시 확인할 수 있습니다.' : null;
       });
@@ -163,22 +190,33 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     try {
       final latestEvent = await _repository.fetchEvent(
         eventId,
-        userId: user.id,
+        userId: userId,
       );
-      final smartPreparationAlarms = latestEvent == null
-          ? const <PreActionModel>[]
-          : await widget.smartPreparationAlarmService.listForEvent(
-              eventId: latestEvent.id,
-              userId: user.id,
-            );
+      // 스마트 준비 알람 조회가 실패해도 저장된 일정(좌표 포함)은 정상 표시한다.
+      var smartPreparationAlarms = const <PreActionModel>[];
+      if (latestEvent != null) {
+        try {
+          smartPreparationAlarms =
+              await widget.smartPreparationAlarmService.listForEvent(
+            eventId: latestEvent.id,
+            userId: userId ?? '',
+          );
+        } catch (_) {
+          smartPreparationAlarms = const <PreActionModel>[];
+        }
+      }
       if (!mounted) {
         return;
       }
       setState(() {
         _event = latestEvent ?? _event;
+        _guideReadbackReady = latestEvent != null;
         _smartPreparationAlarms = smartPreparationAlarms;
         _loadError = latestEvent == null ? '일정을 다시 찾지 못했습니다.' : null;
         _syncCheckedSupplies();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_observeRenderedGuideUpdate());
       });
       if (widget.showDeparturePrompt) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -264,6 +302,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     setState(() {
       _criticalAckHandled = true;
     });
+    // 1) 시작 시각 기반 영구 ack 저장. 실패해도 사용자 확인 흐름은 막지 않는다.
     try {
       final startAt = _event?.startAt;
       if (startAt != null) {
@@ -280,12 +319,123 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       debugPrint('Critical ack cancel failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
-    if (!mounted) {
+  }
+
+  // ---- Real UI guide integration ----
+  // The guide requires an in-card acknowledgement from the user. The button
+  // below is only rendered while the coordinator is in `savedDetail`. Tapping
+  // it dispatches `DetailObserved` with truthful prep/departure/setup flags
+  // derived from the actually loaded EventModel — never a fabricated ETA.
+
+  bool _updatedGuideMatches() {
+    final state = GuideScope.maybeOf(context)?.state.value;
+    final event = _event;
+    return _guideReadbackReady &&
+        !_isLoading &&
+        event != null &&
+        state != null &&
+        state.run == GuideRun.active &&
+        state.sessionId != null &&
+        event.id == state.createdEventId &&
+        event.userId == state.uid &&
+        event.groupEventId == null &&
+        event.externalId == null &&
+        !event.isMultiDay &&
+        (event.recurrenceRule?.isEmpty ?? true) &&
+        event.startAt != null &&
+        state.expectedUpdatedStartLocal != null &&
+        event.startAt == state.expectedUpdatedStartLocal;
+  }
+
+  Future<void> _observeRenderedGuideUpdate() async {
+    if (!mounted || _guideUpdateDispatching || !_updatedGuideMatches()) return;
+    final coordinator = GuideScope.maybeOf(context)!;
+    final state = coordinator.state.value;
+    if (state.step != GuideStep.editPreview) return;
+    _guideUpdateDispatching = true;
+    try {
+      await coordinator.dispatch(UpdateObserved(
+        uid: state.uid,
+        sessionId: state.sessionId!,
+        expectedRevision: state.revision,
+        persistedEvent: _event!,
+        operationId: 'detailUpdate:${state.sessionId}:${_event!.id}',
+      ));
+    } finally {
+      _guideUpdateDispatching = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _handleUpdatedGuideAck() async {
+    if (!_updatedGuideMatches()) return;
+    final coordinator = GuideScope.maybeOf(context)!;
+    final state = coordinator.state.value;
+    if (state.step != GuideStep.updatedDetail) return;
+    await coordinator.dispatch(SyncChoicePresented(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+    ));
+    if (mounted) setState(() {});
+  }
+
+  bool _guideAckVisible() {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return false;
+    final event = _event;
+    if (event == null) return false;
+    final state = coordinator.state.value;
+    return state.uid.isNotEmpty &&
+        state.sessionId != null &&
+        state.sessionId!.isNotEmpty &&
+        state.run == GuideRun.active &&
+        state.step == GuideStep.savedDetail &&
+        state.createdEventId != null &&
+        state.createdEventId == event.id &&
+        event.id.trim().isNotEmpty &&
+        event.userId == state.uid &&
+        _guideReadbackReady &&
+        !_isLoading;
+  }
+
+  Future<void> _handleGuideDepartureAck() async {
+    final event = _event;
+    if (event == null || !mounted) return;
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return;
+    final state = coordinator.state.value;
+    if (state.uid.isEmpty ||
+        state.sessionId == null ||
+        state.run != GuideRun.active ||
+        state.step != GuideStep.savedDetail ||
+        state.createdEventId == null ||
+        state.createdEventId != event.id) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('알림을 확인했어요.')),
-    );
+    final preparationResolved = _smartPreparationAlarms.isNotEmpty;
+    // The departure prompt only resolves if the user actually answers it;
+    // we don't fabricate an ETA. Until the existing departure dialog runs
+    // we mark this as "unresolved + setup help acknowledged" so the guide
+    // can move forward without inventing a timestamp.
+    final departureResolved = false;
+    final setupHelpAcknowledged = true;
+    await coordinator.dispatch(DetailObserved(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+      persistedEvent: event,
+      preparationResolved: preparationResolved,
+      departureResolved: departureResolved,
+      setupHelpAcknowledged: setupHelpAcknowledged,
+    ));
+    // After acknowledging, navigate home so the next guide step (queryMic)
+    // is reachable from the same real home surface, never auto-leaving on load.
+    if (mounted &&
+        coordinator.state.value.step == GuideStep.queryMic &&
+        coordinator.state.value.run == GuideRun.active) {
+      context.go(AppRoutes.home);
+    }
   }
 
   Future<void> _toggleSupply(String item) async {
@@ -315,6 +465,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       setState(() {
         _event = saved;
         _syncCheckedSupplies();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_observeRenderedGuideUpdate());
       });
       EventRefreshBus.instance.notifyChanged(
         reason: 'event_supplies_checked_updated',
@@ -414,8 +567,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
-        if (groupEventIdsToCancel != null &&
-            groupEventIdsToCancel.isNotEmpty) {
+        if (groupEventIdsToCancel != null && groupEventIdsToCancel.isNotEmpty) {
           var anyCancelFailed = false;
           for (final groupEvent in linkedGroupEvents) {
             if (!groupEventIdsToCancel.contains(groupEvent.id)) {
@@ -678,6 +830,24 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 time: timeLabel ?? '시간 미정',
                 critical: event.isCritical,
               ),
+              if (_guideAckVisible()) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                GuidedAnchor(
+                  id: 'saved.summary',
+                  registry: realUiGuideAnchorRegistry,
+                  child: _InfoCard(
+                    title: '저장된 일정 확인',
+                    children: [
+                      _InfoRow(label: '일정', value: event.title),
+                      if (timeLabel != null)
+                        _InfoRow(label: '날짜·시간', value: timeLabel),
+                      if (event.location?.trim().isNotEmpty ?? false)
+                        _InfoRow(label: '장소', value: event.location!.trim()),
+                      const Text('화면의 제목, 날짜와 장소가 실제 저장된 내용과 맞는지 확인해 주세요.'),
+                    ],
+                  ),
+                ),
+              ],
               if (widget.showCriticalAckButton && !_criticalAckHandled) ...[
                 const SizedBox(height: AppConstants.sectionSpacing),
                 PlanFlowActionButtons(
@@ -708,42 +878,52 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
               ],
               const SizedBox(height: AppConstants.sectionSpacing),
-              _InfoCard(
-                title: '기본 정보',
-                children: [
-                  if (timeLabel != null)
-                    _InfoRow(label: '시간', value: timeLabel),
-                  if (event.location != null)
-                    _InfoRow(label: '장소', value: event.location!),
-                  if (event.hasLocationText)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: LocationResolutionStatus(
-                        hasLocationText: true,
-                        isResolved: event.hasResolvedLocation,
-                        isSearching: false,
-                        onResolve: event.hasResolvedLocation
-                            ? null
-                            : () => context.push(
-                                  '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
-                                  extra: event,
-                                ),
+              GuidedAnchor(
+                id: 'updated.detail',
+                registry: realUiGuideAnchorRegistry,
+                child: _InfoCard(
+                  title: '기본 정보',
+                  children: [
+                    if (timeLabel != null)
+                      _InfoRow(label: '시간', value: timeLabel),
+                    if (event.location != null)
+                      _InfoRow(label: '장소', value: event.location!),
+                    if (event.hasLocationText)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: LocationResolutionStatus(
+                          hasLocationText: true,
+                          isResolved: event.hasResolvedLocation,
+                          isSearching: false,
+                          onResolve: event.hasResolvedLocation
+                              ? null
+                              : () => context.push(
+                                    '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
+                                    extra: event,
+                                  ),
+                        ),
                       ),
+                    _InfoRow(
+                      label: '중요 상태',
+                      value: event.isCritical ? '중요 일정' : '일반 일정',
+                      valueColor:
+                          event.isCritical ? theme.colorScheme.error : null,
                     ),
-                  _InfoRow(
-                    label: '중요 상태',
-                    value: event.isCritical ? '중요 일정' : '일반 일정',
-                    valueColor:
-                        event.isCritical ? theme.colorScheme.error : null,
-                  ),
-                  _InfoRow(
-                    label: '등록일',
-                    value: event.createdAt != null
-                        ? _formatDate(event.createdAt!)
-                        : '정보 없음',
-                  ),
-                ],
+                    _InfoRow(
+                      label: '등록일',
+                      value: event.createdAt != null
+                          ? _formatDate(event.createdAt!)
+                          : '정보 없음',
+                    ),
+                  ],
+                ),
               ),
+              if (_updatedGuideMatches() &&
+                  GuideScope.maybeOf(context)?.state.value.step ==
+                      GuideStep.updatedDetail)
+                FilledButton(
+                    onPressed: _handleUpdatedGuideAck,
+                    child: const Text('변경된 시간 확인')),
               if (event.supplies.isNotEmpty) ...[
                 const SizedBox(height: AppConstants.sectionSpacing),
                 _InfoCard(
@@ -758,16 +938,30 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ],
                 ),
               ],
-              if (_smartPreparationAlarms.isNotEmpty) ...[
+              if (_smartPreparationAlarms.isNotEmpty || _guideAckVisible()) ...[
                 const SizedBox(height: AppConstants.sectionSpacing),
-                _InfoCard(
-                  title: SmartPreparationAlarmService.label,
-                  children: [
-                    _SmartPreparationAlarmList(
-                      alarms: _smartPreparationAlarms,
-                      formatDateTime: _formatDateTime,
-                    ),
-                  ],
+                GuidedAnchor(
+                  id: 'saved.departure',
+                  registry: realUiGuideAnchorRegistry,
+                  child: _InfoCard(
+                    title: SmartPreparationAlarmService.label,
+                    children: [
+                      if (_smartPreparationAlarms.isNotEmpty)
+                        _SmartPreparationAlarmList(
+                          alarms: _smartPreparationAlarms,
+                          formatDateTime: _formatDateTime,
+                        ),
+                      if (_guideAckVisible()) ...[
+                        const Text(
+                            '저장한 일정과 장소를 확인해 주세요. 준비를 시작할 시간과 늦지 않게 출발할 시간을 알려드려요.'),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _handleGuideDepartureAck,
+                          child: const Text('준비·출발 안내 확인'),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ],
               if (event.memo != null && event.memo!.trim().isNotEmpty) ...[
@@ -1210,4 +1404,3 @@ class _SupplyChecklist extends StatelessWidget {
     );
   }
 }
-

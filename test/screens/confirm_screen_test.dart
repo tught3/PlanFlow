@@ -16,8 +16,17 @@ import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/providers/group_context_provider.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_bubble_visibility.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
+import 'package:planflow/widgets/guided_coachmark_overlay.dart';
+import 'guide_save_stage_actual_mount_test.dart' as save_stage_fixture;
 import 'package:planflow/services/gpt_service.dart';
+import 'package:planflow/services/guide_quota_adapter.dart';
+import 'package:planflow/services/real_ui_guide_grant_service.dart';
 import 'package:planflow/services/ad_reward_state.dart';
 import 'package:planflow/services/schedule_parse_ad_gate.dart';
 import 'package:planflow/services/schedule_parse_entitlement.dart';
@@ -172,25 +181,38 @@ class _CriticalAlarmOwnershipChannelStub {
   }
 }
 
-void main() {
-  setUp(() {
-    PlanFlowRegionController.instance.reset();
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-    SharedPreferencesAsyncPlatform.instance =
-        InMemorySharedPreferencesAsync.empty();
-    _CriticalAlarmOwnershipChannelStub.install();
-  });
+void _installConfirmScreenTestEnvironment() {
+  PlanFlowRegionController.instance.reset();
+  SharedPreferences.setMockInitialValues(<String, Object>{});
+  SharedPreferencesAsyncPlatform.instance =
+      InMemorySharedPreferencesAsync.empty();
+  _CriticalAlarmOwnershipChannelStub.install();
+}
 
-  tearDown(() async {
-    _CriticalAlarmOwnershipChannelStub.uninstall();
-    await AdRewardState.instance.clear(feature: 'schedule_parse');
-    await AdRewardState.instance.clearPendingConsume(
-      feature: 'schedule_parse',
-    );
-    SharedPreferencesAsyncPlatform.instance = null;
-    ScheduleParseAdGate.instance.delegateForTest = null;
-    ScheduleParseEntitlementService.instance.delegateForTest = null;
-  });
+Future<void> _tearDownConfirmScreenTestEnvironment() async {
+  // Global guide notifiers must not leak between tests (a leaked active flag
+  // would auto-expand the editor and move later tests' layout).
+  guideSaveStageActive.value = false;
+  guideSaveStage.value = GuideSaveStage.important;
+  guideConfirmReady.value = false;
+  guideConfirmUserScrolled.value = false;
+  GuideQuotaRuntime.reset();
+  SupabaseClientAccess.clearOverride();
+  _CriticalAlarmOwnershipChannelStub.uninstall();
+  await AdRewardState.instance.clear(feature: 'schedule_parse');
+  await AdRewardState.instance.clearPendingConsume(
+    feature: 'schedule_parse',
+  );
+  SharedPreferencesAsyncPlatform.instance = null;
+  ScheduleParseAdGate.instance.delegateForTest = null;
+  ScheduleParseEntitlementService.instance.delegateForTest = null;
+}
+
+void main() {
+  setUp(_installConfirmScreenTestEnvironment);
+  tearDown(_tearDownConfirmScreenTestEnvironment);
+
+  registerConfirmScreenGuideSaveStageTests();
 
   testWidgets(
       'ConfirmScreen schedules critical alarm when important is enabled',
@@ -1944,13 +1966,30 @@ void main() {
   });
 }
 
-Widget _testApp(Widget child) {
+Widget _testApp(
+  Widget child, {
+  GuideCoordinator? guideCoordinator,
+  bool showGuideCoachmark = true,
+}) {
   final router = GoRouter(
     initialLocation: AppRoutes.confirm,
     routes: [
       GoRoute(
         path: AppRoutes.confirm,
-        builder: (_, __) => child,
+        builder: (_, __) => guideCoordinator == null
+            ? child
+            : GuideScope(
+                coordinator: guideCoordinator,
+                child: showGuideCoachmark
+                    ? Stack(children: [
+                        child,
+                        Positioned.fill(
+                          child: RealUiGuideCoachmark(
+                              coordinator: guideCoordinator, onSkip: () {}),
+                        ),
+                      ])
+                    : child,
+              ),
       ),
       GoRoute(
         path: AppRoutes.home,
@@ -2630,3 +2669,558 @@ class _CountingEntitlementDelegate implements ScheduleParseEntitlementDelegate {
     );
   }
 }
+
+/// Registers only the real ConfirmScreen save-stage regression. The native
+/// adapter imports this function instead of the whole ConfirmScreen suite.
+void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
+  group('ConfirmScreen save stage with the real guide host', () {
+    setUp(_installConfirmScreenTestEnvironment);
+    tearDown(_tearDownConfirmScreenTestEnvironment);
+
+    Widget screen(
+      Map<String, dynamic> parsed, {
+      GptService? gptService,
+      EventRepository? eventRepository,
+      AppPermissionService? permissionService,
+    }) =>
+        ConfirmScreen(
+          userId: 'u',
+          parsedSchedule: parsed,
+          gptService: gptService,
+          backend: _FakeConfirmBackend(),
+          eventRepository: eventRepository ?? _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: permissionService ?? _DeniedPermissionService(),
+        );
+
+    testWidgets('shows the check-first banner as soon as the save screen opens',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator =
+          await save_stage_fixture.bootGuideAtCorrectAndSave();
+      await tester.pumpWidget(
+          _testApp(screen(_parsedSchedule()), guideCoordinator: coordinator));
+      await _pumpGuideFrames(tester);
+
+      // 화면에 들어오자마자 날짜·시간·장소 확인과 스크롤 안내가 보여야 한다.
+      expect(guideConfirmReady.value, isTrue, reason: 'parse ready');
+      expect(guideConfirmUserScrolled.value, isFalse, reason: 'not scrolled');
+      expect(find.text('2/7 · 일정 확인'), findsOneWidget);
+      expect(guideSaveStage.value, GuideSaveStage.important);
+      // 스크롤 전에는 스포트라이트/딤을 켜지 않고, 안내가 대신 스크롤하지 않는다.
+      expect(find.byType(GuidedCoachmarkOverlay), findsNothing);
+      expect(_guideDimPainted(tester), isFalse);
+      expect(_confirmScrollOffset(tester), 0);
+
+      // 스크롤 후에는 첫 단계(중요한 일정) 강조로 바뀐다.
+      await _scrollUntilAnchorVisible(tester, 'confirm.critical');
+      await _pumpGuideFrames(tester);
+
+      expect(find.text('2/7 · 일정 확인'), findsNothing);
+      expect(_guideOverlayTarget(tester), 'confirm.critical');
+      expect(find.text('2/7 · 중요한 일정'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('enters at important and walks important -> strong -> save',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave();
+      // A stale stage from a previous run must not leak into this entry.
+      guideSaveStage.value = GuideSaveStage.save;
+      guideSaveStageActive.value = false;
+
+      await tester.pumpWidget(
+          _testApp(screen(_parsedSchedule()), guideCoordinator: coordinator));
+      await _pumpGuideFrames(tester);
+
+      expect(guideSaveStage.value, GuideSaveStage.important,
+          reason: 'entering correctAndSave must restart at important');
+      // The guide never scrolls the list for the user, so nothing may be
+      // spotlighted before the user scrolls down by hand.
+      expect(find.byType(GuidedCoachmarkOverlay), findsNothing,
+          reason: 'no spotlight before the user scrolls the list');
+      expect(find.text('2/7 · 중요한 일정'), findsNothing);
+      expect(_guideDimPainted(tester), isFalse);
+      expect(_confirmScrollOffset(tester), 0,
+          reason: 'the guide must not scroll the list for the user');
+
+      await _scrollUntilAnchorVisible(tester, 'confirm.critical');
+      await _pumpGuideFrames(tester);
+
+      expect(_guideOverlayTarget(tester), 'confirm.critical');
+      expect(find.text('2/7 · 중요한 일정'), findsOneWidget);
+      _expectGuideHoleOn(tester, 'confirm.critical');
+
+      await tester.ensureVisible(find.text('중요한 일정으로 표시'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('중요한 일정으로 표시'));
+      await _pumpGuideFrames(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(guideSaveStage.value, GuideSaveStage.strong);
+      expect(_guideOverlayTarget(tester), 'confirm.strong');
+      expect(find.text('2/7 · 강한 알람'), findsOneWidget);
+      _expectGuideHoleOn(tester, 'confirm.strong');
+
+      await tester.ensureVisible(find.text('강한 알람'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('강한 알람'));
+      await _pumpGuideFrames(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(guideSaveStage.value, GuideSaveStage.save);
+      expect(_guideOverlayTarget(tester), 'confirm.save');
+      expect(find.text('2/7 · 저장하기'), findsOneWidget);
+      _expectGuideHoleOn(tester, 'confirm.save');
+
+      final topKey = realUiGuideAnchorRegistry.keyFor('confirm.save.top');
+      final bottomKey = realUiGuideAnchorRegistry.keyFor('confirm.save');
+      expect(topKey, isNotNull);
+      expect(bottomKey, isNotNull);
+      expect(identical(topKey, bottomKey), isFalse,
+          reason: 'top and bottom save buttons must not share one id');
+      final overlayRoot = tester
+          .element(find.byType(GuidedCoachmarkOverlay))
+          .findRenderObject() as RenderBox;
+      expect(
+          realUiGuideAnchorRegistry.rectFor('confirm.save', root: overlayRoot),
+          isNot(realUiGuideAnchorRegistry.rectFor('confirm.save.top',
+              root: overlayRoot)));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('preset important skips to strong without unchecking it',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave();
+      guideSaveStage.value = GuideSaveStage.important;
+      guideSaveStageActive.value = false;
+
+      await tester.pumpWidget(_testApp(
+          screen(_parsedSchedule(isCritical: true)),
+          guideCoordinator: coordinator));
+      await _pumpGuideFrames(tester);
+
+      await _scrollUntilAnchorVisible(tester, 'confirm.strong');
+      await _pumpGuideFrames(tester);
+
+      expect(guideSaveStage.value, GuideSaveStage.strong,
+          reason: 'an already enabled switch is skipped, never toggled off');
+      expect(_guideOverlayTarget(tester), 'confirm.strong');
+      final checkbox = tester.widget<CheckboxListTile>(
+          find.widgetWithText(CheckboxListTile, '중요한 일정으로 표시'));
+      expect(checkbox.value, isTrue, reason: 'parsed values stay untouched');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('preset important and strong skip to save', (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave();
+      guideSaveStage.value = GuideSaveStage.important;
+      guideSaveStageActive.value = false;
+      final parsed = _parsedSchedule(isCritical: true);
+      parsed['use_strong_alarm'] = true;
+
+      await tester
+          .pumpWidget(_testApp(screen(parsed), guideCoordinator: coordinator));
+      await _pumpGuideFrames(tester);
+
+      await _scrollUntilAnchorVisible(tester, 'confirm.save');
+      await _pumpGuideFrames(tester);
+
+      expect(guideSaveStage.value, GuideSaveStage.save);
+      expect(_guideOverlayTarget(tester), 'confirm.save');
+      _expectGuideHoleOn(tester, 'confirm.save');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets(
+        'keeps the guide hidden while the AI parse is pending and reveals it '
+        'only after the user scrolls the list down', (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final parseCompleter = Completer<Map<String, dynamic>>();
+      // A live guide session authorizes its own parse through the guide
+      // quota lane, exactly like the production flow.
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave(
+          grantPermits: true);
+      SupabaseClientAccess.overrideForRun(() => 'u');
+      save_stage_fixture.bindGuideRuntime(coordinator, uid: 'u');
+
+      final parsed = _parsedSchedule()..['parse_pending'] = true;
+      await tester.pumpWidget(_testApp(
+          screen(parsed,
+              gptService: _DeferredGptService(parseCompleter.future)),
+          guideCoordinator: coordinator));
+      await _pumpGuideFrames(tester);
+
+      // The AI parse is still running: the editor is blurred, so no guide
+      // banner, dim layer or hole may cover it.
+      expect(find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'),
+          findsAtLeastNWidgets(1));
+      expect(find.byType(GuidedCoachmarkOverlay), findsNothing,
+          reason: 'the spotlight must not cover the blurred editor');
+      expect(find.text('2/7 · 중요한 일정'), findsNothing);
+      expect(_guideDimPainted(tester), isFalse);
+
+      // The parse finishes. The guide still stays away and never scrolls the
+      // list for the user.
+      parseCompleter.complete(<String, dynamic>{
+        'title': 'AI 제목',
+        'location': '성남',
+        'memo': null,
+        'start_at':
+            DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+        'end_at': null,
+        'supplies': <String>[],
+        'is_critical': false,
+        'pre_actions': <Map<String, dynamic>>[],
+        'parse_failed': false,
+      });
+      await _pumpGuideFrames(tester);
+
+      expect(find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'), findsNothing);
+      expect(find.byType(GuidedCoachmarkOverlay), findsNothing,
+          reason:
+              'the guide must not reveal the target before the user scrolls');
+      expect(find.text('2/7 · 중요한 일정'), findsNothing);
+      expect(_guideDimPainted(tester), isFalse);
+      expect(_confirmScrollOffset(tester), 0,
+          reason: 'the guide must never scroll the list for the user');
+
+      // The user scrolls the list down by hand: now the real sequence runs.
+      await _scrollUntilAnchorVisible(tester, 'confirm.critical');
+      await _pumpGuideFrames(tester);
+
+      expect(_guideOverlayTarget(tester), 'confirm.critical');
+      expect(find.text('2/7 · 중요한 일정'), findsOneWidget);
+      _expectGuideHoleOn(tester, 'confirm.critical');
+
+      await tester.tap(find.text('중요한 일정으로 표시'));
+      await _pumpGuideFrames(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(guideSaveStage.value, GuideSaveStage.strong);
+      expect(_guideOverlayTarget(tester), 'confirm.strong');
+      expect(find.text('2/7 · 강한 알람'), findsOneWidget);
+
+      await tester.tap(find.text('강한 알람'));
+      await _pumpGuideFrames(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(guideSaveStage.value, GuideSaveStage.save);
+      expect(_guideOverlayTarget(tester), 'confirm.save');
+      expect(find.text('2/7 · 저장하기'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+    testWidgets(
+        'isolated QA save creates real repository response and reaches savedDetail without coordinates',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave(
+          createdEventId: null);
+      final repository = _FakeEventRepository();
+      SupabaseClientAccess.overrideForRun(() => 'u');
+      guideSaveStage.value = GuideSaveStage.important;
+      guideSaveStageActive.value = false;
+      final parsed = _parsedSchedule()
+        ..['location_lat'] = null
+        ..['location_lng'] = null;
+      await tester.pumpWidget(_testApp(
+          screen(parsed,
+              eventRepository: repository,
+              permissionService: _AlarmReadyPermissionService()),
+          guideCoordinator: coordinator,
+          showGuideCoachmark: false));
+      await _pumpGuideFrames(tester);
+      await tester.enterText(
+          find.byKey(const Key('event-editor-location-field')), 'Somewhere');
+      await tester.pump();
+      guideSaveStage.value = GuideSaveStage.save;
+      guideSaveStageActive.value = true;
+      await _pumpGuideFrames(tester);
+      await _scrollUntilAnchorVisible(tester, 'confirm.save');
+      await _pumpGuideFrames(tester);
+
+      expect(guideSaveStage.value, GuideSaveStage.save);
+      await tester
+          .ensureVisible(find.widgetWithText(FilledButton, '일정 저장').last);
+      await tester.pump();
+      final saveFinder = find.widgetWithText(FilledButton, '일정 저장').last;
+      if (nativeOsSaveTap) {
+        // Native proof requires a real Android input tap, never onPressed.
+        // ignore: avoid_print
+        print('QA_SAVE_READY_FOR_OS_TAP');
+        await tester.runAsync(() async {
+          final deadline = DateTime.now().add(const Duration(seconds: 90));
+          while (repository.createdEvents.isEmpty &&
+              DateTime.now().isBefore(deadline)) {
+            await Future<void>.delayed(const Duration(milliseconds: 200));
+          }
+        });
+      } else {
+        await tester.tap(saveFinder);
+        for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+      }
+      await _pumpGuideFrames(tester);
+
+      expect(repository.createdEvents, hasLength(1));
+      final persisted = repository.createdEvents.single;
+      expect(persisted.id, 'event-1');
+      expect(persisted.location, isNotEmpty);
+      expect(persisted.locationLat, isNull);
+      expect(persisted.locationLng, isNull);
+      expect(coordinator.state.value.createdEventId, 'event-1');
+      expect(coordinator.state.value.step, GuideStep.savedDetail);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }, skip: !const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
+
+    testWidgets(
+        'isolated QA save actual tap passes through live guide coachmark without coordinates',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave(
+          createdEventId: null);
+      final repository = _FakeEventRepository();
+      SupabaseClientAccess.overrideForRun(() => 'u');
+      guideSaveStage.value = GuideSaveStage.important;
+      guideSaveStageActive.value = false;
+      final parsed = _parsedSchedule()
+        ..['location_lat'] = null
+        ..['location_lng'] = null;
+      await tester.pumpWidget(_testApp(
+          screen(parsed,
+              eventRepository: repository,
+              permissionService: _AlarmReadyPermissionService()),
+          guideCoordinator: coordinator));
+      await _pumpGuideFrames(tester);
+      await tester.enterText(
+          find.byKey(const Key('event-editor-location-field')), 'Somewhere');
+      await tester.pump();
+      guideSaveStage.value = GuideSaveStage.save;
+      guideSaveStageActive.value = true;
+      await _pumpGuideFrames(tester);
+      await _scrollUntilAnchorVisible(tester, 'confirm.save');
+      await _pumpGuideFrames(tester);
+
+      expect(coordinator.state.value.step, GuideStep.correctAndSave);
+      expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget);
+      expect(_guideOverlayTarget(tester), 'confirm.save');
+      _expectGuideHoleOn(tester, 'confirm.save');
+      final saveFinder = find.widgetWithText(FilledButton, '일정 저장').last;
+      await tester.ensureVisible(saveFinder);
+      await tester.pump();
+      expect(tester.widget<FilledButton>(saveFinder).onPressed, isNotNull);
+      await tester.tap(saveFinder);
+      for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await _pumpGuideFrames(tester);
+
+      expect(repository.createdEvents, hasLength(1));
+      expect(repository.createdEvents.single.location, 'Somewhere');
+      expect(repository.createdEvents.single.locationLat, isNull);
+      expect(repository.createdEvents.single.locationLng, isNull);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }, skip: !const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
+    // Companion: the same unresolved-coordinate save must stay blocked unless
+    // the isolated QA build is compiled in.
+    testWidgets('non-QA build still blocks a guide save without coordinates',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave(
+          createdEventId: null);
+      final repository = _FakeEventRepository();
+      SupabaseClientAccess.overrideForRun(() => 'u');
+      guideSaveStage.value = GuideSaveStage.important;
+      guideSaveStageActive.value = false;
+      final parsed = _parsedSchedule()
+        ..['location_lat'] = null
+        ..['location_lng'] = null;
+      await tester.pumpWidget(_testApp(
+          screen(parsed,
+              eventRepository: repository,
+              permissionService: _AlarmReadyPermissionService()),
+          guideCoordinator: coordinator,
+          showGuideCoachmark: false));
+      await _pumpGuideFrames(tester);
+      await tester.enterText(
+          find.byKey(const Key('event-editor-location-field')), 'Somewhere');
+      await tester.pump();
+      guideSaveStage.value = GuideSaveStage.save;
+      guideSaveStageActive.value = true;
+      await _pumpGuideFrames(tester);
+      await _scrollUntilAnchorVisible(tester, 'confirm.save');
+      await _pumpGuideFrames(tester);
+
+      await tester
+          .ensureVisible(find.widgetWithText(FilledButton, '일정 저장').last);
+      await tester.tap(find.widgetWithText(FilledButton, '일정 저장').last);
+      await _pumpGuideFrames(tester);
+
+      expect(repository.createdEvents, isEmpty);
+      expect(coordinator.state.value.createdEventId, isNull);
+      expect(coordinator.state.value.step, GuideStep.correctAndSave);
+      expect(
+          tester
+              .widgetList<Text>(find.byType(Text))
+              .map((t) => t.data)
+              .whereType<String>()
+              .any((t) => t.contains('좌표')),
+          isTrue,
+          reason: 'the production build must say why it cannot save');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }, skip: const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
+  });
+}
+
+Future<void> _pumpGuideFrames(WidgetTester tester, {int frames = 20}) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+String _guideOverlayTarget(WidgetTester tester) => tester
+    .widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay))
+    .targetId;
+
+void _expectGuideHoleOn(WidgetTester tester, String anchorId) {
+  final clips = find.descendant(
+      of: find.byType(GuidedCoachmarkOverlay), matching: find.byType(ClipPath));
+  expect(clips, findsOneWidget,
+      reason: 'target=$anchorId anchor=${_anchorRect(tester, anchorId)} '
+          'offset=${_confirmScrollOffset(tester)} '
+          'ready=${guideConfirmReady.value} scrolled=${guideConfirmUserScrolled.value}');
+  final clipper = tester.widget<ClipPath>(clips).clipper;
+  expect(clipper, isNotNull);
+  final overlayRoot =
+      tester.element(find.byType(GuidedCoachmarkOverlay)).findRenderObject();
+  expect(overlayRoot, isA<RenderBox>());
+  final root = overlayRoot as RenderBox;
+  final rect = realUiGuideAnchorRegistry.rectFor(anchorId, root: root);
+  expect(rect, isNotNull, reason: 'anchor $anchorId must be registered');
+  expect(rect!.isEmpty, isFalse);
+  final path = clipper!.getClip(root.size);
+  expect(path.contains(rect.center), isFalse,
+      reason: 'the cut-out must sit on $anchorId');
+  expect(path.contains(const Offset(4, 4)), isTrue,
+      reason: 'the rest of the screen must stay dimmed');
+}
+
+/// The real list the user scrolls on the save screen.
+Finder _confirmScrollable() => find
+    .descendant(
+        of: find.byType(ConfirmScreen),
+        matching: find.byType(SingleChildScrollView))
+    .first;
+
+/// Scrolls the list down the way a user does: a real drag with several move
+/// events. Programmatic scrolling (ensureVisible/animateTo) must not reveal
+/// the guide target, so the guide stays hidden until the user drags.
+Future<void> _userScrollDown(WidgetTester tester,
+    {double distance = 120, int steps = 8}) async {
+  final scrollable = _confirmScrollable();
+  final start = tester.getTopLeft(scrollable) + const Offset(24, 28);
+  final gesture = await tester.startGesture(start);
+  for (var i = 0; i < steps; i++) {
+    await gesture.moveBy(Offset(0, -distance / steps));
+    await tester.pump(const Duration(milliseconds: 32));
+  }
+  // Let the pointer rest before lifting it so the gesture does not turn into
+  // a fling that would scroll past the real target.
+  await tester.pump(const Duration(milliseconds: 400));
+  await gesture.up();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+Rect? _anchorRect(WidgetTester tester, String anchorId) {
+  final viewport = tester.renderObject<RenderBox>(_confirmScrollable());
+  return realUiGuideAnchorRegistry.rectFor(anchorId, root: viewport);
+}
+
+/// Scrolls with real user drags until the anchor really sits in the viewport.
+Future<void> _scrollUntilAnchorVisible(
+    WidgetTester tester, String anchorId) async {
+  final viewport = tester.renderObject<RenderBox>(_confirmScrollable());
+  for (var attempt = 0; attempt < 16; attempt++) {
+    final rect = _anchorRect(tester, anchorId);
+    // Only stop once the anchor is really inside the list viewport and clear
+    // of the guide banner; a registered but off-screen anchor keeps dragging.
+    final visible = rect != null &&
+        rect.height > 0 &&
+        rect.top >= 150 &&
+        rect.bottom <= viewport.size.height - 8;
+    if (visible) return;
+    await _userScrollDown(tester, distance: rect == null ? 260 : 90, steps: 4);
+  }
+}
+
+/// The dim layer is only painted when the overlay really has a hole, so its
+/// presence proves that a cut-out was produced.
+bool _guideDimPainted(WidgetTester tester) => find
+    .byWidgetPredicate((widget) =>
+        widget is ColoredBox && widget.color == const Color(0x55000000))
+    .evaluate()
+    .isNotEmpty;
+
+/// The current scroll offset of the real list.
+double _confirmScrollOffset(WidgetTester tester) =>
+    tester
+        .widget<SingleChildScrollView>(_confirmScrollable())
+        .controller
+        ?.offset ??
+    0;

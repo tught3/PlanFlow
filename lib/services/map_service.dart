@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 
+import '../core/app_http.dart';
 import '../core/env.dart';
 import 'api_usage_guard.dart';
 
@@ -39,7 +40,7 @@ class MapService {
         _naverProxyUrl = naverProxyUrl ?? AppEnv.naverMapProxyUrl,
         _naverClientId = naverClientId ?? AppEnv.naverMapClientId,
         _naverClientSecret = naverClientSecret ?? '',
-        _httpClientFactory = httpClientFactory ?? http.Client.new,
+        _httpClientFactory = httpClientFactory ?? AppHttp.create,
         _usageGuard = usageGuard;
 
   /// Legacy callers may fall back to driving; pre-ring ETA must keep the requested mode.

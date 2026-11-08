@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../onboarding/real_ui_guide/guide_contract.dart';
 import '../widgets/rewarded_ad_dialog.dart';
 import 'ad_consent_service.dart';
 import 'ad_service.dart';
+import 'guide_quota_adapter.dart';
+import 'real_ui_guide_grant_service.dart';
 import 'remote_config_service.dart';
 import 'schedule_parse_entitlement.dart';
 
@@ -77,11 +80,37 @@ class ScheduleParseAdGate {
     required void Function(ScheduleParseEntryGrant grant) onEnterAllowed,
     void Function(ScheduleParseGateDenialReason reason)? onDenied,
     void Function(String stage)? onAdProgress,
+
+    // Additive optional guide-aware parameters. When [guideCoordinator]
+    // is provided the gate routes through [GuideQuotaRuntime] before
+    // running its own grant — and NEVER invokes [onEnterAllowed] while
+    // the bound guide is active/paused/blocked.
+    GuideCoordinator? guideCoordinator,
+    GuideOperation? guideOperation,
+    void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideAccess access)? onGuideDenied,
   }) async {
     lastDenialReason = null;
     lastFreePassApplied = false;
     if (_inFlight) {
       // 이미 진행 중이면 사일런트하게 무시(사용자 인지 불필요).
+      return;
+    }
+    if (guideCoordinator != null && guideOperation != null) {
+      // _tryGuidePath는 정확히 하나의 콜백(onGuideAllowed 또는
+      // onGuideDenied)을 호출하는 것을 보장한다. 가이드 인자가 공급된 요청은
+      // 모든 결과(승인/거절/만료/unavailable)에서 fail-closed로 끝나고,
+      // 일반 할당량이나 광고로 절대 우회하지 않는다.
+      await _tryGuidePath(
+        context: context,
+        coordinator: guideCoordinator,
+        operation: guideOperation,
+        onGuideAllowed: onGuideAllowed,
+        onGuideDenied: onGuideDenied,
+      );
+      return;
+    }
+    if (!context.mounted) {
       return;
     }
     _inFlight = true;
@@ -95,6 +124,91 @@ class ScheduleParseAdGate {
     } finally {
       _inFlight = false;
     }
+  }
+
+  /// 가이드 전용 승인 경로. 성공 시 [onGuideAllowed]를, 그 외의 모든 결과
+  /// (stale session/만료/denied/retryLater/unavailable)에서 정확히 한 번
+  /// [onGuideDenied]를 호출한다. 반환값 없음 — 콜백이 유일한 결과 전달
+  /// 채널이므로 호출자가 이중 통지를 만들 수 없다.
+  Future<void> _tryGuidePath({
+    required BuildContext context,
+    required GuideCoordinator coordinator,
+    required GuideOperation operation,
+    void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideAccess access)? onGuideDenied,
+  }) async {
+    void deny(GuideAccess access) {
+      onGuideDenied?.call(access);
+    }
+
+    final auth = SupabaseClientAccess.authCurrentId();
+    if (auth == null || auth.isEmpty) {
+      deny(const GuideAccess(
+          status: GuideAccessStatus.unavailable, reasonCode: 'guide_unbound'));
+      return;
+    }
+    final live = GuideQuotaRuntime.current(() => auth);
+    if (live == null || !identical(live, coordinator)) {
+      deny(const GuideAccess(
+          status: GuideAccessStatus.unavailable, reasonCode: 'guide_unbound'));
+      return;
+    }
+    final snapshot = coordinator.state.value;
+    if (snapshot.uid != auth ||
+        snapshot.sessionId == null ||
+        snapshot.sessionId!.isEmpty) {
+      deny(const GuideAccess(
+          status: GuideAccessStatus.denied, reasonCode: 'stale_session'));
+      return;
+    }
+    final GuideStep phase = switch (operation) {
+      // ASR produces the draft before the tour advances to review/save.
+      // The backend validates whichever canonical create phase is live.
+      GuideOperation.createParse =>
+        snapshot.step == GuideStep.createSpeech ||
+                snapshot.step == GuideStep.correctAndSave
+            ? snapshot.step
+            : GuideStep.correctAndSave,
+      GuideOperation.query => GuideStep.queryResults,
+      GuideOperation.changeTime => GuideStep.editPreview,
+    };
+    final GuideAdapterContext adapterContext = GuideAdapterContext(
+      coordinator: coordinator,
+      kind: GuideChargeKind.scheduleParse,
+      operation: operation,
+      phase: phase,
+      uid: snapshot.uid,
+      version: snapshot.version,
+      sessionId: snapshot.sessionId!,
+      revision: snapshot.revision,
+      serverRevision: snapshot.serverRevision,
+      createdEventId: snapshot.createdEventId,
+    );
+    final GuideAccess access = await guideAuthorize(
+      context: adapterContext,
+      operationId: _nextGuideOperationId(auth: auth, operation: operation),
+      authUidProvider: () => auth,
+    );
+    if (access.status == GuideAccessStatus.granted && access.permit != null) {
+      onGuideAllowed?.call(access.permit!);
+    } else {
+      deny(access);
+    }
+  }
+
+  /// 시도마다 고유한 operationId를 만든다. 마이크로초 타임스탬프만으로는
+  /// 같은 재시도 루프 안에서 충돌할 수 있으므로(서버는 같은 operationId를
+  /// replay로 거부한다) 단조 증가 시퀀스를 섞는다. 재시도/재파싱을 포함한
+  /// 모든 가이드 파싱 시도가 자신만의 새 승인을 요구하는 근거다.
+  static int _guideOperationSeq = 0;
+
+  static String _nextGuideOperationId({
+    required String auth,
+    required GuideOperation operation,
+  }) {
+    _guideOperationSeq += 1;
+    return 'schedule_parse:$auth:${operation.name}:'
+        '${DateTime.now().toUtc().microsecondsSinceEpoch}-$_guideOperationSeq';
   }
 
   Future<void> _runGate({

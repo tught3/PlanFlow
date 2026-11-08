@@ -967,6 +967,300 @@ abstract class AppLocalizations {
   /// In ko, this message translates to:
   /// **'다시 시도'**
   String get featureTourSaveRetry;
+
+  /// No description provided for @voiceTourStep.
+  ///
+  /// In ko, this message translates to:
+  /// **'4단계 중 {current}단계'**
+  String voiceTourStep(Object current);
+
+  /// No description provided for @voiceTourPhaseCreateTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'말로 일정 등록하기'**
+  String get voiceTourPhaseCreateTitle;
+
+  /// No description provided for @voiceTourPhaseCreateHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'마이크를 누르고 예시 문장을 말해 보세요. 인식된 일정은 저장을 누르기 전까지 반영되지 않아요.'**
+  String get voiceTourPhaseCreateHint;
+
+  /// No description provided for @voiceTourExampleCreate.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시: 내일 오전 9시에 강남역에서 팀장님과 면담'**
+  String get voiceTourExampleCreate;
+
+  /// No description provided for @voiceTourPhaseQueryTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'말로 일정 물어보기'**
+  String get voiceTourPhaseQueryTitle;
+
+  /// No description provided for @voiceTourPhaseQueryHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'방금 저장한 일정을 말로 물어봐 보세요.'**
+  String get voiceTourPhaseQueryHint;
+
+  /// No description provided for @voiceTourExampleQuery.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시: 내일 일정 보여줘'**
+  String get voiceTourExampleQuery;
+
+  /// No description provided for @voiceTourPhaseEditTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'말로 시간 바꾸기'**
+  String get voiceTourPhaseEditTitle;
+
+  /// No description provided for @voiceTourPhaseEditHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'조회된 목록의 첫 번째 일정 시간을 바꿔 보세요. 저장 전까지는 바뀌지 않아요.'**
+  String get voiceTourPhaseEditHint;
+
+  /// No description provided for @voiceTourExampleEdit.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시: 첫 번째 일정 오후 1시로 미뤄줘'**
+  String get voiceTourExampleEdit;
+
+  /// No description provided for @voiceTourPhaseDetailTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'저장된 일정 확인하기'**
+  String get voiceTourPhaseDetailTitle;
+
+  /// No description provided for @voiceTourPhaseDetailHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'시간을 바꾼 뒤 저장된 일정을 열어 그대로 확인해 보세요.'**
+  String get voiceTourPhaseDetailHint;
+
+  /// No description provided for @voiceTourMicStart.
+  ///
+  /// In ko, this message translates to:
+  /// **'마이크로 말하기'**
+  String get voiceTourMicStart;
+
+  /// No description provided for @voiceTourMicStop.
+  ///
+  /// In ko, this message translates to:
+  /// **'말 끝내기'**
+  String get voiceTourMicStop;
+
+  /// No description provided for @voiceTourCancelMic.
+  ///
+  /// In ko, this message translates to:
+  /// **'취소'**
+  String get voiceTourCancelMic;
+
+  /// No description provided for @voiceTourPreparing.
+  ///
+  /// In ko, this message translates to:
+  /// **'준비 중이에요. 잠시만 기다려 주세요.'**
+  String get voiceTourPreparing;
+
+  /// No description provided for @voiceTourListening.
+  ///
+  /// In ko, this message translates to:
+  /// **'듣고 있어요'**
+  String get voiceTourListening;
+
+  /// No description provided for @voiceTourTranscriptHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'인식된 문장이 여기에 보여요'**
+  String get voiceTourTranscriptHint;
+
+  /// No description provided for @voiceTourCreatePreviewTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'인식된 일정'**
+  String get voiceTourCreatePreviewTitle;
+
+  /// No description provided for @voiceTourPreviewTitleLabel.
+  ///
+  /// In ko, this message translates to:
+  /// **'제목'**
+  String get voiceTourPreviewTitleLabel;
+
+  /// No description provided for @voiceTourPreviewDate.
+  ///
+  /// In ko, this message translates to:
+  /// **'날짜'**
+  String get voiceTourPreviewDate;
+
+  /// No description provided for @voiceTourPreviewTime.
+  ///
+  /// In ko, this message translates to:
+  /// **'시간'**
+  String get voiceTourPreviewTime;
+
+  /// No description provided for @voiceTourPreviewLocation.
+  ///
+  /// In ko, this message translates to:
+  /// **'장소'**
+  String get voiceTourPreviewLocation;
+
+  /// No description provided for @voiceTourPreviewLocationEmpty.
+  ///
+  /// In ko, this message translates to:
+  /// **'없음'**
+  String get voiceTourPreviewLocationEmpty;
+
+  /// No description provided for @voiceTourPreviewNote.
+  ///
+  /// In ko, this message translates to:
+  /// **'아직 저장되지 않았어요. 저장을 눌러야 반영됩니다.'**
+  String get voiceTourPreviewNote;
+
+  /// No description provided for @voiceTourSaveCreate.
+  ///
+  /// In ko, this message translates to:
+  /// **'이 일정 저장'**
+  String get voiceTourSaveCreate;
+
+  /// No description provided for @voiceTourResultsTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'저장된 일정'**
+  String get voiceTourResultsTitle;
+
+  /// No description provided for @voiceTourResultsEmpty.
+  ///
+  /// In ko, this message translates to:
+  /// **'조회된 일정이 없어요.'**
+  String get voiceTourResultsEmpty;
+
+  /// No description provided for @voiceTourEditPreviewTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'시간 변경 미리보기'**
+  String get voiceTourEditPreviewTitle;
+
+  /// No description provided for @voiceTourEditPreviewFrom.
+  ///
+  /// In ko, this message translates to:
+  /// **'기존 시간'**
+  String get voiceTourEditPreviewFrom;
+
+  /// No description provided for @voiceTourEditPreviewTo.
+  ///
+  /// In ko, this message translates to:
+  /// **'새 시간'**
+  String get voiceTourEditPreviewTo;
+
+  /// No description provided for @voiceTourEditPreviewNote.
+  ///
+  /// In ko, this message translates to:
+  /// **'저장 전까지 기존 시간이 유지됩니다.'**
+  String get voiceTourEditPreviewNote;
+
+  /// No description provided for @voiceTourSaveEdit.
+  ///
+  /// In ko, this message translates to:
+  /// **'변경 저장'**
+  String get voiceTourSaveEdit;
+
+  /// No description provided for @voiceTourOpenUpdated.
+  ///
+  /// In ko, this message translates to:
+  /// **'저장된 일정 열어 보기'**
+  String get voiceTourOpenUpdated;
+
+  /// No description provided for @voiceTourDetailSavedTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'저장된 일정'**
+  String get voiceTourDetailSavedTitle;
+
+  /// No description provided for @voiceTourDetailEventTime.
+  ///
+  /// In ko, this message translates to:
+  /// **'일정 시간'**
+  String get voiceTourDetailEventTime;
+
+  /// No description provided for @voiceTourDetailDeparture.
+  ///
+  /// In ko, this message translates to:
+  /// **'출발 시간'**
+  String get voiceTourDetailDeparture;
+
+  /// No description provided for @voiceTourDetailPreparation.
+  ///
+  /// In ko, this message translates to:
+  /// **'준비 시간'**
+  String get voiceTourDetailPreparation;
+
+  /// No description provided for @voiceTourExampleNote.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시 값이에요. 실제 경로 계산·실제 일정·알림이 만들어지지 않아요. (이동 20분 + 여유 10분, 준비 15분 전)'**
+  String get voiceTourExampleNote;
+
+  /// No description provided for @voiceTourFinishLocked.
+  ///
+  /// In ko, this message translates to:
+  /// **'저장된 일정을 열어 확인하면 완료할 수 있어요.'**
+  String get voiceTourFinishLocked;
+
+  /// No description provided for @voiceTourErrorPermission.
+  ///
+  /// In ko, this message translates to:
+  /// **'마이크 권한이 필요해요. 권한을 허용한 뒤 다시 시도해 주세요.'**
+  String get voiceTourErrorPermission;
+
+  /// No description provided for @voiceTourErrorLocale.
+  ///
+  /// In ko, this message translates to:
+  /// **'현재 언어는 음성 입력으로 연습할 수 없어요.'**
+  String get voiceTourErrorLocale;
+
+  /// No description provided for @voiceTourErrorSilence.
+  ///
+  /// In ko, this message translates to:
+  /// **'음성이 인식되지 않았어요. 다시 말해 보세요.'**
+  String get voiceTourErrorSilence;
+
+  /// No description provided for @voiceTourErrorUnavailable.
+  ///
+  /// In ko, this message translates to:
+  /// **'지금 음성 입력을 사용할 수 없어요. 잠시 후 다시 시도하거나 직접 입력으로 연습해 보세요.'**
+  String get voiceTourErrorUnavailable;
+
+  /// No description provided for @voiceTourUnsupported.
+  ///
+  /// In ko, this message translates to:
+  /// **'문장을 이해하지 못했어요. 예시처럼 날짜와 시간을 함께 말해 주세요.'**
+  String get voiceTourUnsupported;
+
+  /// No description provided for @voiceTourTextMode.
+  ///
+  /// In ko, this message translates to:
+  /// **'직접 입력으로 연습'**
+  String get voiceTourTextMode;
+
+  /// No description provided for @voiceTourTextLabel.
+  ///
+  /// In ko, this message translates to:
+  /// **'직접 입력 (음성 아님)'**
+  String get voiceTourTextLabel;
+
+  /// No description provided for @voiceTourTextHint.
+  ///
+  /// In ko, this message translates to:
+  /// **'예시 문장을 직접 입력하세요. 음성과 같은 방식으로 처리됩니다.'**
+  String get voiceTourTextHint;
+
+  /// No description provided for @voiceTourTextSubmit.
+  ///
+  /// In ko, this message translates to:
+  /// **'입력 완료'**
+  String get voiceTourTextSubmit;
 }
 
 class _AppLocalizationsDelegate

@@ -45,6 +45,11 @@ import '../../widgets/planflow_action_buttons.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 import '../../widgets/schedule_save_scope_card.dart';
+import '../../widgets/guided_anchor.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_guards.dart';
+import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 
 String _newEventUuid() {
   final random = Random.secure();
@@ -70,6 +75,8 @@ class EventEditScreen extends StatefulWidget {
     this.groupContextProvider,
     this.groupEventRepository,
     this.permissionService,
+    this.initialGuideStartLocal,
+    this.locationLookupService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
   })  : sideEffectService =
@@ -85,6 +92,17 @@ class EventEditScreen extends StatefulWidget {
   final GroupContextProvider? groupContextProvider;
   final GroupEventRepository? groupEventRepository;
   final AppPermissionService? permissionService;
+
+  /// Real UI guide preview start. When non-null, the editor seeds its
+  /// `_startAt` from this value and extends `_endAt` by 1 hour if no user-
+  /// defined end is present. No repository write happens until explicit save.
+  /// This is only meaningful while the guide is bound at `editPreview`; in
+  /// normal use it is ignored.
+  final DateTime? initialGuideStartLocal;
+
+  /// 장소 검색(지오코딩) 서비스 주입 지점. 좌표가 이미 있으면 호출하지 않아야
+  /// 하므로 테스트에서 호출 횟수를 셀 수 있게 한다.
+  final LocationLookupService? locationLookupService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
 
@@ -190,6 +208,32 @@ class EventEditScreen extends StatefulWidget {
     return hasCoordinates;
   }
 
+  /// 저장 시 실제로 쓸 좌표 쌍을 계산한다.
+  ///
+  /// - 폼에 좌표 쌍이 있으면 그대로 쓴다(사용자가 지도에서 지정/재검색한 값).
+  /// - 폼에 좌표가 없더라도 서버에 저장된 유효 쌍이 있고 장소 텍스트가 같으면
+  ///   저장된 쌍을 유지한다(좌표만 빠진 경로 스냅샷을 저장해도 좌표가
+  ///   증발하지 않게). 이 경우 추가 지오코딩도 하지 않는다.
+  /// - 장소 텍스트가 실제로 바뀌었으면 좌표를 비운다(옛 장소 좌표 재사용 금지).
+  @visibleForTesting
+  static ({double? lat, double? lng}) resolveCoordinatesForSave({
+    required double? currentLat,
+    required double? currentLng,
+    required double? storedLat,
+    required double? storedLng,
+    required String? storedLocation,
+    required String? currentLocation,
+  }) {
+    return EventModel.resolveCoordinatesForWrite(
+      storedLocation: storedLocation,
+      storedLat: storedLat,
+      storedLng: storedLng,
+      nextLocation: currentLocation,
+      nextLat: currentLat,
+      nextLng: currentLng,
+    );
+  }
+
   @visibleForTesting
   static bool shouldHydratePersistedCoordinates({
     required EventModel? routeEvent,
@@ -259,6 +303,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
   double? _locationLat;
   double? _locationLng;
   String? _resolvedLocationLabel;
+
+  /// 서버에 저장돼 있는(또는 저장됐던) 장소 텍스트와 좌표 쌍.
+  /// 폼 좌표가 유실된 경로(경로 스냅샷 재저장, 외부 동기화 병합)로 저장해도
+  /// 저장된 유효 좌표가 증발하지 않도록 보존 기준으로 쓴다.
+  String? _storedLocationText;
+  double? _storedLat;
+  double? _storedLng;
   late bool _critical;
   late bool _strongAlarm;
   late RecurrenceSelection _recurrenceSelection;
@@ -296,6 +347,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
+
+  LocationLookupService get _locationLookupService =>
+      widget.locationLookupService ?? LocationLookupService();
 
   GroupEventRepository get _groupEventRepository =>
       widget.groupEventRepository ?? GroupEventRepository.supabase();
@@ -374,7 +428,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isApplyingLoadedEvent: _isApplyingLoadedEvent,
       changedText: value,
       resolvedLocationLabel: _resolvedLocationLabel,
-      hasCoordinates: _locationLat != null || _locationLng != null,
+      hasCoordinates: _locationLat != null && _locationLng != null,
     );
     if (shouldClear) {
       DiagLogger.log(
@@ -410,7 +464,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _isLookingUpLocation = true;
     });
     try {
-      final results = await LocationLookupService().search(query, origin: null);
+      final results = await _locationLookupService.search(query, origin: null);
       if (!mounted ||
           query != _locationController.text.trim() ||
           results.isEmpty) {
@@ -456,6 +510,17 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
+  ({double? lat, double? lng}) _resolvedCoordinatesForSave() {
+    return EventEditScreen.resolveCoordinatesForSave(
+      currentLat: _locationLat,
+      currentLng: _locationLng,
+      storedLat: _storedLat,
+      storedLng: _storedLng,
+      storedLocation: _storedLocationText,
+      currentLocation: _locationController.text,
+    );
+  }
+
   Future<void> _ensureLocationCoordinatesBeforeSave() async {
     final query = _locationController.text.trim();
     if (query.isEmpty || (_locationLat != null && _locationLng != null)) {
@@ -484,7 +549,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       });
       unawaited(gpsFuture);
       DiagLogger.log('GeoResolve', '[EditScreen] 검색시작: 쿼리="$query"');
-      final results = await LocationLookupService().search(
+      final results = await _locationLookupService.search(
         query,
         origin: null,
       );
@@ -542,6 +607,81 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return;
     }
     context.go(AppRoutes.home);
+  }
+
+  // ---- Real UI guide integration ----
+  // - GuideMutationPolicy guards save at `editPreview` step.
+  // - EditPreviewObserved fires when the seeded preview start differs from
+  //   the bound created-event's original start.
+  // - EditConfirmed fires right before the repository write for the
+  //   confirmed user-pressed save.
+  // - UpdateObserved fires only after the actual persisted readback.
+
+  GuideSnapshot? _guideEditPreviewState() {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return null;
+    final state = coordinator.state.value;
+    if (state.uid.isEmpty ||
+        state.sessionId == null ||
+        state.run != GuideRun.active ||
+        state.step != GuideStep.editPreview) {
+      return null;
+    }
+    return state;
+  }
+
+  bool identicalTimes(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    final la = planflowLocal(a);
+    final lb = planflowLocal(b);
+    return la.year == lb.year &&
+        la.month == lb.month &&
+        la.day == lb.day &&
+        la.hour == lb.hour &&
+        la.minute == lb.minute;
+  }
+
+  Future<void> _dispatchGuideEditConfirmed(
+      EventModel loaded, DateTime start) async {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return;
+    final state = coordinator.state.value;
+    if (state.uid.isEmpty ||
+        state.sessionId == null ||
+        state.run != GuideRun.active ||
+        state.step != GuideStep.editPreview ||
+        state.createdEventId != loaded.id) {
+      return;
+    }
+    // `start` is the editor's region-local wall-clock value (`_startAt`
+    // at the only call site, line below). It is NOT a UTC instant —
+    // passing it directly here mirrors the same wall-clock contract as
+    // `_applyGuideInitialStartIfAny` and avoids a second
+    // instant→KST conversion that, on a UTC-native Android host, would
+    // shift the wall clock by 9 h and break `confirmedStartLocal ==
+    // expectedUpdatedStartLocal` in the coordinator's EditConfirmed
+    // equality gate (guide_coordinator.dart around line 309–316). A
+    // wall-field copy is used so the value reaches the coordinator with
+    // `isUtc = false` regardless of caller-side isUtc, keeping the
+    // coordinator's CAS / equality semantics untouched.
+    final confirmedStartLocal = DateTime(
+      start.year,
+      start.month,
+      start.day,
+      start.hour,
+      start.minute,
+      start.second,
+      start.millisecond,
+      start.microsecond,
+    );
+    await coordinator.dispatch(EditConfirmed(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+      operationId: 'editPreview:${loaded.id}:${identityHashCode(this)}',
+      confirmedStartLocal: confirmedStartLocal,
+    ));
   }
 
   Future<void> _ensureCriticalAlarmPermissions() async {
@@ -627,6 +767,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _endAt = event?.endAt == null ? null : planflowLocal(event!.endAt!);
     _locationLat = event?.locationLat;
     _locationLng = event?.locationLng;
+    _storedLocationText = event?.location?.trim();
+    _storedLat = event?.locationLat;
+    _storedLng = event?.locationLng;
     if (_locationLat != null && _locationLng != null) {
       _resolvedLocationLabel = _locationController.text.trim();
     }
@@ -648,6 +791,56 @@ class _EventEditScreenState extends State<EventEditScreen> {
     if (_loadedEvent != null && AppEnv.isSupabaseReady) {
       unawaited(_loadReminderOffsetIfNeeded(_loadedEvent!));
     }
+    // Real UI guide preview prefill. We seed start/end from the guide's
+    // requested preview time and DO NOT touch the repository. The user still
+    // has to press Save for the change to be persisted.
+    _applyGuideInitialStartIfAny();
+  }
+
+  void _applyGuideInitialStartIfAny() {
+    final guideStart = widget.initialGuideStartLocal;
+    if (guideStart == null) return;
+    // `initialGuideStartLocal` is the local wall-clock contract value that
+    // the guide flow already validated against `expectedUpdatedStartLocal`.
+    // It is NOT a UTC instant — callers construct it as
+    // `DateTime(year, month, day, hour, minute)` and the test fixture
+    // confirms equality on y/m/d/h/min/sec/micros. Reconstruct the local
+    // fields directly here. Converting through `planflowLocal` again would
+    // re-interpret these fields as a UTC instant and shift the wall clock
+    // by the host's local UTC offset — observed as `DateTime(2026,10,20,15)`
+    // rendering as `Oct 21 00:00` on a UTC-native Android device. Canonical
+    // event UTC→KST conversions in `initState` are kept unchanged.
+    final localStart = DateTime(
+      guideStart.year,
+      guideStart.month,
+      guideStart.day,
+      guideStart.hour,
+      guideStart.minute,
+      guideStart.second,
+      guideStart.millisecond,
+      guideStart.microsecond,
+    );
+    setState(() {
+      // Mirror the exact end-shift policy the editor applies on user-driven
+      // onStartChanged (lib/services/event_range_utils.dart). The helper
+      // contracts: an ordinary start-time edit (different newStart) resets
+      // the event length to one hour; endEditedByUser preserves any prior
+      // manual end tweak; a same-start prefills retains the current end.
+      // Treating the guide prefill as the same ordinary start edit avoids
+      // a stale canonical-old `endAt` from being shown below the new start
+      // on mount — that hazard (e.g. old 13–14 vs. guide 15:00) was the
+      // separate risk flagged and now ends up routed through the same
+      // helper the user-driven path already uses.
+      final previousStart = _startAt;
+      _startAt = localStart;
+      final shifted = shiftEventEndWhenStartChanges(
+        previousStart: previousStart,
+        newStart: localStart,
+        currentEnd: _endAt,
+        endEditedByUser: _endEditedByUser,
+      );
+      _endAt = shifted ?? localStart.add(const Duration(hours: 1));
+    });
   }
 
   DateTime _initialStartAtForNewEvent() {
@@ -838,6 +1031,18 @@ class _EventEditScreenState extends State<EventEditScreen> {
   /// Supabase.instance.client.auth.currentUser에서 직접 user.id를 읽으므로
   /// (이 파일에 별도 _currentUserId() 헬퍼가 없었음), 저장 자체는 그대로 두고
   /// 그룹 공유 판단에만 이 헬퍼를 사용한다.
+  String? _currentUserIdForRead() {
+    final fromAuthProvider = authProvider.userId;
+    if (fromAuthProvider != null && fromAuthProvider.trim().isNotEmpty) {
+      return fromAuthProvider.trim();
+    }
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
   String? _currentUserIdForGroupSharing() {
     final fromAuthProvider = authProvider.userId;
     if (fromAuthProvider != null && fromAuthProvider.trim().isNotEmpty) {
@@ -1076,6 +1281,78 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _showMessage('저장 폼 상태를 찾지 못했어요. 화면을 다시 열어 주세요.');
       return;
     }
+
+    // Real UI guide: while the guide is bound at `editPreview`, the mutation
+    // MUST go through `GuideMutationPolicy`. We compute the changed-field set
+    // by diffing loaded-event values vs the form; only start/end are allowed
+    // for the edit step, all other fields must remain unchanged.
+    final guideState = _guideEditPreviewState();
+    if (guideState != null) {
+      final loaded = _loadedEvent;
+      if (loaded == null) {
+        _showMessage('원본 일정을 먼저 불러와 주세요.');
+        return;
+      }
+      final changed = <String>{};
+      if (!identicalTimes(loaded.startAt, _startAt)) changed.add('startAt');
+      if (!identicalTimes(loaded.endAt, _endAt)) changed.add('endAt');
+      // Disallow any other field changes during guided edit.
+      if (loaded.title.trim() != _titleController.text.trim()) {
+        changed.add('title');
+      }
+      if ((loaded.location ?? '') != _locationController.text.trim()) {
+        changed.add('location');
+      }
+      if (loaded.isCritical != _critical) changed.add('isCritical');
+      if (loaded.useStrongAlarm != _strongAlarm) {
+        changed.add('useStrongAlarm');
+      }
+      if (loaded.category != _category) changed.add('category');
+      final intent = GuideMutationIntent(
+        kind: GuideWriteKind.changeTime,
+        operationId: 'editPreview:${loaded.id}:${identityHashCode(this)}',
+        eventId: loaded.id,
+        isPersonal: loaded.userId == guideState.uid &&
+            loaded.groupEventId == null &&
+            loaded.externalId == null &&
+            (loaded.recurrenceRule == null || loaded.recurrenceRule!.isEmpty),
+        isRecurrence: false,
+        changedFields: changed,
+        // `requestedStartLocal` is the local wall-clock value the user
+        // is about to save. `_startAt` is already region-local (either
+        // `planflowLocal(event.startAt)` from initState, or the wall-
+        // field copy produced by `_applyGuideInitialStartIfAny`). We
+        // must NOT pass it through `planflowLocal` again — on a UTC-
+        // native Android host, that second conversion shifts the wall
+        // clock by 9 h KST and the `GuideMutationPolicy.check` gate at
+        // `guide_guards.dart:38–41` rejects with
+        // `requestedStartLocal != expectedUpdatedStartLocal` before the
+        // Save path ever reaches `_dispatchGuideEditConfirmed`. Use the
+        // same wall-field copy the dispatch fix uses; same contract,
+        // same `isUtc = false` regardless of caller-side isUtc, and
+        // the policy / CAS / equality semantics are not weakened.
+        requestedStartLocal: DateTime(
+          _startAt.year,
+          _startAt.month,
+          _startAt.day,
+          _startAt.hour,
+          _startAt.minute,
+          _startAt.second,
+          _startAt.millisecond,
+          _startAt.microsecond,
+        ),
+        userConfirmed: true,
+      );
+      final decision =
+          GuideMutationPolicy.check(guide: guideState, intent: intent);
+      if (!decision.allowed) {
+        _showMessage('이 단계에서는 시간과 종료 시각만 변경할 수 있어요.');
+        return;
+      }
+      // EditConfirmed: confirm the user-pressed save for this operation.
+      await _dispatchGuideEditConfirmed(loaded, _startAt);
+      if (!mounted || _guideEditPreviewState() == null) return;
+    }
     final isValid = formState.validate();
     if (!isValid) {
       debugPrint('EventEditScreen save blocked: form validation failed');
@@ -1138,10 +1415,30 @@ class _EventEditScreenState extends State<EventEditScreen> {
         }
       }
 
-      await _ensureLocationCoordinatesBeforeSave();
-      if (!mounted) {
-        return;
+      // 저장 시 실제로 쓸 좌표 쌍을 먼저 계산한다.
+      // - 폼에 좌표 쌍이 있으면 그대로 사용한다.
+      // - 폼 좌표가 유실됐더라도 저장된 유효 좌표가 있고 장소 텍스트가 같으면
+      //   그 좌표를 유지한다(추가 지오코딩 없음 → 재검색 API 낭비 없음).
+      // - 장소 텍스트가 실제로 바뀌었으면 좌표를 비우고 새로 찾는다.
+      final preservedCoordinates = _resolvedCoordinatesForSave();
+      if (EventModel.hasValidCoordinatePair(
+        lat: preservedCoordinates.lat,
+        lng: preservedCoordinates.lng,
+      )) {
+        if (_locationLat != preservedCoordinates.lat ||
+            _locationLng != preservedCoordinates.lng) {
+          setState(() {
+            _locationLat = preservedCoordinates.lat;
+            _locationLng = preservedCoordinates.lng;
+          });
+        }
+      } else {
+        await _ensureLocationCoordinatesBeforeSave();
+        if (!mounted) {
+          return;
+        }
       }
+      final savedCoordinates = _resolvedCoordinatesForSave();
 
       final supplies = _suppliesController.text
           .split(',')
@@ -1164,8 +1461,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         startAt: normalizedStartAt,
         endAt: normalizedEndAt,
         location: _emptyToNull(_locationController.text),
-        locationLat: _locationLat,
-        locationLng: _locationLng,
+        locationLat: savedCoordinates.lat,
+        locationLng: savedCoordinates.lng,
         memo: _emptyToNull(_memoController.text),
         supplies: supplies,
         suppliesChecked: _loadedEvent?.suppliesChecked ?? const <String>[],
@@ -1395,9 +1692,23 @@ class _EventEditScreenState extends State<EventEditScreen> {
         );
         if (savedEvent != null) {
           _loadedEvent = savedEvent;
+          // Real UI guide: dispatch UpdateObserved only with the actual
+          // persisted readback. The coordinator advances only when the
+          // expected preview start matches `guide.expectedUpdatedStartLocal`.
+          // Updated proof is emitted only after the actual detail renders.
         }
         if (mounted) {
-          context.go(AppRoutes.calendar);
+          final guide = GuideScope.maybeOf(context)?.state.value;
+          if (savedEvent != null &&
+              guide?.run == GuideRun.active &&
+              guide?.step == GuideStep.editPreview &&
+              guide?.createdEventId == savedEvent.id) {
+            context.go(
+                '${AppRoutes.eventDetail}/${Uri.encodeComponent(savedEvent.id)}',
+                extra: savedEvent);
+          } else {
+            context.go(AppRoutes.calendar);
+          }
         }
       }
     } on StateError catch (error) {
@@ -1588,12 +1899,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
     // 기존에는 extra가 존재하면 여기서 재조회하지 않아, 그 스냅샷에 좌표가
     // 빠진 경우 지도 위치가 미지정으로 보였다. 저장된 일정은 항상 최신 행으로
     // 재수화해 확정 좌표를 유지한다.
-    if (eventId == null || !AppEnv.isSupabaseReady) {
+    if (eventId == null) {
+      return;
+    }
+    final hasInjectedRepository = widget.eventRepository != null;
+    if (!hasInjectedRepository && !AppEnv.isSupabaseReady) {
       return;
     }
 
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
+    final userId = _currentUserIdForRead();
+    if (!hasInjectedRepository && (userId == null || userId.isEmpty)) {
       if (_loadedEvent == null) {
         _showMessage('로그인 후 일정 정보를 불러올 수 있습니다.');
       }
@@ -1605,7 +1920,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
 
     try {
-      final event = await _repository.fetchEvent(eventId, userId: user.id);
+      final event = await _repository.fetchEvent(eventId, userId: userId);
       if (!mounted) {
         return;
       }
@@ -1614,6 +1929,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
       final routeEvent = widget.event;
+      // 서버 행(저장된 상태)을 보존 기준으로 기록한다. 경로 스냅샷에 좌표가
+      // 빠져 있어도 저장된 유효 좌표는 여기서 복구된다.
+      _storedLocationText = event.location?.trim();
+      _storedLat = event.locationLat;
+      _storedLng = event.locationLng;
       if (routeEvent != null) {
         if (EventEditScreen.shouldHydratePersistedCoordinates(
           routeEvent: routeEvent,
@@ -2200,7 +2520,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final selected = await pickLocationFromQuery(
         context: context,
         query: query,
-        locationLookupService: LocationLookupService(),
+        locationLookupService: _locationLookupService,
         appPermissionService: _permissionService,
         lockedResult: lockedResult,
       );
@@ -2274,21 +2594,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: FilledButton.icon(
-              onPressed: _isSaving ? null : _handleSave,
-              icon: _isSaving
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined, size: 18),
-              label: const Text('저장'),
-              style: FilledButton.styleFrom(
-                backgroundColor: PlanFlowColors.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(92, 40),
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                visualDensity: VisualDensity.compact,
+            child: GuidedAnchor(
+              id: 'edit.save',
+              registry: realUiGuideAnchorRegistry,
+              child: FilledButton.icon(
+                onPressed: _isSaving ? null : _handleSave,
+                icon: _isSaving
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined, size: 18),
+                label: const Text('저장'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: PlanFlowColors.primary,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(92, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ),
           ),
@@ -2321,85 +2645,93 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 if (_selectedGroupForSharing != null)
                   const SizedBox(height: AppConstants.sectionSpacing),
                 _buildLeaderInstructionsSection(context),
-                CalendarStyleEventEditor(
-                  titleController: _titleController,
-                  locationController: _locationController,
-                  memoController: _memoController,
-                  startAt: _startAt,
-                  endAt: _endAt,
-                  category: _category,
-                  recurrence: _recurrenceSelection,
-                  reminderOffset: _reminderOffset,
-                  isCritical: _critical,
-                  useStrongAlarm: _strongAlarm,
-                  locationLat: _locationLat,
-                  locationLng: _locationLng,
-                  memoMaxLines: 5,
-                  initiallyExpandClassification: !_recurrenceSelection.isNone,
-                  initiallyExpandCriticalAlarm: _critical,
-                  titleValidator: (value) =>
-                      (value == null || value.trim().isEmpty)
-                          ? '제목을 입력해 주세요.'
-                          : null,
-                  onStartChanged: (value) {
-                    setState(() {
-                      final previousStart = _startAt;
-                      _startAt = value;
-                      _endAt = shiftEventEndWhenStartChanges(
-                        previousStart: previousStart,
-                        newStart: _startAt,
-                        currentEnd: _endAt,
-                        endEditedByUser: _endEditedByUser,
-                      );
-                    });
-                  },
-                  onEndChanged: (value) {
-                    setState(() {
-                      _endEditedByUser = true;
-                      _endAt = value;
-                    });
-                  },
-                  onCategoryChanged: (value) {
-                    setState(() {
-                      _category = value;
-                    });
-                  },
-                  onRecurrenceChanged: (value) {
-                    setState(() {
-                      _recurrenceSelection = value;
-                    });
-                  },
-                  onReminderChanged: (value) {
-                    setState(() {
-                      _reminderOffset = value;
-                    });
-                  },
-                  onCriticalChanged: _handleCriticalChanged,
-                  onStrongAlarmChanged: _handleStrongAlarmChanged,
-                  onLocationTextChanged: _handleLocationTextChanged,
-                  onLocationPick: _pickLocationOnMap,
-                  isSearchingLocation: _isLookingUpLocation,
-                  extraAfterMemo: TextFormField(
-                    controller: _suppliesController,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
-                    decoration: const InputDecoration(
-                      labelText: '준비물',
-                      helperText: '쉼표로 구분해서 입력해 주세요.',
-                      prefixIcon: Icon(Icons.checklist_outlined),
+                GuidedAnchor(
+                  id: 'edit.preview',
+                  registry: realUiGuideAnchorRegistry,
+                  child: CalendarStyleEventEditor(
+                    titleController: _titleController,
+                    locationController: _locationController,
+                    memoController: _memoController,
+                    startAt: _startAt,
+                    endAt: _endAt,
+                    category: _category,
+                    recurrence: _recurrenceSelection,
+                    reminderOffset: _reminderOffset,
+                    isCritical: _critical,
+                    useStrongAlarm: _strongAlarm,
+                    locationLat: _locationLat,
+                    locationLng: _locationLng,
+                    memoMaxLines: 5,
+                    initiallyExpandClassification: !_recurrenceSelection.isNone,
+                    initiallyExpandCriticalAlarm: _critical,
+                    titleValidator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                            ? '제목을 입력해 주세요.'
+                            : null,
+                    onStartChanged: (value) {
+                      setState(() {
+                        final previousStart = _startAt;
+                        _startAt = value;
+                        _endAt = shiftEventEndWhenStartChanges(
+                          previousStart: previousStart,
+                          newStart: _startAt,
+                          currentEnd: _endAt,
+                          endEditedByUser: _endEditedByUser,
+                        );
+                      });
+                    },
+                    onEndChanged: (value) {
+                      setState(() {
+                        _endEditedByUser = true;
+                        _endAt = value;
+                      });
+                    },
+                    onCategoryChanged: (value) {
+                      setState(() {
+                        _category = value;
+                      });
+                    },
+                    onRecurrenceChanged: (value) {
+                      setState(() {
+                        _recurrenceSelection = value;
+                      });
+                    },
+                    onReminderChanged: (value) {
+                      setState(() {
+                        _reminderOffset = value;
+                      });
+                    },
+                    onCriticalChanged: _handleCriticalChanged,
+                    onStrongAlarmChanged: _handleStrongAlarmChanged,
+                    onLocationTextChanged: _handleLocationTextChanged,
+                    onLocationPick: _pickLocationOnMap,
+                    isSearchingLocation: _isLookingUpLocation,
+                    extraAfterMemo: TextFormField(
+                      controller: _suppliesController,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
+                      decoration: const InputDecoration(
+                        labelText: '준비물',
+                        helperText: '쉼표로 구분해서 입력해 주세요.',
+                        prefixIcon: Icon(Icons.checklist_outlined),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _isSaving ? null : _handleSave,
-                  icon: _isSaving
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_outlined),
-                  label: Text(_isSaving ? l10n.saving : l10n.save),
+                GuidedAnchor(
+                  id: 'edit.save',
+                  registry: realUiGuideAnchorRegistry,
+                  child: FilledButton.icon(
+                    onPressed: _isSaving ? null : _handleSave,
+                    icon: _isSaving
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(_isSaving ? l10n.saving : l10n.save),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextButton(

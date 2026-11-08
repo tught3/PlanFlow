@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -277,7 +279,197 @@ GoRoute _voiceConversationTestRoute() {
   );
 }
 
+/// Holds `cancelActiveListen` open so a test can mutate the guide while the
+/// screen is parked on the delayed native teardown that runs after the
+/// submission origin is captured and before the parse confirmation is
+/// validated.
+class _DelayedCancelSttService extends _FakeSttService {
+  final Completer<void> _cancelGate = Completer<void>();
+
+  @override
+  Future<void> cancelActiveListen() async {
+    cancelCalls += 1;
+    if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
+      _listenCompleter!.complete(SttListenResult.failure(
+        failure: SttListenFailure.unavailable,
+        message: 'delayed native cancel',
+        text: _latestText,
+      ));
+    }
+    await _cancelGate.future;
+  }
+
+  void releaseNativeCleanup() {
+    if (!_cancelGate.isCompleted) {
+      _cancelGate.complete();
+    }
+  }
+}
+
+class _CapturePhaseCoordinator implements GuideCoordinator {
+  @override
+  final ValueNotifier<GuideSnapshot> state = ValueNotifier<GuideSnapshot>(
+      const GuideSnapshot(
+          uid: 'u',
+          version: 'v',
+          sessionId: 's',
+          revision: 1,
+          serverRevision: 1,
+          step: GuideStep.createSpeech,
+          run: GuideRun.active));
+  int parses = 0;
+  @override
+  Future<GuideSnapshot> dispatch(GuideSignal signal) async {
+    if (signal is ParseConfirmed &&
+        signal.expectedRevision == state.value.revision) {
+      parses++;
+      state.value = state.value.copyWith(
+          step: GuideStep.correctAndSave, revision: state.value.revision + 1);
+    }
+    return state.value;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  for (final mode in ['done', 'auto', 'typed', 'stale', 'manual']) {
+    testWidgets('guide capture phase: $mode', (tester) async {
+      final coordinator = _CapturePhaseCoordinator();
+      final stt = _FakeSttService();
+      final analysis = _FakeDraftAnalysisService(parsedSchedule: {
+        'title': '내일 오전 10시 정장집 방문',
+        'parse_failed': false,
+      });
+      var navigations = 0;
+      final router = GoRouter(initialLocation: AppRoutes.voice, routes: [
+        GoRoute(
+            path: AppRoutes.voice,
+            builder: (_, __) => VoiceInputScreen(
+                autoStartOverride: false,
+                sttService: stt,
+                voiceAnalysisService: analysis)),
+        GoRoute(
+            path: AppRoutes.confirm,
+            builder: (_, __) {
+              navigations++;
+              expect(coordinator.state.value.step, GuideStep.correctAndSave);
+              return const Text('accepted-confirm');
+            }),
+      ]);
+      await tester.pumpWidget(GuideScope(
+          coordinator: coordinator,
+          child: MaterialApp.router(routerConfig: router)));
+      if (mode == 'typed') {
+        await tester.enterText(
+            find.byType(TextField).first, '내일 오전 10시 정장집 방문');
+        await tester.pump();
+        await tester.tap(find.text('현재 내용으로 입력'));
+      } else {
+        await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+        await tester.pump();
+        expect(stt.listenCalls, 1,
+            reason: 'the actual voice primary button must start mocked STT');
+        stt.emitPartial('내일 오전 10시 정장집 방문');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        expect(coordinator.parses, 0);
+        if (mode == 'stale') {
+          coordinator.state.value =
+              coordinator.state.value.copyWith(revision: 9);
+        }
+        if (mode == 'manual') {
+          await tester.tap(find.byType(TextField).first);
+          await tester.enterText(
+              find.byType(TextField).first, '내일 오전 11시 정장집 방문');
+          await tester.pump();
+          await tester.tap(find.byKey(
+              const ValueKey('voice-input-confirm-current-text-button')));
+        } else if (mode == 'auto') {
+          await stt.stopActiveListen();
+        } else {
+          await tester.tap(find.text('완료'));
+        }
+      }
+      await tester.pumpAndSettle();
+      expect(coordinator.parses, mode == 'typed' || mode == 'stale' ? 0 : 1);
+      expect(navigations, mode == 'typed' || mode == 'stale' ? 0 : 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      router.dispose();
+      coordinator.state.dispose();
+    });
+  }
+
+  for (final mutation in ['phase', 'session']) {
+    testWidgets(
+        'guide submission is rejected when the guide $mutation changes during '
+        'delayed native cleanup', (tester) async {
+      final coordinator = _CapturePhaseCoordinator();
+      final stt = _DelayedCancelSttService();
+      final analysis = _FakeDraftAnalysisService(parsedSchedule: {
+        'title': '내일 오전 10시 정장집 방문',
+        'parse_failed': false,
+      });
+      var navigations = 0;
+      final router = GoRouter(initialLocation: AppRoutes.voice, routes: [
+        GoRoute(
+            path: AppRoutes.voice,
+            builder: (_, __) => VoiceInputScreen(
+                  autoStartOverride: false,
+                  sttService: stt,
+                  voiceAnalysisService: analysis,
+                )),
+        GoRoute(
+            path: AppRoutes.confirm,
+            builder: (_, __) {
+              navigations++;
+              return const Text('accepted-confirm');
+            }),
+      ]);
+      await tester.pumpWidget(GuideScope(
+          coordinator: coordinator,
+          child: MaterialApp.router(routerConfig: router)));
+      await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+      await tester.pump();
+      expect(stt.listenCalls, 1,
+          reason: 'the actual voice primary button must start mocked STT');
+      stt.emitPartial('내일 오전 10시 정장집 방문');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(coordinator.parses, 0);
+
+      await stt.stopActiveListen();
+      // Run up to the delayed native teardown that sits between the origin
+      // capture and the parse confirmation.
+      for (var i = 0; i < 60 && stt.cancelCalls == 0; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(stt.cancelCalls, greaterThan(0));
+
+      // Change exactly one dimension of the guide identity so the assertion
+      // below cannot pass merely because some other field also moved.
+      final duringCleanup = coordinator.state.value;
+      if (mutation == 'phase') {
+        coordinator.state.value =
+            duringCleanup.copyWith(step: GuideStep.queryMic);
+      } else {
+        coordinator.state.value =
+            duringCleanup.copyWith(sessionId: 'other-session');
+      }
+
+      stt.releaseNativeCleanup();
+      await tester.pumpAndSettle();
+
+      expect(coordinator.parses, 0,
+          reason: 'stale guide $mutation must not confirm a parse');
+      expect(navigations, 0,
+          reason: 'stale guide $mutation must not reach the confirm route');
+      await tester.pumpWidget(const SizedBox.shrink());
+      router.dispose();
+      coordinator.state.dispose();
+    });
+  }
   tearDown(() {
     // 게이트 delegate는 static 싱글턴(VoiceConversationAdGate.instance)에
     // 걸리므로, 한 테스트가 설정한 delegate가 다음 테스트로 새는 것을 막는다.
@@ -497,6 +689,58 @@ void main() {
     expect(find.textContaining('manual:true'), findsOneWidget);
     expect(find.textContaining('정장집 방문'), findsOneWidget);
     expect(find.textContaining('내일 오전 10시 정장집 방문'), findsNothing);
+  });
+
+  testWidgets('완료 가림막은 다음 경로의 전환 중에도 이전 입력 버튼을 가린다', (tester) async {
+    final fakeStt = _CancelPendingSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          pageBuilder: (context, state) => CustomTransitionPage<Object?>(
+            key: state.pageKey,
+            opaque: false,
+            transitionDuration: const Duration(milliseconds: 600),
+            child: const Text('새 일정 확인 화면', textDirection: TextDirection.ltr),
+            transitionsBuilder: (context, animation, secondary, child) =>
+                FadeTransition(opacity: animation, child: child),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 테스트 회의실 방문');
+    await tester.pump();
+    await tester.tap(find.text('완료'));
+    await tester.pump();
+    expect(find.text('일정 확인 화면으로 이동 중이에요'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-primary-button')).hitTestable(),
+        findsNothing);
+
+    fakeStt.cancelReleased.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('새 일정 확인 화면'), findsOneWidget);
+    expect(find.text('일정 확인 화면으로 이동 중이에요'), findsOneWidget,
+        reason: 'push 요청만으로 이전 화면 가림막을 내리면 안 된다');
+    expect(find.byKey(const ValueKey('voice-primary-button')).hitTestable(),
+        findsNothing);
+
+    router.pop('cancelled');
+    await tester.pumpAndSettle();
+    expect(find.text('일정 확인 화면으로 이동 중이에요'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('완료 처리 중 직접 수정하면 늦은 자동 제출의 화면 이동을 막는다', (tester) async {

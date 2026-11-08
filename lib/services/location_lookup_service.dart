@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/app_http.dart';
 import '../core/env.dart';
 import 'api_usage_guard.dart';
 import 'app_permission_service.dart';
@@ -112,7 +113,7 @@ class LocationLookupService {
         // 재사용할 수 없다. 별도 Geocoding 키가 명시적으로 주입된 경우에만
         // Google REST 검색을 사용하고, 아니면 Naver/TMAP 후보를 사용한다.
         _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleGeocodingApiKey,
-        _httpClientFactory = httpClientFactory ?? http.Client.new,
+        _httpClientFactory = httpClientFactory ?? AppHttp.create,
         _usageGuard = usageGuard;
 
   final String _clientId;

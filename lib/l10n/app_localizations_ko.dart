@@ -450,4 +450,157 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get featureTourSaveRetry => '다시 시도';
+
+  @override
+  String voiceTourStep(Object current) {
+    return '4단계 중 $current단계';
+  }
+
+  @override
+  String get voiceTourPhaseCreateTitle => '말로 일정 등록하기';
+
+  @override
+  String get voiceTourPhaseCreateHint =>
+      '마이크를 누르고 예시 문장을 말해 보세요. 인식된 일정은 저장을 누르기 전까지 반영되지 않아요.';
+
+  @override
+  String get voiceTourExampleCreate => '예시: 내일 오전 9시에 강남역에서 팀장님과 면담';
+
+  @override
+  String get voiceTourPhaseQueryTitle => '말로 일정 물어보기';
+
+  @override
+  String get voiceTourPhaseQueryHint => '방금 저장한 일정을 말로 물어봐 보세요.';
+
+  @override
+  String get voiceTourExampleQuery => '예시: 내일 일정 보여줘';
+
+  @override
+  String get voiceTourPhaseEditTitle => '말로 시간 바꾸기';
+
+  @override
+  String get voiceTourPhaseEditHint =>
+      '조회된 목록의 첫 번째 일정 시간을 바꿔 보세요. 저장 전까지는 바뀌지 않아요.';
+
+  @override
+  String get voiceTourExampleEdit => '예시: 첫 번째 일정 오후 1시로 미뤄줘';
+
+  @override
+  String get voiceTourPhaseDetailTitle => '저장된 일정 확인하기';
+
+  @override
+  String get voiceTourPhaseDetailHint => '시간을 바꾼 뒤 저장된 일정을 열어 그대로 확인해 보세요.';
+
+  @override
+  String get voiceTourMicStart => '마이크로 말하기';
+
+  @override
+  String get voiceTourMicStop => '말 끝내기';
+
+  @override
+  String get voiceTourCancelMic => '취소';
+
+  @override
+  String get voiceTourPreparing => '준비 중이에요. 잠시만 기다려 주세요.';
+
+  @override
+  String get voiceTourListening => '듣고 있어요';
+
+  @override
+  String get voiceTourTranscriptHint => '인식된 문장이 여기에 보여요';
+
+  @override
+  String get voiceTourCreatePreviewTitle => '인식된 일정';
+
+  @override
+  String get voiceTourPreviewTitleLabel => '제목';
+
+  @override
+  String get voiceTourPreviewDate => '날짜';
+
+  @override
+  String get voiceTourPreviewTime => '시간';
+
+  @override
+  String get voiceTourPreviewLocation => '장소';
+
+  @override
+  String get voiceTourPreviewLocationEmpty => '없음';
+
+  @override
+  String get voiceTourPreviewNote => '아직 저장되지 않았어요. 저장을 눌러야 반영됩니다.';
+
+  @override
+  String get voiceTourSaveCreate => '이 일정 저장';
+
+  @override
+  String get voiceTourResultsTitle => '저장된 일정';
+
+  @override
+  String get voiceTourResultsEmpty => '조회된 일정이 없어요.';
+
+  @override
+  String get voiceTourEditPreviewTitle => '시간 변경 미리보기';
+
+  @override
+  String get voiceTourEditPreviewFrom => '기존 시간';
+
+  @override
+  String get voiceTourEditPreviewTo => '새 시간';
+
+  @override
+  String get voiceTourEditPreviewNote => '저장 전까지 기존 시간이 유지됩니다.';
+
+  @override
+  String get voiceTourSaveEdit => '변경 저장';
+
+  @override
+  String get voiceTourOpenUpdated => '저장된 일정 열어 보기';
+
+  @override
+  String get voiceTourDetailSavedTitle => '저장된 일정';
+
+  @override
+  String get voiceTourDetailEventTime => '일정 시간';
+
+  @override
+  String get voiceTourDetailDeparture => '출발 시간';
+
+  @override
+  String get voiceTourDetailPreparation => '준비 시간';
+
+  @override
+  String get voiceTourExampleNote =>
+      '예시 값이에요. 실제 경로 계산·실제 일정·알림이 만들어지지 않아요. (이동 20분 + 여유 10분, 준비 15분 전)';
+
+  @override
+  String get voiceTourFinishLocked => '저장된 일정을 열어 확인하면 완료할 수 있어요.';
+
+  @override
+  String get voiceTourErrorPermission => '마이크 권한이 필요해요. 권한을 허용한 뒤 다시 시도해 주세요.';
+
+  @override
+  String get voiceTourErrorLocale => '현재 언어는 음성 입력으로 연습할 수 없어요.';
+
+  @override
+  String get voiceTourErrorSilence => '음성이 인식되지 않았어요. 다시 말해 보세요.';
+
+  @override
+  String get voiceTourErrorUnavailable =>
+      '지금 음성 입력을 사용할 수 없어요. 잠시 후 다시 시도하거나 직접 입력으로 연습해 보세요.';
+
+  @override
+  String get voiceTourUnsupported => '문장을 이해하지 못했어요. 예시처럼 날짜와 시간을 함께 말해 주세요.';
+
+  @override
+  String get voiceTourTextMode => '직접 입력으로 연습';
+
+  @override
+  String get voiceTourTextLabel => '직접 입력 (음성 아님)';
+
+  @override
+  String get voiceTourTextHint => '예시 문장을 직접 입력하세요. 음성과 같은 방식으로 처리됩니다.';
+
+  @override
+  String get voiceTourTextSubmit => '입력 완료';
 }

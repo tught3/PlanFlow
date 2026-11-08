@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/deferred_http_client.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart'
@@ -37,7 +38,7 @@ class NaverOpenApiCalendarService {
     NaverAccessTokenProvider? accessTokenProvider,
     Uri? findSchedulesUri,
     Duration timeout = const Duration(seconds: 12),
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _httpClient = httpClient ?? DeferredHttpClient(),
         _eventRepositoryOverride = eventRepository,
         _supabaseClientOverride = supabaseClient,
         _currentUserIdOverride = currentUserId,

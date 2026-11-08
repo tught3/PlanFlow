@@ -24,6 +24,11 @@ import 'voice_conversation_screen.dart';
 import '../../services/voice_text_cleanup_service.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
+import '../../onboarding/real_ui_guide/guide_bubble_visibility.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
+import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../widgets/guided_anchor.dart';
 
 class VoiceInputScreen extends StatefulWidget {
   const VoiceInputScreen({
@@ -76,6 +81,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   bool _hasSubmittedVoiceCommand = false;
   bool _isDisposing = false;
   bool _isExitingVoiceInput = false;
+  /// 완료를 누른 뒤 다음 화면이 올라올 때까지 이전 화면을 가리는 상태.
+  bool _isRoutingToNextScreen = false;
+  bool _isVoiceRouteOpen = false;
   bool _didDeactivateCancel = false;
   bool _isFinishingVoiceFlow = false;
   int _submitGeneration = 0;
@@ -86,6 +94,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   String? _preparedDraftSourceText;
   String? _lastSubmittedSignature;
   String _listenPrefixText = '';
+  // 이번 인식 세션에서 "아니"가 이미 앞선 초안에 적용됐는지 기억한다.
+  // 부분 인식 콜백은 매번 같은 prefix에서 다시 계산하므로, 표시만으로는
+  // 다음 발화에서 취소가 사라진다.
+  String? _undoCorrectedPrefix;
+  int _undoCorrectedGeneration = -1;
   String? _lastProgrammaticTranscript;
   String? _manualEditOriginalTranscript;
   final VoiceCorrectionLearningService _voiceCorrectionLearningService =
@@ -107,6 +120,31 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoStartVoiceInput();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextCoordinator = GuideScope.maybeOf(context);
+    if (identical(nextCoordinator, _guideCoordinator)) return;
+    _guideCoordinator?.state.removeListener(_handleGuideStateChanged);
+    _guideCoordinator = nextCoordinator;
+    _guideCoordinator?.state.addListener(_handleGuideStateChanged);
+  }
+
+  void _handleGuideStateChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// True while the real-UI guide is on the speaking step. The transcript
+  /// field and the microphone button are the two controls the tutorial
+  /// points at, so both are highlighted.
+  bool get _guideHighlightsVoiceControls {
+    final snapshot = _guideCoordinator?.state.value;
+    if (snapshot == null) return false;
+    return snapshot.run == GuideRun.active &&
+        snapshot.step == GuideStep.createSpeech;
   }
 
   @override
@@ -143,6 +181,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _guideCoordinator?.state.removeListener(_handleGuideStateChanged);
     _isDisposing = true;
     _partialTranscriptToken++;
     _listenSessionGeneration++;
@@ -171,10 +210,194 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       _isSubmittingVoiceCommand = false;
       _lastSubmittedSignature = null;
       _clearPreparedDraft();
+      // Typed correction AFTER actual recognition is allowed per handoff.
+      // It is informational only; do not treat as initial typed text evidence.
+      unawaited(_dispatchGuideCorrectionObserved());
     }
     if (mounted) {
       setState(() {});
     }
+  }
+
+  Map<String, Object?>? _guideCaptureEvidence;
+
+  /// Coordinator of the active real-UI guide, when this screen runs inside
+  /// the tutorial. Used to highlight the transcript field and mic button.
+  GuideCoordinator? _guideCoordinator;
+
+  // ---- Real UI guide integration ----
+  // These hooks are only meaningful while the coordinator is bound to a real
+  // session (uid + sessionId present, run == active). When the coordinator
+  // is absent (normal app usage), these are no-ops and never fabricate
+  // voice-success evidence from a tap or initial typed text.
+
+  /// Immutable identity of the guide scope at submission start.
+  ///
+  /// Read synchronously before any await on the submit path: correction-rule
+  /// lookup, intent classification, text cleanup, `_finishVoiceFlow`, and the
+  /// native STT teardown all suspend, and the guide can advance, pause, or be
+  /// replaced underneath us while they do. Capturing at route-push time would
+  /// silently adopt whatever phase the guide drifted into meanwhile.
+  ///
+  /// Returns null when the submission did not begin inside an active create or
+  /// correct phase, which keeps ordinary (non-guide) requests untouched.
+  ({GuideCoordinator coordinator, GuideSnapshot snapshot})?
+      _captureGuideSubmissionOrigin() {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return null;
+    final snapshot = coordinator.state.value;
+    if (snapshot.run != GuideRun.active ||
+        (snapshot.step != GuideStep.createSpeech &&
+            snapshot.step != GuideStep.correctAndSave)) {
+      return null;
+    }
+    return (coordinator: coordinator, snapshot: snapshot);
+  }
+
+  Future<void> _dispatchGuideCaptureStarted() async {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return;
+    final state = coordinator.state.value;
+    if (state.uid.isEmpty ||
+        state.sessionId == null ||
+        state.run != GuideRun.active ||
+        state.step != GuideStep.createSpeech) {
+      return;
+    }
+    unawaited(coordinator.dispatch(CaptureStarted(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+    )));
+  }
+
+  Future<bool> _dispatchGuideParseConfirmed(Object? draft, int submitGeneration,
+      {({
+        GuideCoordinator coordinator,
+        GuideSnapshot snapshot
+      })? origin}) async {
+    // A request that began outside an active guide remains an ordinary request.
+    if (origin == null) return true;
+    final coordinator = origin.coordinator;
+    final originSnapshot = origin.snapshot;
+    // Validate the immutable submission origin before the non-create-phase
+    // early return below. Every await between submission start and here
+    // (correction rules, intent detection, cleanup, native teardown) is a window
+    // in which the guide can be replaced, paused, finished, or advanced, so a
+    // stale origin must fail closed rather than fall through as a normal
+    // create-phase early return. A terminal run is rejected by the same
+    // non-active check, because the origin is only ever captured while active.
+    if (!mounted ||
+        _isDisposing ||
+        _isExitingVoiceInput ||
+        originSnapshot.run != GuideRun.active ||
+        (originSnapshot.step != GuideStep.createSpeech &&
+            originSnapshot.step != GuideStep.correctAndSave) ||
+        !identical(GuideScope.maybeOf(context), coordinator) ||
+        coordinator.state.value.uid != originSnapshot.uid ||
+        coordinator.state.value.sessionId != originSnapshot.sessionId ||
+        coordinator.state.value.revision != originSnapshot.revision ||
+        coordinator.state.value.run != originSnapshot.run ||
+        coordinator.state.value.step != originSnapshot.step) {
+      return false;
+    }
+    final state = coordinator.state.value;
+    final evidence = _guideCaptureEvidence;
+    if (state.run != GuideRun.active ||
+        evidence == null ||
+        evidence['uid'] != state.uid ||
+        evidence['sessionId'] != state.sessionId ||
+        evidence['revision'] != state.revision ||
+        draft is! Map<String, dynamic> ||
+        (draft['raw_text'] as String? ?? '').trim().isEmpty ||
+        draft['parse_failed'] == true ||
+        !mounted ||
+        _isDisposing ||
+        _isExitingVoiceInput ||
+        submitGeneration != _submitGeneration) {
+      return false;
+    }
+    if (state.step == GuideStep.correctAndSave) return true;
+    final accepted = await coordinator.dispatch(ParseConfirmed(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+      operationId: '${evidence['captureId']}:$submitGeneration',
+    ));
+    final current = mounted &&
+        !_isDisposing &&
+        !_isExitingVoiceInput &&
+        submitGeneration == _submitGeneration &&
+        identical(_guideCaptureEvidence, evidence) &&
+        identical(coordinator.state.value, accepted) &&
+        accepted.uid == state.uid &&
+        accepted.sessionId == state.sessionId &&
+        accepted.run == GuideRun.active &&
+        accepted.step == GuideStep.correctAndSave;
+    if (current) evidence['revision'] = accepted.revision;
+    return current;
+  }
+
+  void _recordGuideVoiceEvidence(GuideSnapshot? captured, int generation) {
+    if (captured == null ||
+        !_isCurrentListenSession(generation) ||
+        captured.run != GuideRun.active ||
+        captured.sessionId == null) {
+      return;
+    }
+    final current = GuideScope.maybeOf(context)?.state.value;
+    if (current?.uid != captured.uid ||
+        current?.sessionId != captured.sessionId ||
+        current?.revision != captured.revision ||
+        current?.run != GuideRun.active) {
+      return;
+    }
+    _guideCaptureEvidence = <String, Object?>{
+      'uid': captured.uid,
+      'sessionId': captured.sessionId,
+      'revision': captured.revision,
+      'captureId': 'voiceInput:${identityHashCode(this)}:$generation',
+      'capturedAtUtc': DateTime.now().toUtc().toIso8601String(),
+      'source': 'stt_service_capture',
+    };
+  }
+
+  void _dispatchGuideSpeechObserved(bool present, int generation, int token) {
+    if (!mounted ||
+        !_isCurrentListenSession(generation) ||
+        token != _partialTranscriptToken ||
+        _isFinishingVoiceFlow) return;
+    final coordinator = GuideScope.maybeOf(context);
+    final state = coordinator?.state.value;
+    if (coordinator == null ||
+        state == null ||
+        state.uid.isEmpty ||
+        state.sessionId == null ||
+        state.run != GuideRun.active ||
+        state.step != GuideStep.createSpeech) return;
+    unawaited(coordinator.dispatch(SpeechObserved(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+      present: present,
+    )));
+  }
+
+  Future<void> _dispatchGuideCorrectionObserved() async {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return;
+    final state = coordinator.state.value;
+    if (state.uid.isEmpty ||
+        state.sessionId == null ||
+        state.run != GuideRun.active) {
+      return;
+    }
+    if (!_didEditTranscriptManually) return;
+    unawaited(coordinator.dispatch(CorrectionObserved(
+      uid: state.uid,
+      sessionId: state.sessionId!,
+      expectedRevision: state.revision,
+    )));
   }
 
   Future<void> _maybeAutoStartVoiceInput() async {
@@ -243,6 +466,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     }
 
     final listenGeneration = ++_listenSessionGeneration;
+    _submitGeneration++;
+    _guideCaptureEvidence = null;
+    final captureGuide = GuideScope.maybeOf(context)?.state.value;
     unawaited(AnalyticsService.logVoiceInputStarted());
     _clearPreparedDraft();
     if (!continueExisting) {
@@ -253,6 +479,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     } else {
       _listenPrefixText = '';
     }
+    _undoCorrectedPrefix = null;
+    _undoCorrectedGeneration = -1;
 
     setState(() {
       _isListening = true;
@@ -276,6 +504,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
               text,
               token,
               listenGeneration,
+              captureGuide,
             ));
           }
         },
@@ -288,6 +517,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             _statusMessage = appL10n(context).voiceAutoRestarted;
           });
         },
+        onStatus: (status) {
+          if (status.status == SttNativeStatus.ready) {
+            unawaited(_dispatchGuideCaptureStarted());
+          }
+        },
         mode: SttListenMode.dictation,
       );
       if (!mounted || _isDisposing) {
@@ -297,6 +531,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         return;
       }
 
+      if (result.failure == null &&
+          result.hasText &&
+          (result.text ?? '').trim().isNotEmpty &&
+          captureGuide != null &&
+          captureGuide.run == GuideRun.active &&
+          captureGuide.sessionId != null) {
+        _recordGuideVoiceEvidence(captureGuide, listenGeneration);
+      }
       if (_manualEditInterruptedListening) {
         _focusManualInput();
         return;
@@ -305,9 +547,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       if (result.failure == null &&
           result.hasText &&
           !_didEditTranscriptManually) {
-        _setTranscriptText(
-          _mergeVoiceTranscript(_listenPrefixText, result.text ?? ''),
-        );
+        final rawFinal = result.text ?? '';
+        final finalBase =
+            _correctedPrefixForSession(listenGeneration, rawFinal);
+        final finalSource = SttService.startsWithSpokenUndo(rawFinal)
+            ? SttService.stripLeadingSpokenUndo(rawFinal)
+            : rawFinal;
+        _setTranscriptText(_mergeVoiceTranscript(finalBase, finalSource));
       }
 
       if (result.isSuccess) {
@@ -439,6 +685,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     final capturedText = _rawTextController.text.trim().isNotEmpty
         ? _rawTextController.text.trim()
         : _recognizedText?.trim() ?? '';
+    // 완료를 누른 순간부터 다음 화면이 실제로 올라올 때까지 이 화면 전체를
+    // 가려 둔다. 이전에는 의도 분류·텍스트 정리 대기 동안 마이크 버튼과
+    // '현재 내용으로 입력' 버튼이 1초 정도 그대로 보였다.
+    setState(() => _isRoutingToNextScreen = true);
     _isFinishingVoiceFlow = true;
     _partialTranscriptToken++;
     // listenSessionGeneration을 증가시켜 listen() 루프가 이 세션의 result를
@@ -455,8 +705,23 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     }
     setState(() => _isListening = false);
     if (capturedText.isNotEmpty) {
+      // 부분 인식이 아직 반영되기 전에 완료를 눌러도 "아니" 교정이 빠지지 않도록
+      // 앞선 초안과 마지막 발화를 같은 규칙으로 한 번 더 합친다.
+      final mergedText = _mergeVoiceTranscript(_listenPrefixText, capturedText);
       // listen() 자동 제출 경로와는 _beginVoiceCommandSubmit signature 가드로 중복 차단됨.
-      await _continueWithRawText(rawTextOverride: capturedText);
+      try {
+        await _continueWithRawText(
+            rawTextOverride:
+                mergedText.trim().isEmpty ? capturedText : mergedText);
+      } finally {
+        // push 요청만으로는 새 화면의 전환이 끝난 것이 아니다. 경로가
+        // 열렸다면 뒤로 돌아올 때까지 가림막을 유지해 이전 버튼 노출을 막는다.
+        if (mounted && !_isVoiceRouteOpen) {
+          setState(() => _isRoutingToNextScreen = false);
+        }
+      }
+    } else if (mounted) {
+      setState(() => _isRoutingToNextScreen = false);
     }
   }
 
@@ -481,6 +746,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _cancelVoiceFlow() async {
+    _guideCaptureEvidence = null;
+    _submitGeneration++;
     if (!_isListening) {
       return;
     }
@@ -498,11 +765,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   void _resetVoiceSessionState() {
+    _guideCaptureEvidence = null;
+    _submitGeneration++;
     _listenPrefixText = '';
     _manualEditInterruptedListening = false;
     _didEditTranscriptManually = false;
     _isFinishingVoiceFlow = false;
     _isSubmittingVoiceCommand = false;
+    _isRoutingToNextScreen = false;
     _hasSubmittedVoiceCommand = false;
     _lastSubmittedSignature = null;
     _recognizedText = null;
@@ -572,6 +842,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   void _resetTranscriptForFreshVoiceInput() {
+    _guideCaptureEvidence = null;
+    _submitGeneration++;
     _listenPrefixText = '';
     _partialTranscriptToken++;
     _listenSessionGeneration++;
@@ -584,12 +856,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     _manualEditOriginalTranscript = null;
     _clearPreparedDraft();
     _setTranscriptText('');
+    _undoCorrectedPrefix = null;
+    _undoCorrectedGeneration = -1;
   }
 
   Future<void> _applyNormalizedPartialTranscript(
     String text,
     int token,
     int listenGeneration,
+    GuideSnapshot? captureGuide,
   ) async {
     if (!_isCurrentListenSession(listenGeneration) ||
         !_isListening ||
@@ -633,7 +908,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
 
     if (shouldClearAll) {
       _listenPrefixText = '';
+      _undoCorrectedPrefix = null;
+      _undoCorrectedGeneration = -1;
       await _clearTranscript();
+      _dispatchGuideSpeechObserved(
+          false, listenGeneration, _partialTranscriptToken);
       if (!mounted ||
           !_isCurrentListenSession(listenGeneration) ||
           _isFinishingVoiceFlow ||
@@ -649,12 +928,26 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         token != _partialTranscriptToken) {
       return;
     }
-    _setTranscriptText(
-        _mergeVoiceTranscript(_listenPrefixText, normalizedText));
+    if (normalizedText.trim().isNotEmpty) {
+      _recordGuideVoiceEvidence(captureGuide, listenGeneration);
+    }
+    // "아니"는 정규화 단계에서 소비되어 사라질 수 있으므로 원문에서 먼저 판별한다.
+    // 같은 세션에서 한 번만 앞선 초안에 적용하고, 이후 발화는 그 결과 위에 쌓는다.
+    final base = _correctedPrefixForSession(listenGeneration, text);
+    final mergeSource = SttService.startsWithSpokenUndo(text)
+        ? SttService.stripLeadingSpokenUndo(text)
+        : normalizedText;
+    _setTranscriptText(_mergeVoiceTranscript(base, mergeSource));
+    _dispatchGuideSpeechObserved(
+        normalizedText.trim().isNotEmpty, listenGeneration, token);
   }
 
   Future<void> _continueWithRawText({String? rawTextOverride}) async {
     final submitGeneration = _submitGeneration;
+    // Freeze the guide origin here, before the first await on this path, so the
+    // parse confirmation can be validated against the phase/session/revision
+    // the submission actually began in.
+    final guideOrigin = _captureGuideSubmissionOrigin();
     final sourceText = (rawTextOverride ?? _rawTextController.text).trim();
     final normalizedText = SttService.normalizeVoiceTranscript(sourceText);
     if (!mounted) {
@@ -668,7 +961,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     }
     if (rawText.isEmpty) {
       await _pushVoiceRoute(AppRoutes.confirm,
-          extra: const <String, dynamic>{}, submitGeneration: submitGeneration);
+          extra: const <String, dynamic>{},
+          submitGeneration: submitGeneration,
+          guideOrigin: guideOrigin);
       return;
     }
     if (!_beginVoiceCommandSubmit(rawText)) {
@@ -698,6 +993,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             rawText,
             _VoiceCommandAction.edit,
             submitGeneration: submitGeneration,
+            guideOrigin: guideOrigin,
           );
           return;
         case _AmbiguousFieldAdditionChoice.createNew:
@@ -705,6 +1001,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             normalizedText,
             preparedDraft,
             submitGeneration: submitGeneration,
+            guideOrigin: guideOrigin,
           );
           return;
         case _AmbiguousFieldAdditionChoice.editText:
@@ -721,6 +1018,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         normalizedText,
         preparedDraft,
         submitGeneration: submitGeneration,
+        guideOrigin: guideOrigin,
       );
       return;
     }
@@ -729,6 +1027,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       rawText,
       commandAction,
       submitGeneration: submitGeneration,
+      guideOrigin: guideOrigin,
     );
   }
 
@@ -804,6 +1103,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     }
     setState(() {
       _isSubmittingVoiceCommand = false;
+      _isRoutingToNextScreen = false;
       if (clearSignature) {
         _lastSubmittedSignature = null;
       }
@@ -814,6 +1114,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     String location, {
     Object? extra,
     required int submitGeneration,
+    ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
   }) async {
     await _finishVoiceFlow();
     if (!mounted || submitGeneration != _submitGeneration) {
@@ -837,15 +1138,40 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       }
       return;
     }
-    unawaited(
-      context
-          .push<Object?>(location, extra: extra)
-          .then((result) => _handleVoiceRouteReturned(location, result)),
-    );
+    if (location == AppRoutes.confirm &&
+        !await _dispatchGuideParseConfirmed(extra, submitGeneration,
+            origin: guideOrigin)) {
+      _resetVoiceCommandSubmitGuard(clearSignature: true);
+      return;
+    }
+    if (!mounted ||
+        _isDisposing ||
+        _isExitingVoiceInput ||
+        submitGeneration != _submitGeneration) {
+      if (mounted) {
+        setState(() => _isRoutingToNextScreen = false);
+      }
+      return;
+    }
+    final routeFuture = context.push<Object?>(location, extra: extra);
+    _isVoiceRouteOpen = true;
+    unawaited(routeFuture.then<void>(
+      (result) => _handleVoiceRouteReturned(location, result),
+      onError: (Object error, StackTrace stack) {
+        if (!mounted) return;
+        _isVoiceRouteOpen = false;
+        _resetVoiceCommandSubmitGuard(clearSignature: true);
+        FlutterError.reportError(FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            library: 'voice route transition'));
+      },
+    ));
   }
 
   Future<void> _handleVoiceRouteReturned(
       String location, Object? result) async {
+    _isVoiceRouteOpen = false;
     if (!mounted) {
       return;
     }
@@ -898,7 +1224,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
 
   Future<void> _openAddConfirmFromText(
       String normalizedText, Map<String, dynamic>? preparedDraft,
-      {required int submitGeneration}) async {
+      {required int submitGeneration,
+      ({
+        GuideCoordinator coordinator,
+        GuideSnapshot snapshot
+      })? guideOrigin}) async {
     if (preparedDraft != null) {
       await _pushVoiceRoute(
         AppRoutes.confirm,
@@ -914,6 +1244,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
           if (_didEditTranscriptManually) 'manual_text_confirmed': true,
         },
         submitGeneration: submitGeneration,
+        guideOrigin: guideOrigin,
       );
       return;
     }
@@ -925,7 +1256,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     final cleanedText = cleanup.cleanedText;
     if (cleanedText.isEmpty) {
       await _pushVoiceRoute(AppRoutes.confirm,
-          extra: const <String, dynamic>{}, submitGeneration: submitGeneration);
+          extra: const <String, dynamic>{},
+          submitGeneration: submitGeneration,
+          guideOrigin: guideOrigin);
       return;
     }
 
@@ -945,6 +1278,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         if (_didEditTranscriptManually) 'manual_text_confirmed': true,
       },
       submitGeneration: submitGeneration,
+      guideOrigin: guideOrigin,
     );
   }
 
@@ -953,6 +1287,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     String rawText,
     _VoiceCommandAction commandAction, {
     required int submitGeneration,
+    ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
   }) async {
     final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
     if (!mounted || submitGeneration != _submitGeneration) {
@@ -962,6 +1297,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       await _openVoiceConversationForQuery(
         cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,
         submitGeneration: submitGeneration,
+        guideOrigin: guideOrigin,
       );
       return;
     }
@@ -977,6 +1313,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         'action': commandAction.name,
       },
       submitGeneration: submitGeneration,
+      guideOrigin: guideOrigin,
     );
   }
 
@@ -993,6 +1330,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   Future<void> _openVoiceConversationForQuery(
     String queryText, {
     required int submitGeneration,
+    ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
   }) async {
     final overrideUserId = widget.userIdOverride?.trim();
     final userId = (overrideUserId != null && overrideUserId.isNotEmpty)
@@ -1018,6 +1356,33 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
+      guideCoordinator: GuideScope.maybeOf(context),
+      guideOperation: GuideOperation.query,
+      onGuideDenied: (_) {},
+      onGuideAllowed: (permit) {
+        if (!mounted || submitGeneration != _submitGeneration) return;
+        final state = GuideScope.maybeOf(context)?.state.value;
+        final captured = _guideCaptureEvidence;
+        final valid = captured != null &&
+            captured['uid'] == state?.uid &&
+            captured['sessionId'] == state?.sessionId;
+        unawaited(_pushVoiceRoute(
+          '${AppRoutes.voiceConversation}?autoStart=1',
+          extra: <String, dynamic>{
+            'initial_text': queryText,
+            'guideEntryPermit': permit,
+            if (valid)
+              'guideInitialVoiceEvidence': <String, Object?>{
+                ...captured,
+                'operationId': permit.operationId,
+                'operation': 'query',
+                'inputText': queryText,
+              },
+          },
+          submitGeneration: submitGeneration,
+          guideOrigin: guideOrigin,
+        ));
+      },
       onDenied: (reason) {
         if (mounted) {
           ScaffoldMessenger.of(context)
@@ -1040,6 +1405,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
               'entry_grant': grant,
             },
             submitGeneration: submitGeneration,
+            guideOrigin: guideOrigin,
           ),
         );
       },
@@ -1262,22 +1628,24 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     _scheduleDraftPreparation(nextText);
   }
 
+  /// 이번 인식 세션의 기준 초안을 돌려준다. 첫 "아니"에서 직전에 말한 항목 하나만
+  /// 취소해 두고, 같은 세션의 다음 발화들은 그 결과 위에 이어 붙인다.
+  String _correctedPrefixForSession(int listenGeneration, String rawText) {
+    if (_undoCorrectedGeneration != listenGeneration &&
+        SttService.startsWithSpokenUndo(rawText)) {
+      _undoCorrectedPrefix = SttService.cancelLastSpokenSlot(_listenPrefixText);
+      _undoCorrectedGeneration = listenGeneration;
+    }
+    if (_undoCorrectedGeneration == listenGeneration) {
+      return _undoCorrectedPrefix ?? _listenPrefixText;
+    }
+    return _listenPrefixText;
+  }
+
   String _mergeVoiceTranscript(String prefix, String nextText) {
-    final base = prefix.trim();
-    final next = SttService.normalizeVoiceTranscript(nextText).trim();
-    if (base.isEmpty) {
-      return next;
-    }
-    if (next.isEmpty || base == next) {
-      return base;
-    }
-    if (next.startsWith(base)) {
-      return next;
-    }
-    if (base.endsWith(next)) {
-      return base;
-    }
-    return SttService.mergeTranscriptSegment(base, next);
+    // "아니"는 누적 초안에서 직전에 말한 항목만 취소하고, "다시"는 전체를 지운다.
+    // 규칙은 서비스 한 곳에만 두고 화면은 그 결과만 반영한다.
+    return SttService.mergeCommittedUtterance(prefix, nextText);
   }
 
   String _removeLastWord(String text) {
@@ -1408,6 +1776,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
+    // 말하는 동안 안내 말풍선을 잠시 걷어 음성 원문이 가려지지 않게 한다.
+    // 빌드 중 리스너 알림을 피하려고 마이크로태스크로 미룬다.
+    final hideGuideBubble = _isListening && _guideHighlightsVoiceControls;
+    if (guideListeningBubbleHidden.value != hideGuideBubble) {
+      scheduleMicrotask(
+          () => guideListeningBubbleHidden.value = hideGuideBubble);
+    }
 
     return PopScope(
       canPop: false,
@@ -1444,7 +1819,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             _exitVoiceInput(() => context.go(AppRoutes.settings)),
           ),
         ),
-        body: SafeArea(
+        body: Stack(children: [
+          SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             child: ResponsiveContent(
@@ -1459,22 +1835,32 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                     restartCount: _sttRestartCount,
                   ),
                   const SizedBox(height: 10),
-                  _VoiceTranscriptSection(
-                    isListening: _isListening,
-                    recognizedText: _recognizedText,
-                    controller: _rawTextController,
-                    focusNode: _rawTextFocusNode,
-                    onTapTranscript: () =>
-                        unawaited(_activateManualTranscriptEditing()),
-                    onManualSubmit: _continueWithRawText,
+                  GuidedAnchor(
+                    id: 'voice.review',
+                    registry: realUiGuideAnchorRegistry,
+                    child: _VoiceTranscriptSection(
+                      isListening: _isListening,
+                      recognizedText: _recognizedText,
+                      controller: _rawTextController,
+                      focusNode: _rawTextFocusNode,
+                      onTapTranscript: () =>
+                          unawaited(_activateManualTranscriptEditing()),
+                      onManualSubmit: _continueWithRawText,
+                      highlighted: _guideHighlightsVoiceControls,
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  _VoicePrimaryButton(
-                    isListening: _isListening,
-                    hasText: _rawTextController.text.trim().isNotEmpty,
-                    onTapStart: _handleVoiceStartPressed,
-                    onTapFinish: _handleVoiceDonePressed,
-                    onManualSubmit: _confirmManualText,
+                  GuidedAnchor(
+                    id: 'voice.start',
+                    registry: realUiGuideAnchorRegistry,
+                    child: _VoicePrimaryButton(
+                      isListening: _isListening,
+                      hasText: _rawTextController.text.trim().isNotEmpty,
+                      onTapStart: _handleVoiceStartPressed,
+                      onTapFinish: _handleVoiceDonePressed,
+                      onManualSubmit: _confirmManualText,
+                      highlighted: _guideHighlightsVoiceControls,
+                    ),
                   ),
                   if (_rawTextController.text.trim().isEmpty)
                     Padding(
@@ -1489,6 +1875,44 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                 ],
               ),
             ),
+          ),
+          ),
+          if (_isRoutingToNextScreen)
+            const Positioned.fill(child: _NextScreenTransitionBarrier()),
+        ]),
+      ),
+    );
+  }
+}
+
+/// 음성 완료 후 다음 화면이 올라오기 전까지 이전 화면이 잠깐 보이던
+/// 문제를 막는 가림막. 누르기는 막고 진행 표시만 보여준다.
+class _NextScreenTransitionBarrier extends StatelessWidget {
+  const _NextScreenTransitionBarrier();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AbsorbPointer(
+      child: ColoredBox(
+        color: scheme.surface,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: Icon(Icons.hourglass_top_rounded, size: 28),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '일정 확인 화면으로 이동 중이에요',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1662,6 +2086,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
     required this.focusNode,
     required this.onTapTranscript,
     required this.onManualSubmit,
+    this.highlighted = false,
   });
 
   final bool isListening;
@@ -1671,17 +2096,27 @@ class _VoiceTranscriptSection extends StatelessWidget {
   final VoidCallback onTapTranscript;
   final VoidCallback onManualSubmit;
 
+  /// The real-UI guide highlights the transcript field so the user knows
+  /// where the recognized text can be corrected by hand.
+  final bool highlighted;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
 
     return Card(
-      elevation: 0,
+      elevation: highlighted ? 8 : 0,
+      shadowColor: PlanFlowColors.primary.withValues(alpha: 0.45),
       color: PlanFlowColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        side: BorderSide(
+          color: highlighted
+              ? PlanFlowColors.primary
+              : PlanFlowColors.primaryFaint,
+          width: highlighted ? 2 : 0.5,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1734,6 +2169,7 @@ class _VoicePrimaryButton extends StatelessWidget {
     required this.onTapStart,
     required this.onTapFinish,
     required this.onManualSubmit,
+    this.highlighted = false,
   });
 
   final bool isListening;
@@ -1741,6 +2177,10 @@ class _VoicePrimaryButton extends StatelessWidget {
   final VoidCallback onTapStart;
   final VoidCallback onTapFinish;
   final VoidCallback onManualSubmit;
+
+  /// The real-UI guide highlights the microphone button: it is the control
+  /// that actually starts speech recognition.
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -1758,7 +2198,11 @@ class _VoicePrimaryButton extends StatelessWidget {
         fit: BoxFit.scaleDown,
         child: Text(voiceLabel),
       ),
-      style: isListening ? null : _tertiaryAccentButtonStyle(),
+      style: isListening
+          ? null
+          : (highlighted
+              ? _highlightedAccentButtonStyle()
+              : _tertiaryAccentButtonStyle()),
     );
 
     if (isListening) {
@@ -1781,6 +2225,19 @@ class _VoicePrimaryButton extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  ButtonStyle _highlightedAccentButtonStyle() {
+    return FilledButton.styleFrom(
+      backgroundColor: PlanFlowColors.tertiaryAccent,
+      foregroundColor: Colors.white,
+      disabledBackgroundColor:
+          PlanFlowColors.tertiaryAccent.withValues(alpha: 0.42),
+      disabledForegroundColor: Colors.white.withValues(alpha: 0.88),
+      side: const BorderSide(color: PlanFlowColors.primary, width: 2.5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
     );
   }
 

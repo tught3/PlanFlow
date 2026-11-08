@@ -102,67 +102,97 @@ void main() {
     expect(auth.isSignedIn, isTrue);
     expect(find.byType(FeatureTourScreen), findsOneWidget);
     // The required tour hides the optional Skip shortcut.
-    expect(find.byKey(const ValueKey('feature-tour-skip-button')),
-        findsNothing);
+    expect(find.byKey(const ValueKey('voice-tour-skip')), findsNothing);
     // Tour has not been completed before the user interacts with it.
     expect(await tourStore.shouldShow(), isTrue);
 
-    // Step 1: the next button stays disabled until the sample is explicitly
-    // created. The previous copy asserted on stale 3-page titles; instead we
-    // assert on the interactive practice copy and the real disabled state.
+    // The required tour is now VOICE-FIRST: create -> query -> edit ->
+    // detail, each with an explicit save. This router harness has no
+    // microphone, so the flow is driven through the explicit typed
+    // fallback (initially blank, clearly labeled "not voice"), which runs
+    // the exact same parser pipeline as speech.
     final l10n = AppLocalizations.of(
         tester.element(find.byType(FeatureTourScreen)));
-    expect(find.text(l10n.featureTourCreateTitle), findsOneWidget);
-    final nextButton =
-        find.byKey(const ValueKey('feature-tour-next-button'));
-    expect(tester.widget<FilledButton>(nextButton).onPressed, isNull);
+    expect(find.text(l10n.voiceTourPhaseCreateTitle), findsOneWidget);
+    final finishButton = find.byKey(const ValueKey('voice-tour-finish'));
+    expect(tester.widget<FilledButton>(finishButton).onPressed, isNull);
 
-    await tester.enterText(
-        find.byKey(const ValueKey('feature-tour-title-field')), 'Dentist');
-    await tester.pump();
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pumpAndSettle();
-    // Ensure the create button is on-screen (the keyboard overlay can
-    // otherwise leave it clipped under the keyboard rect).
-    await tester.ensureVisible(
-        find.byKey(const ValueKey('feature-tour-create-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-        find.byKey(const ValueKey('feature-tour-create-button')));
-    await tester.pump();
-    expect(tester.widget<FilledButton>(nextButton).onPressed, isNotNull);
+    Future<void> typeUtterance(String text) async {
+      final input = find.byKey(const ValueKey('voice-tour-text-input'));
+      await tester.ensureVisible(input);
+      await tester.pumpAndSettle();
+      await tester.enterText(input, text);
+      await tester.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      final submit = find.byKey(const ValueKey('voice-tour-text-submit'));
+      await tester.ensureVisible(submit);
+      await tester.pumpAndSettle();
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+    }
 
-    // Step 2: explicit quick edit so the user really exercises the practice
-    // tour rather than slamming next three times.
-    await tester.tap(nextButton);
+    // Explicitly select typed practice once (never prefilled).
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('voice-tour-text-mode')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('voice-tour-text-mode')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(
+              find.byKey(const ValueKey('voice-tour-text-input')))
+          .controller!
+          .text,
+      isEmpty,
+    );
+
+    // Phase 1: create preview, then an explicit save.
+    await typeUtterance('내일 오전 9시에 강남역에서 팀장님과 면담');
+    expect(find.byKey(const ValueKey('voice-tour-create-preview')),
+        findsOneWidget);
+    final saveCreate = find.byKey(const ValueKey('voice-tour-save-create'));
+    await tester.ensureVisible(saveCreate);
+    await tester.pumpAndSettle();
+    await tester.tap(saveCreate);
     await _pumpUntil(tester,
-        () => find.text(l10n.featureTourEditTitle).evaluate().isNotEmpty);
-    expect(find.text(l10n.featureTourEditTitle), findsOneWidget);
-    await tester.ensureVisible(
-        find.byKey(const ValueKey('feature-tour-plus-30-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-        find.byKey(const ValueKey('feature-tour-plus-30-button')));
-    await tester.pump();
-    await tester.ensureVisible(
-        find.byKey(const ValueKey('feature-tour-confirm-time-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-        find.byKey(const ValueKey('feature-tour-confirm-time-button')));
-    await tester.pump();
+        () => find.text(l10n.voiceTourPhaseQueryTitle).evaluate().isNotEmpty);
+    expect(find.text(l10n.voiceTourPhaseQueryTitle), findsOneWidget);
 
-    // Step 3: live preview of the example values.
-    await tester.tap(nextButton);
+    // Phase 2: query returns the actually saved record.
+    await typeUtterance('내일 일정 보여줘');
     await _pumpUntil(tester,
-        () => find.text(l10n.featureTourPreviewTitle).evaluate().isNotEmpty);
-    expect(find.text(l10n.featureTourPreviewTitle), findsOneWidget);
-    expect(find.text(l10n.featureTourPrep), findsOneWidget);
-    expect(find.text(l10n.featureTourDeparture), findsOneWidget);
+        () => find.byKey(const ValueKey('voice-tour-results')).evaluate().isNotEmpty);
+    expect(find.byKey(const ValueKey('voice-tour-results')), findsOneWidget);
+    await _pumpUntil(tester,
+        () => find.text(l10n.voiceTourPhaseEditTitle).evaluate().isNotEmpty);
 
-    // Finish on the last step: the FilledButton is bound to _completeTour
-    // when isLastStep is true, so a tap on next-button here is the explicit
-    // Done action that persists the completion marker.
-    await tester.tap(nextButton);
+    // Phase 3: spoken-ordinal edit preview, then an explicit save.
+    await typeUtterance('첫 번째 일정 오후 1시로 미뤄줘');
+    expect(find.byKey(const ValueKey('voice-tour-edit-preview')),
+        findsOneWidget);
+    final saveEdit = find.byKey(const ValueKey('voice-tour-save-edit'));
+    await tester.ensureVisible(saveEdit);
+    await tester.pumpAndSettle();
+    await tester.tap(saveEdit);
+    await tester.pumpAndSettle();
+    final openUpdated = find.byKey(const ValueKey('voice-tour-open-updated'));
+    await tester.ensureVisible(openUpdated);
+    await tester.pumpAndSettle();
+    await tester.tap(openUpdated);
+    await _pumpUntil(tester,
+        () => find.byKey(const ValueKey('voice-tour-detail')).evaluate().isNotEmpty);
+    expect(find.byKey(const ValueKey('voice-tour-detail-departure')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-tour-detail-preparation')),
+        findsOneWidget);
+
+    // Finish is enabled only after the saved record was actually viewed.
+    expect(tester.widget<FilledButton>(finishButton).onPressed, isNotNull);
+    // Explicit Finish: the only path that persists the completion marker.
+    await tester.ensureVisible(finishButton);
+    await tester.pumpAndSettle();
+    await tester.tap(finishButton);
     await _pumpUntil(tester,
         () => router.routeInformationProvider.value.uri.path == AppRoutes.home);
     // The route flips to home inside the Navigator pop, but the ShellScreen
@@ -191,7 +221,7 @@ void main() {
       (tester) async {
     final store = _SkipProbeStore();
     await _pumpTourScreen(tester, FeatureTourScreen(store: store));
-    final skip = find.byKey(const ValueKey('feature-tour-skip-button'));
+    final skip = find.byKey(const ValueKey('voice-tour-skip'));
     expect(skip, findsOneWidget);
     await tester.tap(skip);
     await tester.pumpAndSettle();
@@ -203,8 +233,8 @@ void main() {
     final store = _SkipProbeStore();
     await _pumpTourScreen(
         tester, FeatureTourScreen(store: store, requireFinalConfirmation: true));
-    expect(find.byKey(const ValueKey('feature-tour-skip-button')),
-        findsNothing);
+    expect(
+        find.byKey(const ValueKey('voice-tour-skip')), findsNothing);
     expect(store.saved, isFalse);
   });
 }

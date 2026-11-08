@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/local_time.dart';
@@ -733,13 +734,73 @@ class SupabaseEventRepository extends EventRepository {
       throw ArgumentError.value(event.id, 'event.id', 'Event id is required.');
     }
 
-    final response = await _updateEventRow(event, resolvedUserId);
+    // 좌표 쌍이 비어온 저장(경로 스냅샷 재저장, 외부 캘린더 동기화 병합 등)
+    // 이 저장된 유효 좌표를 지워버리지 않도록, 장소 텍스트가 그대로면
+    // 서버에 이미 저장된 좌표를 유지한다. 장소 텍스트가 실제로 바뀌었으면
+    // 좌표를 비워 다음 재검색으로 다시 잡게 한다.
+    final effectiveEvent = await _preserveStoredCoordinates(
+      event,
+      resolvedUserId,
+    );
+
+    final response = await _updateEventRow(effectiveEvent, resolvedUserId);
 
     if (response == null) {
       throw StateError('Event not found for the current user.');
     }
 
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  /// 저장 요청에 좌표 쌍이 없고 저장된 쌍이 유효하며 장소 텍스트가 같을 때만
+  /// 저장된 좌표를 유지한 이벤트를 돌려준다. 그 외에는 요청값 그대로 둔다
+  /// (좌표를 새로 만들어내지 않는다).
+  Future<EventModel> _preserveStoredCoordinates(
+    EventModel event,
+    String userId,
+  ) async {
+    final nextLocation = event.location?.trim() ?? '';
+    if (nextLocation.isEmpty) {
+      return event.copyWith(clearLocationLat: true, clearLocationLng: true);
+    }
+    if (event.hasValidLocationCoordinates) {
+      return event;
+    }
+    try {
+      final row = await _client
+          .from(_tableName)
+          .select('location, location_lat, location_lng')
+          .eq('id', event.id)
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (row == null) {
+        return event;
+      }
+      final resolved = EventModel.resolveCoordinatesForWrite(
+        storedLocation: row['location'] as String?,
+        storedLat: EventModel.parseCoordinateValue(row['location_lat']),
+        storedLng: EventModel.parseCoordinateValue(row['location_lng']),
+        nextLocation: event.location,
+        nextLat: event.locationLat,
+        nextLng: event.locationLng,
+      );
+      if (!EventModel.hasValidCoordinatePair(
+        lat: resolved.lat,
+        lng: resolved.lng,
+      )) {
+        return event.copyWith(clearLocationLat: true, clearLocationLng: true);
+      }
+      return event.copyWith(
+        locationLat: resolved.lat,
+        locationLng: resolved.lng,
+      );
+    } on PostgrestException catch (error) {
+      // Do not overwrite a possibly valid stored pair when its preservation
+      // read failed. Stop this save instead of silently writing nulls.
+      debugPrint(
+          'EventRepository coordinate preservation read failed: ${error.code}');
+      rethrow;
+    }
   }
 
   @override
@@ -1125,6 +1186,17 @@ EventModel _mergeExternalMetadata({
   final targets = keepExistingPeopleFields || incoming.targets.isEmpty
       ? existing.targets
       : incoming.targets;
+  // 외부 캘린더 원본에는 좌표가 없으므로, 저장돼 있던 유효 좌표는 장소
+  // 텍스트가 그대로인 한 유지한다(사용자가 지도에서 지정한 좌표를 동기화가
+  // 지우지 않게). 장소 텍스트가 바뀌었으면 좌표는 비워 다시 잡게 한다.
+  final coordinates = EventModel.resolveCoordinatesForWrite(
+    storedLocation: existing.location,
+    storedLat: existing.locationLat,
+    storedLng: existing.locationLng,
+    nextLocation: incoming.location,
+    nextLat: incoming.locationLat,
+    nextLng: incoming.locationLng,
+  );
   return EventModel(
     id: existing.id,
     userId: incoming.userId,
@@ -1132,8 +1204,8 @@ EventModel _mergeExternalMetadata({
     startAt: incoming.startAt,
     endAt: incoming.endAt,
     location: incoming.location,
-    locationLat: incoming.locationLat,
-    locationLng: incoming.locationLng,
+    locationLat: coordinates.lat,
+    locationLng: coordinates.lng,
     memo: incoming.memo,
     supplies: incoming.supplies,
     suppliesChecked: incoming.suppliesChecked,

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,6 +11,8 @@ import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 
+import 'onboarding/real_ui_guide/guide_host.dart';
+import 'services/guide_quota_adapter.dart';
 import 'core/constants.dart';
 import 'core/diag_logger.dart';
 import 'core/env.dart';
@@ -24,7 +27,8 @@ import 'core/theme.dart';
 // coordinator 파일로 이동했다. 기존에 app.dart에서 이 심볼들을 import하던
 // 경로의 호환을 위해 재노출한다.
 export 'core/home_widget_route_coordinator.dart'
-    show HomeWidgetArrivalCheckResult,
+    show
+        HomeWidgetArrivalCheckResult,
         resolveHomeWidgetArrivalCheckResult,
         shouldConsumeHomeWidgetLaunch,
         queryParametersEqual;
@@ -138,7 +142,19 @@ void seedHomeAndDeferHomeWidgetPush({
 }
 
 class PlanFlowApp extends StatefulWidget {
-  const PlanFlowApp({super.key});
+  const PlanFlowApp({super.key}) : _guideQa = false;
+
+  const PlanFlowApp._forGuideQa({super.key}) : _guideQa = true;
+
+  /// Host QA must opt in at compile time as well as at this call site.
+  factory PlanFlowApp.forGuideQa({Key? key}) {
+    if (!kDebugMode || !const bool.fromEnvironment('PLANFLOW_GUIDE_QA')) {
+      throw StateError('Guide QA requires debug and PLANFLOW_GUIDE_QA=true');
+    }
+    return PlanFlowApp._forGuideQa(key: key);
+  }
+
+  final bool _guideQa;
 
   @override
   State<PlanFlowApp> createState() => _PlanFlowAppState();
@@ -206,13 +222,14 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   @override
   void initState() {
     super.initState();
-    _oauthCallbackHandler.start();
+    if (!widget._guideQa) _oauthCallbackHandler.start();
     authProvider.addListener(_onAuthProviderChange);
     startupRouteGate.addListener(_onStartupRouteGateChange);
     // 보존(retained)된 위젯 라우트가 온보딩 완료 등으로 정확히 목적지에 도착한
     // 경우 확인/소비할 수 있게 한다(확인 전용, 네비게이션/예산 리셋 없음).
     appRouter.routeInformationProvider.addListener(_onRouterLocationChanged);
     appRouter.routerDelegate.addListener(_onRouterLocationChanged);
+    if (widget._guideQa) return;
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
         unawaited(_deferStartupLifecycleWork(
@@ -352,6 +369,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     // Keep the app-level in-flight guard held until the calendar service has
     // actually finished.  Launching this unawaited allowed a second resume
     // or Shell instance to overlap the CalDAV import after the guard cleared.
+    if (startupRouteGate.calendarSyncHeldFor(authProvider.userId)) return;
     await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
   }
 
@@ -758,15 +776,17 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       // 정상 로그인 복구 시 플래그 리셋
       _reauthSnackBarShown = false;
     }
+    if (widget._guideQa) return;
     unawaited(_scheduleDeferredSessionSync(reason: 'auth_changed'));
     unawaited(_scheduleDeferredUpdateCheck());
   }
 
   void _onRouterLocationChanged() {
-    _homeWidgetRouteCoordinator.notifyLocationChanged();
+    if (!widget._guideQa) _homeWidgetRouteCoordinator.notifyLocationChanged();
   }
 
   void _onStartupRouteGateChange() {
+    if (widget._guideQa) return;
     unawaited(_scheduleDeferredSessionSync(reason: 'startup_gate'));
     unawaited(_scheduleDeferredUpdateCheck());
   }
@@ -775,19 +795,20 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void dispose() {
     authProvider.removeListener(_onAuthProviderChange);
     startupRouteGate.removeListener(_onStartupRouteGateChange);
-    appRouter.routeInformationProvider
-        .removeListener(_onRouterLocationChanged);
+    appRouter.routeInformationProvider.removeListener(_onRouterLocationChanged);
     appRouter.routerDelegate.removeListener(_onRouterLocationChanged);
     // coordinator가 소유한 타이머/리스너와 pending 상태까지 함께 정리한다.
-    _homeWidgetRouteCoordinator.dispose();
+    if (!widget._guideQa) _homeWidgetRouteCoordinator.dispose();
     _homeWidgetClickSubscription?.cancel();
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
     _foregroundBriefingSubscription?.cancel();
     _foregroundBriefingPollTimer?.cancel();
-    unawaited(_oauthCallbackHandler.dispose());
-    unawaited(BriefingSchedulerService.recordAppForegroundState(false));
-    _lifecycleListener.dispose();
+    if (!widget._guideQa) {
+      unawaited(_oauthCallbackHandler.dispose());
+      unawaited(BriefingSchedulerService.recordAppForegroundState(false));
+      _lifecycleListener.dispose();
+    }
     super.dispose();
   }
 
@@ -869,7 +890,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _retryInitialHomeWidgetLaunchProbe({required int attempt}) {
-    if (!mounted || _homeWidgetRouteCoordinator.hasPendingRoute ||
+    if (!mounted ||
+        _homeWidgetRouteCoordinator.hasPendingRoute ||
         attempt >= 6) {
       return;
     }
@@ -1213,12 +1235,20 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
                 final showUpdateOverlay =
                     updateState == UpdateUiState.updating ||
                         updateState == UpdateUiState.openingPlayStore;
-                return Stack(
-                  children: <Widget>[
-                    child ?? const SizedBox.shrink(),
-                    if (showUpdateOverlay)
-                      _UpdateProgressOverlay(state: updateState),
-                  ],
+                return ListenableBuilder(
+                  listenable: authProvider,
+                  builder: (context, _) => RootGuideScope(
+                    uid: authProvider.userId,
+                    bindRuntime: (coordinator) => GuideQuotaRuntime.bind(
+                        coordinator,
+                        uid: authProvider.userId!),
+                    unbindRuntime: GuideQuotaRuntime.unbind,
+                    child: Stack(children: <Widget>[
+                      child ?? const SizedBox.shrink(),
+                      if (showUpdateOverlay)
+                        _UpdateProgressOverlay(state: updateState),
+                    ]),
+                  ),
                 );
               },
             );

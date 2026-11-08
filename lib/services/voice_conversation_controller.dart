@@ -1,3 +1,5 @@
+import '../onboarding/real_ui_guide/guide_contract.dart';
+import '../onboarding/real_ui_guide/guide_guards.dart';
 import '../core/local_time.dart';
 import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
@@ -205,12 +207,24 @@ class VoiceConversationController {
     Iterable<EventModel> events = const <EventModel>[],
     VoiceConversationNow? now,
     VoiceCommandRouter? router,
+    this.guideSnapshot,
   })  : _initialEvents = events,
         _now = now,
         _router = router ?? const VoiceCommandRouter();
 
   static final Expando<_VoiceConversationState> _states =
       Expando<_VoiceConversationState>('VoiceConversationController');
+
+  final GuideSnapshot? Function()? guideSnapshot;
+
+  /// Rebind after QueryObserved changes the local revision. This exact list
+  /// drives both rendered cards and subsequent ordinal interpretation.
+  GuideVisibleBinding bindGuideResults(
+      GuideSnapshot guide, List<EventModel> results) {
+    final binding = GuideResultOrder.bind(guide: guide, results: results);
+    _state.visibleEvents = binding.ordered;
+    return binding;
+  }
 
   final Iterable<EventModel> _initialEvents;
   final VoiceConversationNow? _now;
@@ -1110,6 +1124,16 @@ class VoiceConversationController {
     VoiceConversationSession? externalSession,
     VoiceConversationResult result,
   ) {
+    final guide = guideSnapshot?.call();
+    final visible = guide != null &&
+            guide.isInProgress &&
+            result.action == VoiceConversationAction.showEvents
+        ? GuideResultOrder.bind(guide: guide, results: result.visibleEvents)
+            .ordered
+        : result.visibleEvents;
+    if (result.action == VoiceConversationAction.showEvents) {
+      state.visibleEvents = visible;
+    }
     final nextSession = state.toSession();
     if (externalSession == null) {
       _states[this] = state;
@@ -1118,7 +1142,7 @@ class VoiceConversationController {
       action: result.action,
       inputText: result.inputText,
       queryRange: result.queryRange,
-      visibleEvents: result.visibleEvents,
+      visibleEvents: visible,
       selectedEvents: result.selectedEvents,
       targetEvent: result.targetEvent,
       draftEvent: result.draftEvent,
