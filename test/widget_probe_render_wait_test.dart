@@ -23,6 +23,7 @@ import 'package:planflow/services/feature_tour_service.dart'
 import '../integration_test/support/widget_probe_render_wait.dart';
 import '../integration_test/support/widget_probe_http_attempt_trace.dart';
 import '../integration_test/support/widget_probe_calendar_aux_memory.dart';
+import 'support/test_guide_scope.dart';
 
 final _date = DateTime(DateTime.now().year + 1, 10, 14);
 final _location = '/calendar?date=${_date.toIso8601String().split('T').first}';
@@ -299,7 +300,10 @@ void main() {
         runShellStartupTasks: false);
     try {
       router.go(_location);
-      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpWidget(TestGuideScope(
+        auth: auth,
+        child: MaterialApp.router(routerConfig: router),
+      ));
       await tester.pump();
       final uriMatches =
           router.routeInformationProvider.value.uri.toString() == _location;
@@ -426,7 +430,10 @@ void main() {
         runShellStartupTasks: false);
     try {
       router.go(_location);
-      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpWidget(TestGuideScope(
+        auth: auth,
+        child: MaterialApp.router(routerConfig: router),
+      ));
       await tester.pump();
       expect(router.routeInformationProvider.value.uri.toString(), _location);
       await _mustTimeout(waitForNativeRouteRender(tester,

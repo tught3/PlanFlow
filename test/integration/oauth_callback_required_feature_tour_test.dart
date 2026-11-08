@@ -9,6 +9,7 @@ import 'package:planflow/core/startup_route_gate.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/onboarding/feature_tour_screen.dart';
+import 'package:planflow/screens/onboarding/legacy_intro_screen.dart';
 import 'package:planflow/screens/shell_screen.dart';
 import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/feature_tour_service.dart';
@@ -17,6 +18,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../support/test_guide_scope.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +41,7 @@ void main() {
   });
 
   testWidgets(
-      'OAuth callback follows production router into required three-step interactive practice tour',
+      'OAuth callback follows production router into required three-page intro',
       (tester) async {
     await Supabase.initialize(
       url: 'https://integration-test.supabase.co',
@@ -77,122 +80,46 @@ void main() {
       authSession.dispose();
     });
     await tester.pumpWidget(
-      MaterialApp.router(
-        routerConfig: router,
-        // FeatureTourScreen calls AppLocalizations.of(context) on build; the
-        // production router assumes the host shell installs these delegates
-        // and locales. Mirror that here so the test exercises the same
-        // localization surface the app uses.
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      TestGuideScope(
+        auth: auth,
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
       ),
     );
-    await _pumpUntil(tester,
-        () => router.routeInformationProvider.value.uri.path == AppRoutes.login);
+    await _pumpUntil(
+        tester,
+        () =>
+            router.routeInformationProvider.value.uri.path == AppRoutes.login);
     expect(router.routeInformationProvider.value.uri.path, AppRoutes.login);
 
     await tester.runAsync(() => handler.handleAuthCallbackUri(
           Uri.parse('planflow://auth-callback?code=integration-test-code'),
         ));
     await _pumpUntil(
-        tester, () => find.byType(FeatureTourScreen).evaluate().isNotEmpty);
+        tester, () => find.byType(LegacyIntroScreen).evaluate().isNotEmpty);
 
     expect(callbackAdapter.receivedUri?.queryParameters['code'],
         'integration-test-code');
     expect(auth.isSignedIn, isTrue);
-    expect(find.byType(FeatureTourScreen), findsOneWidget);
-    // The required tour hides the optional Skip shortcut.
-    expect(find.byKey(const ValueKey('voice-tour-skip')), findsNothing);
-    // Tour has not been completed before the user interacts with it.
-    expect(await tourStore.shouldShow(), isTrue);
+    expect(find.byType(LegacyIntroScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('legacy-intro-skip-button')), findsNothing);
 
-    // The required tour is now VOICE-FIRST: create -> query -> edit ->
-    // detail, each with an explicit save. This router harness has no
-    // microphone, so the flow is driven through the explicit typed
-    // fallback (initially blank, clearly labeled "not voice"), which runs
-    // the exact same parser pipeline as speech.
-    final l10n = AppLocalizations.of(
-        tester.element(find.byType(FeatureTourScreen)));
-    expect(find.text(l10n.voiceTourPhaseCreateTitle), findsOneWidget);
-    final finishButton = find.byKey(const ValueKey('voice-tour-finish'));
-    expect(tester.widget<FilledButton>(finishButton).onPressed, isNull);
-
-    Future<void> typeUtterance(String text) async {
-      final input = find.byKey(const ValueKey('voice-tour-text-input'));
-      await tester.ensureVisible(input);
-      await tester.pumpAndSettle();
-      await tester.enterText(input, text);
+    final next = find.byKey(const ValueKey('legacy-intro-next-button'));
+    for (final title in [
+      '말하면 일정이 정리돼요',
+      'AI 대화로 일정도 고쳐요',
+      '출발과 브리핑을 챙겨드려요',
+    ]) {
+      expect(find.text(title), findsOneWidget);
+      expect(await tourStore.shouldShow(), isTrue,
+          reason: 'only the final confirmation persists the intro');
+      await tester.tap(next);
       await tester.pump();
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.pumpAndSettle();
-      final submit = find.byKey(const ValueKey('voice-tour-text-submit'));
-      await tester.ensureVisible(submit);
-      await tester.pumpAndSettle();
-      await tester.tap(submit);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
     }
-
-    // Explicitly select typed practice once (never prefilled).
-    await tester
-        .ensureVisible(find.byKey(const ValueKey('voice-tour-text-mode')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('voice-tour-text-mode')));
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<TextField>(
-              find.byKey(const ValueKey('voice-tour-text-input')))
-          .controller!
-          .text,
-      isEmpty,
-    );
-
-    // Phase 1: create preview, then an explicit save.
-    await typeUtterance('내일 오전 9시에 강남역에서 팀장님과 면담');
-    expect(find.byKey(const ValueKey('voice-tour-create-preview')),
-        findsOneWidget);
-    final saveCreate = find.byKey(const ValueKey('voice-tour-save-create'));
-    await tester.ensureVisible(saveCreate);
-    await tester.pumpAndSettle();
-    await tester.tap(saveCreate);
-    await _pumpUntil(tester,
-        () => find.text(l10n.voiceTourPhaseQueryTitle).evaluate().isNotEmpty);
-    expect(find.text(l10n.voiceTourPhaseQueryTitle), findsOneWidget);
-
-    // Phase 2: query returns the actually saved record.
-    await typeUtterance('내일 일정 보여줘');
-    await _pumpUntil(tester,
-        () => find.byKey(const ValueKey('voice-tour-results')).evaluate().isNotEmpty);
-    expect(find.byKey(const ValueKey('voice-tour-results')), findsOneWidget);
-    await _pumpUntil(tester,
-        () => find.text(l10n.voiceTourPhaseEditTitle).evaluate().isNotEmpty);
-
-    // Phase 3: spoken-ordinal edit preview, then an explicit save.
-    await typeUtterance('첫 번째 일정 오후 1시로 미뤄줘');
-    expect(find.byKey(const ValueKey('voice-tour-edit-preview')),
-        findsOneWidget);
-    final saveEdit = find.byKey(const ValueKey('voice-tour-save-edit'));
-    await tester.ensureVisible(saveEdit);
-    await tester.pumpAndSettle();
-    await tester.tap(saveEdit);
-    await tester.pumpAndSettle();
-    final openUpdated = find.byKey(const ValueKey('voice-tour-open-updated'));
-    await tester.ensureVisible(openUpdated);
-    await tester.pumpAndSettle();
-    await tester.tap(openUpdated);
-    await _pumpUntil(tester,
-        () => find.byKey(const ValueKey('voice-tour-detail')).evaluate().isNotEmpty);
-    expect(find.byKey(const ValueKey('voice-tour-detail-departure')),
-        findsOneWidget);
-    expect(find.byKey(const ValueKey('voice-tour-detail-preparation')),
-        findsOneWidget);
-
-    // Finish is enabled only after the saved record was actually viewed.
-    expect(tester.widget<FilledButton>(finishButton).onPressed, isNotNull);
-    // Explicit Finish: the only path that persists the completion marker.
-    await tester.ensureVisible(finishButton);
-    await tester.pumpAndSettle();
-    await tester.tap(finishButton);
     await _pumpUntil(tester,
         () => router.routeInformationProvider.value.uri.path == AppRoutes.home);
     // The route flips to home inside the Navigator pop, but the ShellScreen
@@ -206,9 +133,6 @@ void main() {
     expect(await tourStore.shouldShow(), isFalse);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(SharedPreferencesFeatureTourStore.completedKey),
-        isTrue);
-    expect(
-        prefs.getBool(SharedPreferencesFeatureTourStore.completedKey),
         equals(true));
 
     // OAuth callback path: the required tour gate releases and the user
@@ -231,10 +155,9 @@ void main() {
   testWidgets('required tour hides Skip and does not persist on build',
       (tester) async {
     final store = _SkipProbeStore();
-    await _pumpTourScreen(
-        tester, FeatureTourScreen(store: store, requireFinalConfirmation: true));
-    expect(
-        find.byKey(const ValueKey('voice-tour-skip')), findsNothing);
+    await _pumpTourScreen(tester,
+        FeatureTourScreen(store: store, requireFinalConfirmation: true));
+    expect(find.byKey(const ValueKey('voice-tour-skip')), findsNothing);
     expect(store.saved, isFalse);
   });
 }

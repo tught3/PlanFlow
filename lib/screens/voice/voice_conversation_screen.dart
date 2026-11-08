@@ -1643,7 +1643,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   ///    개인 사본을 가진 일정). 본 적 목록(_events)에 없는 id이거나
   ///    [_groupEventById] 레지스트리에 존재하는 그룹 일정이면 false.
   /// 3) 반복 일정(rrule)이 아니고 그룹 일정 연결(groupEventId)도 없는 일정.
-  /// 4) 드래프트가 시작 시각을 가지고 있고 원본과 실제 다른 값을 가지고 있다.
+  /// 4) 원본과 드래프트에 시작 시각이 있고 서로 다른 값이다.
   /// 5) 결과에 다른 필드 변경(locationText, criticalValue)이 함께 실려
   ///    있지 않다(동시 변경은 컨트롤러 쪽에서 requiresEditScreenNavigation을
   ///    세우지만, 방어 차원에서 한 번 더 검사한다).
@@ -1675,7 +1675,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (draft == null || draft.startAt == null) {
       return false;
     }
-    if (targetEvent.startAt == draft.startAt) {
+    final originalStart = targetEvent.startAt;
+    if (originalStart == null || originalStart == draft.startAt) {
       return false;
     }
     final rule = targetEvent.recurrenceRule?.trim();
@@ -1838,22 +1839,14 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     final draft = result.draftEvent!;
     final newStart = draft.startAt!;
-    final originalStart = targetEvent.startAt;
-    final originalEnd = targetEvent.endAt;
-    final originalDuration = (originalStart != null && originalEnd != null)
-        ? originalEnd.difference(originalStart)
-        : const Duration(hours: 1);
-    final fallbackEnd = newStart.add(
-      originalDuration.isNegative || originalDuration == Duration.zero
-          ? const Duration(hours: 1)
-          : originalDuration,
+    // 가드를 통과한 시작 단독 변경은 새 시작 기준 기본 종료를 사용한다.
+    final newEnd = shiftEventEndWhenStartChanges(
+      previousStart: targetEvent.startAt!,
+      newStart: newStart,
+      currentEnd: draft.endAt,
+      endEditedByUser: false,
     );
-    // 드래프트 종료가 없거나 새 시작보다 과거(원본 날짜의 오래된 endAt 이
-    // 남은 경우)면, 원본 시각/길이를 보존해 새 시작 기준으로 재계산한다.
-    final draftEnd = draft.endAt;
-    final newEnd = (draftEnd != null && draftEnd.isAfter(newStart))
-        ? draftEnd
-        : fallbackEnd;
+    if (newEnd == null) return false;
 
     try {
       final overlappingEvents = await _repository.findOverlappingEvents(
@@ -1865,12 +1858,13 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       if (!mounted) {
         return false;
       }
-      final candidateDraft = targetEvent.copyWith(
+      final updated = targetEvent.copyWith(
         startAt: newStart,
         endAt: newEnd,
+        isMultiDay: !planflowIsSameLocalDay(newStart, newEnd),
       );
       final duplicateWarningEvents = filterDuplicateWarningEvents(
-        draft: candidateDraft,
+        draft: updated,
         candidates: overlappingEvents,
       );
       if (duplicateWarningEvents.isNotEmpty) {
@@ -1885,8 +1879,6 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           return false;
         }
       }
-
-      final updated = targetEvent.copyWith(startAt: newStart, endAt: newEnd);
 
       // 기존 push 리마인더의 개별 오프셋은 '저장 이전'에 복원한다. 복원이
       // 실패하면 예외가 던져져 아래 updateEvent에 도달하지 못하고 fail-closed

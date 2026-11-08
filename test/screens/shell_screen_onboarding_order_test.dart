@@ -4,23 +4,25 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-      'shell onboarding opens feature tour before permissions and defers startup work',
+      'shell wires intro, real guide and calendar choice and defers startup work',
       () {
     final shellSource =
         File('lib/screens/shell_screen.dart').readAsStringSync();
-    final featureTourIndex = shellSource.indexOf('_maybeOpenFeatureTour()');
-    final permissionIndex =
-        shellSource.indexOf('_maybeOpenPermissionOnboarding()');
-    final externalGuideIndex =
-        shellSource.indexOf('_maybeShowExternalCalendarSyncGuide()');
-
-    expect(featureTourIndex, greaterThan(-1));
-    expect(permissionIndex, greaterThan(featureTourIndex));
-    expect(externalGuideIndex, greaterThan(permissionIndex));
-    expect(
-        shellSource, contains('_routeGate.beginStartupWorkDeferral()'));
-    expect(shellSource,
-        contains('_routeGate.completeStartupWorkDeferral()'));
+    final sequenceStart =
+        shellSource.indexOf('flowCompleted = await runGuideStartupSequence(');
+    expect(sequenceStart, greaterThan(-1));
+    final sequenceEnd =
+        shellSource.indexOf('presentationTimeout:', sequenceStart);
+    expect(sequenceEnd, greaterThan(sequenceStart));
+    final startupSequence = shellSource.substring(sequenceStart, sequenceEnd);
+    // Execution order is covered by startup_sequence_test.dart; named
+    // argument order at this call site does not determine execution order.
+    expect(startupSequence, contains('intro: _maybeOpenFeatureTour'));
+    expect(startupSequence, contains('guide: () => _waitForRealGuide'));
+    expect(startupSequence, contains('syncChoice: () => runOnboardingStageChain('));
+    expect(startupSequence, contains('() => _maybeShowExternalCalendarSyncGuide()'));
+    expect(shellSource, contains('_routeGate.beginStartupWorkDeferral()'));
+    expect(shellSource, contains('_routeGate.completeStartupWorkDeferral()'));
     expect(shellSource, contains('_sessionOnboardingUserId'));
     expect(shellSource, contains('_sessionDeferredWorkUserId'));
     expect(shellSource, contains('_sessionOnboardingFlow'));

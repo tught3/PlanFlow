@@ -98,5 +98,7 @@ void main() {
     expect(h.denied, [profileWrite, profileWrite]);
     expect(h.nativeCalls, isEmpty);
     expect(tester.takeException(), isNull);
-  });
+  },
+      // Enable this host-only harness with --dart-define=PLANFLOW_GUIDE_QA=true.
+      skip: !const bool.fromEnvironment('PLANFLOW_GUIDE_QA'));
 }

@@ -38,7 +38,8 @@ Future<_Guide> _pump(WidgetTester tester, EventModel saved,
       child: EventDetailScreen(
         event: saved,
         eventRepository: repo,
-        smartPreparationAlarmService: const _EmptySmartPreparationAlarmService(),
+        smartPreparationAlarmService:
+            const _EmptySmartPreparationAlarmService(),
       ),
     ),
   ));
@@ -75,11 +76,20 @@ void main() {
     }
   });
 
-  testWidgets('(a) readback success registers saved.summary and saved.departure',
+  testWidgets(
+      '(a) readback success registers saved.summary and saved.departure',
       (tester) async {
     final saved = _saved();
     await _pump(tester, saved, repo: _Repo.value(saved));
     expect(_anchor('saved.summary'), findsOneWidget);
+    // The departure section is below the initial ListView viewport. Materialize
+    // it before asserting its anchor; the production gate is shared with the
+    // summary anchor and should not depend on an alarm fixture.
+    await tester.scrollUntilVisible(
+      _anchor('saved.departure'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(_anchor('saved.departure'), findsOneWidget);
     expect(find.text('최신 정보 확인'), findsNothing);
   });

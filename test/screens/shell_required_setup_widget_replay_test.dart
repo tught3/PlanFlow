@@ -28,7 +28,9 @@ import 'package:planflow/core/router.dart';
 import 'package:planflow/core/startup_route_gate.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 import 'package:planflow/providers/auth_provider.dart';
-import 'package:planflow/screens/onboarding/feature_tour_screen.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_host.dart'
+    show GuideSyncChoiceStore;
+import 'package:planflow/screens/onboarding/legacy_intro_screen.dart';
 import 'package:planflow/screens/onboarding/permission_onboarding_screen.dart';
 import 'package:planflow/screens/shell_screen.dart';
 import 'package:planflow/services/external_calendar_sync_guide_service.dart';
@@ -38,11 +40,10 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../support/test_guide_scope.dart';
+
 const _calendarTarget = '/calendar?date=2026-10-14';
 const _voiceTarget = '/voice?autoStart=1';
-
-String _permissionKey(String userId) =>
-    'planflow_permissions_onboarded_v1:$userId';
 
 /// Each shouldShow() call gets its own controllable answer so stale and
 /// current flows can be resolved independently.
@@ -55,7 +56,8 @@ class _QueuedTourStore extends FeatureTourStore {
 
   @override
   Future<bool> shouldShow() {
-    if (autoAnswer != null) return Future<bool>.value(autoAnswer! && !completed);
+    if (autoAnswer != null)
+      return Future<bool>.value(autoAnswer! && !completed);
     final c = Completer<bool>();
     calls.add(c);
     return c.future;
@@ -87,26 +89,36 @@ class _Harness {
   Uri? simulatedVoiceUri;
   bool? seedHomeBase;
 
-  Uri get currentUri =>
-      simulatedVoiceUri ?? currentAppRouterLocation(router);
-  HomeWidgetRouteReadiness get readiness =>
-      resolveAppHomeWidgetReadiness(auth: auth, gate: gate, supabaseReady: true);
+  Uri get currentUri => simulatedVoiceUri ?? currentAppRouterLocation(router);
+  HomeWidgetRouteReadiness get readiness => resolveAppHomeWidgetReadiness(
+      auth: auth, gate: gate, supabaseReady: true);
 }
 
 Future<_Harness> _pump(
   WidgetTester tester, {
   required String? user,
   required _QueuedTourStore store,
-  bool runPostTourStages = true,
 }) async {
   final auth = AuthProvider()..start();
   if (user != null) auth.setUser(user);
   final gate = StartupRouteGate();
+  final prefs = await SharedPreferences.getInstance();
+  final syncChoice = GuideSyncChoiceStore();
+  // RootGuideScope normally restores this gate when a terminal guide is
+  // mounted. This fixture supplies the same per-account state for its router.
+  void restoreGuideChoice() {
+    final uid = auth.userId;
+    if (uid == null) return;
+    gate.beginGuideChoice(uid);
+    if (prefs.getBool(syncChoice.key(uid)) == true) gate.closeGuideChoice(uid);
+  }
+
+  restoreGuideChoice();
+  auth.addListener(restoreGuideChoice);
   final router = createAppRouter(
     authProviderOverride: auth,
     startupRouteGateOverride: gate,
     featureTourStore: store,
-    runPostTourOnboardingStages: runPostTourStages,
     runShellStartupTasks: false,
     supabaseReadyOverride: true,
   );
@@ -159,7 +171,8 @@ Future<_Harness> _pump(
     maxNavigationCycles: 2,
   );
   h = _Harness(auth, gate, router, coordinator, store);
-  router.routeInformationProvider.addListener(coordinator.notifyLocationChanged);
+  router.routeInformationProvider
+      .addListener(coordinator.notifyLocationChanged);
   router.routerDelegate.addListener(coordinator.notifyLocationChanged);
   addTearDown(() {
     router.routeInformationProvider
@@ -167,20 +180,26 @@ Future<_Harness> _pump(
     router.routerDelegate.removeListener(coordinator.notifyLocationChanged);
     coordinator.dispose();
     router.dispose();
+    auth.removeListener(restoreGuideChoice);
     gate.dispose();
     auth.dispose();
   });
-  await tester.pumpWidget(MaterialApp.router(
-    routerConfig: router,
-    locale: const Locale('ko', 'KR'),
-    supportedLocales: const <Locale>[Locale('ko', 'KR'), Locale('en', 'US')],
-    localizationsDelegates: const <LocalizationsDelegate<Object>>[
-      AppLocalizations.delegate,
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-  ));
+  await tester.pumpWidget(TestGuideScope(
+      auth: auth,
+      child: MaterialApp.router(
+        routerConfig: router,
+        locale: const Locale('ko', 'KR'),
+        supportedLocales: const <Locale>[
+          Locale('ko', 'KR'),
+          Locale('en', 'US')
+        ],
+        localizationsDelegates: const <LocalizationsDelegate<Object>>[
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+      )));
   return h;
 }
 
@@ -204,33 +223,15 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition,
   }
 }
 
-/// The required tour hides Skip; it is completed only through the real
-/// practice flow (create, next, +30/confirm, next, Finish), which writes the
-/// completion marker, reads it back and pops.
+/// Complete the intro through the same three page controls as the app.
 Future<void> _finishRequiredTour(WidgetTester tester) async {
-  expect(find.byKey(const ValueKey('feature-tour-skip-button')), findsNothing);
-  Future<void> tapKey(String key) async {
-    final f = find.byKey(ValueKey(key));
-    await tester.ensureVisible(f);
-    await tester.pumpAndSettle();
-    await tester.tap(f);
+  expect(find.byKey(const ValueKey('legacy-intro-skip-button')), findsNothing);
+  final next = find.byKey(const ValueKey('legacy-intro-next-button'));
+  for (var page = 0; page < 3; page++) {
+    await tester.tap(next);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
   }
-
-  await tester.enterText(
-      find.byKey(const ValueKey('feature-tour-title-field')), 'Dentist');
-  await tester.pump();
-  FocusManager.instance.primaryFocus?.unfocus();
-  await tester.pumpAndSettle();
-  await tapKey('feature-tour-create-button');
-  await tapKey('feature-tour-next-button');
-  await _pumpFor(tester, 10);
-  await tapKey('feature-tour-plus-30-button');
-  await tapKey('feature-tour-confirm-time-button');
-  await tapKey('feature-tour-next-button');
-  await _pumpFor(tester, 10);
-  await tapKey('feature-tour-next-button'); // Finish
-  await _pumpFor(tester, 8);
 }
 
 void main() {
@@ -254,16 +255,14 @@ void main() {
     }
   });
 
-  void seedPrefs({required Map<String, bool> permissionDone}) {
+  void seedPrefs({Set<String> closedGuideChoices = const {'a', 'b'}}) {
     SharedPreferences.setMockInitialValues(<String, Object>{
       ExternalCalendarSyncGuideService.guideSeenKey('a'): true,
       ExternalCalendarSyncGuideService.guideSeenKey('b'): true,
+      for (final uid in closedGuideChoices) GuideSyncChoiceStore().key(uid): true,
     });
     SharedPreferencesAsyncPlatform.instance =
-        InMemorySharedPreferencesAsync.withData(<String, Object>{
-      for (final e in permissionDone.entries)
-        if (e.value) _permissionKey(e.key): true,
-    });
+        InMemorySharedPreferencesAsync.empty();
   }
 
   setUp(ShellScreen.resetSessionOnboardingStateForTest);
@@ -273,10 +272,10 @@ void main() {
   });
 
   testWidgets(
-      'already-onboarded user: real Shell makes readiness ready without any '
-      'test begin/complete call and the pending calendar target replays once',
+      'already-onboarded user: Shell reaches readiness and replays the '
+      'pending calendar target once',
       (tester) async {
-    seedPrefs(permissionDone: {'a': true});
+    seedPrefs();
     final h = await _pump(tester,
         user: 'a', store: _QueuedTourStore(autoAnswer: false));
     _submitWidgetLaunch(h, _calendarTarget);
@@ -307,16 +306,16 @@ void main() {
         'required tour: $target retained (hold released to HOME, readiness '
         'timeout, no consume) then actual tour completion replays once',
         (tester) async {
-      seedPrefs(permissionDone: {'a': true});
+      seedPrefs();
       final store = _QueuedTourStore(autoAnswer: true);
       final h = await _pump(tester, user: 'a', store: store);
       _submitWidgetLaunch(h, target);
       await _pumpUntil(
-          tester, () => find.byType(FeatureTourScreen).evaluate().isNotEmpty);
+          tester, () => find.byType(LegacyIntroScreen).evaluate().isNotEmpty);
 
       // The widget hold was released without consuming: the router left the
       // splash, reached HOME and the Shell pushed the required tour.
-      expect(find.byType(FeatureTourScreen), findsOneWidget);
+      expect(find.byType(LegacyIntroScreen), findsOneWidget);
       expect(h.gate.widgetLaunchPending, isFalse);
       expect(h.readiness, HomeWidgetRouteReadiness.notReady);
       await _pumpFor(tester, 10); // past the 300ms readiness timeout
@@ -345,61 +344,48 @@ void main() {
     });
   }
 
-  testWidgets(
-      'permission onboarding: route pop alone is not completion; typed '
-      'readback after the screen marks completion replays in the same session',
-      (tester) async {
-    seedPrefs(permissionDone: {});
-    final h = await _pump(tester,
-        user: 'a', store: _QueuedTourStore(autoAnswer: false));
-    _submitWidgetLaunch(h, _calendarTarget);
-    await _pumpUntil(tester,
-        () => find.byType(PermissionOnboardingScreen).evaluate().isNotEmpty);
-    expect(find.byType(PermissionOnboardingScreen), findsOneWidget);
-    expect(h.gate.requiredSetupCompleteFor('a'), isFalse);
+  for (final target in [_calendarTarget, _voiceTarget]) {
+    testWidgets(
+        'calendar sync choice holds $target until the choice is closed, then '
+        'replays once', (tester) async {
+      seedPrefs(closedGuideChoices: {});
+      final h = await _pump(tester,
+          user: 'a', store: _QueuedTourStore(autoAnswer: false));
+      _submitWidgetLaunch(h, target);
+      final dialog = find.text('외부 캘린더 동기화 안내');
+      await _pumpUntil(tester, () => dialog.evaluate().isNotEmpty);
+      expect(dialog, findsOneWidget);
+      // Permissions now belong to contextual flows, outside signed-in startup.
+      expect(find.byType(PermissionOnboardingScreen), findsNothing);
+      expect(h.gate.requiredSetupCompleteFor('a'), isFalse);
+      expect(await GuideSyncChoiceStore().isClosed('a'), isFalse);
+      await _pumpFor(tester, 10);
+      expect(h.coordinator.pendingRoute, target);
+      expect(h.navigations, isEmpty);
+      expect(h.consumed, isEmpty);
 
-    // What the permission screen's finish path does (denied optional
-    // permissions still finish): persist the typed flag, then pop.
-    await SharedPreferencesAsync().setBool(_permissionKey('a'), true);
-    h.router.pop();
-    await _pumpUntil(tester, () => h.consumed.isNotEmpty);
+      await tester.tap(find.text('동기화 안 함'));
+      await _pumpUntil(tester, () => h.consumed.isNotEmpty);
 
-    expect(h.gate.requiredSetupCompleteFor('a'), isTrue);
-    expect(h.navigations, [_calendarTarget]);
-    expect(h.consumed, [_calendarTarget]);
-  });
-
-  testWidgets(
-      'permission onboarding cancelled (popped without completion) stays '
-      'incomplete: target retained, never navigated or consumed',
-      (tester) async {
-    seedPrefs(permissionDone: {});
-    final h = await _pump(tester,
-        user: 'a', store: _QueuedTourStore(autoAnswer: false));
-    _submitWidgetLaunch(h, _voiceTarget);
-    await _pumpUntil(tester,
-        () => find.byType(PermissionOnboardingScreen).evaluate().isNotEmpty);
-    h.router.pop();
-    await _pumpFor(tester, 20);
-
-    expect(h.gate.requiredSetupCompleteFor('a'), isFalse);
-    expect(h.readiness, HomeWidgetRouteReadiness.notReady);
-    expect(h.coordinator.pendingRoute, _voiceTarget);
-    expect(h.navigations, isEmpty);
-    expect(h.consumed, isEmpty);
-  });
+      expect(await GuideSyncChoiceStore().isClosed('a'), isTrue);
+      expect(h.gate.requiredSetupCompleteFor('a'), isTrue);
+      expect(h.navigations, [target]);
+      expect(h.consumed, [target]);
+    });
+  }
 
   testWidgets(
       'required tour cancelled (route popped without finishing) stays '
       'incomplete: target retained, never navigated or consumed',
       (tester) async {
-    seedPrefs(permissionDone: {'a': true});
+    seedPrefs();
     final store = _QueuedTourStore(autoAnswer: true);
     final h = await _pump(tester, user: 'a', store: store);
     _submitWidgetLaunch(h, _calendarTarget);
     await _pumpUntil(
-        tester, () => find.byType(FeatureTourScreen).evaluate().isNotEmpty);
-    h.router.pop();
+        tester, () => find.byType(LegacyIntroScreen).evaluate().isNotEmpty);
+    final intro = tester.element(find.byType(LegacyIntroScreen));
+    Navigator.of(intro).pop();
     await _pumpFor(tester, 20);
 
     expect(store.completed, isFalse);
@@ -413,7 +399,7 @@ void main() {
       'identity switch a->b->a: stale flows cannot complete; only the current '
       'flow completes; sign-out resets readiness without false completion',
       (tester) async {
-    seedPrefs(permissionDone: {'a': true, 'b': true});
+    seedPrefs();
     final store = _QueuedTourStore();
     final h = await _pump(tester, user: 'a', store: store);
     _submitWidgetLaunch(h, _calendarTarget);
