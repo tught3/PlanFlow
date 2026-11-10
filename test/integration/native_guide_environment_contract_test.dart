@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import '../../integration_test/support/native_guide_budget_ledger.dart';
 import '../../integration_test/support/real_ui_guide_native_environment.dart';
 
@@ -50,6 +51,70 @@ void main() {
     expect(capture(f), isTrue);
     expect(spend(f), isTrue);
     expect(spend(f), isFalse);
+  });
+
+  test('voice submit permit accepts exact CONTINUE and is consumed once',
+      () async {
+    final directory = await Directory.systemTemp.createTemp('voice-permit');
+    addTearDown(() => directory.delete(recursive: true));
+    final permit = File('${directory.path}/native-guide-ai-submit-permit');
+    bool consume() =>
+        NativeGuideEnvironment.consumeQaVoiceSubmitPermit(directory, 'run');
+
+    expect(consume(), isFalse);
+    await permit.writeAsString('CONTINUE\n');
+    expect(consume(), isFalse);
+    expect(await permit.exists(), isFalse);
+
+    await permit.writeAsString('CONTINUE');
+    expect(consume(), isTrue);
+    expect(await permit.exists(), isFalse);
+    expect(consume(), isFalse);
+    expect(await directory.list().toList(), isEmpty);
+  });
+
+  testWidgets('voice submit rejects preplaced and canceled-transcript permits',
+      (tester) async {
+    final directory = Directory.systemTemp.createTempSync('voice-stale-permit');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final file = File('${directory.path}/native-guide-ai-submit-permit');
+    final hold = QaVoiceSubmitHold(
+      canSubmit: () => true,
+      discardStalePermit: () =>
+          NativeGuideEnvironment.discardStaleQaVoiceSubmitPermit(directory),
+      consumePermit: () =>
+          NativeGuideEnvironment.consumeQaVoiceSubmitPermit(directory, 'run'),
+    )..bind();
+    addTearDown(hold.unbind);
+    var submissions = 0;
+    Future<bool> submit(QaVoiceSubmitGate gate) => gate.submit(
+          hold,
+          isCurrent: () => true,
+          dispatch: () async {
+            submissions++;
+          },
+        );
+
+    final oldGate = QaVoiceSubmitGate();
+    file.writeAsStringSync('CONTINUE');
+    final canceled = submit(oldGate);
+    await tester.pump();
+    expect(file.existsSync(), isFalse);
+    file.writeAsStringSync('CONTINUE');
+    oldGate.cancel();
+    expect(await canceled, isFalse);
+    expect(file.existsSync(), isTrue);
+
+    final waiting = submit(QaVoiceSubmitGate());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(file.existsSync(), isFalse);
+    expect(submissions, 0);
+    file.writeAsStringSync('CONTINUE');
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(await waiting, isTrue);
+    expect(submissions, 1);
+    expect(file.existsSync(), isFalse);
   });
   test('denied, wrong uid, expired and mismatched session fail closed', () {
     final f = fence(DateTime.utc(2029));

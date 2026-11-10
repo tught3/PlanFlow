@@ -16,6 +16,7 @@ import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/services/api_usage_guard.dart';
@@ -979,7 +980,168 @@ void main() {
     },
   );
 
-  testWidgets('AI 일정 대화는 initialText를 자동 제출한다', (tester) async {
+  testWidgets('a query handoff releases only the matching initial text once',
+      (tester) async {
+    final hold = QaVoiceSubmitHold(
+      canSubmit: () => true,
+      discardStalePermit: () => true,
+      consumePermit: () => false,
+    )..bind();
+    addTearDown(hold.unbind);
+    final entry = GuidePermit(
+      grantId: 'grant',
+      uid: 'test-user',
+      sessionId: 'session',
+      operationId: 'operation',
+      kind: GuideChargeKind.voiceConversation,
+      operation: GuideOperation.query,
+      expiresAtUtc: DateTime.utc(2030),
+    );
+    const text = '11월 5일 일정 보여줘';
+    hold.handOffInitialText(entry, text);
+    final gate = QaVoiceSubmitGate();
+    var submissions = 0;
+    Future<bool> submit(String input) => gate.submit(
+          hold,
+          initialEntryPermit: entry,
+          initialText: input,
+          isCurrent: () => true,
+          dispatch: () async {
+            submissions++;
+          },
+        );
+
+    final wrong = submit('다른 문장');
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(submissions, 0);
+    gate.cancel();
+    expect(await wrong, isFalse);
+
+    expect(await submit(text), isTrue);
+    final replay = submit(text);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(submissions, 1);
+    gate.cancel();
+    expect(await replay, isFalse);
+  });
+
+  testWidgets('QA holds the initial text and each final follow-up separately',
+      (tester) async {
+    final stt = _FakeSttService();
+    var permit = false;
+    var permitsSpent = 0;
+    final hold = QaVoiceSubmitHold(
+      canSubmit: () => true,
+      discardStalePermit: () {
+        permit = false;
+        return true;
+      },
+      consumePermit: () {
+        if (!permit) return false;
+        permit = false;
+        permitsSpent++;
+        return true;
+      },
+    )..bind();
+    addTearDown(hold.unbind);
+    final day = DateTime(_voiceFixtureYear, 5, 29, 18);
+    final initial = '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘';
+    final followUp = '$_voiceFixtureYear년 5월 29일 일정 보여줘';
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        sttService: stt,
+        repository: _FakeEventRepository([
+          EventModel(
+            id: 'qa-result',
+            userId: 'qa-user',
+            title: 'QA 일정 결과',
+            startAt: day.toUtc(),
+          ),
+        ]),
+        initialText: initial,
+        autoStart: true,
+      ),
+    );
+    String inputText() =>
+        tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(inputText(), initial);
+    expect(find.text('QA 일정 결과'), findsNothing);
+    expect(stt.listenCalls, 0);
+
+    permit = true;
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(find.text('QA 일정 결과'), findsOneWidget);
+    expect(stt.listenCalls, 1);
+    expect(permitsSpent, 1);
+
+    stt.emitPartial('일정');
+    await tester.pump();
+    stt.completeSuccess(followUp);
+    await tester.pump(const Duration(milliseconds: 500));
+    stt.emitPartial('late partial');
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(inputText(), followUp);
+    expect(stt.listenCalls, 1);
+    expect(permitsSpent, 1);
+
+    permit = true;
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(inputText(), isEmpty);
+    expect(find.text(followUp), findsOneWidget);
+    expect(permitsSpent, 2);
+  });
+
+  testWidgets('stopping held voice input discards the pending transcript',
+      (tester) async {
+    final stt = _FakeSttService();
+    var permit = false;
+    var permitsSpent = 0;
+    final hold = QaVoiceSubmitHold(
+      canSubmit: () => true,
+      discardStalePermit: () {
+        permit = false;
+        return true;
+      },
+      consumePermit: () {
+        if (!permit) return false;
+        permitsSpent++;
+        permit = false;
+        return true;
+      },
+    )..bind();
+    addTearDown(hold.unbind);
+    await pumpConversation(tester, VoiceConversationScreen(sttService: stt));
+    await tester.tap(find.text('음성으로 명령하기'));
+    await tester.pump();
+
+    const transcript = '11월 5일 일정 보여줘';
+    stt.completeSuccess(transcript);
+    await tester.pump();
+    String inputText() =>
+        tester.widget<TextField>(find.byType(TextField)).controller!.text;
+    expect(inputText(), transcript);
+    expect(find.text('음성 입력 정지'), findsOneWidget);
+
+    await tester.tap(find.text('음성 입력 정지'));
+    await tester.pump();
+    permit = true;
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(stt.stopCalls, 1);
+    expect(inputText(), isEmpty);
+    expect(find.text(transcript), findsNothing);
+    expect(find.text('음성으로 명령하기'), findsOneWidget);
+    expect(permitsSpent, 0);
+  });
+
+  testWidgets('hold=false keeps conversation initialText auto-submit',
+      (tester) async {
+    expect(QaVoiceSubmitHold.active, isNull);
     await pumpConversation(
       tester,
       const VoiceConversationScreen(initialText: '오늘 일정 알려줘'),

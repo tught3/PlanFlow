@@ -40,6 +40,117 @@ import '../location/location_pick_flow.dart';
 
 const String voiceConversationClosedResult = 'voiceConversationClosed';
 
+/// Installed by the isolated manual guide harness for one QA run.
+class QaVoiceSubmitHold {
+  QaVoiceSubmitHold({
+    required bool Function() canSubmit,
+    required bool Function() discardStalePermit,
+    required bool Function() consumePermit,
+  })  : _canSubmit = canSubmit,
+        _discardStalePermit = discardStalePermit,
+        _consumePermit = consumePermit;
+
+  static QaVoiceSubmitHold? _active;
+  static QaVoiceSubmitHold? get active => _active;
+  final bool Function() _canSubmit;
+  final bool Function() _discardStalePermit;
+  final bool Function() _consumePermit;
+  final _initialTexts = Expando<String>();
+
+  void bind() => _active = this;
+
+  void unbind() {
+    if (identical(_active, this)) _active = null;
+  }
+
+  /// The voice input screen already spent a file permit for this query.
+  /// Carry it only to the initial submission of the exact text and entry
+  /// permit, which the router passes through by identity.
+  void handOffInitialText(GuidePermit entryPermit, String text) {
+    if (identical(_active, this)) _initialTexts[entryPermit] = text;
+  }
+
+  bool _takeInitialText(GuidePermit? entryPermit, String text) {
+    if (entryPermit == null || _initialTexts[entryPermit] != text) return false;
+    _initialTexts[entryPermit] = null;
+    return true;
+  }
+}
+
+/// A screen can wait for one permit at a time. The owner cancels on exit;
+/// the predicate rejects changed transcripts and stale screen state.
+class QaVoiceSubmitGate {
+  bool _busy = false;
+  bool get isBusy => _busy;
+  int _generation = 0;
+  Timer? _poll;
+  Completer<bool>? _permission;
+  bool get isWaitingForPermit => _permission != null;
+
+  Future<bool> submit(
+    QaVoiceSubmitHold hold, {
+    required bool Function() isCurrent,
+    required Future<void> Function() dispatch,
+    GuidePermit? initialEntryPermit,
+    String? initialText,
+  }) async {
+    if (isBusy) return false;
+    _busy = true;
+    final generation = _generation;
+    try {
+      bool current() =>
+          _generation == generation &&
+          identical(hold, QaVoiceSubmitHold.active) &&
+          hold._canSubmit() &&
+          isCurrent();
+
+      if (!current()) return false;
+      if (initialText == null ||
+          !hold._takeInitialText(initialEntryPermit, initialText)) {
+        final permission = Completer<bool>();
+        _permission = permission;
+        final binding = WidgetsBinding.instance;
+        binding.addPostFrameCallback((_) {
+          if (_generation != generation) return;
+          // Start the file wait after the held transcript is painted. A file
+          // left by another transcript or run must never authorize this one.
+          if (!current() || !hold._discardStalePermit()) {
+            cancel();
+            return;
+          }
+          _poll = Timer.periodic(const Duration(milliseconds: 250), (_) {
+            if (!current()) {
+              cancel();
+            } else if (hold._consumePermit()) {
+              _finish(true);
+            }
+          });
+        });
+        binding.ensureVisualUpdate();
+        if (!await permission.future) return false;
+      }
+      if (!current()) return false;
+      await dispatch();
+      return true;
+    } finally {
+      cancel();
+      _busy = false;
+    }
+  }
+
+  void cancel() {
+    _generation++;
+    _finish(false);
+  }
+
+  void _finish(bool allowed) {
+    _poll?.cancel();
+    _poll = null;
+    _permission?.complete(allowed);
+    _permission = null;
+  }
+}
+
 enum _VoiceConversationPhase {
   idle,
   listening,
@@ -251,6 +362,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   bool _isRestartPending = false;
   bool _manualEditInterruptedListening = false;
   bool _didSubmitInitialText = false;
+  final _qaVoiceSubmitHold = QaVoiceSubmitHold.active;
+  final _qaVoiceSubmitGate = QaVoiceSubmitGate();
   bool _isExitingConversation = false;
   bool _didRetryConversationEarlyFailure = false;
   // _stopVoiceBeforeNavigation() 호출 직전에 듣고 있었는지(또는 듣기 대기
@@ -503,9 +616,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     debugPrint('VoiceConversationScreen initialText submit: $text');
     _didSubmitInitialText = true;
-    await _submitText(text,
-        fromGuideInitialCapture: _validInitialGuideCapture(text));
-    if (!mounted || !widget.autoStart) {
+    final qaHeld = _qaVoiceSubmitHold != null;
+    final submitted = await _submitText(text, fromInitialText: true);
+    if (!mounted || !widget.autoStart || (qaHeld && !submitted)) {
       return;
     }
     setState(() {
@@ -522,6 +635,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) _qaVoiceSubmitGate.cancel();
     if (!_foreground && _guideMode) {
       _listenGeneration += 1;
       _inputTurnGeneration += 1;
@@ -547,6 +661,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   @override
   void deactivate() {
+    _qaVoiceSubmitGate.cancel();
     _listenGeneration += 1;
     _inputTurnGeneration += 1;
     if (_guideMode) _voicePausedByUser = true;
@@ -584,6 +699,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   @override
   void dispose() {
+    _qaVoiceSubmitGate.cancel();
     // 세션 안에서 한 번도 명령이 처리되지 않은 채(말없이) 이탈한 경우를
     // 남긴다. AnalyticsService는 static/부작용 없는 no-op 래퍼라 mounted
     // 여부와 무관하게 안전하게 호출할 수 있다.
@@ -715,10 +831,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
   }
 
-  Future<void> _submitText(
+  Future<bool> _submitText(
     String? overrideText, {
     bool fromVoiceFinal = false,
-    bool fromGuideInitialCapture = false,
+    bool fromInitialText = false,
     bool inputGenerationAlreadyInvalidated = false,
   }) async {
     // self-gate(딥링크 등 entryGrant 미보유 진입)가 아직 끝나지 않았는데
@@ -732,13 +848,13 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       await _entryGrantReadyCompleter.future;
     }
     if (!mounted) {
-      return;
+      return false;
     }
     if (_entryGateDenied) {
       // self-gate가 거부로 끝난 경우 — 명령을 처리하지 않고 조용히 반환한다.
       // (화면은 _closeAfterEntryGateDenied가 이미 닫는 중이므로 여기서 추가
       // 안내는 불필요.)
-      return;
+      return false;
     }
     final rawText = (overrideText ?? _inputController.text).trim();
     final text = _normalizeSubmitTextForPendingDelete(rawText);
@@ -747,8 +863,57 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         'VoiceConversationScreen submit ignored: '
         'empty=${text.isEmpty} submitting=$_isSubmitting',
       );
-      return;
+      return false;
     }
+    Future<void> dispatch() => _dispatchText(
+          text,
+          fromVoiceFinal: fromVoiceFinal,
+          fromGuideInitialCapture:
+              fromInitialText && _validInitialGuideCapture(rawText),
+          inputGenerationAlreadyInvalidated: inputGenerationAlreadyInvalidated,
+        );
+
+    final hold = _qaVoiceSubmitHold;
+    if (hold == null) {
+      await dispatch();
+      return true;
+    }
+    if (_qaVoiceSubmitGate.isBusy) return false;
+    if (fromInitialText || fromVoiceFinal) _setConversationInputText(rawText);
+    _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
+    final generation = _inputTurnGeneration;
+    final guide = _guide?.state.value;
+    final route = ModalRoute.of(context);
+    final submission = _qaVoiceSubmitGate.submit(
+      hold,
+      isCurrent: () =>
+          mounted &&
+          _foreground &&
+          !_isExitingConversation &&
+          route?.isCurrent != false &&
+          generation == _inputTurnGeneration &&
+          identical(guide, _guide?.state.value) &&
+          _inputController.text.trim() == rawText,
+      dispatch: dispatch,
+      initialEntryPermit: fromInitialText ? widget.guideEntryPermit : null,
+      initialText: fromInitialText ? rawText : null,
+    );
+    if (!_qaVoiceSubmitGate.isWaitingForPermit) return submission;
+    setState(() {});
+    try {
+      return await submission;
+    } finally {
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _dispatchText(
+    String text, {
+    required bool fromVoiceFinal,
+    required bool fromGuideInitialCapture,
+    required bool inputGenerationAlreadyInvalidated,
+  }) async {
     // 실제 사용자 명령이 처리되기 시작하는 이 지점이 엔타이틀먼트 소비
     // 시점이다(화면진입/버튼탭/STT준비 등은 소비하지 않는다). 세션당
     // 정확히 1회만 소비하도록 동기적으로 먼저 플래그를 선점한 뒤, 실제
@@ -1091,7 +1256,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<void> _listenOnce() async {
-    if (!_guideCanListen) return;
+    if (!_guideCanListen || _qaVoiceSubmitGate.isBusy) return;
     if (_isListening) {
       debugPrint('VoiceConversationScreen listen ignored: already listening');
       return;
@@ -1120,7 +1285,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         onPartialResult: (text) {
           final normalized = SttService.normalizeVoiceTranscript(text);
           debugPrint('VoiceConversationScreen STT partial: $normalized');
-          if (!mounted || normalized.isEmpty) {
+          if (!mounted || normalized.isEmpty || _qaVoiceSubmitGate.isBusy) {
             return;
           }
           _applyVoiceTranscriptToInput(
@@ -1209,12 +1374,14 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         // 남거나 몇 글자씩 섞여 보였다. 여기서 generation을 먼저 넘겨
         // 현재 listen의 늦은 partial도 동시에 무효화한다.
         _inputTurnGeneration += 1;
-        _setConversationInputText('');
-        await _submitText(
-          submitText,
+        final qaHeld = _qaVoiceSubmitHold != null;
+        if (!qaHeld) _setConversationInputText('');
+        final submitted = await _submitText(
+          qaHeld ? finalText : submitText,
           fromVoiceFinal: true,
           inputGenerationAlreadyInvalidated: true,
         );
+        if (qaHeld && !submitted) return;
       } else if (_shouldRetryEarlyListen(result) &&
           !_didRetryConversationEarlyFailure &&
           !_manualEditInterruptedListening &&
@@ -1461,6 +1628,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<void> _pauseVoiceInput() async {
+    if (_qaVoiceSubmitGate.isWaitingForPermit) {
+      _qaVoiceSubmitGate.cancel();
+      _inputTurnGeneration += 1;
+      _setConversationInputText('');
+    }
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
@@ -2960,9 +3132,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                   controller: _inputController,
                   isSubmitting: _isSubmitting,
                   isListening: _isListening,
-                  keepListening: _keepListening,
-                  voicePausedByUser: _voicePausedByUser,
-                  isRestartPending: _isRestartPending,
+                  canStopVoice: _isListening ||
+                      _isRestartPending ||
+                      (_keepListening && !_voicePausedByUser) ||
+                      _qaVoiceSubmitGate.isWaitingForPermit,
                   onListen: () =>
                       _startConversationListen(resetRetryPolicy: true),
                   onStopListening: _pauseVoiceInput,
@@ -3311,9 +3484,7 @@ class _ConversationInputBar extends StatefulWidget {
     required this.controller,
     required this.isSubmitting,
     required this.isListening,
-    required this.keepListening,
-    required this.voicePausedByUser,
-    required this.isRestartPending,
+    required this.canStopVoice,
     required this.onListen,
     required this.onStopListening,
     required this.onSubmit,
@@ -3324,9 +3495,7 @@ class _ConversationInputBar extends StatefulWidget {
   final TextEditingController controller;
   final bool isSubmitting;
   final bool isListening;
-  final bool keepListening;
-  final bool voicePausedByUser;
-  final bool isRestartPending;
+  final bool canStopVoice;
   final VoidCallback onListen;
   final VoidCallback onStopListening;
   final VoidCallback onSubmit;
@@ -3384,10 +3553,7 @@ class _ConversationInputBarState extends State<_ConversationInputBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _VoiceConversationControl(
-              isListening: widget.isListening,
-              keepListening: widget.keepListening,
-              voicePausedByUser: widget.voicePausedByUser,
-              isRestartPending: widget.isRestartPending,
+              canStopVoice: widget.canStopVoice,
               onListen: widget.onListen,
               onStopListening: widget.onStopListening,
             ),
@@ -3453,30 +3619,21 @@ class _ConversationInputBarState extends State<_ConversationInputBar> {
 
 class _VoiceConversationControl extends StatelessWidget {
   const _VoiceConversationControl({
-    required this.isListening,
-    required this.keepListening,
-    required this.voicePausedByUser,
-    required this.isRestartPending,
+    required this.canStopVoice,
     required this.onListen,
     required this.onStopListening,
   });
 
-  final bool isListening;
-  final bool keepListening;
-  final bool voicePausedByUser;
-  final bool isRestartPending;
+  final bool canStopVoice;
   final VoidCallback onListen;
   final VoidCallback onStopListening;
 
   @override
   Widget build(BuildContext context) {
-    final isVoiceActive = isListening ||
-        isRestartPending ||
-        (keepListening && !voicePausedByUser);
     // 실제 인식 상태(듣는 중/준비 중/재시작)는 대화 영역의 음성 상태 버블이
     // 보여주므로, 여기는 시작/정지 동작 하나만 하는 단일 버튼으로 둔다.
     // (이전엔 상태 아이콘·문구 + 별도 정지 버튼이 버블과 중복 표시됐음.)
-    if (isVoiceActive) {
+    if (canStopVoice) {
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(

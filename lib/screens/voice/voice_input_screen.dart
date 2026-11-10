@@ -65,6 +65,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   final FocusNode _rawTextFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   Timer? _draftPreparationDebounce;
+  final _qaVoiceSubmitHold = QaVoiceSubmitHold.active;
+  final _qaVoiceSubmitGate = QaVoiceSubmitGate();
   late final VoiceCommandAnalysisService _voiceAnalysisService;
   late final VoiceCommandRouter _voiceCommandRouter;
 
@@ -149,6 +151,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _qaVoiceSubmitGate.cancel();
     // 전화·화면잠금·앱전환 시 STT 즉시 취소
     if (state == AppLifecycleState.paused && _isListening) {
       unawaited(widget.sttService.cancelActiveListen());
@@ -170,6 +173,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
 
   @override
   void deactivate() {
+    _qaVoiceSubmitGate.cancel();
     // 페이지를 벗어나는 즉시(pop 직전) STT 무조건 종료 — dispose보다 빠른 시점
     if (_isListening) {
       _didDeactivateCancel = true;
@@ -180,6 +184,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
 
   @override
   void dispose() {
+    _qaVoiceSubmitGate.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _guideCoordinator?.state.removeListener(_handleGuideStateChanged);
     _isDisposing = true;
@@ -452,6 +457,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     bool continueExisting = false,
     bool autoRetryOnEarlyFailure = false,
   }) async {
+    if (_qaVoiceSubmitGate.isBusy) return;
     if (_isListening) {
       // 이전 세션이 자동완료(말 멈춤)·화면 이동 등으로 _isListening을 정리하지
       // 못한 채 남아 있으면, 여기서 막혀 재입력이 안 먹는다(일정확인→뒤로→재입력).
@@ -498,6 +504,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         onPartialResult: (text) {
           if (_isCurrentListenSession(listenGeneration) &&
               !_isFinishingVoiceFlow &&
+              !_qaVoiceSubmitGate.isBusy &&
               !_didEditTranscriptManually) {
             final token = ++_partialTranscriptToken;
             unawaited(_applyNormalizedPartialTranscript(
@@ -547,6 +554,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       if (result.failure == null &&
           result.hasText &&
           !_didEditTranscriptManually) {
+        if (_qaVoiceSubmitHold != null) _partialTranscriptToken++;
         final rawFinal = result.text ?? '';
         final finalBase =
             _correctedPrefixForSession(listenGeneration, rawFinal);
@@ -631,6 +639,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _handleVoiceStartPressed() async {
+    if (_qaVoiceSubmitGate.isBusy) {
+      return;
+    }
     if (_isListening) {
       await _finishVoiceFlow();
       return;
@@ -688,7 +699,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     // 완료를 누른 순간부터 다음 화면이 실제로 올라올 때까지 이 화면 전체를
     // 가려 둔다. 이전에는 의도 분류·텍스트 정리 대기 동안 마이크 버튼과
     // '현재 내용으로 입력' 버튼이 1초 정도 그대로 보였다.
-    setState(() => _isRoutingToNextScreen = true);
+    if (_qaVoiceSubmitHold == null) {
+      setState(() => _isRoutingToNextScreen = true);
+    }
     _isFinishingVoiceFlow = true;
     _partialTranscriptToken++;
     // listenSessionGeneration을 증가시켜 listen() 루프가 이 세션의 result를
@@ -943,6 +956,37 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _continueWithRawText({String? rawTextOverride}) async {
+    final hold = _qaVoiceSubmitHold;
+    if (hold == null) {
+      return _submitRawText(rawTextOverride: rawTextOverride);
+    }
+    if (!mounted || _qaVoiceSubmitGate.isBusy || _isSubmittingVoiceCommand) {
+      return;
+    }
+    final text = (rawTextOverride ?? _rawTextController.text).trim();
+    if (text.isEmpty) return;
+    if (rawTextOverride != null) _setTranscriptText(text);
+    final generation = _submitGeneration;
+    final guide = _guideCoordinator?.state.value;
+    final route = ModalRoute.of(context);
+    await _qaVoiceSubmitGate.submit(
+      hold,
+      isCurrent: () =>
+          mounted &&
+          !_isDisposing &&
+          !_isExitingVoiceInput &&
+          route?.isCurrent != false &&
+          generation == _submitGeneration &&
+          identical(guide, _guideCoordinator?.state.value) &&
+          _rawTextController.text.trim() == text,
+      dispatch: () => _submitRawText(rawTextOverride: text, qaHold: hold),
+    );
+  }
+
+  Future<void> _submitRawText({
+    String? rawTextOverride,
+    QaVoiceSubmitHold? qaHold,
+  }) async {
     final submitGeneration = _submitGeneration;
     // Freeze the guide origin here, before the first await on this path, so the
     // parse confirmation can be validated against the phase/session/revision
@@ -994,6 +1038,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             _VoiceCommandAction.edit,
             submitGeneration: submitGeneration,
             guideOrigin: guideOrigin,
+            qaHold: qaHold,
           );
           return;
         case _AmbiguousFieldAdditionChoice.createNew:
@@ -1028,6 +1073,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       commandAction,
       submitGeneration: submitGeneration,
       guideOrigin: guideOrigin,
+      qaHold: qaHold,
     );
   }
 
@@ -1288,6 +1334,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     _VoiceCommandAction commandAction, {
     required int submitGeneration,
     ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
+    QaVoiceSubmitHold? qaHold,
   }) async {
     final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
     if (!mounted || submitGeneration != _submitGeneration) {
@@ -1298,6 +1345,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,
         submitGeneration: submitGeneration,
         guideOrigin: guideOrigin,
+        qaHold: qaHold,
       );
       return;
     }
@@ -1331,6 +1379,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     String queryText, {
     required int submitGeneration,
     ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
+    QaVoiceSubmitHold? qaHold,
   }) async {
     final overrideUserId = widget.userIdOverride?.trim();
     final userId = (overrideUserId != null && overrideUserId.isNotEmpty)
@@ -1361,6 +1410,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       onGuideDenied: (_) {},
       onGuideAllowed: (permit) {
         if (!mounted || submitGeneration != _submitGeneration) return;
+        qaHold?.handOffInitialText(permit, queryText.trim());
         final state = GuideScope.maybeOf(context)?.state.value;
         final captured = _guideCaptureEvidence;
         final valid = captured != null &&
@@ -1679,6 +1729,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   void _scheduleDraftPreparation(String text) {
+    if (_qaVoiceSubmitHold != null) {
+      _clearPreparedDraft();
+      return;
+    }
     final normalizedText = VoiceTextCleanupService.cleanLocally(
       SttService.normalizeVoiceTranscript(text),
     ).cleanedText;
@@ -1713,7 +1767,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _prepareDraft(String text, int token) async {
-    if (!mounted || token != _draftPreparationToken) {
+    if (!mounted ||
+        token != _draftPreparationToken ||
+        _qaVoiceSubmitHold != null) {
       return;
     }
 

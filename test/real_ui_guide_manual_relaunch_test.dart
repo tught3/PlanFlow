@@ -11,6 +11,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
+import 'package:planflow/core/app_http.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../integration_test/real_ui_guide_manual_app.dart';
 import '../integration_test/support/native_guide_budget_ledger.dart';
@@ -57,6 +61,29 @@ class _FakeSecureStore implements SecureResumeStore {
     if (failOnWrite) throw StateError('secure storage write failed');
     this.value = value;
   }
+}
+
+class _FenceTransportTripwire extends HttpOverrides implements HttpClient {
+  int attempts = 0;
+
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => this;
+
+  @override
+  Duration? connectionTimeout;
+
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    attempts++;
+    throw StateError('The QA fence forwarded a request unexpectedly');
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
 }
 
 ManualResumeRecord _record({
@@ -909,6 +936,114 @@ void main() {
       expect(journal['failed'], isTrue);
       expect(journal['aiRequests'], 0,
           reason: 'CLOSE must not touch the AI budget');
+    });
+
+    test('the sixth AI request is never forwarded and latches AI_CAP_EXCEEDED',
+        () async {
+      SharedPreferences.setMockInitialValues(const <String, Object>{});
+      final env = await resumed();
+      final ledger = File(budgetLedgerPath(tmp, _budgetId));
+      await writeBudgetLedgerAtomic(
+        file: ledger,
+        snapshot: parseBudgetLedger(jsonEncode({
+          'version': 1,
+          'budgetId': _budgetId,
+          'uid': _uid,
+          'maxAiRequests': kLedgerMaxAiRequests,
+          'aiRequests': 5,
+          'usedPhases': ['query'],
+          'createAttempted': false,
+          'createdId': null,
+        })),
+      );
+      await Supabase.initialize(
+        url: 'https://planflow-cap-test.invalid',
+        anonKey: 'synthetic-anon-key',
+        httpClient: MockClient((_) async {
+          throw StateError('Unexpected Supabase auth transport');
+        }),
+        authOptions: const FlutterAuthClientOptions(
+          autoRefreshToken: false,
+          detectSessionInUri: false,
+          localStorage: EmptyLocalStorage(),
+        ),
+      );
+      final expiry = DateTime.now().add(const Duration(hours: 1));
+      final journalFile = File('${tmp.path}/native-guide-${env.runId}.json');
+      final tripwire = _FenceTransportTripwire();
+      final previousOverrides = HttpOverrides.current;
+      try {
+        await Supabase.instance.client.auth.recoverSession(jsonEncode({
+          'access_token': _fakeToken(uid: _uid, expiry: expiry),
+          'refresh_token': 'synthetic-refresh-token',
+          'token_type': 'bearer',
+          'expires_in': 3600,
+          'user': {'id': _uid, 'aud': 'authenticated'},
+        }));
+        env.verifiedUid = true;
+        env.phase = 'create';
+        const session = 'test-session';
+        final expiresAt = DateTime.utc(2030).toIso8601String();
+        expect(env.permit.observe('begin_real_ui_guide', {}, {
+          'status': 'granted',
+          'session_id': session,
+          'phase': 'create',
+          'revision': 4,
+          'expires_at': expiresAt,
+        }, _uid, 'create'), isTrue);
+        expect(env.permit.observe('authorize_real_ui_guide_operation', {
+          'p_session_id': session,
+          'p_phase': 'create',
+          'p_revision': 4,
+          'p_kind': 'scheduleParse',
+          'p_operation': 'createParse',
+          'p_operation_id': 'test-operation',
+        }, {
+          'status': 'granted',
+          'grant_id': 'test-grant',
+          'expires_at': expiresAt,
+        }, _uid, 'create'), isTrue);
+
+        HttpOverrides.global = tripwire;
+        await env.run<void>(() async {
+          final client = AppHttp.create();
+          try {
+            await expectLater(
+              client.post(
+                Uri.https(env.host, '/functions/v1/openai-proxy'),
+                body: '{}',
+              ),
+              throwsStateError,
+            );
+            expect(env.failed, isTrue);
+            expect(env.aiRequests, 5);
+            await expectLater(
+              client.get(Uri.https(env.host, '/auth/v1/user')),
+              throwsStateError,
+            );
+            await env.journal('CLOSED');
+          } finally {
+            client.close();
+          }
+        });
+      } finally {
+        HttpOverrides.global = previousOverrides;
+        await env.close();
+      }
+      expect(tripwire.attempts, 0);
+      expect((await ledger.readAsString()), contains('"aiRequests":5'));
+      final journal = jsonDecode(await journalFile.readAsString())
+          as Map<String, dynamic>;
+      expect(journal['event'], 'AI_CAP_EXCEEDED');
+      expect(journal['failed'], isTrue);
+      expect(journal['aiRequests'], 5);
+      expect(
+        journal['http'],
+        contains(equals({
+          'denyReason': 'ai_cap_exceeded',
+          'forwarded': false,
+        })),
+      );
     });
 
     for (final scenario in <(String, List<String>, String)>[

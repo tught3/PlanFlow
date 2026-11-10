@@ -570,6 +570,74 @@ void main() {
     expect(fakeAnalysis.analyzeCalls, 1);
   });
 
+  testWidgets('QA holds partial analysis and final STT until one permit',
+      (tester) async {
+    const transcript = '내일 오전 10시 정장집 방문';
+    var permit = false;
+    var permitsSpent = 0;
+    final hold = QaVoiceSubmitHold(
+      canSubmit: () => true,
+      discardStalePermit: () {
+        permit = false;
+        return true;
+      },
+      consumePermit: () {
+        if (!permit) return false;
+        permit = false;
+        permitsSpent++;
+        return true;
+      },
+    )..bind();
+    addTearDown(hold.unbind);
+    final stt = _FakeSttService();
+    final analysis = _FakeDraftAnalysisService(parsedSchedule: {
+      'title': transcript,
+      'start_at': '2026-05-13T10:00:00.000',
+      'parse_failed': false,
+    });
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: stt,
+            voiceAnalysisService: analysis,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text('Submitted to confirm'),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+
+    stt.emitPartial(transcript);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text(transcript), findsOneWidget);
+    expect(analysis.analyzeCalls, 0);
+    expect(permitsSpent, 0);
+
+    await stt.stopActiveListen();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text(transcript), findsOneWidget);
+    expect(find.text('Submitted to confirm'), findsNothing);
+    expect(analysis.analyzeCalls, 0);
+
+    permit = true;
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(find.text('Submitted to confirm'), findsOneWidget);
+    expect(permitsSpent, 1);
+    expect(permit, isFalse);
+  });
+
   testWidgets('직접 수정하면 준비된 draft를 덮어쓰지 않는다', (tester) async {
     final fakeStt = _FakeSttService();
     final fakeAnalysis = _FakeDraftAnalysisService(

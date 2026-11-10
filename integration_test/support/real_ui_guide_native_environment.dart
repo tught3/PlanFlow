@@ -11,6 +11,7 @@ import 'package:planflow/core/app_http.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/providers/auth_provider.dart';
+import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/services/remote_config_service.dart';
 import 'package:planflow/services/schedule_parse_entitlement.dart';
 import 'package:planflow/services/voice_conversation_entitlement.dart';
@@ -144,14 +145,34 @@ class NativeGuideEnvironment {
   /// may persist it.
   late final Map<String, dynamic> _sessionSnapshot;
   final records = <Map<String, Object?>>[];
+  final _journalSerial = NativeGuideSerialGate();
+  bool _aiCapExceeded = false;
   String? _lastJournalEvent;
   String phase = 'bootstrap';
 
   /// Stage of the last authorize request. The grant reply is judged by the
   /// stage of that request, not by the on-screen guide step.
   String? authorizeStageForObserve;
-  GuideSnapshot Function()? manualGuideSnapshot;
+  GuideSnapshot Function()? _manualGuideSnapshot;
+  GuideSnapshot Function()? get manualGuideSnapshot => _manualGuideSnapshot;
+  late final _voiceSubmitHold = QaVoiceSubmitHold(
+    canSubmit: () =>
+        manualPhaseBound && !failed && DateTime.now().isBefore(sessionDeadline),
+    discardStalePermit: () => discardStaleQaVoiceSubmitPermit(directory),
+    consumePermit: () => consumeQaVoiceSubmitPermit(directory, runId),
+  );
+
+  set manualGuideSnapshot(GuideSnapshot Function()? snapshot) {
+    _manualGuideSnapshot = snapshot;
+    if (qaVoiceSubmitHold) {
+      _voiceSubmitHold.bind();
+    } else {
+      _voiceSubmitHold.unbind();
+    }
+  }
+
   bool get manualPhaseBound => manualGuideSnapshot != null;
+  bool get qaVoiceSubmitHold => guideQaAdvanceEnabled && manualPhaseBound;
 
   String _phaseFromManualSnapshot(GuideSnapshot? s) {
     final reason = NativeGuideManualPhaseGate.denial(
@@ -716,6 +737,7 @@ class NativeGuideEnvironment {
         }, () => _BudgetClient(this)),
       );
     } finally {
+      _voiceSubmitHold.unbind();
       AppHttp.overrideFactory(previousAppHttpFactory);
       if (transportReady) transport.close();
       HttpOverrides.global = priorHttp;
@@ -780,20 +802,23 @@ class NativeGuideEnvironment {
     return {for (final key in fields) key: row?[key]};
   }
 
-  Future<void> journal(String event) async {
-    await File('${directory.path}/native-guide-$runId.json').writeAsString(
-        jsonEncode({
-          'runId': runId,
-          'event': event,
-          'phase': phase,
-          'createdId': createdId,
-          'aiRequests': aiRequests,
-          'failed': failed,
-          'http': records
-        }),
-        flush: true);
-    _lastJournalEvent = event;
-  }
+  Future<void> journal(String event) => _journalSerial.run(() async {
+        // Keep the terminal cap reason even when later requests or teardown
+        // try to journal a generic failure.
+        final recordedEvent = _aiCapExceeded ? 'AI_CAP_EXCEEDED' : event;
+        await File('${directory.path}/native-guide-$runId.json').writeAsString(
+            jsonEncode({
+              'runId': runId,
+              'event': recordedEvent,
+              'phase': phase,
+              'createdId': createdId,
+              'aiRequests': aiRequests,
+              'failed': failed,
+              'http': records
+            }),
+            flush: true);
+        _lastJournalEvent = recordedEvent;
+      });
 
   Never deny([Object? diagnostic]) {
     failed = true;
@@ -818,6 +843,52 @@ class NativeGuideEnvironment {
     return uri;
   }
 
+  static const _continueCommand = 'CONTINUE';
+  static final _continueBytes = ascii.encode(_continueCommand);
+  static const _voiceSubmitPermitName = 'native-guide-ai-submit-permit';
+
+  @visibleForTesting
+  static bool discardStaleQaVoiceSubmitPermit(Directory directory) {
+    final file = File('${directory.path}/$_voiceSubmitPermitName');
+    try {
+      final type = FileSystemEntity.typeSync(file.path, followLinks: false);
+      if (type == FileSystemEntityType.notFound) return true;
+      if (type != FileSystemEntityType.file) return false;
+      file.deleteSync();
+      return true;
+    } on FileSystemException {
+      return false;
+    }
+  }
+
+  /// Claim the command in the same directory, bound the read, and remove it
+  /// before reporting success. A missing, malformed or unreadable file
+  /// cannot release the held transcript.
+  @visibleForTesting
+  static bool consumeQaVoiceSubmitPermit(Directory directory, String runId) {
+    final path = '${directory.path}/$_voiceSubmitPermitName';
+    try {
+      if (FileSystemEntity.typeSync(path, followLinks: false) !=
+          FileSystemEntityType.file) {
+        return false;
+      }
+      final claimed = File(path).renameSync('$path.$runId.claimed');
+      try {
+        final input = claimed.openSync();
+        try {
+          return listEquals(input.readSync(_continueBytes.length + 1),
+              _continueBytes);
+        } finally {
+          input.closeSync();
+        }
+      } finally {
+        claimed.deleteSync();
+      }
+    } on FileSystemException {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> control(String name) async {
     phase = name;
     await journal('ARM');
@@ -834,11 +905,12 @@ class NativeGuideEnvironment {
     await file.delete();
     if (value['runId'] != runId ||
         value['phase'] != name ||
-        value['command'] != 'CONTINUE') deny();
+        value['command'] != _continueCommand) deny();
     return value;
   }
 
   Future<void> close() async {
+    manualGuideSnapshot = null;
     // `failed` also latches the network fence for intentional manual stops.
     // Preserve a successfully written terminal reason without unlatching it.
     final event = switch (_lastJournalEvent) {
@@ -870,6 +942,7 @@ class _DenyUnscopedIo extends HttpOverrides {
 
 class _BudgetClient extends http.BaseClient {
   _BudgetClient(this.e);
+  static const _hardAiRequestLimit = 5;
   final NativeGuideEnvironment e;
   @override
   void close() {}
@@ -958,6 +1031,16 @@ class _BudgetClient extends http.BaseClient {
       if (decodedBody is Map<String, dynamic>) payload = decodedBody;
     }
     if (ai) {
+      // send() owns the same serial gate as the durable reservation below.
+      // An older ledger can carry a larger configured maximum.
+      if (e.aiRequests >= _hardAiRequestLimit) {
+        e._aiCapExceeded = true;
+        e.records.add({
+          'denyReason': 'ai_cap_exceeded',
+          'forwarded': false,
+        });
+        e.deny();
+      }
       final aiStage = e.manualFenceStageForAi();
       e.records.add({'aiStage': aiStage, 'aiPhase': e.phase});
       if (method != 'POST' ||
