@@ -19,6 +19,8 @@ final realUiGuideCoordinatorProvider = Provider<GuideCoordinator>((ref) =>
         version: 'real_ui_v1'));
 
 class LocalGuideProgressStore implements GuideProgressStore {
+  Future<void> _saveQueue = Future<void>.value();
+
   String key(String uid, String version) => 'guide_progress:$version:$uid';
   @override
   Future<GuideSnapshot?> load(
@@ -48,9 +50,17 @@ class LocalGuideProgressStore implements GuideProgressStore {
   }
 
   @override
-  Future<void> save(GuideSnapshot s) async {
+  Future<void> save(GuideSnapshot s) {
+    final operation = _saveQueue.then((_) => _save(s));
+    // Keep the queue moving while the caller still receives the save error.
+    _saveQueue = operation.catchError((Object _) {});
+    return operation;
+  }
+
+  Future<void> _save(GuideSnapshot s) async {
     final prefs = await tryGetPrefs();
     if (prefs == null) throw StateError('Guide storage unavailable');
+    final storageKey = key(s.uid, s.version);
     final raw = jsonEncode({
       'revision': s.revision,
       'serverRevision': s.serverRevision,
@@ -67,8 +77,14 @@ class LocalGuideProgressStore implements GuideProgressStore {
           s.expectedUpdatedStartLocal?.toIso8601String(),
       'calendarSyncHeld': s.calendarSyncHeld
     });
-    if (!await prefs.setString(key(s.uid, s.version), raw) ||
-        prefs.getString(key(s.uid, s.version)) != raw) {
+    if (!await prefs.setString(storageKey, raw)) {
+      throw StateError('Guide write readback failed');
+    }
+    if (prefs.getString(storageKey) == raw) return;
+
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    if (!await prefs.setString(storageKey, raw) ||
+        prefs.getString(storageKey) != raw) {
       throw StateError('Guide write readback failed');
     }
   }
