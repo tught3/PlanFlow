@@ -73,6 +73,7 @@ abstract class EventRepository {
   Future<EventModel?> attachExternalSyncMetadataIfCompatible({
     required EventModel existing,
     required EventModel incoming,
+    bool adoptIncomingSource = true,
   }) async {
     final incomingExternalId = incoming.externalId?.trim();
     final incomingCalendarId = incoming.externalCalendarId?.trim();
@@ -91,14 +92,42 @@ abstract class EventRepository {
       return null;
     }
 
-    final linkedEvent = _mergeExternalMetadata(
-      existing: existing,
-      incoming: incoming,
+    return updateExternalSyncMetadata(
+      eventId: existing.id,
+      userId: existing.userId,
       externalId: incomingExternalId,
       externalCalendarId: incomingCalendarId,
-      keepExistingPeopleFields: true,
+      externalEtag: incoming.externalEtag,
+      externalUpdatedAt: incoming.externalUpdatedAt,
+      lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
+      source: adoptIncomingSource ? incoming.source : null,
     );
-    return updateEvent(linkedEvent);
+  }
+
+  Future<EventModel?> updateExternalSyncMetadata({
+    required String eventId,
+    String? userId,
+    required String externalId,
+    required String? externalCalendarId,
+    String? externalEtag,
+    DateTime? externalUpdatedAt,
+    DateTime? lastSyncedAt,
+    String? source,
+  }) async {
+    final event = await fetchEvent(eventId, userId: userId);
+    if (event == null) {
+      return null;
+    }
+    return updateEvent(event.copyWith(
+      externalId: externalId,
+      externalCalendarId: externalCalendarId,
+      clearExternalCalendarId: externalCalendarId == null,
+      externalEtag: externalEtag,
+      externalUpdatedAt: externalUpdatedAt,
+      lastSyncedAt: lastSyncedAt,
+      clearLastSyncedAt: lastSyncedAt == null,
+      source: source,
+    ));
   }
 
   Future<EventModel> createEvent(EventModel event);
@@ -551,12 +580,33 @@ Set<int> _parseRRuleByDaysForOverlap(String rule) {
   return days;
 }
 
+enum _EventSchema { full, withoutOccurrences, legacy }
+
+@visibleForTesting
+Future<List<dynamic>> collectEventPages(
+  Future<List<dynamic>> Function(int from, int to) fetchPage,
+) async {
+  const pageSize = 1000;
+  const maximumPages = 50;
+  final events = <dynamic>[];
+  for (var page = 0; page < maximumPages; page++) {
+    final from = page * pageSize;
+    final rows = await fetchPage(from, from + pageSize - 1);
+    events.addAll(rows);
+    if (rows.length < pageSize) {
+      return events;
+    }
+  }
+  debugPrint('EventRepository stopped at the $maximumPages-page safety limit.');
+  return events;
+}
+
 class SupabaseEventRepository extends EventRepository {
   SupabaseEventRepository({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
   static const String _tableName = 'events';
-  static const String _selectColumns =
+  static const String _selectColumnsWithoutOccurrences =
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, use_strong_alarm, source, '
       'participants, targets, '
@@ -564,12 +614,15 @@ class SupabaseEventRepository extends EventRepository {
       'group_event_id, category, '
       'external_id, external_calendar_id, external_etag, external_updated_at, '
       'last_synced_at, created_at, updated_at';
+  static const String _selectColumns = '$_selectColumnsWithoutOccurrences, '
+      'overridden_occurrence_date, deleted_occurrence_dates';
   static const String _legacySelectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, source, '
       'external_id, created_at';
 
   final SupabaseClient _client;
+  bool _hasOccurrenceColumns = true;
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async {
@@ -859,8 +912,7 @@ class SupabaseEventRepository extends EventRepository {
       incoming: event,
       externalId: normalizedExternalId,
       externalCalendarId: event.externalCalendarId,
-      keepExistingPeopleFields: false,
-    ).copyWithSource(normalizedSource);
+    ).copyWith(source: normalizedSource);
 
     return updateEvent(mergedEvent);
   }
@@ -873,6 +925,47 @@ class SupabaseEventRepository extends EventRepository {
     final response = await _upsertEventRow(event);
 
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel?> updateExternalSyncMetadata({
+    required String eventId,
+    String? userId,
+    required String externalId,
+    required String? externalCalendarId,
+    String? externalEtag,
+    DateTime? externalUpdatedAt,
+    DateTime? lastSyncedAt,
+    String? source,
+  }) async {
+    final resolvedUserId = _resolveCurrentUserId();
+    if (userId != null && userId != resolvedUserId) {
+      throw StateError(
+        'Event userId must match the signed-in user for scoped writes.',
+      );
+    }
+    if (eventId.trim().isEmpty) {
+      throw ArgumentError.value(eventId, 'eventId', 'Event id is required.');
+    }
+    final payload = <String, dynamic>{
+      'external_id': externalId,
+      'external_calendar_id': externalCalendarId,
+      if (externalEtag != null) 'external_etag': externalEtag,
+      if (externalUpdatedAt != null)
+        'external_updated_at': externalUpdatedAt.toUtc().toIso8601String(),
+      'last_synced_at': lastSyncedAt?.toUtc().toIso8601String(),
+      if (source != null) 'source': source,
+    };
+    final response = await _withEventSchema(
+      (schema) => _client
+          .from(_tableName)
+          .update(_eventPayload(schema, payload))
+          .eq('id', eventId)
+          .eq('user_id', resolvedUserId)
+          .select(_columnsFor(schema))
+          .maybeSingle(),
+    );
+    return response == null ? null : EventModel.fromJson(_rowAsJson(response));
   }
 
   @override
@@ -947,181 +1040,152 @@ class SupabaseEventRepository extends EventRepository {
     return Map<String, dynamic>.from(row as Map);
   }
 
-  Future<List<dynamic>> _selectEventsForUser(String userId) async {
-    try {
-      return await _client
-          .from(_tableName)
-          .select(_selectColumns)
-          .eq('user_id', userId)
-          .order('start_at');
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
-      }
-      return _client
-          .from(_tableName)
-          .select(_legacySelectColumns)
-          .eq('user_id', userId)
-          .order('start_at');
-    }
-  }
+  Future<List<dynamic>> _selectEventsForUser(String userId) => _withEventSchema(
+        (schema) => collectEventPages(
+          (from, to) => _client
+              .from(_tableName)
+              .select(_columnsFor(schema))
+              .eq('user_id', userId)
+              .order('start_at', ascending: false)
+              .order('id', ascending: false)
+              .range(from, to),
+        ),
+      );
 
   Future<Map<String, dynamic>?> _selectEventById(
     String eventId,
     String userId,
-  ) async {
-    try {
-      return await _client
-          .from(_tableName)
-          .select(_selectColumns)
-          .eq('id', eventId)
-          .eq('user_id', userId)
-          .maybeSingle();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
-      }
-      return _client
-          .from(_tableName)
-          .select(_legacySelectColumns)
-          .eq('id', eventId)
-          .eq('user_id', userId)
-          .maybeSingle();
-    }
-  }
+  ) =>
+      _withEventSchema(
+        (schema) => _client
+            .from(_tableName)
+            .select(_columnsFor(schema))
+            .eq('id', eventId)
+            .eq('user_id', userId)
+            .maybeSingle(),
+      );
 
   Future<Map<String, dynamic>?> _selectEventBySourceExternalId({
     required String source,
     required String externalId,
     required String userId,
-  }) async {
-    try {
-      return await _client
-          .from(_tableName)
-          .select(_selectColumns)
-          .eq('user_id', userId)
-          .eq('source', source)
-          .eq('external_id', externalId)
-          .maybeSingle();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
-      }
-      return _client
-          .from(_tableName)
-          .select(_legacySelectColumns)
-          .eq('user_id', userId)
-          .eq('source', source)
-          .eq('external_id', externalId)
-          .maybeSingle();
-    }
-  }
+  }) =>
+      _withEventSchema(
+        (schema) => _client
+            .from(_tableName)
+            .select(_columnsFor(schema))
+            .eq('user_id', userId)
+            .eq('source', source)
+            .eq('external_id', externalId)
+            .maybeSingle(),
+      );
 
-  Future<Map<String, dynamic>> _insertEvent(EventModel event) async {
-    try {
-      return await _client
+  Future<Map<String, dynamic>> _insertEvent(EventModel event) {
+    final payload = event.toJson(includeId: event.id.trim().isNotEmpty);
+    return _withEventSchema(
+      (schema) => _client
           .from(_tableName)
-          .insert(event.toJson(includeId: event.id.trim().isNotEmpty))
-          .select(_selectColumns)
-          .single();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
-      }
-      return _client
-          .from(_tableName)
-          .insert(
-            _legacyPayload(
-              event.toJson(includeId: event.id.trim().isNotEmpty),
-            ),
-          )
-          .select(_legacySelectColumns)
-          .single();
-    }
+          .insert(_eventPayload(schema, payload))
+          .select(_columnsFor(schema))
+          .single(),
+    );
   }
 
   Future<Map<String, dynamic>?> _updateEventRow(
     EventModel event,
     String userId,
-  ) async {
-    try {
-      return await _client
-          .from(_tableName)
-          .update(event.toUpdateJson())
-          .eq('id', event.id)
-          .eq('user_id', userId)
-          .select(_selectColumns)
-          .maybeSingle();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
-      }
-      return _client
-          .from(_tableName)
-          .update(_legacyPayload(event.toUpdateJson()))
-          .eq('id', event.id)
-          .eq('user_id', userId)
-          .select(_legacySelectColumns)
-          .maybeSingle();
-    }
-  }
+  ) =>
+      _withEventSchema(
+        (schema) => _client
+            .from(_tableName)
+            .update(_eventPayload(schema, event.toUpdateJson()))
+            .eq('id', event.id)
+            .eq('user_id', userId)
+            .select(_columnsFor(schema))
+            .maybeSingle(),
+      );
 
-  Future<Map<String, dynamic>> _upsertEventRow(EventModel event) async {
-    try {
-      return await _client
+  Future<Map<String, dynamic>> _upsertEventRow(EventModel event) {
+    final payload = event.toJson(includeId: event.id.trim().isNotEmpty);
+    return _withEventSchema(
+      (schema) => _client
           .from(_tableName)
-          .upsert(
-            event.toJson(includeId: event.id.trim().isNotEmpty),
-            onConflict: 'id',
-          )
-          .select(_selectColumns)
-          .single();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
-      }
-      return _client
-          .from(_tableName)
-          .upsert(
-            _legacyPayload(
-              event.toJson(includeId: event.id.trim().isNotEmpty),
-            ),
-            onConflict: 'id',
-          )
-          .select(_legacySelectColumns)
-          .single();
-    }
+          .upsert(_eventPayload(schema, payload), onConflict: 'id')
+          .select(_columnsFor(schema))
+          .single(),
+    );
   }
 
   Future<Map<String, dynamic>?> _updateSuppliesCheckedRow({
     required String eventId,
     required List<String> suppliesChecked,
     required String userId,
-  }) async {
-    try {
-      return await _client
-          .from(_tableName)
-          .update(<String, dynamic>{'supplies_checked': suppliesChecked})
-          .eq('id', eventId)
-          .eq('user_id', userId)
-          .select(_selectColumns)
-          .maybeSingle();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
-        rethrow;
+  }) =>
+      _withEventSchema(
+        (schema) => _client
+            .from(_tableName)
+            .update(<String, dynamic>{'supplies_checked': suppliesChecked})
+            .eq('id', eventId)
+            .eq('user_id', userId)
+            .select(_columnsFor(schema))
+            .maybeSingle(),
+      );
+
+  String _columnsFor(_EventSchema schema) => switch (schema) {
+        _EventSchema.full => _selectColumns,
+        _EventSchema.withoutOccurrences => _selectColumnsWithoutOccurrences,
+        _EventSchema.legacy => _legacySelectColumns,
+      };
+
+  Map<String, dynamic> _eventPayload(
+    _EventSchema schema,
+    Map<String, dynamic> payload,
+  ) =>
+      switch (schema) {
+        _EventSchema.full => payload,
+        _EventSchema.withoutOccurrences => _payloadWithoutOccurrences(payload),
+        _EventSchema.legacy => _legacyPayload(payload),
+      };
+
+  Map<String, dynamic> _payloadWithoutOccurrences(
+      Map<String, dynamic> payload) {
+    return Map<String, dynamic>.of(payload)
+      ..remove('overridden_occurrence_date')
+      ..remove('deleted_occurrence_dates');
+  }
+
+  Future<T> _withEventSchema<T>(
+    Future<T> Function(_EventSchema schema) request,
+  ) async {
+    var schema = _hasOccurrenceColumns
+        ? _EventSchema.full
+        : _EventSchema.withoutOccurrences;
+    while (true) {
+      try {
+        return await request(schema);
+      } on PostgrestException catch (error) {
+        if (schema == _EventSchema.legacy) {
+          rethrow;
+        }
+        final text =
+            '${error.code} ${error.message} ${error.details}'.toLowerCase();
+        if (schema == _EventSchema.full &&
+            (text.contains('42703') || text.contains('pgrst204')) &&
+            (text.contains('overridden_occurrence_date') ||
+                text.contains('deleted_occurrence_dates'))) {
+          _hasOccurrenceColumns = false;
+          schema = _EventSchema.withoutOccurrences;
+        } else if (_isMissingSyncSchemaError(text)) {
+          schema = _EventSchema.legacy;
+        } else {
+          rethrow;
+        }
       }
-      return _client
-          .from(_tableName)
-          .update(<String, dynamic>{'supplies_checked': suppliesChecked})
-          .eq('id', eventId)
-          .eq('user_id', userId)
-          .select(_legacySelectColumns)
-          .maybeSingle();
     }
   }
 
   Map<String, dynamic> _legacyPayload(Map<String, dynamic> payload) {
-    return Map<String, dynamic>.from(payload)
+    return _payloadWithoutOccurrences(payload)
       ..remove('external_calendar_id')
       ..remove('external_etag')
       ..remove('external_updated_at')
@@ -1138,9 +1202,7 @@ class SupabaseEventRepository extends EventRepository {
       ..remove('updated_at');
   }
 
-  bool _isMissingSyncSchemaError(PostgrestException error) {
-    final text =
-        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+  bool _isMissingSyncSchemaError(String text) {
     return text.contains('external_calendar_id') ||
         text.contains('external_etag') ||
         text.contains('external_updated_at') ||
@@ -1160,58 +1222,13 @@ class SupabaseEventRepository extends EventRepository {
   }
 }
 
-extension on EventModel {
-  EventModel copyWithSource(String source) {
-    return EventModel(
-      id: id,
-      userId: userId,
-      title: title,
-      startAt: startAt,
-      endAt: endAt,
-      location: location,
-      locationLat: locationLat,
-      locationLng: locationLng,
-      memo: memo,
-      supplies: supplies,
-      suppliesChecked: suppliesChecked,
-      participants: participants,
-      targets: targets,
-      isCritical: isCritical,
-      useStrongAlarm: useStrongAlarm,
-      recurrenceRule: recurrenceRule,
-      isAllDay: isAllDay,
-      isMultiDay: isMultiDay,
-      parentEventId: parentEventId,
-      groupEventId: groupEventId,
-      category: category,
-      source: source,
-      externalId: externalId,
-      externalCalendarId: externalCalendarId,
-      externalEtag: externalEtag,
-      externalUpdatedAt: externalUpdatedAt,
-      lastSyncedAt: lastSyncedAt,
-      createdAt: createdAt,
-      updatedAt: updatedAt,
-    );
-  }
-}
-
 EventModel _mergeExternalMetadata({
   required EventModel existing,
   required EventModel incoming,
   required String externalId,
   required String? externalCalendarId,
-  required bool keepExistingPeopleFields,
 }) {
-  final participants = keepExistingPeopleFields || incoming.participants.isEmpty
-      ? existing.participants
-      : incoming.participants;
-  final targets = keepExistingPeopleFields || incoming.targets.isEmpty
-      ? existing.targets
-      : incoming.targets;
-  // 외부 캘린더 원본에는 좌표가 없으므로, 저장돼 있던 유효 좌표는 장소
-  // 텍스트가 그대로인 한 유지한다(사용자가 지도에서 지정한 좌표를 동기화가
-  // 지우지 않게). 장소 텍스트가 바뀌었으면 좌표는 비워 다시 잡게 한다.
+  // Keep already resolved coordinates when the external location is unchanged.
   final coordinates = EventModel.resolveCoordinatesForWrite(
     storedLocation: existing.location,
     storedLat: existing.locationLat,
@@ -1220,35 +1237,40 @@ EventModel _mergeExternalMetadata({
     nextLat: incoming.locationLat,
     nextLng: incoming.locationLng,
   );
-  return EventModel(
-    id: existing.id,
+  return existing.copyWith(
     userId: incoming.userId,
     title: incoming.title,
     startAt: incoming.startAt,
+    clearStartAt: incoming.startAt == null,
     endAt: incoming.endAt,
+    clearEndAt: incoming.endAt == null,
     location: incoming.location,
+    clearLocation: incoming.location == null,
     locationLat: coordinates.lat,
+    clearLocationLat: coordinates.lat == null,
     locationLng: coordinates.lng,
+    clearLocationLng: coordinates.lng == null,
     memo: incoming.memo,
+    clearMemo: incoming.memo == null,
     supplies: incoming.supplies,
     suppliesChecked: incoming.suppliesChecked,
-    participants: participants,
-    targets: targets,
+    participants: incoming.participants.isEmpty ? null : incoming.participants,
+    targets: incoming.targets.isEmpty ? null : incoming.targets,
     isCritical: existing.isCritical || incoming.isCritical,
     useStrongAlarm: existing.useStrongAlarm || incoming.useStrongAlarm,
     recurrenceRule: incoming.recurrenceRule,
+    clearRecurrenceRule: incoming.recurrenceRule == null,
     isAllDay: incoming.isAllDay,
     isMultiDay: incoming.isMultiDay,
     parentEventId: incoming.parentEventId,
-    groupEventId: existing.groupEventId,
+    clearParentEventId: incoming.parentEventId == null,
     category: incoming.category,
     source: incoming.source,
     externalId: externalId,
     externalCalendarId: externalCalendarId,
-    externalEtag: incoming.externalEtag ?? existing.externalEtag,
-    externalUpdatedAt: incoming.externalUpdatedAt ?? existing.externalUpdatedAt,
+    clearExternalCalendarId: externalCalendarId == null,
+    externalEtag: incoming.externalEtag,
+    externalUpdatedAt: incoming.externalUpdatedAt,
     lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
-    createdAt: existing.createdAt,
-    updatedAt: existing.updatedAt,
   );
 }

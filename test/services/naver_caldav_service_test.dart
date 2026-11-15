@@ -1325,6 +1325,7 @@ $eventXmlItems
       startAt: DateTime.utc(2026, 5, 8, 9),
       isCritical: true,
     );
+    repository.events.add(event);
 
     final result = await service.exportEvent(event);
 
