@@ -881,6 +881,84 @@ void main() {
     expect(byId['recurring-event']?['is_recurring'], isTrue);
   });
 
+  group('HomeWidget recurrence payload', () {
+    DateTime at(int year, int month, int day, [int hour = 0]) =>
+        planflowLocalDateTimeToUtc(DateTime(year, month, day, hour));
+
+    test('deleted weekly occurrence is absent from the payload', () {
+      final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+        now: at(2026, 11, 3),
+        events: [
+          EventModel(
+            id: 'weekly',
+            userId: 'user-1',
+            title: 'Weekly series',
+            startAt: at(2026, 10, 27, 9),
+            recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+            deletedOccurrenceDates: [at(2026, 11, 3)],
+          ),
+        ],
+      );
+
+      final dates = payload.rawEvents
+          .map((event) => DateTime.parse(event['start_at']! as String));
+      expect(dates, isNot(contains(at(2026, 11, 3, 9))));
+      expect(dates, contains(at(2026, 11, 10, 9)));
+    });
+
+    test('expired series leaves no out-of-range anchor in the payload', () {
+      final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+        now: at(2026, 11, 3),
+        events: [
+          EventModel(
+            id: 'expired',
+            userId: 'user-1',
+            title: 'Expired series',
+            startAt: at(2020, 1, 1, 9),
+            recurrenceRule: 'FREQ=DAILY;UNTIL=20200110',
+          ),
+        ],
+      );
+
+      expect(payload.rawEvents, isEmpty);
+    });
+
+    test('generated series rows retain strong alarm, team and category', () {
+      final anchor = EventModel(
+        id: 'series',
+        userId: 'user-1',
+        title: 'Team series',
+        startAt: at(2026, 11, 3, 9),
+        recurrenceRule: 'FREQ=WEEKLY',
+        useStrongAlarm: true,
+        groupEventId: 'team',
+        category: 'work',
+      );
+      final month = DateTime(2026, 11); // banned-ok: Fixed recurrence case.
+      final nextStart = at(2026, 11, 10, 9);
+      final occurrence = HomeWidgetSchedulePayloadBuilder
+              .expandRecurringEventsForWidget([anchor], month)
+          .singleWhere((event) => event.startAt!.isAtSameMomentAs(nextStart));
+      expect(occurrence.useStrongAlarm, anchor.useStrongAlarm);
+      expect(occurrence.groupEventId, anchor.groupEventId);
+      expect(occurrence.category, anchor.category);
+      expect(occurrence.recurrenceRule, isNull);
+      expect(occurrence.parentEventId, anchor.id);
+
+      final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+        now: at(2026, 11, 3),
+        events: [anchor],
+      );
+      final raw = payload.rawEvents.singleWhere(
+        (event) => event['start_at'] == nextStart.toIso8601String(),
+      );
+      expect(raw['use_strong_alarm'], isTrue);
+      expect(raw['is_team'], isTrue);
+      expect(raw['is_recurring'], isTrue);
+      expect(raw['parent_event_id'], anchor.id);
+    });
+  });
+
   group('HomeWidget monthly recurrence', () {
     DateTime firstGridCell(DateTime month) {
       final first = DateTime(month.year, month.month);
@@ -935,13 +1013,18 @@ void main() {
 
     test('W1 last Friday agrees with app dates', () {
       expectWidgetMatchesCore(
-        start: DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        start: DateTime(2026, 10, 30,
+            10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
         rule: 'FREQ=MONTHLY;BYDAY=-1FR',
-        now: DateTime(2026, 11, 15), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        now: DateTime(2026, 11,
+            15), // banned-ok: Fixed calendar regression fixture; independent of current clock.
         expected: [
-          DateTime(2026, 10, 30, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
-          DateTime(2026, 11, 27, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
-          DateTime(2026, 12, 25, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 10, 30,
+              10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 11, 27,
+              10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+          DateTime(2026, 12, 25,
+              10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
         ],
         expectedCurrentMonthDays: [27],
       );
@@ -949,10 +1032,15 @@ void main() {
 
     test('W5 day 31 skips short months and agrees with app dates', () {
       expectWidgetMatchesCore(
-        start: DateTime(2026, 1, 31, 10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        start: DateTime(2026, 1, 31,
+            10), // banned-ok: Fixed calendar regression fixture; independent of current clock.
         rule: 'FREQ=MONTHLY;BYMONTHDAY=31',
-        now: DateTime(2026, 6, 15), // banned-ok: Fixed calendar regression fixture; independent of current clock.
-        expected: [DateTime(2026, 5, 31, 10), DateTime(2026, 7, 31, 10)], // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        now: DateTime(2026, 6,
+            15), // banned-ok: Fixed calendar regression fixture; independent of current clock.
+        expected: [
+          DateTime(2026, 5, 31, 10),
+          DateTime(2026, 7, 31, 10)
+        ], // banned-ok: Fixed calendar regression fixture; independent of current clock.
         expectedCurrentMonthDays: [],
       );
     });

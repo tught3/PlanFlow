@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/env.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
@@ -492,6 +493,155 @@ void main() {
       preferences.getString(BriefingSchedulerService.pendingModalKey),
       isNull,
     );
+  });
+
+  group('briefing recurrence', () {
+    DateTime at(int year, int month, int day, [int hour = 0]) =>
+        planflowLocalDateTimeToUtc(DateTime(year, month, day, hour));
+    final monday = at(2026, 11, 2, 9);
+    final previousMonday = at(2026, 10, 12, 9);
+
+    EventModel weekly(DateTime startAt, {List<DateTime>? deleted}) =>
+        EventModel(
+          id: 'weekly',
+          userId: 'user-1',
+          title: '주간 회의',
+          startAt: startAt,
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO',
+          deletedOccurrenceDates: deleted,
+        );
+
+    BriefingSchedulerService service(
+      List<EventModel> events, {
+      bool previousDay = false,
+      _FakeTtsService? tts,
+      DateTime? clock,
+    }) {
+      AppEnv.markSupabaseInitialized();
+      return BriefingSchedulerService(
+        alarmService: _FakeAlarmService(),
+        ttsService: tts ?? _FakeTtsService(),
+        notificationService: _FakeNotificationService(),
+        eventRepository: _FakeEventRepository(events: events),
+        settingsRepository: _FakeSettingsRepository(
+          settings: UserSettingsModel.defaults(userId: 'user-1'),
+        ),
+        now: () =>
+            clock ??
+            DateTime(2026, 11, previousDay ? 1 : 2,
+                7), // banned-ok: Fixed injected clock.
+      );
+    }
+
+    Future<BriefingExecutionResult> execute(BriefingSchedulerService scheduler,
+            {bool isMorning = true}) =>
+        scheduler.executeBriefing(
+          isMorning: isMorning,
+          userId: 'user-1',
+          isManualTrigger: true,
+        );
+
+    test('morning includes the current occurrence at the scheduled time',
+        () async {
+      final result = await execute(service([weekly(previousMonday)]));
+      expect(
+        result.events.map((event) => event.startAt?.microsecondsSinceEpoch),
+        [monday.microsecondsSinceEpoch],
+      );
+    });
+
+    test('briefing dates follow the configured region at local midnight',
+        () async {
+      final utcClock = at(2026, 11, 2).toUtc();
+      // Midnight on November 2 in Seoul is still November 1 in UTC.
+      expect(utcClock.day, 1);
+      final scheduler = service([
+        for (final entry in {
+          'previous': at(2026, 11, 1, 9),
+          'today': at(2026, 11, 2, 9),
+          'tomorrow': at(2026, 11, 3, 9),
+        }.entries)
+          EventModel(
+            id: entry.key,
+            userId: 'user-1',
+            title: entry.key,
+            startAt: entry.value,
+          ),
+      ], clock: utcClock);
+
+      final morning = await execute(scheduler);
+      final evening = await execute(scheduler, isMorning: false);
+
+      expect([
+        morning.events.map((event) => event.id),
+        evening.events.map((event) => event.id),
+      ], [
+        ['today'],
+        ['tomorrow'],
+      ]);
+    });
+
+    test('morning excludes a deleted occurrence from an older series',
+        () async {
+      final result = await execute(service([
+        weekly(previousMonday, deleted: [monday])
+      ]));
+      expect(result.events, isEmpty);
+    });
+
+    test('morning excludes a deleted occurrence on the anchor day', () async {
+      final result = await execute(service([
+        weekly(monday, deleted: [monday])
+      ]));
+      expect(result.events, isEmpty);
+    });
+
+    test('evening preloads and announces tomorrow’s occurrence', () async {
+      final events = [weekly(previousMonday)];
+      final cacheTts = _FakeTtsService();
+      final liveTts = _FakeTtsService();
+      final scheduler = service(events, previousDay: true, tts: cacheTts);
+      final live = await execute(
+          service([weekly(previousMonday)], previousDay: true, tts: liveTts),
+          isMorning: false);
+      expect(
+        live.events.map((event) => event.startAt?.microsecondsSinceEpoch),
+        [monday.microsecondsSinceEpoch],
+      );
+      await scheduler.preloadBriefing(isMorning: false, userId: 'user-1');
+      events.clear();
+      final cached = await execute(scheduler, isMorning: false);
+      expect(
+        cached.events.map((event) => event.startAt?.microsecondsSinceEpoch),
+        [monday.microsecondsSinceEpoch],
+      );
+      expect(cached.message, contains('캐시'));
+      expect(cacheTts.lastText, liveTts.lastText);
+    });
+
+    test(
+        'morning includes an ongoing multi-day event with the earlier date stated',
+        () async {
+      final tts = _FakeTtsService();
+      final result = await execute(service([
+        EventModel(
+          id: 'ongoing',
+          userId: 'user-1',
+          title: '출장',
+          startAt: at(2026, 11, 1, 20),
+          endAt: at(2026, 11, 3, 7),
+        ),
+        EventModel(
+          id: 'ended',
+          userId: 'user-1',
+          title: '종료 일정',
+          startAt: at(2026, 11, 1, 20),
+          endAt: at(2026, 11, 2),
+        ),
+      ], tts: tts));
+      expect(result.events.map((event) => event.id), ['ongoing']);
+      expect(tts.lastText, contains('11월 1일 오후 8시'));
+    });
   });
 
   test('local briefing does not mention movement when events have no location',
