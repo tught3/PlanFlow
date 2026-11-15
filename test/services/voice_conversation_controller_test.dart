@@ -25,6 +25,197 @@ DateTime _nextWeekdayOnOrAfter(DateTime from, int weekday) {
 }
 
 void main() {
+  group('pending destructive voice actions', () {
+    VoiceConversationController makeController({required bool convert}) {
+      final today = DateTime(_fixtureYear, 5, 7, 8);
+      final controller = VoiceConversationController(
+        now: () => today,
+        events: [
+          if (convert)
+            _event('a', '팀 회의', DateTime(_fixtureYear, 5, 7, 9))
+                .copyWith(source: 'group')
+          else
+            _event('a', '진료', DateTime(_fixtureYear, 5, 7, 9)),
+          _event('b', '방문', DateTime(_fixtureYear, 5, 7, 15)),
+          _event('yesterday', '공유 회의', DateTime(_fixtureYear, 5, 6, 11)),
+          _event('tomorrow', '네이버 회의', DateTime(_fixtureYear, 5, 8, 11)),
+        ],
+      );
+      expect(controller.handle('오늘 일정 보여줘').action,
+          VoiceConversationAction.showEvents);
+      final pending = controller.handle(convert
+          ? '첫번째 일정 개인 일정으로 바꿔줘'
+          : '첫번째 일정 삭제해줘');
+      expect(pending.action, convert
+          ? VoiceConversationAction.confirmConvertToPersonal
+          : VoiceConversationAction.confirmDelete);
+      expect(pending.targetEvent?.id, 'a');
+      return controller;
+    }
+
+    for (final reply in [
+      '응', '어', '네', '예', '그래', '맞아', '좋아', '확인', '오케이',
+      '응, 그래!', '네 맞아요', '삭제해', '삭제해줘', '지워', '지워줘',
+      '없애줘', '응 지워줘', '응 삭제해줘',
+    ]) {
+      test('"$reply" confirms only the pending delete target', () {
+        final controller = makeController(convert: false);
+        final result = controller.handle(reply);
+        expect(result.action, VoiceConversationAction.deleteConfirmed);
+        expect(result.targetEvent?.id, 'a');
+        expect(controller.pendingDelete, isNull);
+      });
+    }
+
+    for (final reply in [
+      '삭제 취소해줘', '안 지워도 돼', '안지워도돼', '지우지 마',
+      '삭제하지 말아줘', '아니', '아냐', '됐어', '그만', '말고', '보류',
+      '놔둬', '냅둬', '괜찮아', '안삭제', '안해',
+    ]) {
+      test('"$reply" cancels the pending delete', () {
+        final controller = makeController(convert: false);
+        final result = controller.handle(reply);
+        expect(result.action, VoiceConversationAction.deleteCanceled);
+        expect(result.deleteConfirmed, isFalse);
+        expect(controller.pendingDelete, isNull);
+      });
+    }
+
+    for (final reply in [
+      '두 번째 일정 삭제해줘', '2번 일정 삭제해줘', '방문 일정 삭제해줘',
+      '내일 일정 삭제해줘',
+    ]) {
+      test('"$reply" asks again for the new delete target', () {
+        final controller = makeController(convert: false);
+        final result = controller.handle(reply);
+        final newTarget = reply.startsWith('내일') ? 'tomorrow' : 'b';
+        expect(result.action, VoiceConversationAction.confirmDelete);
+        expect(result.deleteConfirmed, isFalse);
+        expect(result.requiresDeleteConfirmation, isTrue);
+        expect(result.targetEvent?.id, newTarget);
+        expect(controller.pendingDelete?.event.id, newTarget);
+      });
+    }
+
+    test('a repeated request prefix requires a separate affirmative reply', () {
+      final controller = makeController(convert: false);
+      const request = '첫번째 일정 삭제해줘';
+      final withoutSeparator = controller.handle('$request' '어');
+      expect(withoutSeparator.deleteConfirmed, isFalse);
+      expect(controller.pendingDelete?.event.id, 'a');
+
+      controller.handle(request);
+      final separated = controller.handle('$request, 응 삭제해줘');
+      expect(separated.action, VoiceConversationAction.deleteConfirmed);
+      expect(separated.targetEvent?.id, 'a');
+    });
+
+    test('a query replaces a pending delete', () {
+      final controller = makeController(convert: false);
+      final result = controller.handle('내일 일정 보여줘');
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.map((event) => event.id), ['tomorrow']);
+      expect(controller.pendingDelete, isNull);
+    });
+
+    test('an explicit creation command replaces a pending delete', () {
+      final controller = makeController(convert: false);
+      final result = controller.handle('병원 예약');
+      expect(result.action, VoiceConversationAction.createEvent);
+      expect(result.deleteConfirmed, isFalse);
+      expect(controller.pendingDelete, isNull);
+    });
+
+    test('an ambiguous reply preserves a pending delete', () {
+      final controller = makeController(convert: false);
+      final result = controller.handle('음 글쎄');
+      expect(result.action, VoiceConversationAction.none);
+      expect(result.deleteConfirmed, isFalse);
+      expect(result.assistantMessage, contains('응'));
+      expect(result.assistantMessage, contains('아니'));
+      expect(controller.pendingDelete?.event.id, 'a');
+    });
+
+    for (final reply in [
+      '응', '네', '좋아', '어', '옮겨줘', '바꿔줘', '개인 일정으로 해줘',
+    ]) {
+      test('"$reply" confirms only the pending conversion target', () {
+        final controller = makeController(convert: true);
+        final result = controller.handle(reply);
+        expect(result.action, VoiceConversationAction.convertToPersonalConfirmed);
+        expect(result.targetEvent?.id, 'a');
+        expect(controller.pendingConvert, isNull);
+      });
+    }
+
+    for (final reply in ['싫어', '아니', '하지 마', '취소', '안옮겨']) {
+      test('"$reply" cancels the pending conversion', () {
+        final controller = makeController(convert: true);
+        final result = controller.handle(reply);
+        expect(result.action, VoiceConversationAction.none);
+        expect(result.assistantMessage, '개인 일정으로 옮기지 않을게요.');
+        expect(controller.pendingConvert, isNull);
+      });
+    }
+
+    for (final reply in ['어제 일정 보여줘', '네이버 일정 보여줘']) {
+      test('"$reply" is a query during pending conversion', () {
+        final controller = makeController(convert: true);
+        final result = controller.handle(reply);
+        expect(result.action, VoiceConversationAction.showEvents);
+        expect(result.visibleEvents.map((event) => event.id),
+            [reply.startsWith('어제') ? 'yesterday' : 'tomorrow']);
+        expect(controller.pendingConvert, isNull);
+      });
+    }
+
+    test('yesterday uses the PlanFlow date when UTC is still in the prior year',
+        () {
+      final priorYear = _fixtureYear - 1;
+      final yesterday = DateTime(priorYear, 12, 31);
+      final today = DateTime(_fixtureYear, 1, 1);
+      final controller = VoiceConversationController(
+        // UTC still shows December 31 while Seoul is at 00:15 on January 1.
+        now: () => DateTime.utc(priorYear, 12, 31, 15, 15),
+        events: [
+          _event('earlier', '이전 일정', DateTime(priorYear, 12, 30, 11)),
+          _event('yesterday', '어제 일정', DateTime(priorYear, 12, 31, 11)),
+          _event('group', '팀 회의', DateTime(_fixtureYear, 1, 1, 9))
+              .copyWith(source: 'group'),
+        ],
+      );
+      controller.handle('오늘 일정 보여줘');
+      final pending = controller.handle('첫번째 일정 개인 일정으로 바꿔줘');
+      expect(pending.action, VoiceConversationAction.confirmConvertToPersonal);
+      expect(controller.pendingConvert?.id, 'group');
+
+      final result = controller.handle('어제 일정 보여줘');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.queryRange?.start, yesterday);
+      expect(result.queryRange?.end, today);
+      expect(result.visibleEvents.map((event) => event.id), ['yesterday']);
+      expect(controller.pendingConvert, isNull);
+    });
+
+    test('a new conversion target is confirmed separately', () {
+      final controller = makeController(convert: true);
+      final result = controller.handle('두 번째 일정 개인 일정으로 옮겨줘');
+      expect(result.action, VoiceConversationAction.confirmConvertToPersonal);
+      expect(result.targetEvent?.id, 'b');
+      expect(controller.pendingConvert?.id, 'b');
+    });
+
+    test('an ambiguous reply preserves a pending conversion', () {
+      final controller = makeController(convert: true);
+      final result = controller.handle('어쩌지 그냥 해줘');
+      expect(result.action, VoiceConversationAction.none);
+      expect(result.assistantMessage, contains('응'));
+      expect(result.assistantMessage, contains('아니'));
+      expect(controller.pendingConvert?.id, 'a');
+    });
+  });
+
   group('음성 수정 대상 매칭', () {
     test('STT로 이름 일부가 빠져도 단일 제목 토큰 일치 수정은 기존 일정을 연다', () {
       final controller = VoiceConversationController(

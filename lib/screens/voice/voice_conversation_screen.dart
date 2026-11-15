@@ -17,6 +17,7 @@ import '../../core/event_edit_route_payload.dart';
 import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
+import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/models/group_event_model.dart';
@@ -243,6 +244,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   // "이 id가 그룹 일정인가"를 판정하는 데 쓴다.
   Map<String, GroupEventModel> _groupEventById = <String, GroupEventModel>{};
   final Set<String> _deletedEventIds = <String>{};
+  final Set<String> _deletingEventIds = <String>{};
   bool _isLoading = true;
   bool _isSubmitting = false;
   bool _isListening = false;
@@ -741,7 +743,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       return;
     }
     final rawText = (overrideText ?? _inputController.text).trim();
-    final text = _normalizeSubmitTextForPendingDelete(rawText);
+    final text = _conversation.normalizePendingDeleteReply(rawText);
     if (text.isEmpty || _isSubmitting) {
       debugPrint(
         'VoiceConversationScreen submit ignored: '
@@ -827,7 +829,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         );
       }
       _conversation.replaceEvents(_events);
-      final result = _conversation.handle(text);
+      final hadPendingConfirmation =
+          _conversation.pendingDelete != null ||
+          _conversation.pendingConvert != null;
+      final result = _conversation.handle(rawText);
       if (_guideMode &&
           result.action != VoiceConversationAction.showEvents &&
           result.action != VoiceConversationAction.none) {
@@ -891,7 +896,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       // 기본 _messageForResult(result)을 그대로 쓰고, null 이 아니면 그
       // 문자열을 그대로 쓴다(특히 '저장됨' 표현을 말하지 않아야 하는 폴백
       // 경로에서 사용한다).
-      String? messageOverride;
+      String? messageOverride =
+          hadPendingConfirmation && result.action == VoiceConversationAction.none
+              ? result.assistantMessage
+              : null;
       // 폴백 시 메시지 카드에 실어 보낼 일정 목록. null 이면 result 의
       // visibleEvents 를 그대로 쓴다. 자동 저장 실패 시 원본이 아니라
       // 제안된 드래프트(새 날짜)를 실어서, 편집 버튼으로 다시 열 때 요청한
@@ -1023,11 +1031,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           _ConversationMessage.assistant(
             messageOverride ?? _messageForResult(result),
             events: eventsOverride ?? result.visibleEvents,
-            pendingDeleteEvent:
-                result.requiresDeleteConfirmation ? result.targetEvent : null,
-            deleteOccurrenceDate: result.requiresDeleteConfirmation
-                ? result.pendingDelete?.occurrenceDate
-                : null,
+            pendingDelete:
+                result.requiresDeleteConfirmation ? result.pendingDelete : null,
           ),
         );
       });
@@ -1167,7 +1172,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       }
       _conversationWatchdogTimer?.cancel();
       final finalText = SttService.normalizeVoiceTranscript(result.text ?? '');
-      final submitText = _normalizeSubmitTextForPendingDelete(finalText);
+      final submitText = _conversation.normalizePendingDeleteReply(finalText);
       debugPrint(
         'VoiceConversationScreen STT final: '
         'success=${result.isSuccess} hasText=${result.hasText} text=$submitText',
@@ -1211,7 +1216,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         _inputTurnGeneration += 1;
         _setConversationInputText('');
         await _submitText(
-          submitText,
+          finalText,
           fromVoiceFinal: true,
           inputGenerationAlreadyInvalidated: true,
         );
@@ -2300,9 +2305,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<bool> _deleteEvent(EventModel event) async {
-    if (_guideMode) return false;
+    if (_guideMode || !_deletingEventIds.add(event.id)) return false;
     try {
-      await _repository.deleteEvent(event.id, userId: authProvider.userId);
+      final userId = authProvider.userId;
+      await _repository.deleteEvent(event.id, userId: userId);
+      await _cleanupDeletedEvent(event.id, userId);
       _deletedEventIds.add(event.id);
       _setConversationInputText('');
       _restartListenTimer?.cancel();
@@ -2341,6 +2348,43 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         );
       });
       return false;
+    } finally {
+      _deletingEventIds.remove(event.id);
+    }
+  }
+
+  Future<void> _cleanupDeletedEvent(String eventId, String? userId) async {
+    UserSettingsModel? settings;
+    if (userId != null && userId.isNotEmpty) {
+      try {
+        final repository = widget.settingsRepository ??
+            (AppEnv.isSupabaseReady ? SettingsRepository.supabase() : null);
+        settings = await repository?.fetchSettings(userId);
+      } catch (error) {
+        debugPrint(
+          'VoiceConversationScreen delete settings failed: ${error.runtimeType}',
+        );
+      }
+    }
+    try {
+      if (settings == null) {
+        await _sideEffectService.cleanupAfterDelete(eventId, userId: userId);
+      } else {
+        await _sideEffectService.cleanupAfterDelete(
+          eventId,
+          userId: userId,
+          prepTimeMin: settings.prepTimeMin,
+          prepPreAlarmOffset: settings.prepPreAlarmOffset,
+          departPreAlarmOffset: settings.departPreAlarmOffset,
+          departureSafetyMargin:
+              Duration(minutes: settings.departureSafetyMarginMin),
+          travelMode: settings.travelMode,
+        );
+      }
+    } catch (error) {
+      debugPrint(
+        'VoiceConversationScreen delete cleanup failed: ${error.runtimeType}',
+      );
     }
   }
 
@@ -2352,7 +2396,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     EventModel event,
     DateTime occurrenceDate,
   ) async {
-    if (_guideMode) return false;
+    if (_guideMode || !_deletingEventIds.add(event.id)) return false;
     try {
       final anchor = await _repository.fetchEvent(
         event.id,
@@ -2429,22 +2473,32 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         );
       });
       return false;
+    } finally {
+      _deletingEventIds.remove(event.id);
     }
   }
 
-  Future<void> _confirmPendingDelete(EventModel event) async {
-    _conversation.handle('응 삭제해');
-    await _deleteEvent(event);
+  Future<void> _confirmPendingDelete(
+    VoiceConversationDeleteAction pending,
+  ) async {
+    if (identical(_conversation.pendingDelete, pending) &&
+        await _deleteEvent(pending.event)) {
+      _conversation.dismissDeleteConfirmation(pending);
+    }
   }
 
   /// "이 회차만 삭제" 버튼: 반복 일정에서 지정된 회차 하나만 삭제하고
   /// assistant 메시지로 결과를 알린다.
   Future<void> _confirmPendingDeleteOccurrence(
-    EventModel event,
+    VoiceConversationDeleteAction pending,
     DateTime occurrenceDate,
   ) async {
-    final deleted = await _deleteEventOccurrence(event, occurrenceDate);
-    if (!deleted || !mounted) return;
+    if (!identical(_conversation.pendingDelete, pending) ||
+        !await _deleteEventOccurrence(pending.event, occurrenceDate)) {
+      return;
+    }
+    _conversation.dismissDeleteConfirmation(pending);
+    if (!mounted) return;
     setState(() {
       _messages.add(
         _ConversationMessage.assistant(
@@ -2526,69 +2580,6 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     });
     _scrollToBottom();
   }
-
-  String _normalizeSubmitTextForPendingDelete(String text) {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty || _conversation.pendingDelete == null) {
-      return trimmed;
-    }
-    final pendingRequest = _conversation.pendingDelete!.requestText;
-    final withoutPendingRequest =
-        _removeCompactPrefix(trimmed, pendingRequest).trim();
-    if (withoutPendingRequest.isNotEmpty &&
-        _isDeleteConfirmationPhrase(withoutPendingRequest)) {
-      return withoutPendingRequest;
-    }
-    if (_isDeleteConfirmationPhrase(trimmed)) {
-      return trimmed;
-    }
-    return trimmed;
-  }
-
-  String _removeCompactPrefix(String text, String prefix) {
-    final compactPrefix = _compact(prefix);
-    if (compactPrefix.isEmpty) {
-      return text;
-    }
-    final compact = StringBuffer();
-    final sourceIndexes = <int>[];
-    for (var index = 0; index < text.length; index += 1) {
-      final char = text[index];
-      if (char.trim().isEmpty) {
-        continue;
-      }
-      compact.write(char);
-      sourceIndexes.add(index);
-    }
-    final compactText = compact.toString();
-    if (!compactText.startsWith(compactPrefix) ||
-        sourceIndexes.length < compactPrefix.length) {
-      return text;
-    }
-    final endIndex = sourceIndexes[compactPrefix.length - 1] + 1;
-    return text.substring(endIndex);
-  }
-
-  bool _isDeleteConfirmationPhrase(String text) {
-    final normalized = _compact(text);
-    if (normalized.contains('아니') ||
-        normalized.contains('취소') ||
-        normalized.contains('하지마')) {
-      return false;
-    }
-    final hasDelete = normalized.contains('삭제') ||
-        normalized.contains('지워') ||
-        normalized.contains('없애');
-    final hasConfirm = normalized.contains('응') ||
-        normalized.contains('그래') ||
-        normalized.contains('확인') ||
-        normalized.contains('해줘') ||
-        normalized.contains('삭제해') ||
-        normalized.contains('지워');
-    return hasDelete && hasConfirm;
-  }
-
-  String _compact(String text) => text.replaceAll(RegExp(r'\s+'), '');
 
   Future<void> _handleConversationBack() async {
     if (_isExitingConversation) {
@@ -2900,29 +2891,26 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                       itemBuilder: (context, index) {
                         if (index < _messages.length) {
                           final message = _messages[index];
+                          final pending = message.pendingDelete;
+                          final activePending = pending != null &&
+                                  identical(_conversation.pendingDelete, pending) &&
+                                  !_deletedEventIds.contains(pending.event.id)
+                              ? pending
+                              : null;
+                          final occurrenceDate = activePending?.occurrenceDate;
                           final bubble = _MessageBubble(
                             message: message,
                             deletedEventIds: _deletedEventIds,
                             onEventTap: _showEventActionSheet,
-                            onConfirmDelete:
-                                message.pendingDeleteEvent == null ||
-                                        _deletedEventIds.contains(
-                                          message.pendingDeleteEvent!.id,
-                                        )
-                                    ? null
-                                    : () => _confirmPendingDelete(
-                                          message.pendingDeleteEvent!,
-                                        ),
+                            onConfirmDelete: activePending == null
+                                ? null
+                                : () => _confirmPendingDelete(activePending),
                             onDeleteOccurrence:
-                                message.pendingDeleteEvent == null ||
-                                        message.deleteOccurrenceDate == null ||
-                                        _deletedEventIds.contains(
-                                          message.pendingDeleteEvent!.id,
-                                        )
+                                activePending == null || occurrenceDate == null
                                     ? null
                                     : () => _confirmPendingDeleteOccurrence(
-                                          message.pendingDeleteEvent!,
-                                          message.deleteOccurrenceDate!,
+                                          activePending,
+                                          occurrenceDate,
                                         ),
                           );
                           if (_guideMode &&
@@ -3095,8 +3083,7 @@ class _ConversationMessage {
     required this.text,
     required this.isUser,
     this.events = const <EventModel>[],
-    this.pendingDeleteEvent,
-    this.deleteOccurrenceDate,
+    this.pendingDelete,
   });
 
   const _ConversationMessage.user(String text)
@@ -3105,24 +3092,18 @@ class _ConversationMessage {
   const _ConversationMessage.assistant(
     String text, {
     List<EventModel> events = const <EventModel>[],
-    EventModel? pendingDeleteEvent,
-    DateTime? deleteOccurrenceDate,
+    VoiceConversationDeleteAction? pendingDelete,
   }) : this._(
           text: text,
           isUser: false,
           events: events,
-          pendingDeleteEvent: pendingDeleteEvent,
-          deleteOccurrenceDate: deleteOccurrenceDate,
+          pendingDelete: pendingDelete,
         );
 
   final String text;
   final bool isUser;
   final List<EventModel> events;
-  final EventModel? pendingDeleteEvent;
-
-  /// pendingDelete가 반복 일정일 때 삭제 대상 회차의 local-day
-  /// (null이면 버튼이 "전체 삭제" 하나로 폴백).
-  final DateTime? deleteOccurrenceDate;
+  final VoiceConversationDeleteAction? pendingDelete;
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -3152,6 +3133,7 @@ class _MessageBubble extends StatelessWidget {
     final bubbleColor =
         message.isUser ? PlanFlowColors.primary : PlanFlowColors.surface;
     final textColor = message.isUser ? Colors.white : PlanFlowColors.primary;
+    final pendingDelete = message.pendingDelete;
     return Column(
       crossAxisAlignment: alignment,
       children: [
@@ -3193,13 +3175,13 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
         ],
-        if (message.pendingDeleteEvent != null && onConfirmDelete != null) ...[
+        if (pendingDelete != null && onConfirmDelete != null) ...[
           const SizedBox(height: 8),
           // 반복 일정 + 회차가 확정된 경우에만 "이 회차만 삭제"를 노출한다.
           // 반복 일정이지만 회차 추론 실패(deleteOccurrenceDate == null)면
           // 기존처럼 단일 버튼(전체 삭제)으로 폴백한다.
-          if (_isRecurringEvent(message.pendingDeleteEvent!) &&
-              message.deleteOccurrenceDate != null &&
+          if (_isRecurringEvent(pendingDelete.event) &&
+              pendingDelete.occurrenceDate != null &&
               onDeleteOccurrence != null)
             FilledButton.icon(
               style: FilledButton.styleFrom(
@@ -3216,7 +3198,7 @@ class _MessageBubble extends StatelessWidget {
             onPressed: onConfirmDelete,
             icon: const Icon(Icons.delete_sweep_outlined),
             label: Text(
-              _isRecurringEvent(message.pendingDeleteEvent!)
+              _isRecurringEvent(pendingDelete.event)
                   ? '전체 삭제'
                   : '삭제 확인',
             ),
