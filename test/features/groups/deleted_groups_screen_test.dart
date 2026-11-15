@@ -193,7 +193,6 @@ class _FakeGroupBackupRepository extends GroupBackupRepository {
   final List<String> restoreGroupFromBackupCalls = <String>[];
   final List<String> listMyBackupsCalls = <String>[];
 
-  @override
   Future<GroupBackupModel> createArchiveBackup(
     String groupId,
     Map<String, dynamic> snapshot,
@@ -206,7 +205,6 @@ class _FakeGroupBackupRepository extends GroupBackupRepository {
     return <GroupBackupModel>[];
   }
 
-  @override
   Future<GroupBackupModel> markBackupRestored(String backupId) {
     throw UnimplementedError();
   }

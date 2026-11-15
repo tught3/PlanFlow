@@ -64,6 +64,76 @@ alter table public.users
 create unique index if not exists users_invite_code_uidx
   on public.users (invite_code);
 
+create unique index if not exists users_invite_code_lower_uidx
+  on public.users (lower(invite_code));
+
+-- Auth owns the canonical email. This lookup can only answer for the caller.
+create or replace function public.matches_current_auth_email(profile_email text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from auth.users
+     where id = auth.uid()
+       and email is not distinct from profile_email
+  );
+$$;
+
+revoke execute on function public.matches_current_auth_email(text) from public, anon;
+grant execute on function public.matches_current_auth_email(text) to authenticated;
+
+create or replace function public.protect_users_identity_columns()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  -- The signup and profile-sync RPCs run with their owner as current_user.
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+
+  if current_user = 'anon' or new.id is distinct from auth.uid() then
+    raise exception 'A profile must belong to the authenticated user.'
+      using errcode = '42501';
+  end if;
+
+  if tg_op = 'INSERT' then
+    if not public.matches_current_auth_email(new.email) then
+      raise exception 'Profile email must match the authenticated account.'
+        using errcode = '42501';
+    end if;
+    new.invite_code := lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10));
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+    or new.invite_code is distinct from old.invite_code
+    or (
+      new.email is distinct from old.email
+      and not public.matches_current_auth_email(new.email)
+    )
+  then
+    raise exception 'Profile identity fields cannot be changed directly.'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function public.protect_users_identity_columns()
+  from public, anon, authenticated;
+
+drop trigger if exists users_protect_identity_columns on public.users;
+create trigger users_protect_identity_columns
+  before insert or update on public.users
+  for each row execute function public.protect_users_identity_columns();
+
 create or replace function public.ensure_current_user_profile()
 returns public.users
 language plpgsql
@@ -267,6 +337,9 @@ create table if not exists public.group_members (
   constraint group_members_group_user_unique unique (group_id, user_id)
 );
 
+alter table public.group_members
+  add column if not exists requires_explicit_reinvite boolean not null default false;
+
 create index if not exists groups_parent_group_id_idx
   on public.groups (parent_group_id);
 
@@ -345,6 +418,34 @@ drop trigger if exists group_members_set_updated_at on public.group_members;
 create trigger group_members_set_updated_at
   before update on public.group_members
   for each row execute function public.set_updated_at();
+
+create or replace function public.protect_member_reinvite_requirement()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  -- Explicit reactivation starts a new membership period.
+  if new.status <> 'removed' then
+    new.requires_explicit_reinvite := false;
+  elsif tg_op = 'UPDATE' then
+    if old.status = 'removed' then
+      -- Account deletion can clear removed_by via ON DELETE SET NULL.
+      -- Preserve only known removals; old actor-less rows keep their policy.
+      new.requires_explicit_reinvite := old.requires_explicit_reinvite
+        or coalesce(old.removed_by <> old.user_id, false);
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.protect_member_reinvite_requirement() from public;
+
+drop trigger if exists group_members_protect_reinvite_requirement on public.group_members;
+create trigger group_members_protect_reinvite_requirement
+  before insert or update on public.group_members
+  for each row execute function public.protect_member_reinvite_requirement();
 
 drop trigger if exists groups_handle_new_group on public.groups;
 create trigger groups_handle_new_group
@@ -450,7 +551,13 @@ create table if not exists public.group_invites (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint group_invites_target_check
-    check (num_nonnulls(invited_user_id, invited_email, invited_invite_code) = 1)
+    check (
+      num_nonnulls(invited_user_id, invited_email, invited_invite_code) = 1
+      or (
+        num_nonnulls(invited_user_id, invited_email, invited_invite_code) = 0
+        and status <> 'pending'
+      )
+    )
 );
 
 create index if not exists group_invites_group_id_idx
@@ -498,7 +605,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1
@@ -511,8 +618,7 @@ as $$
         )
         or (
           invited_email_input is not null
-          and email is not null
-          and lower(invited_email_input) = lower(email)
+          and lower(invited_email_input) = lower(auth.jwt() ->> 'email')
         )
         or (
           invited_invite_code_input is not null
@@ -532,11 +638,17 @@ create or replace function public.prevent_group_invite_immutable_changes()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
+  if tg_op = 'INSERT' then
+    if num_nonnulls(new.invited_user_id, new.invited_email, new.invited_invite_code) <> 1 then
+      raise exception 'group_invites requires one target';
+    end if;
+    return new;
+  end if;
+
   if new.group_id is distinct from old.group_id
-    or new.invited_user_id is distinct from old.invited_user_id
     or new.invited_email is distinct from old.invited_email
     or new.invited_invite_code is distinct from old.invited_invite_code
     or new.invited_by is distinct from old.invited_by
@@ -546,13 +658,37 @@ begin
     raise exception 'group_invites immutable fields cannot change';
   end if;
 
+  if new.invited_user_id is distinct from old.invited_user_id then
+    -- Only the foreign key can detach an invite from a deleted recipient.
+    if new.invited_user_id is not null
+      or pg_trigger_depth() <= 1
+      or exists (select 1 from public.users where id = old.invited_user_id)
+    then
+      raise exception 'group_invites target cannot change';
+    end if;
+
+    if old.status = 'pending' then
+      new.status := 'expired';
+      new.expired_at := now();
+    else
+      new.status := old.status;
+    end if;
+  elsif num_nonnulls(old.invited_user_id, old.invited_email, old.invited_invite_code) = 0
+    and new.status is distinct from old.status
+  then
+    raise exception 'detached group_invites cannot change status';
+  end if;
+
   return new;
 end;
 $$;
 
+revoke execute on function public.prevent_group_invite_immutable_changes()
+  from public, anon, authenticated;
+
 drop trigger if exists group_invites_prevent_immutable_changes on public.group_invites;
 create trigger group_invites_prevent_immutable_changes
-  before update on public.group_invites
+  before insert or update on public.group_invites
   for each row execute function public.prevent_group_invite_immutable_changes();
 
 create or replace function public.accept_group_invite(invite_id_input uuid)
@@ -703,7 +839,7 @@ create or replace function public.accept_group_invite_link(
 returns public.group_invites
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   group_row public.groups%rowtype;
@@ -724,7 +860,8 @@ begin
     from public.groups
    where id = group_id_input
      and invite_token = lower(trim(invite_token_input))
-     and status = 'active';
+     and status = 'active'
+   for update;
 
   if not found then
     raise exception '초대 링크가 유효하지 않습니다.';
@@ -738,6 +875,22 @@ begin
        and status = 'active'
   ) then
     raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  -- A recorded kick requires an explicit invitation even if its actor was
+  -- deleted. Legacy rows with no marker still use the original actor check.
+  if exists (
+    select 1
+      from public.group_members
+     where group_id = group_row.id
+       and user_id = auth.uid()
+       and status = 'removed'
+       and (
+         requires_explicit_reinvite
+         or (removed_by is not null and removed_by <> auth.uid())
+       )
+  ) then
+    raise exception '리더의 초대가 필요합니다.';
   end if;
 
   select *
@@ -1003,7 +1156,7 @@ create or replace function public.remove_group_member(
 returns public.group_members
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   current_user_id uuid := auth.uid();
@@ -1070,9 +1223,15 @@ begin
      set status = 'removed',
          removed_at = now(),
          removed_by = current_user_id,
+         requires_explicit_reinvite = true,
          updated_at = now()
    where id = target_member.id
    returning * into updated_member;
+
+  -- Rotate the link while holding the same group lock used for joining.
+  update public.groups
+     set invite_token = default
+   where id = group_row.id;
 
   return updated_member;
 end;
@@ -1420,11 +1579,18 @@ create or replace function public.prevent_group_event_immutable_changes()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
   if new.group_id is distinct from old.group_id
-    or new.created_by is distinct from old.created_by
+    or (
+      new.created_by is distinct from old.created_by
+      and not (
+        new.created_by is null
+        and pg_trigger_depth() > 1
+        and not exists (select 1 from public.users where id = old.created_by)
+      )
+    )
     or new.created_at is distinct from old.created_at
   then
     raise exception 'group_events immutable fields cannot change';
@@ -2067,6 +2233,13 @@ create table if not exists public.group_backups (
   restored_by uuid references public.users (id) on delete set null
 );
 
+alter table public.group_backups
+  add column if not exists reinvite_required_user_ids uuid[] not null default '{}'::uuid[];
+
+-- Historical snapshot rows are preserved but never granted provenance retroactively.
+alter table public.group_backups
+  add column if not exists created_by_backup_rpc boolean not null default false;
+
 create index if not exists group_backups_group_id_idx
   on public.group_backups (group_id);
 
@@ -2139,14 +2312,30 @@ create or replace function public.prevent_group_backup_immutable_changes()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
-  if new.group_id is distinct from old.group_id
+  -- Permit only the foreign keys' detachments when their parent rows are deleted.
+  if (
+       new.group_id is distinct from old.group_id
+       and not (
+         new.group_id is null
+         and pg_trigger_depth() > 1
+         and not exists (select 1 from public.groups where id = old.group_id)
+       )
+     )
+    or (
+      new.created_by is distinct from old.created_by
+      and not (
+        new.created_by is null
+        and pg_trigger_depth() > 1
+        and not exists (select 1 from public.users where id = old.created_by)
+      )
+    )
     or new.backup_type is distinct from old.backup_type
     or new.snapshot is distinct from old.snapshot
-    or new.created_by is distinct from old.created_by
     or new.created_at is distinct from old.created_at
+    or new.created_by_backup_rpc is distinct from old.created_by_backup_rpc
   then
     raise exception 'group_backups immutable fields cannot change';
   end if;
@@ -2155,16 +2344,51 @@ begin
 end;
 $$;
 
+revoke execute on function public.prevent_group_backup_immutable_changes()
+  from public, anon, authenticated;
+
 drop trigger if exists group_backups_prevent_immutable_changes on public.group_backups;
 create trigger group_backups_prevent_immutable_changes
   before update on public.group_backups
   for each row execute function public.prevent_group_backup_immutable_changes();
 
+create or replace function public.capture_backup_reinvite_requirements()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.reinvite_required_user_ids := old.reinvite_required_user_ids;
+    return new;
+  end if;
+
+  -- Archive and delete create the backup while the live group still exists.
+  -- Keep this metadata separate from historical client-written snapshot JSON.
+  new.reinvite_required_user_ids := array(
+    select member.user_id
+      from public.group_members as member
+     where member.group_id = new.group_id
+       and member.status = 'removed'
+       and (member.requires_explicit_reinvite or member.removed_by <> member.user_id)
+     order by member.user_id
+  );
+  return new;
+end;
+$$;
+
+revoke execute on function public.capture_backup_reinvite_requirements() from public;
+
+drop trigger if exists group_backups_capture_reinvite_requirements on public.group_backups;
+create trigger group_backups_capture_reinvite_requirements
+  before insert or update of reinvite_required_user_ids on public.group_backups
+  for each row execute function public.capture_backup_reinvite_requirements();
+
 create or replace function public.archive_group_with_backup(group_id_input uuid)
 returns public.group_backups
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   current_user_id uuid := auth.uid();
@@ -2305,14 +2529,16 @@ begin
     backup_type,
     snapshot,
     created_by,
-    created_at
+    created_at,
+    created_by_backup_rpc
   )
   values (
     group_row.id,
     'archive',
     snapshot_payload,
     current_user_id,
-    now()
+    now(),
+    true
   )
   returning * into backup_row;
 
@@ -2332,6 +2558,7 @@ begin
 end;
 $$;
 
+revoke execute on function public.archive_group_with_backup(uuid) from public, anon;
 grant execute on function public.archive_group_with_backup(uuid) to authenticated;
 
 -- 그룹을 'delete' 타입으로 즉시 백업한 뒤 원본을 삭제한다.
@@ -2340,7 +2567,7 @@ create or replace function public.delete_group_with_backup(group_id_input uuid)
 returns public.group_backups
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   current_user_id uuid := auth.uid();
@@ -2477,14 +2704,16 @@ begin
     backup_type,
     snapshot,
     created_by,
-    created_at
+    created_at,
+    created_by_backup_rpc
   )
   values (
     group_row.id,
     'delete',
     snapshot_payload,
     current_user_id,
-    now()
+    now(),
+    true
   )
   returning * into backup_row;
 
@@ -2494,6 +2723,7 @@ begin
 end;
 $$;
 
+revoke execute on function public.delete_group_with_backup(uuid) from public, anon;
 grant execute on function public.delete_group_with_backup(uuid) to authenticated;
 
 -- 백업으로부터 그룹을 복원한다. 트랜잭션 단위로 새 group_id를 생성해
@@ -2502,17 +2732,21 @@ create or replace function public.restore_group_from_backup(backup_id_input uuid
 returns public.group_backups
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   current_user_id uuid := auth.uid();
   backup_row public.group_backups%rowtype;
   snapshot_payload jsonb;
   group_record jsonb;
+  snapshot_members jsonb;
+  snapshot_creator_id uuid;
+  restored_owner_id uuid;
+  restored_member_id uuid;
+  event_author_id uuid;
   new_group_id uuid;
   member_record jsonb;
   event_record jsonb;
-  report_record jsonb;
   event_old_to_new jsonb := '{}'::jsonb;
   comment_record jsonb;
   delegation_record jsonb;
@@ -2541,8 +2775,12 @@ begin
     raise exception '이미 복원된 백업입니다.';
   end if;
 
-  if backup_row.created_by <> current_user_id then
+  if backup_row.created_by is distinct from current_user_id then
     raise exception '본인 백업만 복원할 수 있습니다.';
+  end if;
+
+  if not backup_row.created_by_backup_rpc then
+    raise exception '출처를 확인할 수 없는 백업은 복원할 수 없습니다.';
   end if;
 
   snapshot_payload := backup_row.snapshot;
@@ -2550,6 +2788,26 @@ begin
   group_record := snapshot_payload->'group';
   if group_record is null then
     raise exception '스냅샷에 그룹 정보가 없습니다.';
+  end if;
+
+  snapshot_members := coalesce(
+    snapshot_payload->'all_members',
+    snapshot_payload->'active_members',
+    '[]'::jsonb
+  );
+  snapshot_creator_id := nullif(group_record->>'created_by', '')::uuid;
+  restored_owner_id := current_user_id;
+  -- An active co-leader can create a normal backup. Preserve the creator
+  -- only when that user still exists and was recorded as an active leader.
+  if exists (
+    select 1
+      from jsonb_array_elements(snapshot_members) as member(value)
+      join public.users u on u.id = snapshot_creator_id
+     where nullif(member.value->>'user_id', '')::uuid = u.id
+       and member.value->>'role' = 'leader'
+       and coalesce(member.value->>'status', 'active') = 'active'
+  ) then
+    restored_owner_id := snapshot_creator_id;
   end if;
 
   insert into public.groups (
@@ -2566,7 +2824,7 @@ begin
     gen_random_uuid(),
     group_record->>'name',
     group_record->>'description',
-    (group_record->>'created_by')::uuid,
+    restored_owner_id,
     'active',
     null,
     coalesce((group_record->>'created_at')::timestamptz, now()),
@@ -2575,10 +2833,19 @@ begin
   returning id into new_group_id;
 
   for member_record in
-    select jsonb_array_elements(
-      coalesce(snapshot_payload->'all_members', snapshot_payload->'active_members')
-    )
+    select jsonb_array_elements(snapshot_members)
   loop
+    if coalesce(member_record->>'role', '') not in ('leader', 'member') then
+      continue;
+    end if;
+
+    select u.id into restored_member_id
+      from public.users u
+     where u.id = nullif(member_record->>'user_id', '')::uuid;
+    if not found then
+      continue;
+    end if;
+
     insert into public.group_members (
       group_id,
       user_id,
@@ -2588,28 +2855,44 @@ begin
       joined_at,
       removed_at,
       removed_by,
+      requires_explicit_reinvite,
       created_at,
       updated_at
     )
     values (
       new_group_id,
-      (member_record->>'user_id')::uuid,
+      restored_member_id,
       member_record->>'role',
       member_record->>'display_name',
       coalesce(member_record->>'status', 'active'),
       coalesce((member_record->>'joined_at')::timestamptz, now()),
       (member_record->>'removed_at')::timestamptz,
-      nullif(member_record->>'removed_by', '')::uuid,
+      (select u.id from public.users u
+        where u.id = nullif(member_record->>'removed_by', '')::uuid),
+      restored_member_id = any(backup_row.reinvite_required_user_ids),
       coalesce((member_record->>'created_at')::timestamptz, now()),
       coalesce((member_record->>'updated_at')::timestamptz, now())
     )
     on conflict do nothing;
   end loop;
 
+  insert into public.group_members (group_id, user_id, role, status)
+  values (new_group_id, current_user_id, 'leader', 'active')
+  on conflict (group_id, user_id) do update
+     set role = 'leader',
+         status = 'active',
+         removed_at = null,
+         removed_by = null,
+         updated_at = now()
+   where group_members.role <> 'leader' or group_members.status <> 'active';
+
   for event_record in
     select jsonb_array_elements(snapshot_payload->'events')
   loop
     old_event_id := event_record->>'id';
+    select u.id into event_author_id
+      from public.users u
+     where u.id = nullif(event_record->>'created_by', '')::uuid;
     insert into public.group_events (
       id,
       group_id,
@@ -2649,11 +2932,18 @@ begin
       event_record->>'recurrence_rule',
       coalesce(event_record->>'recurrence_type', 'none'),
       (event_record->>'recurrence_until')::timestamptz,
-      (event_record->>'created_by')::uuid,
-      (event_record->>'updated_by')::uuid,
+      event_author_id,
+      (select u.id from public.users u
+        where u.id = nullif(event_record->>'updated_by', '')::uuid),
       (event_record->>'cancelled_at')::timestamptz,
-      (event_record->>'cancelled_by')::uuid,
-      nullif(event_record->>'personal_event_id', '')::uuid,
+      (select u.id from public.users u
+        where u.id = nullif(event_record->>'cancelled_by', '')::uuid),
+      (select e.id
+         from public.events e
+         join public.group_members m
+           on m.group_id = new_group_id and m.user_id = e.user_id
+        where e.id = nullif(event_record->>'personal_event_id', '')::uuid
+          and e.user_id = event_author_id),
       coalesce(event_record->>'status', 'active'),
       coalesce((event_record->>'created_at')::timestamptz, now()),
       coalesce((event_record->>'updated_at')::timestamptz, now())
@@ -2673,7 +2963,13 @@ begin
     if (event_old_to_new ? (link_record->>'group_event_id')) then
       update public.events
          set group_event_id = (event_old_to_new->>(link_record->>'group_event_id'))::uuid
-       where id = (link_record->>'event_id')::uuid;
+       where id = (link_record->>'event_id')::uuid
+         and (group_event_id is null
+              or group_event_id = (link_record->>'group_event_id')::uuid)
+         and exists (
+           select 1 from public.group_members m
+            where m.group_id = new_group_id and m.user_id = events.user_id
+         );
     end if;
   end loop;
 
@@ -2696,7 +2992,11 @@ begin
   for comment_record in
     select jsonb_array_elements(snapshot_payload->'event_reports')
   loop
-    if (event_old_to_new ? (comment_record->>'group_event_id')) then
+    if (event_old_to_new ? (comment_record->>'group_event_id'))
+       and exists (
+         select 1 from public.users u
+          where u.id = nullif(comment_record->>'reporter_id', '')::uuid
+       ) then
       insert into public.group_event_reports (
         id,
         reporter_id,
@@ -2716,7 +3016,8 @@ begin
         comment_record->>'reason',
         comment_record->>'detail',
         coalesce(comment_record->>'status', 'new'),
-        nullif(comment_record->>'content_owner_id', '')::uuid,
+        (select u.id from public.users u
+          where u.id = nullif(comment_record->>'content_owner_id', '')::uuid),
         coalesce((comment_record->>'created_at')::timestamptz, now())
       )
       on conflict do nothing;
@@ -2726,7 +3027,11 @@ begin
   for comment_record in
     select jsonb_array_elements(snapshot_payload->'event_comments')
   loop
-    if (event_old_to_new ? (comment_record->>'group_event_id')) then
+    if (event_old_to_new ? (comment_record->>'group_event_id'))
+       and exists (
+         select 1 from public.users u
+          where u.id = nullif(comment_record->>'target_user_id', '')::uuid
+       ) then
       insert into public.group_event_comments (
         id,
         group_event_id,
@@ -2742,7 +3047,8 @@ begin
         gen_random_uuid(),
         (event_old_to_new->>(comment_record->>'group_event_id'))::uuid,
         new_group_id,
-        (comment_record->>'author_user_id')::uuid,
+        (select u.id from public.users u
+          where u.id = nullif(comment_record->>'author_user_id', '')::uuid),
         (comment_record->>'target_user_id')::uuid,
         comment_record->>'content',
         (comment_record->>'confirmed_at')::timestamptz,
@@ -2756,6 +3062,13 @@ begin
   for delegation_record in
     select jsonb_array_elements(snapshot_payload->'role_delegations')
   loop
+    if not exists (
+      select 1 from public.users u
+       where u.id = nullif(delegation_record->>'delegate_user_id', '')::uuid
+    ) then
+      continue;
+    end if;
+
     insert into public.group_role_delegations (
       id,
       group_id,
@@ -2773,14 +3086,16 @@ begin
     values (
       gen_random_uuid(),
       new_group_id,
-      (delegation_record->>'delegator_user_id')::uuid,
+      (select u.id from public.users u
+        where u.id = nullif(delegation_record->>'delegator_user_id', '')::uuid),
       (delegation_record->>'delegate_user_id')::uuid,
       coalesce(delegation_record->'permissions', '[]'::jsonb),
       (delegation_record->>'starts_at')::timestamptz,
       (delegation_record->>'ends_at')::timestamptz,
       coalesce(delegation_record->>'status', 'active'),
       (delegation_record->>'cancelled_at')::timestamptz,
-      (delegation_record->>'cancelled_by')::uuid,
+      (select u.id from public.users u
+        where u.id = nullif(delegation_record->>'cancelled_by', '')::uuid),
       coalesce((delegation_record->>'created_at')::timestamptz, now()),
       coalesce((delegation_record->>'updated_at')::timestamptz, now())
     )
@@ -2791,7 +3106,24 @@ begin
     select jsonb_array_elements(snapshot_payload->'invites')
   loop
     insert_status := invite_record->>'status';
-    if insert_status is null or insert_status not in ('pending', 'accepted') then
+    if insert_status is null or insert_status not in ('pending', 'accepted')
+       -- Detached invite history stays in the snapshot and cannot reactivate.
+       or num_nonnulls(
+         nullif(invite_record->>'invited_user_id', ''),
+         invite_record->>'invited_email',
+         invite_record->>'invited_invite_code'
+       ) <> 1
+       or not exists (
+         select 1 from public.users u
+          where u.id = nullif(invite_record->>'invited_by', '')::uuid
+       )
+       or (
+         nullif(invite_record->>'invited_user_id', '') is not null
+         and not exists (
+           select 1 from public.users u
+            where u.id = (invite_record->>'invited_user_id')::uuid
+         )
+       ) then
       continue;
     end if;
 
@@ -2815,7 +3147,7 @@ begin
     values (
       gen_random_uuid(),
       new_group_id,
-      (invite_record->>'invited_user_id')::uuid,
+      nullif(invite_record->>'invited_user_id', '')::uuid,
       invite_record->>'invited_email',
       invite_record->>'invited_invite_code',
       (invite_record->>'invited_by')::uuid,
@@ -2825,7 +3157,8 @@ begin
       (invite_record->>'rejected_at')::timestamptz,
       (invite_record->>'cancelled_at')::timestamptz,
       (invite_record->>'expired_at')::timestamptz,
-      (invite_record->>'acted_by')::uuid,
+      (select u.id from public.users u
+        where u.id = nullif(invite_record->>'acted_by', '')::uuid),
       coalesce((invite_record->>'created_at')::timestamptz, now()),
       coalesce((invite_record->>'updated_at')::timestamptz, now())
     )
@@ -2845,6 +3178,7 @@ exception
 end;
 $$;
 
+revoke execute on function public.restore_group_from_backup(uuid) from public, anon;
 grant execute on function public.restore_group_from_backup(uuid) to authenticated;
 
 -- ====================================================================
@@ -2854,7 +3188,7 @@ grant execute on function public.restore_group_from_backup(uuid) to authenticate
 -- 호출 시점의 요청 JWT가 service_role인지 확인하는 게이트를 둔다.
 --
 -- 책임:
---   1) 그룹 리더로 있는 active 그룹이 있으면 차단 (사용자에게 먼저 정리하도록 안내)
+--   1) 소유한 그룹이 하나라도 있으면 차단 (사용자에게 먼저 정리하도록 안내)
 --   2) 사용자 개인 데이터 일괄 삭제 (단일 트랜잭션, 중간 실패 시 전체 ROLLBACK)
 --   3) auth.admin.deleteUser는 이 함수 밖(Edge Function)에서 호출한다.
 --      (이유: auth.users 테이블 직접 조작은 Supabase 권장 패턴이 아님)
@@ -2863,16 +3197,15 @@ create or replace function public.delete_user_account(target_user_id uuid)
 returns table(success boolean, blocked_reason text, leader_groups jsonb)
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   leader_group_rows jsonb;
-  user_email text;
 begin
   -- service_role 게이트: 이 함수는 service_role JWT로만 호출 가능.
   -- 일반 authenticated 사용자의 JWT로 호출하면 current_setting('role')가
   -- 'authenticated'이므로 여기서 차단된다.
-  if current_setting('role', true) <> 'service_role' then
+  if current_setting('role', true) is distinct from 'service_role' then
     raise exception '이 작업은 서비스 권한이 필요합니다.';
   end if;
 
@@ -2880,13 +3213,12 @@ begin
     raise exception '대상 사용자 ID가 필요합니다.';
   end if;
 
-  -- 1) 그룹 리더 차단: active 그룹의 리더이면 사용자에게 먼저 위임/삭제 유도.
+  -- 1) groups.created_by는 상태와 관계없이 사용자 삭제를 제한한다.
   select coalesce(
     (
-      select jsonb_agg(jsonb_build_object('id', id, 'name', name))
+      select jsonb_agg(jsonb_build_object('id', id, 'name', name, 'status', status))
       from public.groups
       where created_by = target_user_id
-        and status = 'active'
     ),
     '[]'::jsonb
   ) into leader_group_rows;
@@ -2896,41 +3228,32 @@ begin
     return;
   end if;
 
-  -- 2) 사용자 email 조회 (early_bird_emails는 email 기반이라 필요)
-  select email into user_email
-    from public.users
-   where id = target_user_id;
-
-  -- 3) 개인 데이터 일괄 삭제. CASCADE FK가 잡혀있지만 명시적으로 순서대로 삭제해
+  -- 2) 개인 데이터 일괄 삭제. CASCADE FK가 잡혀있지만 명시적으로 순서대로 삭제해
   --    audit log를 명확히 한다. events 삭제 시 pre_actions/reminders는 CASCADE로 같이 삭제됨.
-  -- 3-1) 그룹 멤버십 제거 (사용자가 속한 그룹에서 모두 leave 처리).
-  --      리더 차단으로 인해 본인이 리더인 active 그룹은 없으므로 안전.
+  -- 2-1) 그룹 멤버십 제거 (사용자가 속한 그룹에서 모두 leave 처리).
+  --      소유 그룹은 위에서 이미 확인했다.
   delete from public.group_members where user_id = target_user_id;
 
-  -- 3-2) 사용자가 만든 백업(archive/delete) 제거.
-  delete from public.group_backups where created_by = target_user_id;
+  -- Keep group backups intact. The user FK only clears their owner reference.
 
-  -- 3-3) 그룹 댓글·위임·초대 중 사용자가 만든 것 정리 (FK CASCADE가 안 걸려있을 수 있어 명시).
-  --      group_event_comments.author_user_id, group_role_delegations.from_user_id 등.
+  -- 2-2) 그룹 댓글·위임·초대 중 사용자가 만든 것 정리 (FK CASCADE가 안 걸려있을 수 있어 명시).
   delete from public.group_event_comments where author_user_id = target_user_id;
   delete from public.group_role_delegations
-    where delegated_by = target_user_id or delegated_to = target_user_id;
+    where delegator_user_id = target_user_id or delegate_user_id = target_user_id;
   delete from public.group_invites where invited_by = target_user_id;
 
-  -- 3-4) 사용자 개인 일정 관련 데이터 (events CASCADE → pre_actions/reminders 자동 삭제).
+  -- 2-3) 사용자 개인 일정 관련 데이터 (events CASCADE → pre_actions/reminders 자동 삭제).
   delete from public.location_history where user_id = target_user_id;
   delete from public.voice_logs where user_id = target_user_id;
-  delete from public.user_backups where user_id = target_user_id;
+  -- Personal backup payloads are retained; the FK clears their owner reference.
   delete from public.feedback_reports where user_id = target_user_id;
   delete from public.user_settings where user_id = target_user_id;
   delete from public.events where user_id = target_user_id;
 
-  -- 3-5) early_bird_emails (schema: planflow, email 기반).
-  if user_email is not null then
-    delete from planflow.early_bird_emails where email = user_email;
-  end if;
+  -- The public early-bird signup stores only an email address. Its rows
+  -- are not tied to an account, so account deletion leaves them untouched.
 
-  -- 3-6) 마지막으로 users 테이블에서 사용자 행 삭제.
+  -- 3) 마지막으로 users 테이블에서 사용자 행 삭제.
   --      (auth.users는 Edge Function에서 auth.admin.deleteUser로 삭제.)
   delete from public.users where id = target_user_id;
 
@@ -2945,7 +3268,7 @@ $$;
 -- service_role만 호출 가능. 일반 authenticated 키로는 접근 차단.
 -- (Supabase에서 service_role은 authenticated의 상위 집합이지만,
 --  함수 본문 current_setting('role') 게이트가 이중 방어 역할.)
-revoke execute on function public.delete_user_account(uuid) from public, authenticated;
+revoke execute on function public.delete_user_account(uuid) from public, anon, authenticated;
 grant execute on function public.delete_user_account(uuid) to service_role;
 
 -- 감사 보존을 위해 복원된 백업은 영구 삭제 불가. 본인이 만든 미복원 백업만 삭제 허용.
@@ -2953,7 +3276,7 @@ create or replace function public.permanently_delete_backup(backup_id_input uuid
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   current_user_id uuid := auth.uid();
@@ -2977,7 +3300,7 @@ begin
     raise exception '이미 복원된 백업은 감사 보존을 위해 삭제할 수 없습니다.';
   end if;
 
-  if backup_row.created_by <> current_user_id then
+  if backup_row.created_by is distinct from current_user_id then
     raise exception '본인 백업만 삭제할 수 있습니다.';
   end if;
 
@@ -2985,6 +3308,7 @@ begin
 end;
 $$;
 
+revoke execute on function public.permanently_delete_backup(uuid) from public, anon;
 grant execute on function public.permanently_delete_backup(uuid) to authenticated;
 
 alter table public.group_backups enable row level security;
@@ -3010,7 +3334,10 @@ create policy "group_deletion_notices_ack_recipient"
   using (recipient_user_id = auth.uid() and acknowledged_at is null)
   with check (recipient_user_id = auth.uid() and acknowledged_at is not null);
 
-grant select, insert, update, delete on table public.group_backups to authenticated;
+revoke insert, update, delete on table public.group_backups from authenticated;
+revoke insert, update, delete on table public.group_backups from public, anon;
+revoke truncate, references, trigger on table public.group_backups from public, anon, authenticated;
+grant select on table public.group_backups to authenticated;
 
 -- SELECT: 본인이 만든 백업만 (그룹이 삭제돼도 백업 열람 가능)
 drop policy if exists "group_backups_select_leader" on public.group_backups;
@@ -3020,30 +3347,10 @@ create policy "group_backups_select_owner"
   for select
   using (created_by = auth.uid());
 
--- INSERT: 리더 ACL + created_by 본인
 drop policy if exists "group_backups_insert_leader" on public.group_backups;
-create policy "group_backups_insert_leader"
-  on public.group_backups
-  for insert
-  with check (
-    created_by = auth.uid()
-    and public.is_group_leader(group_id, auth.uid())
-  );
-
--- UPDATE: 본인만 (restored_at/restored_by 업데이트 용)
 drop policy if exists "group_backups_update_restore_leader" on public.group_backups;
-create policy "group_backups_update_owner"
-  on public.group_backups
-  for update
-  using (created_by = auth.uid())
-  with check (created_by = auth.uid());
-
--- DELETE: 본인 + 미복원 백업만 (permanently_delete_backup RPC도 동일 룰)
+drop policy if exists "group_backups_update_owner" on public.group_backups;
 drop policy if exists "group_backups_delete_owner" on public.group_backups;
-create policy "group_backups_delete_owner"
-  on public.group_backups
-  for delete
-  using (created_by = auth.uid() and restored_at is null);
 
 -- 7. pre_actions
 create table if not exists public.pre_actions (
@@ -3380,7 +3687,7 @@ create index if not exists planflow_early_bird_emails_created_idx
 -- 10. user_backups
 create table if not exists public.user_backups (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users (id) on delete cascade,
+  user_id uuid references public.users (id) on delete set null,
   label text,
   payload jsonb not null default '{}'::jsonb,
   item_counts jsonb not null default '{}'::jsonb,
@@ -3629,16 +3936,14 @@ create policy "users_select_group_members"
 create policy "users_insert_own"
   on public.users
   for insert
+  to authenticated
   with check (auth.uid() = id);
 create policy "users_update_own"
   on public.users
   for update
   using (auth.uid() = id)
   with check (auth.uid() = id);
-create policy "users_delete_own"
-  on public.users
-  for delete
-  using (auth.uid() = id);
+revoke delete, truncate on table public.users from public, anon, authenticated;
 
 drop policy if exists "events_select_own" on public.events;
 drop policy if exists "events_insert_own" on public.events;
