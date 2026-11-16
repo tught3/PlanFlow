@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/app_http.dart';
 import '../core/env.dart';
 import '../core/event_metadata.dart';
+import '../core/korean_clock_time.dart';
 import '../core/local_time.dart';
 import '../core/region_settings.dart';
 import '../data/models/voice_correction_rule.dart';
@@ -990,9 +991,19 @@ class GptService {
       now: now,
     );
     if (localRange != null) {
-      if (localRange.isAllDay &&
-          !localRange.isMultiDay &&
-          !_hasExplicitTimeCue(normalized)) {
+      if (localRange.isMultiDay) return localRange.startAt;
+
+      final time = _extractTimeFromText(normalized);
+      if (time != null) {
+        return DateTime(
+          localRange.startAt.year,
+          localRange.startAt.month,
+          localRange.startAt.day + (time.isEndOfDay ? 1 : 0),
+          time.hour,
+          time.minute,
+        );
+      }
+      if (localRange.isAllDay && !_hasExplicitTimeCue(normalized)) {
         return DateTime(
           localRange.startAt.year,
           localRange.startAt.month,
@@ -1019,11 +1030,11 @@ class GptService {
     }
 
     final baseDate = date ?? DateTime(now.year, now.month, now.day);
-    final clock = time ?? const _ClockTime(hour: 9, minute: 0);
+    final clock = time ?? const KoreanClockTime(hour: 9, minute: 0);
     var candidate = DateTime(
       baseDate.year,
       baseDate.month,
-      baseDate.day,
+      baseDate.day + (clock.isEndOfDay ? 1 : 0),
       clock.hour,
       clock.minute,
     );
@@ -1229,51 +1240,10 @@ $_scheduleSystemPrompt
   // 스스로 적용하지 않는다(applyUnmarkedPmDefault: false). 실제 오후 기본
   // 해석 보정은 P6(_applyAmbiguousMeridiemHourCorrection)이 별도로,
   // GPT 응답 이후 단계에서 수행한다.
-  _ClockTime? _extractAmbiguousMeridiemClock(String rawText) {
-    final text = _normalizeKoreanText(rawText);
-    final numericMatch = RegExp(
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?|\s*(반))?',
-    ).firstMatch(text);
-    if (numericMatch != null) {
-      if (numericMatch.group(1) != null) {
-        return null;
-      }
-      final hasHalf = numericMatch.group(4) != null;
-      return _clockTimeFromParts(
-        period: null,
-        hour: int.tryParse(numericMatch.group(2) ?? ''),
-        minute: hasHalf
-            ? 30
-            : numericMatch.group(3) == null
-                ? 0
-                : int.tryParse(numericMatch.group(3)!),
-        applyUnmarkedPmDefault: false,
-      );
-    }
-
-    final koreanMatch = RegExp(
-      // 분 표현은 반드시 "N분"처럼 리터럴 "분"이 뒤따라야만 group3으로
-      // 캡처된다("분?"이 아니라 "분" 필수). "반"만 있고 "분"이 없는 경우
-      // (예: "여덟시 반에") group3 alt는 실패해야 "반" alt(group4)로
-      // 정상 폴백하며, 뒤에 붙는 조사("에" 등)를 group3이 그리디하게
-      // 삼켜버리는 것을 방지한다(P5 회귀 원인).
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?([가-힣]{1,8})\s*시(?:\s*([가-힣]{1,8}|\d{1,2})\s*분|\s*(반))?',
-    ).firstMatch(text);
-    if (koreanMatch == null || koreanMatch.group(1) != null) {
-      return null;
-    }
-    final minuteText = koreanMatch.group(3);
-    final hasHalf = koreanMatch.group(4) != null || minuteText == '반';
-    return _clockTimeFromParts(
-      period: null,
-      hour: _parseKoreanNumber(koreanMatch.group(2)),
-      minute: hasHalf
-          ? 30
-          : minuteText == null
-              ? 0
-              : int.tryParse(minuteText) ?? _parseKoreanNumber(minuteText),
-      applyUnmarkedPmDefault: false,
-    );
+  KoreanClockTime? _extractAmbiguousMeridiemClock(String rawText) {
+    final parts = koreanClockTimeParts(_normalizeKoreanText(rawText)).firstOrNull;
+    if (parts == null || parts.period != null) return null;
+    return _clockTimeFromParts(parts, applyUnmarkedPmDefault: false);
   }
 
   bool _hasRecurringDateHint(String rawText) {
@@ -1775,161 +1745,21 @@ $_scheduleSystemPrompt
     return weekStart.add(const Duration(days: 14));
   }
 
-  _ClockTime? _extractTimeFromText(String text) {
-    final numericMatch = RegExp(
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?|\s*(반))?',
-    ).firstMatch(text);
-    if (numericMatch != null) {
-      final period = numericMatch.group(1);
-      final hourText = numericMatch.group(2);
-      final minuteText = numericMatch.group(3);
-      final hasHalf = numericMatch.group(4) != null;
-      return _clockTimeFromParts(
-        period: period,
-        hour: int.tryParse(hourText ?? ''),
-        minute:
-            hasHalf ? 30 : (minuteText == null ? 0 : int.tryParse(minuteText)),
-      );
-    }
-
-    final koreanMatch = RegExp(
-      // 분 표현은 반드시 "N분"처럼 리터럴 "분"이 뒤따라야만 group3으로
-      // 캡처된다("분?"이 아니라 "분" 필수). "반"만 있고 "분"이 없는 경우
-      // (예: "여덟시 반에") group3 alt는 실패해야 "반" alt(group4)로
-      // 정상 폴백하며, 뒤에 붙는 조사("에" 등)를 group3이 그리디하게
-      // 삼켜버리는 것을 방지한다(P5 회귀 원인).
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?([가-힣]{1,8})\s*시(?:\s*([가-힣]{1,8}|\d{1,2})\s*분|\s*(반))?',
-    ).firstMatch(text);
-    if (koreanMatch == null) {
-      return null;
-    }
-
-    final period = koreanMatch.group(1);
-    final hour = _parseKoreanNumber(koreanMatch.group(2));
-    final minuteText = koreanMatch.group(3);
-    final hasHalf = koreanMatch.group(4) != null || minuteText == '반';
-    final minute = hasHalf
-        ? 30
-        : minuteText == null
-            ? 0
-            : int.tryParse(minuteText) ?? _parseKoreanNumber(minuteText);
-    return _clockTimeFromParts(period: period, hour: hour, minute: minute);
+  KoreanClockTime? _extractTimeFromText(String text) {
+    final parts = koreanClockTimeParts(text).firstOrNull;
+    return parts == null ? null : _clockTimeFromParts(parts);
   }
 
-  _ClockTime? _clockTimeFromParts({
-    required String? period,
-    required int? hour,
-    required int? minute,
+  KoreanClockTime? _clockTimeFromParts(
+    KoreanClockTimeParts parts, {
     bool applyUnmarkedPmDefault = true,
   }) {
-    final normalizedMinute = minute ?? 0;
-    if (hour == null || normalizedMinute < 0 || normalizedMinute > 59) {
-      return null;
-    }
-    if (hour < 0 || hour > 23) {
-      return null;
-    }
-
-    if ((period == '오후' || period == '저녁' || period == '밤') && hour < 12) {
-      hour += 12;
-    } else if ((period == '오전' || period == '아침' || period == '새벽') &&
-        hour == 12) {
-      hour = 0;
-    } else if (period == null &&
-        applyUnmarkedPmDefault &&
-        hour >= 1 &&
-        hour <= 11) {
-      // 오전/오후 등 명시 표기가 없는 1~11시는 오후로 기본 해석한다.
-      // 일반적인 일정은 오전 6시~오후 11시 사이에 잡히므로, 오전은 사용자가
-      // 명시할 때만 적용한다(새벽 일정은 드물다). hour 12는 별도 분기(위)에서
-      // 다뤄지지 않으므로 이 조건에 포함되지 않고 그대로 정오로 유지되며,
-      // hour 0과 13~23은 이미 명확하므로 손대지 않는다.
-      hour += 12;
-    }
-
-    return _ClockTime(hour: hour, minute: normalizedMinute);
-  }
-
-  int? _parseKoreanNumber(String? rawText) {
-    if (rawText == null) {
-      return null;
-    }
-    final text = rawText
-        .replaceAll(RegExp(r'\s+'), '')
-        .replaceFirst(RegExp(r'분$'), '')
-        .trim();
-    if (text.isEmpty) {
-      return null;
-    }
-    final numeric = int.tryParse(text);
-    if (numeric != null) {
-      return numeric;
-    }
-
-    const nativeNumbers = <String, int>{
-      '영': 0,
-      '공': 0,
-      '한': 1,
-      '하나': 1,
-      '한시': 1,
-      '두': 2,
-      '둘': 2,
-      '세': 3,
-      '셋': 3,
-      '네': 4,
-      '넷': 4,
-      '다섯': 5,
-      '여섯': 6,
-      '일곱': 7,
-      '여덟': 8,
-      '아홉': 9,
-      '열': 10,
-      '열한': 11,
-      '열하나': 11,
-      '열두': 12,
-      '열둘': 12,
-      '스물': 20,
-      '스물한': 21,
-      '스물하나': 21,
-      '스물두': 22,
-      '스물둘': 22,
-      '스물세': 23,
-      '스물셋': 23,
-      '스물네': 24,
-      '스물넷': 24,
-      '반': 30,
-    };
-    final native = nativeNumbers[text];
-    if (native != null) {
-      return native;
-    }
-
-    const sinoDigits = <String, int>{
-      '일': 1,
-      '이': 2,
-      '삼': 3,
-      '사': 4,
-      '오': 5,
-      '육': 6,
-      '륙': 6,
-      '칠': 7,
-      '팔': 8,
-      '구': 9,
-    };
-    if (text == '십') {
-      return 10;
-    }
-    final tenMatch =
-        RegExp(r'^(?:(일|이|삼|사|오|육|륙|칠|팔|구)?십)?(일|이|삼|사|오|육|륙|칠|팔|구)?$')
-            .firstMatch(text);
-    if (tenMatch != null && tenMatch.group(0)!.isNotEmpty) {
-      final tens = tenMatch.group(1);
-      final ones = tenMatch.group(2);
-      var value = text.contains('십') ? (sinoDigits[tens] ?? 1) * 10 : 0;
-      value += sinoDigits[ones] ?? 0;
-      return value == 0 ? null : value;
-    }
-    return null;
+    return resolveKoreanClockTime(
+      period: parts.period,
+      hour: parts.hour,
+      minute: parts.minute,
+      unmarkedPmDefault: applyUnmarkedPmDefault,
+    );
   }
 
   String _normalizeKoreanText(String text) {
@@ -1938,16 +1768,6 @@ $_scheduleSystemPrompt
         .replaceAll(RegExp(r'이번\s*주'), '이번주')
         .replaceAll(RegExp(r'다음\s*주'), '다음주');
   }
-}
-
-class _ClockTime {
-  const _ClockTime({
-    required this.hour,
-    required this.minute,
-  });
-
-  final int hour;
-  final int minute;
 }
 
 const String _scheduleSystemPrompt = '''

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/event_edit_route_payload.dart';
 import '../../core/env.dart';
+import '../../core/korean_clock_time.dart';
 import '../../core/local_time.dart';
 import '../../core/recurrence_expansion.dart';
 import '../../core/theme.dart';
@@ -2188,8 +2189,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         : changeText;
     final originalStartLocal =
         event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
-    final dateCandidate = _inferLastDateCandidate(text, originalStartLocal);
     final timeCandidate = _inferLastTimeCandidate(text);
+    final rollsToNextDay = timeCandidate?.isEndOfDay ?? false;
+    final dateCandidate = _inferLastDateCandidate(
+      text,
+      rollsToNextDay && text.contains('오늘') ? planflowNow() : originalStartLocal,
+      dateOnly: rollsToNextDay,
+    );
     if (dateCandidate == null && timeCandidate == null) {
       return null;
     }
@@ -2200,9 +2206,17 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           originalStartLocal.month,
           originalStartLocal.day,
         );
-    final hour = timeCandidate?.hour ?? originalStartLocal.hour;
-    final minute = timeCandidate?.minute ?? originalStartLocal.minute;
-    return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+    final originalTime = _VoiceRequestedTime(
+      originalStartLocal.hour,
+      originalStartLocal.minute,
+    );
+    return DateTime(
+      baseDate.year,
+      baseDate.month,
+      baseDate.day + (rollsToNextDay ? 1 : 0),
+      timeCandidate?.hour ?? originalTime.hour,
+      timeCandidate?.minute ?? originalTime.minute,
+    );
   }
 
   /// STT 띄어쓰기 노이즈("그 다음 주", "다 다음 주")를 흡수하려고 공백을 제거한
@@ -2441,7 +2455,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       r'(\d{1,2}|[일이삼사오육칠팔구십]{1,2})\s*일\s*(?:간|동안|연속)',
     ).firstMatch(text);
     if (durationMatch != null) {
-      final totalDays = _koreanNumber(durationMatch.group(1));
+      final totalDays = parseKoreanClockNumber(durationMatch.group(1));
       if (totalDays != null && totalDays > 1) {
         return endLocalFromDayCount(totalDays);
       }
@@ -2470,7 +2484,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     return null;
   }
 
-  DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
+  DateTime? _inferLastDateCandidate(
+    String text,
+    DateTime referenceLocal, {
+    bool dateOnly = false,
+  }) {
     final allMatches = RegExp(
       r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|'
       r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|'
@@ -2500,92 +2518,23 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final match = dateMatches.last;
     final snippet = text.substring(
       match.start,
-      (match.end + 20).clamp(0, text.length),
+      // The caller separately applies the day offset for 밤/저녁 12시.
+      dateOnly ? match.end : (match.end + 20).clamp(0, text.length),
     );
     return GptService(now: () => referenceLocal).inferStartAtFromRawText(
       snippet,
     );
   }
 
-  _VoiceRequestedTime? _inferLastTimeCandidate(String text) {
-    final matches = RegExp(
-      r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*([0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*(반))?',
-    ).allMatches(text).toList(growable: false);
-    if (matches.isEmpty) {
-      return null;
-    }
-    final match = matches.last;
-    final hourValue = _koreanNumber(match.group(2));
-    if (hourValue == null) {
-      return null;
-    }
-    final period = match.group(1) ?? '';
-    var hour = hourValue;
-    if (RegExp(r'(오후|낮|점심|저녁|밤)').hasMatch(period) && hour < 12) {
-      hour += 12;
-    }
-    if (period == '새벽' && hour == 12) {
-      hour = 0;
-    }
-    if (period.isEmpty && hour >= 1 && hour <= 11) {
-      // 오전/오후 등 명시 표기가 없는 1~11시는 오후로 기본 해석한다(f3f2b3a1 정책).
-      // hour 12는 정오로 유지, hour 0과 13~23은 이미 명확하므로 손대지 않는다.
-      // 표기가 있으면 period가 비어 있지 않아 이 분기에 들어오지 않는다.
-      hour += 12;
-    }
-    final minute =
-        match.group(4) != null ? 30 : (_koreanNumber(match.group(3)) ?? 0);
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      return null;
-    }
-    return _VoiceRequestedTime(hour, minute);
-  }
-
-  int? _koreanNumber(String? raw) {
-    final text = raw?.trim();
-    if (text == null || text.isEmpty) {
-      return null;
-    }
-    final numeric = int.tryParse(text);
-    if (numeric != null) {
-      return numeric;
-    }
-    const numbers = <String, int>{
-      '영': 0,
-      '공': 0,
-      '한': 1,
-      '하나': 1,
-      '일': 1,
-      '두': 2,
-      '둘': 2,
-      '이': 2,
-      '세': 3,
-      '셋': 3,
-      '삼': 3,
-      '네': 4,
-      '넷': 4,
-      '사': 4,
-      '다섯': 5,
-      '오': 5,
-      '여섯': 6,
-      '육': 6,
-      '일곱': 7,
-      '칠': 7,
-      '여덟': 8,
-      '팔': 8,
-      '아홉': 9,
-      '구': 9,
-      '열': 10,
-      '십': 10,
-      '열한': 11,
-      '열하나': 11,
-      '십일': 11,
-      '열두': 12,
-      '열둘': 12,
-      '십이': 12,
-      '삼십': 30,
-    };
-    return numbers[text];
+  KoreanClockTime? _inferLastTimeCandidate(String text) {
+    final parts = koreanClockTimeParts(text).lastOrNull;
+    if (parts == null) return null;
+    return resolveKoreanClockTime(
+      period: parts.period,
+      hour: parts.hour,
+      minute: parts.minute,
+      unmarkedPmDefault: true,
+    );
   }
 
   String? _inferRequestedLocation() {

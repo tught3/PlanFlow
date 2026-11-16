@@ -42,7 +42,12 @@ class VoiceDateRangeParser {
       return explicitRange;
     }
 
-    final absolute = _parseAbsoluteDate(normalized, today.year);
+    final relativeDuration = _parseRelativeDayDuration(compact, today);
+    if (relativeDuration != null) {
+      return relativeDuration;
+    }
+
+    final absolute = _parseAbsoluteDate(normalized, today);
     if (absolute != null) {
       return _singleDay(absolute, '${absolute.month}월 ${absolute.day}일');
     }
@@ -67,6 +72,9 @@ class VoiceDateRangeParser {
     }
     if (compact.contains('오늘')) {
       return _singleDay(today, '오늘');
+    }
+    if (compact.contains('어제')) {
+      return _singleDay(DateTime(today.year, today.month, today.day - 1), '어제');
     }
 
     final weekday = _parseWeekdayDate(compact, today);
@@ -116,14 +124,17 @@ class VoiceDateRangeParser {
     return null;
   }
 
-  static DateTime? _parseAbsoluteDate(String normalized, int defaultYear) {
+  static DateTime? _parseAbsoluteDate(String normalized, DateTime today) {
     final match = RegExp(
       r'(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일',
     ).firstMatch(normalized);
     if (match == null) {
       return null;
     }
-    final year = int.tryParse(match.group(1) ?? '') ?? defaultYear;
+    final explicitYear = int.tryParse(match.group(1) ?? '');
+    final precedingText = normalized.substring(0, match.start);
+    final previousYear = precedingText.contains('작년');
+    final year = explicitYear ?? (previousYear ? today.year - 1 : today.year);
     final month = int.tryParse(match.group(2) ?? '');
     final day = int.tryParse(match.group(3) ?? '');
     if (month == null || day == null) {
@@ -133,7 +144,43 @@ class VoiceDateRangeParser {
     if (start.year != year || start.month != month || start.day != day) {
       return null;
     }
-    return start;
+    if (explicitYear != null ||
+        previousYear ||
+        precedingText.contains('지난') ||
+        !start.isBefore(today)) {
+      return start;
+    }
+    final nextYear = DateTime(year + 1, month, day);
+    return nextYear.month == month && nextYear.day == day ? nextYear : null;
+  }
+
+  static VoiceDateRangeParseResult? _parseRelativeDayDuration(
+    String compact,
+    DateTime today,
+  ) {
+    final match = RegExp(
+      r'(내일모레|내일모래|모레|글피|내일|오늘|어제)부터(\d+)일(?:동안|간)',
+    ).firstMatch(compact);
+    if (match == null) return null;
+    final days = int.tryParse(match.group(2)!);
+    if (days == null || days < 1 || days > 999) return null;
+
+    final relativeDay = match.group(1)!;
+    final offset = switch (relativeDay) {
+      '어제' => -1,
+      '내일' => 1,
+      '내일모레' || '내일모래' || '모레' => 2,
+      '글피' => 3,
+      _ => 0,
+    };
+    final start = DateTime(today.year, today.month, today.day + offset);
+    if (days == 1) return _singleDay(start, relativeDay);
+    return VoiceDateRangeParseResult(
+      start: start,
+      end: DateTime(start.year, start.month, start.day + days - 1),
+      label: '$relativeDay부터 $days일',
+      isMultiDay: true,
+    );
   }
 
   static VoiceDateRangeParseResult? _parseExplicitRange(

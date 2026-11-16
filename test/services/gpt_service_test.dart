@@ -1277,6 +1277,31 @@ void main() {
       );
     });
 
+    for (final (input, day, hour, minute) in [
+      ('밤 12시 회식', 8, 0, 0),
+      ('낮 2시', 7, 14, 0),
+      ('자정에', 8, 0, 0),
+      ('정오에', 7, 12, 0),
+      ('네 시 사십오 분', 7, 16, 45),
+      ('오후 다섯 시 오십 분', 7, 17, 50),
+    ]) {
+      test('public local inference resolves "$input"', () {
+        final now = DateTime(DateTime.now().year + 1, 5, 7, 8);
+        final service = GptService(now: () => now);
+        expect(service.inferStartAtFromRawText(input),
+            DateTime(now.year, now.month, day, hour, minute));
+      });
+    }
+
+    test('today at 12 tonight uses the next calendar day', () {
+      final now = DateTime(DateTime.now().year + 1, 5, 7, 20);
+      final service = GptService(now: () => now);
+      expect(service.inferStartAtFromRawText('오늘 밤 12시 회식'),
+          DateTime(now.year, now.month, 8));
+      expect(service.inferStartAtFromRawText('내일 저녁 12시 회식'),
+          DateTime(now.year, now.month, 9));
+    });
+
     test('public local inference handles natural Korean half-hour words', () {
       final now = DateTime(2026, 5, 7, 9, 30);
       final service = GptService(

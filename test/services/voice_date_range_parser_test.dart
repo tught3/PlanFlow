@@ -3,6 +3,65 @@ import 'package:planflow/services/voice_schedule_structure_service.dart';
 import 'package:planflow/services/voice_date_range_parser.dart';
 
 void main() {
+  group('relative and yearless date parsing', () {
+    final year = DateTime.now().year + 1;
+
+    test('어제 has yesterday and today as its half-open boundaries', () {
+      final result = VoiceDateRangeParser.parse(
+        '어제 일정 보여줘',
+        now: DateTime(year, 11, 12, 8),
+      );
+
+      expect(result?.start, DateTime(year, 11, 11));
+      expect(result?.end, DateTime(year, 11, 12));
+      expect(result?.isMultiDay, isFalse);
+    });
+
+    test('내일부터 3일 동안 treats 3 as a duration', () {
+      final result = VoiceDateRangeParser.parse(
+        '내일부터 3일 동안',
+        now: DateTime(year, 11, 12, 8),
+      );
+
+      expect(result?.start, DateTime(year, 11, 13));
+      expect(result?.end, DateTime(year, 11, 15));
+      expect(result?.isMultiDay, isTrue);
+    });
+
+    test('a past yearless date rolls into the next year', () {
+      final result = VoiceDateRangeParser.parse(
+        '1월 3일',
+        now: DateTime(year, 12, 28, 8),
+      );
+
+      expect(result?.start, DateTime(year + 1, 1, 3));
+      expect(result?.end, DateTime(year + 1, 1, 4));
+    });
+
+    test('past markers and explicit years do not roll forward', () {
+      final now = DateTime(year, 12, 28, 8);
+      expect(
+        VoiceDateRangeParser.parse('지난 1월 3일', now: now)?.start,
+        DateTime(year, 1, 3),
+      );
+      expect(
+        VoiceDateRangeParser.parse('작년 1월 3일', now: now)?.start,
+        DateTime(year - 1, 1, 3),
+      );
+      expect(
+        VoiceDateRangeParser.parse('$year년 1월 3일', now: now)?.start,
+        DateTime(year, 1, 3),
+      );
+    });
+
+    test('a day that does not exist this month remains unrecognized', () {
+      expect(
+        VoiceDateRangeParser.parse('31일', now: DateTime(year, 11, 12, 8)),
+        isNull,
+      );
+    });
+  });
+
   group('VoiceScheduleStructureService date parsing', () {
     test('day-only date resolves to current month', () {
       final service = VoiceScheduleStructureService();

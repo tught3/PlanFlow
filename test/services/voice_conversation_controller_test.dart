@@ -1,9 +1,19 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/event_edit_route_payload.dart';
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/screens/voice/voice_action_screen.dart';
+import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/voice_command_router.dart';
 import 'package:planflow/services/voice_conversation_controller.dart';
+import 'package:planflow/services/voice_text_cleanup_service.dart';
 
 // UI 테스트(voice_*_screen_test)와 동일한 규칙: 1월 1일이 목요일이고 윤년이
 // 아닌 미래 연도를 고른다. 과거 기준 연도와 같은 요일 배치(5/7 목, 5/22 금 등)를
@@ -86,7 +96,10 @@ void main() {
       });
     }
 
-    for (final reply in ['어', '어…', '어 음', '응?']) {
+    for (final reply in [
+      '어', '어…', '어 음', '응?', '네?', '그래?', '맞아?', '맞아요？',
+      '네 맞아요?', '삭제해줘?',
+    ]) {
       test('"$reply" asks again without confirming the pending delete', () {
         final controller = makeController(convert: false);
         final pending = controller.pendingDelete;
@@ -161,6 +174,7 @@ void main() {
 
     for (final reply in [
       '응', '네', '좋아', '어', '옮겨줘', '바꿔줘', '개인 일정으로 해줘',
+      '네?', '그래?', '맞아?',
     ]) {
       test('"$reply" confirms only the pending conversion target', () {
         final controller = makeController(convert: true);
@@ -202,10 +216,12 @@ void main() {
 
       expect(VoiceCommandRouter().route(query).intent, VoiceCommandRouteIntent.query);
       expect(result.inputText, query);
-      expect(result.queryRange?.start, ordinary.queryRange?.start);
-      expect(result.queryRange?.end, ordinary.queryRange?.end);
-      expect(result.action, ordinary.action);
-      expect(result.action, isNot(VoiceConversationAction.convertToPersonalConfirmed));
+      for (final response in [ordinary, result]) {
+        expect(response.action, VoiceConversationAction.showEvents);
+        expect(response.queryRange?.start, DateTime(_fixtureYear, 5, 6));
+        expect(response.queryRange?.end, DateTime(_fixtureYear, 5, 7));
+        expect(response.visibleEvents.map((event) => event.id), ['yesterday']);
+      }
       expect(result.visibleEvents.map((event) => event.id),
           ordinary.visibleEvents.map((event) => event.id));
       expect(controller.pendingConvert, isNull);
@@ -227,6 +243,115 @@ void main() {
       expect(result.assistantMessage, contains('아니'));
       expect(controller.pendingConvert?.id, 'a');
     });
+  });
+
+  group('local schedule time edits', () {
+    for (final (input, originalHour, dayOffset, hour, minute) in [
+      ('밤 12시', 14, 1, 0, 0),
+      ('낮 2시', 9, 0, 14, 0),
+      ('3시', 14, 0, 15, 0),
+      ('10시', 9, 0, 10, 0),
+      ('10시', 15, 0, 22, 0),
+      ('자정에', 14, 0, 0, 0),
+      ('정오에', 14, 0, 12, 0),
+      ('오늘 밤 12시', 14, 1, 0, 0),
+      ('네 시 사십오 분', 14, 0, 16, 45),
+      ('오후 다섯 시 오십 분', 14, 0, 17, 50),
+    ]) {
+      test('"$input" edits a selected schedule at $originalHour:00', () {
+        final controller = VoiceConversationController(
+          events: [
+            _event('target', '회의', DateTime(_fixtureYear, 5, 7, originalHour)),
+          ],
+          now: () => DateTime(_fixtureYear, 5, 7, 8),
+        );
+        expect(controller.handle('오늘 일정 보여줘').visibleEvents.single.id, 'target');
+
+        final direction = input.endsWith('에') ? input : '$input로';
+        final result = controller.handle('첫번째 일정 $direction 옮겨줘');
+
+        expect(result.action, VoiceConversationAction.confirmedEdit);
+        expect(result.targetEvent?.id, 'target');
+        final start = result.draftEvent?.startAt;
+        expect(start, isNotNull);
+        expect(planflowLocal(start!),
+            DateTime(_fixtureYear, 5, 7 + dayOffset, hour, minute));
+      });
+    }
+
+    for (final (input, dayOffset, hour, minute) in [
+      ('밤 12시로', 1, 0, 0),
+      ('낮 2시로', 0, 14, 0),
+      ('3시로', 0, 15, 0),
+      ('자정에', 0, 0, 0),
+      ('정오에', 0, 12, 0),
+      ('네 시 사십오 분으로', 0, 16, 45),
+      ('오후 다섯 시 오십 분으로', 0, 17, 50),
+    ]) {
+      testWidgets('voice action uses $input in the edit draft', (tester) async {
+        final event = _event(
+          'target',
+          '팀 회식',
+          DateTime(_fixtureYear, 5, 7, 14),
+        ).copyWith(externalId: 'linked');
+        EventEditRoutePayload? payload;
+        final router = GoRouter(
+          initialLocation: AppRoutes.voiceAction,
+          routes: [
+            GoRoute(
+              path: AppRoutes.voiceAction,
+              builder: (context, state) => VoiceActionScreen(
+                rawText: '팀 회식 $input 옮겨줘',
+                action: VoiceScheduleAction.edit,
+                eventRepository: _VoiceTimeEventRepository(event),
+                groupRepository: _VoiceTimeGroupRepository(),
+                gptService: _LocalVoiceTimeGptService(),
+                userIdOverride: event.userId,
+              ),
+            ),
+            GoRoute(
+              path: AppRoutes.eventEditWithId,
+              builder: (context, state) {
+                payload = state.extra as EventEditRoutePayload;
+                return const SizedBox();
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+
+        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+        await tester.pumpAndSettle();
+        await tester.tap(find.ancestor(
+          of: find.text(event.title),
+          matching: find.byType(InkWell),
+        ).first);
+        await tester.pumpAndSettle();
+
+        expect(payload?.original.id, event.id);
+        expect(
+          payload?.draft.startAt,
+          planflowLocalDateTimeToUtc(
+            DateTime(_fixtureYear, 5, 7 + dayOffset, hour, minute),
+          ),
+        );
+      });
+    }
+
+    for (final wording in ['강한 알림', '강한알림']) {
+      test('"$wording 켜줘" applies the strong alarm', () {
+        final controller = VoiceConversationController(
+          events: [_event('target', '회의', DateTime(_fixtureYear, 5, 7, 14))],
+          now: () => DateTime(_fixtureYear, 5, 7, 8),
+        )..handle('오늘 일정 보여줘');
+
+        final result = controller.handle('첫번째 일정 $wording 켜줘');
+
+        expect(result.action, VoiceConversationAction.confirmedEdit);
+        expect(result.targetEvent?.id, 'target');
+        expect(result.criticalValue, isTrue);
+      });
+    }
   });
 
   group('음성 수정 대상 매칭', () {
@@ -2162,6 +2287,38 @@ void main() {
 
 EventModel _event(String id, String title, DateTime localStart) {
   return _eventWithPeople(id, title, localStart);
+}
+
+class _VoiceTimeEventRepository extends Fake implements EventRepository {
+  _VoiceTimeEventRepository(this.event);
+
+  final EventModel event;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async => [event];
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
+      eventId == event.id ? event : null;
+}
+
+class _VoiceTimeGroupRepository extends Fake implements GroupRepository {
+  @override
+  Future<List<GroupModel>> listGroups() async => [];
+}
+
+class _LocalVoiceTimeGptService extends Fake implements GptService {
+  @override
+  Future<VoiceTextCleanupResult> cleanupVoiceText(
+    String rawText, {
+    VoiceTextCleanupContext context = VoiceTextCleanupContext.add,
+    Iterable<VoiceTextCleanupCandidate> candidates = const [],
+  }) async =>
+      VoiceTextCleanupService.cleanLocally(
+        rawText,
+        context: context,
+        candidates: candidates,
+      );
 }
 
 EventModel _eventWithPeople(
