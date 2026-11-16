@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
@@ -440,6 +442,204 @@ void main() {
     expect(notifications.departureIds, hasLength(2));
   });
 
+  group('P5b departure regression', () {
+    final initialTime = DateTime.utc(2026, 11, 12, 0);
+    final event = EventModel(
+      id: 'p5b',
+      userId: 'test-user',
+      title: 'Departure',
+      startAt: initialTime.add(const Duration(hours: 2)),
+      location: 'Destination',
+      locationLat: 37.39,
+      locationLng: 127.11,
+    );
+    late DateTime now;
+    late _FakeEventRepository events;
+    late _FakeNotificationService notifications;
+    late _FakeDeparturePreflightScheduler preflight;
+    late List<int> cancelledPreflightIds;
+    late DepartureAlarmService service;
+
+    setUp(() {
+      AppEnv.markSupabaseInitialized();
+      now = initialTime;
+      events = _FakeEventRepository(events: [event]);
+      notifications = _FakeNotificationService(blockCritical: true);
+      preflight = _FakeDeparturePreflightScheduler();
+      cancelledPreflightIds = [];
+      service = DepartureAlarmService(
+        eventRepository: events,
+        currentLocationProvider: () async =>
+            const GeoPoint(latitude: 37.5, longitude: 127),
+        travelTimeBufferService: _FakeTravelTimeBufferService(
+          routeEstimate: const TravelTimeBufferEstimate(
+            buffer: Duration(minutes: 30),
+            source: TravelTimeBufferSource.coordinates,
+            reason: 'test',
+          ),
+        ),
+        notificationService: notifications,
+        preflightScheduler: preflight.call,
+        preflightCanceller: (id) async {
+          cancelledPreflightIds.add(id);
+          return true;
+        },
+        now: () => now,
+      );
+    });
+
+    test('keeps booked fallback when preflight returns no row', () async {
+      final booked =
+          await service.scheduleForEvent(event, rescheduleMonitor: false);
+      now = booked.notifyAt!.subtract(const Duration(seconds: 30));
+      events.events.clear();
+
+      final preflightResult = await service.runPreflightForEvent(
+        event.id,
+        userId: event.userId,
+        fallbackAt: booked.notifyAt,
+      );
+
+      expect(preflightResult.skippedReason, 'event_not_found');
+      expect(notifications.cancelledNotificationIds, isEmpty);
+      expect(notifications.departureNotifyAts, [booked.notifyAt]);
+      expect(notifications.payloads, hasLength(1));
+    });
+
+    for (final minutes in [0, 10]) {
+      test('elapsed departure refresh does not rebook at $minutes minutes',
+          () async {
+        await DepartureAlarmService.saveRepeatIntervalMinutes(minutes);
+        final booked =
+            await service.scheduleForEvent(event, rescheduleMonitor: false);
+        now = booked.notifyAt!.add(const Duration(seconds: 1));
+
+        for (var attempt = 0; attempt < 2; attempt++) {
+          final result =
+              await service.scheduleForEvent(event, rescheduleMonitor: false);
+          expect(result.skippedReason, 'departure_time_passed');
+        }
+        expect(notifications.departureNotifyAts, [booked.notifyAt]);
+        expect(notifications.cancelledNotificationIds, isEmpty);
+
+        final due = await service.scheduleForEvent(
+          event,
+          rescheduleMonitor: false,
+          fireDueDeparture: true,
+        );
+        final repeat = await service.scheduleForEvent(
+          event,
+          rescheduleMonitor: false,
+          fireDueDeparture: true,
+        );
+        expect(due.isScheduled, isTrue);
+        expect(notifications.payloads, hasLength(2));
+        expect(repeat.skippedReason, 'departure_repeat_throttled');
+      });
+    }
+
+    test('preflight removes the fired record if no preflight is rebooked',
+        () async {
+      final recurring = event.copyWith(recurrenceRule: 'FREQ=DAILY');
+      events.events[0] = recurring;
+      final startAt = recurring.startAt!;
+      final booked =
+          await service.scheduleForEvent(recurring, rescheduleMonitor: false);
+      now = booked.notifyAt!;
+      final result = await service.runPreflightForEvent(
+        recurring.id,
+        userId: recurring.userId,
+        occurrenceStartAt: startAt,
+        fallbackAt: booked.notifyAt,
+      );
+
+      expect(result.skippedReason, 'fallback_already_due');
+      expect(cancelledPreflightIds, [
+        notifications.notificationIdFor(
+          eventAlarmKey(recurring, 'departure_preflight'),
+        ),
+      ]);
+      expect(notifications.cancelledNotificationIds, isEmpty);
+    });
+
+    test('preflight keeps the rebooked record for the same alarm ID', () async {
+      final booked =
+          await service.scheduleForEvent(event, rescheduleMonitor: false);
+      now = booked.notifyAt!.subtract(const Duration(seconds: 30));
+      final moved = event.copyWith(
+        startAt: event.startAt!.add(const Duration(minutes: 10)),
+      );
+      events.events[0] = moved;
+      final result = await service.runPreflightForEvent(
+        event.id,
+        userId: event.userId,
+        fallbackAt: booked.notifyAt,
+      );
+
+      expect(result.isScheduled, isTrue);
+      expect(preflight.preflightTimes, hasLength(2));
+      expect(cancelledPreflightIds, isEmpty);
+    });
+
+    test('native departure action acknowledges only the delivered occurrence',
+        () async {
+      final today = event.copyWith(recurrenceRule: 'FREQ=DAILY');
+      final tomorrow = today.copyWith(
+        startAt: today.startAt!.add(const Duration(days: 1)),
+      );
+      final first =
+          await service.scheduleForEvent(today, rescheduleMonitor: false);
+      await service.scheduleForEvent(tomorrow, rescheduleMonitor: false);
+      final todayId =
+          notifications.notificationIdFor(eventAlarmKey(today, 'departure'));
+      final tomorrowId =
+          notifications.notificationIdFor(eventAlarmKey(tomorrow, 'departure'));
+      now = first.notifyAt!;
+
+      await handleNotificationResponseAction(
+        NotificationResponse(
+          notificationResponseType:
+              NotificationResponseType.selectedNotificationAction,
+          id: todayId,
+          actionId: NotificationService.departureAcknowledgedActionId,
+          payload: notifications.payloads.first,
+        ),
+        notificationService: notifications,
+        eventRepository: events,
+      );
+      expect(notifications.cancelledNotificationIds, [todayId, todayId]);
+      final acknowledgedToday =
+          await service.scheduleForEvent(today, rescheduleMonitor: false);
+      final stillDueTomorrow =
+          await service.scheduleForEvent(tomorrow, rescheduleMonitor: false);
+      expect(acknowledgedToday.skippedReason, 'departure_acknowledged');
+      expect(stillDueTomorrow.isScheduled, isTrue);
+      expect(notifications.cancelledNotificationIds, contains(todayId));
+      expect(
+          notifications.cancelledNotificationIds, isNot(contains(tomorrowId)));
+    });
+
+    test('opening and confirming a departure cannot acknowledge tomorrow',
+        () async {
+      final today = event.copyWith(recurrenceRule: 'FREQ=DAILY');
+      final tomorrow = today.copyWith(
+        startAt: today.startAt!.add(const Duration(days: 1)),
+      );
+      events.events[0] = today;
+      await service.scheduleForEvent(today, rescheduleMonitor: false);
+
+      await service.acknowledgeDeparture(today.id);
+      final todayId =
+          notifications.notificationIdFor(eventAlarmKey(today, 'departure'));
+      expect(notifications.cancelledNotificationIds, contains(todayId));
+
+      now = today.startAt!.add(const Duration(minutes: 1));
+      final result =
+          await service.scheduleForEvent(tomorrow, rescheduleMonitor: false);
+      expect(result.isScheduled, isTrue);
+    });
+  });
+
   test('preflight still alerts when live location is unavailable', () async {
     AppEnv.markSupabaseInitialized();
     final now = DateTime(2026, 5, 8, 10, 10);
@@ -533,6 +733,7 @@ void main() {
       () async {
     AppEnv.markSupabaseInitialized();
     final service = DepartureAlarmService(
+      notificationService: _FakeNotificationService(),
       eventRepository: _FakeEventRepository(
         events: <EventModel>[
           EventModel(
@@ -573,6 +774,7 @@ void main() {
       () async {
     AppEnv.markSupabaseInitialized();
     final service = DepartureAlarmService(
+      notificationService: _FakeNotificationService(),
       eventRepository: _FakeEventRepository(
         events: <EventModel>[
           EventModel(
@@ -603,6 +805,60 @@ void main() {
 
     expect(result.nextMonitorInterval, DepartureAlarmService.monitorInterval);
     expect(result.scheduled, 1);
+  });
+
+  test('standalone monitor counts surviving pending alerts', () async {
+    AppEnv.markSupabaseInitialized();
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final now = DateTime.now();
+    EventModel departure(String id, DateTime startAt) => EventModel(
+          id: id,
+          userId: 'user-1',
+          title: id,
+          startAt: startAt,
+          locationLat: 37.39,
+          locationLng: 127.11,
+        );
+    final due = departure('due', now.add(const Duration(minutes: 10)));
+    final later = departure('later', now.add(const Duration(hours: 4)));
+    final notifications = _FakeNotificationService();
+    final dueId = notifications.notificationIdFor(
+      eventAlarmKey(due, 'departure'),
+    );
+    final laterId = notifications.notificationIdFor(
+      eventAlarmKey(later, 'departure'),
+    );
+    const unrelatedId = 911;
+    notifications.pendingIds.addAll([dueId, laterId, unrelatedId]);
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(events: [
+        due,
+        for (var index = 0; index < 56; index++)
+          departure('early-$index', now.add(Duration(minutes: 60 + index))),
+        later,
+      ]),
+      notificationService: notifications,
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 30),
+          source: TravelTimeBufferSource.coordinates,
+          reason: 'test',
+        ),
+      ),
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
+      now: () => now,
+    );
+
+    final result = await service.refreshUpcoming(userId: 'user-1');
+
+    expect(result.scheduled, 54);
+    expect(notifications.pendingIds, hasLength(56));
+    expect(notifications.pendingIds, containsAll([dueId, unrelatedId]));
+    expect(notifications.pendingIds, isNot(contains(laterId)));
+    expect(notifications.cancelledNotificationIds, [laterId]);
   });
 
   test('fireDueDeparture is throttled by configured repeat interval', () async {
@@ -999,6 +1255,11 @@ class _FakePendingDepartureStore extends PendingDepartureStore {
 }
 
 class _FakeNotificationService extends NotificationService {
+  @override
+  Future<void> cancelResponseNotification(int? id) async {
+    if (id != null) await cancel(id);
+  }
+
   _FakeNotificationService({this.blockCritical = false});
 
   final bool blockCritical;
@@ -1010,10 +1271,18 @@ class _FakeNotificationService extends NotificationService {
   final departureIds = <int>[];
   final departureNotifyAts = <DateTime>[];
   final cancelledNotificationIds = <int>[];
+  final pendingIds = <int>{};
+
+  @override
+  Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async =>
+      pendingIds
+          .map((id) => PendingNotificationRequest(id, null, null, null))
+          .toList();
 
   @override
   Future<void> cancel(int id) async {
     cancelledNotificationIds.add(id);
+    pendingIds.remove(id);
   }
 
   @override
@@ -1060,6 +1329,7 @@ class _FakeNotificationService extends NotificationService {
   }) async {
     departureIds.add(id);
     departureNotifyAts.add(notifyAt);
+    if (!blockCritical) pendingIds.add(id);
     criticalTitles.add(title);
     criticalBodies.add(body);
     return NotificationScheduleResult(

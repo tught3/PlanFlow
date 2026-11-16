@@ -6,11 +6,11 @@ import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/services/calendar_auto_sync_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
-import 'package:planflow/services/event_preparation_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
+import 'package:planflow/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
@@ -316,7 +316,6 @@ void main() {
       ],
     );
     final sideEffects = _FakeManualEventSideEffectService();
-    final preparation = _FakeEventPreparationService();
     final service = CalendarAutoSyncService(
       calendarSyncService: _FakeCalendarSyncService(
         googleResult: CalendarIntegrationResult.signedOut(
@@ -340,7 +339,6 @@ void main() {
       ),
       eventRepository: repository,
       sideEffectService: sideEffects,
-      eventPreparationService: preparation,
       throttle: Duration.zero,
       now: () => DateTime(2026, 5, 9, 15),
     );
@@ -364,16 +362,9 @@ void main() {
     expect(sideEffects.resyncCallCount, 1);
     expect(sideEffects.lastDayEvents.map((event) => event.id),
         containsAll(<String>['event-1', 'event-2']));
-    expect(preparation.preparedEventIds, contains('event-1'));
-    expect(preparation.preparedEventIds, isNot(contains('event-2')));
-    // [PREVENT] 백그라운드 동기화는 좌표 해석(TMAP POI 검색)을 하면 안 된다.
-    // resolveCoordinates: false로만 prepareAfterSave를 호출해야 POI API 폭주를 막는다.
-    expect(
-      preparation.resolveCoordinatesCalls,
-      everyElement(isFalse),
-      reason: '백그라운드 동기화의 prepareAfterSave는 resolveCoordinates: false여야 합니다. '
-          'true이면 TMAP POI 검색이 매 동기화마다 실행돼 API가 폭주합니다.',
-    );
+    expect(sideEffects.lastCacheOnlyLocation, isTrue);
+    expect(sideEffects.reminderBatch, isNotNull);
+    expect(sideEffects.departureBatch, same(sideEffects.reminderBatch));
     expect(repository.requestedUserIds, everyElement('user-1'));
     expect(sideEffects.lastUserId, 'user-1');
   });
@@ -421,7 +412,6 @@ void main() {
       ],
     );
     final sideEffects = _FakeManualEventSideEffectService();
-    final preparation = _FakeEventPreparationService();
     final service = CalendarAutoSyncService(
       calendarSyncService: _FakeCalendarSyncService(
         googleResult: CalendarIntegrationResult.signedOut(
@@ -445,7 +435,6 @@ void main() {
       ),
       eventRepository: repository,
       sideEffectService: sideEffects,
-      eventPreparationService: preparation,
       throttle: Duration.zero,
       now: () => DateTime(2026, 5, 10, 7),
     );
@@ -472,7 +461,7 @@ void main() {
     expect(resyncedEventIds, contains('within-7d-outside-24h'));
     expect(resyncedEventIds, isNot(contains('past')));
     expect(resyncedEventIds, isNot(contains('after-7d')));
-    expect(preparation.preparedEventIds, ['within-24h']);
+    expect(sideEffects.lastCacheOnlyLocation, isTrue);
   });
 
   test(
@@ -522,7 +511,6 @@ void main() {
       ),
       eventRepository: repository,
       sideEffectService: sideEffects,
-      eventPreparationService: _FakeEventPreparationService(),
       throttle: Duration.zero,
       now: () => DateTime(2026, 5, 10, 12),
     );
@@ -714,6 +702,10 @@ class _FakeEventRepository extends EventRepository {
 }
 
 class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
+  LocalAlarmResyncBatch? reminderBatch;
+  LocalAlarmResyncBatch? departureBatch;
+  bool? lastCacheOnlyLocation;
+
   int resyncCallCount = 0;
   int reminderResyncCallCount = 0;
   int alarmRecalculateCallCount = 0;
@@ -732,7 +724,9 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
         ManualEventSideEffectService.defaultReminderOffset,
     Duration? criticalAlarmOffset =
         ManualEventSideEffectService.criticalAlarmOffset,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
+    reminderBatch = localAlarmBatch;
     reminderResyncCallCount += 1;
     lastReminderEvents = events.toList(growable: false);
     lastUserId = userId;
@@ -752,6 +746,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     String travelMode = 'car',
     DateTime? now,
     bool cacheOnlyLocation = false,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
     resyncCallCount += 1;
     lastDayEvents = dayEvents.toList(growable: false);
@@ -776,7 +771,10 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
     bool cacheOnlyLocation = false,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
+    departureBatch = localAlarmBatch;
+    lastCacheOnlyLocation = cacheOnlyLocation;
     alarmRecalculateCallCount += 1;
     lastAlarmEvents = events.toList(growable: false);
     lastExtraDepartureEventIdsToCancel = extraDepartureEventIdsToCancel.toSet();
@@ -807,26 +805,6 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
                   event.locationLat != null && event.locationLng != null)
               .length
           : 0,
-    );
-  }
-}
-
-class _FakeEventPreparationService extends EventPreparationService {
-  final List<String> preparedEventIds = <String>[];
-  final List<bool> resolveCoordinatesCalls = <bool>[];
-
-  @override
-  Future<EventPreparationResult> prepareAfterSave(
-    EventModel event, {
-    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
-    bool resolveCoordinates = true,
-  }) async {
-    preparedEventIds.add(event.id);
-    resolveCoordinatesCalls.add(resolveCoordinates);
-    return EventPreparationResult(
-      event: event,
-      locationResolved: false,
-      travelEstimateCount: 0,
     );
   }
 }

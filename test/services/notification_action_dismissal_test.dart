@@ -19,8 +19,8 @@ class ActionNotifications extends NotificationService {
   }
 
   @override
-  Future<void> cancelDepartureNotifications(String eventId) async {
-    departures.add(eventId);
+  Future<void> cancelDepartureSlot(String key) async {
+    departures.add(key);
   }
 }
 
@@ -132,6 +132,6 @@ void main() {
         throwsStateError);
     expect(calls.single.method, 'cancel');
     expect((calls.single.arguments as Map)['id'], 918);
-    expect(notifications.departures, ['owned']);
+    expect(notifications.departures, ['owned:departure']);
   });
 }

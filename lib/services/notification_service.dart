@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,154 @@ import 'critical_alarm_preflight_service.dart';
 import 'departure_acknowledgement_store.dart';
 import 'launch_signal_ledger.dart';
 import 'naver_ics_reminder_policy.dart';
+
+/// Books local alerts in event-start order against the shared pending queue.
+class LocalAlarmResyncBatch {
+  LocalAlarmResyncBatch({required NotificationService notificationService})
+      : _notifications = notificationService;
+
+  final NotificationService _notifications;
+  final _bookings = <({
+    DateTime startAt,
+    int slots,
+    Future<int> Function(int) book,
+    String? departureKey,
+    Future<bool> Function()? canReplacePending,
+    void Function()? onSkip,
+  })>[];
+
+  void add(
+    DateTime startAt,
+    int slots,
+    Future<int> Function(int) book, {
+    String? departureKey,
+    Future<bool> Function()? canReplacePending,
+    void Function()? onSkip,
+  }) {
+    if (slots > 0) {
+      _bookings.add((
+        startAt: startAt,
+        slots: slots,
+        book: book,
+        departureKey: departureKey,
+        canReplacePending: canReplacePending,
+        onSkip: onSkip,
+      ));
+    }
+  }
+
+  Future<bool> book() async {
+    final ordered = _bookings.asMap().entries.toList()
+      ..sort((a, b) {
+        final byStart = a.value.startAt.compareTo(b.value.startAt);
+        return byStart == 0 ? a.key.compareTo(b.key) : byStart;
+      });
+    _bookings.clear();
+    if (ordered.isEmpty) return true;
+
+    var succeeded = true;
+    var trimmed = 0;
+    var pending = <int>{};
+    try {
+      pending = (await _notifications.pendingRequestsForCleanup())
+          .map((request) => request.id)
+          .toSet();
+    } catch (error) {
+      // The callers may already have cleared jobs they intend to rebook.
+      // Continue with the per-resync cap and leave existing queue entries alone.
+      succeeded = false;
+      DiagLogger.log(
+        'LocalAlarmResync',
+        'Could not read pending alarms: ${error.runtimeType}; '
+            'total pending alarms unknown',
+      );
+    }
+
+    final replaceable = <int, ({String key, int id})>{};
+    for (var index = 0; index < ordered.length; index++) {
+      final booking = ordered[index].value;
+      final key = booking.departureKey;
+      final canReplace = booking.canReplacePending;
+      if (key == null || canReplace == null) continue;
+      final id = _notifications.notificationIdFor(key);
+      if (!pending.contains(id)) continue;
+      try {
+        if (await canReplace()) {
+          replaceable[index] = (key: key, id: id);
+        }
+      } catch (error) {
+        succeeded = false;
+        DiagLogger.log(
+          'LocalAlarmResync',
+          'Could not assess pending departure: ${error.runtimeType}',
+        );
+      }
+    }
+
+    var occupied = pending.length;
+    final limit = localAlarmResyncLimit;
+    Future<void> cancelLaterDeparture(int index) async {
+      final slot = replaceable.remove(index)!;
+      try {
+        await _notifications.cancelDepartureSlot(slot.key);
+        if (pending.remove(slot.id)) occupied--;
+      } catch (error) {
+        succeeded = false;
+        DiagLogger.log(
+          'LocalAlarmResync',
+          'Could not cancel later departure: ${error.runtimeType}',
+        );
+      }
+    }
+
+    while (occupied > limit && replaceable.isNotEmpty) {
+      await cancelLaterDeparture(replaceable.keys.last);
+    }
+    for (var index = 0; index < ordered.length; index++) {
+      final booking = ordered[index].value;
+      final key = booking.departureKey;
+      final id = key == null ? null : _notifications.notificationIdFor(key);
+      final alreadyBooked = pending.contains(id);
+      replaceable.remove(index);
+      if (!alreadyBooked) {
+        while (limit - occupied < booking.slots && replaceable.isNotEmpty) {
+          await cancelLaterDeparture(replaceable.keys.last);
+        }
+      }
+      final allowed = math.min(
+        booking.slots,
+        math.max(0, limit - occupied + (alreadyBooked ? 1 : 0)),
+      );
+      trimmed += booking.slots - allowed;
+      if (allowed == 0) {
+        booking.onSkip?.call();
+        continue;
+      }
+      try {
+        final booked = await booking.book(allowed);
+        if (!alreadyBooked) {
+          occupied += booked;
+          if (id != null && booked > 0) pending.add(id);
+        }
+      } catch (error) {
+        // A booking may fail after reserving some of its slots.
+        if (!alreadyBooked) occupied += allowed;
+        succeeded = false;
+        DiagLogger.log(
+          'LocalAlarmResync',
+          'Local alarm resync booking failed: ${error.runtimeType}',
+        );
+      }
+    }
+    if (trimmed > 0) {
+      DiagLogger.log(
+        'LocalAlarmResync',
+        'Local alarm resync trimmed $trimmed alarms (limit $limit)',
+      );
+    }
+    return succeeded;
+  }
+}
 
 /// Local calendar suffix shared by recurring alarm scheduling and cancellation.
 String eventAlarmDateSuffix(DateTime time) {
@@ -37,6 +186,13 @@ Iterable<String> eventAlarmCancellationKeys(String key, DateTime now) sync* {
     yield '$key:${_eventAlarmDateDigits(day)}';
   }
 }
+
+const iosLocalAlarmResyncLimit = 56;
+const androidLocalAlarmResyncLimit = 400;
+
+int get localAlarmResyncLimit => defaultTargetPlatform == TargetPlatform.iOS
+    ? iosLocalAlarmResyncLimit
+    : androidLocalAlarmResyncLimit;
 
 /// Identity of the alarm as scheduled, including its original local date.
 class CriticalAlarmOccurrence {
@@ -736,13 +892,29 @@ class NotificationService {
   }
 
   Future<void> cancelDepartureNotifications(String eventId) async {
-    await cancel(notificationIdFor('$eventId:departure'));
+    for (final key in eventAlarmCancellationKeys(
+      '$eventId:departure',
+      DateTime.now(),
+    )) {
+      await cancelDepartureSlot(key);
+    }
+  }
+
+  Future<void> cancelDepartureOccurrence(
+    String eventId,
+    CriticalAlarmOccurrence occurrence,
+  ) =>
+      cancelDepartureSlot(occurrence.alarmKey(eventId, 'departure'));
+
+  Future<void> cancelDepartureSlot(String key) async {
+    await cancel(notificationIdFor(key));
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return;
     }
     try {
       await AndroidAlarmManager.cancel(
-        _stableNotificationId('$eventId:departure_preflight'),
+        _stableNotificationId(
+            key.replaceFirst(':departure', ':departure_preflight')),
       );
     } catch (error, stackTrace) {
       debugPrint('Cancel departure preflight failed: $error');
@@ -1539,7 +1711,7 @@ class NotificationService {
     }
 
     if (payload.startsWith('departure:')) {
-      final eventId = payload.substring('departure:'.length).trim();
+      final eventId = _departureFromPayload(payload).id;
       if (eventId.isEmpty) {
         return null;
       }
@@ -1572,6 +1744,33 @@ class NotificationService {
   static bool _isCriticalAlarmPayload(String payload) {
     return payload.startsWith('event:') &&
         payload.endsWith(criticalAlarmPayloadSuffix);
+  }
+
+  static String departurePayloadFor(
+    String eventId, {
+    CriticalAlarmOccurrence? occurrence,
+  }) =>
+      occurrence == null
+          ? 'departure:$eventId'
+          : 'departure:$eventId${CriticalAlarmOccurrence._payloadMarker}${occurrence.token}';
+
+  static String departureAcknowledgementKey(
+    String eventId,
+    CriticalAlarmOccurrence occurrence,
+  ) =>
+      '$eventId:departure:${occurrence.token}';
+
+  static ({String id, CriticalAlarmOccurrence? occurrence})
+      _departureFromPayload(String payload) {
+    final value = payload.substring('departure:'.length);
+    const marker = CriticalAlarmOccurrence._payloadMarker;
+    final markerIndex = value.lastIndexOf(marker);
+    if (markerIndex < 0) return (id: value.trim(), occurrence: null);
+    final occurrence = CriticalAlarmOccurrence.tryParse(
+      value.substring(markerIndex + marker.length),
+    );
+    if (occurrence == null) return (id: '', occurrence: null);
+    return (id: value.substring(0, markerIndex).trim(), occurrence: occurrence);
   }
 
   static ({String id, CriticalAlarmOccurrence? occurrence}) _eventFromPayload(
@@ -1690,17 +1889,31 @@ Future<void> handleNotificationResponseAction(
   final actionId = response.actionId;
   if (actionId == NotificationService.departureAcknowledgedActionId &&
       payload.startsWith('departure:')) {
-    final eventId = payload.substring('departure:'.length).trim();
+    final departure = NotificationService._departureFromPayload(payload);
+    final eventId = departure.id;
+    final occurrence = departure.occurrence;
     if (eventId.isNotEmpty) {
       final store = departureAcknowledgementStore ??
           const SharedPreferencesDepartureAcknowledgementStore();
       final notifications = notificationService ??
           NotificationService(allowPermissionRequests: false);
       await notifications.cancelResponseNotification(response.id);
-      await notifications.cancelDepartureNotifications(eventId);
-      // Persist only after dismissal so slow/unavailable preferences cannot
-      // leave the currently sounding notification posted.
-      await store.markAcknowledged(eventId);
+      // Persist after dismissal so preference latency cannot leave it sounding.
+      if (occurrence == null) {
+        // Older payloads have no occurrence identity. The response ID was
+        // dismissed above; clear only the legacy slot shared by those payloads.
+        await notifications.cancelDepartureSlot('$eventId:departure');
+        await store.markAcknowledged(eventId);
+      } else {
+        try {
+          await store.markAcknowledged(
+            NotificationService.departureAcknowledgementKey(
+                eventId, occurrence),
+          );
+        } finally {
+          await notifications.cancelDepartureOccurrence(eventId, occurrence);
+        }
+      }
     }
     return;
   }

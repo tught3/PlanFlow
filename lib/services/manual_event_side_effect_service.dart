@@ -171,6 +171,10 @@ class ManualEventSideEffectService {
       _departureAlarmService ?? const DepartureAlarmService();
   NotificationService get _notifications =>
       _notificationService ?? NotificationService();
+
+  LocalAlarmResyncBatch createLocalAlarmResyncBatch() =>
+      LocalAlarmResyncBatch(notificationService: _notifications);
+
   TravelTimeBufferService get _travelTimeBuffer =>
       _travelTimeBufferService ?? TravelTimeBufferService();
   LocationLookupService get _locationLookup =>
@@ -565,7 +569,9 @@ class ManualEventSideEffectService {
     String travelMode = 'car',
     // 백그라운드 동기화에서 호출하면 true로 설정해 라이브 GPS 조회를 막는다.
     bool cacheOnlyLocation = false,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
+    final booking = localAlarmBatch ?? createLocalAlarmResyncBatch();
     final effectiveNow = now ?? _currentTime;
     final effectiveUntil = until ?? effectiveNow.add(recurringAlarmWindow);
     final upcomingEvents = upcomingAlarmOccurrences(
@@ -608,6 +614,7 @@ class ManualEventSideEffectService {
         now: effectiveNow,
         travelMode: travelMode,
         cacheOnlyLocation: cacheOnlyLocation,
+        localAlarmBatch: booking,
       );
       preparationDays += 1;
       preparationFailed = preparationFailed || !ok;
@@ -619,32 +626,31 @@ class ManualEventSideEffectService {
       final departureUntil =
           effectiveNow.add(DepartureAlarmService.monitorLookAhead);
       var hasUrgentDepartureMonitorEvent = false;
-      final cancelledDepartureEventIds = extraDepartureEventIdsToCancel
-          .where((id) => id.trim().isNotEmpty)
+      final upcomingDepartures = upcomingEvents
+          .where((event) => event.startAt!.isBefore(departureUntil))
+          .toList();
+      final activeDepartureKeys = upcomingDepartures
+          .where(
+              (event) => event.locationLat != null && event.locationLng != null)
+          .map((event) => eventAlarmKey(event, 'departure'))
           .toSet();
-      for (final event in upcomingEvents.where((event) {
-        final startAt = event.startAt;
-        return startAt != null && startAt.isBefore(departureUntil);
-      })) {
-        cancelledDepartureEventIds.add(event.id);
-      }
-      cancelledDepartureEventIds.addAll(
-        events.where(isRecurringAlarmEvent).map((event) => event.id),
-      );
+      final cancelledDepartureEventIds = {
+        ...extraDepartureEventIdsToCancel.where((id) => id.trim().isNotEmpty),
+        ...upcomingDepartures.map((event) => event.id),
+        ...events.where(isRecurringAlarmEvent).map((event) => event.id),
+      };
       for (final eventId in cancelledDepartureEventIds) {
         for (final key in eventAlarmCancellationKeys(
           '$eventId:departure',
           effectiveNow,
         )) {
-          await _notifications.cancel(_notifications.notificationIdFor(key));
+          if (!activeDepartureKeys.contains(key)) {
+            await _notifications.cancelDepartureSlot(key);
+          }
         }
       }
-      for (final event in upcomingEvents.where((event) {
-        final startAt = event.startAt;
-        return startAt != null && startAt.isBefore(departureUntil);
-      })) {
+      for (final event in upcomingDepartures) {
         if (!_hasPlace(event)) {
-          // 장소 없는 일정: 출발 알람 스킵
           DiagLogger.log(
             'ManualSideEffect',
             'DepartureAlarm 스킵(장소없음) eventId=${event.id} '
@@ -653,43 +659,59 @@ class ManualEventSideEffectService {
           departureSkipped += 1;
           continue;
         }
-        if (event.startAt != null &&
-            event.startAt!.isBefore(
-              effectiveNow.add(DepartureAlarmService.monitorUrgentWindow),
-            )) {
+        final startAt = event.startAt!;
+        if (startAt.isBefore(
+          effectiveNow.add(DepartureAlarmService.monitorUrgentWindow),
+        )) {
           hasUrgentDepartureMonitorEvent = true;
         }
-        final result = await _departureAlarms.scheduleForEvent(
-          event,
-          rescheduleMonitor: false,
-          safetyMarginOverride: departureSafetyMargin,
-          cacheOnlyLocation: cacheOnlyLocation,
+        booking.add(
+          startAt,
+          1,
+          (_) async {
+            final result = await _departureAlarms.scheduleForEvent(
+              event,
+              rescheduleMonitor: false,
+              safetyMarginOverride: departureSafetyMargin,
+              cacheOnlyLocation: cacheOnlyLocation,
+            );
+            DiagLogger.log(
+              'ManualSideEffect',
+              result.isScheduled
+                  ? 'DepartureAlarm 등록 eventId=${event.id} '
+                      'title="${event.title}" '
+                      'loc="${event.location ?? ''}" '
+                      'hasCoords=${event.locationLat != null && event.locationLng != null}'
+                  : 'DepartureAlarm 스킵 eventId=${event.id} '
+                      'title="${event.title}" '
+                      'reason=${result.skippedReason ?? 'unknown'}',
+            );
+            if (result.isScheduled) {
+              departureScheduled += 1;
+              return 1;
+            }
+            departureSkipped += 1;
+            return 0;
+          },
+          departureKey: eventAlarmKey(event, 'departure'),
+          canReplacePending: () => _departureAlarms.canReplacePendingDeparture(
+            event,
+            safetyMarginOverride: departureSafetyMargin,
+          ),
+          onSkip: () => departureSkipped += 1,
         );
-        // 출발 알람 등록/스킵 결과 기록
-        DiagLogger.log(
-          'ManualSideEffect',
-          result.isScheduled
-              ? 'DepartureAlarm 등록 eventId=${event.id} '
-                  'title="${event.title}" '
-                  'loc="${event.location ?? ''}" '
-                  'hasCoords=${event.locationLat != null && event.locationLng != null}'
-              : 'DepartureAlarm 스킵 eventId=${event.id} '
-                  'title="${event.title}" '
-                  'reason=${result.skippedReason ?? 'unknown'}',
-        );
-        if (result.isScheduled) {
-          departureScheduled += 1;
-        } else {
-          departureSkipped += 1;
-        }
       }
-      if (departureScheduled > 0 || departureSkipped > 0) {
+      if (upcomingDepartures.isNotEmpty) {
         await _departureAlarms.scheduleNextMonitor(
           interval: hasUrgentDepartureMonitorEvent
               ? DepartureAlarmService.monitorUrgentInterval
               : DepartureAlarmService.monitorInterval,
         );
       }
+    }
+
+    if (localAlarmBatch == null) {
+      await booking.book();
     }
 
     if (upcomingEvents.isEmpty) {
@@ -713,7 +735,9 @@ class ManualEventSideEffectService {
     Duration? reminderOffset = defaultReminderOffset,
     Duration? criticalAlarmOffset =
         ManualEventSideEffectService.criticalAlarmOffset,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
+    final booking = localAlarmBatch ?? createLocalAlarmResyncBatch();
     final now = _currentTime;
     final futureEvents = upcomingAlarmOccurrences(
       events,
@@ -763,14 +787,20 @@ class ManualEventSideEffectService {
       );
 
       for (final event in futureEvents) {
-        await scheduleLocalNotifications(
-          event,
-          reminderOffset: reminderOffset,
-          criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+        if (!event.isCritical && reminderOffset == null) continue;
+        booking.add(
+          event.startAt!,
+          1,
+          (_) async => await _scheduleLocalNotifications(
+            event,
+            reminderOffset: reminderOffset,
+            criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+          )
+              ? 1
+              : 0,
         );
       }
-
-      return true;
+      return localAlarmBatch != null || await booking.book();
     } catch (_) {
       return false;
     }
@@ -791,6 +821,7 @@ class ManualEventSideEffectService {
     DateTime? now,
     // 백그라운드 동기화에서 호출하면 true로 설정해 라이브 GPS 조회를 막는다.
     bool cacheOnlyLocation = false,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
     final resyncKey = _externalPreparationResyncKey(userId, dayReference);
     final existing = _externalPreparationResyncs[resyncKey];
@@ -811,6 +842,7 @@ class ManualEventSideEffectService {
       travelMode: travelMode,
       now: now,
       cacheOnlyLocation: cacheOnlyLocation,
+      localAlarmBatch: localAlarmBatch,
     );
     _externalPreparationResyncs[resyncKey] = resyncFuture;
     try {
@@ -834,7 +866,9 @@ class ManualEventSideEffectService {
     required String travelMode,
     DateTime? now,
     bool cacheOnlyLocation = false,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
+    final booking = localAlarmBatch ?? createLocalAlarmResyncBatch();
     final smartService = SmartPreparationAlarmService(
       notificationService: _notifications,
     );
@@ -932,14 +966,17 @@ class ManualEventSideEffectService {
         ),
       );
       for (final entry in payloadsByEvent.entries) {
-        await smartService.schedulePayloads(
-          eventId: entry.key.id,
-          eventTitle: entry.key.title,
-          eventSource: entry.key.source,
-          payloads: entry.value,
-        );
+        booking.add(entry.key.startAt!, entry.value.length, (allowed) async {
+          await smartService.schedulePayloads(
+            eventId: entry.key.id,
+            eventTitle: entry.key.title,
+            eventSource: entry.key.source,
+            payloads: entry.value.take(allowed).toList(),
+          );
+          return allowed;
+        });
       }
-      return true;
+      return localAlarmBatch != null || await booking.book();
     } catch (e, st) {
       debugPrint('[PlanFlow] smart preparation alarm resync failed: $e\n$st');
       return false;
@@ -1226,9 +1263,21 @@ class ManualEventSideEffectService {
     Duration? reminderOffset = defaultReminderOffset,
     Duration? criticalAlarmOffset,
   }) async {
+    await _scheduleLocalNotifications(
+      event,
+      reminderOffset: reminderOffset,
+      criticalAlarmOffset: criticalAlarmOffset,
+    );
+  }
+
+  Future<bool> _scheduleLocalNotifications(
+    EventModel event, {
+    required Duration? reminderOffset,
+    required Duration? criticalAlarmOffset,
+  }) async {
     final startAt = event.startAt;
     if (startAt == null) {
-      return;
+      return false;
     }
 
     final now = _currentTime;
@@ -1258,6 +1307,7 @@ class ManualEventSideEffectService {
         notifyAt: reminderNotifyAt,
         payload: 'event:${event.id}',
       );
+      return true;
     }
 
     if (event.isCritical && criticalNotifyAt != null) {
@@ -1275,7 +1325,7 @@ class ManualEventSideEffectService {
         // 백그라운드에서 시작 시각 없이 저장된 ack: 지금 확인된 시작 시각으로
         // 고정해 두면 이후 시각 변경은 정상적으로 다시 울린다.
         await criticalAcks.adoptUnknownStart(event.id, startAt);
-        return;
+        return false;
       }
       if (await criticalAcks.isAcknowledged(event.id, startAt) ||
           (occurrence != null &&
@@ -1283,7 +1333,7 @@ class ManualEventSideEffectService {
                 occurrence.acknowledgementKey(event.id),
                 startAt,
               ))) {
-        return;
+        return false;
       }
       // Android+좌표 있는 강한알람은 트리거 시각에 조용히 preflight를 돌려
       // 신선한 GPS·경로 API로 출발 시각을 재계산한 뒤 울린다(12:00 트리거가
@@ -1316,7 +1366,9 @@ class ManualEventSideEffectService {
       if (!result.isScheduled) {
         throw StateError(result.message ?? '중요 알람 예약 실패');
       }
+      return true;
     }
+    return false;
   }
 
   DateTime? _resolveCriticalNotifyAt(DateTime eventStartAt, Duration offset) {

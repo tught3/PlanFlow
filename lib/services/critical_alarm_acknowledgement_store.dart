@@ -42,6 +42,7 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
   const SharedPreferencesCriticalAlarmAcknowledgementStore();
 
   static const String _prefix = 'critical_alarm:ack:';
+  static final _occurrenceKeyPattern = RegExp(r':critical:\d{8}$');
   String _key(String id) => '$_prefix${id.trim()}';
 
   /// Local/UTC DateTime of the same instant must compare equal.
@@ -74,7 +75,11 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
     final prefs = await _prefs();
     if (prefs == null) return false;
     // A native action can write the dated key from a background isolate.
-    await prefs.reload();
+    try {
+      await prefs.reload();
+    } catch (_) {
+      // The background store may be temporarily unavailable. Keep cached ACKs.
+    }
     return prefs.getString(_key(key)) == _normalize(startAt);
   }
 
@@ -99,8 +104,22 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
     if (eventId.trim().isEmpty) return;
     final prefs = await _prefs();
     if (prefs == null) throw StateError('SharedPreferences unavailable');
-    if (!await prefs.setString(_key(eventId), _normalize(startAt))) {
+    final acknowledgedKey = _key(eventId);
+    if (!await prefs.setString(acknowledgedKey, _normalize(startAt))) {
       throw StateError('Critical acknowledgement write failed');
+    }
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
+    for (final key in prefs.getKeys()) {
+      // A confirmation can come from a notification retained by the OS.
+      if (key != acknowledgedKey &&
+          key.startsWith(_prefix) &&
+          _occurrenceKeyPattern.hasMatch(key)) {
+        final value = prefs.get(key);
+        final occurrence = value is String ? DateTime.tryParse(value) : null;
+        if (occurrence != null && occurrence.isBefore(cutoff)) {
+          await prefs.remove(key);
+        }
+      }
     }
   }
 

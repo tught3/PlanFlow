@@ -15,7 +15,6 @@ import 'calendar_sync_service.dart';
 import 'alarm_service.dart';
 import 'device_calendar_service.dart';
 import 'departure_alarm_service.dart';
-import 'event_preparation_service.dart';
 import 'event_refresh_bus.dart';
 import 'manual_event_side_effect_service.dart';
 import 'naver_caldav_service.dart';
@@ -27,7 +26,6 @@ class CalendarAutoSyncService {
     DeviceCalendarService? deviceCalendarService,
     EventRepository? eventRepository,
     ManualEventSideEffectService? sideEffectService,
-    EventPreparationService? eventPreparationService,
     Duration throttle = const Duration(minutes: 15),
     List<Duration> retryBackoffs = const <Duration>[
       Duration(seconds: 2),
@@ -39,7 +37,6 @@ class CalendarAutoSyncService {
         _deviceCalendarService = deviceCalendarService,
         _eventRepository = eventRepository,
         _sideEffectService = sideEffectService,
-        _eventPreparationService = eventPreparationService,
         _throttle = throttle,
         _retryBackoffs = retryBackoffs,
         _now = now ?? DateTime.now;
@@ -55,7 +52,6 @@ class CalendarAutoSyncService {
   final DeviceCalendarService? _deviceCalendarService;
   final EventRepository? _eventRepository;
   final ManualEventSideEffectService? _sideEffectService;
-  final EventPreparationService? _eventPreparationService;
   final Duration _throttle;
   final List<Duration> _retryBackoffs;
   final DateTime Function() _now;
@@ -80,9 +76,6 @@ class CalendarAutoSyncService {
 
   ManualEventSideEffectService get _sideEffects =>
       _sideEffectService ?? const ManualEventSideEffectService();
-
-  EventPreparationService get _eventPreparation =>
-      _eventPreparationService ?? const EventPreparationService();
 
   Future<CalendarAutoSyncResult> syncAfterEventSave(EventModel event) async {
     if (!_canSync) {
@@ -512,9 +505,11 @@ class CalendarAutoSyncService {
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!))
         ..addAll(overrideMarkers);
 
+      final localAlarms = _sideEffects.createLocalAlarmResyncBatch();
       await _sideEffects.resyncRemindersForEvents(
         events: upcomingEvents,
         userId: userId,
+        localAlarmBatch: localAlarms,
       );
 
       await _sideEffects.recalculateAlarmsForEvents(
@@ -527,33 +522,13 @@ class CalendarAutoSyncService {
         departureSafetyMargin: departureSafetyMargin,
         travelMode: travelMode,
         cacheOnlyLocation: true, // 백그라운드 동기화: 라이브 GPS 조회 금지
+        localAlarmBatch: localAlarms,
       );
-
-      // 백그라운드 동기화는 좌표가 이미 있는 일정만 알람 처리한다.
-      // 좌표가 없는 일정은 TMAP POI 검색이 필요한데, 백그라운드에서 해석에
-      // 실패하면 매 동기화마다 같은 일정을 재검색해 POI API가 폭주한다.
-      // 좌표 해석은 foreground 사용자 저장 시 1회성으로만 수행한다.
-      final upcomingLocationEvents = upcomingEvents.where((event) {
-        final startAt = event.startAt;
-        return startAt != null &&
-            !startAt.isBefore(now) &&
-            startAt.isBefore(now.add(DepartureAlarmService.monitorLookAhead)) &&
-            event.locationLat != null &&
-            event.locationLng != null;
-      }).toList(growable: false);
-
-      for (final event in upcomingLocationEvents) {
-        // resolveCoordinates: false → 백그라운드에서 POI 검색 금지.
-        await _eventPreparation.prepareAfterSave(
-          event,
-          departureSafetyMargin: departureSafetyMargin,
-          resolveCoordinates: false,
-        );
-      }
+      await localAlarms.book();
 
       debugPrint(
         'Calendar auto sync preparation resynced: '
-        'reason=$reason events=${upcomingLocationEvents.length}',
+        'reason=$reason events=${upcomingEvents.length}',
       );
     } catch (error, stackTrace) {
       debugPrint('Calendar auto sync preparation resync failed: $error');

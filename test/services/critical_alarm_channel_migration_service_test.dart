@@ -1,3 +1,4 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
@@ -159,6 +160,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
         ManualEventSideEffectService.defaultReminderOffset,
     Duration? criticalAlarmOffset =
         ManualEventSideEffectService.criticalAlarmOffset,
+    LocalAlarmResyncBatch? localAlarmBatch,
   }) async {
     calls += 1;
     resyncedEventIds.addAll(events.map((event) => event.id));
@@ -199,6 +201,10 @@ class _FakeManualEventSideEffectGateway extends ManualEventSideEffectGateway {
 /// 테스트가 검증한다.
 class _RecordingNotificationService extends NotificationService {
   final scheduledCriticalIdsByEventId = <String>[];
+
+  @override
+  Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async =>
+      [];
 
   @override
   Future<void> cancel(int id) async {}

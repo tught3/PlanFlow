@@ -539,9 +539,12 @@ void main() {
   testWidgets('recurring critical body tap confirms its occurrence in detail',
       (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    final anchor = DateTime.utc(2026, 7, 16, 9);
+    final today = DateTime.now().toUtc();
+    final anchor = DateTime.utc(today.year, today.month, today.day, 9);
     final firstStart = anchor.add(const Duration(days: 1));
     final secondStart = anchor.add(const Duration(days: 2));
+    final firstDate = eventAlarmDateSuffix(firstStart);
+    final secondDate = eventAlarmDateSuffix(secondStart);
     final event = EventModel(
       id: 'recurring-detail',
       userId: 'user-1',
@@ -587,7 +590,7 @@ void main() {
     expect(notifications.cancelledNotificationIds, isEmpty);
     expect(await acks.hasAcknowledgement(event.id), isFalse);
     expect(
-      await acks.hasAcknowledgement('${event.id}:critical:20260717'),
+      await acks.hasAcknowledgement('${event.id}:critical:$firstDate'),
       isFalse,
     );
 
@@ -614,14 +617,15 @@ void main() {
     await tester.tap(find.text('확인(출발)'));
     await tester.pumpAndSettle();
     expect(
-        await acks.isAcknowledged('${event.id}:critical:20260717', firstStart),
+        await acks.isAcknowledged(
+            '${event.id}:critical:$firstDate', firstStart),
         isTrue);
     expect(notifications.fullCancelledEventIds, isEmpty);
     expect(
       notifications.cancelledNotificationIds,
       [
         for (final kind in ['push', 'critical', 'departure'])
-          notifications.notificationIdFor('${event.id}:$kind:20260717'),
+          notifications.notificationIdFor('${event.id}:$kind:$firstDate'),
       ],
     );
 
@@ -630,10 +634,12 @@ void main() {
     await tester.tap(find.text('확인(출발)'));
     await tester.pumpAndSettle();
     expect(
-        await acks.isAcknowledged('${event.id}:critical:20260718', secondStart),
+        await acks.isAcknowledged(
+            '${event.id}:critical:$secondDate', secondStart),
         isTrue);
     expect(
-        await acks.isAcknowledged('${event.id}:critical:20260717', firstStart),
+        await acks.isAcknowledged(
+            '${event.id}:critical:$firstDate', firstStart),
         isTrue);
     expect(notifications.fullCancelledEventIds, isEmpty);
   });
