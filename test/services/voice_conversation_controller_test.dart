@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/services/voice_command_router.dart';
 import 'package:planflow/services/voice_conversation_controller.dart';
 
 // UI 테스트(voice_*_screen_test)와 동일한 규칙: 1월 1일이 목요일이고 윤년이
@@ -26,7 +27,10 @@ DateTime _nextWeekdayOnOrAfter(DateTime from, int weekday) {
 
 void main() {
   group('pending destructive voice actions', () {
-    VoiceConversationController makeController({required bool convert}) {
+    VoiceConversationController makeController({
+      required bool convert,
+      bool requestConfirmation = true,
+    }) {
       final today = DateTime(_fixtureYear, 5, 7, 8);
       final controller = VoiceConversationController(
         now: () => today,
@@ -43,6 +47,7 @@ void main() {
       );
       expect(controller.handle('오늘 일정 보여줘').action,
           VoiceConversationAction.showEvents);
+      if (!requestConfirmation) return controller;
       final pending = controller.handle(convert
           ? '첫번째 일정 개인 일정으로 바꿔줘'
           : '첫번째 일정 삭제해줘');
@@ -54,9 +59,9 @@ void main() {
     }
 
     for (final reply in [
-      '응', '어', '네', '예', '그래', '맞아', '좋아', '확인', '오케이',
+      '응', '네', '예', '그래', '맞아', '좋아', '확인', '오케이',
       '응, 그래!', '네 맞아요', '삭제해', '삭제해줘', '지워', '지워줘',
-      '없애줘', '응 지워줘', '응 삭제해줘',
+      '없애줘', '응 지워줘', '응 삭제해줘', '네 삭제해줘',
     ]) {
       test('"$reply" confirms only the pending delete target', () {
         final controller = makeController(convert: false);
@@ -70,7 +75,7 @@ void main() {
     for (final reply in [
       '삭제 취소해줘', '안 지워도 돼', '안지워도돼', '지우지 마',
       '삭제하지 말아줘', '아니', '아냐', '됐어', '그만', '말고', '보류',
-      '놔둬', '냅둬', '괜찮아', '안삭제', '안해',
+      '놔둬', '냅둬', '괜찮아', '안삭제', '안해', '하지 마', '취소', '싫어', '아니요',
     ]) {
       test('"$reply" cancels the pending delete', () {
         final controller = makeController(convert: false);
@@ -78,6 +83,24 @@ void main() {
         expect(result.action, VoiceConversationAction.deleteCanceled);
         expect(result.deleteConfirmed, isFalse);
         expect(controller.pendingDelete, isNull);
+      });
+    }
+
+    for (final reply in ['어', '어…', '어 음', '응?']) {
+      test('"$reply" asks again without confirming the pending delete', () {
+        final controller = makeController(convert: false);
+        final pending = controller.pendingDelete;
+
+        final result = controller.handle(reply);
+
+        expect(result.action, VoiceConversationAction.none);
+        expect(result.deleteConfirmed, isFalse);
+        expect(result.assistantMessage, contains('삭제할까요?'));
+        expect(controller.pendingDelete, same(pending));
+        expect(
+          controller.handle('응').action,
+          VoiceConversationAction.deleteConfirmed,
+        );
       });
     }
 
@@ -158,43 +181,33 @@ void main() {
       });
     }
 
-    for (final reply in ['어제 일정 보여줘', '네이버 일정 보여줘']) {
-      test('"$reply" is a query during pending conversion', () {
-        final controller = makeController(convert: true);
-        final result = controller.handle(reply);
-        expect(result.action, VoiceConversationAction.showEvents);
-        expect(result.visibleEvents.map((event) => event.id),
-            [reply.startsWith('어제') ? 'yesterday' : 'tomorrow']);
-        expect(controller.pendingConvert, isNull);
-      });
-    }
-
-    test('yesterday uses the PlanFlow date when UTC is still in the prior year',
-        () {
-      final priorYear = _fixtureYear - 1;
-      final yesterday = DateTime(priorYear, 12, 31);
-      final today = DateTime(_fixtureYear, 1, 1);
-      final controller = VoiceConversationController(
-        // UTC still shows December 31 while Seoul is at 00:15 on January 1.
-        now: () => DateTime.utc(priorYear, 12, 31, 15, 15),
-        events: [
-          _event('earlier', '이전 일정', DateTime(priorYear, 12, 30, 11)),
-          _event('yesterday', '어제 일정', DateTime(priorYear, 12, 31, 11)),
-          _event('group', '팀 회의', DateTime(_fixtureYear, 1, 1, 9))
-              .copyWith(source: 'group'),
-        ],
-      );
-      controller.handle('오늘 일정 보여줘');
-      final pending = controller.handle('첫번째 일정 개인 일정으로 바꿔줘');
-      expect(pending.action, VoiceConversationAction.confirmConvertToPersonal);
-      expect(controller.pendingConvert?.id, 'group');
-
-      final result = controller.handle('어제 일정 보여줘');
+    test('"네이버 일정 보여줘" replaces a pending conversion with a query', () {
+      final controller = makeController(convert: true);
+      final result = controller.handle('네이버 일정 보여줘');
 
       expect(result.action, VoiceConversationAction.showEvents);
-      expect(result.queryRange?.start, yesterday);
-      expect(result.queryRange?.end, today);
-      expect(result.visibleEvents.map((event) => event.id), ['yesterday']);
+      expect(result.visibleEvents.map((event) => event.id), ['tomorrow']);
+      expect(controller.pendingConvert, isNull);
+    });
+
+    test('yesterday query uses the ordinary path during pending conversion', () {
+      const query = '어제 일정 보여줘';
+      final controller = makeController(convert: true);
+      final ordinary = makeController(
+        convert: true,
+        requestConfirmation: false,
+      ).handle(query);
+
+      final result = controller.handle(query);
+
+      expect(VoiceCommandRouter().route(query).intent, VoiceCommandRouteIntent.query);
+      expect(result.inputText, query);
+      expect(result.queryRange?.start, ordinary.queryRange?.start);
+      expect(result.queryRange?.end, ordinary.queryRange?.end);
+      expect(result.action, ordinary.action);
+      expect(result.action, isNot(VoiceConversationAction.convertToPersonalConfirmed));
+      expect(result.visibleEvents.map((event) => event.id),
+          ordinary.visibleEvents.map((event) => event.id));
       expect(controller.pendingConvert, isNull);
     });
 

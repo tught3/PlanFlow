@@ -243,7 +243,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   // 원본 GroupEventModel을 역참조하기 위한 레지스트리. 수정 라우팅 분기에서
   // "이 id가 그룹 일정인가"를 판정하는 데 쓴다.
   Map<String, GroupEventModel> _groupEventById = <String, GroupEventModel>{};
+  int _eventLoadGeneration = 0;
   final Set<String> _deletedEventIds = <String>{};
+  // Ignore stale fetch results after a full delete, while keeping series anchors
+  // that had only an occurrence removed.
+  final Set<String> _fullyDeletedEventIds = <String>{};
   final Set<String> _deletingEventIds = <String>{};
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -603,7 +607,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     super.dispose();
   }
 
-  Future<void> _loadEvents() async {
+  Future<void> _loadEvents({
+    bool background = false,
+    bool propagateError = false,
+  }) async {
+    final generation = ++_eventLoadGeneration;
     debugPrint('VoiceConversationScreen load events start');
     final usesInjectedRepository = widget.repository != null;
     if (!usesInjectedRepository &&
@@ -624,23 +632,29 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       });
       return;
     }
-    setState(() => _isLoading = true);
+    final showLoading = !background;
+    if (_isLoading != showLoading) {
+      setState(() => _isLoading = showLoading);
+    }
     try {
       final userId = usesInjectedRepository ? null : authProvider.userId;
-      final events = await _fetchAndRegisterMergedEvents(userId: userId);
-      if (!mounted) return;
+      final snapshot = await _fetchMergedEvents(userId: userId);
+      // A newer request owns both the voice candidates and the group registry.
+      if (!mounted || generation != _eventLoadGeneration) return;
       debugPrint(
-        'VoiceConversationScreen load events success: ${events.length} '
-        '(group=${_groupEventById.length})',
+        'VoiceConversationScreen load events success: ${snapshot.events.length} '
+        '(group=${snapshot.groupById.length})',
       );
       setState(() {
-        _events = events;
-        _conversation.replaceEvents(events);
+        _events = snapshot.events;
+        _groupEventById = snapshot.groupById;
+        _conversation.replaceEvents(_events);
         _isLoading = false;
       });
     } catch (error) {
+      if (!mounted || generation != _eventLoadGeneration) return;
       debugPrint('VoiceConversationScreen load events failed: $error');
-      if (!mounted) return;
+      if (propagateError) rethrow;
       setState(() {
         _isLoading = false;
         _messages.add(
@@ -654,21 +668,26 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   /// 개인 일정과 사용자가 속한 그룹의 그룹 일정을 함께 불러와 시간순으로
   /// 병합한다. 그룹 일정은 [_eventModelFromGroupEvent]로 개인 EventModel
-  /// 형태로 변환해 컨트롤러의 순번/시간 매칭 로직을 그대로 재사용하되,
-  /// 원본은 [_groupEventById]에 등록해 나중에 수정 라우팅에서 역참조한다.
-  Future<List<EventModel>> _fetchAndRegisterMergedEvents({
+  /// 형태로 변환해 컨트롤러의 순번/시간 매칭 로직을 재사용한다. 원본은
+  /// 조회 결과와 함께 반환해 수정 라우팅에서 역참조할 수 있게 한다.
+  Future<({
+    List<EventModel> events,
+    Map<String, GroupEventModel> groupById,
+  })> _fetchMergedEvents({
     String? userId,
   }) async {
     final personalEvents = await _repository.listEvents(userId: userId);
     final groupCandidates = await _loadGroupEventCandidates();
-    _groupEventById = groupCandidates.byId;
-    final merged = <EventModel>[...personalEvents, ...groupCandidates.events];
+    final merged = <EventModel>[
+      ...personalEvents.where((event) => !_fullyDeletedEventIds.contains(event.id)),
+      ...groupCandidates.events,
+    ];
     merged.sort((a, b) {
       final left = a.startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       final right = b.startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return left.compareTo(right);
     });
-    return merged;
+    return (events: merged, groupById: groupCandidates.byId);
   }
 
   /// 사용자가 속한 모든 그룹의 그룹 일정을 조회해 개인 EventModel 형태로
@@ -824,9 +843,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       final canLoadEvents = widget.repository != null ||
           (AppEnv.isSupabaseReady && authProvider.isSignedIn);
       if (_events.isEmpty && canLoadEvents) {
-        _events = await _fetchAndRegisterMergedEvents(
-          userId: widget.repository == null ? authProvider.userId : null,
-        );
+        await _loadEvents(background: true, propagateError: true);
+        if (!mounted) return;
       }
       _conversation.replaceEvents(_events);
       final hadPendingConfirmation =
@@ -2305,30 +2323,46 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<bool> _deleteEvent(EventModel event) async {
-    if (_guideMode || !_deletingEventIds.add(event.id)) return false;
+    if (_guideMode ||
+        _fullyDeletedEventIds.contains(event.id) ||
+        !_deletingEventIds.add(event.id)) {
+      return false;
+    }
+    Future<void> Function()? runCleanup;
     try {
       final userId = authProvider.userId;
+      final settingsRepository = widget.settingsRepository;
+      final sideEffectService = _sideEffectService;
       await _repository.deleteEvent(event.id, userId: userId);
-      await _cleanupDeletedEvent(event.id, userId);
+      runCleanup = () => _cleanupDeletedEvent(
+        event.id,
+        userId,
+        settingsRepository: settingsRepository,
+        sideEffectService: sideEffectService,
+      );
       _deletedEventIds.add(event.id);
+      _fullyDeletedEventIds.add(event.id);
       _setConversationInputText('');
       _restartListenTimer?.cancel();
       _isRestartPending = false;
       _listenGeneration += 1;
-      EventRefreshBus.instance.notifyChanged(
-        reason: 'voice_conversation_delete',
-        eventId: event.id,
-        startAt: event.startAt,
-      );
-      await _loadEvents();
       if (mounted) {
         setState(() {
+          _events = _events
+              .where((candidate) => candidate.id != event.id)
+              .toList(growable: false);
+          _conversation.removeDeletedEvent(event.id);
           _isListening = false;
           _voicePhase = _VoiceConversationPhase.idle;
         });
       } else {
         _isListening = false;
       }
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_delete',
+        eventId: event.id,
+        startAt: event.startAt,
+      );
       if (_keepListening && !_voicePausedByUser) {
         _scheduleAutoRestartListen();
       }
@@ -2350,14 +2384,23 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       return false;
     } finally {
       _deletingEventIds.remove(event.id);
+      if (runCleanup != null) {
+        unawaited(runCleanup());
+        if (mounted) unawaited(_loadEvents(background: true));
+      }
     }
   }
 
-  Future<void> _cleanupDeletedEvent(String eventId, String? userId) async {
+  static Future<void> _cleanupDeletedEvent(
+    String eventId,
+    String? userId, {
+    required SettingsRepository? settingsRepository,
+    required ManualEventSideEffectService sideEffectService,
+  }) async {
     UserSettingsModel? settings;
     if (userId != null && userId.isNotEmpty) {
       try {
-        final repository = widget.settingsRepository ??
+        final repository = settingsRepository ??
             (AppEnv.isSupabaseReady ? SettingsRepository.supabase() : null);
         settings = await repository?.fetchSettings(userId);
       } catch (error) {
@@ -2368,9 +2411,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     try {
       if (settings == null) {
-        await _sideEffectService.cleanupAfterDelete(eventId, userId: userId);
+        await sideEffectService.cleanupAfterDelete(eventId, userId: userId);
       } else {
-        await _sideEffectService.cleanupAfterDelete(
+        await sideEffectService.cleanupAfterDelete(
           eventId,
           userId: userId,
           prepTimeMin: settings.prepTimeMin,

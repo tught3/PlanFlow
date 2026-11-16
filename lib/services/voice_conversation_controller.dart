@@ -248,6 +248,19 @@ class VoiceConversationController {
     _state.replaceEvents(events);
   }
 
+  void removeDeletedEvent(String eventId) {
+    bool isRemaining(EventModel event) => event.id != eventId;
+
+    _state.events.removeWhere((event) => event.id == eventId);
+    _state.visibleEvents =
+        _state.visibleEvents.where(isRemaining).toList(growable: false);
+    _state.selectedEvents =
+        _state.selectedEvents.where(isRemaining).toList(growable: false);
+    if (_state.focusedEvent?.id == eventId) _state.focusedEvent = null;
+    if (_state.pendingDelete?.event.id == eventId) _state.pendingDelete = null;
+    if (_state.pendingConvert?.id == eventId) _state.pendingConvert = null;
+  }
+
   void clearSession() {
     _state
       ..visibleEvents = const <EventModel>[]
@@ -272,7 +285,7 @@ class VoiceConversationController {
       state.replaceEvents(events);
     }
 
-    var text = _normalizePendingDeleteReply(input, state.pendingDelete);
+    final text = _normalizePendingDeleteReply(input, state.pendingDelete);
     final route = _router.route(text);
     if (text.isEmpty) {
       return _finish(
@@ -395,29 +408,17 @@ class VoiceConversationController {
       final replies = pendingDelete == null
           ? _convertConfirmationReplies
           : _deleteConfirmationReplies;
-      if (_isDifferentConfirmationCommand(text, route, state, replies)) {
+      final ambiguousDeleteReply =
+          pendingDelete != null && _isAmbiguousDeleteReply(text);
+      if (!ambiguousDeleteReply &&
+          _isDifferentConfirmationCommand(text, route, state, replies)) {
         // Treat the utterance as a new command using the existing target
         // resolver. A new deletion request must prompt again.
         state
           ..pendingDelete = null
           ..pendingConvert = null
           ..pendingTitleSearchText = null;
-
-        // Keep this fallback local to queries that replace a confirmation.
-        // The ordinary date parser accepts an explicit date for yesterday.
-        final yesterdayPrefix = RegExp(r'^어제(?=\s|일정|스케줄|약속)');
-        if (route.intent == VoiceCommandRouteIntent.query &&
-            yesterdayPrefix.hasMatch(text) &&
-            _parseDateRangeWithContext(text, state) == null) {
-          final clock = _now;
-          final now = clock == null ? planflowNow() : planflowLocal(clock());
-          final yesterday = DateTime(now.year, now.month, now.day - 1);
-          text = text.replaceFirst(
-            yesterdayPrefix,
-            '${yesterday.year}년 ${yesterday.month}월 ${yesterday.day}일 ',
-          );
-        }
-      } else if (_isConfirmationReply(text, replies)) {
+      } else if (!ambiguousDeleteReply && _isConfirmationReply(text, replies)) {
         final confirmed = pendingDelete?.event ?? pendingConvert!;
         state
           ..pendingDelete = null
@@ -1605,6 +1606,13 @@ class VoiceConversationController {
         text.replaceAll(_confirmationSeparators, ' ').trim(),
       );
 
+  bool _isAmbiguousDeleteReply(String text) {
+    final reply = text.replaceAll(_confirmationSeparators, '');
+    return reply == '어' ||
+        reply == '어음' ||
+        (reply == '응' && (text.contains('?') || text.contains('？')));
+  }
+
   bool _isConfirmationReply(String text, Set<String> actionReplies) {
     final reply = text.replaceAll(_confirmationSeparators, '');
     return _affirmativeReplies.contains(reply) ||
@@ -1673,6 +1681,7 @@ class VoiceConversationController {
     final suffix = trimmed.substring(end);
     final reply = suffix.trim();
     return suffix.startsWith(_confirmationSeparators) &&
+            !_isAmbiguousDeleteReply(reply) &&
             _isConfirmationReply(reply, _deleteConfirmationReplies)
         ? reply
         : trimmed;
