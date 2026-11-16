@@ -7,6 +7,7 @@ import 'event_range_utils.dart';
 import 'gpt_service.dart';
 import 'voice_command_router.dart';
 import 'voice_date_range_parser.dart';
+import 'voice_text_cleanup_service.dart';
 
 typedef VoiceConversationNow = DateTime Function();
 
@@ -237,8 +238,27 @@ class VoiceConversationController {
   VoiceConversationDeleteAction? get pendingDelete => _state.pendingDelete;
   EventModel? get pendingConvert => _state.pendingConvert;
 
+  void dismissDeleteConfirmation(VoiceConversationDeleteAction action) {
+    if (identical(_state.pendingDelete, action)) {
+      _state.pendingDelete = null;
+    }
+  }
+
   void replaceEvents(Iterable<EventModel> events) {
     _state.replaceEvents(events);
+  }
+
+  void removeDeletedEvent(String eventId) {
+    bool isRemaining(EventModel event) => event.id != eventId;
+
+    _state.events.removeWhere((event) => event.id == eventId);
+    _state.visibleEvents =
+        _state.visibleEvents.where(isRemaining).toList(growable: false);
+    _state.selectedEvents =
+        _state.selectedEvents.where(isRemaining).toList(growable: false);
+    if (_state.focusedEvent?.id == eventId) _state.focusedEvent = null;
+    if (_state.pendingDelete?.event.id == eventId) _state.pendingDelete = null;
+    if (_state.pendingConvert?.id == eventId) _state.pendingConvert = null;
   }
 
   void clearSession() {
@@ -265,7 +285,7 @@ class VoiceConversationController {
       state.replaceEvents(events);
     }
 
-    final text = input.trim();
+    final text = _normalizePendingDeleteReply(input, state.pendingDelete);
     final route = _router.route(text);
     if (text.isEmpty) {
       return _finish(
@@ -360,77 +380,78 @@ class VoiceConversationController {
       }
     }
 
-    if (state.pendingDelete != null && _isDeleteConfirmation(text)) {
-      final confirmed = state.pendingDelete!;
-      state
-        ..pendingDelete = null
-        ..pendingConvert = null
-        ..focusedEvent = confirmed.event
-        ..selectedEvents = const <EventModel>[]
-        ..pendingTitleSearchText = null;
-      return _finish(
-        state,
-        session,
-        VoiceConversationResult(
-          action: VoiceConversationAction.deleteConfirmed,
-          inputText: input,
-          targetEvent: confirmed.event,
-          pendingDelete: confirmed,
-          deleteConfirmed: true,
-        ),
-      );
-    }
+    final pendingDelete = state.pendingDelete;
+    final pendingConvert = state.pendingConvert;
+    if (pendingDelete != null || pendingConvert != null) {
+      if (_isConfirmationRejection(text)) {
+        state
+          ..pendingDelete = null
+          ..pendingConvert = null
+          ..pendingTitleSearchText = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: pendingDelete == null
+                ? VoiceConversationAction.none
+                : VoiceConversationAction.deleteCanceled,
+            inputText: input,
+            targetEvent: pendingDelete?.event,
+            pendingDelete: pendingDelete,
+            deleteCanceled: pendingDelete != null,
+            assistantMessage:
+                pendingDelete == null ? '개인 일정으로 옮기지 않을게요.' : null,
+          ),
+        );
+      }
 
-    if (state.pendingDelete != null && _isDeleteRejection(text)) {
-      final canceled = state.pendingDelete!;
-      state
-        ..pendingDelete = null
-        ..pendingConvert = null
-        ..pendingTitleSearchText = null;
-      return _finish(
-        state,
-        session,
-        VoiceConversationResult(
-          action: VoiceConversationAction.deleteCanceled,
-          inputText: input,
-          targetEvent: canceled.event,
-          pendingDelete: canceled,
-          deleteCanceled: true,
-        ),
-      );
-    }
-
-    if (state.pendingConvert != null && _isConvertConfirmation(text)) {
-      final confirmed = state.pendingConvert!;
-      state
-        ..pendingConvert = null
-        ..focusedEvent = confirmed
-        ..selectedEvents = const <EventModel>[]
-        ..pendingTitleSearchText = null;
-      return _finish(
-        state,
-        session,
-        VoiceConversationResult(
-          action: VoiceConversationAction.convertToPersonalConfirmed,
-          inputText: input,
-          targetEvent: confirmed,
-        ),
-      );
-    }
-
-    if (state.pendingConvert != null && _isDeleteRejection(text)) {
-      state
-        ..pendingConvert = null
-        ..pendingTitleSearchText = null;
-      return _finish(
-        state,
-        session,
-        VoiceConversationResult(
-          action: VoiceConversationAction.none,
-          inputText: input,
-          assistantMessage: '개인 일정으로 옮기지 않을게요.',
-        ),
-      );
+      final replies = pendingDelete == null
+          ? _convertConfirmationReplies
+          : _deleteConfirmationReplies;
+      final ambiguousDeleteReply =
+          pendingDelete != null && _isAmbiguousDeleteReply(text);
+      if (!ambiguousDeleteReply &&
+          _isDifferentConfirmationCommand(text, route, state, replies)) {
+        // Treat the utterance as a new command using the existing target
+        // resolver. A new deletion request must prompt again.
+        state
+          ..pendingDelete = null
+          ..pendingConvert = null
+          ..pendingTitleSearchText = null;
+      } else if (!ambiguousDeleteReply && _isConfirmationReply(text, replies)) {
+        final confirmed = pendingDelete?.event ?? pendingConvert!;
+        state
+          ..pendingDelete = null
+          ..pendingConvert = null
+          ..focusedEvent = confirmed
+          ..selectedEvents = const <EventModel>[]
+          ..pendingTitleSearchText = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: pendingDelete == null
+                ? VoiceConversationAction.convertToPersonalConfirmed
+                : VoiceConversationAction.deleteConfirmed,
+            inputText: input,
+            targetEvent: confirmed,
+            pendingDelete: pendingDelete,
+            deleteConfirmed: pendingDelete != null,
+          ),
+        );
+      } else {
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.none,
+            inputText: input,
+            assistantMessage: pendingDelete != null
+                ? "삭제할까요? '응' 또는 '아니'로 답해 주세요."
+                : "개인 일정으로 옮길까요? '응' 또는 '아니'로 답해 주세요.",
+          ),
+        );
+      }
     }
 
     if (state.pendingConvert == null &&
@@ -1551,47 +1572,119 @@ class VoiceConversationController {
         text.contains('없애');
   }
 
-  bool _isDeleteConfirmation(String text) {
-    final normalized = _compact(text);
-    final hasPositive = normalized.contains('응') ||
-        normalized.contains('그래') ||
-        normalized.contains('맞아') ||
-        normalized.contains('확인') ||
-        normalized.contains('해줘') ||
-        normalized.contains('삭제해') ||
-        normalized.contains('지워');
-    final hasDelete = normalized.contains('삭제') ||
-        normalized.contains('지워') ||
-        normalized.contains('없애');
-    return hasPositive && hasDelete && !normalized.contains('아니');
+  static const _affirmativeReplies = {
+    '응', '어', '네', '예', '그래', '그래요', '맞아', '맞아요',
+    '좋아', '좋아요', '확인', '오케이', '응그래', '네맞아요',
+  };
+
+  static const _deleteConfirmationReplies = {
+    '삭제해', '삭제해줘', '삭제해주세요',
+    '지워', '지워줘', '지워주세요',
+    '없애', '없애줘', '없애주세요',
+  };
+
+  static const _convertConfirmationReplies = {
+    '옮겨줘', '옮겨주세요', '바꿔줘', '바꿔주세요',
+    '개인일정으로해줘', '개인일정으로해주세요',
+    '개인일정으로옮겨줘', '개인일정으로바꿔줘',
+  };
+
+  static final _confirmationSeparators = RegExp(r'[\s\p{P}]+', unicode: true);
+  static final _confirmationRejection = RegExp(
+    r'아니|아냐|말고|하지마|지마(?:요|세요|줘|주세요)?$|지말아|'
+    r'취소|그만|됐어|싫|보류|놔둬|냅둬|괜찮아',
+  );
+  static final _confirmationNegation = RegExp(
+    r'(?:^| )안(?:$| |지워|지우|삭제|해|옮겨|옮기|바꿔|바꾸|없애|전환)',
+  );
+
+  bool _isConfirmationRejection(String text) =>
+      _confirmationRejection.hasMatch(
+        text.replaceAll(_confirmationSeparators, ''),
+      ) ||
+      _confirmationNegation.hasMatch(
+        text.replaceAll(_confirmationSeparators, ' ').trim(),
+      );
+
+  bool _isAmbiguousDeleteReply(String text) {
+    final reply = text.replaceAll(_confirmationSeparators, '');
+    return reply == '어' ||
+        reply == '어음' ||
+        (reply == '응' && (text.contains('?') || text.contains('？')));
   }
 
-  bool _isDeleteRejection(String text) {
-    final normalized = _compact(text);
-    return normalized.contains('아니') ||
-        normalized.contains('취소') ||
-        normalized.contains('하지마') ||
-        normalized.contains('보류');
+  bool _isConfirmationReply(String text, Set<String> actionReplies) {
+    final reply = text.replaceAll(_confirmationSeparators, '');
+    return _affirmativeReplies.contains(reply) ||
+        actionReplies.contains(reply) ||
+        _affirmativeReplies.any(
+          (affirmative) => actionReplies.any(
+            (action) => reply == '$affirmative$action',
+          ),
+        );
   }
 
-  // 삭제 확인(_isDeleteConfirmation)과 달리 '삭제/지워/없애' 키워드를 요구하지
-  // 않는 일반 긍정 확인. "개인 일정으로 옮길까요?" 같은 확인 질문에 단순히
-  // "응"/"네"로만 답해도 확정되어야 한다.
-  bool _isConvertConfirmation(String text) {
-    final normalized = _compact(text);
-    if (normalized.contains('아니')) {
-      return false;
+  bool _isDifferentConfirmationCommand(
+    String text,
+    VoiceCommandRouteResult route,
+    _VoiceConversationState state,
+    Set<String> actionReplies,
+  ) {
+    if (_parseOrdinalIndex(text) != null ||
+        _parseDateRangeWithContext(text, state) != null ||
+        _parseTimeReference(text) != null) {
+      return true;
     }
-    return normalized.contains('응') ||
-        normalized.contains('네') ||
-        normalized.contains('어') ||
-        normalized.contains('그래') ||
-        normalized.contains('맞아') ||
-        normalized.contains('확인') ||
-        normalized.contains('좋아') ||
-        normalized.contains('옮겨') ||
-        normalized.contains('바꿔') ||
-        normalized.contains('해줘');
+    // The general router also sees bare replies like "옮겨줘" as edits.
+    if (_isConfirmationReply(text, actionReplies)) return false;
+
+    // Resolving with a query default distinguishes explicit creation from
+    // the add fallback used for unrecognized utterances.
+    final isExplicitAdd = route.intent == VoiceCommandRouteIntent.add &&
+        _router.resolveIntent(
+              route.cleanedText,
+              context: VoiceTextCleanupContext.query,
+            ) ==
+            VoiceCommandRouteIntent.add;
+    return _isQueryIntent(text, route: route) ||
+        _isModificationIntent(text, route: route) ||
+        _isDeleteIntent(text, route: route) ||
+        isExplicitAdd ||
+        _hasCreateEventKeywords(text) ||
+        _resolveFollowUpTarget(text, state, route: route) != null;
+  }
+
+  /// A submitted transcript can start with the previous delete request.
+  /// Strip that prefix only when the remaining reply explicitly confirms it.
+  String normalizePendingDeleteReply(String text) =>
+      _normalizePendingDeleteReply(text, pendingDelete);
+
+  String _normalizePendingDeleteReply(
+    String text,
+    VoiceConversationDeleteAction? pending,
+  ) {
+    final trimmed = text.trim();
+    final pendingRequest = pending?.requestText;
+    if (pendingRequest == null ||
+        _isConfirmationRejection(trimmed) ||
+        _isConfirmationReply(trimmed, _deleteConfirmationReplies)) {
+      return trimmed;
+    }
+
+    final prefix = _compact(pendingRequest);
+    if (prefix.isEmpty || !_compact(trimmed).startsWith(prefix)) return trimmed;
+    var end = 0;
+    var matched = 0;
+    while (matched < prefix.length) {
+      if (trimmed[end++].trim().isNotEmpty) matched++;
+    }
+    final suffix = trimmed.substring(end);
+    final reply = suffix.trim();
+    return suffix.startsWith(_confirmationSeparators) &&
+            !_isAmbiguousDeleteReply(reply) &&
+            _isConfirmationReply(reply, _deleteConfirmationReplies)
+        ? reply
+        : trimmed;
   }
 
   EventModel? _resolveFollowUpTarget(
