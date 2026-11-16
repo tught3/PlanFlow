@@ -591,9 +591,17 @@ class SupabaseEventRepository extends EventRepository {
   }
 
   @override
-  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+  Future<EventModel?> fetchEvent(
+    String eventId, {
+    String? userId,
+    bool requireGuideEligibility = false,
+  }) async {
     final resolvedUserId = _resolveUserId(userId);
-    final response = await _selectEventById(eventId, resolvedUserId);
+    final response = await _selectEventById(
+      eventId,
+      resolvedUserId,
+      requireGuideEligibility: requireGuideEligibility,
+    );
 
     if (response == null) {
       return null;
@@ -1017,17 +1025,27 @@ class SupabaseEventRepository extends EventRepository {
 
   Future<Map<String, dynamic>?> _selectEventById(
     String eventId,
-    String userId,
-  ) async {
+    String userId, {
+    required bool requireGuideEligibility,
+  }) async {
     try {
-      return await _client
+      var query = _client
           .from(_tableName)
           .select(_selectColumns)
           .eq('id', eventId)
-          .eq('user_id', userId)
-          .maybeSingle();
+          .eq('user_id', userId);
+      if (requireGuideEligibility) {
+        query = query
+            .isFilter('group_event_id', null)
+            .isFilter('parent_event_id', null)
+            .isFilter('recurrence_rule', null)
+            .isFilter('external_id', null)
+            .inFilter('source', ['manual', 'voice']);
+      }
+      return await query.maybeSingle();
     } on PostgrestException catch (error) {
-      if (!_isMissingSyncSchemaError(error)) {
+      // The legacy projection drops fields needed for guide eligibility.
+      if (requireGuideEligibility || !_isMissingSyncSchemaError(error)) {
         rethrow;
       }
       return _client

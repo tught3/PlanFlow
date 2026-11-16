@@ -581,16 +581,16 @@ void main() {
 
 // ── Fakes ────────────────────────────────────────────────────────
 
-class _StubSnapshot implements GuideSnapshot {
-  _StubSnapshot({
-    required this.uid,
-    required this.version,
-    required this.revision,
-    required this.serverRevision,
-    required this.step,
-    required this.run,
-    this.sessionId,
-    this.createdEventId,
+class _StubSnapshot extends GuideSnapshot {
+  const _StubSnapshot({
+    required super.uid,
+    required super.version,
+    required super.revision,
+    required super.serverRevision,
+    required super.step,
+    required super.run,
+    super.sessionId,
+    super.createdEventId,
   });
 
   factory _StubSnapshot.alive({
@@ -622,70 +622,6 @@ class _StubSnapshot implements GuideSnapshot {
         run: GuideRun.terminal,
         sessionId: null,
       );
-
-  @override
-  final String uid;
-  @override
-  final String version;
-  @override
-  final int revision;
-  @override
-  final int serverRevision;
-  @override
-  final GuideStep step;
-  @override
-  final GuideRun run;
-  @override
-  final String? sessionId;
-  @override
-  final String? createdEventId;
-  @override
-  String? get savedCreateOperationId => null;
-  @override
-  bool get speechCaptured => false;
-  @override
-  String? get dateTimeZone => null;
-  @override
-  String? get errorCode => null;
-  @override
-  DateTime? get savedLocalDate => null;
-  @override
-  DateTime? get originalStartLocal => null;
-  @override
-  DateTime? get expectedUpdatedStartLocal => null;
-  @override
-  bool get calendarSyncHeld => false;
-  @override
-  bool get mayListenContinuously => false;
-  @override
-  bool get isInProgress => run != GuideRun.terminal;
-  @override
-  GuideSnapshot copyWith({
-    String? uid,
-    String? version,
-    String? sessionId,
-    bool clearSessionId = false,
-    String? createdEventId,
-    bool clearCreatedEventId = false,
-    String? savedCreateOperationId,
-    String? dateTimeZone,
-    int? revision,
-    int? serverRevision,
-    GuideStep? step,
-    GuideRun? run,
-    String? errorCode,
-    bool clearErrorCode = false,
-    DateTime? savedLocalDate,
-    bool clearSavedLocalDate = false,
-    DateTime? originalStartLocal,
-    bool clearOriginalStartLocal = false,
-    DateTime? expectedUpdatedStartLocal,
-    bool clearExpectedUpdatedStartLocal = false,
-    bool? calendarSyncHeld,
-    bool? mayListenContinuously,
-    bool? speechCaptured,
-  }) =>
-      this;
 }
 
 class _StubCoordinator implements GuideCoordinator {

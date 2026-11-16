@@ -234,7 +234,9 @@ class _CountingRepo extends EventRepository {
         stored.id != original.id ||
         stored.userId != original.userId ||
         stored.startAt != original.startAt ||
-        stored.endAt != original.endAt) return null;
+        stored.endAt != original.endAt) {
+      return null;
+    }
     return updateEvent(stored.copyWith(
         startAt: startAt, endAt: endAt, clearEndAt: endAt == null));
   }
@@ -638,7 +640,7 @@ void main() {
     expect(repo.writes, 1);
     final after = c.state.value;
     expect(after.revision, before.revision + 2);
-    expect(after.serverRevision, before.serverRevision! + 1);
+    expect(after.serverRevision, before.serverRevision + 1);
     expect(after.step, GuideStep.updatedDetail);
     expect(after.createdEventId, 'created-1');
     expect(after.expectedUpdatedStartLocal, requested);

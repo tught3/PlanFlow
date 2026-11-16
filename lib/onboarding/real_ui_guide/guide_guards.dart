@@ -2,6 +2,8 @@ import '../../data/models/event_model.dart';
 import 'guide_contract.dart';
 import '../../services/feature_tour_service.dart';
 
+const String realUiGuideVersion = 'real_ui_local_v1';
+
 abstract final class GuideMutationPolicy {
   static GuideWriteDecision check(
       {required GuideSnapshot guide, required GuideMutationIntent intent}) {
@@ -106,8 +108,6 @@ class GuideAccountFeatureTourStore extends FeatureTourStore {
   GuideAccountFeatureTourStore(
       {required this.uidProvider, required this.progress});
 
-  static const String _introVersion = 'real_ui_v1';
-
   final String? Function() uidProvider;
   final GuideProgressStore progress;
 
@@ -118,7 +118,7 @@ class GuideAccountFeatureTourStore extends FeatureTourStore {
     if (uid == null || uid.isEmpty) {
       return true;
     }
-    final s = await progress.load(uid: uid, version: _introVersion);
+    final s = await progress.load(uid: uid, version: realUiGuideVersion);
     if (s == null) {
       return true;
     }
@@ -134,7 +134,7 @@ class GuideAccountFeatureTourStore extends FeatureTourStore {
     }
     final capturedUid = initialUid;
     final existing =
-        await progress.load(uid: capturedUid, version: _introVersion);
+        await progress.load(uid: capturedUid, version: realUiGuideVersion);
     // Async load completed; ensure the auth context did not switch.
     if (uidProvider() != capturedUid) {
       throw StateError('UID changed during intro persistence');
@@ -151,7 +151,7 @@ class GuideAccountFeatureTourStore extends FeatureTourStore {
     final next = existing == null
         ? GuideSnapshot(
             uid: capturedUid,
-            version: _introVersion,
+            version: realUiGuideVersion,
             revision: 0,
             serverRevision: 0,
             step: GuideStep.homeMic,

@@ -5,7 +5,6 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_route_recovery.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
-import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
 import 'package:planflow/widgets/guided_anchor.dart';

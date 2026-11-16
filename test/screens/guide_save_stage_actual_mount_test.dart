@@ -148,7 +148,7 @@ Object bindGuideRuntime(RealUiGuideCoordinator coordinator,
 /// Mirrors the real ConfirmScreen shell: the real editor, the real save
 /// anchor, and the real guide host on top of it.
 class _SaveStageHost extends StatefulWidget {
-  const _SaveStageHost({super.key, required this.coordinator});
+  const _SaveStageHost({required this.coordinator});
 
   final GuideCoordinator coordinator;
 

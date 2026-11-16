@@ -11,6 +11,7 @@ import '../../widgets/guided_coachmark_overlay.dart';
 import '../../widgets/guided_anchor.dart';
 import 'guide_bubble_visibility.dart';
 import 'guide_contract.dart';
+import 'guide_guards.dart';
 import 'guide_instruction_text.dart';
 import 'voice_correction_example.dart';
 import 'guide_providers.dart';
@@ -526,7 +527,7 @@ class _SessionOnlySkippedGuideCoordinator implements GuideCoordinator {
   _SessionOnlySkippedGuideCoordinator(String uid)
       : _state = ValueNotifier(GuideSnapshot(
             uid: uid,
-            version: 'real_ui_v1',
+            version: realUiGuideVersion,
             revision: 0,
             serverRevision: 0,
             step: GuideStep.skipped,
@@ -574,7 +575,7 @@ class _SessionOnlyGuideProgressStore implements GuideProgressStore {
 }
 
 class GuideSyncChoiceStore {
-  String key(String uid) => 'guide_sync_choice:real_ui_v1:$uid';
+  String key(String uid) => 'guide_sync_choice:$realUiGuideVersion:$uid';
   Future<bool> isClosed(String uid) async {
     final prefs = await tryGetPrefs();
     if (prefs == null) throw StateError('Sync choice storage unavailable');

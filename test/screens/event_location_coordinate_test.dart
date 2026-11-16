@@ -70,9 +70,9 @@ class _FakeEventRepository extends EventRepository {
 
 /// 지오코딩 호출을 세는 가짜. 호출되면 "재검색 없이 좌표를 유지" 계약 위반.
 class _CountingLocationLookupService extends LocationLookupService {
-  _CountingLocationLookupService({this.results = const <LocationLookupResult>[]});
+  _CountingLocationLookupService();
 
-  final List<LocationLookupResult> results;
+  final List<LocationLookupResult> results = const <LocationLookupResult>[];
   int searchCalls = 0;
 
   @override

@@ -155,7 +155,7 @@ void main() {
       expect(result.queryRange?.start, savedDate);
       expect(result.visibleEvents.map((event) => event.id), [saved.id]);
 
-      final explicit = controller.handle('${currentYear}년 1월 1일 일정 보여줘');
+      final explicit = controller.handle('$currentYear년 1월 1일 일정 보여줘');
       expect(explicit.queryRange?.start, DateTime(currentYear, 1, 1));
       expect(explicit.visibleEvents.map((event) => event.id),
           [sameDayThisYear.id]);

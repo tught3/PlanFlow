@@ -113,4 +113,81 @@ void main() {
       }
     });
   }
+
+  test('guide eligibility reads require the full schema without fallback',
+      () async {
+    final requests = <http.Request>[];
+    final row = {
+      'id': 'saved-event',
+      'user_id': 'qa-user',
+      'title': '일정',
+      'start_at':
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toIso8601String(),
+    };
+    final client = SupabaseClient(
+      'https://example.invalid',
+      'fixture',
+      httpClient: MockClient((request) async {
+        requests.add(request);
+        final projection = request.url.queryParameters['select']!.split(',');
+        final fullSchema = projection.contains('group_event_id');
+        return http.Response(
+          jsonEncode(fullSchema
+              ? {
+                  'code': '42703',
+                  'message': 'column events.group_event_id does not exist',
+                }
+              : [row]),
+          fullSchema ? 400 : 200,
+          headers: {'content-type': 'application/json'},
+          request: request,
+        );
+      }),
+    );
+    addTearDown(client.dispose);
+    final repository = SupabaseEventRepository(client: client);
+
+    await expectLater(
+      repository.fetchEvent('saved-event',
+          userId: 'qa-user', requireGuideEligibility: true),
+      throwsA(isA<PostgrestException>()),
+    );
+    final strictRequest = requests.single;
+    expect(strictRequest.method, 'GET');
+    expect(strictRequest.url.path, '/rest/v1/events');
+    final strictQuery = strictRequest.url.queryParameters;
+    expect(
+        strictQuery['select']!.split(','),
+        containsAll([
+          'group_event_id',
+          'parent_event_id',
+          'recurrence_rule',
+          'external_id',
+          'source',
+        ]));
+    expect(strictQuery, containsPair('id', 'eq.saved-event'));
+    expect(strictQuery, containsPair('user_id', 'eq.qa-user'));
+    for (final field in [
+      'group_event_id',
+      'parent_event_id',
+      'recurrence_rule',
+      'external_id',
+    ]) {
+      expect(strictQuery, containsPair(field, 'is.null'));
+    }
+    expect(strictQuery['source'],
+        allOf(startsWith('in.'), contains('manual'), contains('voice')));
+
+    requests.clear();
+    final normal =
+        await repository.fetchEvent('saved-event', userId: 'qa-user');
+    expect(normal?.id, 'saved-event');
+    expect(requests, hasLength(2));
+    final first = requests.first.url.queryParameters;
+    final fallback = requests.last.url.queryParameters;
+    expect(first['select']!.split(','), contains('group_event_id'));
+    expect(fallback['select']!.split(','), isNot(contains('group_event_id')));
+    expect(first, isNot(contains('source')));
+    expect(fallback, containsPair('user_id', 'eq.qa-user'));
+  });
 }

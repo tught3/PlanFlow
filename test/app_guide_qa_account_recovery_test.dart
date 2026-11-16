@@ -59,8 +59,10 @@ void main() {
 
   test('guide entry waits for active auth and verified QA identity', () {
     final activeAuth = AuthProvider()..setUser('qa-current');
+    final signedOutAuth = AuthProvider();
     final expiredAuth = _ExpiredAuthProvider()..setUser('qa-current');
     addTearDown(activeAuth.dispose);
+    addTearDown(signedOutAuth.dispose);
     addTearDown(expiredAuth.dispose);
 
     expect(
@@ -74,6 +76,25 @@ void main() {
     expect(
       resolveGuideEntry(
         auth: expiredAuth,
+        isGuideQa: true,
+        qaPackageCheckPending: false,
+      ),
+      (uid: null, qaAccountMismatch: false),
+    );
+    // The QA build omits PLANFLOW_GUIDE_QA_EXPECTED_UID, so the default
+    // compile-time value must allow any authenticated account into the guide.
+    expect(
+      resolveGuideEntry(
+        auth: activeAuth,
+        isGuideQa: true,
+        qaPackageCheckPending: false,
+      ),
+      (uid: 'qa-current', qaAccountMismatch: false),
+    );
+    // Local guide startup still requires a live signed-in user.
+    expect(
+      resolveGuideEntry(
+        auth: signedOutAuth,
         isGuideQa: true,
         qaPackageCheckPending: false,
       ),

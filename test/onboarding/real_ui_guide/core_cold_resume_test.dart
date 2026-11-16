@@ -483,7 +483,7 @@ void main() {
       },
     );
     final coordinator = RealUiGuideCoordinator(
-        backend: backend, progress: progress, version: 'real_ui_v1');
+        backend: backend, progress: progress, version: realUiGuideVersion);
     final store = GuideAccountFeatureTourStore(
         uidProvider: () => 'u', progress: progress);
     final started = await coordinator.start(uid: 'u');

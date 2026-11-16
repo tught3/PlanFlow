@@ -58,8 +58,9 @@ class _QueuedTourStore extends FeatureTourStore {
 
   @override
   Future<bool> shouldShow() {
-    if (autoAnswer != null)
+    if (autoAnswer != null) {
       return Future<bool>.value(autoAnswer! && !completed);
+    }
     final c = Completer<bool>();
     calls.add(c);
     return c.future;
