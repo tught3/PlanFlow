@@ -1,3 +1,4 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/diag_logger.dart';
 import 'package:planflow/core/local_time.dart';
@@ -856,6 +857,64 @@ void main() {
             [reminderId('weekly:critical:20261124')]);
       });
 
+      test('native critical actions confirm only the delivered recurrence',
+          () async {
+        final daily = weekly.copyWith(
+          isCritical: true,
+          useStrongAlarm: true,
+          recurrenceRule: 'FREQ=DAILY',
+        );
+        expect(await reminders([daily]), isTrue);
+        final first = reminderId('weekly:critical:20261112');
+        final second = reminderId('weekly:critical:20261113');
+        final third = reminderId('weekly:critical:20261114');
+        final acks = const SharedPreferencesCriticalAlarmAcknowledgementStore();
+
+        Future<void> confirm(int id) async {
+          final payload = notifications.scheduledCriticalPayloads[id]!;
+          await handleNotificationResponseAction(
+            NotificationResponse(
+              id: id,
+              notificationResponseType:
+                  NotificationResponseType.selectedNotificationAction,
+              actionId: NotificationService.criticalAcknowledgedActionId,
+              payload: payload
+                      .endsWith(NotificationService.criticalAlarmPayloadSuffix)
+                  ? payload
+                  : '$payload${NotificationService.criticalAlarmPayloadSuffix}',
+            ),
+            notificationService: notifications,
+            eventRepository: _FakeEventRepository(events: [daily]),
+          );
+        }
+
+        notifications.cancelledNotificationIds.clear();
+        await confirm(first);
+        expect(
+            await acks.isAcknowledged('weekly:critical:20261112', atKst(0, 10)),
+            isTrue);
+        expect(notifications.cancelledEventIds, isEmpty);
+        expect(notifications.cancelledNotificationIds, contains(first));
+        expect(notifications.cancelledNotificationIds, isNot(contains(second)));
+
+        await confirm(second);
+        expect(
+            await acks.isAcknowledged('weekly:critical:20261113', atKst(1, 10)),
+            isTrue);
+        expect(
+            await acks.isAcknowledged('weekly:critical:20261112', atKst(0, 10)),
+            isTrue);
+        expect(notifications.cancelledResponseIds, [first, second]);
+        expect(notifications.cancelledNotificationIds, isNot(contains(third)));
+
+        notifications.scheduledCriticalAlarmIds.clear();
+        expect(await reminders([daily]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds, isNot(contains(first)));
+        expect(
+            notifications.scheduledCriticalAlarmIds, isNot(contains(second)));
+        expect(notifications.scheduledCriticalAlarmIds, contains(third));
+      });
+
       test('saving a changed weekday schedules its next occurrence', () async {
         await service.syncAfterSave(
           event: weekly.copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=WE'),
@@ -864,6 +923,44 @@ void main() {
         expect(notifications.cancelledEventIds, contains('weekly'));
         expect(notifications.scheduledEventReminderIds,
             [reminderId('weekly:push:20261118')]);
+      });
+
+      test('saving preserves reminders if recurrence lookup fails', () async {
+        final failingService = ManualEventSideEffectService(
+          gateway: gateway,
+          eventRepository: _FailingListEventRepository(),
+          departureAlarmService: departure,
+          notificationService: notifications,
+          currentLocationProvider: () async => null,
+          now: () => clock,
+        );
+
+        final result =
+            await failingService.syncAfterSave(event: weekly, userId: 'user-1');
+
+        expect(result.remindersSynced, isFalse);
+        expect(result.notificationsSynced, isFalse);
+        expect(result.preActionsCleared, isFalse);
+        expect(notifications.cancelledEventIds, isEmpty);
+        expect(notifications.cancelledNotificationIds, isEmpty);
+        expect(gateway.deletedReminderEventIds, isEmpty);
+        expect(gateway.deletedPreActionEventIds, isEmpty);
+        expect(gateway.insertedReminders, isEmpty);
+        expect(departure.clearedAcknowledgementEventIds, isEmpty);
+      });
+
+      test('saving clears old reminders after a successful empty expansion',
+          () async {
+        final result = await service.syncAfterSave(
+          event: weekly.copyWith(deletedOccurrenceDates: [atKst(5, 0)]),
+          userId: 'user-1',
+        );
+
+        expect(result.isFullySynced, isTrue);
+        expect(notifications.cancelledEventIds, [weekly.id]);
+        expect(gateway.deletedReminderEventIds, [weekly.id]);
+        expect(notifications.scheduledEventReminderIds, isEmpty);
+        expect(gateway.insertedReminders, isEmpty);
       });
 
       test('departure recalculation passes the generated start time', () async {
@@ -1830,6 +1927,13 @@ class _FakeEventRepository extends EventRepository {
   }
 }
 
+class _FailingListEventRepository extends _FakeEventRepository {
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    throw StateError('event listing failed');
+  }
+}
+
 class _CountingEventRepository extends _FakeEventRepository {
   int listCallCount = 0;
 
@@ -1867,6 +1971,16 @@ class _FakeNotificationService extends NotificationService {
   final scheduledEventReminderNotifyAts = <DateTime>[];
   final scheduledCriticalAlarmIds = <int>[];
   final scheduledCriticalNotifyAts = <DateTime>[];
+  final scheduledCriticalPayloads = <int, String>{};
+  final cancelledResponseIds = <int>[];
+
+  @override
+  Future<void> cancelResponseNotification(int? notificationId) async {
+    if (notificationId != null) {
+      cancelledResponseIds.add(notificationId);
+    }
+  }
+
   final cancelledSmartPreparationEventIds = <String>[];
 
   @override
@@ -1921,6 +2035,9 @@ class _FakeNotificationService extends NotificationService {
   }) async {
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);
+    if (payload != null) {
+      scheduledCriticalPayloads[id] = payload;
+    }
     return NotificationScheduleResult(
       status: NotificationScheduleStatus.scheduled,
       notifyAt: notifyAt,

@@ -225,6 +225,29 @@ class ManualEventSideEffectService {
     var preActionsCleared = !clearPreActions;
     var reminderEvent = event;
     final effectiveNow = _currentTime;
+    List<EventModel> recurringReminders = const [];
+    if (isRecurringAlarmEvent(event)) {
+      try {
+        final events = await _events.listEvents(userId: userId);
+        recurringReminders = upcomingAlarmOccurrences(
+          [
+            event,
+            ...events.where((item) => item.parentEventId == event.id),
+          ],
+          from: effectiveNow,
+          until: effectiveNow.add(recurringAlarmWindow),
+        ).where((item) => item.id == event.id).toList();
+      } catch (error) {
+        debugPrint(
+            '[PlanFlow] recurring reminder expansion failed for event ${event.id}: $error');
+        return ManualEventSideEffectResult(
+          remindersSynced: false,
+          notificationsSynced: false,
+          preActionsCleared: preActionsCleared,
+        );
+      }
+    }
+
     final resolvedTravelMinutes = await _resolveTravelMinutesForEvent(
       event,
       fallbackTravelMinutes: travelMinutes,
@@ -257,23 +280,6 @@ class ManualEventSideEffectService {
           'isFirstExternal=$isFirstExternalEventOfDay',
     );
 
-    List<EventModel> recurringReminders = const [];
-    if (isRecurringAlarmEvent(event)) {
-      try {
-        final events = await _events.listEvents(userId: userId);
-        recurringReminders = upcomingAlarmOccurrences(
-          [
-            event,
-            ...events.where((item) => item.parentEventId == event.id),
-          ],
-          from: effectiveNow,
-          until: effectiveNow.add(recurringAlarmWindow),
-        ).where((item) => item.id == event.id).toList();
-      } catch (error) {
-        debugPrint(
-            '[PlanFlow] recurring reminder expansion failed for event ${event.id}: $error');
-      }
-    }
     Iterable<EventModel> reminderOccurrences() {
       if (!isRecurringAlarmEvent(event)) {
         return [reminderEvent];
@@ -1262,13 +1268,21 @@ class ManualEventSideEffectService {
       // 대해 매칭되므로 막는다. 시작 시각이 변경되면 exact 매칭이 풀려
       // 자동으로 다시 울린다.
       final criticalAcks = _criticalAcks;
+      final occurrence = isRecurringAlarmEvent(event)
+          ? CriticalAlarmOccurrence(startAt)
+          : null;
       if (await criticalAcks.hasUnknownStartAcknowledgement(event.id)) {
         // 백그라운드에서 시작 시각 없이 저장된 ack: 지금 확인된 시작 시각으로
         // 고정해 두면 이후 시각 변경은 정상적으로 다시 울린다.
         await criticalAcks.adoptUnknownStart(event.id, startAt);
         return;
       }
-      if (await criticalAcks.isAcknowledged(event.id, startAt)) {
+      if (await criticalAcks.isAcknowledged(event.id, startAt) ||
+          (occurrence != null &&
+              await criticalAcks.isOccurrenceAcknowledged(
+                occurrence.acknowledgementKey(event.id),
+                startAt,
+              ))) {
         return;
       }
       // Android+좌표 있는 강한알람은 트리거 시각에 조용히 preflight를 돌려
@@ -1278,10 +1292,10 @@ class ManualEventSideEffectService {
       final id =
           _notifications.notificationIdFor(eventAlarmKey(event, 'critical'));
       const body = '중요 일정이 곧 시작됩니다.';
-      final payload = 'event:${event.id}';
+      final payload = occurrence?.payloadFor(event.id) ?? 'event:${event.id}';
       // The existing preflight owner is keyed by the series ID. Use a direct
       // alarm per occurrence so reserving one does not replace the others.
-      final result = isRecurringAlarmEvent(event)
+      final result = occurrence != null
           ? await _notifications.scheduleCriticalAlarmWithResult(
               id: id,
               title: event.title,

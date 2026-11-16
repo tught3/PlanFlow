@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/safe_prefs.dart';
 
-/// 알림 payload에는 시작 시각이 들어 있지 않다. `_persistCriticalAcknowledge`
+/// 기존 단건 알림 payload에는 시작 시각이 들어 있지 않다. `_persistCriticalAcknowledge`
 /// 가 DB 조회에 실패한 경우 [unknownStartSentinel]을 저장해 "eventId 단위로만
 /// acknowledged" 상태를 표현한다. [isAcknowledged]는 sentinel과 real startAt을
 /// 비교하므로 sentinel 케이스에서는 false를 반환한다(real startAt ≠ sentinel).
@@ -13,6 +13,9 @@ abstract class CriticalAlarmAcknowledgementStore {
   const CriticalAlarmAcknowledgementStore();
 
   Future<bool> isAcknowledged(String eventId, DateTime startAt);
+
+  Future<bool> isOccurrenceAcknowledged(String key, DateTime startAt) =>
+      isAcknowledged(key, startAt);
 
   /// Sentinel(=[unknownStartSentinel])이 저장돼 있으면 true. "startAt을
   /// 모른 채로" ack된 일정의 재예약을 막기 위해 호출측에서 사용한다.
@@ -64,6 +67,15 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
     final stored = prefs.getString(_key(eventId));
     if (stored == null) return false;
     return stored == _normalize(startAt);
+  }
+
+  @override
+  Future<bool> isOccurrenceAcknowledged(String key, DateTime startAt) async {
+    final prefs = await _prefs();
+    if (prefs == null) return false;
+    // A native action can write the dated key from a background isolate.
+    await prefs.reload();
+    return prefs.getString(_key(key)) == _normalize(startAt);
   }
 
   @override

@@ -46,6 +46,7 @@ class EventDetailScreen extends StatefulWidget {
     this.groupRepository,
     this.showDeparturePrompt = false,
     this.showCriticalAckButton = false,
+    this.criticalAlarmOccurrence,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
     SmartPreparationAlarmService? smartPreparationAlarmService,
@@ -73,6 +74,7 @@ class EventDetailScreen extends StatefulWidget {
   /// 강한알람 알림을 눌러 딥링크로 들어왔을 때만 true. 이 경우에만 화면에
   /// "확인(출발)" 버튼을 노출한다(캘린더 직접 진입에는 뜨지 않아야 함).
   final bool showCriticalAckButton;
+  final CriticalAlarmOccurrence? criticalAlarmOccurrence;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
   final SmartPreparationAlarmService smartPreparationAlarmService;
@@ -96,6 +98,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   String? _loadError;
   final Set<String> _checkedSupplies = <String>{};
   List<PreActionModel> _smartPreparationAlarms = const <PreActionModel>[];
+
+  @override
+  void didUpdateWidget(covariant EventDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.criticalAlarmOccurrence?.token !=
+        widget.criticalAlarmOccurrence?.token) {
+      _criticalAckHandled = false;
+    }
+  }
 
   String? get _resolvedEventId {
     final routeId = widget.eventId?.trim();
@@ -287,13 +298,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// 강한알람 알림에서 딥링크로 들어왔을 때 노출되는 "확인(출발)" 버튼 핸들러.
-  /// 알림 액션 버튼(criticalAcknowledgedActionId)과 동일하게, 같은 event로
-  /// 묶인 모든 로컬 알림(푸시/중요/출발/스마트 준비/사전 액션)을 취소하고
-  /// 시작 시각 기반 영구 ack를 저장해 다음 동기화/마이그레이션이 같은 시작
-  /// 시각으로는 다시 예약하지 못하게 한다. 시작 시각이 바뀌면 자동 재예약된다.
-  ///
-  /// 멱등: `_criticalAckHandled`로 더블 탭이 들어와도 한 번만 실행된다.
+  /// 알림을 보낸 회차의 확인을 한 번만 처리한다.
   Future<void> _handleCriticalAck() async {
     final eventId = _resolvedEventId;
     if (eventId == null || eventId.isEmpty || _criticalAckHandled) {
@@ -302,12 +307,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     setState(() {
       _criticalAckHandled = true;
     });
+    final occurrence = widget.criticalAlarmOccurrence;
+    final notifications = widget.notificationService;
     // 1) 시작 시각 기반 영구 ack 저장. 실패해도 사용자 확인 흐름은 막지 않는다.
     try {
-      final startAt = _event?.startAt;
+      final startAt = occurrence?.startAt ?? _event?.startAt;
       if (startAt != null) {
-        await widget.criticalAlarmAcknowledgementStore
-            .markAcknowledged(eventId, startAt);
+        await widget.criticalAlarmAcknowledgementStore.markAcknowledged(
+          occurrence?.acknowledgementKey(eventId) ?? eventId,
+          startAt,
+        );
       }
     } catch (error, stackTrace) {
       debugPrint('Critical ack store write failed: $error');
@@ -315,15 +324,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
     // 2) 사용자에게 확인을 먼저 보여준다. 알림 정리는 플랫폼 응답에 따라
     //    지연될 수 있으므로, 정리 완료 여부가 확인 표시를 막지 않게 한다.
-    if (!mounted) {
-      return;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('알림을 확인했어요.')),
+      );
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('알림을 확인했어요.')),
-    );
-    // 3) 같은 event 묶음의 로컬 알림(푸시/중요/출발/스마트 준비/사전 액션)을 정리한다.
     try {
-      await widget.notificationService.cancelEventNotifications(eventId);
+      if (occurrence == null) {
+        await notifications.cancelEventNotifications(eventId);
+      } else {
+        await notifications.cancelCriticalAlarmOccurrence(eventId, occurrence);
+      }
     } catch (error, stackTrace) {
       debugPrint('Critical ack cancel failed: $error');
       debugPrintStack(stackTrace: stackTrace);
