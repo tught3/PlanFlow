@@ -1310,6 +1310,14 @@ class NaverCalDavService {
           if (e.externalId != null && e.externalId!.trim().isNotEmpty)
             '${e.source}:${e.externalId}': e,
       };
+      final eventsById = {for (final event in allUserEvents) event.id: event};
+      final planFlowLinks = <(String, String), EventModel>{
+        for (final event in allUserEvents)
+          if (!_isExternalCalendarSource(event.source) &&
+              event.externalId?.trim().isNotEmpty == true &&
+              event.externalCalendarId?.trim().isNotEmpty == true)
+            (event.externalId!.trim(), event.externalCalendarId!.trim()): event,
+      };
       // title+시각 인덱스: _normalizeDuplicateTitle(title)+분단위UTC → EventModel
       // naver_caldav source 제외, ±1분 허용은 분 단위 truncate 키로 처리
       final titleStartIndex = <String, List<EventModel>>{};
@@ -1460,27 +1468,27 @@ class NaverCalDavService {
           }
 
           final planFlowOriginId = _planFlowEventIdFromNaverUid(event.uid);
-          final planFlowOrigin = planFlowOriginId == null
-              ? null
-              : await _eventRepository.fetchEvent(
-                  planFlowOriginId,
-                  userId: resolvedUserId,
-                );
-          if (planFlowOrigin != null) {
-            final linked =
-                await _eventRepository.attachExternalSyncMetadataIfCompatible(
-              existing: planFlowOrigin,
-              incoming: eventModel,
-            );
+          final planFlowOrigin = eventsById[planFlowOriginId];
+          final planFlowLink = planFlowLinks[(
+            eventModel.externalId ?? '',
+            eventModel.externalCalendarId ?? ''
+          )];
+          if (planFlowOriginId != null || planFlowLink != null) {
+            final linked = planFlowOrigin == null
+                ? null
+                : await _eventRepository.attachExternalSyncMetadataIfCompatible(
+                    existing: planFlowOrigin,
+                    incoming: eventModel,
+                    adoptIncomingSource: false,
+                  );
             skippedCount += 1;
             diagnostics.duplicateSkipped += 1;
             diagnostics.addSkipReason(
-              linked == null ? 'PlanFlow 원본 일정 되가져오기' : '기존 일정에 네이버 연결 정보 반영',
-            );
-            debugPrint(
-              'Naver CalDAV reflected PlanFlow event handled: '
-              'calendar="${calendar.displayName}", uid="${event.uid}", '
-              'existing=${planFlowOrigin.id}, linked=${linked != null}',
+              planFlowOriginId != null && planFlowOrigin == null
+                  ? 'PlanFlow에서 삭제된 일정'
+                  : linked == null
+                      ? 'PlanFlow 원본 일정 되가져오기'
+                      : '기존 일정에 네이버 연결 정보 반영',
             );
             emit(NaverCalDavSyncProgress(
               mode: mode,
@@ -1498,8 +1506,9 @@ class NaverCalDavService {
             continue;
           }
 
+          final existingForUpsert = findByExternalId(eventModel);
           // 메모리 인덱스로 title+시각 중복 체크 (DB 조회 없이)
-          if (!diagnosticImport) {
+          if (!diagnosticImport && existingForUpsert == null) {
             final duplicate = findByTitleStart(eventModel);
             if (duplicate != null) {
               final duplicateReason =
@@ -1537,7 +1546,7 @@ class NaverCalDavService {
               ));
               continue;
             }
-          } else {
+          } else if (diagnosticImport) {
             // diagnosticImport: 중복 여부만 로그 (스킵 안 함)
             final duplicate = findByTitleStart(eventModel);
             if (duplicate != null) {
@@ -1554,6 +1563,7 @@ class NaverCalDavService {
           // 사전 조회된 Set으로 먼저 빠르게 체크 (DB 쿼리 없이)
           final externalId = eventModel.externalId;
           if (skipUnchanged &&
+              existingForUpsert == null &&
               externalId != null &&
               existingNaverIds.contains(externalId)) {
             skippedCount += 1;
@@ -1606,8 +1616,6 @@ class NaverCalDavService {
             }
           }
           diagnostics.saveCandidates += 1;
-          // 메모리 인덱스로 기존 이벤트 조회 (upsert read 부분을 메모리로 대체)
-          final existingForUpsert = findByExternalId(eventModel);
           saveCandidates.add((
             eventModel: eventModel,
             calendarDisplayName: calendar.displayName,
@@ -1736,15 +1744,18 @@ class NaverCalDavService {
     }
   }
 
+  static bool _isExternalCalendarSource(String source) => const {
+        'google',
+        'naver',
+        'naver_ics',
+        'naver_caldav',
+        'naver_device',
+        'ios_device',
+        'device_calendar',
+      }.contains(source);
+
   Future<bool> exportEvent(EventModel event) async {
-    if (event.source == 'google' ||
-        event.source == 'naver' ||
-        event.source == 'naver_ics' ||
-        event.source == 'naver_caldav' ||
-        event.source == 'naver_device' ||
-        event.source == 'ios_device' ||
-        event.source == 'device_calendar' ||
-        event.startAt == null) {
+    if (_isExternalCalendarSource(event.source) || event.startAt == null) {
       return true;
     }
 
@@ -1756,6 +1767,18 @@ class NaverCalDavService {
       );
       if (calendars.isEmpty) {
         return false;
+      }
+      final calendarPath = calendars.first.path;
+      final externalId =
+          'naver-caldav:${_stableExternalKey(calendarPath, 'planflow-${event.id}@planflow')}';
+      final lastSyncedAt = event.lastSyncedAt;
+      final updatedAt = event.updatedAt;
+      if (event.externalId == externalId &&
+          event.externalCalendarId == 'naver-caldav:$calendarPath' &&
+          lastSyncedAt != null &&
+          updatedAt != null &&
+          !updatedAt.isAfter(lastSyncedAt)) {
+        return true;
       }
       final resourcePath =
           '${calendars.first.path}planflow-${Uri.encodeComponent(event.id)}.ics';
@@ -1771,7 +1794,7 @@ class NaverCalDavService {
       final streamed = await _httpClient.send(request).timeout(_timeout);
       await streamed.stream.drain<void>();
       if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
-        await _markCalDavExportMetadata(event, calendars.first.path);
+        await _markCalDavExportMetadata(event, calendarPath, externalId);
         return true;
       }
       debugPrint('Naver CalDAV export failed: ${streamed.statusCode}');
@@ -1849,35 +1872,39 @@ class NaverCalDavService {
         : incoming.participants;
     final targets =
         incoming.targets.isEmpty ? existing.targets : incoming.targets;
-    final mergedEvent = EventModel(
-      id: existing.id,
-      userId: incoming.userId,
+    final mergedEvent = existing.copyWith(
       title: incoming.title,
       startAt: incoming.startAt,
+      clearStartAt: incoming.startAt == null,
       endAt: incoming.endAt,
+      clearEndAt: incoming.endAt == null,
       location: incoming.location,
+      clearLocation: incoming.location == null,
       locationLat: incoming.locationLat,
+      clearLocationLat: incoming.locationLat == null,
       locationLng: incoming.locationLng,
+      clearLocationLng: incoming.locationLng == null,
       memo: incoming.memo,
+      clearMemo: incoming.memo == null,
       supplies: incoming.supplies,
       suppliesChecked: incoming.suppliesChecked,
       participants: participants,
       targets: targets,
       isCritical: existing.isCritical || incoming.isCritical,
       recurrenceRule: incoming.recurrenceRule,
+      clearRecurrenceRule: incoming.recurrenceRule == null,
       isAllDay: incoming.isAllDay,
       isMultiDay: incoming.isMultiDay,
       parentEventId: incoming.parentEventId,
+      clearParentEventId: incoming.parentEventId == null,
       category: incoming.category,
       source: normalizedSource,
       externalId: normalizedExternalId,
       externalCalendarId: incoming.externalCalendarId,
-      externalEtag: incoming.externalEtag ?? existing.externalEtag,
-      externalUpdatedAt:
-          incoming.externalUpdatedAt ?? existing.externalUpdatedAt,
+      clearExternalCalendarId: incoming.externalCalendarId == null,
+      externalEtag: incoming.externalEtag,
+      externalUpdatedAt: incoming.externalUpdatedAt,
       lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
-      createdAt: existing.createdAt,
-      updatedAt: existing.updatedAt,
     );
     return _eventRepository.updateEvent(mergedEvent);
   }
@@ -1913,39 +1940,23 @@ class NaverCalDavService {
   Future<void> _markCalDavExportMetadata(
     EventModel event,
     String calendarPath,
+    String externalId,
   ) async {
-    final uid = 'planflow-${event.id}@planflow';
-    final incoming = EventModel(
-      id: event.id,
+    final calendarId = 'naver-caldav:$calendarPath';
+    final previousCalendarId = event.externalCalendarId?.trim() ?? '';
+    if (event.externalId?.trim().isNotEmpty == true &&
+        previousCalendarId.isNotEmpty &&
+        previousCalendarId != calendarId) {
+      return;
+    }
+    final now = DateTime.now().toUtc();
+    await _eventRepository.updateExternalSyncMetadata(
+      eventId: event.id,
       userId: event.userId,
-      title: event.title,
-      startAt: event.startAt,
-      endAt: event.endAt,
-      location: event.location,
-      locationLat: event.locationLat,
-      locationLng: event.locationLng,
-      memo: event.memo,
-      supplies: event.supplies,
-      suppliesChecked: event.suppliesChecked,
-      participants: event.participants,
-      targets: event.targets,
-      isCritical: event.isCritical,
-      recurrenceRule: event.recurrenceRule,
-      isAllDay: event.isAllDay,
-      isMultiDay: event.isMultiDay,
-      parentEventId: event.parentEventId,
-      category: event.category,
-      source: event.source,
-      externalId: 'naver-caldav:${_stableExternalKey(calendarPath, uid)}',
-      externalCalendarId: 'naver-caldav:$calendarPath',
-      externalUpdatedAt: DateTime.now().toUtc(),
-      lastSyncedAt: DateTime.now().toUtc(),
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
-    );
-    await _eventRepository.attachExternalSyncMetadataIfCompatible(
-      existing: event,
-      incoming: incoming,
+      externalId: externalId,
+      externalCalendarId: calendarId,
+      externalUpdatedAt: now,
+      lastSyncedAt: event.updatedAt ?? now,
     );
   }
 

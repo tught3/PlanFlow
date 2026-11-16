@@ -664,11 +664,12 @@ END:VCALENDAR
     expect(result.createdOrUpdated, 0);
     expect(result.skipped, 1);
     expect(repository.upserted, isEmpty);
-    expect(repository.updated, hasLength(1));
-    expect(repository.updated.single.id, 'manual-1');
-    expect(repository.updated.single.externalId, startsWith('naver-caldav:'));
+    expect(repository.updated, isEmpty);
+    expect(repository.metadataWrites, 1);
+    expect(repository.events.single.id, 'manual-1');
+    expect(repository.events.single.externalId, startsWith('naver-caldav:'));
     expect(
-      repository.updated.single.externalCalendarId,
+      repository.events.single.externalCalendarId,
       'naver-caldav:/calendars/tught3/default/',
     );
   });
@@ -722,6 +723,146 @@ END:VCALENDAR
     expect(repository.findTitleStartCalls, 0);
     expect(repository.externalIdSet,
         contains(repository.upserted.single.externalId));
+  });
+
+  test('syncAll skips a reflected UID whose PlanFlow event was deleted',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>['', _calendarListXml, _reflectedPlanFlowEventReportXml],
+    );
+    final repository = _FakeEventRepository();
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'test-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
+
+    expect(result.success, isTrue);
+    expect(repository.upserted, isEmpty);
+    expect(result.diagnostics.skipReasons.keys, contains('PlanFlow에서 삭제된 일정'));
+  });
+
+  test('syncAll applies changed etag from the index despite cached ID',
+      () async {
+    final externalId = _naverCalDavExternalId(
+      uid: 'naver-event-1',
+      calendarPath: '/calendars/tught3/default/',
+    );
+    final date = DateTime.utc(2026, 5, 5);
+    final repository = _FakeEventRepository(
+      initialExternalIds: {externalId},
+      seedEvents: [
+        EventModel(
+          id: 'imported',
+          userId: 'user-1',
+          title: 'old title',
+          source: 'naver_caldav',
+          externalId: externalId,
+          externalEtag: '"previous-etag"',
+          groupEventId: 'g1',
+          useStrongAlarm: true,
+          overriddenOccurrenceDate: date,
+          deletedOccurrenceDates: [date],
+        ),
+      ],
+    );
+    NaverCalDavService service() => NaverCalDavService(
+          httpClient: _FakePropfindClient(
+            responses: <int>[404, 207, 207],
+            bodies: <String>['', _calendarListXml, _eventReportXml],
+          ),
+          credentialStore: _FakeCredentialStore(
+            savedId: 'tught3',
+            savedPassword: 'test-password',
+          ),
+          eventRepository: repository,
+          currentUserId: 'user-1',
+        );
+    final result = await service().syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+      skipUnchanged: true,
+    );
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, 1);
+    expect(repository.fetchByExternalIdCalls, 0);
+    expect(repository.upserted, isEmpty);
+    final event = repository.updated.single;
+    expect(event.title, isNot('old title'));
+    expect(event.externalEtag, '"etag-1"');
+    expect(event.groupEventId, 'g1');
+    expect(event.useStrongAlarm, isTrue);
+    expect(event.overriddenOccurrenceDate, date);
+    expect(event.deletedOccurrenceDates, [date]);
+
+    repository.updated.clear();
+    final unchanged = await service().syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+      skipUnchanged: true,
+    );
+    expect(unchanged.success, isTrue);
+    expect(unchanged.createdOrUpdated, 0);
+    expect(
+        unchanged.diagnostics.skipReasons.keys, contains('external_etag 일치'));
+    expect(repository.updated, isEmpty);
+    expect(repository.upserted, isEmpty);
+  });
+
+  test('syncAll recognizes a PlanFlow-owned CalDAV link without a UID marker',
+      () async {
+    const calendarPath = '/calendars/tught3/default/';
+    final repository = _FakeEventRepository(seedEvents: [
+      EventModel(
+        id: 'manual-original',
+        userId: 'user-1',
+        title: 'Local title',
+        source: 'manual',
+        externalId: _naverCalDavExternalId(
+          uid: 'naver-event-1',
+          calendarPath: calendarPath,
+        ),
+        externalCalendarId: 'naver-caldav:$calendarPath',
+        externalEtag: '"applied-revision"',
+      ),
+    ]);
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(
+        responses: <int>[404, 207, 207],
+        bodies: <String>['', _calendarListXml, _eventReportXml],
+      ),
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'test-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      from: DateTime.utc(2026, 5, 1),
+      to: DateTime.utc(2026, 6, 1),
+    );
+
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, 0);
+    expect(repository.upserted, isEmpty);
+    expect(repository.updated, isEmpty);
+    expect(repository.metadataWrites, 0);
+    expect(repository.events.single.title, 'Local title');
+    expect(repository.events.single.externalEtag, '"applied-revision"');
   });
 
   test('syncAll skips reflected PlanFlow CalDAV event by UID marker', () async {
@@ -997,7 +1138,9 @@ END:VCALENDAR
     expect(result.createdOrUpdated, 0);
     expect(result.skipped, 1);
     expect(repository.upserted, isEmpty);
-    expect(repository.updated, hasLength(1));
+    expect(repository.updated, isEmpty);
+    expect(repository.metadataWrites, 1);
+    expect(repository.events.single.externalId, incomingExternalId);
     expect(result.diagnostics.duplicateSkipped, 1);
     expect(result.diagnostics.skipReasons['기존 일정에 네이버 연결 정보 반영'], 1);
   });
@@ -1300,15 +1443,25 @@ $eventXmlItems
 
   test('exportEvent writes metadata and keeps exported ICS VALARM-free',
       () async {
+    late _FakeEventRepository repository;
+    final version = DateTime.utc(2026, 5, 7);
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 201],
+      onRequest: (request) {
+        if (request.method == 'PUT') {
+          repository.events[0] = repository.events.single.copyWith(
+            title: 'Intervening edit',
+            updatedAt: version.add(const Duration(minutes: 1)),
+          );
+        }
+      },
       bodies: <String>[
         '',
         _calendarListXml,
         '',
       ],
     );
-    final repository = _FakeEventRepository();
+    repository = _FakeEventRepository();
     final service = NaverCalDavService(
       httpClient: client,
       credentialStore: _FakeCredentialStore(
@@ -1324,6 +1477,10 @@ $eventXmlItems
       title: '네이버로 보낼 일정',
       startAt: DateTime.utc(2026, 5, 8, 9),
       isCritical: true,
+      updatedAt: version,
+      useStrongAlarm: true,
+      groupEventId: 'g1',
+      deletedOccurrenceDates: [version],
     );
     repository.events.add(event);
 
@@ -1333,11 +1490,18 @@ $eventXmlItems
     final putRequest = client.requests.last as http.Request;
     expect(putRequest.method, 'PUT');
     expect(putRequest.body, isNot(contains('BEGIN:VALARM')));
-    expect(repository.updated, hasLength(1));
-    expect(repository.updated.single.id, 'manual-1');
-    expect(repository.updated.single.externalId, startsWith('naver-caldav:'));
+    expect(repository.updated, isEmpty);
+    expect(repository.metadataWrites, 1);
+    final saved = repository.events.single;
+    expect(saved.id, 'manual-1');
+    expect(saved.externalId, startsWith('naver-caldav:'));
+    expect(saved.title, 'Intervening edit');
+    expect(saved.lastSyncedAt, version);
+    expect(saved.useStrongAlarm, isTrue);
+    expect(saved.groupEventId, 'g1');
+    expect(saved.deletedOccurrenceDates, [version]);
     expect(
-      repository.updated.single.externalCalendarId,
+      saved.externalCalendarId,
       'naver-caldav:/calendars/tught3/default/',
     );
   });
@@ -1467,6 +1631,33 @@ class _FakeEventRepository extends EventRepository {
   int fetchExternalIdSetCalls = 0;
   int fetchByExternalIdCalls = 0;
   int findTitleStartCalls = 0;
+
+  int metadataWrites = 0;
+
+  @override
+  Future<EventModel?> updateExternalSyncMetadata({
+    required String eventId,
+    String? userId,
+    required String externalId,
+    required String? externalCalendarId,
+    String? externalEtag,
+    DateTime? externalUpdatedAt,
+    DateTime? lastSyncedAt,
+    String? source,
+  }) async {
+    final index = events.indexWhere((event) => event.id == eventId);
+    if (index == -1) return null;
+    metadataWrites++;
+    return events[index] = events[index].copyWith(
+      externalId: externalId,
+      externalCalendarId: externalCalendarId,
+      clearExternalCalendarId: externalCalendarId == null,
+      externalEtag: externalEtag,
+      externalUpdatedAt: externalUpdatedAt,
+      lastSyncedAt: lastSyncedAt,
+      source: source,
+    );
+  }
 
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
@@ -1612,16 +1803,19 @@ class _FakePropfindClient extends http.BaseClient {
   _FakePropfindClient({
     required this.responses,
     this.bodies = const <String>[],
+    this.onRequest,
   });
 
   final List<int> responses;
   final List<String> bodies;
+  final void Function(http.BaseRequest)? onRequest;
   final List<http.BaseRequest> requests = <http.BaseRequest>[];
   var _index = 0;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     requests.add(request);
+    onRequest?.call(request);
     final index = _index;
     final statusCode = responses[index.clamp(0, responses.length - 1)];
     final body = bodies.isEmpty

@@ -133,6 +133,45 @@ void main() {
     });
   });
 
+  for (final capacity in [1000, 173]) {
+    test('fetchExternalIdsBySource reads beyond server cap $capacity',
+        () async {
+      final rows = [
+        for (var i = 0; i <= 1000; i++)
+          {
+            'id': 'row-${i.toString().padLeft(4, '0')}',
+            'external_id': 'external-${i == 1 ? 0 : i}',
+          },
+      ];
+      final cursors = <String?>[];
+      final repository = await _repository((request) async {
+        final query = request.url.queryParameters;
+        expect(query['user_id'], 'eq.$_userId');
+        expect(query['source'], 'eq.naver_caldav');
+        expect(query['external_id'], 'not.is.null');
+        final cursor = query['id']?.substring(3);
+        cursors.add(cursor);
+        return _json(
+            request,
+            rows
+                .where(
+                    (row) => cursor == null || row['id']!.compareTo(cursor) > 0)
+                .take(capacity)
+                .toList());
+      });
+      final ids =
+          await repository.fetchExternalIdsBySource(source: ' naver_caldav ');
+      expect(ids, hasLength(1000));
+      expect(ids, containsAll(['external-0', 'external-1000']));
+      expect(cursors, [
+        null,
+        for (var i = capacity; i < rows.length; i += capacity)
+          rows[i - 1]['id'],
+        rows.last['id']
+      ]);
+    });
+  }
+
   test('selects both occurrence columns and retains them after a read/edit',
       () async {
     final row = _row(extra: {
@@ -354,6 +393,7 @@ void main() {
       'source': 'manual',
       'external_etag': 'stored-etag',
       'external_updated_at': '2026-11-09T00:00:00Z',
+      'last_synced_at': '2026-11-09T00:00:00Z',
     });
     final incoming = EventModel.fromJson(_row(extra: {
       'source': 'naver_caldav',
@@ -391,7 +431,7 @@ void main() {
             unorderedEquals([
               'external_id',
               'external_calendar_id',
-              'last_synced_at',
+              if (adoptSource) 'last_synced_at',
               if (adoptSource) 'source',
             ]));
         expect(payload['external_id'], 'x');
@@ -404,6 +444,29 @@ void main() {
         expect(result.externalEtag, 'stored-etag');
       });
     }
+
+    test('reflected PlanFlow metadata does not adopt the incoming revision',
+        () async {
+      Map<String, dynamic>? write;
+      final repository = await _repository((request) async {
+        final payload = write = _body(request);
+        return _json(request, {...currentRow, ...payload});
+      });
+      final existing = EventModel.fromJson(currentRow);
+      final result = await repository.attachExternalSyncMetadataIfCompatible(
+        existing: existing,
+        incoming: incoming.copyWith(
+          externalEtag: 'remote-new-revision',
+          externalUpdatedAt: DateTime.utc(2026, 11, 12),
+        ),
+        adoptIncomingSource: false,
+      );
+      expect(write, isNot(contains('external_etag')));
+      expect(write, isNot(contains('external_updated_at')));
+      expect(write, isNot(contains('last_synced_at')));
+      expect(result!.externalEtag, existing.externalEtag);
+      expect(result.externalUpdatedAt, existing.externalUpdatedAt);
+    });
 
     test('metadata attachment keeps legacy writes limited to supported keys',
         () async {
@@ -440,7 +503,8 @@ void main() {
       expect(requests.every((request) => request.method == 'PATCH'), isTrue);
       expect(_columns(requests[1]), isNot(contains(_overriddenKey)));
       expect(_columns(requests.last), isNot(contains('external_calendar_id')));
-      expect(_body(requests.last), {'external_id': 'x', 'source': 'naver_caldav'});
+      expect(
+          _body(requests.last), {'external_id': 'x', 'source': 'naver_caldav'});
       expect(result!.externalId, 'x');
       expect(result.source, 'naver_caldav');
       expect(result.memo, 'local memo');

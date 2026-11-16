@@ -55,6 +55,69 @@ void main() {
       expect(status.naver.provider, CalendarProvider.naver);
     });
 
+    for (final google in [false, true]) {
+      test('export marker preserves intervening edits (Google=$google)',
+          () async {
+        final start = DateTime.now().toUtc().add(const Duration(hours: 2));
+        final version = start.subtract(const Duration(hours: 3));
+        final deleted = start.add(const Duration(days: 7));
+        final event = EventModel(
+          id: 'owned',
+          userId: 'user-1',
+          title: 'before export',
+          startAt: start,
+          useStrongAlarm: true,
+          groupEventId: 'g1',
+          deletedOccurrenceDates: [deleted],
+          updatedAt: version,
+        );
+        final repository = _FakeEventRepository(events: [event]);
+        final service = CalendarSyncService(
+          currentUserId: 'user-1',
+          eventRepository: repository,
+          calendarConnectionRepository: _FakeCalendarConnectionRepository(
+            initial: const CalendarConnectionModel(
+              userId: 'user-1',
+              provider: 'google',
+              status: CalendarConnectionStatus.connected,
+            ),
+          ),
+          googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+          googlePlatformSupported: true,
+          googleTargetPlatform: TargetPlatform.android,
+          googleAccessTokenProvider: ({required bool interactive}) async =>
+              'google-token',
+          naverStatusProvider: () async => const NaverCalendarPermissionResult(
+            status: NaverCalendarPermissionStatus.granted,
+            message: '권한 확인',
+          ),
+          naverAccessTokenProvider: () async => 'naver-token',
+          naverStatusSaver: (_) async {},
+          httpClientFactory: () => MockClient((request) async {
+            repository.events[0] =
+                event.copyWith(title: 'edited during export');
+            return http.Response(
+              '{"id":"exported-id"}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }),
+        );
+
+        final result = google
+            ? await service.exportEventToGoogle(event)
+            : await service.syncNaverCalendar();
+        expect(result.status, CalendarIntegrationStatus.synced);
+        expect(repository.events.single.title, 'edited during export');
+        expect(repository.updatedEvents, isEmpty);
+        expect(repository.metadataWrites, 1);
+        expect(repository.events.single.useStrongAlarm, isTrue);
+        expect(repository.events.single.groupEventId, 'g1');
+        expect(repository.events.single.deletedOccurrenceDates, [deleted]);
+        expect(repository.events.single.lastSyncedAt, version);
+      });
+    }
+
     test('exports upcoming PlanFlow events to Naver Calendar', () async {
       final requests = <http.Request>[];
       final event = EventModel(
@@ -206,7 +269,11 @@ void main() {
       expect(requests, hasLength(1));
       expect(requests.single.bodyFields['scheduleIcalString'],
           contains('UID:planflow-manual-1@planflow'));
-      expect(repo.updatedEvents.map((event) => event.id), equals(['manual-1']));
+      expect(repo.updatedEvents, isEmpty);
+      expect(repo.metadataWrites, 1);
+      expect(
+          repo.events.singleWhere((event) => event.id == 'manual-1').externalId,
+          'planflow-manual-1@planflow');
       expect(
           repo.events
               .singleWhere((event) => event.id == 'ios-1')
@@ -663,70 +730,82 @@ void main() {
       );
     });
 
-    test('Google import skips reflected PlanFlow event by private marker',
-        () async {
-      final existing = EventModel(
-        id: 'manual-1',
-        userId: 'user-1',
-        title: '원주 출발',
-        startAt: DateTime.utc(2026, 5, 8, 9),
-      );
-      final repository = _FakeEventRepository(events: <EventModel>[existing]);
-      final service = CalendarSyncService(
-        currentUserId: 'user-1',
-        eventRepository: repository,
-        calendarConnectionRepository: _FakeCalendarConnectionRepository(
-          initial: const CalendarConnectionModel(
-            userId: 'user-1',
-            provider: 'google',
-            status: CalendarConnectionStatus.connected,
+    for (final originExists in [true, false]) {
+      test('Google skips reflected PlanFlow event (originExists=$originExists)',
+          () async {
+        final existing = EventModel(
+          id: 'manual-1',
+          userId: 'user-1',
+          title: '원주 출발',
+          supplies: ['노트북'],
+          recurrenceRule: 'FREQ=WEEKLY',
+          startAt: DateTime.utc(2026, 5, 8, 9),
+        );
+        final repository = _FakeEventRepository(
+            events: <EventModel>[if (originExists) existing]);
+        final service = CalendarSyncService(
+          currentUserId: 'user-1',
+          eventRepository: repository,
+          calendarConnectionRepository: _FakeCalendarConnectionRepository(
+            initial: const CalendarConnectionModel(
+              userId: 'user-1',
+              provider: 'google',
+              status: CalendarConnectionStatus.connected,
+            ),
           ),
-        ),
-        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
-        googlePlatformSupported: true,
-        googleTargetPlatform: TargetPlatform.android,
-        googleAccessTokenProvider: ({required bool interactive}) async {
-          return 'google-token';
-        },
-        googleCalendarEventsFetcher: (_) async {
-          return <GoogleCalendarEventEntry>[
-            GoogleCalendarEventEntry(
-              calendarId: 'work-calendar',
-              event: gcal.Event(
-                id: 'google-reflected-1',
-                summary: '원주 출발',
-                updated: DateTime.utc(2026, 5, 8, 8),
-                extendedProperties: gcal.EventExtendedProperties(
-                  private: <String, String>{
-                    'planflow_event_id': 'manual-1',
-                  },
-                ),
-                start: gcal.EventDateTime(
-                  dateTime: DateTime.utc(2026, 5, 8, 9),
-                ),
-                end: gcal.EventDateTime(
-                  dateTime: DateTime.utc(2026, 5, 8, 10),
+          googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+          googlePlatformSupported: true,
+          googleTargetPlatform: TargetPlatform.android,
+          googleAccessTokenProvider: ({required bool interactive}) async {
+            return 'google-token';
+          },
+          googleCalendarEventsFetcher: (_) async {
+            return <GoogleCalendarEventEntry>[
+              GoogleCalendarEventEntry(
+                calendarId: 'work-calendar',
+                event: gcal.Event(
+                  id: 'google-reflected-1',
+                  summary: '원주 출발',
+                  updated: DateTime.utc(2026, 5, 8, 8),
+                  extendedProperties: gcal.EventExtendedProperties(
+                    private: <String, String>{
+                      'planflow_event_id': 'manual-1',
+                    },
+                  ),
+                  start: gcal.EventDateTime(
+                    dateTime: DateTime.utc(2026, 5, 8, 9),
+                  ),
+                  end: gcal.EventDateTime(
+                    dateTime: DateTime.utc(2026, 5, 8, 10),
+                  ),
                 ),
               ),
-            ),
-          ];
-        },
-        httpClientFactory: () => MockClient((request) async {
-          return http.Response('{"id":"google-reflected-1"}', 200);
-        }),
-      );
+            ];
+          },
+          httpClientFactory: () => MockClient((request) async {
+            return http.Response('{"id":"google-reflected-1"}', 200);
+          }),
+        );
 
-      final result = await service.syncGoogleCalendar();
+        final result = await service.syncGoogleCalendar();
 
-      expect(result.status, CalendarIntegrationStatus.synced);
-      expect(repository.upsertedEvents, isEmpty);
-      expect(repository.updatedEvents, hasLength(1));
-      expect(repository.updatedEvents.single.id, 'manual-1');
-      expect(repository.updatedEvents.single.externalId,
-          'work-calendar:google-reflected-1');
-      expect(repository.updatedEvents.single.externalCalendarId,
-          'google:work-calendar');
-    });
+        expect(result.status, CalendarIntegrationStatus.synced);
+        expect(repository.upsertedEvents, isEmpty);
+        expect(repository.metadataWrites, originExists ? 1 : 0);
+        if (!originExists) {
+          expect(repository.events, isEmpty);
+          return;
+        }
+        expect(repository.events.single.id, 'manual-1');
+        expect(repository.events.single.source, 'manual');
+        expect(repository.events.single.supplies, ['노트북']);
+        expect(repository.events.single.recurrenceRule, 'FREQ=WEEKLY');
+        expect(repository.events.single.externalId,
+            'work-calendar:google-reflected-1');
+        expect(repository.events.single.externalCalendarId,
+            'google:work-calendar');
+      });
+    }
 
     test('Google import links same title/start duplicate instead of inserting',
         () async {
@@ -785,8 +864,9 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.synced);
       expect(repository.upsertedEvents, isEmpty);
-      expect(repository.updatedEvents, isNotEmpty);
-      final linkedEvent = repository.updatedEvents.first;
+      expect(repository.updatedEvents, isEmpty);
+      expect(repository.metadataWrites, greaterThanOrEqualTo(1));
+      final linkedEvent = repository.events.single;
       expect(linkedEvent.id, 'manual-1');
       expect(linkedEvent.externalId, 'google-event-1');
       expect(
@@ -803,6 +883,12 @@ void main() {
         title: '생일 축하합니다',
         startAt: DateTime.utc(2026, 10, 3),
         endAt: DateTime.utc(2026, 10, 5),
+        memo: 'old memo',
+        location: 'old location',
+        useStrongAlarm: true,
+        externalEtag: 'stored-etag',
+        groupEventId: 'g1',
+        overriddenOccurrenceDate: DateTime.utc(2026, 10, 3),
         isAllDay: false,
         isMultiDay: true,
         source: 'google',
@@ -832,7 +918,7 @@ void main() {
               isPrimaryCalendar: true,
               event: gcal.Event(
                 id: 'birthday-1',
-                summary: '생일 축하합니다',
+                summary: 'Updated birthday',
                 updated: DateTime.utc(2026, 10, 3, 1),
                 start: gcal.EventDateTime(
                   date: DateTime(
@@ -853,6 +939,13 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.synced);
       final repaired = repository.updatedEvents.single;
+      expect(repaired.title, 'Updated birthday');
+      expect(repaired.memo, isEmpty);
+      expect(repaired.location, isEmpty);
+      expect(repaired.useStrongAlarm, isTrue);
+      expect(repaired.externalEtag, 'stored-etag');
+      expect(repaired.groupEventId, 'g1');
+      expect(repaired.overriddenOccurrenceDate, DateTime.utc(2026, 10, 3));
       expect(repaired.isAllDay, isTrue);
       expect(repaired.isMultiDay, isFalse);
       expect(repaired.startAt, DateTime.utc(2026, 10, 2, 15));
@@ -869,6 +962,69 @@ void main() {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       ApiUsageGuard.resetForTesting();
+    });
+
+    test('Naver export prioritizes new events and skips clean versions',
+        () async {
+      final now = DateTime.now().toUtc();
+      final oldVersion = now.subtract(const Duration(days: 1));
+      final repository = _FakeEventRepository(events: [
+        for (var i = 0; i < 40; i++)
+          EventModel(
+            id: 'dirty-$i',
+            userId: 'user-1',
+            title: 'Dirty $i',
+            startAt: now.add(Duration(minutes: i)),
+            externalId: 'planflow-dirty-$i@planflow',
+            externalCalendarId: 'naver:default',
+            updatedAt: now,
+            lastSyncedAt: oldVersion,
+          ),
+        EventModel(
+          id: 'clean',
+          userId: 'user-1',
+          title: 'Clean',
+          startAt: now,
+          externalId: 'planflow-clean@planflow',
+          externalCalendarId: 'naver:default',
+          updatedAt: now,
+          lastSyncedAt: now,
+        ),
+        for (var i = 0; i < 5; i++)
+          EventModel(
+            id: 'new-$i',
+            userId: 'user-1',
+            title: 'New $i',
+            startAt: now.add(Duration(hours: 1, minutes: i)),
+          ),
+      ]);
+      final sent = <String>[];
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        naverExportLimit: 30,
+        eventRepository: repository,
+        calendarConnectionRepository: _FakeCalendarConnectionRepository(),
+        naverStatusProvider: () async => const NaverCalendarPermissionResult(
+          status: NaverCalendarPermissionStatus.granted,
+          message: '권한 확인',
+        ),
+        naverAccessTokenProvider: () async => 'naver-token',
+        naverStatusSaver: (_) async {},
+        httpClientFactory: () => MockClient((request) async {
+          final uid = RegExp(r'planflow-(?:new|dirty|clean)[^@]*@planflow')
+              .firstMatch(request.bodyFields['scheduleIcalString']!)!
+              .group(0)!;
+          sent.add(uid);
+          return http.Response('{"result":"ok"}', 200);
+        }),
+      );
+      final result = await service.syncNaverCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(sent, [
+        for (var i = 0; i < 5; i++) 'planflow-new-$i@planflow',
+        for (var i = 0; i < 25; i++) 'planflow-dirty-$i@planflow',
+      ]);
     });
 
     test(
@@ -1461,6 +1617,31 @@ class _FakeEventRepository extends EventRepository {
   final List<EventModel> events;
   final List<EventModel> upsertedEvents = <EventModel>[];
   final List<EventModel> updatedEvents = <EventModel>[];
+  int metadataWrites = 0;
+
+  @override
+  Future<EventModel?> updateExternalSyncMetadata({
+    required String eventId,
+    String? userId,
+    required String externalId,
+    required String? externalCalendarId,
+    String? externalEtag,
+    DateTime? externalUpdatedAt,
+    DateTime? lastSyncedAt,
+    String? source,
+  }) async {
+    metadataWrites++;
+    final index = events.indexWhere((event) => event.id == eventId);
+    if (index < 0) return null;
+    return events[index] = events[index].copyWith(
+      externalId: externalId,
+      externalCalendarId: externalCalendarId,
+      externalEtag: externalEtag,
+      externalUpdatedAt: externalUpdatedAt,
+      lastSyncedAt: lastSyncedAt,
+      source: source,
+    );
+  }
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => events;

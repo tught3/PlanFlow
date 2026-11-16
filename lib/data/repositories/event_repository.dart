@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/local_time.dart';
-import '../../core/recurrence_expansion.dart' show monthlyRecurrenceCandidates;
+import '../../core/recurrence_expansion.dart' show expandRecurringEvent;
 import '../models/event_model.dart';
 
 abstract class EventRepository {
@@ -97,9 +97,14 @@ abstract class EventRepository {
       userId: existing.userId,
       externalId: incomingExternalId,
       externalCalendarId: incomingCalendarId,
-      externalEtag: incoming.externalEtag,
-      externalUpdatedAt: incoming.externalUpdatedAt,
-      lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
+      // Linking a reflected PlanFlow event does not apply its remote content.
+      // Keep the last applied revision so import can still detect changes.
+      externalEtag: adoptIncomingSource ? incoming.externalEtag : null,
+      externalUpdatedAt:
+          adoptIncomingSource ? incoming.externalUpdatedAt : null,
+      lastSyncedAt: adoptIncomingSource
+          ? incoming.lastSyncedAt ?? DateTime.now().toUtc()
+          : null,
       source: adoptIncomingSource ? incoming.source : null,
     );
   }
@@ -125,7 +130,6 @@ abstract class EventRepository {
       externalEtag: externalEtag,
       externalUpdatedAt: externalUpdatedAt,
       lastSyncedAt: lastSyncedAt,
-      clearLastSyncedAt: lastSyncedAt == null,
       source: source,
     ));
   }
@@ -368,216 +372,38 @@ List<EventModel> expandEventOccurrencesForOverlap(
   required DateTime rangeStart,
   required DateTime rangeEnd,
 }) {
-  final rule = event.recurrenceRule?.toUpperCase();
   final startAt = event.startAt;
-  if (rule == null || rule.isEmpty || startAt == null) {
+  if (event.recurrenceRule?.isNotEmpty != true || startAt == null) {
     return <EventModel>[event];
   }
 
-  final freq = RegExp(r'FREQ=([A-Z]+)').firstMatch(rule)?.group(1);
-  if (freq == null) {
-    return <EventModel>[event];
-  }
-
-  final intervalText = RegExp(r'INTERVAL=(\d+)').firstMatch(rule)?.group(1);
-  final interval = int.tryParse(intervalText ?? '1')?.clamp(1, 365) ?? 1;
-  final until = _parseRRuleUntilForOverlap(
-    RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
+  final localStart = rangeStart.isUtc ? planflowLocal(rangeStart) : rangeStart;
+  final localEnd = rangeEnd.isUtc ? planflowLocal(rangeEnd) : rangeEnd;
+  final seed = event.copyWith(endAt: eventOverlapEndFor(event));
+  final occurrences = expandRecurringEvent(
+    event: seed,
+    rangeStart: localStart,
+    rangeEnd: localEnd,
+    includeOccurrence: (occurrence, start, end) => eventRangesOverlap(
+      rangeStart: start,
+      rangeEnd: end,
+      eventStart: occurrence.startAt!,
+      eventEnd: occurrence.endAt!,
+    ),
   );
-  final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
-  final localStartAt = planflowLocal(startAt);
-  final duration = event.endAt?.difference(startAt) ??
-      ((event.isAllDay || event.isMultiDay)
-          ? const Duration(days: 1)
-          : const Duration(minutes: 30));
-  final occurrences = <EventModel>[];
 
-  if (freq == 'WEEKLY') {
-    final byDays = _parseRRuleByDaysForOverlap(rule);
-    if (byDays.isNotEmpty) {
-      var weekStart = DateTime(
-        localStartAt.year,
-        localStartAt.month,
-        localStartAt.day,
-        localStartAt.hour,
-        localStartAt.minute,
-        localStartAt.second,
-      ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
-      var safety = 0;
-      while (weekStart.isBefore(hardEnd) && safety < 120) {
-        safety += 1;
-        for (final weekday in byDays) {
-          final day = weekStart.add(Duration(days: weekday - DateTime.monday));
-          final current = DateTime(
-            day.year,
-            day.month,
-            day.day,
-            localStartAt.hour,
-            localStartAt.minute,
-            localStartAt.second,
-          );
-          if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
-            continue;
-          }
-          final candidate = _copyEventWithTime(
-            event,
-            startAt: current,
-            endAt: current.add(duration),
-          );
-          if (_eventIntersectsOverlapRange(candidate, rangeStart, rangeEnd)) {
-            occurrences.add(candidate);
-          }
-        }
-        weekStart = weekStart.add(Duration(days: 7 * interval));
-      }
-      return occurrences.isEmpty ? <EventModel>[event] : occurrences;
-    }
-  }
-
-  if (freq == 'MONTHLY') {
-    final dates = monthlyRecurrenceCandidates(
-      rule: rule,
-      localStartAt: localStartAt,
-      hardEnd: hardEnd,
-      interval: interval,
-    );
-    if (dates != null) {
-      for (final current in dates) {
-        final candidate = _copyEventWithTime(
-          event,
-          startAt: current,
-          endAt: current.add(duration),
-        );
-        if (_eventIntersectsOverlapRange(candidate, rangeStart, rangeEnd)) {
-          occurrences.add(candidate);
-        }
-      }
-      return occurrences.isEmpty ? <EventModel>[event] : occurrences;
-    }
-  }
-
-  var current = localStartAt;
-  var safety = 0;
-  while (current.isBefore(hardEnd) && safety < 420) {
-    safety += 1;
-    final candidate = _copyEventWithTime(
-      event,
-      startAt: current,
-      endAt: current.add(duration),
-    );
-    if (_eventIntersectsOverlapRange(candidate, rangeStart, rangeEnd)) {
-      occurrences.add(candidate);
-    }
-    current = switch (freq) {
-      'DAILY' => current.add(Duration(days: interval)),
-      'WEEKLY' => current.add(Duration(days: 7 * interval)),
-      'MONTHLY' => DateTime(
-          current.year,
-          current.month + interval,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
+  // The common expander emits wall-clock dates. Repository queries compare
+  // instants, so normalize expanded copies to the same basis as stored rows.
+  return [
+    for (final occurrence in occurrences)
+      if (identical(occurrence, seed))
+        event
+      else
+        occurrence.copyWith(
+          startAt: planflowLocalDateTimeToUtc(occurrence.startAt!),
+          endAt: planflowLocalDateTimeToUtc(occurrence.endAt!),
         ),
-      'YEARLY' => DateTime(
-          current.year + interval,
-          current.month,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
-      _ => hardEnd,
-    };
-  }
-  return occurrences.isEmpty ? <EventModel>[event] : occurrences;
-}
-
-EventModel _copyEventWithTime(
-  EventModel event, {
-  required DateTime startAt,
-  required DateTime? endAt,
-}) {
-  // occurrence 클론도 원본의 모든 메타데이터(useStrongAlarm, overriddenOccurrenceDate,
-  // deletedOccurrenceDates 등)를 보존한다. 수동 나열은 신규 필드 추가 시 누락
-  // 회귀를 만드므로 copyWith로만 파생한다.
-  return event.copyWith(
-    startAt: startAt,
-    // 회차 종료가 null이면 anchor의 endAt이 남지 않도록 명시 해제한다.
-    // 이 공개 경로는 duration 폴백 때문에 endAt이 항상 non-null이므로 방어적 분기다.
-    endAt: endAt,
-    clearEndAt: endAt == null,
-  );
-}
-
-bool _eventIntersectsOverlapRange(
-  EventModel event,
-  DateTime rangeStart,
-  DateTime rangeEnd,
-) {
-  final startAt = event.startAt;
-  if (startAt == null) {
-    return false;
-  }
-  final eventEnd = eventOverlapEndFor(event);
-  return eventRangesOverlap(
-    rangeStart: rangeStart,
-    rangeEnd: rangeEnd,
-    eventStart: startAt,
-    eventEnd: eventEnd,
-  );
-}
-
-DateTime? _parseRRuleUntilForOverlap(String? value) {
-  if (value == null || value.length < 8) {
-    return null;
-  }
-  final digits = value.replaceAll(RegExp('[^0-9]'), '');
-  if (digits.length < 8) {
-    return null;
-  }
-  final year = int.tryParse(digits.substring(0, 4));
-  final month = int.tryParse(digits.substring(4, 6));
-  final day = int.tryParse(digits.substring(6, 8));
-  if (year == null || month == null || day == null) {
-    return null;
-  }
-  return DateTime(year, month, day, 23, 59, 59);
-}
-
-Set<int> _parseRRuleByDaysForOverlap(String rule) {
-  final raw = RegExp(r'BYDAY=([A-Z,]+)').firstMatch(rule)?.group(1);
-  if (raw == null || raw.isEmpty) {
-    return const <int>{};
-  }
-
-  final days = <int>{};
-  for (final token in raw.split(',')) {
-    switch (token.trim()) {
-      case 'MO':
-        days.add(DateTime.monday);
-        break;
-      case 'TU':
-        days.add(DateTime.tuesday);
-        break;
-      case 'WE':
-        days.add(DateTime.wednesday);
-        break;
-      case 'TH':
-        days.add(DateTime.thursday);
-        break;
-      case 'FR':
-        days.add(DateTime.friday);
-        break;
-      case 'SA':
-        days.add(DateTime.saturday);
-        break;
-      case 'SU':
-        days.add(DateTime.sunday);
-        break;
-    }
-  }
-  return days;
+  ];
 }
 
 enum _EventSchema { full, withoutOccurrences, legacy }
@@ -680,16 +506,29 @@ class SupabaseEventRepository extends EventRepository {
     if (normalizedSource.isEmpty) {
       return <String>{};
     }
-    final rows = await _client
-        .from(_tableName)
-        .select('external_id')
-        .eq('user_id', resolvedUserId)
-        .eq('source', normalizedSource)
-        .not('external_id', 'is', null);
-    return {
-      for (final row in rows)
-        if (row['external_id'] != null) row['external_id'] as String,
-    };
+    final ids = <String>{};
+    String? afterId;
+    while (true) {
+      var query = _client
+          .from(_tableName)
+          .select('id,external_id')
+          .eq('user_id', resolvedUserId)
+          .eq('source', normalizedSource)
+          .not('external_id', 'is', null);
+      if (afterId != null) {
+        query = query.gt('id', afterId);
+      }
+      final rows = await query.order('id', ascending: true).limit(1000);
+      if (rows.isEmpty) {
+        return ids;
+      }
+      ids.addAll(rows.map((row) => row['external_id'] as String));
+      final lastId = rows.last['id'] as String;
+      if (lastId == afterId) {
+        throw StateError('External event ID pagination did not advance.');
+      }
+      afterId = lastId;
+    }
   }
 
   @override
@@ -715,8 +554,8 @@ class SupabaseEventRepository extends EventRepository {
 
       final occurrences = expandEventOccurrencesForOverlap(
         event,
-        rangeStart: rangeStart,
-        rangeEnd: rangeEnd,
+        rangeStart: rangeStart.toUtc(),
+        rangeEnd: rangeEnd.toUtc(),
       );
       return occurrences.any((candidate) {
         final eventStart = candidate.startAt;
@@ -953,7 +792,8 @@ class SupabaseEventRepository extends EventRepository {
       if (externalEtag != null) 'external_etag': externalEtag,
       if (externalUpdatedAt != null)
         'external_updated_at': externalUpdatedAt.toUtc().toIso8601String(),
-      'last_synced_at': lastSyncedAt?.toUtc().toIso8601String(),
+      if (lastSyncedAt != null)
+        'last_synced_at': lastSyncedAt.toUtc().toIso8601String(),
       if (source != null) 'source': source,
     };
     final response = await _withEventSchema(
