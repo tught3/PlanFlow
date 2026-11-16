@@ -237,6 +237,7 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel?> attachExternalSyncMetadataIfCompatible({
     required EventModel existing,
     required EventModel incoming,
+    bool adoptIncomingSource = true,
   }) {
     return Future<EventModel?>.value(null);
   }

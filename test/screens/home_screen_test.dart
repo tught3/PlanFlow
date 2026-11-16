@@ -1351,6 +1351,7 @@ class _QueuedEventRepository extends EventRepository {
   Future<EventModel?> attachExternalSyncMetadataIfCompatible({
     required EventModel existing,
     required EventModel incoming,
+    bool adoptIncomingSource = true,
   }) async {
     return null;
   }
