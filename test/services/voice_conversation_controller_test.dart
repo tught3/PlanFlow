@@ -8,8 +8,11 @@ import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/voice/voice_action_screen.dart';
+import 'package:planflow/screens/voice/voice_input_screen.dart';
 import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/voice_command_router.dart';
 import 'package:planflow/services/voice_conversation_controller.dart';
@@ -35,6 +38,10 @@ DateTime _nextWeekdayOnOrAfter(DateTime from, int weekday) {
   return from.add(Duration(days: diff));
 }
 
+DateTime _dateAt(DateTime date, int dayOffset, [int hour = 0, int minute = 0]) {
+  return DateTime(date.year, date.month, date.day + dayOffset, hour, minute);
+}
+
 void main() {
   group('pending destructive voice actions', () {
     VoiceConversationController makeController({
@@ -58,20 +65,36 @@ void main() {
       expect(controller.handle('오늘 일정 보여줘').action,
           VoiceConversationAction.showEvents);
       if (!requestConfirmation) return controller;
-      final pending = controller.handle(convert
-          ? '첫번째 일정 개인 일정으로 바꿔줘'
-          : '첫번째 일정 삭제해줘');
-      expect(pending.action, convert
-          ? VoiceConversationAction.confirmConvertToPersonal
-          : VoiceConversationAction.confirmDelete);
+      final pending =
+          controller.handle(convert ? '첫번째 일정 개인 일정으로 바꿔줘' : '첫번째 일정 삭제해줘');
+      expect(
+          pending.action,
+          convert
+              ? VoiceConversationAction.confirmConvertToPersonal
+              : VoiceConversationAction.confirmDelete);
       expect(pending.targetEvent?.id, 'a');
       return controller;
     }
 
     for (final reply in [
-      '응', '네', '예', '그래', '맞아', '좋아', '확인', '오케이',
-      '응, 그래!', '네 맞아요', '삭제해', '삭제해줘', '지워', '지워줘',
-      '없애줘', '응 지워줘', '응 삭제해줘', '네 삭제해줘',
+      '응',
+      '네',
+      '예',
+      '그래',
+      '맞아',
+      '좋아',
+      '확인',
+      '오케이',
+      '응, 그래!',
+      '네 맞아요',
+      '삭제해',
+      '삭제해줘',
+      '지워',
+      '지워줘',
+      '없애줘',
+      '응 지워줘',
+      '응 삭제해줘',
+      '네 삭제해줘',
     ]) {
       test('"$reply" confirms only the pending delete target', () {
         final controller = makeController(convert: false);
@@ -83,9 +106,26 @@ void main() {
     }
 
     for (final reply in [
-      '삭제 취소해줘', '안 지워도 돼', '안지워도돼', '지우지 마',
-      '삭제하지 말아줘', '아니', '아냐', '됐어', '그만', '말고', '보류',
-      '놔둬', '냅둬', '괜찮아', '안삭제', '안해', '하지 마', '취소', '싫어', '아니요',
+      '삭제 취소해줘',
+      '안 지워도 돼',
+      '안지워도돼',
+      '지우지 마',
+      '삭제하지 말아줘',
+      '아니',
+      '아냐',
+      '됐어',
+      '그만',
+      '말고',
+      '보류',
+      '놔둬',
+      '냅둬',
+      '괜찮아',
+      '안삭제',
+      '안해',
+      '하지 마',
+      '취소',
+      '싫어',
+      '아니요',
     ]) {
       test('"$reply" cancels the pending delete', () {
         final controller = makeController(convert: false);
@@ -97,8 +137,16 @@ void main() {
     }
 
     for (final reply in [
-      '어', '어…', '어 음', '응?', '네?', '그래?', '맞아?', '맞아요？',
-      '네 맞아요?', '삭제해줘?',
+      '어',
+      '어…',
+      '어 음',
+      '응?',
+      '네?',
+      '그래?',
+      '맞아?',
+      '맞아요？',
+      '네 맞아요?',
+      '삭제해줘?',
     ]) {
       test('"$reply" asks again without confirming the pending delete', () {
         final controller = makeController(convert: false);
@@ -118,7 +166,9 @@ void main() {
     }
 
     for (final reply in [
-      '두 번째 일정 삭제해줘', '2번 일정 삭제해줘', '방문 일정 삭제해줘',
+      '두 번째 일정 삭제해줘',
+      '2번 일정 삭제해줘',
+      '방문 일정 삭제해줘',
       '내일 일정 삭제해줘',
     ]) {
       test('"$reply" asks again for the new delete target', () {
@@ -173,13 +223,22 @@ void main() {
     });
 
     for (final reply in [
-      '응', '네', '좋아', '어', '옮겨줘', '바꿔줘', '개인 일정으로 해줘',
-      '네?', '그래?', '맞아?',
+      '응',
+      '네',
+      '좋아',
+      '어',
+      '옮겨줘',
+      '바꿔줘',
+      '개인 일정으로 해줘',
+      '네?',
+      '그래?',
+      '맞아?',
     ]) {
       test('"$reply" confirms only the pending conversion target', () {
         final controller = makeController(convert: true);
         final result = controller.handle(reply);
-        expect(result.action, VoiceConversationAction.convertToPersonalConfirmed);
+        expect(
+            result.action, VoiceConversationAction.convertToPersonalConfirmed);
         expect(result.targetEvent?.id, 'a');
         expect(controller.pendingConvert, isNull);
       });
@@ -204,7 +263,8 @@ void main() {
       expect(controller.pendingConvert, isNull);
     });
 
-    test('yesterday query uses the ordinary path during pending conversion', () {
+    test('yesterday query uses the ordinary path during pending conversion',
+        () {
       const query = '어제 일정 보여줘';
       final controller = makeController(convert: true);
       final ordinary = makeController(
@@ -214,7 +274,8 @@ void main() {
 
       final result = controller.handle(query);
 
-      expect(VoiceCommandRouter().route(query).intent, VoiceCommandRouteIntent.query);
+      expect(VoiceCommandRouter().route(query).intent,
+          VoiceCommandRouteIntent.query);
       expect(result.inputText, query);
       for (final response in [ordinary, result]) {
         expect(response.action, VoiceConversationAction.showEvents);
@@ -247,7 +308,7 @@ void main() {
 
   group('local schedule time edits', () {
     for (final (input, originalHour, expectedDay, hour, minute) in [
-      ('밤 12시', 14, 9, 0, 0),
+      ('밤 12시', 14, 8, 0, 0),
       ('낮 2시', 9, 7, 14, 0),
       ('3시', 14, 7, 15, 0),
       ('6시', 9, 7, 18, 0),
@@ -256,7 +317,7 @@ void main() {
       ('11시', 9, 7, 11, 0),
       ('12시', 9, 7, 12, 0),
       ('10시', 15, 7, 22, 0),
-      ('자정에', 14, 9, 0, 0),
+      ('자정에', 14, 8, 0, 0),
       ('오늘 자정에', 14, 9, 0, 0),
       ('5월 20일 자정에', 14, 21, 0, 0),
       ('정오에', 14, 7, 12, 0),
@@ -271,7 +332,8 @@ void main() {
           ],
           now: () => DateTime(_fixtureYear, 5, 8, 8),
         );
-        expect(controller.handle('어제 일정 보여줘').visibleEvents.single.id, 'target');
+        expect(
+            controller.handle('어제 일정 보여줘').visibleEvents.single.id, 'target');
 
         final direction = input.endsWith('에') ? input : '$input로';
         final result = controller.handle('첫번째 일정 $direction 옮겨줘');
@@ -285,71 +347,1403 @@ void main() {
       });
     }
 
+    for (final (input, expectedDayOffset) in [
+      ('밤 12시로', 8),
+      ('자정에', 8),
+      ('오늘 자정에', 1),
+      ('명시 날짜 자정에', 5),
+    ]) {
+      test('P6c controller resolves $input for a future schedule', () {
+        final today = _dateAt(planflowNow(), 0, 9);
+        final event = _event('target', '회식', _dateAt(today, 7, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+
+        final result = controller.handle(
+          '첫번째 일정 ${_editTimeWording(input, today)} 옮겨줘',
+        );
+
+        expect(result.targetEvent?.id, event.id);
+        expect(
+          result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, expectedDayOffset)),
+        );
+      });
+    }
+
     for (final (input, expectedDayOffset, hour, minute) in [
-      ('밤 12시로', 1, 0, 0),
-      ('낮 2시로', -2, 14, 0),
-      ('3시로', -2, 15, 0),
-      ('10시로', -2, 22, 0),
-      ('자정에', 1, 0, 0),
+      ('밤 12시로', 8, 0, 0),
+      ('낮 2시로', 7, 14, 0),
+      ('3시로', 7, 15, 0),
+      ('10시로', 7, 22, 0),
+      ('자정에', 8, 0, 0),
       ('오늘 자정에', 1, 0, 0),
       ('명시 날짜 자정에', 5, 0, 0),
-      ('정오에', -2, 12, 0),
-      ('네 시 사십오 분으로', -2, 16, 45),
-      ('오후 다섯 시 오십 분으로', -2, 17, 50),
+      ('정오에', 7, 12, 0),
+      ('네 시 사십오 분으로', 7, 16, 45),
+      ('오후 다섯 시 오십 분으로', 7, 17, 50),
     ]) {
       testWidgets('voice action uses $input in the edit draft', (tester) async {
         final today = planflowNow();
-        final explicitDate = DateTime(today.year, today.month, today.day + 4);
-        final edit = input.replaceFirst('명시 날짜',
-            '${explicitDate.year}년 ${explicitDate.month}월 ${explicitDate.day}일');
         final event = _event(
           'target',
           '팀 회식',
-          DateTime(today.year, today.month, today.day - 2, input == '10시로' ? 9 : 14),
+          _dateAt(today, 7, input == '10시로' ? 9 : 14),
         ).copyWith(externalId: 'linked');
-        EventEditRoutePayload? payload;
-        final router = GoRouter(
-          initialLocation: AppRoutes.voiceAction,
-          routes: [
-            GoRoute(
-              path: AppRoutes.voiceAction,
-              builder: (context, state) => VoiceActionScreen(
-                rawText: '팀 회식 $edit 옮겨줘',
-                action: VoiceScheduleAction.edit,
-                eventRepository: _VoiceTimeEventRepository(event),
-                groupRepository: _VoiceTimeGroupRepository(),
-                gptService: _LocalVoiceTimeGptService(),
-                userIdOverride: event.userId,
-              ),
-            ),
-            GoRoute(
-              path: AppRoutes.eventEditWithId,
-              builder: (context, state) {
-                payload = state.extra as EventEditRoutePayload;
-                return const SizedBox();
-              },
-            ),
-          ],
+
+        final localDays = <DateTime>{};
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: _editTimeWording(input, today),
+          observeDate: localDays.add,
         );
-        addTearDown(router.dispose);
-
-        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-        await tester.pumpAndSettle();
-        await tester.tap(find.ancestor(
-          of: find.text(event.title),
-          matching: find.byType(InkWell),
-        ).first);
-        await tester.pumpAndSettle();
-
-        expect(payload?.original.id, event.id);
+        // VoiceActionScreen reads the wall clock. If this tap straddles
+        // midnight, either observed date is valid for an explicit "today".
+        final Iterable<DateTime> referenceDays =
+            input.startsWith('오늘') ? localDays : [today];
         expect(
           payload?.draft.startAt,
-          planflowLocalDateTimeToUtc(
-            DateTime(today.year, today.month, today.day + expectedDayOffset,
-                hour, minute),
-          ),
+          isIn([
+            for (final day in referenceDays)
+              planflowLocalDateTimeToUtc(
+                _dateAt(day, expectedDayOffset, hour, minute),
+              ),
+          ]),
         );
       });
+    }
+
+    testWidgets('P6c tomorrow midnight agrees across all three entrypoints',
+        (tester) async {
+      final today = planflowNow();
+      final event = _event('target', '회식', _dateAt(today, 7, 14))
+          .copyWith(externalId: 'linked');
+      final localDays = <DateTime>{};
+      const input = '내일 자정에';
+
+      final payload = await _openVoiceActionDraft(
+        tester,
+        event: event,
+        input: input,
+        observeDate: localDays.add,
+      );
+
+      final expectedUtc = <DateTime>[];
+      for (final day in localDays) {
+        final expected = _dateAt(day, 2);
+        final reference = _dateAt(day, 0, 9);
+        final asUtc = planflowLocalDateTimeToUtc(expected);
+        expectedUtc.add(asUtc);
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(reference),
+        );
+        final result = controller.handle('첫번째 일정 $input 옮겨줘');
+        expect(result.targetEvent?.id, event.id);
+        expect(result.draftEvent?.startAt, asUtc);
+        expect(GptService(now: () => reference).inferStartAtFromRawText(input),
+            expected);
+      }
+      expect(payload?.draft.startAt, isIn(expectedUtc));
+    });
+
+    test('P6c a noon destination does not select the existing noon schedule',
+        () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [
+          _event('noon', '점심', _dateAt(today, 0, 12)),
+          _event('other', '정기미팅', _dateAt(today, 0, 15)),
+        ],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      expect(
+        controller.handle('오늘 일정 보여줘').visibleEvents.map((event) => event.id),
+        ['noon', 'other'],
+      );
+
+      final result = controller.handle('정오로 옮겨줘');
+
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNull);
+    });
+
+    for (final input in ['정오로 옮겨줘', '정오로 좀 옮겨줘', '정오로 잠시 옮겨줘']) {
+      test('P6c destination cannot select an event titled 정오: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final controller = VoiceConversationController(
+          events: [
+            _event('named', '팀 회식', _dateAt(today, 0, 12)),
+            _event('clock-title', '정오', _dateAt(today, 0, 15)),
+          ],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        expect(
+          controller.handle('오늘 일정 보여줘').visibleEvents.map((event) => event.id),
+          ['named', 'clock-title'],
+        );
+
+        final result = controller.handle(input);
+
+        expect(result.targetEvent, isNull);
+        expect(result.draftEvent, isNull);
+      });
+
+      test('P6c retains the named event before the destination: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final controller = VoiceConversationController(
+          events: [
+            _event('named', '팀 회식', _dateAt(today, 0, 14)),
+            _event('clock-title', '정오', _dateAt(today, 0, 15)),
+          ],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+
+        final result = controller.handle('팀 회식 $input');
+
+        expect(result.targetEvent?.id, 'named');
+        expect(
+          result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)),
+        );
+      });
+    }
+
+    test('P6c round3 잠깐 noon destination cannot select or auto-apply', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [
+          _event('noon', '점심', _dateAt(today, 0, 12)),
+          _event('clock-title', '정오', _dateAt(today, 0, 15)),
+        ],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('정오로 잠깐 옮겨줘');
+
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNull);
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    test('P6c round3 numeric destination preserves explicit named target', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [
+          _event('named', '팀 회식', _dateAt(today, 0, 14)),
+          _event('decoy', '3시', _dateAt(today, 0, 15)),
+        ],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('팀 회식 3시로 잠시 옮겨줘');
+
+      expect(result.targetEvent?.id, 'named');
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 0, 15)));
+    });
+
+    test('P6c round3 numeric destination alone cannot select clock title', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [
+          _event('named', '팀 회식', _dateAt(today, 0, 14)),
+          _event('decoy', '3시', _dateAt(today, 0, 15)),
+        ],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('3시로 잠시 옮겨줘');
+
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNull);
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    test('P6c round3 relative two-day midnight uses target date', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final targetDate = _dateAt(today, 7, 14);
+      final event = _event('target', '회식', targetDate);
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+
+      final result = controller.handle('1번 일정 2일 뒤 자정으로 잠시 옮겨줘');
+
+      expect(result.targetEvent?.id, 'target');
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(targetDate, 3)));
+    });
+
+    for (final input in ['오늘 밤 12시로 잠시', '20일 밤 12시로']) {
+      testWidgets(
+          'P6c round3 explicit night twelve across edit entrypoints: $input',
+          (tester) async {
+        final today = planflowNow();
+        final event = _event('target', '회식', _dateAt(today, 40, 14))
+            .copyWith(externalId: 'linked');
+        final localDays = <DateTime>{};
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: localDays.add,
+        );
+        final expectedUtc = <DateTime>[];
+        for (final day in localDays) {
+          final reference = _dateAt(day, 0, 9);
+          final stated = input.startsWith('오늘')
+              ? _dateAt(day, 0)
+              : DateTime(day.year, day.month + (day.day > 20 ? 1 : 0), 20);
+          final expected = planflowLocalDateTimeToUtc(_dateAt(stated, 1));
+          expectedUtc.add(expected);
+          final controller = VoiceConversationController(
+            events: [event],
+            now: () => planflowLocalDateTimeToUtc(reference),
+          );
+          final result = controller.handle('첫번째 일정 $input 옮겨줘');
+          expect(result.targetEvent?.id, 'target');
+          expect(result.draftEvent?.startAt, expected);
+        }
+        expect(localDays, isNotEmpty);
+        expect(payload?.draft.startAt, isIn(expectedUtc));
+      });
+    }
+
+    for (final input in [
+      '오후 2시 또는 오후 3시로',
+      '오후 2시 아니면 오후 3시로',
+      '2일 뒤 오후 2시로 옮겨줘, 아니면 오후 3시로',
+      '2일 뒤 오후 3시로 바꾸고 오후 4시로',
+    ]) {
+      test('P6c round4 ambiguous destination controller: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final result = controller.handle('1번 일정 $input 옮겨줘');
+        expect(result.draftEvent, isNull);
+        expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+      });
+
+      testWidgets('P6c round4 ambiguous destination VoiceAction: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14))
+            .copyWith(externalId: 'linked');
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: (_) {},
+          expectDraft: false,
+        );
+        expect(payload, isNull);
+      });
+    }
+
+    testWidgets('P6c round4 source time then destination is unambiguous',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '회의', _dateAt(today, 7, 14))
+          .copyWith(externalId: 'linked');
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      final query = controller.handle('다음 주 일정 보여줘');
+      expect(query.visibleEvents.map((item) => item.id), contains(event.id));
+      final result = controller.handle('오후 2시 일정을 오후 3시로 옮겨줘');
+      expect(result.targetEvent?.id, event.id);
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 7, 15)));
+
+      final payload = await _openVoiceActionDraft(
+        tester,
+        event: event,
+        input: '오후 2시 일정을 오후 3시로',
+        observeDate: (_) {},
+      );
+      expect(payload?.draft.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 7, 15)));
+    });
+
+    testWidgets('P6c round4 two days later midnight agrees across entrypoints',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final targetDate = _dateAt(today, 7, 14);
+      final event =
+          _event('target', '회의', targetDate).copyWith(externalId: 'linked');
+      final expected = planflowLocalDateTimeToUtc(_dateAt(targetDate, 3));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      final result = controller.handle('1번 일정 2일 뒤 자정으로 옮겨줘');
+      expect(result.targetEvent?.id, event.id);
+      expect(result.draftEvent?.startAt, expected);
+
+      final payload = await _openVoiceActionDraft(
+        tester,
+        event: event,
+        input: '2일 뒤 자정으로',
+        observeDate: (_) {},
+      );
+      expect(payload?.draft.startAt, expected);
+      expect(
+        GptService(now: () => targetDate).inferStartAtFromRawText('2일 뒤 자정으로'),
+        _dateAt(targetDate, 3),
+      );
+    });
+
+    for (final input in [
+      '오후 2시나 오후 3시로',
+      '오후 2시 또는 24:00로',
+    ]) {
+      test('P6c round5 alternative destination controller: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final result = controller.handle('1번 일정 $input 옮겨줘');
+        expect(result.draftEvent, isNull);
+        expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+      });
+
+      testWidgets('P6c round5 alternative destination VoiceAction: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14))
+            .copyWith(externalId: 'linked');
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: (_) {},
+          expectDraft: false,
+        );
+        expect(payload, isNull);
+      });
+    }
+
+    test('P6c round5 alternative time query remains a query', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '회의', _dateAt(today, 0, 14));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      final result = controller.handle('오늘 오후 2시 또는 오후 3시 일정 보여줘');
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.map((item) => item.id), contains(event.id));
+      expect(result.draftEvent, isNull);
+    });
+
+    for (final wording in ['일주일 뒤', '한 달 뒤']) {
+      for (final modifier in ['', ' 잠시']) {
+        test('P6c round5 relative date midnight controller: $wording$modifier',
+            () {
+          final today = _dateAt(planflowNow(), 0, 8);
+          final targetDate = DateTime(today.year, today.month + 2, 10, 14);
+          final event = _event('target', '회의', targetDate);
+          final requestedDate = wording == '일주일 뒤'
+              ? _dateAt(targetDate, 7)
+              : DateTime(targetDate.year, targetDate.month + 1, targetDate.day);
+          final expected =
+              planflowLocalDateTimeToUtc(_dateAt(requestedDate, 1));
+          final controller = VoiceConversationController(
+            events: [event],
+            now: () => planflowLocalDateTimeToUtc(today),
+          );
+          final result = controller.handle('1번 일정 $wording 자정으로$modifier 옮겨줘');
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt, expected);
+        });
+
+        testWidgets(
+            'P6c round5 relative date midnight VoiceAction: $wording$modifier',
+            (tester) async {
+          final today = _dateAt(planflowNow(), 0, 8);
+          final targetDate = DateTime(today.year, today.month + 2, 10, 14);
+          final event =
+              _event('target', '회의', targetDate).copyWith(externalId: 'linked');
+          final requestedDate = wording == '일주일 뒤'
+              ? _dateAt(targetDate, 7)
+              : DateTime(targetDate.year, targetDate.month + 1, targetDate.day);
+          final expected =
+              planflowLocalDateTimeToUtc(_dateAt(requestedDate, 1));
+          final payload = await _openVoiceActionDraft(
+            tester,
+            event: event,
+            input: '$wording 자정으로$modifier',
+            observeDate: (_) {},
+          );
+          expect(payload?.draft.startAt, expected);
+        });
+      }
+    }
+
+    for (final input in [
+      '정오나 오후 3시로',
+      '자정이나 오후 3시로',
+      '오후 2시 또는 내일 오후 3시로',
+      '오후 2시나 내일 오후 3시로',
+      '2일 뒤 또는 3일 뒤 자정으로',
+    ]) {
+      test('P6c round6 ambiguous destination controller: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final result = controller.handle('1번 일정 $input 옮겨줘');
+        expect(result.draftEvent, isNull);
+        expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+      });
+
+      testWidgets('P6c round6 ambiguous destination VoiceAction: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14))
+            .copyWith(externalId: 'linked');
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: (_) {},
+          expectDraft: false,
+        );
+        expect(payload, isNull);
+      });
+    }
+
+    for (final input in [
+      '내일 또는 모레 자정으로',
+      '오늘이나 내일 자정으로',
+      '내일 또는 3일 뒤 자정으로',
+    ]) {
+      test('P6c round7 alternative calendar dates controller: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final result = controller.handle('1번 일정 $input 옮겨줘');
+        expect(result.draftEvent, isNull);
+        expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+      });
+
+      testWidgets('P6c round7 alternative calendar dates VoiceAction: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 7, 14))
+            .copyWith(externalId: 'linked');
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: (_) {},
+          expectDraft: false,
+        );
+        expect(payload, isNull);
+      });
+    }
+
+    test('P6c round7 ordinary 한시나마 cannot trigger an edit', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '회의', _dateAt(today, 0, 13));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+      final result = controller.handle('한시나마 도와줘');
+      expect(result.targetEvent, isNull);
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    test('P6c round7 three days later midnight controller', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final targetDate = _dateAt(today, 7, 14);
+      final event = _event('target', '회의', targetDate);
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      final result = controller.handle('1번 일정 사흘 뒤 자정으로 옮겨줘');
+      expect(result.targetEvent?.id, event.id);
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(targetDate, 4)));
+    });
+
+    testWidgets('P6c round7 three days later midnight VoiceAction',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final targetDate = _dateAt(today, 7, 14);
+      final event =
+          _event('target', '회의', targetDate).copyWith(externalId: 'linked');
+      final payload = await _openVoiceActionDraft(
+        tester,
+        event: event,
+        input: '사흘 뒤 자정으로',
+        observeDate: (_) {},
+      );
+      expect(payload?.draft.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(targetDate, 4)));
+    });
+
+    test('P6c round8 date alternatives with particle controller', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '회의', _dateAt(today, 7, 14));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      final result = controller.handle('1번 일정 내일 또는 모레에 자정으로 옮겨줘');
+      expect(result.draftEvent, isNull);
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    testWidgets('P6c round8 date alternatives with particle VoiceAction',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '회의', _dateAt(today, 7, 14))
+          .copyWith(externalId: 'linked');
+      final payload = await _openVoiceActionDraft(
+        tester,
+        event: event,
+        input: '내일 또는 모레에 자정으로',
+        observeDate: (_) {},
+        expectDraft: false,
+      );
+      expect(payload, isNull);
+    });
+
+    test('P6c round8 꼭 destination cannot select clock-titled event', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('clock-title', '정오', _dateAt(today, 0, 15));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+      final result = controller.handle('정오로 꼭 옮겨줘');
+      expect(result.targetEvent, isNull);
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    test('P6c round8 꼭 destination preserves explicit target', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('clock-title', '정오', _dateAt(today, 0, 15));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+      final result = controller.handle('1번 일정 정오로 꼭 옮겨줘');
+      expect(result.targetEvent?.id, event.id);
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+    });
+
+    test('P6c round10 adverb destination cannot select clock-titled event', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('clock-title', '정오', _dateAt(today, 0, 15));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+      final result = controller.handle('정오로 한 번만 옮겨줘');
+      expect(result.targetEvent, isNull);
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    testWidgets('P6c round10 VoiceInput adverb destination does not save',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('clock-title', '정오', _dateAt(today, 0, 15));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(
+        tester,
+        event: event,
+        repository: repository,
+        input: '정오로 한 번만 옮겨줘',
+      );
+      expect(repository.listCount, greaterThan(0));
+      expect(repository.savedEvents, isEmpty);
+    });
+
+    testWidgets('P6c round10 VoiceInput mismatched title does not save',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('clock-title', '정오', _dateAt(today, 0, 15));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(
+        tester,
+        event: event,
+        repository: repository,
+        input: '오늘 팀 회의를 정오로 꼭 옮겨줘',
+      );
+      expect(repository.listCount, greaterThan(0));
+      expect(repository.savedEvents, isEmpty);
+    });
+
+    for (final (candidateTitle, input) in [
+      ('회의', '팀 회의를 정오로 꼭 옮겨줘'),
+      ('에버랜드', '에버랜드 모임을 정오로 꼭 옮겨줘'),
+    ]) {
+      testWidgets('P6c round10b partial title does not save: $candidateTitle',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('decoy', candidateTitle, _dateAt(today, 0, 15));
+        final repository = _VoiceTimeWriteSpy(event);
+        await _submitVoiceInputToAction(
+          tester,
+          event: event,
+          repository: repository,
+          input: input,
+        );
+        expect(repository.listCount, greaterThan(0));
+        expect(repository.savedEvents, isEmpty);
+      });
+    }
+
+    testWidgets('P6c round10b date-only move with a target clock',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('named', '팀 회의', _dateAt(today, 0, 15));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(
+        tester,
+        event: event,
+        repository: repository,
+        input: '오늘 오후 3시 팀 회의를 내일로 옮겨줘',
+      );
+      expect(repository.savedEvents, hasLength(1));
+      expect(repository.savedEvents.single.id, event.id);
+      expect(repository.savedEvents.single.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 1, 15)));
+    });
+
+    test('P6c round10c clock-only target date edit controller', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final eventDay = today.weekday == DateTime.friday ? 1 : 0;
+      final fridayOffset = (DateTime.friday - today.weekday + 7) % 7;
+      final event = _event('target', '회의', _dateAt(today, eventDay, 14));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle(eventDay == 0 ? '오늘 일정 보여줘' : '내일 일정 보여줘');
+      final result = controller.handle('오후 2시 일정을 금요일로 옮겨줘');
+      expect(result.targetEvent?.id, event.id);
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, fridayOffset, 14)));
+    });
+
+    testWidgets('P6c round10c clock-only target date edit VoiceInput',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final eventDay = today.weekday == DateTime.friday ? 1 : 0;
+      final fridayOffset = (DateTime.friday - today.weekday + 7) % 7;
+      final event = _event('target', '회의', _dateAt(today, eventDay, 14));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(
+        tester,
+        event: event,
+        repository: repository,
+        input: '오후 2시 일정을 금요일로 옮겨줘',
+      );
+      expect(repository.listCount, greaterThan(0));
+      expect(repository.savedEvents, hasLength(1));
+      expect(repository.savedEvents.single.id, event.id);
+      expect(repository.savedEvents.single.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, fridayOffset, 14)));
+    });
+
+    for (final (eventHour, shouldSave) in [(15, false), (14, true)]) {
+      for (final destination in ['하루 뒤로 옮겨줘', '내일로   옮겨줘']) {
+        test('P6c round10k date split $destination: $shouldSave', () {
+          final today = _dateAt(planflowNow(), 0, 8);
+          final event = _event('named', '회의', _dateAt(today, 0, eventHour));
+          final controller = VoiceConversationController(
+            events: [event],
+            now: () => planflowLocalDateTimeToUtc(today),
+          )..handle('오늘 일정 보여줘');
+          final result = controller.handle('오늘 오후 2시 회의를 $destination');
+          if (shouldSave) {
+            expect(result.action, VoiceConversationAction.confirmedEdit);
+            expect(result.targetEvent?.id, event.id);
+            expect(result.draftEvent?.startAt,
+                planflowLocalDateTimeToUtc(_dateAt(today, 1, 14)));
+          } else {
+            expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+          }
+        });
+      }
+    }
+
+    test('P6c round10j end-of-day controller does not select same-day midnight',
+        () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('named', '회의', _dateAt(today, 0, 0));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+      final result = controller.handle('오늘 밤 12시 회의를 정오로 꼭 옮겨줘');
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+    });
+
+    testWidgets(
+        'P6c round10j end-of-day VoiceInput does not save same-day midnight',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('named', '회의', _dateAt(today, 0, 0));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(tester,
+          event: event,
+          repository: repository,
+          input: '오늘 밤 12시 회의를 정오로 꼭 옮겨줘');
+      expect(repository.savedEvents, isEmpty);
+    });
+
+    for (final (spoken, title, shouldConfirm) in [
+      ('팀 회의를', '병원', false),
+      ('팀 회의 준비를', '팀 회의', false),
+      ('팀 회의를', '팀 회의', true),
+      ('일정을', '병원', true),
+    ]) {
+      test('P6c time lookup respects the stated title: $spoken / $title', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', title, _dateAt(today, 0, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+
+        final result = controller.handle('오늘 오후 2시 $spoken 정오로 꼭 옮겨줘');
+
+        if (shouldConfirm) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+          expect(result.targetEvent, isNull);
+          expect(result.draftEvent, isNull);
+        }
+      });
+    }
+
+    for (final (input, hour) in [
+      ('3시랑 4시로', 15),
+      ('3시하고 4시로', 15),
+      ('세시랑 네시로', 15),
+      ('오후 2시 또는 바로 오후 3시로', 14),
+    ]) {
+      test('P6c coordinated destination is not a source clock: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회의', _dateAt(today, 0, hour));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final result = controller.handle('1번 일정 $input 옮겨줘');
+
+        expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        expect(result.draftEvent, isNull);
+      });
+    }
+
+    test('P6c a source display midnight cannot auto-edit same-day midnight',
+        () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '회의', _dateAt(today, 0, 0));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('오늘 24:00 일정을 정오로 꼭 옮겨줘');
+
+      expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+      expect(result.draftEvent, isNull);
+    });
+
+    for (final input in ['내일 25시로', '하루 뒤 2시 70분으로', '내일 24:00로']) {
+      test('P6c invalid destination does not yield a partial draft: $input',
+          () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '팀 회의', _dateAt(today, 0, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+
+        final result = controller.handle('팀 회의를 $input 옮겨줘');
+
+        expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        expect(result.draftEvent, isNull);
+      });
+
+      testWidgets('P6c invalid destination does not allow direct save: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '팀 회의', _dateAt(today, 0, 14));
+        final repository = _VoiceTimeWriteSpy(event);
+        await _submitVoiceInputToAction(
+          tester,
+          event: event,
+          repository: repository,
+          input: '팀 회의를 $input 옮겨줘',
+        );
+
+        final save = find.text('바로 저장');
+        if (save.evaluate().isNotEmpty) {
+          await tester.ensureVisible(save);
+          await tester.tap(save);
+          await tester.pumpAndSettle();
+        }
+        expect(repository.savedEvents, isEmpty);
+      });
+
+      testWidgets(
+          'P6c invalid destination does not open a partial edit: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '팀 회의', _dateAt(today, 0, 14))
+            .copyWith(externalId: 'linked');
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: (_) {},
+          expectDraft: false,
+        );
+        expect(payload, isNull);
+      });
+    }
+
+    test('P6c a date-only destination retains the original clock', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('target', '팀 회의', _dateAt(today, 0, 14, 30));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('1번 일정 내일로 옮겨줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 1, 14, 30)));
+    });
+
+    test('P6c round19 add route does not edit the same-time hospital', () {
+      const input = '오늘 오후 2시 팀 회의 시작시간 8시반으로 해줘';
+      expect(const VoiceCommandRouter().route(input).intent,
+          VoiceCommandRouteIntent.add);
+      final today = _dateAt(planflowNow(), 0, 8);
+      final hospital = _event('hospital', '병원', _dateAt(today, 0, 14));
+      final controller = VoiceConversationController(
+        events: [hospital],
+        now: () => planflowLocalDateTimeToUtc(today),
+      );
+      expect(controller.handle('오늘 일정 보여줘').visibleEvents.single.id,
+          hospital.id);
+
+      final result = controller.handle(input);
+
+      expect(result.action, VoiceConversationAction.createEvent);
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent?.id, isEmpty);
+    });
+
+    for (final (round, input) in [
+      (19, '내일 25:00로'),
+      (19, '내일 2500로'),
+      (19, '내일 밤 2400로'),
+      (20, '내일 9:70로'),
+      (20, '내일 970로'),
+    ]) {
+      test('P6c round$round invalid labeled clock yields no draft: $input', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '팀 회의', _dateAt(today, 0, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+
+        final result = controller.handle('1번 일정 $input 옮겨줘');
+
+        expect(result.action, VoiceConversationAction.none);
+        expect(result.draftEvent, isNull);
+      });
+    }
+
+    for (final (round, input, normalized) in [
+      (19, '내일 25:00로', '내일 2500로'),
+      (19, '내일 밤 24:00로', '내일 밤 2400로'),
+      (20, '내일 9:70로', '내일 970로'),
+      (20, '내일 970로', '내일 970로'),
+    ]) {
+      testWidgets('P6c round$round VoiceInput cannot auto-save: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '팀 회의', _dateAt(today, 0, 14));
+        final repository = _VoiceTimeWriteSpy(event);
+
+        await _submitVoiceInputToAction(
+          tester,
+          event: event,
+          repository: repository,
+          input: '팀 회의를 $input 옮겨줘',
+          expectedActionText: '팀 회의를 $normalized 옮겨줘',
+        );
+
+        expect(repository.listCount, greaterThan(0));
+        expect(repository.savedEvents, isEmpty);
+      });
+
+      for (final directSave in [true, false]) {
+        final action = directSave ? 'save directly' : 'open an edit draft';
+        testWidgets('P6c round$round VoiceInput cannot $action: $input',
+            (tester) async {
+          final today = _dateAt(planflowNow(), 0, 8);
+          final event = _event('target', '팀 회의', _dateAt(today, 0, 14))
+              .copyWith(externalId: 'linked');
+          final repository = _VoiceTimeWriteSpy(event);
+          EventEditRoutePayload? draft;
+
+          await _submitVoiceInputToAction(
+            tester,
+            event: event,
+            repository: repository,
+            input: '팀 회의를 $input 옮겨줘',
+            expectedActionText: '팀 회의를 $normalized 옮겨줘',
+            onOpenDraft: (payload) => draft = payload,
+          );
+
+          expect(repository.savedEvents, isEmpty);
+          final button = directSave
+              ? find.text('바로 저장')
+              : find
+                  .ancestor(
+                    of: find.text(event.title),
+                    matching: find.byType(InkWell),
+                  )
+                  .first;
+          if (directSave && button.evaluate().isEmpty) return;
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(repository.savedEvents, isEmpty);
+          expect(draft, isNull);
+        });
+      }
+    }
+
+    for (final (round, title) in [(19, '2400 회의'), (20, '970 회의')]) {
+      testWidgets('P6c round$round VoiceInput can date-edit a numeric title',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', title, _dateAt(today, 0, 14, 30));
+        final repository = _VoiceTimeWriteSpy(event);
+
+        await _submitVoiceInputToAction(
+          tester,
+          event: event,
+          repository: repository,
+          input: '$title를 내일로 옮겨줘',
+        );
+
+        expect(repository.savedEvents, hasLength(1));
+        expect(repository.savedEvents.single.id, event.id);
+        expect(repository.savedEvents.single.title, event.title);
+        expect(repository.savedEvents.single.startAt,
+            planflowLocalDateTimeToUtc(_dateAt(today, 1, 14, 30)));
+      });
+    }
+
+    for (final (spoken, shouldSave) in [
+      ('회의 준비', false),
+      ('팀 회의 준비', false),
+      ('팀 회의', false),
+      ('회의', true),
+    ]) {
+      test('P6c round10l title collision $spoken: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '회의', _dateAt(today, 0, 15));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+        final result = controller.handle('$spoken를 정오로 꼭 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+    }
+
+    for (final (title, shouldSave) in [('회의', false), ('팀 회의', true)]) {
+      test('P6c round10i full controller title: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', title, _dateAt(today, 0, 15));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+        final result = controller.handle('팀 회의를 정오로 꼭 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+    }
+
+    for (final (eventHour, shouldSave) in [(10, false), (14, true)]) {
+      test('P6c round10h last-mentioned source clock: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '단기렌트', _dateAt(today, 0, eventHour));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final titleQuery = controller.handle('단기렌트 일정 보여 줘');
+        expect(titleQuery.visibleEvents.single.id, event.id);
+        final emptyQuery = controller.handle('내일 일정 보여 줘');
+        expect(emptyQuery.visibleEvents, isEmpty);
+        final result = controller.handle('오후 2시 아까 그 일정을 정오로 꼭 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+    }
+
+    for (final (eventOffset, shouldSave) in [(1, false), (0, true)]) {
+      test('P6c round10g controller source date: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '회의', _dateAt(today, eventOffset, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle(eventOffset == 0 ? '오늘 일정 보여줘' : '내일 일정 보여줘');
+        final result = controller.handle('오늘 오후 2시 회의를 정오로 꼭 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+    }
+
+    for (final (eventHour, shouldSave) in [(15, false), (14, true)]) {
+      test('P6c round10f date-only controller source clock: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '회의', _dateAt(today, 0, eventHour));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+        final result = controller.handle('오늘 오후 2시 회의를 내일로 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 1, 14)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+    }
+
+    for (final (eventHour, shouldSave) in [(15, false), (14, true)]) {
+      test('P6c round10e single-word controller source clock: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '회의', _dateAt(today, 0, eventHour));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+        final result = controller.handle('오늘 오후 2시 회의를 정오로 꼭 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+
+      testWidgets('P6c round10e refreshed source clock: $shouldSave',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final listed = _event('named', '팀 회의', _dateAt(today, 0, 14));
+        final fresh = _event('named', '팀 회의', _dateAt(today, 0, eventHour));
+        final repository = _VoiceTimeChangingWriteSpy(listed, fresh);
+        await _submitVoiceInputToAction(
+          tester,
+          event: listed,
+          repository: repository,
+          input: '오늘 오후 2시 팀 회의를 정오로 꼭 옮겨줘',
+        );
+        expect(repository.fetchCount, greaterThan(0));
+        expect(repository.savedEvents, hasLength(shouldSave ? 1 : 0));
+        if (shouldSave) {
+          expect(repository.savedEvents.single.id, listed.id);
+          expect(repository.savedEvents.single.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        }
+      });
+
+      test('P6c round10d controller source clock match: $shouldSave', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '팀 회의', _dateAt(today, 0, eventHour));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        )..handle('오늘 일정 보여줘');
+        final result = controller.handle('오늘 오후 2시 팀 회의를 정오로 꼭 옮겨줘');
+        if (shouldSave) {
+          expect(result.action, VoiceConversationAction.confirmedEdit);
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        } else {
+          expect(result.action, isNot(VoiceConversationAction.confirmedEdit));
+        }
+      });
+
+      testWidgets('P6c round10d source clock match: $shouldSave',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('named', '팀 회의', _dateAt(today, 0, eventHour));
+        final repository = _VoiceTimeWriteSpy(event);
+        await _submitVoiceInputToAction(
+          tester,
+          event: event,
+          repository: repository,
+          input: '오늘 오후 2시 팀 회의를 정오로 꼭 옮겨줘',
+        );
+        expect(repository.listCount, greaterThan(0));
+        expect(repository.savedEvents, hasLength(shouldSave ? 1 : 0));
+        if (shouldSave) {
+          expect(repository.savedEvents.single.id, event.id);
+          expect(repository.savedEvents.single.startAt,
+              planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+        }
+      });
+    }
+
+    testWidgets('P6c round9 VoiceInput ambiguous target does not save',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('clock-title', '정오', _dateAt(today, 0, 15));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(
+        tester,
+        event: event,
+        repository: repository,
+        input: '정오로 꼭 옮겨줘',
+      );
+      expect(repository.listCount, greaterThan(0),
+          reason: 'The candidate-loading path must have inspected the event.');
+      expect(repository.savedEvents, isEmpty);
+    });
+
+    testWidgets('P6c round9 VoiceInput explicit target may save',
+        (tester) async {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final event = _event('named', '팀 회의', _dateAt(today, 0, 15));
+      final repository = _VoiceTimeWriteSpy(event);
+      await _submitVoiceInputToAction(
+        tester,
+        event: event,
+        repository: repository,
+        input: '팀 회의를 정오로 꼭 옮겨줘',
+      );
+      expect(repository.savedEvents, hasLength(1));
+      expect(repository.savedEvents.single.id, event.id);
+      expect(repository.savedEvents.single.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+    });
+
+    test('P6c full edit target wins over a shorter title', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [
+          _event('named', '팀 회식', _dateAt(today, 0, 14)),
+          _event('decoy', '회식', _dateAt(today, 0, 15)),
+        ],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('팀 회식 정오로 옮겨줘');
+
+      expect(result.targetEvent?.id, 'named');
+      expect(result.draftEvent?.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+    });
+
+    test('P6c duplicate full edit targets do not select a decoy', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [
+          _event('named-1', '팀 회식', _dateAt(today, 0, 14)),
+          _event('named-2', '팀 회식', _dateAt(today, 0, 16)),
+          _event('decoy', '회식', _dateAt(today, 0, 15)),
+        ],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('팀 회식 정오로 옮겨줘');
+
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNull);
+    });
+
+    for (final priorMultiSelection in [false, true]) {
+      test(
+          'P6c duplicate title selection uses displayed order with prior '
+          'multi-selection=$priorMultiSelection', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final events = [
+          _event('named-1', '팀 회식', _dateAt(today, 0, 14)),
+          _event('decoy', '회식', _dateAt(today, 0, 15)),
+          _event('named-2', '팀 회식', _dateAt(today, 0, 16)),
+        ];
+        final controller = VoiceConversationController(
+          events: events,
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        final query = controller.handle('오늘 일정 보여줘');
+        final initialSession = priorMultiSelection
+            ? query.session.copyWith(
+                selectedEvents: [events[0], events[1]],
+                focusedEvent: events[1],
+              )
+            : query.session;
+
+        final prompt = controller.handle(
+          '팀 회식 정오로 옮겨줘',
+          session: initialSession,
+        );
+        expect(prompt.targetEvent, isNull);
+        expect(prompt.visibleEvents.map((event) => event.id),
+            ['named-1', 'named-2']);
+        expect(prompt.session.visibleEvents.map((event) => event.id),
+            prompt.visibleEvents.map((event) => event.id));
+        expect(prompt.session.selectedEvents, isEmpty);
+        expect(prompt.session.focusedEvent, isNull);
+
+        final result = controller.handle(
+          '두 번째 일정 정오로 옮겨줘',
+          session: prompt.session,
+        );
+        expect(result.targetEvent?.id, 'named-2');
+        expect(result.draftEvent?.startAt,
+            planflowLocalDateTimeToUtc(_dateAt(today, 0, 12)));
+      });
+    }
+
+    test('P6c partial edit target does not match a longer title', () {
+      final today = _dateAt(planflowNow(), 0, 8);
+      final controller = VoiceConversationController(
+        events: [_event('named', '팀 회식', _dateAt(today, 0, 14))],
+        now: () => planflowLocalDateTimeToUtc(today),
+      )..handle('오늘 일정 보여줘');
+
+      final result = controller.handle('회식 정오로 옮겨줘');
+
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNull);
+    });
+
+    for (final dateCue in [
+      '오늘',
+      '내일',
+      '월과 일',
+      '일',
+      '다음 주 금요일',
+    ]) {
+      for (final separator in [' ', '']) {
+        testWidgets(
+          'P6c midnight uses explicit date "$dateCue" with separator "$separator"',
+          (tester) async {
+            final today = _dateAt(planflowNow(), 0);
+            final statedDate = _dateAt(today, 4);
+            final wording = switch (dateCue) {
+              '월과 일' => '${statedDate.month}월$separator${statedDate.day}일',
+              '일' => '${statedDate.day}일',
+              _ => dateCue,
+            };
+            final input = '$wording$separator자정에';
+            final event = _event('target', '회식', _dateAt(today, 40, 14))
+                .copyWith(externalId: 'linked');
+            final localDays = <DateTime>{};
+
+            final payload = await _openVoiceActionDraft(
+              tester,
+              event: event,
+              input: input,
+              observeDate: localDays.add,
+            );
+
+            final expectedUtc = <DateTime>[];
+            for (final day in localDays) {
+              final reference = _dateAt(day, 0, 9);
+              final expected = switch (dateCue) {
+                '오늘' => _dateAt(day, 1),
+                '내일' => _dateAt(day, 2),
+                '다음 주 금요일' => _dateAt(day, 13 - day.weekday),
+                _ => _dateAt(statedDate, 1),
+              };
+              final utc = planflowLocalDateTimeToUtc(expected);
+              expectedUtc.add(utc);
+              final controller = VoiceConversationController(
+                events: [event],
+                now: () => planflowLocalDateTimeToUtc(reference),
+              );
+
+              final result = controller.handle('첫번째 일정 $input 옮겨줘');
+
+              expect(result.targetEvent?.id, event.id);
+              expect(result.draftEvent?.startAt, utc);
+              expect(
+                GptService(now: () => reference).inferStartAtFromRawText(input),
+                expected,
+              );
+            }
+            expect(payload?.draft.startAt, isIn(expectedUtc));
+          },
+        );
+      }
     }
 
     for (final wording in ['강한 알림', '강한알림']) {
@@ -2330,6 +3724,61 @@ EventModel _event(String id, String title, DateTime localStart) {
   return _eventWithPeople(id, title, localStart);
 }
 
+String _editTimeWording(String input, DateTime today) {
+  final date = _dateAt(today, 4);
+  return input.replaceFirst(
+      '명시 날짜', '${date.year}년 ${date.month}월 ${date.day}일');
+}
+
+Future<EventEditRoutePayload?> _openVoiceActionDraft(
+  WidgetTester tester, {
+  required EventModel event,
+  required String input,
+  required void Function(DateTime) observeDate,
+  bool expectDraft = true,
+}) async {
+  EventEditRoutePayload? payload;
+  final router = GoRouter(
+    initialLocation: AppRoutes.voiceAction,
+    routes: [
+      GoRoute(
+        path: AppRoutes.voiceAction,
+        builder: (context, state) => VoiceActionScreen(
+          rawText: '${event.title} $input 옮겨줘',
+          action: VoiceScheduleAction.edit,
+          eventRepository: _VoiceTimeEventRepository(event),
+          groupRepository: _VoiceTimeGroupRepository(),
+          gptService: _LocalVoiceTimeGptService(),
+          userIdOverride: event.userId,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.eventEditWithId,
+        builder: (context, state) {
+          payload = state.extra as EventEditRoutePayload;
+          return const SizedBox();
+        },
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+
+  observeDate(_dateAt(planflowNow(), 0));
+  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.pumpAndSettle();
+  await tester.tap(find
+      .ancestor(
+        of: find.text(event.title),
+        matching: find.byType(InkWell),
+      )
+      .first);
+  await tester.pumpAndSettle();
+  observeDate(_dateAt(planflowNow(), 0));
+
+  if (expectDraft) expect(payload?.original.id, event.id);
+  return payload;
+}
+
 class _VoiceTimeEventRepository extends Fake implements EventRepository {
   _VoiceTimeEventRepository(this.event);
 
@@ -2341,6 +3790,112 @@ class _VoiceTimeEventRepository extends Fake implements EventRepository {
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
       eventId == event.id ? event : null;
+}
+
+class _VoiceTimeWriteSpy extends _VoiceTimeEventRepository {
+  _VoiceTimeWriteSpy(super.event);
+
+  final savedEvents = <EventModel>[];
+  int listCount = 0;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    listCount++;
+    return super.listEvents(userId: userId);
+  }
+
+  @override
+  Future<EventModel> updateEvent(EventModel updated) async {
+    savedEvents.add(updated);
+    return updated;
+  }
+
+  @override
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+  }) async =>
+      [];
+}
+
+class _VoiceTimeChangingWriteSpy extends _VoiceTimeWriteSpy {
+  _VoiceTimeChangingWriteSpy(super.event, this.fresh);
+
+  final EventModel fresh;
+  int fetchCount = 0;
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    fetchCount++;
+    return eventId == fresh.id ? fresh : null;
+  }
+}
+
+class _VoiceTimeGroupEventRepository extends Fake
+    implements GroupEventRepository {
+  @override
+  Future<List<GroupEventModel>> getGroupEventsByPersonalEventId(
+          String personalEventId) async =>
+      [];
+}
+
+Future<void> _submitVoiceInputToAction(
+  WidgetTester tester, {
+  required EventModel event,
+  required _VoiceTimeWriteSpy repository,
+  required String input,
+  String? expectedActionText,
+  void Function(EventEditRoutePayload)? onOpenDraft,
+}) async {
+  final router = GoRouter(
+    initialLocation: AppRoutes.voice,
+    routes: [
+      GoRoute(
+        path: AppRoutes.voice,
+        builder: (_, __) => VoiceInputScreen(
+          autoStartOverride: false,
+          gptService: _LocalVoiceTimeGptService(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.voiceAction,
+        builder: (_, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          expect(extra['action'], 'edit');
+          if (expectedActionText != null) {
+            expect(extra['raw_text'], expectedActionText);
+          }
+          return VoiceActionScreen(
+            rawText: extra['raw_text'] as String,
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            groupRepository: _VoiceTimeGroupRepository(),
+            groupEventRepository: _VoiceTimeGroupEventRepository(),
+            gptService: _LocalVoiceTimeGptService(),
+            userIdOverride: event.userId,
+            reminderNotifyAtReader: (_, __) async => null,
+          );
+        },
+      ),
+      if (onOpenDraft != null)
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (_, state) {
+            onOpenDraft(state.extra as EventEditRoutePayload);
+            return const SizedBox();
+          },
+        ),
+      GoRoute(path: AppRoutes.calendar, builder: (_, __) => const SizedBox()),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.enterText(find.byType(TextField), input);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('현재 내용으로 입력'));
+  await tester.pumpAndSettle();
 }
 
 class _VoiceTimeGroupRepository extends Fake implements GroupRepository {

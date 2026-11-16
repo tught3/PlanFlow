@@ -106,6 +106,96 @@ void main() {
       expect(koreanClockTimeParts('예약일시를 알려줘'), isEmpty);
     });
 
+    test('P6c ordinary Korean words are not clock times', () {
+      for (final input in [
+        '오시는 분 일정 삭제해줘',
+        '일시 확인해줘',
+        '한시라도 빨리 알려줘',
+        '세시풍속 행사',
+        '춘분과추분정오표 확인해줘',
+      ]) {
+        expect(koreanClockTimeParts(input), isEmpty, reason: input);
+      }
+    });
+
+    test('P6c round7 한시나마 is not a clock time', () {
+      expect(koreanClockTimeParts('한시나마 도와줘'), isEmpty);
+    });
+
+    test('P6c round8 detects alternative dates with a particle', () {
+      expect(
+        hasAmbiguousKoreanClockEditDestination('내일 또는 모레에 자정으로 옮겨줘'),
+        isTrue,
+      );
+    });
+
+    test('P6c generic request requires an explicit start time field', () {
+      for (final form in ['시작시간', '시작 시간을']) {
+        expect(
+          koreanClockEditDestinationText('1번 일정 $form 8시반으로 해줘'),
+          '8시반으로 해줘',
+        );
+      }
+      for (final input in [
+        '1번 일정 8시반으로 해줘',
+        '1번 일정 미시작시간 8시반으로 해줘',
+        '1번 일정 시작시간 8시반 또는 9시로 해줘',
+      ]) {
+        expect(koreanClockEditDestinationText(input), isNull, reason: input);
+      }
+    });
+
+    test('P6c round19 rejects unsupported clocks in an edit destination', () {
+      for (final input in [
+        '팀 회의를 내일 25:00로 옮겨줘',
+        '팀 회의를 내일 2500로 옮겨줘',
+        '팀 회의를 내일 밤 2400로 옮겨줘',
+        '팀 회의를 내일 오전 1270으로 옮겨줘',
+        '1번 일정 시작시간 25:00으로 해줘',
+      ]) {
+        expect(hasInvalidKoreanClockEditDestination(input), isTrue,
+            reason: input);
+      }
+      for (final input in [
+        '오늘 24:00 일정을 정오로 옮겨줘',
+        '내일 밤 2400 회의를 모레로 옮겨줘',
+        '팀 회의를 내일로 옮겨줘',
+        '팀 회의를 내일 밤 12시로 옮겨줘',
+      ]) {
+        expect(hasInvalidKoreanClockEditDestination(input), isFalse,
+            reason: input);
+      }
+    });
+
+    for (final input in ['9:70', '970']) {
+      test('P6c round20 rejects a single-digit hour with invalid minutes: $input',
+          () {
+        expect(
+          hasInvalidKoreanClockEditDestination('팀 회의를 내일 $input로 옮겨줘'),
+          isTrue,
+        );
+      });
+    }
+
+    test('P6c round20 keeps a compact numeric title and a date-only edit', () {
+      expect(
+        hasInvalidKoreanClockEditDestination('내일 970 회의를 모레로 옮겨줘'),
+        isFalse,
+      );
+      expect(
+        hasInvalidKoreanClockEditDestination('팀 회의를 내일로 옮겨줘'),
+        isFalse,
+      );
+    });
+
+    test('P6c words beginning with 반 do not add thirty minutes', () {
+      for (final word in ['반상회', '반환', '반차', '반나절', '반바지', '반팔', '반성']) {
+        final clock = koreanClockTimeParts('3시 $word').single;
+        expect(clock.minute, 0, reason: word);
+        expect(clock.hasExplicitMinute, isFalse, reason: word);
+      }
+    });
+
     test('does not read an hour duration as a clock time', () {
       expect(koreanClockTimeParts('3시간 뒤에'), isEmpty);
     });

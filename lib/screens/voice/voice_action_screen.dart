@@ -1367,12 +1367,29 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     };
   }
 
+  bool get _hasInvalidRequestedStartTime =>
+      hasInvalidKoreanClockEditDestination(
+        _normalizedRawText,
+        routedChangeText: _routeResult?.changeText,
+        allowImplicit: true,
+      );
+
   /// 음성 명령으로 파악한 변경값을 편집화면 없이 바로 저장한다.
   Future<void> _applyAndSave(
     EventModel event, {
     bool hasResolvedReminderOffset = false,
     Duration? resolvedReminderOffset,
   }) async {
+    if (_hasInvalidRequestedStartTime) {
+      _showInvalidRequestedStartTime();
+      return;
+    }
+    if (hasAmbiguousKoreanClockEditDestination(
+      _normalizedRawText,
+      allowImplicit: true,
+    )) {
+      return;
+    }
     final groupEvent = _groupEventById[event.id];
     if (groupEvent != null) {
       if (_isConvertToPersonalRequested) {
@@ -1863,7 +1880,29 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     return parts.isEmpty ? null : parts.join(', ');
   }
 
+  void _showInvalidRequestedStartTime() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('변경할 시각을 다시 말씀해 주세요.')),
+    );
+  }
+
   Future<void> _openEdit(EventModel event) async {
+    if (_hasInvalidRequestedStartTime) {
+      _showInvalidRequestedStartTime();
+      return;
+    }
+    if (hasAmbiguousKoreanClockEditDestination(
+      _normalizedRawText,
+      allowImplicit: true,
+    )) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('변경할 시각을 하나만 말씀해 주세요.')),
+        );
+      }
+      return;
+    }
     if (_groupEventById[event.id] != null) {
       // 그룹 일정 전용 편집 화면이 없어 개인 일정 편집 화면(event_edit_screen)을
       // 재사용할 수 없다. 카드 버튼이 이미 비활성화돼 있어야 하지만, 방어적으로
@@ -2176,7 +2215,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   DateTime? _inferRequestedStartLocal(EventModel event) {
-    if (_isLocationFieldAddition) {
+    if (_isLocationFieldAddition || _hasInvalidRequestedStartTime) {
+      return null;
+    }
+    if (hasAmbiguousKoreanClockEditDestination(
+      _normalizedRawText,
+      allowImplicit: true,
+    )) {
       return null;
     }
     if (_requestedChanges.isNotEmpty &&
@@ -2184,29 +2229,41 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return null;
     }
     final changeText = _routeResult?.changeText.trim();
-    final text = changeText == null || changeText.isEmpty
-        ? _normalizedRawText
-        : changeText;
+    final destination = koreanClockEditDestinationText(
+      _normalizedRawText,
+      allowImplicit: true,
+    );
+    final text = destination ??
+        (changeText == null || changeText.isEmpty
+            ? _normalizedRawText
+            : changeText);
     final currentLocalNow = planflowNow();
-    final originalStartLocal = event.startAt == null
-        ? currentLocalNow
-        : planflowLocal(event.startAt!);
+    final originalStartLocal =
+        event.startAt == null ? currentLocalNow : planflowLocal(event.startAt!);
     final timeCandidate = _inferLastTimeCandidate(text);
     final rollsToNextDay = timeCandidate?.isEndOfDay ?? false;
-    final dateCandidate = _inferLastDateCandidate(
-      text,
-      rollsToNextDay && text.contains('오늘')
-          ? currentLocalNow
-          : originalStartLocal,
-      dateOnly: rollsToNextDay,
-    );
+    final relativeDays = koreanExplicitRelativeDayOffset(text);
+    final longRelativeDate =
+        koreanRelativeWeekMonthDate(text, originalStartLocal);
+    final dateCandidate = relativeDays == null && longRelativeDate == null
+        ? _inferLastDateCandidate(
+            text,
+            rollsToNextDay && hasKoreanCalendarDateCue(text)
+                ? currentLocalNow
+                : originalStartLocal,
+            dateOnly: rollsToNextDay,
+          )
+        : relativeDays == null
+            ? longRelativeDate
+            : originalStartLocal.add(
+                Duration(days: relativeDays),
+              );
     if (dateCandidate == null && timeCandidate == null) {
       return null;
     }
 
-    // Without a stated date, midnight means the end of today.
-    final baseDate =
-        dateCandidate ?? (rollsToNextDay ? currentLocalNow : originalStartLocal);
+    // A time-only edit uses the existing event's day as its date reference.
+    final baseDate = dateCandidate ?? originalStartLocal;
     final originalTime = _VoiceRequestedTime(
       originalStartLocal.hour,
       originalStartLocal.minute,
@@ -2288,7 +2345,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         _inferRequestedCriticalFlag() != null) {
       return;
     }
-    if (!_isClearDateOrTimeEditRequest()) {
+    if (_hasInvalidRequestedStartTime || !_isClearDateOrTimeEditRequest()) {
       return;
     }
     if (_events.length != 1) {
@@ -2296,6 +2353,70 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return;
     }
     final candidate = _events.single;
+    final clockDestination = koreanClockEditDestinationText(
+      _normalizedRawText,
+      allowImplicit: true,
+    );
+    final hasClock = koreanClockTimeParts(_normalizedRawText).isNotEmpty;
+    KoreanClockTime? sourceClock;
+    if (hasClock) {
+      final changeText = _routeResult!.changeText.trim();
+      final dateOnlyChange = clockDestination == null &&
+          changeText.isNotEmpty &&
+          koreanClockTimeParts(changeText).isEmpty &&
+          _queryDateRange(changeText) != null;
+      if (clockDestination == null && !dateOnlyChange) {
+        // An unsplit clock cannot safely identify an automatic edit target.
+        return;
+      }
+      final targetText = clockDestination == null
+          ? _routeResult!.targetText.trim()
+          : _normalizedRawText
+              .substring(0, _normalizedRawText.length - clockDestination.length)
+              .trim();
+      if (koreanMidnightDisplayPattern.hasMatch(targetText)) return;
+      final targetRange = _queryDateRange(targetText);
+      final title = candidate.title.trim().replaceAll(RegExp(r'\s+'), ' ');
+      final normalizedTarget = targetText.replaceAll(RegExp(r'\s+'), ' ');
+      final matchesTitle = title.isNotEmpty &&
+          RegExp(
+            r'^(?:(?:오늘|내일|모레|글피)\s*)?'
+            r'(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?\s*)?'
+            '${RegExp.escape(title)}'
+            r'(?:을|를|은|는|이|가)?\s*$',
+          ).hasMatch(normalizedTarget);
+      final matchesGenericClockTarget = dateOnlyChange &&
+          RegExp(
+            r'^(?:(?:오늘|내일|모레|글피)\s*)?'
+            r'(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?\s*'
+            r'(?:일정|약속|스케줄)(?:을|를|은|는|이|가)?\s*$',
+          ).hasMatch(normalizedTarget);
+      // A date cannot override a different named event in the request.
+      if ((!matchesTitle && !matchesGenericClockTarget) ||
+          (targetRange != null &&
+              !_isEventInCandidateDateRange(candidate, targetRange))) {
+        return;
+      }
+      final targetClocks = koreanClockTimeParts(targetText).toList();
+      if (targetClocks.length > 1 || (dateOnlyChange && targetClocks.isEmpty)) {
+        return;
+      }
+      if (targetClocks.isNotEmpty) {
+        final targetClock = _inferLastTimeCandidate(targetText);
+        sourceClock = targetClock;
+        final candidateStart = candidate.startAt;
+        if (targetClock == null ||
+            targetClock.isEndOfDay ||
+            candidateStart == null) {
+          return;
+        }
+        final localStart = planflowLocal(candidateStart);
+        if (targetClock.hour != localStart.hour ||
+            targetClock.minute != localStart.minute) {
+          return;
+        }
+      }
+    }
     if (_groupEventById[candidate.id] != null) {
       return;
     }
@@ -2316,6 +2437,20 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           freshEvent.userId != userId ||
           !_isAutoAppliablePersonalEvent(freshEvent)) {
         return;
+      }
+      // Revalidate the checked snapshot before applying an automatic edit.
+      if (freshEvent.title != candidate.title ||
+          freshEvent.startAt != candidate.startAt) {
+        return;
+      }
+      if (sourceClock != null) {
+        final freshStart = freshEvent.startAt;
+        if (freshStart == null) return;
+        final localStart = planflowLocal(freshStart);
+        if (sourceClock.hour != localStart.hour ||
+            sourceClock.minute != localStart.minute) {
+          return;
+        }
       }
       // 그룹 공유 링크가 있으면 자동 저장 금지(조회 실패도 예외로 fail closed).
       final groupShares = await _groupEventRepository
@@ -2491,12 +2626,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     bool dateOnly = false,
   }) {
     final allMatches = RegExp(
-      r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|'
+      r'((?:이번|다음|다다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일\s*모레|내일|모레|글피|'
       r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|'
       r'(?:하루|이틀|사흘|나흘|닷새|엿새|이레|여드레|아흐레|열흘)\s*(?:뒤|후)|'
       r'\d{1,3}\s*일\s*(?:뒤|후)|'
       r'일주일\s*(?:뒤|후)|한\s*주(?:일)?\s*(?:뒤|후)|\d{1,2}\s*주(?:일)?\s*(?:뒤|후)|'
-      r'한\s*달\s*(?:뒤|후)|\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)',
+      r'한\s*달\s*(?:뒤|후)|\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'
+      '${dateOnly ? r'|(?<![가-힣0-9])\d{1,2}\s*일(?!\s*(?:뒤|후|전|앞))' : ''}',
     ).allMatches(text).toList(growable: false);
     // "…까지"로 끝나는 날짜는 연속 일정의 종료일 지정이지 시작일 변경이
     // 아니므로 시작일 후보에서 제외한다.
