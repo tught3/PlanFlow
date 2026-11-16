@@ -1046,8 +1046,8 @@ class SupabaseEventRepository extends EventRepository {
               .from(_tableName)
               .select(_columnsFor(schema))
               .eq('user_id', userId)
-              .order('start_at', ascending: false)
-              .order('id', ascending: false)
+              .order('start_at', ascending: true)
+              .order('id', ascending: true)
               .range(from, to),
         ),
       );

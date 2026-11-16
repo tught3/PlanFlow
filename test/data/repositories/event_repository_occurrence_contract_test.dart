@@ -287,6 +287,64 @@ void main() {
         result.overriddenOccurrenceDate!.toUtc(), DateTime.parse(_overridden));
   });
 
+  group('external upsert coordinates', () {
+    const newLocation = 'different station';
+    final stored = _row(extra: {
+      'source': 'naver_caldav',
+      'external_id': 'external-1',
+      'location': 'old station',
+      'location_lat': 37.4979,
+      'location_lng': 127.0276,
+    });
+
+    for (final scenario in [
+      (
+        name: 'clears the saved pair when the location changes',
+        lat: null,
+        lng: null,
+      ),
+      (
+        name: 'replaces the saved pair with new coordinates',
+        lat: 37.55,
+        lng: 126.97,
+      ),
+    ]) {
+      test(scenario.name, () async {
+        final writes = <http.Request>[];
+        final repository = await _repository((request) async {
+          if (request.method == 'GET') return _json(request, [stored]);
+          writes.add(request);
+          return _json(request, {...stored, ..._body(request)});
+        });
+
+        final result = await repository.upsertEventBySourceExternalId(
+          EventModel(
+            id: '',
+            userId: _userId,
+            title: '회의',
+            startAt: DateTime.parse(stored['start_at'] as String),
+            source: 'naver_caldav',
+            externalId: 'external-1',
+            location: newLocation,
+            locationLat: scenario.lat,
+            locationLng: scenario.lng,
+          ),
+        );
+
+        final write = writes.single;
+        expect(write.method, 'PATCH');
+        expect(write.url.queryParameters['id'], 'eq.event-1');
+        final payload = _body(write);
+        expect(payload, containsPair('location', newLocation));
+        expect(payload, containsPair('location_lat', scenario.lat));
+        expect(payload, containsPair('location_lng', scenario.lng));
+        expect(result.location, newLocation);
+        expect(result.locationLat, scenario.lat);
+        expect(result.locationLng, scenario.lng);
+      });
+    }
+  });
+
   group('metadata attachment', () {
     final currentRow = _row(extra: {
       'supplies': ['노트북'],
@@ -406,6 +464,20 @@ void main() {
       );
       expect(calls, 0);
     });
+  });
+
+  test('listEvents orders by ascending start and id with nulls last', () async {
+    final requests = <http.Request>[];
+    final repository = await _repository((request) async {
+      requests.add(request);
+      return _json(request, []);
+    });
+
+    expect(await repository.listEvents(), isEmpty);
+    expect(
+      requests.single.url.queryParameters['order'],
+      'start_at.asc.nullslast,id.asc.nullslast',
+    );
   });
 
   for (final scenario in [
