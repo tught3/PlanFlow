@@ -865,49 +865,75 @@ END:VCALENDAR
     expect(repository.events.single.externalEtag, '"applied-revision"');
   });
 
-  test('syncAll skips reflected PlanFlow CalDAV event by UID marker', () async {
-    final client = _FakePropfindClient(
-      responses: <int>[404, 207, 207],
-      bodies: <String>[
-        _emptyEventReportXml,
-        _calendarListXml,
-        _reflectedPlanFlowEventReportXml,
-      ],
-    );
-    final repository = _FakeEventRepository(
-      seedEvents: <EventModel>[
-        EventModel(
-          id: 'manual-1',
-          userId: 'user-1',
-          title: '원주 출발',
-          startAt: DateTime.utc(2026, 5, 8),
-          externalId: 'google-event-1',
-          externalCalendarId: 'google:primary',
+  for (final alreadyLinkedToGoogle in [false, true]) {
+    test(
+        'syncAll preserves the PlanFlow original for a reflected CalDAV UID '
+        '(alreadyLinkedToGoogle=$alreadyLinkedToGoogle)', () async {
+      const calendarPath = '/calendars/tught3/default/';
+      final client = _FakePropfindClient(
+        responses: <int>[404, 207, 207],
+        bodies: <String>[
+          _emptyEventReportXml,
+          _calendarListXml,
+          _reflectedPlanFlowEventReportXml,
+        ],
+      );
+      final original = EventModel(
+        id: 'manual-1',
+        userId: 'user-1',
+        title: 'Local title',
+        source: 'manual',
+        supplies: const ['노트북'],
+        recurrenceRule: 'FREQ=WEEKLY',
+        externalEtag: '"last-applied"',
+        startAt: DateTime.utc(2026, 5, 8),
+        externalId: alreadyLinkedToGoogle ? 'google-event-1' : null,
+        externalCalendarId: alreadyLinkedToGoogle ? 'google:primary' : null,
+      );
+      final repository = _FakeEventRepository(seedEvents: [original]);
+      final service = NaverCalDavService(
+        httpClient: client,
+        credentialStore: _FakeCredentialStore(
+          savedId: 'tught3',
+          savedPassword: 'app-password',
         ),
-      ],
-    );
-    final service = NaverCalDavService(
-      httpClient: client,
-      credentialStore: _FakeCredentialStore(
-        savedId: 'tught3',
-        savedPassword: 'app-password',
-      ),
-      eventRepository: repository,
-      currentUserId: 'user-1',
-    );
+        eventRepository: repository,
+        currentUserId: 'user-1',
+      );
 
-    final result = await service.syncAll(
-      mode: NaverCalDavSyncMode.quick,
-      from: DateTime.utc(2026, 5, 1),
-      to: DateTime.utc(2026, 6, 1),
-    );
+      final result = await service.syncAll(
+        mode: NaverCalDavSyncMode.quick,
+        from: DateTime.utc(2026, 5, 1),
+        to: DateTime.utc(2026, 6, 1),
+      );
 
-    expect(result.success, isTrue);
-    expect(result.createdOrUpdated, 0);
-    expect(result.diagnostics.duplicateSkipped, 1);
-    expect(repository.upserted, isEmpty);
-    expect(repository.updated, isEmpty);
-  });
+      expect(result.success, isTrue);
+      expect(result.createdOrUpdated, 0);
+      expect(result.diagnostics.duplicateSkipped, 1);
+      expect(repository.upserted, isEmpty);
+      expect(repository.updated, isEmpty);
+      expect(repository.metadataWrites, alreadyLinkedToGoogle ? 0 : 1);
+      final saved = repository.events.single;
+      expect(saved.title, original.title);
+      expect(saved.source, 'manual');
+      expect(saved.supplies, ['노트북']);
+      expect(saved.recurrenceRule, 'FREQ=WEEKLY');
+      expect(saved.externalEtag, original.externalEtag);
+      expect(
+        saved.externalCalendarId,
+        alreadyLinkedToGoogle ? 'google:primary' : 'naver-caldav:$calendarPath',
+      );
+      expect(
+        saved.externalId,
+        alreadyLinkedToGoogle
+            ? 'google-event-1'
+            : _naverCalDavExternalId(
+                uid: 'planflow-manual-1@planflow',
+                calendarPath: calendarPath,
+              ),
+      );
+    });
+  }
 
   test(
       'syncAll updates existing event when content changed despite older updated timestamp',
@@ -1504,6 +1530,57 @@ $eventXmlItems
       saved.externalCalendarId,
       'naver-caldav:/calendars/tught3/default/',
     );
+  });
+
+  test('exportEvent only puts the linked CalDAV event after a local edit',
+      () async {
+    const calendarPath = '/calendars/tught3/default/';
+    final version = DateTime.utc(2026, 5, 7);
+    final clean = EventModel(
+      id: 'manual-1',
+      userId: 'user-1',
+      title: 'Clean',
+      startAt: DateTime.utc(2026, 5, 8, 9),
+      externalId: _naverCalDavExternalId(
+        uid: 'planflow-manual-1@planflow',
+        calendarPath: calendarPath,
+      ),
+      externalCalendarId: 'naver-caldav:$calendarPath',
+      updatedAt: version,
+      lastSyncedAt: version,
+    );
+    final repository = _FakeEventRepository(seedEvents: [clean]);
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 404, 207, 201],
+      bodies: <String>['', _calendarListXml, '', _calendarListXml, ''],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    expect(await service.exportEvent(clean), isTrue);
+    expect(client.requests.where((request) => request.method == 'PUT'), isEmpty);
+    expect(repository.metadataWrites, 0);
+
+    final edited = clean.copyWith(
+      title: 'Edited',
+      updatedAt: version.add(const Duration(minutes: 1)),
+    );
+    repository.events[0] = edited;
+    expect(await service.exportEvent(edited), isTrue);
+    final put = client.requests.whereType<http.Request>().singleWhere(
+          (request) => request.method == 'PUT',
+        );
+    expect(put.url.path, '${calendarPath}planflow-manual-1.ics');
+    expect(put.body, contains('SUMMARY:Edited'));
+    expect(repository.metadataWrites, 1);
+    expect(repository.events.single.lastSyncedAt, edited.updatedAt);
   });
 
   test('exportEvent skips ICS-imported rows', () async {

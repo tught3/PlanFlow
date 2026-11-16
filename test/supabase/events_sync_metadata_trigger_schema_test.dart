@@ -3,6 +3,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('the legacy calendar patch leaves the events trigger in place', () {
+    final patch = File('supabase/calendar_sync_patch.sql').readAsStringSync();
+    expect(patch, isNot(contains(RegExp(
+      r'(?:drop|create)\s+trigger\s+(?:if exists\s+)?events_set_updated_at\b',
+      caseSensitive: false,
+    ))));
+    expect(patch, contains('20261112000200'));
+    expect(patch, contains('create trigger calendar_connections_set_updated_at'));
+  });
+
   test('events use an isolated timestamp trigger for content changes', () {
     final migration = File(
       'supabase/migrations/20261112000200_events_updated_at_skip_sync_metadata.sql',

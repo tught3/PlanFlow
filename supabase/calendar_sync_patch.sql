@@ -56,10 +56,8 @@ begin
 end;
 $$;
 
-drop trigger if exists events_set_updated_at on public.events;
-create trigger events_set_updated_at
-  before update on public.events
-  for each row execute function public.set_updated_at();
+-- Do not rerun this legacy patch on a migrated database.
+-- 20261112000200_events_updated_at_skip_sync_metadata.sql owns the events trigger.
 
 create table if not exists public.calendar_connections (
   id uuid primary key default gen_random_uuid(),

@@ -1473,6 +1473,8 @@ class NaverCalDavService {
             eventModel.externalId ?? '',
             eventModel.externalCalendarId ?? ''
           )];
+          // PlanFlow owns events identified by its UID or an existing export
+          // link. Import can attach a compatible link and keeps local content.
           if (planFlowOriginId != null || planFlowLink != null) {
             final linked = planFlowOrigin == null
                 ? null

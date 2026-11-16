@@ -97,8 +97,8 @@ abstract class EventRepository {
       userId: existing.userId,
       externalId: incomingExternalId,
       externalCalendarId: incomingCalendarId,
-      // Linking a reflected PlanFlow event does not apply its remote content.
-      // Keep the last applied revision so import can still detect changes.
+      // PlanFlow owns reflected events. Attach the provider link while keeping
+      // local content and the last applied provider revision.
       externalEtag: adoptIncomingSource ? incoming.externalEtag : null,
       externalUpdatedAt:
           adoptIncomingSource ? incoming.externalUpdatedAt : null,
@@ -413,18 +413,22 @@ Future<List<dynamic>> collectEventPages(
   Future<List<dynamic>> Function(int from, int to) fetchPage,
 ) async {
   const pageSize = 1000;
-  const maximumPages = 50;
+  const maximumPages = 500;
   final events = <dynamic>[];
+  var offset = 0;
   for (var page = 0; page < maximumPages; page++) {
-    final from = page * pageSize;
-    final rows = await fetchPage(from, from + pageSize - 1);
-    events.addAll(rows);
-    if (rows.length < pageSize) {
+    final rows = await fetchPage(offset, offset + pageSize - 1);
+    // A server row limit can shorten any page. Only an empty page ends the scan.
+    if (rows.isEmpty) {
       return events;
     }
+    events.addAll(rows);
+    offset += rows.length;
   }
-  debugPrint('EventRepository stopped at the $maximumPages-page safety limit.');
-  return events;
+  throw StateError(
+    'EventRepository reached the $maximumPages-page safety limit '
+    'before receiving an empty page.',
+  );
 }
 
 class SupabaseEventRepository extends EventRepository {

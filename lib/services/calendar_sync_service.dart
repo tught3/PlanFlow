@@ -1707,6 +1707,8 @@ class CalendarSyncService {
         continue;
       }
       final planFlowEventId = _planFlowEventIdFromGoogleEvent(googleEvent);
+      // The export marker identifies a PlanFlow original. Attach a compatible
+      // link while preserving PlanFlow's content and last provider revision.
       if (planFlowEventId != null) {
         final planFlowOrigin = await _eventRepository.fetchEvent(
           planFlowEventId,

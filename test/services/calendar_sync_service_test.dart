@@ -60,6 +60,8 @@ void main() {
           () async {
         final start = DateTime.now().toUtc().add(const Duration(hours: 2));
         final version = start.subtract(const Duration(hours: 3));
+        final editedAt = version.add(const Duration(minutes: 1));
+        final providerUpdatedAt = editedAt.add(const Duration(minutes: 1));
         final deleted = start.add(const Duration(days: 7));
         final event = EventModel(
           id: 'owned',
@@ -72,6 +74,7 @@ void main() {
           updatedAt: version,
         );
         final repository = _FakeEventRepository(events: [event]);
+        final requests = <http.Request>[];
         final service = CalendarSyncService(
           currentUserId: 'user-1',
           eventRepository: repository,
@@ -87,6 +90,7 @@ void main() {
           googleTargetPlatform: TargetPlatform.android,
           googleAccessTokenProvider: ({required bool interactive}) async =>
               'google-token',
+          googleCalendarEventsFetcher: (_) async => const [],
           naverStatusProvider: () async => const NaverCalendarPermissionResult(
             status: NaverCalendarPermissionStatus.granted,
             message: '권한 확인',
@@ -94,10 +98,18 @@ void main() {
           naverAccessTokenProvider: () async => 'naver-token',
           naverStatusSaver: (_) async {},
           httpClientFactory: () => MockClient((request) async {
-            repository.events[0] =
-                event.copyWith(title: 'edited during export');
+            requests.add(request);
+            if (requests.length == 1) {
+              repository.events[0] = event.copyWith(
+                title: 'edited during export',
+                updatedAt: editedAt,
+              );
+            }
             return http.Response(
-              '{"id":"exported-id"}',
+              jsonEncode({
+                'id': 'exported-id',
+                if (google) 'updated': providerUpdatedAt.toIso8601String(),
+              }),
               200,
               headers: {'content-type': 'application/json'},
             );
@@ -115,8 +127,80 @@ void main() {
         expect(repository.events.single.groupEventId, 'g1');
         expect(repository.events.single.deletedOccurrenceDates, [deleted]);
         expect(repository.events.single.lastSyncedAt, version);
+        expect(repository.events.single.updatedAt, editedAt);
+        expect(requests, hasLength(1));
+
+        if (google) {
+          expect(repository.events.single.externalUpdatedAt, providerUpdatedAt);
+          // The local edit survives but is not exported while Google's saved
+          // version is newer than the intervening local edit.
+          final nextSync = await service.syncGoogleCalendar();
+          expect(nextSync.status, CalendarIntegrationStatus.synced);
+          expect(requests, hasLength(1));
+          expect(repository.metadataWrites, 1);
+          expect(repository.events.single.title, 'edited during export');
+        }
       });
     }
+
+    test('Google export excludes linked events at their last-synced version',
+        () async {
+      final start = DateTime.now().toUtc().add(const Duration(hours: 2));
+      final version = start.subtract(const Duration(hours: 3));
+      final clean = EventModel(
+        id: 'clean',
+        userId: 'user-1',
+        title: 'Clean',
+        startAt: start,
+        externalId: 'clean-google',
+        externalCalendarId: 'google:primary',
+        externalUpdatedAt: version,
+        lastSyncedAt: version,
+        updatedAt: version,
+      );
+      final dirty = clean.copyWith(
+        id: 'dirty',
+        title: 'Edited',
+        externalId: 'dirty-google',
+        updatedAt: version.add(const Duration(minutes: 1)),
+      );
+      final repository = _FakeEventRepository(events: [clean, dirty]);
+      final requests = <http.Request>[];
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repository,
+        calendarConnectionRepository: _FakeCalendarConnectionRepository(
+          initial: const CalendarConnectionModel(
+            userId: 'user-1',
+            provider: 'google',
+            status: CalendarConnectionStatus.connected,
+          ),
+        ),
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) async =>
+            'google-token',
+        googleCalendarEventsFetcher: (_) async => const [],
+        httpClientFactory: () => MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            '{"id":"dirty-google"}',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(requests.single.method, 'PUT');
+      expect(requests.single.url.pathSegments.last, 'dirty-google');
+      expect(repository.metadataWrites, 1);
+      expect(repository.events.first, same(clean));
+      expect(repository.events.last.lastSyncedAt, dirty.updatedAt);
+    });
 
     test('exports upcoming PlanFlow events to Naver Calendar', () async {
       final requests = <http.Request>[];
