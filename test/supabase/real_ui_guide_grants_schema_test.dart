@@ -14,6 +14,59 @@ void main() {
     dotAll: true,
   ).firstMatch(sql)?.group(0) ?? '';
 
+  test('replay preserves initial grants and closes stale session entry points',
+      () {
+    final replay = File(
+            'supabase/migrations/20261116002145_real_ui_guide_replay.sql')
+        .readAsStringSync()
+        .toLowerCase();
+    expect(replay, contains('on public.real_ui_guide_sessions(replay_of)'));
+    expect(replay, contains('where replay_of is null'));
+    expect(replay, contains('id = p_previous_session_id and user_id = u'));
+    expect(replay, contains('auth.uid()'));
+    expect(replay, contains("u::text || ':' || p_version"));
+    expect(replay, contains("u::text || ':' || s.version"));
+    expect(replay, contains('r.session_id is distinct from successor.id'));
+    expect(replay, contains('successor.revision <> 0'));
+    expect(replay, contains('child.replay_of = current_session.id'));
+    expect(replay, contains('ordinary_quota_required'));
+    expect(replay, isNot(contains('insert into public.real_ui_guide_operations')));
+    expect(replay, isNot(contains('delete from public.real_ui_guide_sessions')));
+    expect(replay, contains('from public, anon, authenticated'));
+    for (final rpc in [
+      'advance_real_ui_guide',
+      'authorize_real_ui_guide_operation',
+      'finish_real_ui_guide',
+    ]) {
+      expect(
+          RegExp('create function public\\.$rpc' r'\(.*?end \$\$;',
+                  dotAll: true)
+              .firstMatch(replay)
+              ?.group(0),
+          contains('planflow_guide_private.lock_current_session(p_session_id)'));
+    }
+  });
+
+  test('begin exposes the accepted time only for its bound preview or update',
+      () {
+    final migration = File(
+            'supabase/migrations/20261115140618_real_ui_guide_preview_resume.sql')
+        .readAsStringSync()
+        .toLowerCase();
+    String beginFunction(String source) => RegExp(
+          r'create or replace function public\.begin_real_ui_guide\(.*?to authenticated;',
+          dotAll: true,
+        ).firstMatch(source)!.group(0)!.replaceAll(RegExp(r'\s+'), ' ');
+    const addedField =
+        ", 'expected_start_at',case when s.phase in ('preview','updated') "
+        'and s.bound_event_id is not null then s.expected_start_at end';
+    final replacement = beginFunction(migration);
+    expect(replacement, contains(addedField));
+    // Check auth, ownership, locks, expiry, replay, and grants against the
+    // deployed definition. The granted response is the only behavior change.
+    expect(replacement.replaceFirst(addedField, ''), beginFunction(sql));
+  });
+
   test('RPCs use private tables and authenticated-only security-definer access',
       () {
     for (final table in [

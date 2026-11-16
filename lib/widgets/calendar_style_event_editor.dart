@@ -45,6 +45,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
     this.extraAfterMemo,
     this.titleHelperText,
     this.locationHelperText,
+    this.guideFieldAnchorPrefix,
     this.memoMinLines = 3,
     this.memoMaxLines = 3,
     this.initiallyExpandClassification = false,
@@ -67,7 +68,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final ValueChanged<DateTime?> onEndChanged;
   final ValueChanged<String> onCategoryChanged;
   final ValueChanged<RecurrenceSelection> onRecurrenceChanged;
-  final ValueChanged<Duration?> onReminderChanged;
+  final ValueChanged<Duration?>? onReminderChanged;
   final ValueChanged<bool> onCriticalChanged;
   final ValueChanged<bool> onStrongAlarmChanged;
   final VoidCallback onLocationPick;
@@ -81,6 +82,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final Widget? extraAfterMemo;
   final String? titleHelperText;
   final String? locationHelperText;
+  final String? guideFieldAnchorPrefix;
   final int memoMinLines;
   final int memoMaxLines;
   final bool initiallyExpandClassification;
@@ -144,7 +146,9 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           !guideSaveStageActive.value ||
           !guideConfirmSpotlightEligible(
               ready: guideConfirmReady.value,
-              userScrolled: guideConfirmUserScrolled.value)) return;
+              userScrolled: guideConfirmUserScrolled.value)) {
+        return;
+      }
       setState(() => _criticalAlarmExpanded = true);
     });
   }
@@ -365,6 +369,16 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
     );
   }
 
+  Widget _guideField(String field, Widget child) {
+    final prefix = widget.guideFieldAnchorPrefix;
+    if (prefix == null) return child;
+    return GuidedAnchor(
+      id: '$prefix.$field',
+      registry: realUiGuideAnchorRegistry,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final categoryColor = PlanFlowEventCategories.colorOf(widget.category);
@@ -389,21 +403,23 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
               children: [
                 _CalendarHeader(color: categoryColor),
                 const SizedBox(height: 10),
-                TextFormField(
-                  key: const Key('event-editor-title-field'),
-                  controller: widget.titleController,
-                  focusNode: _titleFocusNode,
-                  validator: widget.titleValidator,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
-                  decoration: InputDecoration(
-                    labelText: '제목',
-                    helperText: widget.titleHelperText,
-                    prefixIcon:
-                        Icon(Icons.circle, color: categoryColor, size: 16),
-                    suffixIcon: const Icon(Icons.mood_outlined),
-                  ),
-                ),
+                _guideField(
+                    'title',
+                    TextFormField(
+                      key: const Key('event-editor-title-field'),
+                      controller: widget.titleController,
+                      focusNode: _titleFocusNode,
+                      validator: widget.titleValidator,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
+                      decoration: InputDecoration(
+                        labelText: '제목',
+                        helperText: widget.titleHelperText,
+                        prefixIcon:
+                            Icon(Icons.circle, color: categoryColor, size: 16),
+                        suffixIcon: const Icon(Icons.mood_outlined),
+                      ),
+                    )),
               ],
             ),
           ),
@@ -415,13 +431,15 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _DateRangeSummary(
-                  startAt: widget.startAt,
-                  endAt: widget.endAt,
-                  activeTarget: _activeTarget,
-                  onStartTap: () => _toggleTarget(CalendarDateTarget.start),
-                  onEndTap: () => _toggleTarget(CalendarDateTarget.end),
-                ),
+                _guideField(
+                    'dateTime',
+                    _DateRangeSummary(
+                      startAt: widget.startAt,
+                      endAt: widget.endAt,
+                      activeTarget: _activeTarget,
+                      onStartTap: () => _toggleTarget(CalendarDateTarget.start),
+                      onEndTap: () => _toggleTarget(CalendarDateTarget.end),
+                    )),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 180),
                   child: _activeTarget == null
@@ -448,54 +466,56 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
-                  key: const Key('event-editor-location-field'),
-                  controller: widget.locationController,
-                  focusNode: _locationFocusNode,
-                  textInputAction: TextInputAction.done,
-                  onChanged: widget.onLocationTextChanged,
-                  onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
-                  decoration: InputDecoration(
-                    labelText: '장소',
-                    helperText: widget.locationHelperText,
-                    prefixIcon: const Icon(Icons.place_outlined),
-                    suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: widget.locationController,
-                      builder: (context, value, _) {
-                        final hasText = value.text.isNotEmpty;
-                        return Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (hasText)
-                              IconButton(
-                                tooltip: '장소 지우기',
-                                onPressed: () {
-                                  widget.locationController.clear();
-                                  widget.onLocationTextChanged?.call('');
-                                },
-                                icon: const Icon(Icons.clear),
-                              )
-                            else
-                              const SizedBox.shrink(),
-                            IconButton(
-                              tooltip: '지도에서 위치 선택',
-                              onPressed: widget.isLookingUpLocation
-                                  ? null
-                                  : widget.onLocationPick,
-                              icon: widget.isLookingUpLocation
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.map_outlined),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ),
+                _guideField(
+                    'location',
+                    TextFormField(
+                      key: const Key('event-editor-location-field'),
+                      controller: widget.locationController,
+                      focusNode: _locationFocusNode,
+                      textInputAction: TextInputAction.done,
+                      onChanged: widget.onLocationTextChanged,
+                      onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
+                      decoration: InputDecoration(
+                        labelText: '장소',
+                        helperText: widget.locationHelperText,
+                        prefixIcon: const Icon(Icons.place_outlined),
+                        suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: widget.locationController,
+                          builder: (context, value, _) {
+                            final hasText = value.text.isNotEmpty;
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (hasText)
+                                  IconButton(
+                                    tooltip: '장소 지우기',
+                                    onPressed: () {
+                                      widget.locationController.clear();
+                                      widget.onLocationTextChanged?.call('');
+                                    },
+                                    icon: const Icon(Icons.clear),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
+                                IconButton(
+                                  tooltip: '지도에서 위치 선택',
+                                  onPressed: widget.isLookingUpLocation
+                                      ? null
+                                      : widget.onLocationPick,
+                                  icon: widget.isLookingUpLocation
+                                      ? const SizedBox.square(
+                                          dimension: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.map_outlined),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    )),
                 ValueListenableBuilder<TextEditingValue>(
                   valueListenable: widget.locationController,
                   builder: (context, value, _) {
@@ -583,30 +603,27 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          _EditorSection(
-            key: _alarmSectionKey,
-            icon: Icons.notifications_active_outlined,
-            title: '알림 옵션',
-            subtitle: _alarmSummary(widget.reminderOffset),
-            collapsible: true,
-            expanded: _alarmExpanded,
-            onExpansionChanged: (value) => _setExpandableSection(
+          if (widget.onReminderChanged case final onChanged?) ...[
+            const SizedBox(height: 10),
+            _EditorSection(
               key: _alarmSectionKey,
-              expanded: value,
-              apply: () => _alarmExpanded = value,
+              icon: Icons.notifications_active_outlined,
+              title: '알림 옵션',
+              subtitle: _alarmSummary(widget.reminderOffset),
+              collapsible: true,
+              expanded: _alarmExpanded,
+              onExpansionChanged: (value) => _setExpandableSection(
+                key: _alarmSectionKey,
+                expanded: value,
+                apply: () => _alarmExpanded = value,
+              ),
+              child: ReminderOffsetSelector(
+                value: widget.reminderOffset,
+                onChanged: onChanged,
+                subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ReminderOffsetSelector(
-                  value: widget.reminderOffset,
-                  onChanged: widget.onReminderChanged,
-                  subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
-                ),
-              ],
-            ),
-          ),
+          ],
           const SizedBox(height: 10),
           GuidedAnchor(
             id: 'confirm.criticalSection',

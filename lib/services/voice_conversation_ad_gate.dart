@@ -111,7 +111,7 @@ class VoiceConversationAdGate {
       return;
     }
     if (guideCoordinator != null && guideOperation != null) {
-      final GuideAccess access = await _tryGuidePath(
+      final GuideAccess? access = await _tryGuidePath(
         context: context,
         userId: userId,
         coordinator: guideCoordinator,
@@ -122,18 +122,10 @@ class VoiceConversationAdGate {
       // Outside guide (no binding, terminal, or non-voiceConversation
       // context) keeps existing gate semantics. VoiceConversation gate
       // is the only one that maps [GuideOperation] -> kind voiceConversation.
-      if (access.status == GuideAccessStatus.granted ||
-          access.status == GuideAccessStatus.denied ||
-          access.status == GuideAccessStatus.expired ||
-          access.status == GuideAccessStatus.retryLater) {
-        return;
-      }
-      // `unavailable` with reasonCode != 'guide_unbound' means the
-      // binding was active but the server was unreachable. We do not
-      // fall through to a paid/ad grant in that case.
-      if (access.reasonCode == 'guide_unavailable_paid_bypass_blocked') {
-        return;
-      }
+      // null is produced only when the runtime has no matching binding.
+      // Any result from a bound guide, including unavailable, is final and
+      // must not consume a normal entitlement or start an ad-backed session.
+      if (access != null) return;
     }
     if (!context.mounted) {
       return;
@@ -151,7 +143,7 @@ class VoiceConversationAdGate {
     }
   }
 
-  Future<GuideAccess> _tryGuidePath({
+  Future<GuideAccess?> _tryGuidePath({
     required BuildContext context,
     required String userId,
     required GuideCoordinator coordinator,
@@ -160,22 +152,30 @@ class VoiceConversationAdGate {
     void Function(GuideAccess access)? onGuideDenied,
   }) async {
     final live = GuideQuotaRuntime.current(() => userId);
-    if (live == null || !identical(live, coordinator)) {
-      // Bound but terminal / stale UID / missing binding — outside
-      // guide semantics. Caller falls through to the normal gate.
-      return const GuideAccess(
-          status: GuideAccessStatus.unavailable, reasonCode: 'guide_unbound');
+    if (live == null) {
+      // No live matching binding: caller may use the normal gate.
+      return null;
+    }
+    if (!identical(live, coordinator)) {
+      const access = GuideAccess(
+          status: GuideAccessStatus.denied, reasonCode: 'stale_binding');
+      onGuideDenied?.call(access);
+      return access;
     }
     final snapshot = coordinator.state.value;
     if (snapshot.uid != userId ||
         snapshot.sessionId == null ||
         snapshot.sessionId!.isEmpty) {
-      return const GuideAccess(
+      const access = GuideAccess(
           status: GuideAccessStatus.denied, reasonCode: 'stale_session');
+      onGuideDenied?.call(access);
+      return access;
     }
     final GuideStep phase = switch (operation) {
       GuideOperation.createParse => GuideStep.correctAndSave,
-      GuideOperation.query => GuideStep.queryResults,
+      GuideOperation.query => snapshot.step == GuideStep.querySpeech
+          ? GuideStep.querySpeech
+          : GuideStep.queryResults,
       GuideOperation.changeTime => GuideStep.editPreview,
     };
     final GuideAdapterContext adapterContext = GuideAdapterContext(
@@ -192,7 +192,7 @@ class VoiceConversationAdGate {
     );
     final GuideAccess access = await guideAuthorize(
       context: adapterContext,
-      operationId: 'voice_conv:$userId:${operation.name}',
+      operationId: _nextGuideOperationId(userId: userId, operation: operation),
       authUidProvider: () => userId,
     );
     if (access.status == GuideAccessStatus.granted && access.permit != null) {
@@ -201,6 +201,19 @@ class VoiceConversationAdGate {
       onGuideDenied?.call(access);
     }
     return access;
+  }
+
+  // A fresh ID prevents a retry from replaying an earlier guide permit.
+  // The sequence also distinguishes attempts made in the same microsecond.
+  static int _guideOperationSeq = 0;
+
+  static String _nextGuideOperationId({
+    required String userId,
+    required GuideOperation operation,
+  }) {
+    _guideOperationSeq += 1;
+    return 'voice_conv:$userId:${operation.name}:'
+        '${DateTime.now().toUtc().microsecondsSinceEpoch}-$_guideOperationSeq';
   }
 
   Future<void> _runGate({

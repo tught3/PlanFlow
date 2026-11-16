@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/services/voice_conversation_controller.dart';
 
 // UI 테스트(voice_*_screen_test)와 동일한 규칙: 1월 1일이 목요일이고 윤년이
@@ -114,6 +115,62 @@ void main() {
   });
 
   group('VoiceConversationController', () {
+    test('yearless guide query uses the bound saved date across New Year', () {
+      final currentYear = _fixtureYear;
+      final savedDate = DateTime(currentYear + 1, 1, 1);
+      final saved = _event(
+        'guide-saved',
+        '연습 일정',
+        DateTime(currentYear + 1, 1, 1, 15),
+      );
+      final sameDayThisYear = _event(
+        'this-year',
+        '올해 일정',
+        DateTime(currentYear, 1, 1, 15),
+      );
+      final otherDay = _event(
+        'other-date',
+        '다른 날짜 일정',
+        DateTime(currentYear, 1, 2, 15),
+      );
+      var guide = GuideSnapshot(
+        uid: saved.userId,
+        version: 'real_ui_v1',
+        sessionId: 'tutorial',
+        revision: 1,
+        serverRevision: 1,
+        run: GuideRun.active,
+        step: GuideStep.querySpeech,
+        createdEventId: saved.id,
+        savedLocalDate: savedDate,
+      );
+      final controller = VoiceConversationController(
+        events: [saved, sameDayThisYear, otherDay],
+        now: () => DateTime(currentYear, 12, 31, 12),
+        guideSnapshot: () => guide,
+      );
+
+      final result = controller.handle('1월 1일 일정 보여 줘.');
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.queryRange?.start, savedDate);
+      expect(result.visibleEvents.map((event) => event.id), [saved.id]);
+
+      final explicit = controller.handle('${currentYear}년 1월 1일 일정 보여줘');
+      expect(explicit.queryRange?.start, DateTime(currentYear, 1, 1));
+      expect(explicit.visibleEvents.map((event) => event.id),
+          [sameDayThisYear.id]);
+
+      final other = controller.handle('1월 2일 일정 보여줘');
+      expect(other.queryRange?.start, DateTime(currentYear, 1, 2));
+      expect(other.visibleEvents.map((event) => event.id), [otherDay.id]);
+
+      guide = guide.copyWith(run: GuideRun.paused);
+      final paused = controller.handle('1월 1일 일정 보여줘');
+      expect(paused.queryRange?.start, DateTime(currentYear, 1, 1));
+      expect(
+          paused.visibleEvents.map((event) => event.id), [sameDayThisYear.id]);
+    });
+
     test(
       '반복일정 회차가 조회 범위 안에 있으면 단발 일정과 함께 조회 결과에 포함된다',
       () {

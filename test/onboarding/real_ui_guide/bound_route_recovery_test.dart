@@ -49,10 +49,13 @@ void main() {
   }.entries) {
     test('${entry.key.name} read-only route preserves phase', () async {
       final c = ReadOnlyCoordinator(snapshot(entry.key));
+      final loaded = entry.key == GuideStep.updatedDetail
+          ? event.copyWith(startAt: c.state.value.expectedUpdatedStartLocal)
+          : event;
       var reads = 0;
       final r = await GuideRouteRecovery.load(coordinator: c,
           currentUid: () => 'u', attachedToRoute: () => true,
-          read: (uid, id) async { reads++; expect(uid, 'u'); expect(id, 'bound'); return [event]; });
+          read: (uid, id) async { reads++; expect(uid, 'u'); expect(id, 'bound'); return [loaded]; });
       expect(r!.location, entry.value);
       expect(reads, 1);
       expect(c.state.value.step, entry.key);
@@ -60,6 +63,35 @@ void main() {
       c.state.dispose();
     });
   }
+  test('a preview already saved at that instant opens detail without a write',
+      () async {
+    final s = snapshot(GuideStep.editPreview);
+    final c = ReadOnlyCoordinator(s);
+    addTearDown(c.state.dispose);
+    final recovery = await GuideRouteRecovery.load(
+        coordinator: c,
+        currentUid: () => 'u',
+        attachedToRoute: () => true,
+        read: (_, __) async => [
+              event.copyWith(startAt: s.expectedUpdatedStartLocal!.toUtc())
+            ]);
+    expect(recovery?.location, '/event/detail/bound');
+    expect(recovery?.opensEditPreview, isFalse);
+    expect(c.state.value, same(s));
+  });
+
+  test('an updated phase cannot route to details with a different time',
+      () async {
+    final c = ReadOnlyCoordinator(snapshot(GuideStep.updatedDetail));
+    addTearDown(c.state.dispose);
+    await expectLater(
+        GuideRouteRecovery.load(
+            coordinator: c,
+            currentUid: () => 'u',
+            attachedToRoute: () => true,
+            read: (_, __) async => [event]),
+        throwsStateError);
+  });
   test('equivalent saved date offsets recover the same local day', () async {
     final localDate = DateTime.fromMillisecondsSinceEpoch(1893515400000)
         .toIso8601String()

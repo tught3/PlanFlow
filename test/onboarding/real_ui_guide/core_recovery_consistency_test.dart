@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
@@ -25,19 +26,25 @@ class MemoryStore implements GuideProgressStore {
 
 class ProbeBackend implements GuideBackendPort {
   GuideBackendState? beginResult;
+  GuideBeginResult? beginOverride;
   bool beginThrows = false;
   Future<GuideBackendState?> Function()? beginHook;
   bool failDetail = false;
   int begins = 0, advances = 0, authorizes = 0;
   @override
-  Future<GuideBackendState?> begin(
+  Future<GuideBeginResult> begin(
       {required String uid,
       required String version,
       required String requestId}) async {
     begins++;
     if (beginThrows) throw StateError('offline');
-    if (beginHook != null) return await beginHook!();
-    return beginResult;
+    if (beginOverride case final result?) return result;
+    final result = beginHook == null ? beginResult : await beginHook!();
+    return result == null
+        ? const GuideBeginFailed(
+        GuideFailureDiagnostic(GuideFailureKind.backendUnavailable),
+      )
+        : GuideBeginGranted(result);
   }
 
   @override
@@ -79,7 +86,8 @@ GuideSnapshot saved(
         {GuideStep step = GuideStep.savedDetail,
         GuideRun run = GuideRun.active,
         String? created = 'A',
-        String? error}) =>
+        String? error,
+        bool isReplay = false}) =>
     GuideSnapshot(
         uid: 'u',
         version: 'v',
@@ -91,6 +99,7 @@ GuideSnapshot saved(
         createdEventId: created,
         savedCreateOperationId: created == null ? null : 'create-op',
         errorCode: error,
+        isReplay: isReplay,
         // banned-ok: Fixed event fixture for the guide assertion.
         savedLocalDate: DateTime(2026, 10, 20),
         // banned-ok: Fixed event fixture for the guide assertion.
@@ -111,6 +120,273 @@ RealUiGuideCoordinator coord(ProbeBackend b, MemoryStore p) =>
     RealUiGuideCoordinator(backend: b, progress: p, version: 'v');
 
 void main() {
+  for (final run in [GuideRun.paused, GuideRun.active, GuideRun.blocked]) {
+    for (final error in ['guide_operation_failed', 'guide_session_changed']) {
+      test('retry of ${run.name} $error rechecks canonical state', () async {
+        final b = ProbeBackend()
+          ..beginResult = remoteState(session: 's', step: GuideStep.savedDetail, created: 'A');
+        final p = MemoryStore()..value = saved();
+        final c = coord(b, p);
+        final started = await c.start(uid: 'u');
+        final notifier = c.state as ValueNotifier<GuideSnapshot>;
+        notifier.value = started.copyWith(
+            run: run,
+            errorCode: error,
+            pauseReason: GuidePauseReason.routeLost,
+            mayListenContinuously: run == GuideRun.active);
+        final before = notifier.value;
+        b.beginResult = null;
+        final offline = await c.dispatch(ResumeRequested(
+            uid: 'u', sessionId: 's', expectedRevision: before.revision));
+        expect(offline.errorCode, error);
+        expect(offline.run, run);
+        expect(offline.pauseReason, before.pauseReason);
+        expect(offline.step, before.step);
+        expect(offline.sessionId, before.sessionId);
+        expect(offline.createdEventId, before.createdEventId);
+        expect(offline.savedCreateOperationId, before.savedCreateOperationId);
+        expect(offline.serverRevision, before.serverRevision);
+        expect(offline.revision, before.revision + 1);
+        expect(offline.mayListenContinuously, isFalse);
+        expect(p.value, same(offline));
+        expect(p.value!.failureDiagnostic?.kind,
+            GuideFailureKind.backendUnavailable);
+        expect(b.begins, 2);
+        b.beginResult = remoteState(session: 's', step: GuideStep.savedDetail, created: 'A');
+        final recovered = await c.dispatch(ResumeRequested(
+            uid: 'u', sessionId: 's', expectedRevision: offline.revision));
+        expect(b.begins, 3);
+        expect(recovered.run, GuideRun.active);
+        expect(recovered.errorCode, isNull);
+        expect(recovered.failureDiagnostic, isNull);
+        expect(recovered.createdEventId, 'A');
+        expect(b.advances, 0);
+      });
+    }
+  }
+
+  testWidgets('timed out ordinary resume can retry and ignores late response',
+      (tester) async {
+    final b = ProbeBackend()
+      ..beginResult = remoteState(session: 's', step: GuideStep.savedDetail, created: 'A');
+    final p = MemoryStore()..value = saved();
+    final c = coord(b, p);
+    final started = await c.start(uid: 'u');
+    final notifier = c.state as ValueNotifier<GuideSnapshot>;
+    notifier.value = started.copyWith(run: GuideRun.paused, errorCode: 'guide_operation_failed');
+    final before = notifier.value;
+    final stalled = Completer<GuideBackendState?>();
+    b.beginHook = () => stalled.future;
+    final signal = ResumeRequested(uid: 'u', sessionId: 's', expectedRevision: before.revision);
+    final first = c.dispatch(signal);
+    await tester.pump(guideBeginTimeout);
+    final timedOut = await first;
+    expect(timedOut.run, before.run);
+    expect(timedOut.errorCode, before.errorCode);
+    expect(timedOut.sessionId, before.sessionId);
+    expect(timedOut.createdEventId, before.createdEventId);
+    expect(timedOut.revision, before.revision + 1);
+    expect(timedOut.mayListenContinuously, isFalse);
+    expect(p.value, same(timedOut));
+    expect(p.value!.failureDiagnostic?.kind, GuideFailureKind.timeout);
+
+    b.beginHook = null;
+    expect(await c.dispatch(signal), same(timedOut));
+    expect(b.begins, 2);
+
+    final recovered = await c.dispatch(ResumeRequested(
+        uid: 'u', sessionId: 's', expectedRevision: timedOut.revision));
+    expect(b.begins, 3);
+    expect(recovered.run, GuideRun.active);
+    expect(recovered.errorCode, isNull);
+    expect(recovered.failureDiagnostic, isNull);
+    stalled.complete(remoteState(session: 'foreign', step: GuideStep.intro));
+    await tester.pump();
+    expect(c.state.value, same(recovered));
+    expect(p.value, same(recovered));
+  });
+
+  for (final (description, conflictingState, expectedCode, expectedKind) in [
+    (
+      'replay session changed',
+      const GuideBackendState(
+          sessionId: 'new-replay',
+          serverRevision: 12,
+          step: GuideStep.savedDetail,
+          createdEventId: 'A',
+          isReplay: true),
+      'guide_session_changed',
+      GuideFailureKind.sessionChanged,
+    ),
+    (
+      'different event binding',
+      remoteState(session: 's', step: GuideStep.savedDetail, created: 'B'),
+      'created_binding_conflict',
+      null,
+    ),
+    (
+      'new unbound session',
+      remoteState(session: 'new-session'),
+      'created_binding_conflict',
+      null,
+    ),
+  ]) {
+    testWidgets('retry replaces a timeout when $description', (tester) async {
+      final canonical = GuideBackendState(
+          sessionId: 's',
+          serverRevision: 11,
+          step: GuideStep.savedDetail,
+          createdEventId: 'A',
+          isReplay: conflictingState.isReplay);
+      final b = ProbeBackend()..beginResult = canonical;
+      final p = MemoryStore()..value = saved(isReplay: canonical.isReplay);
+      final c = coord(b, p);
+      final started = await c.start(uid: 'u');
+      final notifier = c.state as ValueNotifier<GuideSnapshot>;
+      notifier.value = started.copyWith(
+          run: GuideRun.paused,
+          errorCode: 'guide_operation_failed',
+          pauseReason: GuidePauseReason.routeLost);
+      final before = notifier.value;
+
+      final stalled = Completer<GuideBackendState?>();
+      b.beginHook = () => stalled.future;
+      final first = c.dispatch(ResumeRequested(
+          uid: 'u', sessionId: 's', expectedRevision: before.revision));
+      await tester.pump(guideBeginTimeout);
+      final timedOut = await first;
+      expect(timedOut.failureDiagnostic?.kind, GuideFailureKind.timeout);
+
+      b.beginHook = null;
+      b.beginResult = conflictingState;
+      final blocked = await c.dispatch(ResumeRequested(
+          uid: 'u', sessionId: 's', expectedRevision: timedOut.revision));
+
+      expect(blocked.errorCode, expectedCode);
+      expect(blocked.failureDiagnostic?.kind, expectedKind);
+      expect(blocked.run, GuideRun.blocked);
+      expect(blocked.revision, timedOut.revision + 1);
+      expect(blocked.step, before.step);
+      expect(blocked.sessionId, before.sessionId);
+      expect(blocked.serverRevision, before.serverRevision);
+      expect(blocked.createdEventId, before.createdEventId);
+      expect(blocked.savedCreateOperationId, before.savedCreateOperationId);
+      expect(blocked.calendarSyncHeld, isTrue);
+      expect(blocked.mayListenContinuously, isFalse);
+      expect(p.value, same(blocked));
+      expect(b.begins, 3);
+      expect(b.advances, 0);
+      expect(b.authorizes, 0);
+
+      stalled.complete(canonical);
+      await tester.pump();
+      expect(c.state.value, same(blocked));
+      expect(p.value, same(blocked));
+    });
+  }
+
+  for (final (description, remoteStep, expectedUpdatedStart,
+          expectedFailureKind) in [
+    ('different bound preview session', GuideStep.updatedDetail, null, null),
+    (
+      'stale legacy preview checkpoint',
+      GuideStep.changeSpeech,
+      // banned-ok: fixed stale checkpoint fixture tests mismatch recovery independent of wall clock.
+      DateTime(2026, 10, 20, 15),
+      GuideFailureKind.operationFailed,
+    ),
+    (
+      'legacy preview with an earlier timeout',
+      GuideStep.changeSpeech,
+      null,
+      GuideFailureKind.operationFailed,
+    ),
+  ]) {
+    test('retry does not retain timeout diagnostic for $description', () async {
+      final checkpoint = saved(step: GuideStep.editPreview)
+          .copyWith(expectedUpdatedStartLocal: expectedUpdatedStart);
+      final p = MemoryStore()..value = checkpoint;
+      final b = ProbeBackend()
+        ..beginOverride = const GuideBeginFailed(
+            GuideFailureDiagnostic(GuideFailureKind.timeout));
+      final c = coord(b, p);
+
+      final timedOut = await c.start(uid: 'u');
+      expect(timedOut.errorCode, 'timeout');
+      expect(timedOut.failureDiagnostic?.kind, GuideFailureKind.timeout);
+      expect(p.value, same(timedOut));
+
+      b.beginOverride = null;
+      b.beginResult =
+          remoteState(session: 'new-session', step: remoteStep, created: 'A');
+
+      final result = await c.dispatch(ResumeRequested(
+          uid: 'u',
+          sessionId: timedOut.sessionId,
+          expectedRevision: timedOut.revision));
+
+      expect(result.run, GuideRun.blocked);
+      expect(result.errorCode, 'guide_operation_failed');
+      expect(result.failureDiagnostic?.kind, expectedFailureKind);
+      expect(result.sessionId, checkpoint.sessionId);
+      expect(result.createdEventId, checkpoint.createdEventId);
+      expect(result.serverRevision, checkpoint.serverRevision);
+      expect(result.mayListenContinuously, isFalse);
+      expect(p.value, same(result));
+      expect(b.begins, 2);
+      expect(b.advances, 0);
+      expect(b.authorizes, 0);
+    });
+  }
+
+  test('legacy preview retry preserves binding conflict across updated reply',
+      () async {
+    final checkpoint = saved(step: GuideStep.editPreview).copyWith(
+        // banned-ok: fixed stale checkpoint fixture tests mismatch recovery independent of wall clock.
+        expectedUpdatedStartLocal: DateTime(2026, 10, 20, 15),
+        run: GuideRun.blocked,
+        errorCode: 'created_binding_conflict');
+    final p = MemoryStore()..value = checkpoint;
+    final b = ProbeBackend()
+      ..beginOverride = const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.timeout));
+    final c = coord(b, p);
+
+    final timedOut = await c.start(uid: 'u');
+    expect(timedOut.run, GuideRun.blocked);
+    expect(timedOut.errorCode, 'created_binding_conflict');
+    expect(timedOut.failureDiagnostic?.kind, GuideFailureKind.timeout);
+
+    b.beginOverride = null;
+    b.beginResult =
+        remoteState(session: 's', step: GuideStep.changeSpeech, created: 'A');
+    final initiallyBlocked = await c.start(uid: 'u');
+    expect(initiallyBlocked.run, GuideRun.blocked);
+    expect(initiallyBlocked.errorCode, 'created_binding_conflict');
+    expect(initiallyBlocked.failureDiagnostic?.kind, GuideFailureKind.timeout);
+    expect(initiallyBlocked.sessionId, checkpoint.sessionId);
+    expect(initiallyBlocked.createdEventId, checkpoint.createdEventId);
+
+    b.beginResult = remoteState(
+        session: 's', step: GuideStep.updatedDetail, created: 'A');
+    final retried = await c.dispatch(ResumeRequested(
+        uid: 'u',
+        sessionId: initiallyBlocked.sessionId,
+        expectedRevision: initiallyBlocked.revision));
+
+    expect(retried.run, GuideRun.blocked);
+    expect(retried.errorCode, 'created_binding_conflict');
+    expect(retried.step, checkpoint.step);
+    expect(retried.sessionId, checkpoint.sessionId);
+    expect(retried.createdEventId, checkpoint.createdEventId);
+    expect(retried.serverRevision, checkpoint.serverRevision);
+    expect(retried.mayListenContinuously, isFalse);
+    expect(p.value, same(retried));
+    expect(b.begins, 3);
+    expect(b.advances, 0);
+    expect(b.authorizes, 0);
+  });
+
   test('backend_unavailable is cleared by canonical begin success', () async {
     final b = ProbeBackend(), p = MemoryStore();
     p.value = saved(step: GuideStep.intro, created: null);

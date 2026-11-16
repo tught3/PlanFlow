@@ -15,10 +15,13 @@ import 'package:planflow/features/groups/providers/group_context_provider.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/providers/auth_provider.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:planflow/widgets/reminder_offset_selector.dart';
 import 'package:planflow/widgets/schedule_save_scope_card.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -37,6 +40,112 @@ int _alignedFutureFixtureYear() {
 final int _fixtureYear = _alignedFutureFixtureYear();
 
 void main() {
+  for (final variant in [
+    'accepted',
+    'wrong-time',
+    'wrong-field',
+    'stale-range',
+    'linked-group',
+  ]) {
+    testWidgets(
+        'guide edit converts UTC preview and saves only bound time: $variant',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      authProvider.setUser('user-1');
+      addTearDown(() => authProvider.setUser(null));
+      final start = DateTime.utc(_fixtureYear, 6, 12, 8);
+      final event = EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '원래 일정',
+        memo: '원래 메모',
+        category: '개인',
+        startAt: DateTime.utc(_fixtureYear, 6, 12, 5),
+        endAt: DateTime.utc(_fixtureYear, 6, 12, 6),
+      );
+      final repo = _RecordingEventRepository(event);
+      final groupRepo = _FakeGroupEventRepository();
+      if (variant == 'linked-group') {
+        groupRepo.linkedEvents.add(GroupEventModel(
+          id: 'group-event-1',
+          groupId: 'group-1',
+          title: event.title,
+          startAt: event.startAt!,
+          endAt: event.endAt!,
+          createdBy: event.userId,
+          personalEventId: event.id,
+        ));
+      }
+      final guide = _EditorGuide(start);
+      final router = GoRouter(
+        initialLocation: '/edit',
+        routes: [
+          GoRoute(
+            path: '/edit',
+            builder: (_, __) => EventEditScreen(
+              event: event,
+              initialGuideStartLocal: start,
+              eventRepository: repo,
+              groupEventRepository: groupRepo,
+            ),
+          ),
+          GoRoute(
+            path: '${AppRoutes.eventDetail}/:eventId',
+            builder: (_, state) => Scaffold(
+              body: Text('saved:${(state.extra as EventModel).id}'),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      addTearDown(guide.state.dispose);
+      await tester.pumpWidget(GuideScope(
+        coordinator: guide,
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      await tester.pumpAndSettle();
+      final editor = tester.widget<CalendarStyleEventEditor>(
+          find.byType(CalendarStyleEventEditor));
+      expect(editor.startAt, DateTime(_fixtureYear, 6, 12, 17));
+      expect(editor.endAt, DateTime(_fixtureYear, 6, 12, 18));
+      expect(editor.onReminderChanged, isNull);
+      expect(find.byType(ReminderOffsetSelector), findsNothing);
+      expect(repo.writes, isEmpty);
+      final readsBefore = repo.fetchEventCalls;
+      if (variant == 'wrong-time') {
+        editor.onStartChanged(DateTime(_fixtureYear, 6, 12, 16));
+      } else if (variant == 'wrong-field') {
+        editor.titleController.text = '새 제목';
+      } else if (variant == 'stale-range') {
+        repo.persisted =
+            event.copyWith(startAt: DateTime.utc(_fixtureYear, 6, 12, 4));
+      }
+      await tester.pump();
+      await tester.tap(find.text('저장').first);
+      await tester.pumpAndSettle();
+      if (variant == 'accepted') {
+        expect(repo.fetchEventCalls, readsBefore + 1);
+        expect(guide.confirmations.single.confirmedStartLocal, start);
+        expect(repo.writes.single.startAt, start);
+        expect(repo.writes.single.endAt, start.add(const Duration(hours: 1)));
+        expect(repo.writes.single.memo, event.memo);
+        expect(find.text('saved:event-1'), findsOneWidget);
+      } else {
+        expect(guide.confirmations, isEmpty);
+        expect(repo.writes, isEmpty);
+        expect(
+            find.text(switch (variant) {
+              'wrong-time' => '말한 시작 시간으로 맞춘 뒤 저장해 주세요.',
+              'wrong-field' => '이 단계에서는 시간과 종료 시각만 변경할 수 있어요.',
+              'linked-group' => '그룹에 공유된 일정은 이 안내에서 변경할 수 없어요.',
+              _ => '일정이 바뀌었어요. 다시 열어서 확인해 주세요.',
+            }),
+            findsOneWidget);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   group('resolvePersistedEventId', () {
     test('returns null for a new-event draft with empty id', () {
       // AI 대화에서 넘어온 새 일정 draft: id가 "" → 새 일정으로 판정돼
@@ -1153,6 +1262,15 @@ class _FakeGroupRepository extends GroupRepository {
 
 class _FakeGroupEventRepository extends GroupEventRepository {
   final createdEvents = <GroupEventModel>[];
+  final linkedEvents = <GroupEventModel>[];
+
+  @override
+  Future<List<GroupEventModel>> getGroupEventsByPersonalEventId(
+    String personalEventId,
+  ) async =>
+      linkedEvents
+          .where((event) => event.personalEventId == personalEventId)
+          .toList();
 
   @override
   Future<List<GroupEventModel>> getEventsForGroup(
@@ -1197,8 +1315,9 @@ class _FakeGroupEventRepository extends GroupEventRepository {
 class _RecordingEventRepository extends EventRepository {
   _RecordingEventRepository(this.persisted);
 
-  final EventModel persisted;
+  EventModel persisted;
   int fetchEventCalls = 0;
+  final writes = <EventModel>[];
 
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
@@ -1216,5 +1335,66 @@ class _RecordingEventRepository extends EventRepository {
   Future<void> deleteEvent(String eventId, {String? userId}) async {}
 
   @override
-  Future<EventModel> updateEvent(EventModel event) => Future.value(event);
+  Future<EventModel> updateEvent(EventModel event) async {
+    writes.add(event);
+    return event;
+  }
+
+  @override
+  Future<EventModel?> updateEventTimeIfUnchanged(
+      {required EventModel original,
+      required DateTime startAt,
+      required DateTime? endAt}) async {
+    if (original.id != persisted.id ||
+        original.userId != persisted.userId ||
+        original.startAt != persisted.startAt ||
+        original.endAt != persisted.endAt) {
+      return null;
+    }
+    return updateEvent(persisted.copyWith(
+        startAt: startAt, endAt: endAt, clearEndAt: endAt == null));
+  }
+}
+
+class _EditorGuide implements GuideCoordinator {
+  _EditorGuide(DateTime start)
+      : state = ValueNotifier(GuideSnapshot(
+          uid: 'user-1',
+          version: 'real_ui_v1',
+          sessionId: 'guide-session',
+          revision: 1,
+          serverRevision: 1,
+          step: GuideStep.editPreview,
+          run: GuideRun.active,
+          createdEventId: 'event-1',
+          expectedUpdatedStartLocal: start,
+        ));
+
+  @override
+  final ValueNotifier<GuideSnapshot> state;
+  final confirmations = <EditConfirmed>[];
+
+  @override
+  Future<GuideSnapshot> start({required String uid}) async => state.value;
+
+  @override
+  Future<GuideSnapshot> dispatch(GuideSignal signal) async {
+    if (signal is EditConfirmed) {
+      confirmations.add(signal);
+      state.value = state.value.copyWith(revision: state.value.revision + 1);
+    }
+    return state.value;
+  }
+
+  @override
+  Future<GuideAccess> authorize(
+          {required GuideChargeContext context,
+          required String operationId}) async =>
+      const GuideAccess(status: GuideAccessStatus.denied);
+
+  @override
+  void suspend(GuidePauseReason reason) {}
+
+  @override
+  Future<void> terminate(GuideExit exit) async {}
 }

@@ -2713,9 +2713,19 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
       expect(guideConfirmUserScrolled.value, isFalse, reason: 'not scrolled');
       expect(find.text('2/7 · 일정 확인'), findsOneWidget);
       expect(guideSaveStage.value, GuideSaveStage.important);
-      // 스크롤 전에는 스포트라이트/딤을 켜지 않고, 안내가 대신 스크롤하지 않는다.
-      expect(find.byType(GuidedCoachmarkOverlay), findsNothing);
-      expect(_guideDimPainted(tester), isFalse);
+      // 준비된 폼은 확인할 제목을 강조하되, 저장 동작은 스크롤 전에는
+      // 강조하지 않고 안내가 목록을 대신 스크롤하지 않는다.
+      expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget);
+      final initialOverlay =
+          tester.widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      expect(initialOverlay.targetId, 'confirm.title');
+      expect(initialOverlay.pulseTargetIds, isEmpty,
+          reason: 'action controls stay unhighlighted until a real user scroll');
+      expect(
+          initialOverlay.additionalTargetIds,
+          isNot(contains(anyOf(
+              'confirm.critical', 'confirm.strong', 'confirm.save'))));
+      _expectGuideHoleOn(tester, 'confirm.title');
       expect(_confirmScrollOffset(tester), 0);
 
       // 스크롤 후에는 첫 단계(중요한 일정) 강조로 바뀐다.
@@ -2748,12 +2758,19 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
 
       expect(guideSaveStage.value, GuideSaveStage.important,
           reason: 'entering correctAndSave must restart at important');
-      // The guide never scrolls the list for the user, so nothing may be
-      // spotlighted before the user scrolls down by hand.
-      expect(find.byType(GuidedCoachmarkOverlay), findsNothing,
-          reason: 'no spotlight before the user scrolls the list');
-      expect(find.text('2/7 · 중요한 일정'), findsNothing);
-      expect(_guideDimPainted(tester), isFalse);
+      // Review fields are emphasized when parsing is ready. Action controls
+      // remain unhighlighted until the user scrolls the list by hand.
+      expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget);
+      final initialOverlay =
+          tester.widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      expect(initialOverlay.targetId, 'confirm.title');
+      expect(initialOverlay.pulseTargetIds, isEmpty,
+          reason: 'action controls stay unhighlighted until a real user scroll');
+      expect(
+          initialOverlay.additionalTargetIds,
+          isNot(contains(anyOf(
+              'confirm.critical', 'confirm.strong', 'confirm.save'))));
+      _expectGuideHoleOn(tester, 'confirm.title');
       expect(_confirmScrollOffset(tester), 0,
           reason: 'the guide must not scroll the list for the user');
 
@@ -2910,11 +2927,18 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
       await _pumpGuideFrames(tester);
 
       expect(find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'), findsNothing);
-      expect(find.byType(GuidedCoachmarkOverlay), findsNothing,
-          reason:
-              'the guide must not reveal the target before the user scrolls');
-      expect(find.text('2/7 · 중요한 일정'), findsNothing);
-      expect(_guideDimPainted(tester), isFalse);
+      expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget,
+          reason: 'ready review fields should be highlighted before action');
+      final initialOverlay =
+          tester.widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      expect(initialOverlay.targetId, 'confirm.title');
+      expect(initialOverlay.pulseTargetIds, isEmpty,
+          reason: 'action controls stay unhighlighted until a real user scroll');
+      expect(
+          initialOverlay.additionalTargetIds,
+          isNot(contains(anyOf(
+              'confirm.critical', 'confirm.strong', 'confirm.save'))));
+      _expectGuideHoleOn(tester, 'confirm.title');
       expect(_confirmScrollOffset(tester), 0,
           reason: 'the guide must never scroll the list for the user');
 
@@ -3174,17 +3198,67 @@ Finder _confirmScrollable() => find
 Future<void> _userScrollDown(WidgetTester tester,
     {double distance = 120, int steps = 8}) async {
   final scrollable = _confirmScrollable();
-  final start = tester.getTopLeft(scrollable) + const Offset(24, 28);
-  final gesture = await tester.startGesture(start);
-  for (var i = 0; i < steps; i++) {
-    await gesture.moveBy(Offset(0, -distance / steps));
-    await tester.pump(const Duration(milliseconds: 32));
+  final viewport = tester.renderObject<RenderBox>(scrollable);
+  final viewportRect = viewport.localToGlobal(Offset.zero) & viewport.size;
+  final beforeOffset = _confirmScrollOffset(tester);
+  final overlayFinder = find.byType(GuidedCoachmarkOverlay);
+  final excludedRects = <Rect>[];
+  if (overlayFinder.evaluate().isNotEmpty) {
+    final overlay = tester.widget<GuidedCoachmarkOverlay>(overlayFinder);
+    final overlayRoot = tester.renderObject<RenderBox>(overlayFinder);
+    for (final id in <String>{
+      overlay.targetId,
+      ...overlay.additionalTargetIds,
+      ...overlay.passThroughTargetIds,
+      ...overlay.pulseTargetIds,
+    }) {
+      final rect = overlay.registry.rectFor(id, root: overlayRoot);
+      if (rect != null) {
+        excludedRects.add(Rect.fromPoints(
+          overlayRoot.localToGlobal(rect.topLeft),
+          overlayRoot.localToGlobal(rect.bottomRight),
+        ));
+      }
+    }
+    // Do not start a drag on the instruction bubble or an illuminated target.
+    final bubbleFinder = find.byWidget(overlay.bubble);
+    if (bubbleFinder.evaluate().isNotEmpty) {
+      excludedRects.add(tester.getRect(bubbleFinder));
+    }
   }
-  // Let the pointer rest before lifting it so the gesture does not turn into
-  // a fling that would scroll past the real target.
-  await tester.pump(const Duration(milliseconds: 400));
-  await gesture.up();
-  await tester.pump(const Duration(milliseconds: 300));
+
+  // Try points inside the actual scroll viewport, away from the coachmark's
+  // bubble and spotlight holes. The offset assertion below proves that the
+  // hit point reached the list's scroll gesture recognizer.
+  final candidateYFactors = <double>[.72, .84, .58, .42, .92, .28];
+  for (final factor in candidateYFactors) {
+    final start = Offset(viewportRect.center.dx,
+        viewportRect.top + viewportRect.height * factor);
+    if (!viewportRect.contains(start) ||
+        excludedRects.any((rect) => rect.contains(start))) {
+      continue;
+    }
+
+    final gesture = await tester.startGesture(start);
+    for (var i = 0; i < steps; i++) {
+      await gesture.moveBy(Offset(0, -distance / steps));
+      await tester.pump(const Duration(milliseconds: 32));
+    }
+    // Let the pointer rest before lifting it so the gesture does not turn into
+    // a fling that would scroll past the real target.
+    await tester.pump(const Duration(milliseconds: 400));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 300));
+    if (_confirmScrollOffset(tester) > beforeOffset) {
+      expect(guideConfirmUserScrolled.value, isTrue,
+          reason: 'a real drag inside the list must unlock save-stage targets');
+      return;
+    }
+  }
+
+  fail('Could not scroll the confirmation list from an unobstructed hit point; '
+      'viewport=$viewportRect excluded=$excludedRects '
+      'offset=${_confirmScrollOffset(tester)} before=$beforeOffset');
 }
 
 Rect? _anchorRect(WidgetTester tester, String anchorId) {
@@ -3207,6 +3281,15 @@ Future<void> _scrollUntilAnchorVisible(
     if (visible) return;
     await _userScrollDown(tester, distance: rect == null ? 260 : 90, steps: 4);
   }
+  final finalRect = _anchorRect(tester, anchorId);
+  final visible = finalRect != null &&
+      finalRect.height > 0 &&
+      finalRect.top >= 150 &&
+      finalRect.bottom <= viewport.size.height - 8;
+  expect(visible, isTrue,
+      reason: 'anchor $anchorId never reached the visible scroll viewport; '
+          'rect=$finalRect viewport=${viewport.size} '
+          'offset=${_confirmScrollOffset(tester)}');
 }
 
 /// The dim layer is only painted when the overlay really has a hole, so its

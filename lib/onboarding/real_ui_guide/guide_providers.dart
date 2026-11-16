@@ -43,9 +43,12 @@ class LocalGuideProgressStore implements GuideProgressStore {
         savedCreateOperationId: m['savedCreateOperationId'] as String?,
         dateTimeZone: m['dateTimeZone'] as String?,
         errorCode: m['errorCode'] as String?,
+        failureDiagnostic:
+            GuideFailureDiagnostic.fromJson(m['failureDiagnostic']),
         savedLocalDate: date('savedLocalDate'),
         originalStartLocal: date('originalStartLocal'),
         expectedUpdatedStartLocal: date('expectedUpdatedStartLocal'),
+        isReplay: m['isReplay'] == true,
         calendarSyncHeld: m['calendarSyncHeld'] == true);
   }
 
@@ -71,10 +74,13 @@ class LocalGuideProgressStore implements GuideProgressStore {
       'savedCreateOperationId': s.savedCreateOperationId,
       'dateTimeZone': s.dateTimeZone,
       'errorCode': s.errorCode,
+      if (s.failureDiagnostic != null)
+        'failureDiagnostic': s.failureDiagnostic!.toJson(),
       'savedLocalDate': s.savedLocalDate?.toIso8601String(),
       'originalStartLocal': s.originalStartLocal?.toIso8601String(),
       'expectedUpdatedStartLocal':
           s.expectedUpdatedStartLocal?.toIso8601String(),
+      'isReplay': s.isReplay,
       'calendarSyncHeld': s.calendarSyncHeld
     });
     if (!await prefs.setString(storageKey, raw)) {

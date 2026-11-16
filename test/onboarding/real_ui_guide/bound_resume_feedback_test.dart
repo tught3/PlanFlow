@@ -31,6 +31,24 @@ class _Coordinator implements GuideCoordinator {
       throw StateError('no guide actions during recovery');
 }
 
+class _PreviewCoordinator extends _Coordinator {
+  _PreviewCoordinator(super.s, this.onResume);
+
+  final GuideSnapshot Function(GuideSnapshot) onResume;
+  int resumes = 0;
+
+  @override
+  Future<GuideSnapshot> dispatch(GuideSignal signal) async {
+    expect(signal, isA<ResumeRequested>());
+    final before = state.value;
+    expect(signal.uid, before.uid);
+    expect(signal.sessionId, before.sessionId);
+    expect(signal.expectedRevision, before.revision);
+    resumes++;
+    return state.value = onResume(before);
+  }
+}
+
 GuideSnapshot _snapshot() => GuideSnapshot(
     uid: 'u',
     version: 'v',
@@ -164,6 +182,14 @@ void main() {
       GoRoute(
           path: '/calendar',
           builder: (_, __) => const Scaffold(body: Text('calendar page'))),
+      GoRoute(
+          path: '/event/edit/:id',
+          builder: (_, state) => Scaffold(
+              body: Text(
+                  'editor ${(state.extra as Map)['initialGuideStartLocal']}'))),
+      GoRoute(
+          path: '/event/detail/:id',
+          builder: (_, __) => const Scaffold(body: Text('updated detail'))),
     ]);
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pump(const Duration(milliseconds: 300));
@@ -197,6 +223,75 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(router.routeInformationProvider.value.uri.toString(),
         '/calendar?date=2026-10-20');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final alreadySaved in [false, true]) {
+    testWidgets(
+        'continue refreshes a missing preview and opens ${alreadySaved ? 'detail' : 'editor'}',
+        (tester) async {
+      // banned-ok: Fixed fixture for the recovered timestamp.
+      final expected = DateTime.utc(2026, 10, 20, 9);
+      final c = _PreviewCoordinator(
+          _snapshot().copyWith(
+              step: GuideStep.editPreview, clearExpectedUpdatedStartLocal: true),
+          (before) => before.copyWith(
+              expectedUpdatedStartLocal: expected,
+              revision: before.revision + 1));
+      addTearDown(c.state.dispose);
+      final methods = <String>[];
+      _handler = (request) async {
+        methods.add(request.method);
+        final row = _row();
+        if (alreadySaved) {
+          row['start_at'] = expected.toIso8601String();
+          row['end_at'] =
+              expected.add(const Duration(hours: 1)).toIso8601String();
+        }
+        return http.Response(jsonEncode(row), 200, headers: {
+          'content-type': 'application/json; charset=utf-8',
+        });
+      };
+      await pumpHome(tester, c);
+      await tester.tap(find.byKey(const ValueKey('guide-bound-resume')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(c.resumes, 1);
+      expect(methods, ['GET']);
+      if (alreadySaved) {
+        expect(find.text('updated detail'), findsOneWidget);
+      } else {
+        expect(find.text('editor $expected'), findsOneWidget);
+      }
+      expect(c.state.value.step, GuideStep.editPreview);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('missing preview after refresh gives an actionable retry',
+      (tester) async {
+    final c = _PreviewCoordinator(
+        _snapshot().copyWith(
+            step: GuideStep.editPreview, clearExpectedUpdatedStartLocal: true),
+        (before) => before);
+    addTearDown(c.state.dispose);
+    var reads = 0;
+    _handler = (_) async {
+      reads++;
+      return _ok();
+    };
+    await pumpHome(tester, c);
+    await tester.tap(find.byKey(const ValueKey('guide-bound-resume')));
+    await tester.pump();
+
+    expect(c.resumes, 1);
+    expect(reads, 0);
+    expect(router.routeInformationProvider.value.uri.toString(), '/');
+    expect(_resumeEnabled(tester), isTrue);
+    expectUserFacingFeedback(tester);
+    expect(find.textContaining('‘안내 계속’을 눌러 다시 시도해 주세요'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

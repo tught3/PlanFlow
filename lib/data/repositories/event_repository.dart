@@ -124,6 +124,15 @@ abstract class EventRepository {
 
   Future<EventModel> updateEvent(EventModel event);
 
+  /// Updates the time of an owned event only if its stored range still matches.
+  Future<EventModel?> updateEventTimeIfUnchanged({
+    required EventModel original,
+    required DateTime startAt,
+    required DateTime? endAt,
+  }) =>
+      throw UnimplementedError(
+          'updateEventTimeIfUnchanged is not implemented.');
+
   Future<EventModel> updateSuppliesChecked({
     required String eventId,
     required List<String> suppliesChecked,
@@ -590,6 +599,46 @@ class SupabaseEventRepository extends EventRepository {
       return null;
     }
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel?> updateEventTimeIfUnchanged({
+    required EventModel original,
+    required DateTime startAt,
+    required DateTime? endAt,
+  }) async {
+    final userId = _resolveCurrentUserId();
+    _validateWritableEvent(original, userId);
+    final previousEnd = original.endAt?.toUtc().toIso8601String();
+    final previousRecurrence = original.recurrenceRule;
+    if (previousRecurrence != null && previousRecurrence.isNotEmpty) {
+      return null;
+    }
+    final update = _client
+        .from(_tableName)
+        .update({
+          'start_at': startAt.toUtc().toIso8601String(),
+          'end_at': endAt?.toUtc().toIso8601String(),
+        })
+        .eq('id', original.id)
+        .eq('user_id', userId)
+        .eq('start_at', original.startAt!.toUtc().toIso8601String())
+        .isFilter('group_event_id', null)
+        .isFilter('parent_event_id', null)
+        .isFilter('external_id', null)
+        .eq('is_multi_day', false);
+    final range = previousEnd == null
+        ? update.isFilter('end_at', null)
+        : update.eq('end_at', previousEnd);
+    final scoped = previousRecurrence == null
+        ? range.isFilter('recurrence_rule', null)
+        : range.eq('recurrence_rule', previousRecurrence);
+    final rows = await scoped.select(_selectColumns);
+    if (rows.isEmpty) return null;
+    if (rows.length != 1) {
+      throw StateError('Expected one row from the scoped event time update.');
+    }
+    return EventModel.fromJson(_rowAsJson(rows.single));
   }
 
   @override

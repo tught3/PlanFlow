@@ -53,6 +53,18 @@ bool completeShellRequiredSetup({
   return gate.requiredSetupCompleteFor(flowUserId);
 }
 
+// The route-information URI can still be /home after an imperative push.
+// Inspect the top match to avoid replacing a user's newer navigation.
+Uri _visibleShellRoute(GoRouter router) {
+  final configuration = router.routerDelegate.currentConfiguration;
+  if (configuration.isEmpty) return router.routeInformationProvider.value.uri;
+  RouteMatchBase last = configuration.matches.last;
+  while (last is ShellRouteMatch && last.matches.isNotEmpty) {
+    last = last.matches.last;
+  }
+  return last is ImperativeRouteMatch ? last.matches.uri : configuration.uri;
+}
+
 const _shellDestinations = <_ShellDestination>[
   _ShellDestination(
     label: '홈',
@@ -316,6 +328,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _pendingDepartureCheckInFlight = false;
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
+  VoidCallback? _guideHomeStateChanged;
+  Completer<bool>? _guideHomeWaiter;
   bool _checkedGoogleCalendarAutoPrompt = false;
   bool _checkedFeatureTour = false;
   bool _requiredFeatureTourConfirmed = true;
@@ -379,6 +393,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    final waiter = _guideHomeWaiter;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(false);
     _startupWorkGeneration += 1;
     _authProvider.removeListener(_handleAuthChanged);
     WidgetsBinding.instance.removeObserver(this);
@@ -392,6 +408,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
+      _guideHomeStateChanged?.call();
       if (_onboardingDecisionPending) return;
       // Resume recovery and deferred startup share one singleflight future.
       // _runAlarmRecovery() internally awaits _refreshDepartureAlarmsAndMonitor()
@@ -442,6 +459,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     if (_observedUserId == currentUserId) {
       return;
     }
+    _guideHomeStateChanged?.call();
 
     _observedUserId = currentUserId;
     _sessionAuthEpoch += 1;
@@ -496,7 +514,16 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
     _routeGate.beginRequiredSetup(userId);
-    if (_sessionOnboardingUserId == userId) {
+    final guide = GuideScope.maybeOf(context)?.state.value;
+    final replayPending = guide != null &&
+        guide.uid == userId &&
+        guide.isReplay &&
+        guide.isInProgress;
+    bool guideChoicePending() => _guideChoicePendingFor(userId);
+
+    if (_sessionOnboardingUserId == userId &&
+        !replayPending &&
+        !guideChoicePending()) {
       if (mounted && _onboardingDecisionPending) {
         setState(() => _onboardingDecisionPending = false);
       }
@@ -524,6 +551,18 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // visual gate does not mark the session complete or start duplicate work.
       DiagLogger.log(
           'Onboarding', 'joined in-flight flow; local gate released');
+      // The 7/7 confirmation can replace the previous shell. Its startup
+      // flow cannot present dialogs once it is gone, so let Home take over.
+      if (widget.initialIndex == 0 && guideChoicePending()) {
+        final authEpoch = _sessionAuthEpoch;
+        await inFlight;
+        if (mounted &&
+            _authProvider.userId == userId &&
+            _sessionAuthEpoch == authEpoch &&
+            guideChoicePending()) {
+          await _runSignedInStartupTasks(reason: reason);
+        }
+      }
       return;
     }
     if (inFlight != null) {
@@ -576,12 +615,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             mounted &&
             _authProvider.userId == userId &&
             authEpoch == _sessionAuthEpoch,
-        syncChoice: () => runOnboardingStageChain(
+        syncChoice: () => widget.runPostTourOnboardingStages && _guideChoicePendingFor(userId)
+            ? _maybeShowExternalCalendarSyncGuide()
+            : runOnboardingStageChain(
           stages: <OnboardingStage>[
             if (widget.runPostTourOnboardingStages) ...<OnboardingStage>[
               OnboardingStage(
                 'external_calendar_guide',
-                () => _maybeShowExternalCalendarSyncGuide(),
+                () async { await _maybeShowExternalCalendarSyncGuide(); },
               ),
             ],
           ],
@@ -953,6 +994,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         _currentIndex = 1;
       });
     }
+    _guideHomeStateChanged?.call();
   }
 
   void _showHomeAtTop() {
@@ -970,6 +1012,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     setState(() {
       _currentIndex = index;
     });
+    _guideHomeStateChanged?.call();
     // Keep this Shell alive while switching tabs. The inactive tab gets a
     // cheap placeholder for the transition frame and is mounted afterward.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1071,32 +1114,129 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _maybeShowExternalCalendarSyncGuide() async {
+  bool _guideChoicePendingFor(String uid) {
+    final snapshot = GuideScope.maybeOf(context)?.state.value;
+    return snapshot != null && _isGuideSyncChoice(snapshot, uid);
+  }
+
+  bool _isGuideSyncChoice(GuideSnapshot snapshot, String uid) =>
+      snapshot.uid == uid &&
+      snapshot.sessionId?.isNotEmpty == true &&
+      snapshot.step == GuideStep.syncChoice &&
+      (snapshot.run == GuideRun.active ||
+          (snapshot.run == GuideRun.paused &&
+              snapshot.pauseReason == GuidePauseReason.background));
+
+  Future<bool> _waitForGuideHome(GoRouter router, bool Function() sameAccount) async {
+    _clearOnboardingGate();
+    final waiter = Completer<bool>();
+    void checkRoute() {
+      if (waiter.isCompleted) return;
+      if (!sameAccount()) {
+        waiter.complete(false);
+      } else if (_currentIndex == 0 &&
+          _visibleShellRoute(router).path == AppRoutes.home) {
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        if (lifecycle == null || lifecycle == AppLifecycleState.resumed) {
+          waiter.complete(true);
+        }
+      }
+    }
+    _guideHomeWaiter = waiter;
+    _guideHomeStateChanged = checkRoute;
+    router.routerDelegate.addListener(checkRoute);
+    try {
+      checkRoute();
+      return await waiter.future;
+    } finally {
+      router.routerDelegate.removeListener(checkRoute);
+      if (identical(_guideHomeWaiter, waiter)) {
+        _guideHomeWaiter = null;
+        _guideHomeStateChanged = null;
+      }
+    }
+  }
+
+  Future<bool> _maybeShowExternalCalendarSyncGuide() async {
     if (_checkedExternalCalendarGuide || !mounted) {
-      return;
+      return false;
     }
     _checkedExternalCalendarGuide = true;
 
     final userId = _authProvider.userId;
     if (userId == null || userId.isEmpty) {
-      return;
+      return false;
+    }
+    final authEpoch = _sessionAuthEpoch;
+    bool sameAccount() =>
+        mounted &&
+        _authProvider.userId == userId &&
+        _sessionAuthEpoch == authEpoch;
+
+    final router = GoRouter.of(context);
+    final coordinator = GuideScope.maybeOf(context);
+    final snapshot = coordinator?.state.value;
+    final guideChoice = snapshot != null && _isGuideSyncChoice(snapshot, userId)
+        ? snapshot
+        : null;
+    final syncStore = GuideSyncChoiceStore();
+    bool sameGuideSession(GuideSnapshot current) =>
+        guideChoice != null &&
+        current.uid == userId &&
+        current.version == guideChoice.version &&
+        current.sessionId == guideChoice.sessionId &&
+        current.isReplay == guideChoice.isReplay;
+
+    Future<GuideSnapshot?> readyGuideChoice() async {
+      if (!await _waitForGuideHome(router, sameAccount)) return null;
+      final current = coordinator!.state.value;
+      if (!sameGuideSession(current) || !_isGuideSyncChoice(current, userId)) {
+        return null;
+      }
+      if (current.run == GuideRun.active) return current;
+      await coordinator.dispatch(ResumeRequested(
+          uid: userId,
+          sessionId: current.sessionId!,
+          expectedRevision: current.revision));
+      if (!await _waitForGuideHome(router, sameAccount)) return null;
+      final resumed = coordinator.state.value;
+      if (!sameAccount() ||
+          !sameGuideSession(resumed) ||
+          resumed.step != GuideStep.syncChoice ||
+          resumed.run != GuideRun.active) {
+        return null;
+      }
+      return resumed;
     }
 
-    // 이 판정은 prefs + 연동 캘린더 조회를 타므로 네트워크에 걸릴 수 있다.
-    // 상한을 넘기면 안내를 건너뛴다.
-    final pendingGuideChoice = _routeGate.calendarSyncHeldFor(userId) ||
-        !await GuideSyncChoiceStore().isClosed(userId);
-    final shouldShow = pendingGuideChoice ||
-        await _externalCalendarGuideService
-            .shouldShowForUser(userId)
-            .timeout(_onboardingProbeTimeout, onTimeout: () => false);
-    if (!shouldShow || !mounted) {
-      return;
+    if (guideChoice != null) {
+      // The acknowledgement saves progress before asking the router to go
+      // Home. Let that route build before placing either dialog over it.
+      await SchedulerBinding.instance.endOfFrame;
+      if (!sameAccount()) return false;
+    } else {
+      // The ordinary welcome prompt keeps honoring its per-account history.
+      final pending = _routeGate.calendarSyncHeldFor(userId) ||
+          !await syncStore.isClosed(userId);
+      if (!sameAccount()) return false;
+      final shouldShow = pending ||
+          await _externalCalendarGuideService
+              .shouldShowForUser(userId)
+              .timeout(_onboardingProbeTimeout, onTimeout: () => false);
+      if (!shouldShow || !sameAccount()) return sameAccount();
     }
 
     // showDialog도 라우트를 동기적으로 올린다 — 띄우는 즉시 게이트를 내린다.
-    final openSettings = await _presentInteractive(() => showDialog<bool>(
+    bool? openSettings;
+    do {
+      if (guideChoice != null && await readyGuideChoice() == null) {
+        _checkedExternalCalendarGuide = false;
+        return false;
+      }
+      if (!mounted || !sameAccount()) return false;
+      openSettings = await _presentInteractive(() => showDialog<bool>(
           context: context,
+          barrierDismissible: guideChoice == null,
           builder: (context) {
             return AlertDialog(
               title: const Text('외부 캘린더 동기화 안내'),
@@ -1126,36 +1266,62 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             );
           },
         ));
+    } while (guideChoice != null && openSettings == null);
 
-    if (!mounted || _authProvider.userId != userId) return;
-    await GuideSyncChoiceStore().close(userId);
-    if (!mounted || _authProvider.userId != userId) return;
-    final coordinator = GuideScope.maybeOf(context);
-    final s = coordinator?.state.value;
-    if (s != null &&
-        s.uid == userId &&
-        s.step == GuideStep.syncChoice &&
-        s.sessionId != null) {
-      await coordinator!.dispatch(SyncChoiceClosed(
-          uid: userId, sessionId: s.sessionId!, expectedRevision: s.revision));
+    if (!sameAccount()) return false;
+    if (guideChoice != null) {
+      final current = await readyGuideChoice();
+      if (current == null || !sameAccount()) {
+        _checkedExternalCalendarGuide = false;
+        return false;
+      }
+      final completed = await coordinator!.dispatch(SyncChoiceClosed(
+          uid: userId,
+          sessionId: current.sessionId!,
+          expectedRevision: current.revision));
+      if (!sameAccount()) return false;
+      if (!sameGuideSession(completed) ||
+          completed.step != GuideStep.completed ||
+          completed.run != GuideRun.terminal) {
+        _checkedExternalCalendarGuide = false;
+        throw StateError('Guide completion not confirmed');
+      }
     }
-    if (!mounted || _authProvider.userId != userId) return;
-    if (coordinator == null ||
-        coordinator.state.value.run != GuideRun.terminal) {
-      throw StateError('Guide completion not confirmed');
-    }
+    await syncStore.close(userId);
+    if (!sameAccount()) return false;
     _routeGate.closeGuideChoice(userId);
     await _externalCalendarGuideService.markSeen(userId).timeout(
           _onboardingProbeTimeout,
           onTimeout: () {},
         );
-    if (!mounted) {
-      return;
+    if (!mounted || !sameAccount()) {
+      return false;
     }
 
-    if (openSettings == true) {
-      context.go('${AppRoutes.settings}?open=naver-caldav');
+    if (guideChoice != null) {
+      if (!await _waitForGuideHome(router, sameAccount) || !mounted || !sameAccount()) {
+        return false;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.celebration_outlined),
+          title: const Text('튜토리얼 완료'),
+          content: const Text('모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
     }
+
+    if (sameAccount() && openSettings == true) {
+      router.go('${AppRoutes.settings}?open=naver-caldav');
+    }
+    return sameAccount();
   }
 
   /// Google 계정 로그인 사용자이고 Google Calendar가 미연동 상태이면
@@ -1249,10 +1415,24 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           ),
           userId: _authProvider.userId,
           initialAction: widget.initialSettingsAction,
+          onTutorialRestarted: _openHomeForTutorialReplay,
         );
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  void _openHomeForTutorialReplay(String uid) {
+    if (!mounted || _authProvider.userId != uid) return;
+    _routeGate.reopenGuideChoice(uid);
+    _checkedExternalCalendarGuide = false;
+    final router = GoRouter.of(context);
+    if (_visibleShellRoute(router).path != AppRoutes.home) {
+      router.go(AppRoutes.home);
+      return;
+    }
+    _goToTab(0);
+    unawaited(_runSignedInStartupTasks(reason: 'tutorial_replay'));
   }
 
   Widget _buildBottomNavigationBar() {

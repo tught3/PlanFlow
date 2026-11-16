@@ -54,6 +54,12 @@ class StartupRouteGate extends ChangeNotifier {
     _guideChoiceClosed = false;
   }
 
+  void reopenGuideChoice(String uid) {
+    if (_guideChoiceUid != uid || !_guideChoiceClosed) return;
+    _guideChoiceClosed = false;
+    notifyListeners();
+  }
+
   void closeGuideChoice(String uid) {
     if (_guideChoiceUid != uid || _guideChoiceClosed) return;
     _guideChoiceClosed = true;

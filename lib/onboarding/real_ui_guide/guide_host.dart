@@ -1,14 +1,17 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, ValueNotifier, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/safe_prefs.dart';
+import '../../core/local_time.dart';
 import '../../core/startup_route_gate.dart';
 import '../../widgets/guided_coachmark_overlay.dart';
 import '../../widgets/guided_anchor.dart';
 import 'guide_bubble_visibility.dart';
 import 'guide_contract.dart';
+import 'guide_instruction_text.dart';
 import 'voice_correction_example.dart';
 import 'guide_providers.dart';
 import 'guide_scope.dart';
@@ -16,6 +19,7 @@ import 'guide_route_recovery.dart';
 import '../../core/constants.dart';
 import '../../providers/auth_provider.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../screens/onboarding/legacy_intro_screen.dart';
 import '../../screens/voice/voice_input_screen.dart';
 import '../../screens/voice/voice_conversation_screen.dart';
 import 'package:go_router/go_router.dart';
@@ -28,11 +32,17 @@ class RootGuideScope extends ConsumerStatefulWidget {
       required this.uid,
       required this.child,
       required this.bindRuntime,
-      required this.unbindRuntime});
+      required this.unbindRuntime,
+      this.onSwitchQaAccount,
+      this.isGuideQa = false});
   final String? uid;
   final Widget child;
   final Object Function(GuideCoordinator) bindRuntime;
   final void Function(Object) unbindRuntime;
+  final Future<void> Function(String uid)? onSwitchQaAccount;
+
+  /// Set only after the isolated QA package has been verified.
+  final bool isGuideQa;
   @override
   ConsumerState<RootGuideScope> createState() => _RootGuideScopeState();
 }
@@ -43,6 +53,10 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
   Object? _token;
   Object _epoch = Object();
   String? _error;
+  String? _retryMessage;
+  bool _retrying = false;
+  bool _switchingQaAccount = false;
+  bool _retryRequiresStart = false;
   bool _sessionOnlyRecovery = false;
   _SessionOnlyGuideProgressStore? _recoveryProgress;
   @override
@@ -66,8 +80,12 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
     if (oldWidget.uid != widget.uid) _start();
   }
 
-  void _start() {
+  void _start({bool retry = false}) {
     _epoch = Object();
+    _retrying = retry;
+    _switchingQaAccount = false;
+    _retryRequiresStart = false;
+    _retryMessage = null;
     final epoch = _epoch;
     final retryFactory = _coordinator == null && _error != null;
     final wasRecovery = _sessionOnlyRecovery;
@@ -111,9 +129,15 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
           startupRouteGate.closeGuideChoice(uid);
         }
       } catch (_) {
-        if (identical(epoch, _epoch)) _error = '안내를 불러오지 못했습니다.';
+        if (identical(epoch, _epoch)) {
+          _error = '안내를 불러오지 못했습니다.';
+          _retryRequiresStart = true;
+        }
+      } finally {
+        if (mounted && identical(epoch, _epoch)) {
+          setState(() => _retrying = false);
+        }
       }
-      if (mounted && identical(epoch, _epoch)) setState(() {});
     });
   }
 
@@ -143,6 +167,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
   }
 
   void _skipThisSession() {
+    if (widget.isGuideQa || _switchingQaAccount) return;
     final uid = widget.uid;
     if (uid == null || uid.isEmpty) return;
     // This explicit escape does not claim a durable completion or a free grant.
@@ -164,21 +189,34 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
       _recoveryProgress = _SessionOnlyGuideProgressStore(fallback.state.value);
       _sessionOnlyRecovery = true;
       _error = null;
+      _retryMessage = null;
     });
   }
 
   Future<void> _retryGuide() async {
+    if (_retrying || _switchingQaAccount) return;
     final coordinator = _coordinator;
     if (coordinator == null || _error != null) {
-      setState(_start);
+      setState(() => _start(retry: true));
       return;
     }
     final epoch = _epoch;
     final uid = widget.uid;
-    if (uid == null) return;
+    if (uid == null || uid.isEmpty) return;
+    final requiresStart = _retryRequiresStart;
+    setState(() {
+      _retrying = true;
+      _retryMessage = null;
+    });
+    bool ownsAttempt() => mounted &&
+        identical(epoch, _epoch) &&
+        uid == widget.uid &&
+        identical(coordinator, _coordinator);
+    var attemptedStart = false;
     try {
       final current = coordinator.state.value;
-      if (current.uid != uid || current.sessionId == null) {
+      if (requiresStart || current.uid != uid || current.sessionId == null) {
+        attemptedStart = true;
         await coordinator.start(uid: uid);
       } else {
         await coordinator.dispatch(ResumeRequested(
@@ -186,14 +224,53 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
             sessionId: current.sessionId!,
             expectedRevision: current.revision));
       }
-    } catch (_) {
-      if (mounted && identical(epoch, _epoch)) {
-        setState(() => _error = '안내를 다시 시작하지 못했어요.');
+      if (!ownsAttempt()) return;
+      if (attemptedStart) _retryRequiresStart = false;
+      final result = coordinator.state.value;
+      if (result.uid != uid ||
+          (result.run != GuideRun.terminal &&
+              (result.run != GuideRun.active || result.errorCode != null))) {
+        _retryMessage = result.failureDiagnostic == null &&
+                !(widget.isGuideQa &&
+                    result.errorCode == 'created_binding_conflict')
+            ? '안내를 이어가지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.'
+            : null;
       }
+    } catch (_) {
+      if (ownsAttempt()) {
+        if (attemptedStart) _retryRequiresStart = true;
+        _retryMessage = '안내를 이어가지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.';
+      }
+    } finally {
+      if (ownsAttempt()) setState(() => _retrying = false);
+    }
+  }
+
+  Future<void> _switchQaAccount() async {
+    final action = widget.onSwitchQaAccount;
+    final uid = widget.uid;
+    if (_retrying || _switchingQaAccount || action == null || uid == null) {
+      return;
+    }
+    final epoch = _epoch;
+    setState(() {
+      _switchingQaAccount = true;
+      _retryMessage = null;
+    });
+    bool ownsAttempt() => mounted && identical(epoch, _epoch) && uid == widget.uid;
+    try {
+      await action(uid);
+    } catch (_) {
+      if (ownsAttempt()) {
+        _retryMessage = '계정을 바꾸지 못했어요. ‘계정 바꾸기’를 다시 눌러 주세요.';
+      }
+    } finally {
+      if (ownsAttempt()) setState(() => _switchingQaAccount = false);
     }
   }
 
   Future<void> _skipGuide() async {
+    if (widget.isGuideQa || _switchingQaAccount) return;
     final coordinator = _coordinator;
     if (coordinator == null ||
         _error != null ||
@@ -204,6 +281,9 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
     final epoch = _epoch;
     try {
       await coordinator.terminate(GuideExit.skip);
+      if (mounted && identical(epoch, _epoch)) {
+        setState(() => _retryMessage = null);
+      }
     } catch (_) {
       if (mounted && identical(epoch, _epoch)) {
         setState(() => _error = '건너뛰기를 저장하지 못했어요. 이번만 건너뛸 수 있어요.');
@@ -217,7 +297,86 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
           color: Color(0x55000000),
           child: Center(child: CircularProgressIndicator())));
 
-  Widget _recoveryNotice({required bool fatal}) => Positioned.fill(
+  String? _failureCode(GuideSnapshot? snapshot) {
+    final errorCode = snapshot?.errorCode;
+    final diagnosticCode = snapshot?.failureDiagnostic?.code;
+    // A transient connection failure can predate the binding checkpoint.
+    // Show the blocking checkpoint instead of the stale connection message.
+    const transient = {'timeout', 'network', 'backend_unavailable'};
+    final bindingBlocked = errorCode == 'guide_session_changed' ||
+        errorCode == 'guide_bound_event_missing' ||
+        (widget.isGuideQa && errorCode == 'created_binding_conflict');
+    final code = bindingBlocked && transient.contains(diagnosticCode)
+        ? errorCode
+        : diagnosticCode ?? errorCode;
+    if (code == null) return null;
+    if (widget.isGuideQa && code == 'created_binding_conflict') return code;
+    const known = {
+      'local_uid_mismatch', 'auth_error', 'timeout', 'network', 'terminal',
+      'expired', 'denied', 'malformed', 'wire_expired',
+      'backend_unavailable', 'guide_session_changed', 'guide_bound_event_missing',
+      'guide_progress_load_failed', 'guide_progress_save_failed',
+      'guide_operation_failed',
+    };
+    const deniedReasons = {
+      'denied:invalid_request', 'denied:request_replay_mismatch',
+      'denied:session_expired', 'denied:session_terminal',
+    };
+    return known.contains(code) || deniedReasons.contains(code) ? code : null;
+  }
+
+  String _failureMessage(String? code, {required bool fatal}) {
+    switch (code) {
+      case 'local_uid_mismatch':
+      case 'auth_error':
+        return widget.onSwitchQaAccount != null
+            ? '로그인 정보를 확인할 수 없어요. 계정을 바꾸거나 다시 로그인해 주세요.'
+            : '로그인 정보를 확인할 수 없어요. 다시 로그인해 주세요.';
+      case 'terminal':
+      case 'expired':
+      case 'denied:session_terminal':
+      case 'denied:session_expired':
+      case 'guide_bound_event_missing':
+        return '이 안내는 다시 시작해야 해요. 계정과 안내 상태를 확인해 주세요.';
+      case 'timeout':
+        return '안내 연결 시간이 초과됐어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.';
+      case 'network':
+      case 'backend_unavailable':
+        return '안내 서버에 연결하지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+      case 'guide_progress_save_failed':
+        return '안내 진행 상태를 저장하지 못했어요. 다시 시도해 주세요.';
+      case 'guide_progress_load_failed':
+        return '안내 진행 상태를 불러오지 못했어요. 다시 시도해 주세요.';
+      case 'wire_expired':
+        return '안내 연결 정보가 만료됐어요. 다시 시도해 주세요.';
+      case 'guide_session_changed':
+        return '로그인 상태가 바뀌었어요. 계정을 확인한 뒤 다시 시도해 주세요.';
+      case 'created_binding_conflict':
+        return '저장된 일정과 안내의 연결 정보가 일치하지 않아요. 계정과 안내 상태를 확인해 주세요.';
+      case 'denied':
+      case 'denied:invalid_request':
+      case 'denied:request_replay_mismatch':
+        return '안내 시작이 거절됐어요. 계정과 안내 상태를 확인해 주세요.';
+      case 'malformed':
+        return '안내 서버의 응답을 확인하지 못했어요. 다시 시도해 주세요.';
+      case 'guide_operation_failed':
+        return '안내를 이어가지 못했어요. 다시 시도해 주세요.';
+      default:
+        if (widget.isGuideQa) {
+          return fatal
+              ? '안내를 불러오지 못했어요. 무료 횟수를 쓰지 않고 다시 시도할 수 있어요.'
+              : '안내가 잠시 멈췄어요. 다시 시도해 주세요.';
+        }
+        return fatal
+            ? '안내를 불러오지 못했어요. 무료 횟수를 쓰지 않고 다시 시도하거나 이번만 안내를 건너뛸 수 있어요.'
+            : '안내가 잠시 멈췄어요. 다시 시도하거나 건너뛸 수 있어요.';
+    }
+  }
+
+  Widget _recoveryNotice({required bool fatal, GuideSnapshot? snapshot}) {
+    final busy = _retrying || _switchingQaAccount;
+    final code = _failureCode(snapshot);
+    return Positioned.fill(
           child: Stack(fit: StackFit.expand, children: [
         const ModalBarrier(dismissible: false, color: Color(0x55000000)),
         SafeArea(
@@ -232,36 +391,86 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
                             child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(fatal
-                                      ? '안내를 불러오지 못했어요. 무료 횟수를 쓰지 않고 다시 시도하거나 이번만 안내를 건너뛸 수 있어요.'
-                                      : '안내가 잠시 멈췄어요. 다시 시도하거나 건너뛸 수 있어요.'),
+                                  GuideInstructionText(_switchingQaAccount
+                                      ? '로그인 화면으로 이동하고 있어요.'
+                                      : _retrying
+                                      ? '안내를 다시 연결하고 있어요. 잠시만 기다려 주세요.'
+                                      : _retryMessage ??
+                                          _failureMessage(code, fatal: fatal)),
+                                  if (widget.isGuideQa && code != null && !busy)
+                                    Text('안내 오류 코드: $code',
+                                        key: const ValueKey('guide-failure-code')),
+                                  if (busy)
+                                    Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: CircularProgressIndicator(
+                                        key: const ValueKey('guide-retry-progress'),
+                                        semanticsLabel: _switchingQaAccount
+                                            ? '로그인 화면으로 이동 중'
+                                            : '안내 다시 연결 중',
+                                      ),
+                                    ),
                                   Wrap(children: [
                                     TextButton(
                                         key: const ValueKey('guide-retry'),
-                                        onPressed: _retryGuide,
+                                        onPressed: busy ? null : _retryGuide,
                                         child: const Text('다시 시도')),
-                                    TextButton(
+                                    if (widget.onSwitchQaAccount != null)
+                                      TextButton(
+                                          key: const ValueKey('guide-switch-qa-account'),
+                                          onPressed: busy ? null : _switchQaAccount,
+                                          child: const Text('계정 바꾸기')),
+                                    if (!widget.isGuideQa)
+                                      TextButton(
                                         key: ValueKey(fatal
                                             ? 'guide-session-skip'
                                             : 'guide-skip'),
-                                        onPressed: fatal
-                                            ? _skipThisSession
-                                            : _skipGuide,
+                                        onPressed: busy
+                                            ? null
+                                            : (fatal ? _skipThisSession : _skipGuide),
                                         child: Text(
                                             fatal ? '이번만 안내 건너뛰기' : '안내 건너뛰기')),
                                   ])
                                 ]))))))
       ]));
+  }
+
+  Widget _terminalNotice() => Positioned(
+      top: 12,
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+          child: SafeArea(
+          child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    GuideInstructionText(_failureMessage('terminal', fatal: false)),
+                    Text('안내 오류 코드: terminal',
+                        key: const ValueKey('guide-failure-code')),
+                  ]))))));
 
   @override
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
     if (widget.uid == null || widget.uid!.isEmpty) return widget.child;
     Widget content;
+    // The QA account switch may first show a Navigator confirmation. That
+    // dialog owns its modal barrier; the app-level QA barrier protects the
+    // subsequent sign-out. Let both render above the guide recovery layer.
+    final qaSwitching = widget.isGuideQa && _switchingQaAccount;
     if (coordinator == null) {
       content = Stack(fit: StackFit.expand, children: [
-        IgnorePointer(child: ExcludeFocus(child: widget.child)),
-        if (_error == null) _loadingNotice() else _recoveryNotice(fatal: true),
+        IgnorePointer(
+            ignoring: !qaSwitching,
+            child: ExcludeFocus(excluding: !qaSwitching, child: widget.child)),
+        if (!qaSwitching)
+          if (_retrying || _switchingQaAccount || _error != null)
+            _recoveryNotice(fatal: true)
+          else
+            _loadingNotice(),
       ]);
     } else {
       content = GuideScope(
@@ -269,8 +478,8 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
           child: ValueListenableBuilder<GuideSnapshot>(
               valueListenable: coordinator.state,
               builder: (context, s, _) {
-                final waiting = s.uid != widget.uid && _error == null;
-                final recovery = _error != null ||
+                final waiting = s.uid != widget.uid && _error == null && !_retrying;
+                final recovery = _retrying || _switchingQaAccount || _retryMessage != null || _error != null ||
                     (s.run != GuideRun.terminal &&
                         (s.run != GuideRun.active || s.errorCode != null));
                 final blocked = waiting || recovery;
@@ -280,19 +489,24 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
                     s.step != GuideStep.syncChoice;
                 return Stack(fit: StackFit.expand, children: [
                   IgnorePointer(
-                      ignoring: blocked,
+                      ignoring: blocked && !qaSwitching,
                       child: ExcludeFocus(
-                          excluding: blocked, child: widget.child)),
+                          excluding: blocked && !qaSwitching, child: widget.child)),
                   if (coaching)
                     RealUiGuideCoachmark(
                         key: ObjectKey(coordinator),
                         coordinator: coordinator,
+                        isGuideQa: widget.isGuideQa,
                         onSkip: () {
                           unawaited(_skipGuide());
                         }),
-                  if (waiting) _loadingNotice(),
-                  if (!waiting && recovery)
-                    _recoveryNotice(fatal: _error != null),
+                  if (waiting && !qaSwitching) _loadingNotice(),
+                  if (!blocked && widget.isGuideQa &&
+                      s.run == GuideRun.terminal &&
+                      s.failureDiagnostic?.kind == GuideFailureKind.terminal)
+                    _terminalNotice(),
+                  if (!waiting && recovery && !qaSwitching)
+                    _recoveryNotice(fatal: _error != null, snapshot: s),
                 ]);
               }));
     }
@@ -381,9 +595,10 @@ class GuideSyncChoiceStore {
 /// ModalRoute/current-target checks hide coachmarks under dialogs and pickers.
 class RealUiGuideCoachmark extends StatefulWidget {
   const RealUiGuideCoachmark(
-      {super.key, required this.coordinator, this.onSkip});
+      {super.key, required this.coordinator, this.onSkip, this.isGuideQa = false});
   final GuideCoordinator coordinator;
   final VoidCallback? onSkip;
+  final bool isGuideQa;
 
   /// Upper bound for reading the saved event when resuming the guide. A normal
   /// single-row fetch finishes in well under a second; 15s tolerates a slow
@@ -396,6 +611,11 @@ class RealUiGuideCoachmark extends StatefulWidget {
 }
 
 class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
+  static const _confirmReviewTargets = <String>[
+    'confirm.title',
+    'confirm.dateTime',
+    'confirm.location',
+  ];
   GuideCoordinator get coordinator => widget.coordinator;
   Timer? _routeCheck;
   bool _recoveringRoute = false;
@@ -407,6 +627,11 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
     return _targetIsCurrent(home);
   }
 
+  bool _needsPreviewRefresh(GuideSnapshot snapshot) =>
+      snapshot.expectedUpdatedStartLocal == null &&
+      (snapshot.step == GuideStep.editPreview ||
+          snapshot.step == GuideStep.updatedDetail);
+
   Future<void> _continueBoundGuide() async {
     if (_recoveringRoute || !_atHome()) return;
     final capturedCoordinator = coordinator;
@@ -415,6 +640,31 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       _routeRecoveryError = null;
     });
     try {
+      final before = capturedCoordinator.state.value;
+      final sessionId = before.sessionId;
+      if (_needsPreviewRefresh(before) &&
+          sessionId != null &&
+          before.uid == authProvider.userId) {
+        final resumed = await capturedCoordinator.dispatch(ResumeRequested(
+            uid: before.uid,
+            sessionId: sessionId,
+            expectedRevision: before.revision));
+        if (!mounted || !identical(coordinator, capturedCoordinator) ||
+            !_atHome()) {
+          return;
+        }
+        if (!identical(capturedCoordinator.state.value, resumed) ||
+            resumed.uid != before.uid ||
+            resumed.version != before.version ||
+            resumed.sessionId != sessionId ||
+            resumed.createdEventId != before.createdEventId ||
+            resumed.serverRevision < before.serverRevision) {
+          throw StateError('preview_recovery_context_changed');
+        }
+        if (_needsPreviewRefresh(resumed)) {
+          throw StateError('preview_recovery_missing_time');
+        }
+      }
       final recovery = await GuideRouteRecovery.load(
           coordinator: capturedCoordinator,
           currentUid: () => authProvider.userId,
@@ -432,8 +682,8 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       if (recovery == null ||
           !recovery.isCurrent(coordinator, authProvider.userId)) {
         // Still on home but nothing was resumed: say so and keep retry open.
-        setState(() => _routeRecoveryError =
-            '안내를 이어가지 못했어요. 저장한 일정은 그대로예요. 다시 시도해주세요.');
+        setState(() =>
+            _routeRecoveryError = '안내를 이어가지 못했어요. 저장한 일정은 그대로예요. 다시 시도해주세요.');
         return;
       }
       final routeContext = _resolveAnchor('home.mic').context!;
@@ -455,7 +705,7 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
         routeContext.go(recovery.location);
       } else {
         unawaited(routeContext.push(recovery.location,
-            extra: recovery.snapshot.step == GuideStep.editPreview
+            extra: recovery.opensEditPreview
                 ? <String, dynamic>{
                     'event': recovery.event,
                     'initialGuideStartLocal':
@@ -466,9 +716,8 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
     } catch (_) {
       if (mounted && _atHome()) {
         setState(() => _routeRecoveryError =
-            coordinator.state.value.step == GuideStep.editPreview &&
-                    coordinator.state.value.expectedUpdatedStartLocal == null
-                ? '변경할 시간 정보가 남아 있지 않아요. 같은 단계의 미리보기 복구가 필요해요. 저장하지 않았어요.'
+            _needsPreviewRefresh(coordinator.state.value)
+                ? '변경할 시간을 확인하지 못했어요. ‘안내 계속’을 눌러 다시 시도해 주세요.'
                 : '저장한 일정을 안전하게 확인하지 못했어요. 다시 시도해주세요.');
       }
     } finally {
@@ -480,11 +729,16 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   String? _lastId;
   bool? _lastCurrent;
   bool? _lastVisible;
+  bool? _lastLegacyIntroCurrent;
   Rect? _lastRect;
+  Rect? _lastSavedSummaryRect;
   // 저장 단계에 들어올 때마다 '중요한 일정'부터 다시 시작한다. 화면이
   // 이전 안내 단계에 머물러 있어도 새 안내가 저장 단계의 첫 컷아웃을
   // 건너뛰지 않게 한다.
   bool _saveStageResetDone = false;
+  Timer? _confirmScrollCueTimer;
+  bool _showConfirmScrollCue = false;
+
   @override
   void initState() {
     super.initState();
@@ -504,6 +758,7 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
     // Registry mounting and Navigator popup changes do not emit guide signals.
     _routeCheck = Timer.periodic(const Duration(milliseconds: 100), (_) {
       final snapshot = coordinator.state.value;
+      _syncConfirmScrollCue(snapshot);
       // correctAndSave 단계에는 일반 대상 ID가 없으므로 저장 단계 대상을
       // 따로 본다. '중요한 일정' → '강한 알림'으로 넘어가면 앵커가 나중에
       // 등록되므로, 여기서 다시 그리지 않으면 구멍이 옛 자리에 남는다.
@@ -511,19 +766,28 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       final target = id == null ? null : _resolveAnchor(id).context;
       final current = _targetIsCurrent(target);
       final visible = current && _targetIsVisible(target);
+      final legacyIntroCurrent = _legacyIntroIsCurrent();
       // 앵커가 같은 화면에 있어도 스크롤로 위치가 바뀌면 구멍이 옛 자리에
       // 남는다. 대상 영역이 실제로 움직였는지도 함께 지켜본다.
       final rect = id == null ? null : _targetRectInHost(id);
+      final summaryRect = id == 'saved.confirm' &&
+              _targetIsCurrent(_resolveAnchor('saved.summary').context)
+          ? _targetRectInHost('saved.summary')
+          : null;
       if (!identical(target, _lastTarget) ||
           current != _lastCurrent ||
           visible != _lastVisible ||
+          legacyIntroCurrent != _lastLegacyIntroCurrent ||
           rect != _lastRect ||
+          summaryRect != _lastSavedSummaryRect ||
           id != _lastId) {
         _lastTarget = target;
         _lastId = id;
         _lastCurrent = current;
         _lastVisible = visible;
+        _lastLegacyIntroCurrent = legacyIntroCurrent;
         _lastRect = rect;
+        _lastSavedSummaryRect = summaryRect;
         if (mounted) setState(() {});
       }
     });
@@ -532,6 +796,7 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   @override
   void dispose() {
     _routeCheck?.cancel();
+    _confirmScrollCueTimer?.cancel();
     coordinator.state.removeListener(_onGuideStateForSaveStage);
     guideSaveStage.removeListener(_onSaveStageChanged);
     guideConfirmReady.removeListener(_onConfirmGateChanged);
@@ -545,7 +810,32 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
 
   /// 파싱 완료·사용자 스크롤 상태가 바뀌면 스포트라이트를 다시 그린다.
   void _onConfirmGateChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _syncConfirmScrollCue(coordinator.state.value);
+    setState(() {});
+  }
+
+  bool _waitingForConfirmScroll(GuideSnapshot snapshot) =>
+      snapshot.run == GuideRun.active &&
+      snapshot.step == GuideStep.correctAndSave &&
+      guideConfirmReady.value &&
+      !guideConfirmUserScrolled.value &&
+      _targetIsCurrent(_resolveAnchor('confirm.review').context);
+
+  void _syncConfirmScrollCue(GuideSnapshot snapshot) {
+    if (!_waitingForConfirmScroll(snapshot)) {
+      _confirmScrollCueTimer?.cancel();
+      _confirmScrollCueTimer = null;
+      if (_showConfirmScrollCue) setState(() => _showConfirmScrollCue = false);
+      return;
+    }
+    if (_showConfirmScrollCue || _confirmScrollCueTimer != null) return;
+    _confirmScrollCueTimer = Timer(const Duration(seconds: 2), () {
+      _confirmScrollCueTimer = null;
+      if (mounted && _waitingForConfirmScroll(coordinator.state.value)) {
+        setState(() => _showConfirmScrollCue = true);
+      }
+    });
   }
 
   /// 안내가 저장 단계에 새로 진입할 때만 단계를 초기화한다. 같은 저장
@@ -553,6 +843,7 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   void _onGuideStateForSaveStage() {
     if (!mounted) return;
     final s = coordinator.state.value;
+    _syncConfirmScrollCue(s);
     final active =
         s.run == GuideRun.active && s.step == GuideStep.correctAndSave;
     if (!active) {
@@ -564,16 +855,36 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
     guideSaveStage.value = GuideSaveStage.important;
   }
 
-  /// 저장 단계에서 강조할 실제 화면 대상(앵커 ID).
-  String? _saveStageTargetId(GuideSnapshot s) {
-    if (s.run != GuideRun.active || s.step != GuideStep.correctAndSave) {
+  String? _visibleSaveOption() {
+    if (!guideConfirmSpotlightEligible(
+        ready: guideConfirmReady.value,
+        userScrolled: guideConfirmUserScrolled.value)) {
       return null;
     }
-    return switch (guideSaveStage.value) {
+    final id = switch (guideSaveStage.value) {
       GuideSaveStage.important => 'confirm.critical',
       GuideSaveStage.strong => 'confirm.strong',
       GuideSaveStage.save => 'confirm.save',
     };
+    final target = _resolveAnchor(id).context;
+    return _targetIsCurrent(target) && _targetIsVisible(target) ? id : null;
+  }
+
+  String? _visibleConfirmReviewTarget() {
+    if (!guideConfirmReady.value) return null;
+    for (final id in _confirmReviewTargets) {
+      final target = _resolveAnchor(id).context;
+      if (_targetIsCurrent(target) && _targetIsVisible(target)) return id;
+    }
+    return null;
+  }
+
+  /// 저장 안내에서 현재 화면에 보이는 편집 필드 또는 실제 조작 대상.
+  String? _saveStageTargetId(GuideSnapshot s) {
+    if (s.run != GuideRun.active || s.step != GuideStep.correctAndSave) {
+      return null;
+    }
+    return _visibleSaveOption() ?? _visibleConfirmReviewTarget();
   }
 
   /// 앵커가 지금 화면 어디에 있는지(호스트 좌표). 스크롤로 움직였는지
@@ -626,6 +937,9 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
     return !offstage;
   }
 
+  bool _legacyIntroIsCurrent() =>
+      _targetIsCurrent(_resolveAnchor(LegacyIntroScreen.routeAnchorId).context);
+
   bool _targetIsVisible(BuildContext? target) {
     if (target == null || !target.mounted) return false;
     final root = context.findRenderObject();
@@ -663,6 +977,10 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
 
   String? _targetId(GuideSnapshot s) {
     if (s.step == GuideStep.savedDetail) {
+      final confirm = _resolveAnchor('saved.confirm').context;
+      if (_targetIsCurrent(confirm) && _targetIsVisible(confirm)) {
+        return 'saved.confirm';
+      }
       // Start on the saved event summary. The prep/departure card is farther
       // down and may be absent until its own data is available.
       final summary = _resolveAnchor('saved.summary').context;
@@ -671,12 +989,23 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       if (_targetIsCurrent(detail)) return 'saved.departure';
       final row = _resolveAnchor('calendar.saved').context;
       if (_targetIsCurrent(row)) return 'calendar.saved';
+      final loading = _resolveAnchor('calendar.loading').context;
+      if (_targetIsCurrent(loading)) return 'calendar.loading';
       final retry = _resolveAnchor('calendar.retry').context;
       return _targetIsCurrent(retry) ? 'calendar.retry' : 'calendar.saved';
     }
     if (s.step == GuideStep.querySpeech) {
       final input = _resolveAnchor('voice.review').context;
-      return _targetIsCurrent(input) ? 'voice.review' : 'query.results';
+      if (_targetIsCurrent(input)) return 'voice.review';
+      if (_targetIsCurrent(_resolveAnchor('query.composer').context)) {
+        return 'query.composer';
+      }
+      final retry = _resolveAnchor('query.retry').context;
+      if (_targetIsCurrent(retry)) {
+        final mic = _resolveAnchor('query.retryMic').context;
+        return _targetIsCurrent(mic) ? 'query.retryMic' : 'query.retry';
+      }
+      return 'query.results';
     }
     return switch (s.step) {
       GuideStep.homeMic => 'home.mic',
@@ -684,18 +1013,25 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       // starts recognition. The transcript card and the disabled
       // "현재 내용으로 입력" button stay dimmed.
       GuideStep.createSpeech => 'voice.start',
-      // correctAndSave shows an always-visible top banner instead of an
-      // anchored bubble, so the AI-classification guide appears immediately
-      // without scrolling (user request).
+      // correctAndSave selects its visible review fields and save controls
+      // separately to keep the important/alarm/save sequence scroll-driven.
       GuideStep.queryMic => 'query.mic',
-      GuideStep.queryResults || GuideStep.changeSpeech => 'query.results',
+      GuideStep.queryResults || GuideStep.changeSpeech => 'query.composer',
       GuideStep.editPreview => 'edit.save',
-      GuideStep.updatedDetail => 'updated.detail',
+      GuideStep.updatedDetail => 'updated.confirm',
       _ => null,
     };
   }
 
   (String, String) _copy(GuideSnapshot s, String id) {
+    final saved = s.savedLocalDate;
+    final date =
+        saved == null ? null : (saved.isUtc ? planflowLocal(saved) : saved);
+    final dateWords = date == null ? null : '${date.month}월 ${date.day}일';
+    final retry = id == 'query.retry' ||
+        id == 'query.retryMic' ||
+        (id == 'query.composer' &&
+            _targetIsCurrent(_resolveAnchor('query.retry').context));
     return switch (s.step) {
       GuideStep.homeMic => ('1/7 · 음성으로 입력 시작', '버튼을 눌러 음성으로 일정을 입력해보세요.'),
       GuideStep.createSpeech => ('1/7', ''),
@@ -709,25 +1045,35 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
               ? '실제로 저장됐어요. 일정 탭에서 방금 저장한 일정을 눌러주세요.'
               : id == 'calendar.retry'
                   ? '저장한 일정을 찾지 못했어요. ‘다시 확인’으로 기존 목록만 새로 불러와요. 새 일정은 만들지 않아요.'
-                  : id == 'saved.summary'
-                      ? '저장한 일정과 장소를 확인해 주세요. 준비를 시작할 시간과 늦지 않게 출발할 시간을 알려드려요.'
-                      : '저장한 일정과 장소를 확인해 주세요. 준비를 시작할 시간과 늦지 않게 출발할 시간을 알려드려요. 이제 음성으로 일정 수정도 할 수 있어요. 다시 음성 입력 버튼을 눌러주세요.'
+                  : '‘저장된 일정 확인’에서 제목, 날짜·시간과 장소를 확인한 뒤, 화면 아래의 ‘준비·출발 안내 확인’ 버튼을 눌러 주세요.'
         ),
       GuideStep.queryMic || GuideStep.querySpeech => (
           '4/7 · 음성으로 조회',
-          '마이크를 누르고 “내일 일정 보여줘”라고 말해주세요.'
+          retry
+              ? dateWords == null
+                  ? '조회 결과에 방금 저장한 일정이 없어요. 저장한 일정의 날짜로 다시 말해 주세요.'
+                  : '조회 결과에 방금 저장한 일정이 없어요. “$dateWords 일정 보여줘”라고 다시 말해 주세요.'
+              : dateWords == null
+                  ? '마이크를 누르고 “내일 일정 보여줘”라고 말해주세요.'
+                  : '마이크를 누르고 “$dateWords 일정 보여줘”라고 말해주세요.'
         ),
-      GuideStep.queryResults || GuideStep.changeSpeech => (
+      GuideStep.queryResults => (
+          '4/7 · 일정 다시 조회',
+          dateWords == null
+              ? '저장한 일정의 날짜를 말한 뒤 전송 버튼을 눌러 다시 조회해 주세요.'
+              : '“$dateWords 일정 보여줘”라고 말한 뒤 전송 버튼을 눌러 다시 조회해 주세요.'
+        ),
+      GuideStep.changeSpeech => (
           '5/7 · 음성으로 변경',
-          '방금 저장한 일정이 첫 번째로 보여요. “첫 번째 일정 오후 3시로 변경해줘” 또는 “장소를 서울역으로 바꿔줘”라고 말해보세요.'
+          '방금 저장한 일정이 첫 번째로 보여요. “첫 번째 일정을 오후 5시로 변경해줘”라고 말해 보세요.'
         ),
       GuideStep.editPreview => (
           '6/7 · 변경 내용 확인·저장',
-          '바꿀 시간을 확인하세요. 틀리면 글자로 고친 뒤 실제 저장 버튼을 눌러요. 저장 전에는 일정이 바뀌지 않아요.'
+          '밝게 표시된 시작 시간과 종료 시간을 확인하고 저장 버튼을 눌러 주세요.'
         ),
       GuideStep.updatedDetail => (
           '7/7 · 변경 완료',
-          '같은 일정의 시간이 실제로 바뀌었는지 확인하세요. 확인 버튼을 누르면 마지막으로 동기화를 선택해요.'
+          '변경된 시작 시간과 종료 시간을 확인하고 화면 아래의 ‘변경된 시간 확인’ 버튼을 눌러 주세요. 마지막으로 동기화를 선택해요.'
         ),
       GuideStep.syncChoice || GuideStep.completed => (
           '마무리',
@@ -741,13 +1087,18 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   Widget build(BuildContext context) => ValueListenableBuilder<GuideSnapshot>(
       valueListenable: coordinator.state,
       builder: (context, s, _) {
+        final legacyIntroCurrent = _legacyIntroIsCurrent();
         // 저장 화면 안내가 실제로 떠 있는지 여부. 편집기는 이 값이 true인
         // 동안에만 안내 단계(중요한 일정 → 강한 알림 → 저장)를 진행시킨다.
-        final saveStageActive =
-            s.run == GuideRun.active && s.step == GuideStep.correctAndSave;
+        final saveStageActive = !legacyIntroCurrent &&
+            s.run == GuideRun.active &&
+            s.step == GuideStep.correctAndSave;
         if (guideSaveStageActive.value != saveStageActive) {
           guideSaveStageActive.value = saveStageActive;
         }
+        // The feature intro has its own buttons. Its route may appear before
+        // the current guide target mounts, so suppress the waiting card too.
+        if (legacyIntroCurrent) return const SizedBox.shrink();
         // 말하는 중에도 무엇을 말해야 하는지 화면에 남아 있어야 한다.
         // 말풍선이 음성 원문을 가리면 안 되므로 음성 원문과 마이크를 밝은
         // 구멍으로 뚫고, 그 바로 위에 연습 카드를 띄운다.
@@ -758,20 +1109,24 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
               registry: realUiGuideAnchorRegistry,
               targetId: 'voice.review',
               additionalTargetIds: const <String>['voice.start'],
+              pulseTargetIds: const <String>['voice.start'],
               blockOutsideTaps: false,
               skipLabel: '안내 건너뛰기',
               bubble: const VoiceCorrectionExample(compact: true),
               progressLabel: '1/7',
-              onSkip: widget.onSkip ??
+              onSkip: widget.isGuideQa ? null : widget.onSkip ??
                   () {
                     unawaited(coordinator.terminate(GuideExit.skip));
                   });
         }
         final id = _targetId(s);
-        final ({GuidedAnchorRegistry registry, BuildContext? context}) resolved =
-            id == null
-                ? (registry: realUiGuideAnchorRegistry, context: null)
-                : _resolveAnchor(id);
+        if (id == 'calendar.loading') return const SizedBox.shrink();
+        final ({
+          GuidedAnchorRegistry registry,
+          BuildContext? context
+        }) resolved = id == null
+            ? (registry: realUiGuideAnchorRegistry, context: null)
+            : _resolveAnchor(id);
         final target = resolved.context;
         final currentTarget = _targetIsCurrent(target);
         final visibleTarget = currentTarget && _targetIsVisible(target);
@@ -794,8 +1149,10 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                               child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Text(
-                                        '안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
+                                    GuideInstructionText(
+                                        widget.isGuideQa
+                                            ? '안내할 실제 화면을 기다리고 있어요. 화면을 확인해 주세요.'
+                                            : '안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
                                     if (GuideRouteRecovery.supports(s) &&
                                         _atHome())
                                       TextButton(
@@ -804,10 +1161,14 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                                           onPressed: _recoveringRoute
                                               ? null
                                               : _continueBoundGuide,
-                                          child: const Text('안내 계속')),
+                                          child: Text(_recoveringRoute
+                                              ? '안내를 불러오는 중…'
+                                              : '안내 계속')),
                                     if (_routeRecoveryError != null)
-                                      Text(_routeRecoveryError!),
-                                    TextButton(
+                                      GuideInstructionText(
+                                          _routeRecoveryError!),
+                                    if (!widget.isGuideQa)
+                                      TextButton(
                                         key: const ValueKey(
                                             'guide-missing-target-skip'),
                                         onPressed: widget.onSkip ??
@@ -818,8 +1179,6 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                                         child: const Text('안내 건너뛰기')),
                                   ]))))));
         }
-        // correctAndSave: immediate top banner (no anchor) so the AI guide
-        // is visible on entry, per user flow.
         if (s.step == GuideStep.correctAndSave) {
           if (s.run != GuideRun.active) {
             return const SizedBox.shrink();
@@ -830,29 +1189,14 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
           if (!guideConfirmReady.value) {
             return const SizedBox.shrink();
           }
-          // 실제 화면을 누르는 순서대로 강조 대상이 바뀐다.
-          //   1) '중요한 일정으로 표시' 체크박스
-          //   2) '강한 알림' 스위치
-          //   3) '일정 저장' 버튼
           final stage = guideSaveStage.value;
-          final guideTarget = switch (stage) {
-            GuideSaveStage.important => 'confirm.critical',
-            GuideSaveStage.strong => 'confirm.strong',
-            GuideSaveStage.save => 'confirm.save',
-          };
-          final targetContext = _resolveAnchor(guideTarget).context;
-          // 화면에 들어오자마자 보이는 안내: 스크롤 전에는 날짜·시간·장소를
-          // 먼저 확인하게 하고, 사용자가 직접 내린 뒤에만 단계별 강조(구멍)를
-          // 켜서 '중요한 일정'부터 순서대로 진행한다.
-          final spotlight = guideConfirmSpotlightEligible(
-                  ready: guideConfirmReady.value,
-                  userScrolled: guideConfirmUserScrolled.value) &&
-              _targetIsCurrent(targetContext) &&
-              _targetIsVisible(targetContext);
-          final bannerCopy = !spotlight
+          final actionTarget = _visibleSaveOption();
+          final reviewTarget =
+              actionTarget == null ? _visibleConfirmReviewTarget() : null;
+          final bannerCopy = actionTarget == null
               ? (
                   '2/7 · 일정 확인',
-                  '날짜·시간·장소가 맞는지 먼저 확인해 주세요.\n아래로 내리면 ‘중요한 일정’ → ‘강한 알람’ → ‘일정 저장’ 순서로 안내할게요.'
+                  '제목, 날짜·시간, 장소가 맞는지 확인해 주세요.\n확인했다면 아래로 스크롤해 주세요. ‘중요한 일정’ → ‘강한 알람’ → ‘일정 저장’ 순서로 안내할게요.'
                 )
               : switch (stage) {
                   GuideSaveStage.important => (
@@ -868,24 +1212,42 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                       '이제 ‘일정 저장’을 눌러 저장해 보세요.'
                     ),
                 };
-          // Never reveal or scroll to a guide target automatically. The
-          // spotlight is eligible only after parsing finished and the user
-          // scrolled the list down by themselves.
+          final bannerBody = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GuideInstructionText(bannerCopy.$2),
+              if (actionTarget == null &&
+                  !guideConfirmUserScrolled.value &&
+                  _showConfirmScrollCue)
+                const _ConfirmScrollCue(),
+            ],
+          );
+          final guideTarget = actionTarget ?? reviewTarget;
+          if (guideTarget != null) {
+            final additionalTargets = reviewTarget != null
+                ? _confirmReviewTargets
+                    .where((id) => id != reviewTarget)
+                    .toList(growable: false)
+                : stage == GuideSaveStage.save
+                    ? const <String>['confirm.save.top']
+                    : const <String>[];
+            return GuidedCoachmarkOverlay(
+                registry: realUiGuideAnchorRegistry,
+                targetId: guideTarget,
+                additionalTargetIds: additionalTargets,
+                pulseTargetIds: actionTarget == null
+                    ? const <String>[]
+                    : <String>[actionTarget, ...additionalTargets],
+                preferBubbleBetweenTargets: additionalTargets.isNotEmpty,
+                blockOutsideTaps: false,
+                bubble: bannerBody,
+                progressLabel: bannerCopy.$1,
+                skipLabel: '안내 건너뛰기',
+                onSkip: widget.isGuideQa ? null : widget.onSkip ??
+                    () => unawaited(coordinator.terminate(GuideExit.skip)));
+          }
           return Stack(children: [
-            // 대상이 보이지 않을 때는 오버레이가 스스로 딤을 생략한다.
-            if (spotlight)
-              GuidedCoachmarkOverlay(
-                  registry: realUiGuideAnchorRegistry,
-                  targetId: guideTarget,
-                  blockOutsideTaps: false,
-                  showBubble: false,
-                  bubble: const SizedBox.shrink(),
-                  progressLabel: '2/7',
-                  skipLabel: '안내 건너뛰기',
-                  onSkip: widget.onSkip ??
-                      () {
-                        unawaited(coordinator.terminate(GuideExit.skip));
-                      }),
             SafeArea(
                 child: Align(
                     alignment: Alignment.topCenter,
@@ -919,9 +1281,10 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                                                                 FontWeight
                                                                     .w700)),
                                                 const SizedBox(height: 8),
-                                                Text(bannerCopy.$2),
+                                                bannerBody,
                                               ])))),
-                              TextButton(
+                              if (!widget.isGuideQa)
+                                TextButton(
                                   onPressed: widget.onSkip ??
                                       () => unawaited(coordinator
                                           .terminate(GuideExit.skip)),
@@ -948,9 +1311,12 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                               child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Text(
-                                        '안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
-                                    TextButton(
+                                    GuideInstructionText(
+                                        widget.isGuideQa
+                                            ? '안내할 실제 화면을 기다리고 있어요. 화면을 확인해 주세요.'
+                                            : '안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
+                                    if (!widget.isGuideQa)
+                                      TextButton(
                                         key: const ValueKey(
                                             'guide-missing-target-skip'),
                                         onPressed: widget.onSkip ??
@@ -960,25 +1326,127 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                                   ]))))));
         }
         final copy = _copy(s, id);
+        if (s.step == GuideStep.editPreview) {
+          return GuidedCoachmarkOverlay(
+              registry: resolved.registry,
+              targetId: id,
+              additionalTargetIds: const <String>[
+                'edit.title',
+                'edit.dateTime',
+                'edit.location',
+                'edit.save.footer',
+              ],
+              pulseTargetIds: const <String>[
+                'edit.dateTime',
+                'edit.save',
+                'edit.save.footer',
+              ],
+              preferBubbleBetweenTargets: true,
+              preferLowerBubbleSlot: true,
+              blockOutsideTaps: false,
+              bubble: GuideInstructionText(copy.$2),
+              progressLabel: copy.$1,
+              skipLabel: '안내 건너뛰기',
+              onSkip: widget.isGuideQa ? null : widget.onSkip ??
+                  () => unawaited(coordinator.terminate(GuideExit.skip)));
+        }
+        final conversationComposer = id == 'query.composer';
         return GuidedCoachmarkOverlay(
             registry: resolved.registry,
             targetId: id,
+            pulseTargetIds: id == 'updated.confirm'
+                ? const <String>['updated.confirm', 'updated.time']
+                : conversationComposer
+                    ? const <String>['query.retryMic', 'query.send']
+                    : id == 'voice.start' || id == 'voice.review'
+                        ? const <String>['voice.start', 'voice.submit']
+                        : const <String>{
+                            'home.mic',
+                            'calendar.saved',
+                            'calendar.retry',
+                            'saved.confirm',
+                            'query.mic',
+                            'query.retryMic',
+                            'query.retry',
+                          }.contains(id)
+                            ? <String>[id]
+                            : const <String>[],
+            passThroughTargetIds: id == 'voice.start'
+                ? const <String>['voice.submit']
+                : const <String>[],
             blockOutsideTaps: id == 'home.mic' ||
                 id == 'voice.start' ||
                 id == 'query.mic' ||
+                (conversationComposer && s.step == GuideStep.querySpeech) ||
+                id == 'query.retryMic' ||
+                id == 'query.retry' ||
                 id == 'calendar.saved' ||
                 id == 'calendar.retry',
             skipLabel: '안내 건너뛰기',
-            additionalTargetIds: const <String>[],
+            preferBubbleBetweenTargets:
+                id == 'saved.confirm' || id == 'updated.confirm',
+            preferLowerBubbleSlot:
+                id == 'saved.confirm' || id == 'updated.confirm',
+            alignBubbleAboveTarget:
+                id == 'saved.confirm' || id == 'updated.confirm',
+            additionalTargetIds: id == 'saved.confirm'
+                ? const <String>['saved.summary']
+                : id == 'updated.confirm'
+                    ? const <String>['updated.time']
+                    : conversationComposer
+                        ? const <String>['query.retryMic']
+                        : s.step == GuideStep.querySpeech && id == 'voice.review'
+                            ? const <String>['voice.start']
+                            : const <String>[],
             bubble: s.step == GuideStep.createSpeech
                 ? const VoiceCorrectionExample()
-                : Text(copy.$2),
+                : conversationComposer
+                    ? GuideInstructionText.rich(TextSpan(children: [
+                        TextSpan(text: '${copy.$2}\n\n'),
+                        const TextSpan(
+                          text: '말을 다 했다면 전송 버튼을 꼭 눌러 주세요.',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ]))
+                    : GuideInstructionText(copy.$2),
             progressLabel: copy.$1,
-            onSkip: widget.onSkip ??
+            onSkip: widget.isGuideQa ? null : widget.onSkip ??
                 () {
                   unawaited(coordinator.terminate(GuideExit.skip));
                 });
       });
+}
+
+class _ConfirmScrollCue extends StatelessWidget {
+  const _ConfirmScrollCue();
+
+  @override
+  Widget build(BuildContext context) {
+    final arrow = Icon(
+      Icons.keyboard_double_arrow_down_rounded,
+      color: Theme.of(context).colorScheme.primary,
+    );
+    return SizedBox(
+      key: const ValueKey('guide-confirm-scroll-cue'),
+      height: 38,
+      child: MediaQuery.disableAnimationsOf(context)
+          ? Center(child: arrow)
+          : TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 900),
+              builder: (context, value, child) {
+                final bounce = 1 - (2 * value - 1).abs();
+                return Center(
+                  child: Transform.translate(
+                    offset: Offset(0, 5 * Curves.easeInOut.transform(bounce)),
+                    child: child,
+                  ),
+                );
+              },
+              child: arrow,
+            ),
+    );
+  }
 }
 
 /// Waits for observed guide evidence, not a timer or a fabricated Next signal.
@@ -1005,6 +1473,76 @@ Future<void> waitForGuideState(
     coordinator.state.removeListener(check);
     auth.removeListener(check);
   }
+}
+
+/// An earned ad reward may survive the background pause caused by displaying
+/// the ad. It is still bound to the original account, screen and guide step.
+Future<GuideSnapshot?> resumeGuideReplayAfterReward({
+  required GuideCoordinator coordinator,
+  required GuideSnapshot captured,
+  required bool Function() stillOwnsScreen,
+  required Listenable accountChanges,
+}) async {
+  final session = captured.sessionId;
+  if (!captured.isReplay || captured.run != GuideRun.active || session == null) {
+    return null;
+  }
+  final settled = Completer<GuideSnapshot?>();
+
+  void check() {
+    if (settled.isCompleted) return;
+    final current = coordinator.state.value;
+    final adPause = current.isReplay &&
+        current.uid == captured.uid &&
+        current.version == captured.version &&
+        current.sessionId == session &&
+        current.step == captured.step &&
+        current.serverRevision == captured.serverRevision &&
+        current.revision == captured.revision + 1 &&
+        current.run == GuideRun.paused &&
+        current.pauseReason == GuidePauseReason.background;
+    if (!stillOwnsScreen() || (!identical(current, captured) && !adPause)) {
+      settled.complete(null);
+    } else {
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (lifecycle == null || lifecycle == AppLifecycleState.resumed) {
+        settled.complete(current);
+      }
+    }
+  }
+
+  final listener = AppLifecycleListener(onStateChange: (_) => check());
+  coordinator.state.addListener(check);
+  accountChanges.addListener(check);
+  GuideSnapshot? ready;
+  try {
+    check();
+    ready = await settled.future.timeout(guideBeginTimeout, onTimeout: () => null);
+  } finally {
+    listener.dispose();
+    coordinator.state.removeListener(check);
+    accountChanges.removeListener(check);
+  }
+  if (ready == null || !stillOwnsScreen() || !identical(coordinator.state.value, ready)) {
+    return null;
+  }
+  if (identical(ready, captured)) return captured;
+  final resumed = await coordinator.dispatch(ResumeRequested(
+      uid: captured.uid, sessionId: session, expectedRevision: ready.revision));
+  final lifecycle = WidgetsBinding.instance.lifecycleState;
+  if (!stillOwnsScreen() ||
+      (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
+      !identical(coordinator.state.value, resumed) ||
+      resumed.uid != captured.uid ||
+      resumed.version != captured.version ||
+      resumed.sessionId != session ||
+      resumed.step != captured.step ||
+      resumed.serverRevision != captured.serverRevision ||
+      resumed.revision != ready.revision + 1 ||
+      resumed.run != GuideRun.active || !resumed.isReplay) {
+    return null;
+  }
+  return resumed;
 }
 
 /// The production Shell uses this order; tests inject ports, never Supabase.

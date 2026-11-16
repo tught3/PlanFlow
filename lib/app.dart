@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb, visibleForTesting;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 
@@ -20,6 +22,7 @@ import 'core/region_settings.dart';
 import 'core/router.dart';
 import 'core/safe_prefs.dart';
 import 'core/startup_route_gate.dart';
+import 'core/supabase_auth_options.dart';
 import 'core/home_widget_route_coordinator.dart';
 import 'core/theme.dart';
 
@@ -37,6 +40,7 @@ import 'features/groups/services/group_calendar_widget_service.dart';
 import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
+import 'services/auth_service.dart';
 import 'services/briefing_scheduler_service.dart';
 import 'services/event_reminder_channel_migration_service.dart';
 import 'services/activity_tracking_service.dart';
@@ -143,6 +147,303 @@ void seedHomeAndDeferHomeWidgetPush({
   WidgetsBinding.instance.ensureVisualUpdate();
 }
 
+const _isolatedGuideQa = bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA');
+const _guideQaPackageName = 'com.fluxstudio.planflow.guideqa';
+
+bool get _isAndroidDebug =>
+    kDebugMode && !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+Future<bool> _matchesGuideQaPackage({
+  Future<String> Function()? readPackageName,
+}) async {
+  final packageName = readPackageName == null
+      ? (await PackageInfo.fromPlatform()).packageName
+      : await readPackageName();
+  return packageName == _guideQaPackageName;
+}
+
+@visibleForTesting
+Future<bool> canSwitchGuideQaAccount({
+  bool isolatedGuideQa = _isolatedGuideQa,
+  bool? androidDebug,
+  Future<String> Function()? readPackageName,
+}) async {
+  final supportedPlatform = androidDebug ?? _isAndroidDebug;
+  if (!isolatedGuideQa || !supportedPlatform) return false;
+  try {
+    return await _matchesGuideQaPackage(readPackageName: readPackageName);
+  } catch (_) {
+    return false;
+  }
+}
+
+@visibleForTesting
+({String? uid, bool qaAccountMismatch}) resolveGuideEntry({
+  required AuthProvider auth,
+  required bool isGuideQa,
+  required bool qaPackageCheckPending,
+  String expectedQaUid =
+      const String.fromEnvironment('PLANFLOW_GUIDE_QA_EXPECTED_UID'),
+}) {
+  final uid = auth.userId;
+  if (qaPackageCheckPending ||
+      !auth.hasActiveSession ||
+      uid == null ||
+      uid.isEmpty) {
+    return (uid: null, qaAccountMismatch: false);
+  }
+  if (isGuideQa && expectedQaUid.isNotEmpty && uid != expectedQaUid) {
+    return (uid: null, qaAccountMismatch: true);
+  }
+  return (uid: uid, qaAccountMismatch: false);
+}
+
+@visibleForTesting
+class GuideQaAccountSwitch extends ChangeNotifier {
+  static const _providerConfirmationTimeout = Duration(seconds: 8);
+  static GuideQaAccountSwitch? _explicitSignOutOwner;
+
+  bool _inFlight = false;
+  bool _confirming = false;
+  bool _disposed = false;
+  Completer<void>? _providerSignOutWait;
+  ({AuthProvider auth, String uid, VoidCallback listener})? _signOutRecovery;
+  bool get inFlight => _inFlight;
+  bool get needsSignOutRecovery => _signOutRecovery != null;
+
+  bool canSwitch(AuthProvider auth) =>
+      !_disposed &&
+      !_confirming &&
+      !_inFlight &&
+      auth.userId?.isNotEmpty == true &&
+      (needsSignOutRecovery ||
+          auth.sessionStatus == AuthSessionStatus.active ||
+          auth.sessionStatus == AuthSessionStatus.reauthRequired);
+
+  Future<bool> signOut({
+    required String uid,
+    required AuthProvider auth,
+    required AuthSessionClient service,
+    Future<bool> Function()? confirmCurrentAccount,
+  }) async {
+    bool canStart() {
+      final owner = _explicitSignOutOwner;
+      final recovery = _signOutRecovery;
+      final ownsRetry = identical(owner, this) &&
+          identical(recovery?.auth, auth) &&
+          recovery?.uid == uid;
+      return canSwitch(auth) &&
+          auth.userId == uid &&
+          !PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
+          (ownsRetry ||
+              (owner == null &&
+                  !PlanFlowAuthLocalStorage.isExplicitSignOutInProgress));
+    }
+    if (!canStart()) return false;
+
+    final session = service.currentSession;
+    final sessionUid = session?.user.id;
+    final sdkUid = service.currentUser?.id;
+    if (sdkUid != sessionUid) return false;
+    final recovery = _signOutRecovery;
+    if (recovery != null && session != null) {
+      // Retrying provider confirmation must never sign out a new SDK session.
+      recovery.listener();
+      return false;
+    }
+    final needsConfirmation = sessionUid != null && sessionUid != uid;
+
+    final sessionChanged = Completer<void>();
+    bool signedOut() =>
+        auth.userId == null && auth.sessionStatus == AuthSessionStatus.signedOut;
+    bool sdkSignedOut() =>
+        service.currentSession == null && service.currentUser == null;
+    var superseded = false;
+    void onAuthChange() {
+      final currentUid = auth.userId;
+      if (currentUid != null &&
+          (currentUid != uid || sessionChanged.isCompleted)) {
+        superseded = true;
+      }
+      if (!sessionChanged.isCompleted && (superseded || signedOut())) {
+        sessionChanged.complete();
+      }
+    }
+
+    var started = false;
+    auth.addListener(onAuthChange);
+    try {
+      if (needsConfirmation) {
+        if (confirmCurrentAccount == null) return false;
+        _confirming = true;
+        if (!await confirmCurrentAccount()) return false;
+        _confirming = false;
+        // Confirmation applies only to the exact SDK session the user saw.
+        if (superseded ||
+            !canStart() ||
+            !identical(service.currentSession, session) ||
+            service.currentUser?.id != sdkUid) {
+          return false;
+        }
+      }
+
+      // Keep the barrier up through the SDK call even if signedOut is published
+      // earlier. The existing AuthService signs out the current local session.
+      started = true;
+      _inFlight = true;
+      _explicitSignOutOwner = this;
+      PlanFlowAuthLocalStorage.beginExplicitSignOut();
+      try {
+        final logout = service.signOut();
+        if (!_disposed) notifyListeners();
+        await logout;
+      } catch (_) {
+        if (superseded) return false;
+        // Revocation may fail after the SDK has already signed out locally.
+        if (!sdkSignedOut() || (session == null && !signedOut())) rethrow;
+      }
+
+      if (_disposed || superseded || !sdkSignedOut()) return false;
+      _providerSignOutWait = sessionChanged;
+      await sessionChanged.future.timeout(
+        _providerConfirmationTimeout,
+        onTimeout: () {},
+      );
+      if (_disposed || superseded) return false;
+      if (signedOut() && sdkSignedOut()) return true;
+      // The SDK finished but the provider still has the old account snapshot.
+      // Keep input blocked and let the user retry without changing the snapshot.
+      if (auth.userId == uid) _trackSignOutRecovery(auth, uid, service);
+      return false;
+    } finally {
+      _providerSignOutWait = null;
+      auth.removeListener(onAuthChange);
+      _confirming = false;
+      if (started) {
+        _inFlight = false;
+        // AuthProvider must still treat a late signedOut as explicit while
+        // the QA recovery barrier owns the old snapshot.
+        if (!needsSignOutRecovery) _releaseExplicitSignOut();
+        if (!_disposed) notifyListeners();
+      }
+    }
+  }
+
+  void _trackSignOutRecovery(
+    AuthProvider auth,
+    String uid,
+    AuthSessionClient service,
+  ) {
+    _clearSignOutRecovery();
+    void onAuthChange() {
+      final hasReplacementSession = auth.hasActiveSession &&
+          service.currentSession?.user.id == uid &&
+          service.currentUser?.id == uid;
+      if (auth.userId == uid && !hasReplacementSession) return;
+      _clearSignOutRecovery();
+      if (!_disposed) notifyListeners();
+    }
+
+    _signOutRecovery = (auth: auth, uid: uid, listener: onAuthChange);
+    auth.addListener(onAuthChange);
+    onAuthChange();
+  }
+
+  void _clearSignOutRecovery() {
+    final recovery = _signOutRecovery;
+    if (recovery == null) return;
+    _signOutRecovery = null;
+    recovery.auth.removeListener(recovery.listener);
+    if (!_inFlight) _releaseExplicitSignOut();
+  }
+
+  void _releaseExplicitSignOut() {
+    if (!identical(_explicitSignOutOwner, this)) return;
+    _explicitSignOutOwner = null;
+    PlanFlowAuthLocalStorage.endExplicitSignOut();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _clearSignOutRecovery();
+    final wait = _providerSignOutWait;
+    if (wait != null && !wait.isCompleted) wait.complete();
+    super.dispose();
+  }
+}
+
+@visibleForTesting
+class GuideQaAccountSwitchBarrier extends StatelessWidget {
+  const GuideQaAccountSwitchBarrier({
+    super.key,
+    required this.pending,
+    required this.child,
+    this.onRetry,
+  });
+
+  final bool pending;
+  final Widget child;
+  final VoidCallback? onRetry;
+
+  @visibleForTesting
+  static Widget wrap({
+    required bool enabled,
+    required bool pending,
+    required Widget child,
+    VoidCallback? onRetry,
+  }) =>
+      enabled
+          ? GuideQaAccountSwitchBarrier(
+              pending: pending,
+              onRetry: onRetry,
+              child: child,
+            )
+          : child;
+
+  @override
+  Widget build(BuildContext context) {
+    final blocked = pending || onRetry != null;
+    return Stack(fit: StackFit.expand, children: [
+      ExcludeFocus(
+        excluding: blocked,
+        child: ExcludeSemantics(
+          excluding: blocked,
+          child: IgnorePointer(ignoring: blocked, child: child),
+        ),
+      ),
+      if (blocked) ...[
+        const ModalBarrier(dismissible: false, color: Colors.black45),
+        SafeArea(
+          child: Center(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (pending) ...[
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 12),
+                      const Text('계정을 로그아웃하고 있어요. 잠시만 기다려 주세요.'),
+                    ] else ...[
+                      const Text('로그아웃을 확인하지 못했어요.'),
+                      TextButton(
+                        onPressed: onRetry,
+                        child: const Text('다시 확인'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ]);
+  }
+}
+
 class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key}) : _guideQa = false;
 
@@ -182,6 +483,16 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<bool>? _foregroundBriefingSubscription;
   Timer? _foregroundBriefingPollTimer;
   bool _reauthSnackBarShown = false;
+  // null means this opted-in build has not verified its package yet.
+  bool? _verifiedGuideQaPackage =
+      _isolatedGuideQa && _isAndroidDebug ? null : false;
+  bool _guideQaPackageCheckFailed = false;
+  bool get _canSwitchGuideQaAccount => _verifiedGuideQaPackage == true;
+  GuideQaAccountSwitch? _qaAccountSwitch;
+  GuideQaAccountSwitch get _guideQaAccountSwitch =>
+      _qaAccountSwitch ??= GuideQaAccountSwitch();
+  late final _guideQaRecoveryChanges =
+      Listenable.merge([authProvider, _guideQaAccountSwitch]);
   bool _startupUpdateCheckRunning = false;
   int _startupUpdateCheckGeneration = 0;
   bool _startupSessionSyncRunning = false;
@@ -231,6 +542,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     // 경우 확인/소비할 수 있게 한다(확인 전용, 네비게이션/예산 리셋 없음).
     appRouter.routeInformationProvider.addListener(_onRouterLocationChanged);
     appRouter.routerDelegate.addListener(_onRouterLocationChanged);
+    if (_verifiedGuideQaPackage == null) {
+      unawaited(_enableGuideQaAccountSwitch());
+    }
     if (widget._guideQa) return;
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
@@ -755,6 +1069,139 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     );
   }
 
+  Future<void> _enableGuideQaAccountSwitch() async {
+    try {
+      final isGuideQa = await _matchesGuideQaPackage();
+      if (mounted) setState(() => _verifiedGuideQaPackage = isGuideQa);
+    } catch (_) {
+      if (mounted) setState(() => _guideQaPackageCheckFailed = true);
+    }
+  }
+
+  Widget _guideQaAccountNotice({
+    required String? uid,
+    required Future<void> Function(String uid)? onSwitchAccount,
+  }) {
+    return Positioned(
+      left: 0,
+      top: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: _guideQaPackageCheckFailed
+            ? MaterialBanner(
+                content: const Text('테스트 앱을 확인하지 못했어요.'),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _guideQaPackageCheckFailed = false);
+                      unawaited(_enableGuideQaAccountSwitch());
+                    },
+                    child: const Text('다시 확인'),
+                  ),
+                ],
+              )
+            : MaterialBanner(
+                key: const ValueKey('guide-qa-account-mismatch'),
+                content: const Text('튜토리얼을 시작하려면 테스트 계정으로 로그인해 주세요.'),
+                actions: [
+                  TextButton(
+                    onPressed: uid == null || onSwitchAccount == null
+                        ? null
+                        : () async {
+                            try {
+                              await onSwitchAccount(uid);
+                            } catch (_) {
+                              if (!mounted || authProvider.userId != uid) return;
+                              AppFeedbackService
+                                  .scaffoldMessengerKey.currentState
+                                  ?.showSnackBar(const SnackBar(
+                                content: Text(
+                                  '계정을 바꾸지 못했어요. 설정에서 다시 로그인해 주세요.',
+                                ),
+                              ));
+                            }
+                          },
+                    child: const Text('계정 바꾸기'),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Future<void> _switchGuideQaAccount(String uid) async {
+    if (!_canSwitchGuideQaAccount ||
+        !mounted ||
+        !_guideQaAccountSwitch.canSwitch(authProvider)) {
+      return;
+    }
+    final service = AuthService();
+    var confirmationDismissed = false;
+    final retryingConfirmation = _guideQaAccountSwitch.needsSignOutRecovery;
+    final signedOut = await _guideQaAccountSwitch.signOut(
+      uid: uid,
+      auth: authProvider,
+      service: service,
+      confirmCurrentAccount: () async {
+        final confirmed = await _confirmGuideQaCurrentAccount();
+        confirmationDismissed = !confirmed;
+        return confirmed && mounted;
+      },
+    );
+    if (!mounted || confirmationDismissed) return;
+    if (!signedOut) {
+      if (authProvider.userId == uid &&
+          !retryingConfirmation &&
+          !_guideQaAccountSwitch.needsSignOutRecovery) {
+        throw StateError('Guide QA account switch did not sign out');
+      }
+      return;
+    }
+    if (authProvider.sessionStatus == AuthSessionStatus.signedOut &&
+        authProvider.userId == null &&
+        service.currentSession == null &&
+        service.currentUser == null) {
+      appRouter.go(AppRoutes.login);
+    }
+  }
+
+  Future<void> _retryGuideQaSignOutConfirmation() async {
+    final uid = authProvider.userId;
+    if (uid == null || !_guideQaAccountSwitch.needsSignOutRecovery) return;
+    try {
+      await _switchGuideQaAccount(uid);
+    } catch (_) {
+      // The retry notice remains available if the SDK cannot confirm logout.
+    }
+  }
+
+  Future<bool> _confirmGuideQaCurrentAccount() async {
+    final context = appRouter.routerDelegate.navigatorKey.currentContext;
+    if (context == null || !context.mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('계정 바꾸기'),
+            content: const Text(
+              '표시된 계정과 현재 로그인 세션이 달라요. '
+              '이 기기의 현재 세션에서 로그아웃하고 QA 계정으로 다시 로그인할까요?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('로그아웃'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   void _onAuthProviderChange() {
     if (!authProvider.isSignedIn) startupRouteGate.resetRequiredSetup();
     if (authProvider.hasResolvedInitialSession &&
@@ -795,6 +1242,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   @override
   void dispose() {
+    _qaAccountSwitch?.dispose();
     authProvider.removeListener(_onAuthProviderChange);
     startupRouteGate.removeListener(_onStartupRouteGateChange);
     appRouter.routeInformationProvider.removeListener(_onRouterLocationChanged);
@@ -1295,19 +1743,49 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
                     updateState == UpdateUiState.updating ||
                         updateState == UpdateUiState.openingPlayStore;
                 return ListenableBuilder(
-                  listenable: authProvider,
-                  builder: (context, _) => RootGuideScope(
-                    uid: authProvider.userId,
-                    bindRuntime: (coordinator) => GuideQuotaRuntime.bind(
-                        coordinator,
-                        uid: authProvider.userId!),
-                    unbindRuntime: GuideQuotaRuntime.unbind,
-                    child: Stack(children: <Widget>[
-                      child ?? const SizedBox.shrink(),
-                      if (showUpdateOverlay)
-                        _UpdateProgressOverlay(state: updateState),
-                    ]),
-                  ),
+                  listenable: _canSwitchGuideQaAccount
+                      ? _guideQaRecoveryChanges
+                      : authProvider,
+                  builder: (context, _) {
+                    final entry = resolveGuideEntry(
+                      auth: authProvider,
+                      isGuideQa: _canSwitchGuideQaAccount,
+                      qaPackageCheckPending: _verifiedGuideQaPackage == null,
+                    );
+                    final switchAccount = _canSwitchGuideQaAccount &&
+                            _guideQaAccountSwitch.canSwitch(authProvider)
+                        ? _switchGuideQaAccount
+                        : null;
+                    return GuideQaAccountSwitchBarrier.wrap(
+                      enabled: _canSwitchGuideQaAccount,
+                      pending: _canSwitchGuideQaAccount &&
+                          _guideQaAccountSwitch.inFlight,
+                      onRetry: _canSwitchGuideQaAccount &&
+                              _guideQaAccountSwitch.needsSignOutRecovery
+                          ? _retryGuideQaSignOutConfirmation
+                          : null,
+                      child: RootGuideScope(
+                        uid: entry.uid,
+                        isGuideQa: _canSwitchGuideQaAccount,
+                        onSwitchQaAccount: switchAccount,
+                        bindRuntime: (coordinator) => GuideQuotaRuntime.bind(
+                            coordinator, uid: entry.uid!),
+                        unbindRuntime: GuideQuotaRuntime.unbind,
+                        child: Stack(children: <Widget>[
+                          child ?? const SizedBox.shrink(),
+                          if (entry.qaAccountMismatch ||
+                              (authProvider.hasActiveSession &&
+                                  _guideQaPackageCheckFailed))
+                            _guideQaAccountNotice(
+                              uid: authProvider.userId,
+                              onSwitchAccount: switchAccount,
+                            ),
+                          if (showUpdateOverlay)
+                            _UpdateProgressOverlay(state: updateState),
+                        ]),
+                      ),
+                    );
+                  },
                 );
               },
             );

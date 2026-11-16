@@ -17,6 +17,8 @@ import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/providers/group_context_provider.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/auth_service.dart';
@@ -106,6 +108,51 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  testWidgets('tutorial restart asks for confirmation and opens the real guide',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final guide = _ReplayGuide();
+    addTearDown(guide.state.dispose);
+    final presented = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: GuideScope(
+        coordinator: guide,
+        child: SettingsScreen(
+          userId: 'user-1',
+          onTutorialRestarted: presented.add,
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
+          settingsRepository: _FakeSettingsRepository(
+            fetched: const UserSettingsModel(id: 'settings-1', userId: 'user-1'),
+          ),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(
+            initialHasCredentials: false,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final tile = find.byKey(const ValueKey('settings-tutorial-replay-button'));
+    await _scrollUntilHitTestable(tester, tile);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(guide.requested, isEmpty);
+    expect(find.textContaining('평소와 같은 AI 사용량'), findsOneWidget);
+    await tester.tap(find.text('다시 시작'));
+    await tester.pumpAndSettle();
+    expect(guide.requested, ['user-1']);
+    expect(presented, ['user-1']);
+    expect(tester.widget<ListTile>(tile).onTap, isNull);
   });
 
   testWidgets(
@@ -1749,6 +1796,34 @@ void main() {
       expect(find.text('내가 리더로 있는 그룹에 일정공유'), findsNothing);
     },
   );
+}
+
+class _ReplayGuide implements GuideCoordinator, GuideReplayCoordinator {
+  @override
+  final ValueNotifier<GuideSnapshot> state = ValueNotifier(const GuideSnapshot(
+    uid: 'user-1',
+    version: 'real_ui_v1',
+    sessionId: 'old',
+    revision: 8,
+    serverRevision: 6,
+    step: GuideStep.completed,
+    run: GuideRun.terminal,
+  ));
+  final requested = <String>[];
+
+  @override
+  Future<bool> restartCompletedGuide({required String uid}) async {
+    requested.add(uid);
+    state.value = state.value.copyWith(
+      sessionId: 'new',
+      step: GuideStep.homeMic,
+      run: GuideRun.active,
+    );
+    return true;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Future<void> _scrollUntilHitTestable(

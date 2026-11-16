@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -93,11 +94,8 @@ class EventEditScreen extends StatefulWidget {
   final GroupEventRepository? groupEventRepository;
   final AppPermissionService? permissionService;
 
-  /// Real UI guide preview start. When non-null, the editor seeds its
-  /// `_startAt` from this value and extends `_endAt` by 1 hour if no user-
-  /// defined end is present. No repository write happens until explicit save.
-  /// This is only meaningful while the guide is bound at `editPreview`; in
-  /// normal use it is ignored.
+  /// The accepted guide preview instant. The editor displays this in the
+  /// PlanFlow region and only persists it after an explicit Save.
   final DateTime? initialGuideStartLocal;
 
   /// 장소 검색(지오코딩) 서비스 주입 지점. 좌표가 이미 있으면 호출하지 않아야
@@ -609,14 +607,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
     context.go(AppRoutes.home);
   }
 
-  // ---- Real UI guide integration ----
-  // - GuideMutationPolicy guards save at `editPreview` step.
-  // - EditPreviewObserved fires when the seeded preview start differs from
-  //   the bound created-event's original start.
-  // - EditConfirmed fires right before the repository write for the
-  //   confirmed user-pressed save.
-  // - UpdateObserved fires only after the actual persisted readback.
-
   GuideSnapshot? _guideEditPreviewState() {
     final coordinator = GuideScope.maybeOf(context);
     if (coordinator == null) return null;
@@ -628,60 +618,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return null;
     }
     return state;
-  }
-
-  bool identicalTimes(DateTime? a, DateTime? b) {
-    if (a == null && b == null) return true;
-    if (a == null || b == null) return false;
-    final la = planflowLocal(a);
-    final lb = planflowLocal(b);
-    return la.year == lb.year &&
-        la.month == lb.month &&
-        la.day == lb.day &&
-        la.hour == lb.hour &&
-        la.minute == lb.minute;
-  }
-
-  Future<void> _dispatchGuideEditConfirmed(
-      EventModel loaded, DateTime start) async {
-    final coordinator = GuideScope.maybeOf(context);
-    if (coordinator == null) return;
-    final state = coordinator.state.value;
-    if (state.uid.isEmpty ||
-        state.sessionId == null ||
-        state.run != GuideRun.active ||
-        state.step != GuideStep.editPreview ||
-        state.createdEventId != loaded.id) {
-      return;
-    }
-    // `start` is the editor's region-local wall-clock value (`_startAt`
-    // at the only call site, line below). It is NOT a UTC instant —
-    // passing it directly here mirrors the same wall-clock contract as
-    // `_applyGuideInitialStartIfAny` and avoids a second
-    // instant→KST conversion that, on a UTC-native Android host, would
-    // shift the wall clock by 9 h and break `confirmedStartLocal ==
-    // expectedUpdatedStartLocal` in the coordinator's EditConfirmed
-    // equality gate (guide_coordinator.dart around line 309–316). A
-    // wall-field copy is used so the value reaches the coordinator with
-    // `isUtc = false` regardless of caller-side isUtc, keeping the
-    // coordinator's CAS / equality semantics untouched.
-    final confirmedStartLocal = DateTime(
-      start.year,
-      start.month,
-      start.day,
-      start.hour,
-      start.minute,
-      start.second,
-      start.millisecond,
-      start.microsecond,
-    );
-    await coordinator.dispatch(EditConfirmed(
-      uid: state.uid,
-      sessionId: state.sessionId!,
-      expectedRevision: state.revision,
-      operationId: 'editPreview:${loaded.id}:${identityHashCode(this)}',
-      confirmedStartLocal: confirmedStartLocal,
-    ));
   }
 
   Future<void> _ensureCriticalAlarmPermissions() async {
@@ -800,26 +736,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   void _applyGuideInitialStartIfAny() {
     final guideStart = widget.initialGuideStartLocal;
     if (guideStart == null) return;
-    // `initialGuideStartLocal` is the local wall-clock contract value that
-    // the guide flow already validated against `expectedUpdatedStartLocal`.
-    // It is NOT a UTC instant — callers construct it as
-    // `DateTime(year, month, day, hour, minute)` and the test fixture
-    // confirms equality on y/m/d/h/min/sec/micros. Reconstruct the local
-    // fields directly here. Converting through `planflowLocal` again would
-    // re-interpret these fields as a UTC instant and shift the wall clock
-    // by the host's local UTC offset — observed as `DateTime(2026,10,20,15)`
-    // rendering as `Oct 21 00:00` on a UTC-native Android device. Canonical
-    // event UTC→KST conversions in `initState` are kept unchanged.
-    final localStart = DateTime(
-      guideStart.year,
-      guideStart.month,
-      guideStart.day,
-      guideStart.hour,
-      guideStart.minute,
-      guideStart.second,
-      guideStart.millisecond,
-      guideStart.microsecond,
-    );
+    final localStart = planflowLocal(guideStart);
     setState(() {
       // Mirror the exact end-shift policy the editor applies on user-driven
       // onStartChanged (lib/services/event_range_utils.dart). The helper
@@ -1274,6 +1191,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _handleSave() async {
+    if (_isSaving) return;
     debugPrint('EventEditScreen save start');
     final formState = _formKey.currentState;
     if (formState == null) {
@@ -1282,76 +1200,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return;
     }
 
-    // Real UI guide: while the guide is bound at `editPreview`, the mutation
-    // MUST go through `GuideMutationPolicy`. We compute the changed-field set
-    // by diffing loaded-event values vs the form; only start/end are allowed
-    // for the edit step, all other fields must remain unchanged.
-    final guideState = _guideEditPreviewState();
-    if (guideState != null) {
-      final loaded = _loadedEvent;
-      if (loaded == null) {
-        _showMessage('원본 일정을 먼저 불러와 주세요.');
+    final guide = GuideScope.maybeOf(context);
+    if (widget.initialGuideStartLocal != null ||
+        guide?.state.value.step == GuideStep.editPreview) {
+      final snapshot = _guideEditPreviewState();
+      if (guide == null || snapshot == null) {
+        _showMessage('안내를 다시 이어간 뒤 저장해 주세요.');
         return;
       }
-      final changed = <String>{};
-      if (!identicalTimes(loaded.startAt, _startAt)) changed.add('startAt');
-      if (!identicalTimes(loaded.endAt, _endAt)) changed.add('endAt');
-      // Disallow any other field changes during guided edit.
-      if (loaded.title.trim() != _titleController.text.trim()) {
-        changed.add('title');
-      }
-      if ((loaded.location ?? '') != _locationController.text.trim()) {
-        changed.add('location');
-      }
-      if (loaded.isCritical != _critical) changed.add('isCritical');
-      if (loaded.useStrongAlarm != _strongAlarm) {
-        changed.add('useStrongAlarm');
-      }
-      if (loaded.category != _category) changed.add('category');
-      final intent = GuideMutationIntent(
-        kind: GuideWriteKind.changeTime,
-        operationId: 'editPreview:${loaded.id}:${identityHashCode(this)}',
-        eventId: loaded.id,
-        isPersonal: loaded.userId == guideState.uid &&
-            loaded.groupEventId == null &&
-            loaded.externalId == null &&
-            (loaded.recurrenceRule == null || loaded.recurrenceRule!.isEmpty),
-        isRecurrence: false,
-        changedFields: changed,
-        // `requestedStartLocal` is the local wall-clock value the user
-        // is about to save. `_startAt` is already region-local (either
-        // `planflowLocal(event.startAt)` from initState, or the wall-
-        // field copy produced by `_applyGuideInitialStartIfAny`). We
-        // must NOT pass it through `planflowLocal` again — on a UTC-
-        // native Android host, that second conversion shifts the wall
-        // clock by 9 h KST and the `GuideMutationPolicy.check` gate at
-        // `guide_guards.dart:38–41` rejects with
-        // `requestedStartLocal != expectedUpdatedStartLocal` before the
-        // Save path ever reaches `_dispatchGuideEditConfirmed`. Use the
-        // same wall-field copy the dispatch fix uses; same contract,
-        // same `isUtc = false` regardless of caller-side isUtc, and
-        // the policy / CAS / equality semantics are not weakened.
-        requestedStartLocal: DateTime(
-          _startAt.year,
-          _startAt.month,
-          _startAt.day,
-          _startAt.hour,
-          _startAt.minute,
-          _startAt.second,
-          _startAt.millisecond,
-          _startAt.microsecond,
-        ),
-        userConfirmed: true,
-      );
-      final decision =
-          GuideMutationPolicy.check(guide: guideState, intent: intent);
-      if (!decision.allowed) {
-        _showMessage('이 단계에서는 시간과 종료 시각만 변경할 수 있어요.');
-        return;
-      }
-      // EditConfirmed: confirm the user-pressed save for this operation.
-      await _dispatchGuideEditConfirmed(loaded, _startAt);
-      if (!mounted || _guideEditPreviewState() == null) return;
+      await _saveGuideEdit(guide, snapshot);
+      return;
     }
     final isValid = formState.validate();
     if (!isValid) {
@@ -1674,6 +1532,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             userId: user.id,
             savedEvent: savedEvent,
             previousStartAt: previousStartAt,
+            reminderOffset: _reminderOffset,
           ),
         );
       }
@@ -1746,6 +1605,240 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _isSaving = false;
         });
       }
+    }
+  }
+
+  bool _isEligibleGuideEvent(EventModel event, GuideSnapshot snapshot) =>
+      event.userId == snapshot.uid &&
+      event.id == snapshot.createdEventId &&
+      event.groupEventId == null &&
+      event.parentEventId == null &&
+      event.externalId == null &&
+      !event.isMultiDay &&
+      (event.recurrenceRule?.isEmpty ?? true);
+
+  DateTime _editorWallTimeToUtc(DateTime wallTime) =>
+      DateTime.fromMicrosecondsSinceEpoch(
+        planflowLocalDateTimeToUtc(wallTime).microsecondsSinceEpoch,
+        isUtc: true,
+      );
+
+  Future<void> _saveGuideEdit(
+      GuideCoordinator coordinator, GuideSnapshot snapshot) async {
+    final loaded = _loadedEvent;
+    if (loaded == null || _isLoading) {
+      _showMessage('원본 일정을 불러온 뒤 저장해 주세요.');
+      return;
+    }
+    // The editor has region wall-clock fields. The guide, repository and
+    // backend use instants, including the legacy *Local guide fields.
+    final start = _editorWallTimeToUtc(_startAt);
+    final end = _endAt == null ? null : _editorWallTimeToUtc(_endAt!);
+    Set<String> changedFields() {
+      final supplies = _suppliesController.text
+          .split(',')
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+      return <String>{
+        if (loaded.startAt?.toUtc() != start) 'startAt',
+        if (loaded.endAt?.toUtc() != end) 'endAt',
+        if (loaded.title.trim() != _titleController.text.trim()) 'title',
+        if ((loaded.location?.trim() ?? '') != _locationController.text.trim())
+          'location',
+        if ((loaded.memo?.trim() ?? '') != _memoController.text.trim()) 'memo',
+        if (!listEquals(loaded.supplies, supplies)) 'supplies',
+        if (loaded.isCritical != _critical) 'isCritical',
+        if (loaded.useStrongAlarm != _strongAlarm) 'useStrongAlarm',
+        if (loaded.category != _category) 'category',
+        if ((loaded.recurrenceRule ?? '') !=
+            (_recurrenceSelection.toRRule() ?? ''))
+          'recurrence',
+        if (_saveTargetTouchedByUser &&
+            _saveTarget != ScheduleSaveTarget.personalOnly)
+          'sharing',
+      };
+    }
+
+    final operationId = 'editPreview:${loaded.id}:${identityHashCode(this)}';
+    final decision = GuideMutationPolicy.check(
+      guide: snapshot,
+      intent: GuideMutationIntent(
+        kind: GuideWriteKind.changeTime,
+        operationId: operationId,
+        eventId: loaded.id,
+        isPersonal: _isEligibleGuideEvent(loaded, snapshot),
+        isRecurrence: false,
+        changedFields: changedFields(),
+        requestedStartLocal: start,
+        userConfirmed: true,
+      ),
+    );
+    if (!decision.allowed) {
+      _showMessage(switch (decision.reasonCode) {
+        'unsupported_fields' => '이 단계에서는 시간과 종료 시각만 변경할 수 있어요.',
+        'preview_mismatch' => '말한 시작 시간으로 맞춘 뒤 저장해 주세요.',
+        _ => '안내에서 선택한 일정을 다시 열어 주세요.',
+      });
+      return;
+    }
+    if (end != null &&
+        (!end.isAfter(start) || !DateUtils.isSameDay(_startAt, _endAt))) {
+      _showMessage('종료 시간은 같은 날의 시작 시간 이후로 맞춰 주세요.');
+      return;
+    }
+
+    bool isCurrentEditor() =>
+        mounted && (ModalRoute.of(context)?.isCurrent ?? false);
+
+    bool fieldsStillMatch() =>
+        _editorWallTimeToUtc(_startAt) == start &&
+        (_endAt == null ? null : _editorWallTimeToUtc(_endAt!)) == end &&
+        changedFields()
+            .every((field) => field == 'startAt' || field == 'endAt');
+
+    bool checkBeforeWrite(GuideSnapshot expected) {
+      if (!isCurrentEditor()) return false;
+      if (authProvider.userId != expected.uid) {
+        _showMessage('로그인 상태가 바뀌었어요. 다시 로그인한 뒤 일정을 열어 주세요.');
+        return false;
+      }
+      if (!identical(GuideScope.maybeOf(context), coordinator) ||
+          !identical(coordinator.state.value, expected)) {
+        _showMessage('안내 상태가 바뀌었어요. 안내를 이어간 뒤 저장해 주세요.');
+        return false;
+      }
+      if (!fieldsStillMatch()) {
+        _showMessage('저장 중 입력값이 바뀌었어요. 변경할 시간을 확인하고 다시 저장해 주세요.');
+        return false;
+      }
+      return true;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      if (widget.eventRepository == null) {
+        if (!AppEnv.isSupabaseReady) {
+          _showMessage('Supabase 빌드 설정값이 주입되지 않았습니다.');
+          return;
+        }
+        await authProvider.syncCurrentSession();
+        if (Supabase.instance.client.auth.currentUser?.id != snapshot.uid) {
+          if (mounted) _showMessage('로그인 후 저장할 수 있습니다.');
+          return;
+        }
+      }
+      if (!checkBeforeWrite(snapshot)) return;
+      final overlaps = await _repository.findOverlappingEvents(
+        rangeStart: start,
+        rangeEnd: _eventRangeEnd(start, end),
+        userId: snapshot.uid,
+        excludedEventId: loaded.id,
+      );
+      if (!checkBeforeWrite(snapshot)) return;
+      final duplicates = filterDuplicateWarningEvents(
+        draft: loaded.copyWith(
+            startAt: start, endAt: end, clearEndAt: end == null),
+        candidates: overlaps,
+      );
+      if (duplicates.isNotEmpty && !await _showOverlapWarning(duplicates)) {
+        if (mounted) _showMessage('중복 일정 경고에서 저장을 취소했어요.');
+        return;
+      }
+      if (!checkBeforeWrite(snapshot)) return;
+      final fresh =
+          await _repository.fetchEvent(loaded.id, userId: snapshot.uid);
+      if (!checkBeforeWrite(snapshot)) return;
+      if (fresh == null ||
+          fresh.startAt == null ||
+          !_isEligibleGuideEvent(fresh, snapshot) ||
+          fresh.startAt?.toUtc() != loaded.startAt?.toUtc() ||
+          fresh.endAt?.toUtc() != loaded.endAt?.toUtc() ||
+          fresh.title != loaded.title ||
+          fresh.location != loaded.location) {
+        _showMessage('일정이 바뀌었어요. 다시 열어서 확인해 주세요.');
+        return;
+      }
+      final reminderOffset = widget.eventRepository == null
+          ? await _readStoredReminderOffset(fresh, snapshot.uid, fresh.startAt!,
+              requireValidOffset: true)
+          : null;
+      if (!checkBeforeWrite(snapshot)) return;
+      if (widget.groupEventRepository != null ||
+          widget.eventRepository == null) {
+        final linkedGroupEvents =
+            await _groupEventRepository.getGroupEventsByPersonalEventId(
+          fresh.id,
+        );
+        if (!checkBeforeWrite(snapshot)) return;
+        if (linkedGroupEvents.isNotEmpty) {
+          _showMessage('그룹에 공유된 일정은 이 안내에서 변경할 수 없어요.');
+          return;
+        }
+      }
+      final confirmed = await coordinator.dispatch(EditConfirmed(
+        uid: snapshot.uid,
+        sessionId: snapshot.sessionId!,
+        expectedRevision: snapshot.revision,
+        operationId: operationId,
+        confirmedStartLocal: start,
+      ));
+      if (!checkBeforeWrite(confirmed)) return;
+      if (confirmed.uid != snapshot.uid ||
+          confirmed.sessionId != snapshot.sessionId ||
+          confirmed.step != GuideStep.editPreview ||
+          confirmed.run != GuideRun.active ||
+          confirmed.createdEventId != loaded.id ||
+          confirmed.expectedUpdatedStartLocal != start ||
+          confirmed.revision != snapshot.revision + 1) {
+        _showMessage('안내를 다시 이어간 뒤 저장해 주세요.');
+        return;
+      }
+      final saved = await _repository.updateEventTimeIfUnchanged(
+        original: fresh,
+        startAt: start,
+        endAt: end,
+      );
+      if (saved == null) {
+        if (mounted) _showMessage('일정이 바뀌었어요. 다시 열어서 확인해 주세요.');
+        return;
+      }
+      if (saved.id != fresh.id ||
+          saved.userId != snapshot.uid ||
+          saved.startAt?.toUtc() != start ||
+          saved.endAt?.toUtc() != end) {
+        if (mounted) _showMessage('저장한 시간을 확인하지 못했어요. 일정을 다시 열어 주세요.');
+        return;
+      }
+      if (widget.eventRepository == null) {
+        unawaited(_runPostSaveSideEffects(
+          userId: snapshot.uid,
+          savedEvent: saved,
+          previousStartAt: fresh.startAt,
+          reminderOffset: reminderOffset,
+        ));
+      }
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'event_updated',
+        eventId: saved.id,
+        startAt: saved.startAt,
+      );
+      if (!mounted) return;
+      if (!isCurrentEditor() || authProvider.userId != confirmed.uid) return;
+      _loadedEvent = saved;
+      if (!identical(GuideScope.maybeOf(context), coordinator) ||
+          !identical(coordinator.state.value, confirmed)) {
+        _showMessage('일정은 저장됐어요. 안내를 이어간 뒤 변경된 시간을 확인해 주세요.');
+        return;
+      }
+      _showMessage('일정을 수정했습니다.');
+      context.go('${AppRoutes.eventDetail}/${Uri.encodeComponent(saved.id)}',
+          extra: saved);
+    } catch (error) {
+      debugPrint('EventEditScreen guide save failed: $error');
+      if (mounted) _showMessage('일정 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -1979,6 +2072,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _category = event.category;
       });
       _isApplyingLoadedEvent = false;
+      _applyGuideInitialStartIfAny();
       DiagLogger.log(
         'GeoResolve',
         '[EditScreen] fetchEvent 로드 완료 id=${event.id} '
@@ -2244,7 +2338,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   Future<void> _loadReminderOffsetIfNeeded(EventModel event) async {
     final startAt = widget.originalOccurrenceStartAt ?? event.startAt;
-    final reminderType = event.isCritical ? 'system_alarm' : 'push';
     if (event.id.trim().isEmpty || startAt == null || !AppEnv.isSupabaseReady) {
       return;
     }
@@ -2254,30 +2347,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (user == null) {
         return;
       }
-      final row = await Supabase.instance.client
-          .from('reminders')
-          .select('notify_at')
-          .eq('event_id', event.id)
-          .eq('user_id', user.id)
-          .eq('type', reminderType)
-          .maybeSingle();
+      final offset = await _readStoredReminderOffset(event, user.id, startAt);
       if (!mounted) {
         return;
       }
-      if (row == null) {
-        setState(() {
-          _reminderOffset = null;
-        });
-        return;
-      }
-      final notifyAt = DateTime.tryParse(row['notify_at'].toString());
-      if (notifyAt == null) {
-        return;
-      }
-      final minutes = startAt.difference(notifyAt).inMinutes;
-      final normalized = EventEditScreen.normalizeReminderOffset(minutes);
       setState(() {
-        _reminderOffset = normalized;
+        _reminderOffset = offset;
       });
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen reminder load skipped: $error');
@@ -2285,9 +2360,34 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
+  Future<Duration?> _readStoredReminderOffset(
+      EventModel event, String userId, DateTime originalStart,
+      {bool requireValidOffset = false}) async {
+    final row = await Supabase.instance.client
+        .from('reminders')
+        .select('notify_at')
+        .eq('event_id', event.id)
+        .eq('user_id', userId)
+        .eq('type', event.isCritical ? 'system_alarm' : 'push')
+        .maybeSingle();
+    if (row == null) return null;
+    final notifyAt = DateTime.tryParse(row['notify_at'].toString());
+    if (notifyAt == null) throw StateError('Invalid stored reminder time.');
+    final storedOffset = originalStart.difference(notifyAt);
+    if (requireValidOffset) {
+      if (storedOffset.isNegative || storedOffset > const Duration(days: 1)) {
+        throw StateError(
+            'Stored reminder time falls outside its allowed range.');
+      }
+      return storedOffset;
+    }
+    return EventEditScreen.normalizeReminderOffset(storedOffset.inMinutes);
+  }
+
   Future<void> _runPostSaveSideEffects({
     required String userId,
     required EventModel savedEvent,
+    required Duration? reminderOffset,
     DateTime? previousStartAt,
   }) async {
     try {
@@ -2301,8 +2401,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final sideEffectResult = await widget.sideEffectService.syncAfterSave(
         event: savedEvent,
         userId: userId,
-        reminderOffset: _reminderOffset,
-        criticalAlarmOffset: _reminderOffset,
+        reminderOffset: reminderOffset,
+        criticalAlarmOffset: reminderOffset,
         prepTimeMin: settings?.prepTimeMin ??
             SmartPreparationAlarmService.defaultPrepTimeMin,
         prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
@@ -2585,6 +2685,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
+    final guidedEdit = widget.initialGuideStartLocal != null ||
+        GuideScope.maybeOf(context)?.state.value.step == GuideStep.editPreview;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -2649,6 +2751,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   id: 'edit.preview',
                   registry: realUiGuideAnchorRegistry,
                   child: CalendarStyleEventEditor(
+                    guideFieldAnchorPrefix: 'edit',
                     titleController: _titleController,
                     locationController: _locationController,
                     memoController: _memoController,
@@ -2696,11 +2799,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
                         _recurrenceSelection = value;
                       });
                     },
-                    onReminderChanged: (value) {
-                      setState(() {
-                        _reminderOffset = value;
-                      });
-                    },
+                    onReminderChanged: guidedEdit
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _reminderOffset = value;
+                            });
+                          },
                     onCriticalChanged: _handleCriticalChanged,
                     onStrongAlarmChanged: _handleStrongAlarmChanged,
                     onLocationTextChanged: _handleLocationTextChanged,
@@ -2720,7 +2825,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
                 const SizedBox(height: 24),
                 GuidedAnchor(
-                  id: 'edit.save',
+                  id: 'edit.save.footer',
                   registry: realUiGuideAnchorRegistry,
                   child: FilledButton.icon(
                     onPressed: _isSaving ? null : _handleSave,

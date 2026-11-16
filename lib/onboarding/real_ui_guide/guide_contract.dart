@@ -72,9 +72,12 @@ class GuideSnapshot {
       this.savedCreateOperationId,
       this.dateTimeZone,
       this.errorCode,
+      this.failureDiagnostic,
       this.savedLocalDate,
       this.originalStartLocal,
       this.expectedUpdatedStartLocal,
+      this.pauseReason,
+      this.isReplay = false,
       this.calendarSyncHeld = false,
       this.mayListenContinuously = false,
       this.speechCaptured = false});
@@ -84,11 +87,13 @@ class GuideSnapshot {
       savedCreateOperationId,
       dateTimeZone,
       errorCode;
+  final GuideFailureDiagnostic? failureDiagnostic;
   final int revision, serverRevision;
   final GuideStep step;
   final GuideRun run;
+  final GuidePauseReason? pauseReason;
   final DateTime? savedLocalDate, originalStartLocal, expectedUpdatedStartLocal;
-  final bool calendarSyncHeld, mayListenContinuously, speechCaptured;
+  final bool isReplay, calendarSyncHeld, mayListenContinuously, speechCaptured;
   bool get isInProgress => run != GuideRun.terminal;
   GuideSnapshot copyWith(
           {String? uid,
@@ -103,14 +108,18 @@ class GuideSnapshot {
           int? serverRevision,
           GuideStep? step,
           GuideRun? run,
+          GuidePauseReason? pauseReason,
           String? errorCode,
           bool clearErrorCode = false,
+          GuideFailureDiagnostic? failureDiagnostic,
+          bool clearFailureDiagnostic = false,
           DateTime? savedLocalDate,
           bool clearSavedLocalDate = false,
           DateTime? originalStartLocal,
           bool clearOriginalStartLocal = false,
           DateTime? expectedUpdatedStartLocal,
           bool clearExpectedUpdatedStartLocal = false,
+          bool? isReplay,
           bool? calendarSyncHeld,
           bool? mayListenContinuously,
           bool? speechCaptured}) =>
@@ -128,7 +137,14 @@ class GuideSnapshot {
           serverRevision: serverRevision ?? this.serverRevision,
           step: step ?? this.step,
           run: run ?? this.run,
+          pauseReason: (run ?? this.run) == GuideRun.paused
+              ? pauseReason ?? this.pauseReason
+              : null,
           errorCode: clearErrorCode ? null : errorCode ?? this.errorCode,
+          failureDiagnostic: failureDiagnostic ??
+              (clearErrorCode || clearFailureDiagnostic
+                  ? null
+                  : this.failureDiagnostic),
           savedLocalDate: clearSavedLocalDate
               ? null
               : savedLocalDate ?? this.savedLocalDate,
@@ -138,6 +154,7 @@ class GuideSnapshot {
           expectedUpdatedStartLocal: clearExpectedUpdatedStartLocal
               ? null
               : expectedUpdatedStartLocal ?? this.expectedUpdatedStartLocal,
+          isReplay: isReplay ?? this.isReplay,
           calendarSyncHeld: calendarSyncHeld ?? this.calendarSyncHeld,
           mayListenContinuously:
               mayListenContinuously ?? this.mayListenContinuously,
@@ -240,13 +257,133 @@ class GuideBackendState {
       required this.step,
       this.createdEventId,
       this.savedLocalDate,
-      this.dateTimeZone});
+      this.dateTimeZone,
+      this.expectedStartAt,
+      this.isReplay = false,
+      this.expectedStartAtReported = false});
   final String sessionId;
   final int serverRevision;
   final GuideStep step;
   final String? createdEventId;
   final DateTime? savedLocalDate;
   final String? dateTimeZone;
+  final DateTime? expectedStartAt;
+  final bool isReplay;
+
+  /// Distinguishes older begin responses from a response that explicitly
+  /// reports an unavailable or invalid timestamp.
+  final bool expectedStartAtReported;
+}
+
+enum GuideFailureKind {
+  localUidMismatch('local_uid_mismatch'),
+  authError('auth_error'),
+  timeout('timeout'),
+  network('network'),
+  terminal('terminal'),
+  expired('expired'),
+  denied('denied'),
+  malformed('malformed'),
+  wireExpired('wire_expired'),
+  backendUnavailable('backend_unavailable'),
+  sessionChanged('guide_session_changed'),
+  boundEventMissing('guide_bound_event_missing'),
+  progressLoadFailed('guide_progress_load_failed'),
+  progressSaveFailed('guide_progress_save_failed'),
+  operationFailed('guide_operation_failed');
+
+  const GuideFailureKind(this.code);
+  final String code;
+}
+
+/// Diagnostic for the latest failed guide operation. errorCode is separate
+/// because it can carry a binding checkpoint needed for recovery.
+@immutable
+class GuideFailureDiagnostic {
+  const GuideFailureDiagnostic(this.kind)
+      : reasonCode = null,
+        phase = null,
+        statusCode = null;
+
+  const GuideFailureDiagnostic._(
+      this.kind, this.reasonCode, this.phase, this.statusCode);
+
+  factory GuideFailureDiagnostic.fromWire(GuideFailureKind kind,
+      {Object? reasonCode, Object? phase, int? statusCode}) {
+    // Store only defined wire labels. Pattern checks alone could allow a
+    // future backend to place an identifier or credential in a reason field.
+    const reasons = {
+      'invalid_request',
+      'request_replay_mismatch',
+      'session_expired',
+      'session_terminal',
+    };
+    const phases = {
+      'intro',
+      'create',
+      'saved',
+      'query',
+      'edit',
+      'preview',
+      'updated',
+      'syncChoice',
+      'terminal',
+    };
+    return GuideFailureDiagnostic._(
+        kind,
+        reasons.contains(reasonCode) ? reasonCode as String : null,
+        phases.contains(phase) ? phase as String : null,
+        statusCode != null && statusCode >= 400 && statusCode <= 599
+            ? statusCode
+            : null);
+  }
+
+  final GuideFailureKind kind;
+  final String? reasonCode, phase;
+  final int? statusCode;
+
+  String get code => kind == GuideFailureKind.denied && reasonCode != null
+      ? 'denied:$reasonCode'
+      : kind.code;
+
+  Map<String, Object> toJson() => {
+        'kind': kind.name,
+        if (reasonCode != null) 'reasonCode': reasonCode!,
+        if (phase != null) 'phase': phase!,
+        if (statusCode != null) 'statusCode': statusCode!,
+      };
+
+  static GuideFailureDiagnostic? fromJson(Object? raw) {
+    if (raw is! Map<String, dynamic>) return null;
+    for (final kind in GuideFailureKind.values) {
+      if (raw['kind'] == kind.name) {
+        final status = raw['statusCode'];
+        return GuideFailureDiagnostic.fromWire(kind,
+            reasonCode: raw['reasonCode'],
+            phase: raw['phase'],
+            statusCode: status is int ? status : null);
+      }
+    }
+    return null;
+  }
+}
+
+sealed class GuideBeginResult {
+  const GuideBeginResult();
+}
+
+final class GuideBeginGranted extends GuideBeginResult {
+  const GuideBeginGranted(this.state);
+  final GuideBackendState state;
+}
+
+final class GuideBeginFailed extends GuideBeginResult {
+  const GuideBeginFailed(this.failure, {this.terminalPredecessor});
+  final GuideFailureDiagnostic failure;
+
+  /// Present only for a validated, terminal response. This is a checkpoint
+  /// for Settings replay and never authorizes a guide operation.
+  final GuideBackendState? terminalPredecessor;
 }
 
 abstract interface class GuideQuotaBoundary {
@@ -255,7 +392,7 @@ abstract interface class GuideQuotaBoundary {
 }
 
 abstract interface class GuideBackendPort {
-  Future<GuideBackendState?> begin(
+  Future<GuideBeginResult> begin(
       {required String uid,
       required String version,
       required String requestId});
@@ -276,6 +413,18 @@ abstract interface class GuideBackendPort {
 abstract interface class GuideProgressStore {
   Future<GuideSnapshot?> load({required String uid, required String version});
   Future<void> save(GuideSnapshot snapshot);
+}
+
+abstract interface class GuideReplayBackendPort {
+  Future<GuideBackendState?> restart(
+      {required String uid,
+      required String version,
+      required String previousSessionId,
+      required String requestId});
+}
+
+abstract interface class GuideReplayCoordinator {
+  Future<bool> restartCompletedGuide({required String uid});
 }
 
 abstract interface class GuideCoordinator implements GuideQuotaBoundary {
@@ -446,3 +595,6 @@ class ResumeRequested extends GuideSignal {
       required super.sessionId,
       required super.expectedRevision});
 }
+
+/// Bounds a begin request so the guide can release an interrupted retry.
+const Duration guideBeginTimeout = Duration(seconds: 15);

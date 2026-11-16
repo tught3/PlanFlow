@@ -63,6 +63,7 @@ import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
+import '../../onboarding/real_ui_guide/guide_host.dart';
 import '../../onboarding/real_ui_guide/guide_create_location_policy.dart';
 import '../../widgets/guided_anchor.dart';
 part 'confirm_widgets.dart';
@@ -1331,10 +1332,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     try {
       final guideCoordinator = GuideScope.maybeOf(context);
       final guideState = guideCoordinator?.state.value;
+      var replay = guideState?.isReplay == true && guideState!.isInProgress
+          ? guideState
+          : null;
       final guideParseAttempt = guideState != null &&
+          !guideState.isReplay &&
           guideState.run == GuideRun.active &&
           guideState.uid.isNotEmpty &&
           guideState.sessionId != null;
+      bool currentReplay() => replay == null ||
+          (mounted && identical(guideCoordinator?.state.value, replay));
+      ScheduleParseEntryGrant? approvedGrant;
       await ScheduleParseAdGate.instance.tryEnterScheduleParse(
         context: context,
         guideCoordinator: guideParseAttempt ? guideCoordinator : null,
@@ -1364,16 +1372,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             overlayVisible = true;
           }
         },
-        onEnterAllowed: (grant) {
-          _scheduleParseGrant = grant;
-          if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
-            unawaited(
-              AnalyticsService.logAdFeatureSuccess(
-                requestId: grant.sessionId,
-              ),
-            );
-          }
-        },
+        onEnterAllowed: (grant) => approvedGrant = grant,
         onDenied: (reason) {
           if (!mounted) {
             return;
@@ -1397,9 +1396,18 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         },
       );
 
-      if (!mounted) {
+      final grant = approvedGrant;
+      final capturedReplay = replay;
+      if (grant != null && capturedReplay != null) {
+        final accepted = await _acceptReplayParseGrant(
+            grant, guideCoordinator!, capturedReplay);
+        if (accepted == null) return;
+        replay = accepted;
+      }
+      if (!mounted || !currentReplay()) {
         return;
       }
+      if (grant != null) _recordScheduleParseGrant(grant);
 
       if (freshGuidePermit != null) {
         _maybeHydrateParsedSchedule(guidePermit: freshGuidePermit);
@@ -1408,6 +1416,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           binding: parseBinding,
           feature: 'schedule_parse',
         );
+        if (!mounted || !currentReplay()) return;
         // 진입 승인됨. GPT 파싱 실행(실제 소비는 파싱 시작 시점에 처리).
         _maybeHydrateParsedSchedule();
       }
@@ -1430,6 +1439,35 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
+  Future<GuideSnapshot?> _acceptReplayParseGrant(
+    ScheduleParseEntryGrant grant,
+    GuideCoordinator coordinator,
+    GuideSnapshot captured,
+  ) async {
+    bool ownsScreen() =>
+        mounted &&
+        authProvider.userId == captured.uid &&
+        ModalRoute.of(context)?.isCurrent != false;
+    if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
+      return resumeGuideReplayAfterReward(
+        coordinator: coordinator,
+        captured: captured,
+        stillOwnsScreen: ownsScreen,
+        accountChanges: authProvider,
+      );
+    }
+    return ownsScreen() && identical(coordinator.state.value, captured)
+        ? captured
+        : null;
+  }
+
+  void _recordScheduleParseGrant(ScheduleParseEntryGrant grant) {
+    _scheduleParseGrant = grant;
+    if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
+      unawaited(AnalyticsService.logAdFeatureSuccess(requestId: grant.sessionId));
+    }
+  }
+
   Future<void> _retryAiHydration() async {
     if (_parseConsumptionPending) {
       unawaited(_retryPendingParseConsumption());
@@ -1448,7 +1486,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 무료 사용이나 AI 호출로 절대 대체하지 않는다(fail-closed).
     final guideCoordinator = GuideScope.maybeOf(context);
     final guideState = guideCoordinator?.state.value;
+    var replay = guideState?.isReplay == true && guideState!.isInProgress
+        ? guideState
+        : null;
+    bool currentReplay() => replay == null ||
+        (mounted && identical(guideCoordinator?.state.value, replay));
     final guideParseAttempt = guideState != null &&
+        !guideState.isReplay &&
         guideState.run == GuideRun.active &&
         guideState.uid.isNotEmpty &&
         guideState.sessionId != null;
@@ -1522,19 +1566,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final parseBinding = _scheduleParseBinding(rawText);
     if (_scheduleParseGrant == null) {
       bool overlayVisible = false;
+      ScheduleParseEntryGrant? approvedGrant;
       try {
         await ScheduleParseAdGate.instance.tryEnterScheduleParse(
           context: context,
-          onEnterAllowed: (grant) {
-            _scheduleParseGrant = grant;
-            if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
-              unawaited(
-                AnalyticsService.logAdFeatureSuccess(
-                  requestId: grant.sessionId,
-                ),
-              );
-            }
-          },
+          onEnterAllowed: (grant) => approvedGrant = grant,
           onDenied: (reason) {
             if (!mounted) {
               return;
@@ -1563,9 +1599,18 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             }
           },
         );
-        if (!mounted) {
+        final grant = approvedGrant;
+        final capturedReplay = replay;
+        if (grant != null && capturedReplay != null) {
+          final accepted = await _acceptReplayParseGrant(
+              grant, guideCoordinator!, capturedReplay);
+          if (accepted == null) return;
+          replay = accepted;
+        }
+        if (!mounted || !currentReplay()) {
           return;
         }
+        if (grant != null) _recordScheduleParseGrant(grant);
         final freshGrant = _scheduleParseGrant;
         if (freshGrant != null &&
             freshGrant.source == ScheduleParseEntitlementSource.adRewarded) {
@@ -1597,6 +1642,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         return;
       }
     }
+    if (!mounted || !currentReplay()) return;
     setState(() {
       widget.parsedSchedule['parse_pending'] = true;
       widget.parsedSchedule['parse_failed'] = false;
@@ -1658,6 +1704,18 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     GuidePermit? guidePermit,
   }) async {
     if (_isHydratingParsedSchedule) {
+      return;
+    }
+    final guide = GuideScope.maybeOf(context)?.state.value;
+    if (guide != null &&
+        guide.isReplay &&
+        guide.isInProgress &&
+        (guide.run != GuideRun.active ||
+            guide.uid != authProvider.userId ||
+            (guide.step != GuideStep.createSpeech &&
+                guide.step != GuideStep.correctAndSave) ||
+            guidePermit != null ||
+            _scheduleParseGrant == null)) {
       return;
     }
 
@@ -2174,8 +2232,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final isOneOff = recurrenceRule == null || recurrenceRule.isEmpty;
     final eventStartForPermission = draftEvent.startAt ?? _startAt;
     final isFutureEvent = eventStartForPermission.isAfter(_localNow());
-    final hasResolvedDestination = draftEvent.locationLat != null &&
-        draftEvent.locationLng != null;
+    final hasResolvedDestination =
+        draftEvent.locationLat != null && draftEvent.locationLng != null;
     if (_shouldSavePersonalEvent &&
         isOneOff &&
         isFutureEvent &&
@@ -2193,7 +2251,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             try {
               await authProvider.syncCurrentSession();
             } catch (error) {
-              debugPrint('ConfirmScreen session sync after location prompt failed: $error');
+              debugPrint(
+                  'ConfirmScreen session sync after location prompt failed: $error');
             }
             if (!mounted || _resolveUserId() != ownerBeforePermission) return;
           }
@@ -2580,7 +2639,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       if (_qaUnconfirmedSaveContinuationAllowed) {
         try {
           var current = coordinator.state.value;
-          if (_sameGuideOwner(owner) && current.uid == owner.uid &&
+          if (_sameGuideOwner(owner) &&
+              current.uid == owner.uid &&
               current.sessionId == owner.sessionId &&
               current.run == GuideRun.blocked &&
               current.errorCode == guideCreatedCheckpointPendingCode &&
@@ -2599,7 +2659,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               return true;
             }
             current = coordinator.state.value;
-            if (_sameGuideOwner(owner) && current.uid == owner.uid &&
+            if (_sameGuideOwner(owner) &&
+                current.uid == owner.uid &&
                 current.sessionId == owner.sessionId &&
                 current.run == GuideRun.blocked &&
                 current.errorCode == guideCreatedCheckpointPendingCode &&
@@ -3754,6 +3815,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                           id: 'confirm.review',
                           registry: realUiGuideAnchorRegistry,
                           child: CalendarStyleEventEditor(
+                            guideFieldAnchorPrefix: 'confirm',
                             titleController: _titleController,
                             locationController: _locationController,
                             memoController: _memoController,

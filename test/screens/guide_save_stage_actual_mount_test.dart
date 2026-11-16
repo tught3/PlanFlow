@@ -57,15 +57,15 @@ class _FakeBackend implements GuideBackendPort {
   final bool grantPermits;
 
   @override
-  Future<GuideBackendState?> begin(
+  Future<GuideBeginResult> begin(
           {required String uid,
           required String version,
           required String requestId}) async =>
-      GuideBackendState(
+      GuideBeginGranted(GuideBackendState(
           sessionId: 's',
           serverRevision: 1,
           step: GuideStep.intro,
-          createdEventId: createdEventId);
+          createdEventId: createdEventId));
   @override
   Future<GuideBackendState> advance(
       {required GuideSnapshot snapshot,
@@ -186,12 +186,17 @@ class _SaveStageHostState extends State<_SaveStageHost> {
           NotificationListener<ScrollNotification>(
             onNotification: guideHandleUserScrollNotification,
             child: SingleChildScrollView(
+              key: const ValueKey('guide-save-form-scroll'),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Push the real editor below the fold so the guide has to
                     // scroll the real target into view, exactly like the app.
-                    const SizedBox(height: 900),
+                    GuidedAnchor(
+                      id: 'confirm.review',
+                      registry: realUiGuideAnchorRegistry,
+                      child: const SizedBox(height: 900),
+                    ),
                     CalendarStyleEventEditor(
                       titleController: _titleController,
                       locationController: _locationController,
@@ -429,9 +434,21 @@ void main() {
         reason: 'the guide must not reveal a target before the user scrolls');
     expect(find.text('2/7 · 중요한 일정'), findsNothing);
     expect(_dimLayerPainted(tester), isFalse);
+    expect(find.textContaining('아래로 스크롤해 주세요'), findsOneWidget);
 
-    final scrollable = find.byType(SingleChildScrollView);
+    final cue = find.byKey(const ValueKey('guide-confirm-scroll-cue'));
+    final scrollable = find.byKey(const ValueKey('guide-save-form-scroll'));
+    final scrollPosition = tester
+        .state<ScrollableState>(find
+            .descendant(of: scrollable, matching: find.byType(Scrollable))
+            .first)
+        .position;
+    expect(cue, findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+    expect(cue, findsOneWidget);
+    expect(scrollPosition.pixels, 0);
     await _scrollUntilAnchorVisible(tester, scrollable, 'confirm.critical');
+    expect(cue, findsNothing);
     await _pumpGuide(tester);
 
     // --- Stage 1: the important checkbox -------------------------------

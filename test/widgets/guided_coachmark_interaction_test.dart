@@ -4,6 +4,79 @@ import 'package:planflow/widgets/guided_anchor.dart';
 import 'package:planflow/widgets/guided_coachmark_overlay.dart';
 
 void main() {
+  testWidgets('dimmed passthrough target is tappable but outside stays blocked',
+      (tester) async {
+    final registry = GuidedAnchorRegistry();
+    var micTaps = 0;
+    var submitTaps = 0;
+    var unrelatedTaps = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Stack(children: [
+          Align(
+            alignment: const Alignment(-0.8, 0),
+            child: GuidedAnchor(
+              id: 'mic',
+              registry: registry,
+              child: FilledButton(
+                key: const ValueKey('mic'),
+                onPressed: () => micTaps++,
+                child: const Text('Mic'),
+              ),
+            ),
+          ),
+          Align(
+            alignment: const Alignment(0.8, 0),
+            child: GuidedAnchor(
+              id: 'submit',
+              registry: registry,
+              child: FilledButton(
+                key: const ValueKey('submit'),
+                onPressed: () => submitTaps++,
+                child: const Text('Submit'),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: FilledButton(
+              key: const ValueKey('unrelated'),
+              onPressed: () => unrelatedTaps++,
+              child: const Text('Unrelated'),
+            ),
+          ),
+          GuidedCoachmarkOverlay(
+            registry: registry,
+            targetId: 'mic',
+            passThroughTargetIds: const ['submit'],
+            showBubble: false,
+            bubble: const SizedBox.shrink(),
+            progressLabel: '1/7',
+            onSkip: () {},
+          ),
+        ]),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final overlay = find.byType(GuidedCoachmarkOverlay);
+    final clips = tester
+        .widgetList<ClipPath>(find.descendant(of: overlay, matching: find.byType(ClipPath)))
+        .toList();
+    expect(clips, hasLength(2));
+    final size = tester.getSize(overlay);
+    final micCenter = tester.getCenter(find.byKey(const ValueKey('mic')));
+    final submitCenter = tester.getCenter(find.byKey(const ValueKey('submit')));
+    final visualMask = clips.first.clipper!.getClip(size);
+    final inputMask = clips.last.clipper!.getClip(size);
+    expect(visualMask.contains(micCenter), isFalse);
+    expect(visualMask.contains(submitCenter), isTrue);
+    expect(inputMask.contains(submitCenter), isFalse);
+    await tester.tap(find.byKey(const ValueKey('mic')));
+    await tester.tap(find.byKey(const ValueKey('submit')));
+    await tester.tap(find.byKey(const ValueKey('unrelated')), warnIfMissed: false);
+    expect((micTaps, submitTaps, unrelatedTaps), (1, 1, 0));
+  });
+
   testWidgets(
       'a bottom FAB keeps the above bubble and Skip inside the viewport',
       (tester) async {
@@ -58,7 +131,9 @@ void main() {
         home: Scaffold(
             body: Stack(children: [
       Align(
-          alignment: Alignment.topCenter,
+          // Keep this real outside control below the top-positioned coachmark
+          // bubble so the test exercises tap-through rather than overlap.
+          alignment: const Alignment(0, 0.35),
           child: ElevatedButton(
               key: const ValueKey('edit'),
               onPressed: () => edits++,

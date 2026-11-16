@@ -52,6 +52,8 @@ import '../../widgets/planflow_global_fabs.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 import 'beta_survey_sheet.dart';
 import 'feedback_report_sheet.dart';
 part 'settings_widgets.dart';
@@ -86,6 +88,7 @@ class SettingsScreen extends StatefulWidget {
     String? userId,
     SettingsInitialAction? initialAction,
     GroupContextProvider? groupContextProvider,
+    this.onTutorialRestarted,
   })  : _settingsRepository = settingsRepository,
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
@@ -114,6 +117,7 @@ class SettingsScreen extends StatefulWidget {
   final NaverOpenApiCalendarService? _naverImportService;
   final String? _userId;
   final SettingsInitialAction? _initialAction;
+  final ValueChanged<String>? onTutorialRestarted;
   final GroupContextProvider? _groupContextProvider;
 
   @override
@@ -221,6 +225,74 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _backgroundLocationRestoreFailed = false;
 
   String? get _userId => widget._userId ?? authProvider.userId;
+
+  bool _restartingTutorial = false;
+
+  Future<void> _restartTutorial(
+    GuideReplayCoordinator coordinator,
+    String uid,
+  ) async {
+    if (_restartingTutorial) return;
+    setState(() => _restartingTutorial = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('튜토리얼을 다시 시작할까요?'),
+          content: const Text('연습 일정이 새로 저장되며, 음성 기능에는 평소와 같은 AI 사용량이 적용됩니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('다시 시작'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true || _userId != uid) return;
+      final started = await coordinator.restartCompletedGuide(uid: uid);
+      if (!mounted || _userId != uid) return;
+      if (started) {
+        widget.onTutorialRestarted?.call(uid);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('튜토리얼을 다시 시작하지 못했어요. 잠시 후 다시 시도해 주세요.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _restartingTutorial = false);
+    }
+  }
+
+  Widget _buildTutorialReplayTile() {
+    final coordinator = GuideScope.maybeOf(context);
+    final user = _userId;
+    if (coordinator == null ||
+        coordinator is! GuideReplayCoordinator ||
+        widget.onTutorialRestarted == null ||
+        user == null ||
+        user.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final snapshot = coordinator.state.value;
+    if (snapshot.uid != user) return const SizedBox.shrink();
+    final canRestart = snapshot.run == GuideRun.terminal &&
+        (snapshot.step == GuideStep.completed || snapshot.step == GuideStep.skipped) &&
+        snapshot.sessionId?.isNotEmpty == true;
+    return ListTile(
+      key: const ValueKey('settings-tutorial-replay-button'),
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.replay, color: PlanFlowColors.primary),
+      title: const Text('튜토리얼 다시 시작'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: canRestart && !_restartingTutorial
+          ? () => _restartTutorial(coordinator as GuideReplayCoordinator, user)
+          : null,
+    );
+  }
   bool get _isFeedbackAdmin {
     if (!AppEnv.isSupabaseReady) {
       return false;
@@ -3817,16 +3889,21 @@ class _SettingsScreenState extends State<SettingsScreen>
               _SectionCard(
                 title: 'PlanFlow 사용 안내',
                 subtitle: '음성 일정, AI 대화, 출발 알림의 기본 사용법을 다시 볼 수 있습니다.',
-                child: ListTile(
-                  key: const ValueKey('settings-feature-tour-button'),
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.tips_and_updates_outlined,
-                    color: PlanFlowColors.primary,
-                  ),
-                  title: const Text('사용 방법 다시 보기'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push(AppRoutes.featureTour),
+                child: Column(
+                  children: [
+                    _buildTutorialReplayTile(),
+                    ListTile(
+                      key: const ValueKey('settings-feature-tour-button'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.tips_and_updates_outlined,
+                        color: PlanFlowColors.primary,
+                      ),
+                      title: const Text('사용 방법 다시 보기'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push(AppRoutes.featureTour),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),

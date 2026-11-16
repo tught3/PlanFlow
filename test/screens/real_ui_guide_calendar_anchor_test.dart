@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
@@ -32,9 +34,13 @@ class _Guide implements GuideCoordinator {
 class _Repo extends EventRepository {
   List<EventModel> rows = [];
   int reads = 0;
+  Future<List<EventModel>> Function(int read)? readOverride;
+
   @override
   Future<List<EventModel>> listEvents({String? userId}) async {
     reads++;
+    final override = readOverride;
+    if (override != null) return override(reads);
     return rows;
   }
 
@@ -97,14 +103,19 @@ void main() {
     final guide = _Guide();
     final repo = _Repo();
     await tester.pumpWidget(app(guide, calendar(repo)));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 1900));
     expect(anchor(), findsNothing);
-    expect(find.text('\uB2E4\uC2DC \uD655\uC778'), findsOneWidget);
+    expect(find.text('저장 중…'), findsOneWidget);
+    expect(find.text('다시 확인'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('저장 중…'), findsNothing);
+    expect(find.text('다시 확인'), findsOneWidget);
     repo.rows = [saved()];
     await tester.ensureVisible(find.text('\uB2E4\uC2DC \uD655\uC778'));
     await tester.tap(find.text('\uB2E4\uC2DC \uD655\uC778'));
     await tester.pumpAndSettle();
-    expect(repo.reads, 2);
+    expect(repo.reads, 3);
     expect(
         tester
             .getRect(find.byType(CalendarScreen))
@@ -115,6 +126,52 @@ void main() {
         find.descendant(of: anchor(), matching: find.text('Actual saved row')),
         findsOneWidget);
   });
+  for (final firstReadFinishesBeforeDeadline in [true, false]) {
+    testWidgets(
+        'fresh saved row replaces the loader after a slow empty read '
+        '(first finishes before deadline: $firstReadFinishesBeforeDeadline)',
+        (tester) async {
+      final guide = _Guide();
+      final firstRead = Completer<List<EventModel>>();
+      final freshRead = Completer<List<EventModel>>();
+      final repo = _Repo()
+        ..readOverride =
+            (read) => read == 1 ? firstRead.future : freshRead.future;
+      await tester.pumpWidget(app(guide, calendar(repo)));
+      await tester.pump(const Duration(milliseconds: 1200));
+      expect(repo.reads, 1);
+      expect(find.text('저장 중…'), findsOneWidget);
+      expect(find.text('다시 확인'), findsNothing);
+
+      if (firstReadFinishesBeforeDeadline) {
+        firstRead.complete([]);
+        await tester.pump();
+        expect(find.text('저장 중…'), findsOneWidget);
+      }
+
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(repo.reads, firstReadFinishesBeforeDeadline ? 2 : 1);
+      expect(find.text('저장 중…'), findsOneWidget);
+      expect(find.text('다시 확인'), findsNothing);
+
+      if (!firstReadFinishesBeforeDeadline) {
+        firstRead.complete([]);
+        await tester.pump();
+      }
+      expect(repo.reads, 2);
+      // The grace period elapsed but the fresh read is still pending.
+      expect(find.text('저장 중…'), findsOneWidget);
+      expect(find.text('다시 확인'), findsNothing);
+      freshRead.complete([saved()]);
+      await tester.pumpAndSettle();
+
+      expect(anchor(), findsOneWidget);
+      expect(repo.reads, 2);
+      expect(find.text('저장 중…'), findsNothing);
+      expect(find.text('다시 확인'), findsNothing);
+    });
+  }
+
   testWidgets('real midnight-spanning saved row is visible before earlier rows',
       (tester) async {
     final late = EventModel(

@@ -26,8 +26,10 @@ import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
 import '../../onboarding/real_ui_guide/guide_bubble_visibility.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_host.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/guided_anchor.dart';
 
 class VoiceInputScreen extends StatefulWidget {
@@ -366,7 +368,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (!mounted ||
         !_isCurrentListenSession(generation) ||
         token != _partialTranscriptToken ||
-        _isFinishingVoiceFlow) return;
+        _isFinishingVoiceFlow) {
+      return;
+    }
     final coordinator = GuideScope.maybeOf(context);
     final state = coordinator?.state.value;
     if (coordinator == null ||
@@ -374,7 +378,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         state.uid.isEmpty ||
         state.sessionId == null ||
         state.run != GuideRun.active ||
-        state.step != GuideStep.createSpeech) return;
+        state.step != GuideStep.createSpeech) {
+      return;
+    }
     unawaited(coordinator.dispatch(SpeechObserved(
       uid: state.uid,
       sessionId: state.sessionId!,
@@ -1353,12 +1359,32 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }
+    final coordinator = GuideScope.maybeOf(context);
+    final state = coordinator?.state.value;
+    final replay = state != null && state.isReplay && state.isInProgress
+        ? state
+        : null;
+    if (replay != null &&
+        (replay.run != GuideRun.active ||
+            replay.uid != userId ||
+            replay.sessionId == null ||
+            replay.step != GuideStep.querySpeech)) {
+      return;
+    }
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
-      guideCoordinator: GuideScope.maybeOf(context),
+      guideCoordinator: replay == null ? coordinator : null,
       guideOperation: GuideOperation.query,
-      onGuideDenied: (_) {},
+      onGuideDenied: (_) {
+        if (!mounted || submitGeneration != _submitGeneration) return;
+        _resetVoiceCommandSubmitGuard(clearSignature: true);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('안내를 계속하지 못했어요. 잠시 후 다시 시도해 주세요.'),
+          ));
+      },
       onGuideAllowed: (permit) {
         if (!mounted || submitGeneration != _submitGeneration) return;
         final state = GuideScope.maybeOf(context)?.state.value;
@@ -1393,16 +1419,48 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             );
         }
       },
-      onEnterAllowed: (VoiceConversationEntryGrant grant) {
+      onEnterAllowed: (VoiceConversationEntryGrant grant) async {
         if (!mounted || submitGeneration != _submitGeneration) {
           return;
         }
+        if (replay != null) {
+          bool ownsScreen() =>
+              mounted &&
+              submitGeneration == _submitGeneration &&
+              (overrideUserId ?? authProvider.userId) == replay.uid &&
+              ModalRoute.of(context)?.isCurrent != false;
+          final ready = grant.source == EntitlementSource.adRewarded
+              ? await resumeGuideReplayAfterReward(
+                  coordinator: coordinator!,
+                  captured: replay,
+                  stillOwnsScreen: ownsScreen,
+                  accountChanges: authProvider,
+                )
+              : replay;
+          if (ready == null ||
+              !ownsScreen() ||
+              !identical(coordinator?.state.value, ready)) {
+            return;
+          }
+        }
+        final captured = _guideCaptureEvidence;
+        final validReplayCapture = replay != null &&
+            captured != null &&
+            captured['uid'] == replay.uid &&
+            captured['sessionId'] == replay.sessionId;
         unawaited(
           _pushVoiceRoute(
             '${AppRoutes.voiceConversation}?autoStart=1',
             extra: <String, dynamic>{
               'initial_text': queryText,
               'entry_grant': grant,
+              if (validReplayCapture)
+                'guideInitialVoiceEvidence': <String, Object?>{
+                  ...captured,
+                  'operationId': grant.sessionId,
+                  'operation': 'query',
+                  'inputText': queryText,
+                },
             },
             submitGeneration: submitGeneration,
             guideOrigin: guideOrigin,
@@ -1850,17 +1908,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  GuidedAnchor(
-                    id: 'voice.start',
-                    registry: realUiGuideAnchorRegistry,
-                    child: _VoicePrimaryButton(
+                  _VoicePrimaryButton(
                       isListening: _isListening,
                       hasText: _rawTextController.text.trim().isNotEmpty,
                       onTapStart: _handleVoiceStartPressed,
                       onTapFinish: _handleVoiceDonePressed,
                       onManualSubmit: _confirmManualText,
                       highlighted: _guideHighlightsVoiceControls,
-                    ),
                   ),
                   if (_rawTextController.text.trim().isEmpty)
                     Padding(
@@ -2190,7 +2244,10 @@ class _VoicePrimaryButton extends StatelessWidget {
         : hasText
             ? '음성으로 다시 입력하기'
             : l10n.voicePrimaryStart;
-    final voiceButton = FilledButton.icon(
+    final voiceButton = GuidedAnchor(
+      id: 'voice.start',
+      registry: realUiGuideAnchorRegistry,
+      child: FilledButton.icon(
       key: const ValueKey('voice-primary-button'),
       onPressed: isListening ? onTapFinish : onTapStart,
       icon: Icon(isListening ? Icons.check : Icons.mic),
@@ -2203,6 +2260,7 @@ class _VoicePrimaryButton extends StatelessWidget {
           : (highlighted
               ? _highlightedAccentButtonStyle()
               : _tertiaryAccentButtonStyle()),
+      ),
     );
 
     if (isListening) {
@@ -2214,13 +2272,17 @@ class _VoicePrimaryButton extends StatelessWidget {
         Expanded(child: voiceButton),
         const SizedBox(width: 8),
         Expanded(
-          child: FilledButton.icon(
+          child: GuidedAnchor(
+            id: 'voice.submit',
+            registry: realUiGuideAnchorRegistry,
+            child: FilledButton.icon(
             key: const ValueKey('voice-input-confirm-current-text-button'),
             onPressed: hasText ? onManualSubmit : null,
             icon: const Icon(Icons.check_circle_outline),
             label: const FittedBox(
               fit: BoxFit.scaleDown,
               child: Text('현재 내용으로 입력'),
+            ),
             ),
           ),
         ),

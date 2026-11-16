@@ -773,7 +773,8 @@ class VoiceConversationController {
       state.pendingTitleSearchText = null;
     }
 
-    final range = _parseDateRangeWithContext(text, state);
+    final range =
+        _guideSavedDateQuery(text) ?? _parseDateRangeWithContext(text, state);
     if (range == null && _isQueryIntent(text, route: route)) {
       // "그 주", "그날" 같은 맥락 의존 표현인데 참고할 직전 조회가 없으면
       // 엉뚱한 날짜로 해석하지 않고 날짜를 다시 묻는다.
@@ -1160,6 +1161,35 @@ class VoiceConversationController {
       canAutoApplyDateChange: result.canAutoApplyDateChange,
       session: nextSession,
       assistantMessage: result._assistantMessage,
+    );
+  }
+
+  VoiceConversationDateRange? _guideSavedDateQuery(String text) {
+    final guide = guideSnapshot?.call();
+    final savedDate = guide?.savedLocalDate;
+    if (guide == null ||
+        guide.run != GuideRun.active ||
+        guide.sessionId == null ||
+        guide.createdEventId?.isNotEmpty != true ||
+        savedDate == null ||
+        (guide.step != GuideStep.queryMic &&
+            guide.step != GuideStep.querySpeech &&
+            guide.step != GuideStep.queryResults)) {
+      return null;
+    }
+    // The guide names the saved month/day without a year. Keep that exact
+    // prompt bound to the saved day, including when tomorrow is next year.
+    final match =
+        RegExp(r'^(\d{1,2})월(\d{1,2})일일정보여줘[.!?]?$').firstMatch(_compact(text));
+    final date = savedDate.isUtc ? planflowLocal(savedDate) : savedDate;
+    if (match == null ||
+        int.parse(match.group(1)!) != date.month ||
+        int.parse(match.group(2)!) != date.day) {
+      return null;
+    }
+    return VoiceConversationDateRange(
+      start: DateTime(date.year, date.month, date.day),
+      end: DateTime(date.year, date.month, date.day + 1),
     );
   }
 
