@@ -4,8 +4,8 @@ import 'local_time.dart';
 /// 반복 일정(recurrence_rule) 확장 + override 숨김 공유 유틸.
 ///
 /// `calendar_screen.dart`에 있던 `_expandRecurringEvent` /
-/// `_hideOverriddenRecurringOccurrences` 로직을 그대로(안전 카운터·경계
-/// 계산 포함) 이식한 것이다. 다만 원본에 있던 "범위 안에 회차가 0개면
+/// `_hideOverriddenRecurringOccurrences` 로직을 공용화한 것이다. 원본의
+/// "범위 안에 회차가 0개면
 /// 원본 anchor 이벤트를 그대로 돌려주는" 폴백은 이 유틸에서는 제거했다
 /// (그 fallback을 유지하면 "범위 안에 회차가 있는지" 판정하려는 호출자가
 /// 항상 true를 받는 반대 방향 버그가 생긴다). 범위 밖이면 빈 리스트를
@@ -58,55 +58,22 @@ List<EventModel> expandRecurringEvent({
   final localStartAt = planflowLocal(startAt);
   final duration = event.endAt?.difference(startAt);
   final occurrences = <EventModel>[];
-
-  // "단일 회차 삭제"된 날짜(local-day) 집합. 전개 중 이 날짜에 걸리는 회차는
-  // 생성하지 않는다. overriddenOccurrenceDate(예외 회차)와 같은 날짜가 여기에도
-  // 있으면 삭제가 우선한다 — 예외 회차를 만들어 두어도 표시하지 않는다.
+  // A deleted local day takes precedence over a generated occurrence.
   final deletedDays = _deletedLocalDays(event);
 
-  if (freq == 'WEEKLY') {
-    final byDays = _parseRRuleByDays(rule);
-    if (byDays.isNotEmpty) {
-      var weekStart = DateTime(
-        localStartAt.year,
-        localStartAt.month,
-        localStartAt.day,
-        localStartAt.hour,
-        localStartAt.minute,
-        localStartAt.second,
-      ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
-      var safety = 0;
-      while (weekStart.isBefore(hardEnd) && safety < 120) {
-        safety += 1;
-        for (final weekday in byDays) {
-          final day = weekStart.add(Duration(days: weekday - DateTime.monday));
-          final current = DateTime(
-            day.year,
-            day.month,
-            day.day,
-            localStartAt.hour,
-            localStartAt.minute,
-            localStartAt.second,
-          );
-          if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
-            continue;
-          }
-          final occurrenceEnd = duration == null ? null : current.add(duration);
-          if (_isDeletedLocalDay(deletedDays, current)) {
-            continue;
-          }
-          final candidate = _copyEventWithTime(
-            event,
-            startAt: current,
-            endAt: occurrenceEnd,
-          );
-          if (include(candidate, rangeStart, rangeEnd)) {
-            occurrences.add(candidate);
-          }
-        }
-        weekStart = weekStart.add(Duration(days: 7 * interval));
-      }
-      return occurrences;
+  void addOccurrence(DateTime current) {
+    if (current.isBefore(localStartAt) ||
+        !current.isBefore(hardEnd) ||
+        _isDeletedLocalDay(deletedDays, current)) {
+      return;
+    }
+    final candidate = _copyEventWithTime(
+      event,
+      startAt: current,
+      endAt: duration == null ? null : current.add(duration),
+    );
+    if (include(candidate, rangeStart, rangeEnd)) {
+      occurrences.add(candidate);
     }
   }
 
@@ -119,61 +86,96 @@ List<EventModel> expandRecurringEvent({
     );
     if (dates != null) {
       for (final current in dates) {
-        if (_isDeletedLocalDay(deletedDays, current)) {
-          continue;
-        }
-        final candidate = _copyEventWithTime(
-          event,
-          startAt: current,
-          endAt: duration == null ? null : current.add(duration),
-        );
-        if (include(candidate, rangeStart, rangeEnd)) {
-          occurrences.add(candidate);
-        }
+        addOccurrence(current);
       }
       return occurrences;
     }
   }
 
-  var current = localStartAt;
-  var safety = 0;
-  while (current.isBefore(hardEnd) && safety < 420) {
-    safety += 1;
-    final occurrenceEnd = duration == null ? null : current.add(duration);
-    if (!_isDeletedLocalDay(deletedDays, current)) {
-      final candidate = _copyEventWithTime(
-        event,
-        startAt: current,
-        endAt: occurrenceEnd,
-      );
-      if (include(candidate, rangeStart, rangeEnd)) {
-        occurrences.add(candidate);
+  // A long occurrence may still overlap the range even if its start is earlier.
+  final lookbackStart = duration == null || duration.isNegative
+      ? rangeStart
+      : rangeStart.subtract(duration);
+  if (!lookbackStart.isBefore(hardEnd)) {
+    return occurrences;
+  }
+  // A day is the shortest interval. Allow one cycle on either side for
+  // rounding to the most recent interval and comparing exclusive boundaries.
+  final maxIterations = _calendarDayDifference(hardEnd, lookbackStart) + 2;
+
+  if (freq == 'DAILY' || freq == 'WEEKLY') {
+    final byDays = freq == 'WEEKLY' ? _parseRRuleByDays(rule) : const <int>[];
+    final anchor = byDays.isEmpty
+        ? localStartAt
+        : _offsetLocalDate(
+            localStartAt, DateTime.monday - localStartAt.weekday);
+    final stepDays = freq == 'DAILY' ? interval : 7 * interval;
+    final first =
+        _firstCycle(_calendarDayDifference(lookbackStart, anchor), stepDays);
+    for (var index = 0; index < maxIterations; index++) {
+      final period = _offsetLocalDate(anchor, (first + index) * stepDays);
+      if (!period.isBefore(hardEnd)) {
+        break;
+      }
+      if (byDays.isEmpty) {
+        addOccurrence(period);
+      } else {
+        for (final weekday in byDays) {
+          addOccurrence(_offsetLocalDate(period, weekday - DateTime.monday));
+        }
       }
     }
-    current = switch (freq) {
-      'DAILY' => current.add(Duration(days: interval)),
-      'WEEKLY' => current.add(Duration(days: 7 * interval)),
-      'MONTHLY' => DateTime(
-          current.year,
-          current.month + interval,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
-      'YEARLY' => DateTime(
-          current.year + interval,
-          current.month,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
-      _ => hardEnd,
-    };
+  } else if (freq == 'MONTHLY' || freq == 'YEARLY') {
+    final stepMonths = freq == 'YEARLY' ? 12 * interval : interval;
+    final monthDifference = (lookbackStart.year - localStartAt.year) * 12 +
+        lookbackStart.month -
+        localStartAt.month;
+    final first = _firstCycle(monthDifference, stepMonths);
+    for (var index = 0; index < maxIterations; index++) {
+      final period = DateTime(
+        localStartAt.year,
+        localStartAt.month + (first + index) * stepMonths,
+      );
+      if (!period.isBefore(hardEnd)) {
+        break;
+      }
+      final lastDay = DateTime(period.year, period.month + 1, 0).day;
+      final day = _monthlyDayForPolicy(localStartAt.day, lastDay);
+      if (day != null) {
+        addOccurrence(
+            _localDateWithTime(localStartAt, period.year, period.month, day));
+      }
+    }
+  } else {
+    // Unknown frequencies historically tried the anchor once.
+    addOccurrence(localStartAt);
   }
   return occurrences;
 }
+
+int _firstCycle(int difference, int step) =>
+    difference < 0 ? 0 : difference ~/ step;
+
+// UTC is used only to subtract calendar dates without DST changing day lengths.
+int _calendarDayDifference(DateTime later, DateTime earlier) =>
+    DateTime.utc(later.year, later.month, later.day)
+        .difference(DateTime.utc(earlier.year, earlier.month, earlier.day))
+        .inDays;
+
+DateTime _offsetLocalDate(DateTime value, int days) =>
+    _localDateWithTime(value, value.year, value.month, value.day + days);
+
+DateTime _localDateWithTime(DateTime time, int year, int month, int day) =>
+    DateTime(
+      year,
+      month,
+      day,
+      time.hour,
+      time.minute,
+      time.second,
+      time.millisecond,
+      time.microsecond,
+    );
 
 /// 월간 후보를 시작 월 기준으로 생성한다. 서수 없는 BYDAY는 기존 경로를
 /// 유지하도록 null을 반환한다. [hardEnd]는 배타적이며 최대 420개월을 검사한다.
@@ -428,7 +430,7 @@ DateTime? _parseRRuleUntil(String? value) {
   if (year == null || month == null || day == null) {
     return null;
   }
-  return DateTime(year, month, day).add(const Duration(days: 1));
+  return DateTime(year, month, day + 1);
 }
 
 List<int> _parseRRuleByDays(String rule) {

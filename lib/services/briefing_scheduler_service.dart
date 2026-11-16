@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/local_time.dart';
+import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -684,16 +685,53 @@ class BriefingSchedulerService {
   }) async {
     final repository = _eventRepository ?? EventRepository.supabase();
     final allEvents = await repository.listEvents(userId: userId);
-    final targetDate = isMorning ? _now() : _tomorrow();
+    final rangeStart = _briefingDay(isMorning);
+    final rangeEnd = DateTime(
+      rangeStart.year,
+      rangeStart.month,
+      rangeStart.day + 1,
+    );
+    final expanded = <EventModel>[
+      for (final event in allEvents)
+        ...expandRecurringEvent(
+          event: event,
+          rangeStart: rangeStart,
+          rangeEnd: rangeEnd,
+          includeOccurrence: _briefingEventIntersectsDay,
+        ),
+    ];
 
-    return allEvents.where((event) {
-      final startAt = event.startAt;
-      if (startAt == null) {
-        return false;
-      }
-      return planflowIsSameLocalDay(startAt, targetDate);
-    }).toList(growable: false)
+    // Keep moved exceptions available to suppress their original occurrence
+    // even if the replacement starts outside the briefing day.
+    return hideOverriddenRecurringOccurrences(expanded)
+        .where(
+            (event) => _briefingEventIntersectsDay(event, rangeStart, rangeEnd))
+        .toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+  }
+
+  DateTime _briefingDay(bool isMorning) {
+    final localNow = planflowLocal(_now());
+    return DateTime(
+      localNow.year,
+      localNow.month,
+      localNow.day + (isMorning ? 0 : 1),
+    );
+  }
+
+  bool _briefingEventIntersectsDay(
+    EventModel event,
+    DateTime rangeStart,
+    DateTime rangeEnd,
+  ) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final localStart = planflowLocal(startAt);
+    return localStart.isBefore(rangeEnd) &&
+        (!localStart.isBefore(rangeStart) ||
+            planflowLocal(event.endAt ?? startAt).isAfter(rangeStart));
   }
 
   Future<String> _buildLocalBriefing(
@@ -704,12 +742,14 @@ class BriefingSchedulerService {
         ? '좋은 아침입니다. 오늘 일정은 ${events.length}개입니다.'
         : '오늘 하루도 고생하셨어요. 내일 일정은 ${events.length}개입니다.';
     final briefingEvents = events.take(6).toList(growable: false);
+    final targetDay = _briefingDay(isMorning);
     final highlights = briefingEvents
         .asMap()
         .entries
         .map((entry) => _buildSecretaryEventSentence(
               entry.value,
               index: entry.key,
+              targetDay: targetDay,
             ))
         .join(' ');
     final remainingCount = events.length - briefingEvents.length;
@@ -727,6 +767,7 @@ class BriefingSchedulerService {
   String _buildSecretaryEventSentence(
     EventModel event, {
     required int index,
+    required DateTime targetDay,
   }) {
     final lead = switch (index) {
       0 when event.isCritical => '중요한 일정입니다.',
@@ -736,8 +777,9 @@ class BriefingSchedulerService {
       _ when event.isCritical => '그다음은 중요한 일정입니다.',
       _ => '그다음 일정은',
     };
-    final time =
-        event.startAt == null ? '시간 미정' : _spokenLocalTime(event.startAt!);
+    final time = event.startAt == null
+        ? '시간 미정'
+        : _spokenLocalTime(event.startAt!, targetDay);
     final location = event.location?.trim();
     final locationPhrase =
         location == null || location.isEmpty ? '' : ', $location에서';
@@ -745,14 +787,16 @@ class BriefingSchedulerService {
     return '$lead $detail';
   }
 
-  String _spokenLocalTime(DateTime value) {
+  String _spokenLocalTime(DateTime value, DateTime targetDay) {
     final local = planflowLocal(value);
+    final date =
+        local.isBefore(targetDay) ? '${local.month}월 ${local.day}일 ' : '';
     final period = local.hour < 12 ? '오전' : '오후';
     final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
     if (local.minute == 0) {
-      return '$period $hour12시';
+      return '$date$period $hour12시';
     }
-    return '$period $hour12시 ${local.minute}분';
+    return '$date$period $hour12시 ${local.minute}분';
   }
 
   Future<String?> _buildTightGapWarning(List<EventModel> events) async {
@@ -1051,11 +1095,6 @@ class BriefingSchedulerService {
     }
 
     return target;
-  }
-
-  DateTime _tomorrow() {
-    final now = _now();
-    return DateTime(now.year, now.month, now.day + 1);
   }
 
   DateTime? _parseDateTime(String? value) {
