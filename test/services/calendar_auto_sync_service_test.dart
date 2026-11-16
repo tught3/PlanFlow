@@ -524,6 +524,43 @@ void main() {
       containsAll(<String>['moved-past', 'after-7d']),
     );
   });
+
+  test('books prepared reminders even when alarm recalculation throws',
+      () async {
+    final now = DateTime.now();
+    final sideEffects = _FakeManualEventSideEffectService()
+      ..recalculationError = StateError('test recalculation failure');
+    final service = CalendarAutoSyncService(
+      calendarSyncService: _FakeCalendarSyncService(
+        googleResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'signed out',
+        ),
+        naverResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.naver,
+          message: 'signed out',
+        ),
+      ),
+      naverCalDavService: _FakeNaverCalDavService(hasSavedCredentials: false),
+      deviceCalendarService: _FakeDeviceCalendarService(hasPermission: false),
+      eventRepository: _FakeEventRepository(events: [
+        EventModel(
+          id: 'reminder-to-restore',
+          userId: 'user-1',
+          title: 'Reminder',
+          startAt: now.add(const Duration(hours: 2)),
+        ),
+      ]),
+      sideEffectService: sideEffects,
+      throttle: Duration.zero,
+      now: () => now,
+    );
+
+    await service.syncConnectedCalendars(force: true);
+
+    expect(sideEffects.alarmRecalculateCallCount, 1);
+    expect(sideEffects.bookedReminders, ['reminder-to-restore']);
+  });
 }
 
 extension on CalendarAutoSyncSnapshot {
@@ -709,6 +746,8 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
   int resyncCallCount = 0;
   int reminderResyncCallCount = 0;
   int alarmRecalculateCallCount = 0;
+  StateError? recalculationError;
+  final bookedReminders = <String>[];
   List<EventModel> lastDayEvents = const <EventModel>[];
   List<EventModel> lastReminderEvents = const <EventModel>[];
   List<EventModel> lastAlarmEvents = const <EventModel>[];
@@ -730,6 +769,14 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     reminderResyncCallCount += 1;
     lastReminderEvents = events.toList(growable: false);
     lastUserId = userId;
+    if (recalculationError != null && localAlarmBatch != null) {
+      for (final event in lastReminderEvents) {
+        localAlarmBatch.add(event.startAt!, 1, (_) async {
+          bookedReminders.add(event.id);
+          return 1;
+        });
+      }
+    }
     return true;
   }
 
@@ -779,6 +826,8 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     lastAlarmEvents = events.toList(growable: false);
     lastExtraDepartureEventIdsToCancel = extraDepartureEventIdsToCancel.toSet();
     lastUserId = userId;
+    final error = recalculationError;
+    if (error != null) throw error;
     final dayGroups = <String, List<EventModel>>{};
     for (final event in lastAlarmEvents) {
       final startAt = event.startAt;

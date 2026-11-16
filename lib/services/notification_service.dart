@@ -5,6 +5,7 @@ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/constants.dart';
@@ -30,6 +31,7 @@ class LocalAlarmResyncBatch {
     Future<int> Function(int) book,
     String? departureKey,
     Future<bool> Function()? canReplacePending,
+    Future<void> Function()? validatePending,
     void Function()? onSkip,
   })>[];
 
@@ -39,6 +41,7 @@ class LocalAlarmResyncBatch {
     Future<int> Function(int) book, {
     String? departureKey,
     Future<bool> Function()? canReplacePending,
+    Future<void> Function()? validatePending,
     void Function()? onSkip,
   }) {
     if (slots > 0) {
@@ -48,6 +51,7 @@ class LocalAlarmResyncBatch {
         book: book,
         departureKey: departureKey,
         canReplacePending: canReplacePending,
+        validatePending: validatePending,
         onSkip: onSkip,
       ));
     }
@@ -80,6 +84,43 @@ class LocalAlarmResyncBatch {
       );
     }
 
+    var occupied = pending.length;
+    final limit = localAlarmResyncLimit;
+
+    Future<void> reconcilePendingId(int id) async {
+      final current = await _notifications.pendingRequestsForCleanup();
+      if (!current.any((request) => request.id == id) && pending.remove(id)) {
+        occupied--;
+      }
+    }
+
+    // Validate existing departures before allocation whenever the requested
+    // slots could exceed capacity. This never books or replaces an alarm.
+    final requestedSlots = ordered.fold<int>(
+      0,
+      (total, entry) => total + entry.value.slots,
+    );
+    if (occupied + requestedSlots > limit) {
+      for (final entry in ordered) {
+        final booking = entry.value;
+        final key = booking.departureKey;
+        final validate = booking.validatePending;
+        if (key == null || validate == null) continue;
+        final id = _notifications.notificationIdFor(key);
+        if (!pending.contains(id)) continue;
+        try {
+          await validate();
+          await reconcilePendingId(id);
+        } catch (error) {
+          succeeded = false;
+          DiagLogger.log(
+            'LocalAlarmResync',
+            'Could not validate pending departure: ${error.runtimeType}',
+          );
+        }
+      }
+    }
+
     final replaceable = <int, ({String key, int id})>{};
     for (var index = 0; index < ordered.length; index++) {
       final booking = ordered[index].value;
@@ -101,13 +142,11 @@ class LocalAlarmResyncBatch {
       }
     }
 
-    var occupied = pending.length;
-    final limit = localAlarmResyncLimit;
     Future<void> cancelLaterDeparture(int index) async {
       final slot = replaceable.remove(index)!;
       try {
         await _notifications.cancelDepartureSlot(slot.key);
-        if (pending.remove(slot.id)) occupied--;
+        await reconcilePendingId(slot.id);
       } catch (error) {
         succeeded = false;
         DiagLogger.log(
@@ -145,6 +184,18 @@ class LocalAlarmResyncBatch {
         if (!alreadyBooked) {
           occupied += booked;
           if (id != null && booked > 0) pending.add(id);
+        } else if (booked == 0 && id != null) {
+          // A skipped departure may have canceled its old slot. Only reclaim
+          // capacity when the queue confirms that this exact ID is absent.
+          try {
+            await reconcilePendingId(id);
+          } catch (error) {
+            succeeded = false;
+            DiagLogger.log(
+              'LocalAlarmResync',
+              'Could not verify pending departure: ${error.runtimeType}',
+            );
+          }
         }
       } catch (error) {
         // A booking may fail after reserving some of its slots.
@@ -852,6 +903,23 @@ class NotificationService {
   Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async {
     await initialize();
     return _plugin.pendingNotificationRequests();
+  }
+
+  /// The pending request has no native timestamp field. New departure jobs
+  /// include their scheduled instant in the payload for resync validation.
+  Future<({DateTime? notifyAt})?> pendingDepartureSlot(String key) async {
+    final id = notificationIdFor(key);
+    for (final request in await pendingRequestsForCleanup()) {
+      if (request.id == id) {
+        final payload = request.payload;
+        return (
+          notifyAt: payload != null && payload.startsWith('departure:')
+              ? _departureFromPayload(payload).notifyAt
+              : null,
+        );
+      }
+    }
+    return null;
   }
 
   /// 동적 강한알람 체인이 출발 타이밍을 소유하는 일정에서, 이미 예약된
@@ -1711,15 +1779,18 @@ class NotificationService {
     }
 
     if (payload.startsWith('departure:')) {
-      final eventId = _departureFromPayload(payload).id;
-      if (eventId.isEmpty) {
+      final departure = _departureFromPayload(payload);
+      if (departure.id.isEmpty) {
         return null;
       }
       if (response.actionId == departureAcknowledgedActionId) {
         return null;
       }
-      return '${AppRoutes.departureAlarm}'
-          '?eventId=${Uri.encodeComponent(eventId)}';
+      return Uri(path: AppRoutes.departureAlarm, queryParameters: {
+        'eventId': departure.id,
+        if (departure.occurrence case final occurrence?)
+          departureOccurrenceRouteQueryKey: occurrence.token,
+      }).toString();
     }
 
     return null;
@@ -1746,13 +1817,22 @@ class NotificationService {
         payload.endsWith(criticalAlarmPayloadSuffix);
   }
 
+  static const departureOccurrenceRouteQueryKey = 'departureOccurrence';
+  static const _departureNotifyAtMarker = ':notifyAt:';
+
   static String departurePayloadFor(
     String eventId, {
     CriticalAlarmOccurrence? occurrence,
-  }) =>
-      occurrence == null
-          ? 'departure:$eventId'
-          : 'departure:$eventId${CriticalAlarmOccurrence._payloadMarker}${occurrence.token}';
+    DateTime? notifyAt,
+  }) {
+    final occurrencePart = occurrence == null
+        ? ''
+        : '${CriticalAlarmOccurrence._payloadMarker}${occurrence.token}';
+    final notifyAtPart = notifyAt == null
+        ? ''
+        : '$_departureNotifyAtMarker${notifyAt.microsecondsSinceEpoch}';
+    return 'departure:$eventId$occurrencePart$notifyAtPart';
+  }
 
   static String departureAcknowledgementKey(
     String eventId,
@@ -1760,17 +1840,74 @@ class NotificationService {
   ) =>
       '$eventId:departure:${occurrence.token}';
 
-  static ({String id, CriticalAlarmOccurrence? occurrence})
-      _departureFromPayload(String payload) {
-    final value = payload.substring('departure:'.length);
+  static const departureAcknowledgementPreferencePrefix =
+      'departure_alarm:ack:';
+
+  /// Keep the confirmation just written, including responses to old notices.
+  static Future<void> pruneDepartureOccurrenceAcknowledgements({
+    required String acknowledgedKey,
+    required DateTime now,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final cutoff = now.subtract(const Duration(days: 30));
+      const prefix = departureAcknowledgementPreferencePrefix;
+      const marker = ':departure:';
+      for (final key in prefs.getKeys()) {
+        if (!key.startsWith(prefix) || key == '$prefix$acknowledgedKey') {
+          continue;
+        }
+        final markerIndex = key.lastIndexOf(marker);
+        if (markerIndex < prefix.length) continue;
+        final occurrence = CriticalAlarmOccurrence.tryParse(
+          key.substring(markerIndex + marker.length),
+        );
+        if (occurrence != null && occurrence.startAt.isBefore(cutoff)) {
+          await prefs.remove(key);
+        }
+      }
+    } catch (error) {
+      debugPrint(
+          'Departure acknowledgement pruning failed: ${error.runtimeType}');
+    }
+  }
+
+  static ({
+    String id,
+    CriticalAlarmOccurrence? occurrence,
+    DateTime? notifyAt,
+  }) _departureFromPayload(String payload) {
+    var value = payload.substring('departure:'.length);
+    final notifyAtIndex = value.lastIndexOf(_departureNotifyAtMarker);
+    DateTime? notifyAt;
+    if (notifyAtIndex >= 0) {
+      final micros = int.tryParse(
+        value.substring(notifyAtIndex + _departureNotifyAtMarker.length),
+      );
+      if (micros != null) {
+        try {
+          notifyAt = DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
+        } on ArgumentError {
+          // Invalid metadata must never qualify a slot for preservation.
+        }
+      }
+      value = value.substring(0, notifyAtIndex);
+    }
     const marker = CriticalAlarmOccurrence._payloadMarker;
     final markerIndex = value.lastIndexOf(marker);
-    if (markerIndex < 0) return (id: value.trim(), occurrence: null);
+    if (markerIndex < 0) {
+      return (id: value.trim(), occurrence: null, notifyAt: notifyAt);
+    }
     final occurrence = CriticalAlarmOccurrence.tryParse(
       value.substring(markerIndex + marker.length),
     );
-    if (occurrence == null) return (id: '', occurrence: null);
-    return (id: value.substring(0, markerIndex).trim(), occurrence: occurrence);
+    if (occurrence == null) return (id: '', occurrence: null, notifyAt: null);
+    return (
+      id: value.substring(0, markerIndex).trim(),
+      occurrence: occurrence,
+      notifyAt: notifyAt,
+    );
   }
 
   static ({String id, CriticalAlarmOccurrence? occurrence}) _eventFromPayload(
@@ -1897,22 +2034,29 @@ Future<void> handleNotificationResponseAction(
           const SharedPreferencesDepartureAcknowledgementStore();
       final notifications = notificationService ??
           NotificationService(allowPermissionRequests: false);
+      final acknowledgedKey = occurrence == null
+          ? eventId
+          : NotificationService.departureAcknowledgementKey(
+              eventId, occurrence);
       await notifications.cancelResponseNotification(response.id);
       // Persist after dismissal so preference latency cannot leave it sounding.
       if (occurrence == null) {
         // Older payloads have no occurrence identity. The response ID was
         // dismissed above; clear only the legacy slot shared by those payloads.
         await notifications.cancelDepartureSlot('$eventId:departure');
-        await store.markAcknowledged(eventId);
+        await store.markAcknowledged(acknowledgedKey);
       } else {
         try {
-          await store.markAcknowledged(
-            NotificationService.departureAcknowledgementKey(
-                eventId, occurrence),
-          );
+          await store.markAcknowledged(acknowledgedKey);
         } finally {
           await notifications.cancelDepartureOccurrence(eventId, occurrence);
         }
+      }
+      if (departureAcknowledgementStore == null) {
+        await NotificationService.pruneDepartureOccurrenceAcknowledgements(
+          acknowledgedKey: acknowledgedKey,
+          now: DateTime.now(),
+        );
       }
     }
     return;

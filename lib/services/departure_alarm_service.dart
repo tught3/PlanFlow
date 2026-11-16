@@ -118,6 +118,7 @@ class DepartureAlarmService {
     Future<bool> Function(int alarmId)? preflightCanceller,
     DepartureAcknowledgementStore? acknowledgementStore,
     PendingDepartureStore? pendingDepartureStore,
+    CriticalAlarmOccurrence? confirmationOccurrence,
     DateTime Function()? now,
   })  : _permissionService = permissionService,
         _currentLocationProvider = currentLocationProvider,
@@ -129,6 +130,7 @@ class DepartureAlarmService {
         _preflightCanceller = preflightCanceller,
         _acknowledgementStore = acknowledgementStore,
         _pendingDepartureStore = pendingDepartureStore,
+        _confirmationOccurrence = confirmationOccurrence,
         _now = now;
 
   static const String label = '출발 알림';
@@ -191,6 +193,7 @@ class DepartureAlarmService {
   final Future<bool> Function(int alarmId)? _preflightCanceller;
   final DepartureAcknowledgementStore? _acknowledgementStore;
   final PendingDepartureStore? _pendingDepartureStore;
+  final CriticalAlarmOccurrence? _confirmationOccurrence;
   final DateTime Function()? _now;
 
   AppPermissionService get _permissions =>
@@ -387,6 +390,7 @@ class DepartureAlarmService {
           ),
         );
       }
+      await _cancelInvalidPendingDeparture(event, startAt);
       return _recordAndReturnScheduleResult(
         event,
         const DepartureAlarmScheduleResult.skipped('missing_origin'),
@@ -408,6 +412,7 @@ class DepartureAlarmService {
     final now = _currentTime;
     final shouldFireNow = !departAt.isAfter(now);
     if (shouldFireNow && !fireDueDeparture) {
+      await _cancelInvalidPendingDeparture(event, startAt);
       return _recordAndReturnScheduleResult(
         event,
         DepartureAlarmScheduleResult.skipped(
@@ -474,6 +479,34 @@ class DepartureAlarmService {
         travelMinutes: estimate.minutes,
         rearmedPreflightId: rearmedPreflightId,
       ),
+    );
+  }
+
+  /// Checks an existing fallback without booking or replacing an alarm.
+  Future<void> validatePendingDeparture(EventModel event) async {
+    final startAt = event.startAt;
+    if (startAt == null) return;
+    await _cancelInvalidPendingDeparture(event, startAt);
+  }
+
+  Future<void> _cancelInvalidPendingDeparture(
+    EventModel event,
+    DateTime startAt,
+  ) async {
+    final slot = await _notifications.pendingDepartureSlot(
+      eventAlarmKey(event, 'departure'),
+    );
+    if (slot == null) return;
+    final notifyAt = slot.notifyAt;
+    if (notifyAt != null &&
+        notifyAt.isAfter(_currentTime) &&
+        notifyAt.isBefore(startAt)) {
+      return;
+    }
+    await _cancelDepartureArtifacts(
+      event.id,
+      dateSuffix:
+          isRecurringAlarmEvent(event) ? eventAlarmDateSuffix(startAt) : null,
     );
   }
 
@@ -608,10 +641,8 @@ class DepartureAlarmService {
       return;
     }
     final confirmedAt = _currentTime;
-    final occurrence = await _resolveDepartureAcknowledgement(
-      normalizedEventId,
-      confirmedAt,
-    );
+    final occurrence = _confirmationOccurrence ??
+        await _resolveDepartureAcknowledgement(normalizedEventId, confirmedAt);
     final ackKey = occurrence == null
         ? normalizedEventId
         : NotificationService.departureAcknowledgementKey(
@@ -619,7 +650,9 @@ class DepartureAlarmService {
             occurrence,
           );
     await _acknowledgements.markAcknowledged(ackKey);
-    await _cancelDepartureArtifacts(normalizedEventId);
+    if (_confirmationOccurrence == null) {
+      await _cancelDepartureArtifacts(normalizedEventId);
+    }
     if (occurrence != null) {
       await _cancelDepartureArtifacts(
         normalizedEventId,
@@ -627,6 +660,12 @@ class DepartureAlarmService {
       );
     }
     await _pendingDepartures.clear();
+    if (_acknowledgementStore == null) {
+      await NotificationService.pruneDepartureOccurrenceAcknowledgements(
+        acknowledgedKey: ackKey,
+        now: confirmedAt,
+      );
+    }
   }
 
   Future<CriticalAlarmOccurrence?> _resolveDepartureAcknowledgement(
@@ -639,14 +678,40 @@ class DepartureAlarmService {
       final anchor = await _events.fetchEvent(eventId, userId: userId);
       if (anchor == null || !isRecurringAlarmEvent(anchor)) return null;
       final related = await _events.listEvents(userId: anchor.userId);
+      final settings = await _loadSettings(anchor.userId);
+      final margin = Duration(
+        minutes:
+            _settingsSafetyMarginMinutes(settings?.departureSafetyMarginMin),
+      );
+      final travelBuffer = _travelTime
+          .estimate(
+            latitude: anchor.locationLat,
+            longitude: anchor.locationLng,
+            locationText: anchor.location,
+          )
+          .buffer;
       final occurrences = upcomingAlarmOccurrences(
         [anchor, ...related.where((item) => item.parentEventId == eventId)],
-        from: confirmedAt,
+        // A notice without occurrence metadata may be confirmed after it starts.
+        from: confirmedAt.subtract(margin + travelBuffer),
         until: confirmedAt.add(recurringAlarmWindow),
       );
       for (final event in occurrences) {
         if (event.id == eventId) {
-          return CriticalAlarmOccurrence(event.startAt!);
+          final startAt = event.startAt!;
+          // A legacy tap can arrive long after its occurrence. Do not infer
+          // the next occurrence until its own departure window has opened.
+          if (startAt.isAfter(confirmedAt)) {
+            // The booked instant is authoritative when route estimates have
+            // since changed. A failed queue read leaves the future slot alone.
+            final slot = await _notifications.pendingDepartureSlot(
+              eventAlarmKey(event, 'departure'),
+            );
+            final notifyAt =
+                slot?.notifyAt ?? startAt.subtract(margin + travelBuffer);
+            if (confirmedAt.isBefore(notifyAt)) continue;
+          }
+          return CriticalAlarmOccurrence(startAt);
         }
       }
     } catch (error) {
@@ -660,24 +725,38 @@ class DepartureAlarmService {
     if (normalizedEventId.isEmpty) {
       return;
     }
-    await _acknowledgements.clearAcknowledged(normalizedEventId);
-    if (_acknowledgementStore == null) {
-      const prefix = 'departure_alarm:ack:';
-      final prefs = await SharedPreferences.getInstance();
-      for (final key in prefs.getKeys()) {
-        if (key.startsWith('$prefix$normalizedEventId:departure:')) {
-          await prefs.remove(key);
+    final suffixes = _departureCancellationDateSuffixes(_currentTime);
+    try {
+      await _acknowledgements.clearAcknowledged(normalizedEventId);
+      if (_acknowledgementStore == null) {
+        const prefix =
+            NotificationService.departureAcknowledgementPreferencePrefix;
+        final prefs = await SharedPreferences.getInstance();
+        for (final key in prefs.getKeys()) {
+          if (key.startsWith('$prefix$normalizedEventId:departure:')) {
+            await prefs.remove(key);
+          }
+        }
+      } else {
+        for (final suffix in suffixes) {
+          await _acknowledgements.clearAcknowledged(
+            '$normalizedEventId:departure:$suffix',
+          );
         }
       }
+    } catch (error) {
+      debugPrint(
+          'Departure acknowledgement cleanup failed: ${error.runtimeType}');
     }
     await _cancelDepartureArtifacts(normalizedEventId);
-    for (final suffix in _departureCancellationDateSuffixes(_currentTime)) {
-      await _acknowledgements.clearAcknowledged(
-        '$normalizedEventId:departure:$suffix',
-      );
+    for (final suffix in suffixes) {
       await _cancelDepartureArtifacts(normalizedEventId, dateSuffix: suffix);
     }
-    await _pendingDepartures.clear();
+    try {
+      await _pendingDepartures.clear();
+    } catch (error) {
+      debugPrint('Pending departure cleanup failed: ${error.runtimeType}');
+    }
   }
 
   /// 그룹에 속한 모든 일정에 예약된 출발 알람(preflight + pending + 표시 알림)
@@ -794,6 +873,7 @@ class DepartureAlarmService {
           return 0;
         },
         departureKey: eventAlarmKey(event, 'departure'),
+        validatePending: () => validatePendingDeparture(event),
         canReplacePending: () => canReplacePendingDeparture(
           event,
           safetyMarginOverride: safetyMargin,
@@ -915,6 +995,7 @@ class DepartureAlarmService {
       occurrence: isRecurringAlarmEvent(event)
           ? CriticalAlarmOccurrence(event.startAt!)
           : null,
+      notifyAt: notifyAt,
     );
     final criticalResult =
         await _notifications.scheduleDepartureAlarmWithResult(

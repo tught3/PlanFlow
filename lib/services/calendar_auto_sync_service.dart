@@ -506,25 +506,29 @@ class CalendarAutoSyncService {
         ..addAll(overrideMarkers);
 
       final localAlarms = _sideEffects.createLocalAlarmResyncBatch();
-      await _sideEffects.resyncRemindersForEvents(
-        events: upcomingEvents,
-        userId: userId,
-        localAlarmBatch: localAlarms,
-      );
+      try {
+        await _sideEffects.resyncRemindersForEvents(
+          events: upcomingEvents,
+          userId: userId,
+          localAlarmBatch: localAlarms,
+        );
 
-      await _sideEffects.recalculateAlarmsForEvents(
-        events: upcomingEvents,
-        userId: userId,
-        now: now,
-        until: until,
-        extraDepartureEventIdsToCancel:
-            events.map((event) => event.id).where((id) => id.isNotEmpty),
-        departureSafetyMargin: departureSafetyMargin,
-        travelMode: travelMode,
-        cacheOnlyLocation: true, // 백그라운드 동기화: 라이브 GPS 조회 금지
-        localAlarmBatch: localAlarms,
-      );
-      await localAlarms.book();
+        await _sideEffects.recalculateAlarmsForEvents(
+          events: upcomingEvents,
+          userId: userId,
+          now: now,
+          until: until,
+          extraDepartureEventIdsToCancel:
+              events.map((event) => event.id).where((id) => id.isNotEmpty),
+          departureSafetyMargin: departureSafetyMargin,
+          travelMode: travelMode,
+          cacheOnlyLocation: true, // 백그라운드 동기화: 라이브 GPS 조회 금지
+          localAlarmBatch: localAlarms,
+        );
+      } finally {
+        // Rebook prepared reminders even if departure recalculation fails.
+        await localAlarms.book();
+      }
 
       debugPrint(
         'Calendar auto sync preparation resynced: '

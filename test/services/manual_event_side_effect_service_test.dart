@@ -744,6 +744,63 @@ void main() {
       expect(departure.scheduledEventIds, isEmpty);
     });
 
+    test('P5c over-cap manual resync validates stale and valid departures',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      SharedPreferences.setMockInitialValues({});
+      final now = DateTime.now().toUtc();
+      final stale = EventModel(
+        id: 'stale-slot',
+        userId: 'user-1',
+        title: 'Task',
+        startAt: now.add(const Duration(hours: 2)),
+        locationLat: 37.5,
+        locationLng: 127,
+      );
+      final valid = stale.copyWith(
+        id: 'valid-slot',
+        startAt: now.add(const Duration(hours: 3)),
+      );
+      final notifications = _FakeNotificationService();
+      final staleId =
+          notifications.notificationIdFor(eventAlarmKey(stale, 'departure'));
+      final validId =
+          notifications.notificationIdFor(eventAlarmKey(valid, 'departure'));
+      notifications.pendingLocal = {
+        staleId: PendingNotificationRequest(staleId, null, null, null),
+        validId: PendingNotificationRequest(validId, null, null, null),
+      };
+      for (var index = 0; notifications.pendingLocal!.length < 57; index++) {
+        notifications.pendingLocal!.putIfAbsent(
+          index,
+          () => PendingNotificationRequest(index, null, null, null),
+        );
+      }
+      final departure =
+          _ValidatingDepartureAlarmService(notifications, stale.id);
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: departure,
+        notificationService: notifications,
+        currentLocationProvider: () async => null,
+        now: () => now,
+      );
+
+      await service.recalculateAlarmsForEvents(
+        events: [stale, valid],
+        userId: 'user-1',
+        now: now,
+        cacheOnlyLocation: true,
+      );
+
+      expect(departure.validatedEventIds, containsAll([stale.id, valid.id]));
+      expect(notifications.pendingLocal!.keys, isNot(contains(staleId)));
+      expect(notifications.pendingLocal!.keys, contains(validId));
+      expect(notifications.pendingLocal, hasLength(56));
+    });
+
     group('recurring alarm scheduling', () {
       // banned-ok: P5 requires this fixed test clock. The service never reads wall time in these tests.
       final now = planflowSeoulDateTimeToUtc(DateTime(2026, 11, 12, 8));
@@ -2342,5 +2399,39 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   @override
   Future<void> clearAcknowledgement(String eventId) async {
     clearedAcknowledgementEventIds.add(eventId);
+  }
+}
+
+class _ValidatingDepartureAlarmService extends _FakeDepartureAlarmService {
+  _ValidatingDepartureAlarmService(this.notifications, this.staleId);
+
+  final _FakeNotificationService notifications;
+  final String staleId;
+  final validatedEventIds = <String>[];
+
+  @override
+  Future<void> validatePendingDeparture(EventModel event) async {
+    validatedEventIds.add(event.id);
+    if (event.id == staleId) {
+      await notifications.cancelDepartureSlot(eventAlarmKey(event, 'departure'));
+    }
+  }
+
+  @override
+  Future<DepartureAlarmScheduleResult> scheduleForEvent(
+    EventModel event, {
+    bool rescheduleMonitor = true,
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
+    bool fireDueDeparture = false,
+    bool cacheOnlyLocation = false,
+  }) async {
+    scheduledEventIds.add(event.id);
+    if (event.id == staleId) {
+      await notifications
+          .cancelDepartureSlot(eventAlarmKey(event, 'departure'));
+      return const DepartureAlarmScheduleResult.skipped('stale_fallback');
+    }
+    return const DepartureAlarmScheduleResult.skipped('fallback_retained');
   }
 }

@@ -599,119 +599,124 @@ class ManualEventSideEffectService {
       dayEvents.putIfAbsent(key, () => <EventModel>[]).add(event);
     }
 
-    for (final eventsForDay in dayEvents.values) {
-      final reference = eventsForDay
-          .map((event) => event.startAt)
-          .whereType<DateTime>()
-          .reduce((a, b) => a.isBefore(b) ? a : b);
-      final ok = await resyncExternalPreparationForDay(
-        dayEvents: eventsForDay,
-        userId: userId,
-        dayReference: reference,
-        prepTimeMin: prepTimeMin,
-        prepPreAlarmOffset: prepPreAlarmOffset,
-        departPreAlarmOffset: departPreAlarmOffset,
-        now: effectiveNow,
-        travelMode: travelMode,
-        cacheOnlyLocation: cacheOnlyLocation,
-        localAlarmBatch: booking,
-      );
-      preparationDays += 1;
-      preparationFailed = preparationFailed || !ok;
-    }
-
     var departureScheduled = 0;
     var departureSkipped = 0;
-    if (resyncDepartureAlarms) {
-      final departureUntil =
-          effectiveNow.add(DepartureAlarmService.monitorLookAhead);
-      var hasUrgentDepartureMonitorEvent = false;
-      final upcomingDepartures = upcomingEvents
-          .where((event) => event.startAt!.isBefore(departureUntil))
-          .toList();
-      final activeDepartureKeys = upcomingDepartures
-          .where(
-              (event) => event.locationLat != null && event.locationLng != null)
-          .map((event) => eventAlarmKey(event, 'departure'))
-          .toSet();
-      final cancelledDepartureEventIds = {
-        ...extraDepartureEventIdsToCancel.where((id) => id.trim().isNotEmpty),
-        ...upcomingDepartures.map((event) => event.id),
-        ...events.where(isRecurringAlarmEvent).map((event) => event.id),
-      };
-      for (final eventId in cancelledDepartureEventIds) {
-        for (final key in eventAlarmCancellationKeys(
-          '$eventId:departure',
-          effectiveNow,
-        )) {
-          if (!activeDepartureKeys.contains(key)) {
-            await _notifications.cancelDepartureSlot(key);
+    try {
+      for (final eventsForDay in dayEvents.values) {
+        final reference = eventsForDay
+            .map((event) => event.startAt)
+            .whereType<DateTime>()
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+        final ok = await resyncExternalPreparationForDay(
+          dayEvents: eventsForDay,
+          userId: userId,
+          dayReference: reference,
+          prepTimeMin: prepTimeMin,
+          prepPreAlarmOffset: prepPreAlarmOffset,
+          departPreAlarmOffset: departPreAlarmOffset,
+          now: effectiveNow,
+          travelMode: travelMode,
+          cacheOnlyLocation: cacheOnlyLocation,
+          localAlarmBatch: booking,
+        );
+        preparationDays += 1;
+        preparationFailed = preparationFailed || !ok;
+      }
+
+      if (resyncDepartureAlarms) {
+        final departureUntil =
+            effectiveNow.add(DepartureAlarmService.monitorLookAhead);
+        var hasUrgentDepartureMonitorEvent = false;
+        final upcomingDepartures = upcomingEvents
+            .where((event) => event.startAt!.isBefore(departureUntil))
+            .toList();
+        final activeDepartureKeys = upcomingDepartures
+            .where((event) =>
+                event.locationLat != null && event.locationLng != null)
+            .map((event) => eventAlarmKey(event, 'departure'))
+            .toSet();
+        final cancelledDepartureEventIds = {
+          ...extraDepartureEventIdsToCancel.where((id) => id.trim().isNotEmpty),
+          ...upcomingDepartures.map((event) => event.id),
+          ...events.where(isRecurringAlarmEvent).map((event) => event.id),
+        };
+        for (final eventId in cancelledDepartureEventIds) {
+          for (final key in eventAlarmCancellationKeys(
+            '$eventId:departure',
+            effectiveNow,
+          )) {
+            if (!activeDepartureKeys.contains(key)) {
+              await _notifications.cancelDepartureSlot(key);
+            }
           }
         }
-      }
-      for (final event in upcomingDepartures) {
-        if (!_hasPlace(event)) {
-          DiagLogger.log(
-            'ManualSideEffect',
-            'DepartureAlarm 스킵(장소없음) eventId=${event.id} '
-                'title="${event.title}"',
-          );
-          departureSkipped += 1;
-          continue;
-        }
-        final startAt = event.startAt!;
-        if (startAt.isBefore(
-          effectiveNow.add(DepartureAlarmService.monitorUrgentWindow),
-        )) {
-          hasUrgentDepartureMonitorEvent = true;
-        }
-        booking.add(
-          startAt,
-          1,
-          (_) async {
-            final result = await _departureAlarms.scheduleForEvent(
-              event,
-              rescheduleMonitor: false,
-              safetyMarginOverride: departureSafetyMargin,
-              cacheOnlyLocation: cacheOnlyLocation,
-            );
+        for (final event in upcomingDepartures) {
+          if (!_hasPlace(event)) {
             DiagLogger.log(
               'ManualSideEffect',
-              result.isScheduled
-                  ? 'DepartureAlarm 등록 eventId=${event.id} '
-                      'title="${event.title}" '
-                      'loc="${event.location ?? ''}" '
-                      'hasCoords=${event.locationLat != null && event.locationLng != null}'
-                  : 'DepartureAlarm 스킵 eventId=${event.id} '
-                      'title="${event.title}" '
-                      'reason=${result.skippedReason ?? 'unknown'}',
+              'DepartureAlarm 스킵(장소없음) eventId=${event.id} '
+                  'title="${event.title}"',
             );
-            if (result.isScheduled) {
-              departureScheduled += 1;
-              return 1;
-            }
             departureSkipped += 1;
-            return 0;
-          },
-          departureKey: eventAlarmKey(event, 'departure'),
-          canReplacePending: () => _departureAlarms.canReplacePendingDeparture(
-            event,
-            safetyMarginOverride: departureSafetyMargin,
-          ),
-          onSkip: () => departureSkipped += 1,
-        );
+            continue;
+          }
+          final startAt = event.startAt!;
+          if (startAt.isBefore(
+            effectiveNow.add(DepartureAlarmService.monitorUrgentWindow),
+          )) {
+            hasUrgentDepartureMonitorEvent = true;
+          }
+          booking.add(
+            startAt,
+            1,
+            (_) async {
+              final result = await _departureAlarms.scheduleForEvent(
+                event,
+                rescheduleMonitor: false,
+                safetyMarginOverride: departureSafetyMargin,
+                cacheOnlyLocation: cacheOnlyLocation,
+              );
+              DiagLogger.log(
+                'ManualSideEffect',
+                result.isScheduled
+                    ? 'DepartureAlarm 등록 eventId=${event.id} '
+                        'title="${event.title}" '
+                        'loc="${event.location ?? ''}" '
+                        'hasCoords=${event.locationLat != null && event.locationLng != null}'
+                    : 'DepartureAlarm 스킵 eventId=${event.id} '
+                        'title="${event.title}" '
+                        'reason=${result.skippedReason ?? 'unknown'}',
+              );
+              if (result.isScheduled) {
+                departureScheduled += 1;
+                return 1;
+              }
+              departureSkipped += 1;
+              return 0;
+            },
+            departureKey: eventAlarmKey(event, 'departure'),
+            validatePending: () =>
+                _departureAlarms.validatePendingDeparture(event),
+            canReplacePending: () =>
+                _departureAlarms.canReplacePendingDeparture(
+              event,
+              safetyMarginOverride: departureSafetyMargin,
+            ),
+            onSkip: () => departureSkipped += 1,
+          );
+        }
+        if (upcomingDepartures.isNotEmpty) {
+          await _departureAlarms.scheduleNextMonitor(
+            interval: hasUrgentDepartureMonitorEvent
+                ? DepartureAlarmService.monitorUrgentInterval
+                : DepartureAlarmService.monitorInterval,
+          );
+        }
       }
-      if (upcomingDepartures.isNotEmpty) {
-        await _departureAlarms.scheduleNextMonitor(
-          interval: hasUrgentDepartureMonitorEvent
-              ? DepartureAlarmService.monitorUrgentInterval
-              : DepartureAlarmService.monitorInterval,
-        );
+    } finally {
+      if (localAlarmBatch == null) {
+        await booking.book();
       }
-    }
-
-    if (localAlarmBatch == null) {
-      await booking.book();
     }
 
     if (upcomingEvents.isEmpty) {

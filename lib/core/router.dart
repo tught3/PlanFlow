@@ -32,6 +32,7 @@ import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
+import '../services/departure_alarm_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_conversation_entitlement.dart';
 import '../services/feature_tour_service.dart';
@@ -351,6 +352,11 @@ GoRouter createAppRouter({
             eventId: q['eventId'] ?? '',
             initialTitle: q['title'],
             travelMinutes: int.tryParse(q['eta'] ?? ''),
+            departureAlarmService: DepartureAlarmService(
+              confirmationOccurrence: CriticalAlarmOccurrence.tryParse(
+                q[NotificationService.departureOccurrenceRouteQueryKey],
+              ),
+            ),
           );
         },
       ),
