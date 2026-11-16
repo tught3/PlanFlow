@@ -97,8 +97,9 @@ abstract class EventRepository {
       userId: existing.userId,
       externalId: incomingExternalId,
       externalCalendarId: incomingCalendarId,
-      // PlanFlow owns reflected events. Attach the provider link while keeping
-      // local content and the last applied provider revision.
+      // PlanFlow owns reflected event content. When adoptIncomingSource is
+      // false, keep the last applied provider revision; by default, adopt the
+      // incoming etag, external revision, sync timestamp, and source.
       externalEtag: adoptIncomingSource ? incoming.externalEtag : null,
       externalUpdatedAt:
           adoptIncomingSource ? incoming.externalUpdatedAt : null,
