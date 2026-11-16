@@ -492,16 +492,25 @@ class CalendarAutoSyncService {
       }
 
       final events = await _events.listEvents(userId: userId);
-      final upcomingEvents = events.where((event) {
+      final until = now.add(recurringAlarmWindow);
+      final upcomingEvents = <EventModel>[];
+      final overrideMarkers = <EventModel>[];
+      for (final event in events) {
         final startAt = event.startAt;
-        if (startAt == null ||
-            startAt.isBefore(now) ||
-            startAt.isAfter(now.add(const Duration(days: 7)))) {
-          return false;
+        if (startAt != null &&
+            (isRecurringAlarmEvent(event) ||
+                (!startAt.isBefore(now) && !startAt.isAfter(until)))) {
+          upcomingEvents.add(event);
+        } else if (event.overriddenOccurrenceDate != null &&
+            event.parentEventId != null) {
+          // Overrides outside the booking window may still suppress an original
+          // occurrence inside the window.
+          overrideMarkers.add(event.copyWith(clearStartAt: true));
         }
-        return true;
-      }).toList(growable: false)
-        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      }
+      upcomingEvents
+        ..sort((a, b) => a.startAt!.compareTo(b.startAt!))
+        ..addAll(overrideMarkers);
 
       await _sideEffects.resyncRemindersForEvents(
         events: upcomingEvents,
@@ -512,7 +521,7 @@ class CalendarAutoSyncService {
         events: upcomingEvents,
         userId: userId,
         now: now,
-        until: now.add(const Duration(days: 7)),
+        until: until,
         extraDepartureEventIdsToCancel:
             events.map((event) => event.id).where((id) => id.isNotEmpty),
         departureSafetyMargin: departureSafetyMargin,
@@ -527,6 +536,7 @@ class CalendarAutoSyncService {
       final upcomingLocationEvents = upcomingEvents.where((event) {
         final startAt = event.startAt;
         return startAt != null &&
+            !startAt.isBefore(now) &&
             startAt.isBefore(now.add(DepartureAlarmService.monitorLookAhead)) &&
             event.locationLat != null &&
             event.locationLng != null;
@@ -737,6 +747,7 @@ class DailyCalendarSyncSchedulerService {
       _next330Am(),
       _alarmId.hashCode & 0x7fffffff,
       _dailyCalendarSyncCallback,
+      rescheduleOnReboot: true,
       exact: false,
       allowWhileIdle: false,
       wakeup: false,

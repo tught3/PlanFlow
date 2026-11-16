@@ -8,6 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../core/constants.dart';
 import '../core/diag_logger.dart';
+import '../core/local_time.dart';
 import '../core/router.dart';
 import '../data/repositories/event_repository.dart';
 import 'critical_alarm_acknowledgement_store.dart';
@@ -15,6 +16,27 @@ import 'critical_alarm_preflight_service.dart';
 import 'departure_acknowledgement_store.dart';
 import 'launch_signal_ledger.dart';
 import 'naver_ics_reminder_policy.dart';
+
+/// Local calendar suffix shared by recurring alarm scheduling and cancellation.
+String eventAlarmDateSuffix(DateTime time) {
+  final day = planflowLocal(time);
+  return _eventAlarmDateDigits(day);
+}
+
+String _eventAlarmDateDigits(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}'
+    '${day.month.toString().padLeft(2, '0')}'
+    '${day.day.toString().padLeft(2, '0')}';
+
+/// The unsuffixed slot plus today and seven more local dates.
+Iterable<String> eventAlarmCancellationKeys(String key, DateTime now) sync* {
+  yield key;
+  final today = planflowLocalDay(now);
+  for (var offset = 0; offset < 8; offset++) {
+    final day = DateTime(today.year, today.month, today.day + offset);
+    yield '$key:${_eventAlarmDateDigits(day)}';
+  }
+}
 
 enum NotificationScheduleStatus {
   scheduled,
@@ -598,9 +620,12 @@ class NotificationService {
       eventId,
       notifications: this,
     );
-    await cancel(notificationIdFor('$eventId:push'));
-    await cancel(notificationIdFor('$eventId:critical'));
-    await cancel(notificationIdFor('$eventId:departure'));
+    final now = DateTime.now();
+    for (final kind in ['push', 'critical', 'departure']) {
+      for (final key in eventAlarmCancellationKeys('$eventId:$kind', now)) {
+        await cancel(notificationIdFor(key));
+      }
+    }
     await cancelSmartPreparationAlarms(eventId);
     await cancelPreActionAlarms(eventId);
   }

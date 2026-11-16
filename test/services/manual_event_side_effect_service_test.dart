@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/diag_logger.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -730,6 +731,166 @@ void main() {
         contains(notifications.notificationIdFor('moved-past:departure')),
       );
       expect(departure.scheduledEventIds, isEmpty);
+    });
+
+    group('recurring alarm scheduling', () {
+      // banned-ok: P5 requires this fixed test clock. The service never reads wall time in these tests.
+      final now = planflowSeoulDateTimeToUtc(DateTime(2026, 11, 12, 8));
+
+      DateTime atKst(int dayOffset, int hour) =>
+          now.add(Duration(days: dayOffset, hours: hour - 8));
+      final weekly = EventModel(
+        id: 'weekly',
+        userId: 'user-1',
+        title: 'Weekly',
+        startAt: atKst(-23, 10),
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+        location: 'Destination',
+        locationLat: 37.5,
+        locationLng: 127,
+      );
+      late _FakeNotificationService notifications;
+      late _FakeDepartureAlarmService departure;
+      late _FakeManualEventGateway gateway;
+      late ManualEventSideEffectService service;
+      late DateTime clock;
+
+      setUp(() {
+        SharedPreferences.setMockInitialValues({});
+        clock = now;
+        notifications = _FakeNotificationService();
+        departure = _FakeDepartureAlarmService();
+        gateway = _FakeManualEventGateway();
+        service = ManualEventSideEffectService(
+          gateway: gateway,
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: departure,
+          notificationService: notifications,
+          currentLocationProvider: () async => null,
+          now: () => clock,
+        );
+      });
+
+      Future<bool> reminders(List<EventModel> events) =>
+          service.resyncRemindersForEvents(events: events, userId: 'user-1');
+
+      int reminderId(String key) => notifications.notificationIdFor(key);
+
+      test('weekly series with a past anchor schedules the next reminder',
+          () async {
+        expect(await reminders([weekly]), isTrue);
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('weekly:push:20261117')]);
+        expect(
+            notifications.scheduledEventReminderNotifyAts.single
+                .isAtSameMomentAs(atKst(5, 9)),
+            isTrue);
+        expect(gateway.deletedReminderEventIds, ['weekly']);
+        expect(gateway.insertedReminders.single['event_id'], 'weekly');
+      });
+
+      test(
+          'daily series uses one distinct id per start in the seven-day window',
+          () async {
+        final daily = weekly.copyWith(
+          startAt: atKst(-11, 9),
+          recurrenceRule: 'FREQ=DAILY',
+        );
+        expect(await reminders([daily]), isTrue);
+        expect(notifications.scheduledEventReminderIds, [
+          for (var day = 12; day <= 18; day++)
+            reminderId('weekly:push:202611$day'),
+        ]);
+      });
+
+      test('deleted occurrence stays unscheduled and its old id is cancelled',
+          () async {
+        expect(
+            await reminders([
+              weekly.copyWith(deletedOccurrenceDates: [
+                atKst(5, 0),
+              ]),
+            ]),
+            isTrue);
+        expect(notifications.scheduledEventReminderIds, isEmpty);
+        expect(notifications.cancelledNotificationIds,
+            contains(reminderId('weekly:push:20261117')));
+      });
+
+      test('a moved override replaces the generated original', () async {
+        final override = EventModel(
+          id: 'override',
+          userId: 'user-1',
+          title: 'Moved',
+          parentEventId: weekly.id,
+          overriddenOccurrenceDate: atKst(5, 0),
+          startAt: atKst(6, 14),
+        );
+        expect(await reminders([weekly, override]), isTrue);
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('override:push')]);
+        notifications.scheduledEventReminderIds.clear();
+        final movedOutOfWindow = override.copyWith(startAt: atKst(13, 14));
+        expect(await reminders([weekly, movedOutOfWindow]), isTrue);
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('override:push')]);
+      });
+
+      test('critical acknowledgement suppresses a single occurrence', () async {
+        final critical =
+            weekly.copyWith(isCritical: true, useStrongAlarm: true);
+        expect(await reminders([critical]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds,
+            [reminderId('weekly:critical:20261117')]);
+        await const SharedPreferencesCriticalAlarmAcknowledgementStore()
+            .markAcknowledged(
+          critical.id,
+          atKst(5, 10),
+        );
+        notifications.scheduledCriticalAlarmIds.clear();
+        expect(await reminders([critical]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds, isEmpty);
+        clock = clock.add(const Duration(days: 7));
+        expect(await reminders([critical]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds,
+            [reminderId('weekly:critical:20261124')]);
+      });
+
+      test('saving a changed weekday schedules its next occurrence', () async {
+        await service.syncAfterSave(
+          event: weekly.copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=WE'),
+          userId: 'user-1',
+        );
+        expect(notifications.cancelledEventIds, contains('weekly'));
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('weekly:push:20261118')]);
+      });
+
+      test('departure recalculation passes the generated start time', () async {
+        clock = atKst(4, 12);
+        await service.recalculateAlarmsForEvents(
+          events: [weekly],
+          userId: 'user-1',
+        );
+        expect(departure.scheduledEventIds, [weekly.id]);
+        expect(
+            departure.scheduledEventStarts.single.isAtSameMomentAs(
+              atKst(5, 10),
+            ),
+            isTrue);
+      });
+
+      test('clears local alarms when an edit removes the start', () async {
+        final withoutStart = EventModel(
+          id: weekly.id,
+          userId: 'user-1',
+          title: 'Unscheduled',
+        );
+        await service.syncAfterSave(event: withoutStart, userId: 'user-1');
+        expect(notifications.cancelledEventIds, [weekly.id]);
+        expect(departure.clearedAcknowledgementEventIds, [weekly.id]);
+        expect(notifications.scheduledEventReminderIds, isEmpty);
+      });
     });
 
     test('resyncRemindersForEvents replaces DB rows and local alarms',
@@ -1771,6 +1932,7 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   int scheduleForEventCallCount = 0;
   int scheduleNextMonitorCallCount = 0;
   final scheduledEventIds = <String>[];
+  final scheduledEventStarts = <DateTime>[];
   final acknowledgedEventIds = <String>[];
   final clearedAcknowledgementEventIds = <String>[];
   Duration? lastSafetyMarginOverride;
@@ -1786,6 +1948,7 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   }) async {
     scheduleForEventCallCount += 1;
     scheduledEventIds.add(event.id);
+    scheduledEventStarts.add(event.startAt!);
     lastSafetyMarginOverride = safetyMarginOverride;
     return DepartureAlarmScheduleResult.scheduled(
       notifyAt: DateTime(2026, 5, 8, 8),

@@ -54,9 +54,12 @@ void main() {
     expect(result.travelMinutes, 90);
     expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
     expect(preflight.eventIds.single, 'event-1');
-    expect(preflight.preflightTimes.single, DateTime(2026, 5, 8, 10, 10));
+    expect(
+      preflight.preflightTimes.single,
+      result.notifyAt!.subtract(const Duration(seconds: 30)),
+    );
     expect(preflight.safetyMargins.single, const Duration(minutes: 20));
-    expect(notifications.criticalTitles, isEmpty);
+    expect(notifications.criticalTitles, ['지금 출발해야 해요']);
     expect(notifications.payloads, isEmpty);
 
     final status = await service.loadRuntimeStatus();
@@ -104,7 +107,7 @@ void main() {
     expect(result.isScheduled, isTrue);
     expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
     expect(preflight.safetyMargins.single, const Duration(minutes: 20));
-    expect(notifications.criticalBodies, isEmpty);
+    expect(notifications.criticalBodies, hasLength(1));
   });
 
   test('skips events without geocoded destination', () async {
@@ -355,9 +358,86 @@ void main() {
     expect(result.isScheduled, isTrue);
     expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
     expect(preflight.eventIds.single, 'event-1');
-    expect(preflight.preflightTimes.single, DateTime(2026, 5, 8, 10, 10));
-    expect(notifications.criticalTitles, isEmpty);
+    expect(
+      preflight.preflightTimes.single,
+      result.notifyAt!.subtract(const Duration(seconds: 30)),
+    );
+    expect(notifications.criticalTitles, ['지금 출발해야 해요']);
     expect(notifications.titles, isEmpty);
+  });
+
+  test(
+      'preflight keeps its fallback on fetch failure and replaces the same slot '
+      'after a successful refresh', () async {
+    AppEnv.markSupabaseInitialized();
+    var now = DateTime.now();
+    const origin = GeoPoint(latitude: 37.5, longitude: 127);
+    final event = EventModel(
+      id: 'event-fallback',
+      userId: 'user-1',
+      title: '출발 테스트',
+      startAt: now.add(const Duration(hours: 3)),
+      location: '목적지',
+      locationLat: 36.327,
+      locationLng: 127.427,
+    );
+    final events = _FakeEventRepository(events: [event]);
+    final notifications = _FakeNotificationService();
+    final service = DepartureAlarmService(
+      eventRepository: events,
+      currentLocationProvider: () async => origin,
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 90),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
+      now: () => now,
+    );
+
+    final initial =
+        await service.scheduleForEvent(event, rescheduleMonitor: false);
+    final originalNotifyAt = initial.notifyAt!;
+    final originalId = notifications.departureIds.single;
+    now = originalNotifyAt.subtract(const Duration(seconds: 30));
+    events.rejectFetch = true;
+    await expectLater(
+      service.runPreflightForEvent(
+        event.id,
+        userId: event.userId,
+        fallbackAt: originalNotifyAt,
+      ),
+      throwsStateError,
+    );
+    expect(notifications.departureNotifyAts, [originalNotifyAt]);
+    expect(notifications.cancelledNotificationIds, isEmpty);
+
+    events.rejectFetch = false;
+    events.events[0] = event.copyWith(
+      startAt: event.startAt!.add(const Duration(minutes: 10)),
+    );
+    final refreshed = await service.runPreflightForEvent(
+      event.id,
+      userId: event.userId,
+      fallbackAt: originalNotifyAt,
+    );
+    final refreshedNotifyAt = originalNotifyAt.add(const Duration(minutes: 10));
+    expect(refreshed.notifyAt, refreshedNotifyAt);
+    expect(notifications.departureIds, [originalId, originalId]);
+    expect(notifications.departureNotifyAts,
+        [originalNotifyAt, refreshedNotifyAt]);
+
+    now = refreshedNotifyAt;
+    final overdue = await service.runPreflightForEvent(
+      event.id,
+      userId: event.userId,
+      fallbackAt: refreshedNotifyAt,
+    );
+    expect(overdue.skippedReason, 'fallback_already_due');
+    expect(notifications.departureIds, hasLength(2));
   });
 
   test('preflight still alerts when live location is unavailable', () async {
@@ -845,6 +925,7 @@ class _FakeEventRepository extends EventRepository {
   _FakeEventRepository({required this.events});
 
   final List<EventModel> events;
+  bool rejectFetch = false;
 
   @override
   Future<EventModel> createEvent(EventModel event) async => event;
@@ -854,6 +935,7 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    if (rejectFetch) throw StateError('offline');
     for (final event in events) {
       if (event.id == eventId && (userId == null || event.userId == userId)) {
         return event;
@@ -925,6 +1007,8 @@ class _FakeNotificationService extends NotificationService {
   final payloads = <String?>[];
   final criticalTitles = <String>[];
   final criticalBodies = <String?>[];
+  final departureIds = <int>[];
+  final departureNotifyAts = <DateTime>[];
   final cancelledNotificationIds = <int>[];
 
   @override
@@ -974,6 +1058,8 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? payload,
   }) async {
+    departureIds.add(id);
+    departureNotifyAts.add(notifyAt);
     criticalTitles.add(title);
     criticalBodies.add(body);
     return NotificationScheduleResult(
