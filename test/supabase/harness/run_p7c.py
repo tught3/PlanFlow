@@ -28,8 +28,7 @@ MIGRATIONS = (
 )
 LOOPBACK = "127.0.0.1"
 HARNESS_USER = "p7c_owner"
-CONCURRENT_USER = "10000000-0000-4000-8000-000000000006"
-CONCURRENT_GROUP = "20000000-0000-4000-8000-000000000006"
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 UUID = re.compile(r"[0-9a-f-]{36}\Z")
 CRON_EXTENSION = "create extension if not exists pg_cron with schema extensions;"
 CRON_JOB = re.compile(
@@ -49,8 +48,18 @@ def checked(result):
     return result.stdout.strip()
 
 
-def local_schema():
-    sql = (REPO / "supabase" / "schema.sql").read_text(encoding="utf-8-sig")
+def local_schema(baseline_rev=None):
+    if baseline_rev is None:
+        sql = (REPO / "supabase" / "schema.sql").read_text(encoding="utf-8-sig")
+    else:
+        def git(*args):
+            return checked(subprocess.run(
+                ["git", *args], cwd=REPO, capture_output=True, text=True,
+                encoding="utf-8", timeout=30, creationflags=NO_WINDOW,
+            ))
+
+        commit = git("rev-parse", "--verify", "--end-of-options", f"{baseline_rev}^{{commit}}")
+        sql = git("show", f"{commit}:supabase/schema.sql").removeprefix("\ufeff")
     # The backup tables/functions are still loaded. The job scheduler is the
     # only Supabase extension excluded from this standalone PostgreSQL fixture.
     if sql.count(CRON_EXTENSION) != 1:
@@ -83,7 +92,12 @@ def migration_files(p2_root):
         paths[1] = p2_root.resolve(strict=True) / MIGRATIONS[1]
     for path in paths:
         if not path.is_file():
-            raise RuntimeError(f"missing migration: {path}. For 000200, supply --migration-root.")
+            hint = (
+                " Check out P2 commit b9180d24 or a successor and pass its "
+                "supabase/migrations directory to --migration-root."
+                if path.name == MIGRATIONS[1] else ""
+            )
+            raise RuntimeError(f"missing migration: {path}.{hint}")
     return paths
 
 
@@ -119,6 +133,7 @@ class Postgres:
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
+            creationflags=NO_WINDOW,
         )
 
     def start(self):
@@ -133,7 +148,7 @@ class Postgres:
             checked(self.run(
                 "initdb", "-D", self.data, "-U", HARNESS_USER,
                 "--encoding=UTF8", "--locale=C", "--auth=scram-sha-256",
-                "--no-sync", f"--pwfile={password_file}",
+                "--no-sync", f"--pwfile={password_file}", timeout=120,
             ))
         finally:
             password_file.unlink(missing_ok=True)
@@ -155,6 +170,7 @@ class Postgres:
                 stdout=output,
                 stderr=subprocess.STDOUT,
                 timeout=30,
+                creationflags=NO_WINDOW,
             )
         if result.returncode:
             logs = (control_log, self.log)
@@ -190,7 +206,7 @@ class Postgres:
                 stderr=stderr,
                 text=True,
                 encoding="utf-8",
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=NO_WINDOW,
             )
         finally:
             stdout.close()
@@ -236,25 +252,44 @@ def wait_for(pg, db, query, description):
     raise RuntimeError(f"timed out waiting for {description}")
 
 
-def concurrent_restore_and_withdrawal(pg, db):
+def wait_for_lock(pg, db, waiting_app, blocking_app):
+    wait_for(pg, db, f"""
+        select exists (
+          select 1
+          from pg_stat_activity as waiting, pg_stat_activity as blocking
+          where waiting.application_name = '{waiting_app}'
+            and blocking.application_name = '{blocking_app}'
+            and blocking.pid = any(pg_blocking_pids(waiting.pid))
+        );
+    """, f"{waiting_app} to wait behind {blocking_app}")
+
+
+def concurrent_restore_and_withdrawal(pg, db, *, restore_first):
+    suffix = "000000000007" if restore_first else "000000000006"
+    user = f"10000000-0000-4000-8000-{suffix}"
+    group = f"20000000-0000-4000-8000-{suffix}"
     backup = pg.sql(db, f"""
-        insert into auth.users (id, email) values ('{CONCURRENT_USER}', 'concurrent@example.test');
+        insert into auth.users (id, email) values ('{user}', 'concurrent-{suffix}@example.test');
         insert into public.groups (id, name, created_by)
-        values ('{CONCURRENT_GROUP}', 'P7c concurrent fixture', '{CONCURRENT_USER}');
+        values ('{group}', 'P7c concurrent fixture', '{user}');
         select set_config('request.jwt.claims',
-            jsonb_build_object('sub', '{CONCURRENT_USER}')::text, false);
+            jsonb_build_object('sub', '{user}')::text, false);
         set role authenticated;
-        select (public.delete_group_with_backup('{CONCURRENT_GROUP}')).id;
+        select (public.delete_group_with_backup('{group}')).id;
     """).splitlines()[-1]
     if not UUID.fullmatch(backup):
         raise RuntimeError("concurrency fixture did not produce a backup")
+
+    if restore_first:
+        reverse_lock_order(pg, db, user, backup)
+        return
 
     withdraw_app = "p7c_withdraw"
     restore_app = "p7c_restore"
     withdraw = pg.start_session(db, withdraw_app, "-f", "-")
     withdraw.stdin.write(f"""
         begin;
-        select id from public.users where id = '{CONCURRENT_USER}' for update;
+        select id from public.users where id = '{user}' for update;
         select 'profile-locked';
     """)
     withdraw.stdin.flush()
@@ -267,20 +302,12 @@ def concurrent_restore_and_withdrawal(pg, db):
     restore = pg.start_session(db, restore_app, "-f", "-")
     restore.stdin.write(f"""
         select set_config('request.jwt.claims',
-            jsonb_build_object('sub', '{CONCURRENT_USER}')::text, false);
+            jsonb_build_object('sub', '{user}')::text, false);
         set role authenticated;
         select public.restore_group_from_backup('{backup}') is not null;
     """)
     restore.stdin.close()
-    wait_for(pg, db, f"""
-        select exists (
-          select 1
-          from pg_stat_activity as restore, pg_stat_activity as withdrawal
-          where restore.application_name = '{restore_app}'
-            and withdrawal.application_name = '{withdraw_app}'
-            and withdrawal.pid = any(pg_blocking_pids(restore.pid))
-        );
-    """, "restore to wait behind withdrawal")
+    wait_for_lock(pg, db, restore_app, withdraw_app)
 
     # Restore must wait for the user row before locking its backup row.
     if pg.sql(db, f"select id from public.group_backups where id = '{backup}' for update nowait;") != backup:
@@ -288,7 +315,7 @@ def concurrent_restore_and_withdrawal(pg, db):
 
     withdraw.stdin.write(f"""
         set local role service_role;
-        select success from public.delete_user_account('{CONCURRENT_USER}');
+        select success from public.delete_user_account('{user}');
         commit;
     """)
     withdraw.stdin.close()
@@ -300,10 +327,55 @@ def concurrent_restore_and_withdrawal(pg, db):
         raise RuntimeError(f"unexpected restore result {restore_exit}: {restored_error}")
     if pg.sql(db, f"""
         select not exists (select 1 from public.group_backups where id = '{backup}')
-          and not exists (select 1 from public.users where id = '{CONCURRENT_USER}');
+          and not exists (select 1 from public.users where id = '{user}');
     """) != "t":
         raise RuntimeError("withdrawal did not remove the synthetic owner and backup")
     print("PASS restore waited for withdrawal without a deadlock", flush=True)
+
+
+def reverse_lock_order(pg, db, user, backup):
+    restore_app = "p7c_reverse_restore"
+    withdraw_app = "p7c_reverse_withdraw"
+    restore = pg.start_session(db, restore_app, "-f", "-")
+    restore.stdin.write(f"""
+        begin;
+        select set_config('request.jwt.claims',
+            jsonb_build_object('sub', '{user}')::text, true);
+        set local role authenticated;
+        select (public.restore_group_from_backup('{backup}')).restored_at is not null;
+        select 'restore-open';
+    """)
+    restore.stdin.flush()
+    wait_for(pg, db, f"""
+        select exists (select 1 from pg_stat_activity
+            where application_name = '{restore_app}'
+              and state = 'idle in transaction' and query like '%restore-open%');
+    """, "restore session to hold its transaction open")
+
+    withdraw = pg.start_session(db, withdraw_app, "-f", "-")
+    withdraw.stdin.write(f"""
+        set role service_role;
+        select not success and blocked_reason = 'leader_groups'
+        from public.delete_user_account('{user}');
+    """)
+    withdraw.stdin.close()
+    wait_for_lock(pg, db, withdraw_app, restore_app)
+
+    restore.stdin.write("commit;\n")
+    restore.stdin.close()
+    restore_exit = restore.wait(timeout=12)
+    restore_result = pg.report(restore_app, "out").splitlines()[-2:]
+    if restore_exit != 0 or restore_result != ["t", "restore-open"]:
+        raise RuntimeError(f"restore did not commit: {pg.report(restore_app, 'err')}")
+    if withdraw.wait(timeout=12) != 0 or pg.report(withdraw_app, "out") != "t":
+        raise RuntimeError(f"withdrawal did not see the restored group: {pg.report(withdraw_app, 'err')}")
+    if pg.sql(db, f"""
+        select exists (select 1 from public.groups where created_by = '{user}')
+          and exists (select 1 from public.users where id = '{user}')
+          and exists (select 1 from public.group_backups where id = '{backup}' and restored_at is not null);
+    """) != "t":
+        raise RuntimeError("restore-first race did not preserve the synthetic owner and restored group")
+    print("PASS withdrawal waited for restore without a deadlock and saw the restored group", flush=True)
 
 
 def exercise(pg, db):
@@ -311,45 +383,59 @@ def exercise(pg, db):
     for line in pg.file(db, HERE / "p7c_scenarios.sql").splitlines():
         if line.startswith("PASS "):
             print(line, flush=True)
-    concurrent_restore_and_withdrawal(pg, db)
+    concurrent_restore_and_withdrawal(pg, db, restore_first=False)
+    concurrent_restore_and_withdrawal(pg, db, restore_first=True)
+
+
+def apply_migrations(pg, db, migrations, pass_number):
+    for path in migrations:
+        pg.file(db, path)
+        print(f"PASS migration pass {pass_number}: {path.name}", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--migration-root", type=Path, help="directory containing P2 migration 000200")
+    parser.add_argument("--migration-root", type=Path, help="supabase/migrations directory containing P2 migration 000200")
     parser.add_argument("--scratch-root", type=Path, default=Path(tempfile.gettempdir()))
-    parser.add_argument("--schema-only", action="store_true", help="diagnostic mode; skips the migration gate")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--schema-only", action="store_true", help="diagnostic mode; skips the migration gate")
+    mode.add_argument("--baseline-rev", help="load this Git commit's schema and apply the ordered chain once")
     args = parser.parse_args()
+    if args.schema_only:
+        print("Schema-only mode: migration gate not run.", flush=True)
     migrations = () if args.schema_only else migration_files(args.migration_root)
-    schema = local_schema()
+    schema = local_schema(args.baseline_rev)
     root = args.scratch_root.resolve(strict=True)
     scratch = Path(tempfile.mkdtemp(prefix="planflow-p7c-", dir=root)).resolve(strict=True)
     pg = None
+    failure = None
     try:
         pg = Postgres(scratch)
         pg.start()
         (scratch / "schema.sql").write_text(schema, encoding="utf-8")
-        pg.sql("postgres", "create database p7c_schema")
-        pg.file("p7c_schema", HERE / "p7c_auth.sql")
-        pg.file("p7c_schema", scratch / "schema.sql")
+        schema_db = "p7c_baseline" if args.baseline_rev else "p7c_schema"
+        pg.sql("postgres", f"create database {schema_db}")
+        pg.file(schema_db, HERE / "p7c_auth.sql")
+        pg.file(schema_db, scratch / "schema.sql")
 
-        if migrations:
+        if args.baseline_rev:
+            apply_migrations(pg, schema_db, migrations, pass_number=1)
+        elif migrations:
             pg.sql("postgres", "create database p7c_migrated template p7c_schema")
-            # Prove a clean upgrade. p7c_schema remains an independent check
-            # of the canonical trigger, while p7c_migrated gets it via 000100.
+            # Reapply earlier migrations over the final schema. For P7c's
+            # timestamp guard only, start with the preceding trigger state.
             pg.sql("p7c_migrated", """
                 drop trigger group_invites_set_insert_timestamps on public.group_invites;
                 drop function public.set_group_invite_insert_timestamps();
             """)
             for pass_number in (1, 2):
-                for path in migrations:
-                    pg.file("p7c_migrated", path)
-                    print(f"PASS migration pass {pass_number}: {path.name}", flush=True)
+                apply_migrations(pg, "p7c_migrated", migrations, pass_number)
             exercise(pg, "p7c_migrated")
 
-        exercise(pg, "p7c_schema")
-        if args.schema_only:
-            print("Schema-only mode: ordered migration chain was not run.", flush=True)
+        exercise(pg, schema_db)
+    except BaseException as error:
+        failure = error
+        raise
     finally:
         try:
             if pg is not None:
@@ -359,7 +445,10 @@ def main():
             shutil.rmtree(scratch)
             print("Cleaned disposable PostgreSQL process, port, and scratch directory.", flush=True)
         except Exception as error:
-            raise RuntimeError(f"cleanup failed; inspect owned scratch directory {scratch}: {error}") from error
+            message = f"cleanup failed; inspect owned scratch directory {scratch}: {error}"
+            if failure is not None:
+                message = f"{type(failure).__name__}: {failure}\n{message}"
+            raise RuntimeError(message) from error
 
 
 if __name__ == "__main__":
