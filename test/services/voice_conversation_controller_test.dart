@@ -246,26 +246,32 @@ void main() {
   });
 
   group('local schedule time edits', () {
-    for (final (input, originalHour, dayOffset, hour, minute) in [
-      ('밤 12시', 14, 1, 0, 0),
-      ('낮 2시', 9, 0, 14, 0),
-      ('3시', 14, 0, 15, 0),
-      ('10시', 9, 0, 10, 0),
-      ('10시', 15, 0, 22, 0),
-      ('자정에', 14, 0, 0, 0),
-      ('정오에', 14, 0, 12, 0),
-      ('오늘 밤 12시', 14, 1, 0, 0),
-      ('네 시 사십오 분', 14, 0, 16, 45),
-      ('오후 다섯 시 오십 분', 14, 0, 17, 50),
+    for (final (input, originalHour, expectedDay, hour, minute) in [
+      ('밤 12시', 14, 9, 0, 0),
+      ('낮 2시', 9, 7, 14, 0),
+      ('3시', 14, 7, 15, 0),
+      ('6시', 9, 7, 18, 0),
+      ('7시', 9, 7, 7, 0),
+      ('10시', 9, 7, 10, 0),
+      ('11시', 9, 7, 11, 0),
+      ('12시', 9, 7, 12, 0),
+      ('10시', 15, 7, 22, 0),
+      ('자정에', 14, 9, 0, 0),
+      ('오늘 자정에', 14, 9, 0, 0),
+      ('5월 20일 자정에', 14, 21, 0, 0),
+      ('정오에', 14, 7, 12, 0),
+      ('오늘 밤 12시', 14, 9, 0, 0),
+      ('네 시 사십오 분', 14, 7, 16, 45),
+      ('오후 다섯 시 오십 분', 14, 7, 17, 50),
     ]) {
       test('"$input" edits a selected schedule at $originalHour:00', () {
         final controller = VoiceConversationController(
           events: [
             _event('target', '회의', DateTime(_fixtureYear, 5, 7, originalHour)),
           ],
-          now: () => DateTime(_fixtureYear, 5, 7, 8),
+          now: () => DateTime(_fixtureYear, 5, 8, 8),
         );
-        expect(controller.handle('오늘 일정 보여줘').visibleEvents.single.id, 'target');
+        expect(controller.handle('어제 일정 보여줘').visibleEvents.single.id, 'target');
 
         final direction = input.endsWith('에') ? input : '$input로';
         final result = controller.handle('첫번째 일정 $direction 옮겨줘');
@@ -275,24 +281,31 @@ void main() {
         final start = result.draftEvent?.startAt;
         expect(start, isNotNull);
         expect(planflowLocal(start!),
-            DateTime(_fixtureYear, 5, 7 + dayOffset, hour, minute));
+            DateTime(_fixtureYear, 5, expectedDay, hour, minute));
       });
     }
 
-    for (final (input, dayOffset, hour, minute) in [
+    for (final (input, expectedDayOffset, hour, minute) in [
       ('밤 12시로', 1, 0, 0),
-      ('낮 2시로', 0, 14, 0),
-      ('3시로', 0, 15, 0),
-      ('자정에', 0, 0, 0),
-      ('정오에', 0, 12, 0),
-      ('네 시 사십오 분으로', 0, 16, 45),
-      ('오후 다섯 시 오십 분으로', 0, 17, 50),
+      ('낮 2시로', -2, 14, 0),
+      ('3시로', -2, 15, 0),
+      ('10시로', -2, 22, 0),
+      ('자정에', 1, 0, 0),
+      ('오늘 자정에', 1, 0, 0),
+      ('명시 날짜 자정에', 5, 0, 0),
+      ('정오에', -2, 12, 0),
+      ('네 시 사십오 분으로', -2, 16, 45),
+      ('오후 다섯 시 오십 분으로', -2, 17, 50),
     ]) {
       testWidgets('voice action uses $input in the edit draft', (tester) async {
+        final today = planflowNow();
+        final explicitDate = DateTime(today.year, today.month, today.day + 4);
+        final edit = input.replaceFirst('명시 날짜',
+            '${explicitDate.year}년 ${explicitDate.month}월 ${explicitDate.day}일');
         final event = _event(
           'target',
           '팀 회식',
-          DateTime(_fixtureYear, 5, 7, 14),
+          DateTime(today.year, today.month, today.day - 2, input == '10시로' ? 9 : 14),
         ).copyWith(externalId: 'linked');
         EventEditRoutePayload? payload;
         final router = GoRouter(
@@ -301,7 +314,7 @@ void main() {
             GoRoute(
               path: AppRoutes.voiceAction,
               builder: (context, state) => VoiceActionScreen(
-                rawText: '팀 회식 $input 옮겨줘',
+                rawText: '팀 회식 $edit 옮겨줘',
                 action: VoiceScheduleAction.edit,
                 eventRepository: _VoiceTimeEventRepository(event),
                 groupRepository: _VoiceTimeGroupRepository(),
@@ -332,7 +345,8 @@ void main() {
         expect(
           payload?.draft.startAt,
           planflowLocalDateTimeToUtc(
-            DateTime(_fixtureYear, 5, 7 + dayOffset, hour, minute),
+            DateTime(today.year, today.month, today.day + expectedDayOffset,
+                hour, minute),
           ),
         );
       });
@@ -1150,6 +1164,33 @@ void main() {
       expect(result.pendingDelete?.event.id, 'afternoon');
       expect(controller.pendingDelete?.event.id, 'afternoon');
     });
+
+    for (final (input, hour, otherHour) in [
+      ('밤 12시', 0, 12),
+      ('밤 1시', 1, 13),
+      ('24:00', 0, 12),
+      ('낮 2시', 14, 2),
+      ('새벽 2시', 2, 14),
+      ('저녁 7시', 19, 7),
+      ('오후 12시', 12, 0),
+      ('3시', 15, 16),
+    ]) {
+      test('time follow-up selects the $input schedule', () {
+        final controller = VoiceConversationController(
+          events: [
+            _event('target', '회의', DateTime(_fixtureYear, 5, 7, hour)),
+            _event('other', '진료', DateTime(_fixtureYear, 5, 7, otherHour)),
+          ],
+          now: () => DateTime(_fixtureYear, 5, 7, 8),
+        );
+        expect(controller.handle('오늘 일정 알려줘').visibleEvents, hasLength(2));
+
+        final result = controller.handle('$input 일정 삭제해줘');
+
+        expect(result.action, VoiceConversationAction.confirmDelete);
+        expect(result.targetEvent?.id, 'target');
+      });
+    }
 
     test('duplicate time follow-up asks user to choose a numbered event', () {
       final controller = VoiceConversationController(

@@ -2223,12 +2223,9 @@ class VoiceConversationController {
       return null;
     }
 
-    final baseDate = dateCandidate ??
-        DateTime(
-          originalStartLocal.year,
-          originalStartLocal.month,
-          originalStartLocal.day,
-        );
+    // Without a stated date, midnight means the end of today.
+    final baseDate =
+        dateCandidate ?? (rollsToNextDay ? currentLocalNow : originalStartLocal);
     return DateTime(
       baseDate.year,
       baseDate.month,
@@ -2260,7 +2257,7 @@ class VoiceConversationController {
     final match = dateMatches.last;
     final snippet = text.substring(
       match.start,
-      // The caller separately applies the day offset for 밤/저녁 12시.
+      // The caller separately applies the day offset for midnight.
       dateOnly ? match.end : (match.end + 20).clamp(0, text.length),
     );
     return GptService(
@@ -2473,22 +2470,35 @@ class VoiceConversationController {
   }
 
   _TimeReference? _parseTimeReference(String text) {
-    final match = RegExp(r'(오전|오후|아침|저녁|밤)?\s*(\d{1,2})\s*시').firstMatch(text);
-    if (match == null) {
+    // A displayed 24:00 can refer to an existing midnight schedule.
+    final referenceText = text.replaceAll(RegExp(r'(?<![\d:])24:00(?![\d:])'), '자정 ');
+    final parts = koreanClockTimeParts(referenceText).firstOrNull;
+    if (parts == null) {
       return null;
     }
-    final hour = int.tryParse(match.group(2)!);
-    if (hour == null || hour < 0 || hour > 23) {
+    final time = resolveKoreanClockTime(
+      period: parts.period,
+      hour: parts.hour,
+      minute: parts.minute,
+      unmarkedPmDefault: false,
+    );
+    if (time == null) {
       return null;
     }
-    final period = match.group(1);
-    if (period == '오후' || period == '저녁' || period == '밤') {
-      return _TimeReference(hour == 12 ? 12 : hour + 12, hasPeriod: true);
-    }
-    if (period == '오전' || period == '아침') {
-      return _TimeReference(hour == 12 ? 0 : hour, hasPeriod: true);
-    }
-    return _TimeReference(hour, hasPeriod: false);
+    // Keep both candidates for unmarked references such as "3시 일정".
+    final unmarkedPm = parts.period == null
+        ? resolveKoreanClockTime(
+            period: null,
+            hour: parts.hour,
+            minute: parts.minute,
+            unmarkedPmDefault: true,
+          )
+        : null;
+    return _TimeReference(
+      time.hour,
+      alternateHour: unmarkedPm?.hour,
+      midnightMinute: time.isEndOfDay ? time.minute : null,
+    );
   }
 
   List<EventModel> _matchVisibleEventsByTime(
@@ -2502,14 +2512,8 @@ class VoiceConversationController {
         continue;
       }
       final local = planflowLocal(startAt);
-      if (local.hour == time.hour) {
-        matches.add(event);
-        continue;
-      }
-      if (!time.hasPeriod &&
-          time.hour >= 1 &&
-          time.hour <= 11 &&
-          local.hour == time.hour + 12) {
+      if ((local.hour == time.hour || local.hour == time.alternateHour) &&
+          (time.midnightMinute == null || local.minute == time.midnightMinute)) {
         matches.add(event);
       }
     }
@@ -2751,8 +2755,9 @@ class _OrdinalTokenMatch {
 }
 
 class _TimeReference {
-  const _TimeReference(this.hour, {required this.hasPeriod});
+  const _TimeReference(this.hour, {this.alternateHour, this.midnightMinute});
 
   final int hour;
-  final bool hasPeriod;
+  final int? alternateHour;
+  final int? midnightMinute;
 }

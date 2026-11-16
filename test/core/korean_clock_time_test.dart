@@ -6,6 +6,7 @@ void main() {
     for (final (period, hour, minute, expected, nextDay) in [
       ('밤', 12, 0, 0, true),
       ('저녁', 12, 0, 0, true),
+      ('자정', 0, 0, 0, true),
       ('오후', 12, 0, 12, false),
       ('낮', 12, 0, 12, false),
       ('점심', 12, 0, 12, false),
@@ -86,12 +87,18 @@ void main() {
       ('오후 다섯 시 오십 분', '오후', 5, 50),
       ('오전 8시 오십오 분', '오전', 8, 55),
       ('여덟시 반에', null, 8, 30),
+      ('3시반이야', null, 3, 30),
+      ('세시반인데', null, 3, 30),
+      ('3시반입니다', null, 3, 30),
+      ('3시반정도', null, 3, 30),
+      ('3시반도', null, 3, 30),
+      ('3시 반려동물 진료', null, 3, 0),
       ('8시 10에', null, 8, 10),
       ('밤 9시 11월 18일', '밤', 9, 0),
     ]) {
       test(input, () {
         final parts = koreanClockTimeParts(input).single;
-        expect(parts, (period: period, hour: hour, minute: minute));
+        expect((parts.period, parts.hour, parts.minute), (period, hour, minute));
       });
     }
 

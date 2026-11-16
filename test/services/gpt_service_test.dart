@@ -1008,8 +1008,10 @@ void main() {
     });
 
     test(
-        '분 표현이 없는 발화는 GPT의 분값을 임의로 0으로 덮어쓰지 않는다'
-        '(P6, R3 보호)', () async {
+        'only an explicit minute overrides the GPT minute', () async {
+      final today = DateTime.now();
+      final now = DateTime(today.year, today.month, today.day, 9);
+      final modelStart = DateTime(now.year, now.month, now.day, 20, 20);
       final client = MockClient((request) async {
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -1018,7 +1020,7 @@ void main() {
                 'message': <String, dynamic>{
                   'content': jsonEncode(<String, dynamic>{
                     'title': '회의',
-                    'start_at': '2026-05-18T20:00:00.000',
+                    'start_at': modelStart.toIso8601String(),
                     'end_at': null,
                     'location': null,
                     'memo': null,
@@ -1038,13 +1040,24 @@ void main() {
       final service = GptService(
         client: client,
         endpoint: Uri.parse(_proxyEndpoint),
-        now: () => DateTime(2026, 5, 18, 9), // banned-ok: mock 시각 전용,
-        // 클램프/만료 로직 미개입(기존 725행 근처 테스트와 동일 패턴).
+        now: () => now,
       );
 
-      final result = await service.parseSchedule('8시에 회의');
-
-      expect(result['start_at'], '2026-05-18T20:00:00.000');
+      for (final (input, minute) in [
+        ('8시에 회의', 20),
+        ('8시 반려동물 진료', 20),
+        ('8시 0분에 회의', 0),
+        ('8시반이야 회의', 30),
+        ('여덟시반인데 회의', 30),
+      ]) {
+        final result = await service.parseSchedule(input);
+        final start = DateTime.parse(result['start_at'] as String);
+        expect(
+          start,
+          DateTime(now.year, now.month, now.day, 20, minute),
+          reason: input,
+        );
+      }
     });
 
     test(
@@ -1281,6 +1294,8 @@ void main() {
       ('밤 12시 회식', 8, 0, 0),
       ('낮 2시', 7, 14, 0),
       ('자정에', 8, 0, 0),
+      ('오늘 자정에', 8, 0, 0),
+      ('5월 20일 자정에', 21, 0, 0),
       ('정오에', 7, 12, 0),
       ('네 시 사십오 분', 7, 16, 45),
       ('오후 다섯 시 오십 분', 7, 17, 50),
@@ -1300,6 +1315,15 @@ void main() {
           DateTime(now.year, now.month, 8));
       expect(service.inferStartAtFromRawText('내일 저녁 12시 회식'),
           DateTime(now.year, now.month, 9));
+    });
+
+    test('an explicit date still retains the stated clock time', () {
+      final today = DateTime.now();
+      final now = DateTime(today.year, today.month, today.day, 9);
+      final service = GptService(now: () => now);
+
+      expect(service.inferStartAtFromRawText('내일 오후 2시 20분 회의'),
+          DateTime(now.year, now.month, now.day + 1, 14, 20));
     });
 
     test('public local inference handles natural Korean half-hour words', () {

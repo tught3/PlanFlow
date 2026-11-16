@@ -701,37 +701,10 @@ class GptService {
     }
   }
 
-  /// `_extractAmbiguousMeridiemClock`과 동일한 매칭 로직(정규식)을 그대로
-  /// 재사용하되, "분 표현이 아예 없음(0으로 기본 처리됨)"과 "0분이 실제로
-  /// 명시됨"을 구분하기 위한 전용 판정 함수다. 매칭된 시각 표현 범위 안의
-  /// 분 캡처 그룹만 검사하므로, 문장의 다른 부분에 있는 "분"(예: "30분
-  /// 뒤에 다시 전화")을 오탐하지 않는다. 기존 `_hasAmbiguousMeridiemTime`
-  /// / `_extractAmbiguousMeridiemClock`의 판정 로직·반환 의미는 건드리지
-  /// 않고 그 결과만 별도로 소비한다.
+  /// 공용 시각 파서에서 분 생략과 명시적인 0분을 구분한다.
   bool _hasExplicitMinuteExpressionInAmbiguousMeridiemTime(String rawText) {
-    final text = _normalizeKoreanText(rawText);
-    final numericMatch = RegExp(
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?|\s*(반))?',
-    ).firstMatch(text);
-    if (numericMatch != null) {
-      if (numericMatch.group(1) != null) {
-        return false;
-      }
-      return numericMatch.group(3) != null || numericMatch.group(4) != null;
-    }
-
-    final koreanMatch = RegExp(
-      // 분 표현은 반드시 "N분"처럼 리터럴 "분"이 뒤따라야만 group3으로
-      // 캡처된다("분?"이 아니라 "분" 필수). "반"만 있고 "분"이 없는 경우
-      // (예: "여덟시 반에") group3 alt는 실패해야 "반" alt(group4)로
-      // 정상 폴백하며, 뒤에 붙는 조사("에" 등)를 group3이 그리디하게
-      // 삼켜버리는 것을 방지한다(P5 회귀 원인).
-      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?([가-힣]{1,8})\s*시(?:\s*([가-힣]{1,8}|\d{1,2})\s*분|\s*(반))?',
-    ).firstMatch(text);
-    if (koreanMatch == null || koreanMatch.group(1) != null) {
-      return false;
-    }
-    return koreanMatch.group(3) != null || koreanMatch.group(4) != null;
+    final parts = koreanClockTimeParts(_normalizeKoreanText(rawText)).firstOrNull;
+    return parts != null && parts.period == null && parts.hasExplicitMinute;
   }
 
   void _applyDefaultStartTimeForImplicitTime(

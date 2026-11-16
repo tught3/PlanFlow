@@ -2187,25 +2187,26 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final text = changeText == null || changeText.isEmpty
         ? _normalizedRawText
         : changeText;
-    final originalStartLocal =
-        event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
+    final currentLocalNow = planflowNow();
+    final originalStartLocal = event.startAt == null
+        ? currentLocalNow
+        : planflowLocal(event.startAt!);
     final timeCandidate = _inferLastTimeCandidate(text);
     final rollsToNextDay = timeCandidate?.isEndOfDay ?? false;
     final dateCandidate = _inferLastDateCandidate(
       text,
-      rollsToNextDay && text.contains('오늘') ? planflowNow() : originalStartLocal,
+      rollsToNextDay && text.contains('오늘')
+          ? currentLocalNow
+          : originalStartLocal,
       dateOnly: rollsToNextDay,
     );
     if (dateCandidate == null && timeCandidate == null) {
       return null;
     }
 
-    final baseDate = dateCandidate ??
-        DateTime(
-          originalStartLocal.year,
-          originalStartLocal.month,
-          originalStartLocal.day,
-        );
+    // Without a stated date, midnight means the end of today.
+    final baseDate =
+        dateCandidate ?? (rollsToNextDay ? currentLocalNow : originalStartLocal);
     final originalTime = _VoiceRequestedTime(
       originalStartLocal.hour,
       originalStartLocal.minute,
@@ -2518,7 +2519,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final match = dateMatches.last;
     final snippet = text.substring(
       match.start,
-      // The caller separately applies the day offset for 밤/저녁 12시.
+      // The caller separately applies the day offset for midnight.
       dateOnly ? match.end : (match.end + 20).clamp(0, text.length),
     );
     return GptService(now: () => referenceLocal).inferStartAtFromRawText(

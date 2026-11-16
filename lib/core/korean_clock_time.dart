@@ -8,7 +8,7 @@ class KoreanClockTime {
   final int hour;
   final int minute;
 
-  /// Only 12 at night or in the evening belongs to the following day.
+  /// Midnight and 12 at night or in the evening belong to the following day.
   final bool isEndOfDay;
 }
 
@@ -27,7 +27,8 @@ KoreanClockTime? resolveKoreanClockTime({
     return null;
   }
 
-  final isEndOfDay = hour == 12 && (period == '밤' || period == '저녁');
+  final isEndOfDay =
+      period == '자정' || (hour == 12 && (period == '밤' || period == '저녁'));
   final resolvedHour = switch (period) {
     '오전' || '아침' || '새벽' || '밤' || '저녁' when hour == 12 => 0,
     '낮' || '점심' when hour >= 1 && hour <= 6 => hour + 12,
@@ -43,7 +44,12 @@ KoreanClockTime? resolveKoreanClockTime({
   );
 }
 
-typedef KoreanClockTimeParts = ({String? period, int? hour, int? minute});
+typedef KoreanClockTimeParts = ({
+  String? period,
+  int? hour,
+  int? minute,
+  bool hasExplicitMinute,
+});
 
 const _koreanNumber = r'(?:(?:열|스물)\s*(?:하나|둘|셋|넷|한|두|세|네)|'
     r'다섯|여섯|일곱|여덟|아홉|하나|둘|셋|넷|한|두|세|네|열|스물|'
@@ -54,7 +60,8 @@ final _clockPattern = RegExp(
   '([0-9]+|$_koreanNumber)'
   r'\s*시(?!간)'
   '(?:\\s*([0-9]+|$_koreanNumber)\\s*분'
-  r'|\s*(반)(?=$|[^가-힣]|에|으로|로|부터|까지|쯤|경)'
+  // Allow ordinary endings (반이야, 반인데, 반도), and exclude words such as 반려.
+  r'|\s*(반)(?!려|대|드|응|찬|말|복|장|죽|지|품|납|영|면|짝)'
   r'|\s*([0-9]+)(?![0-9]|\s*[시일월년주]))?'
   r'|(자정|정오)(?=$|[^가-힣]|에|으로|로|부터|까지|쯤|경)',
 );
@@ -63,18 +70,25 @@ Iterable<KoreanClockTimeParts> koreanClockTimeParts(String text) sync* {
   for (final match in _clockPattern.allMatches(text)) {
     final fixedTime = match.group(6);
     if (fixedTime != null) {
-      yield (period: fixedTime, hour: fixedTime == '자정' ? 0 : 12, minute: 0);
+      yield (
+        period: fixedTime,
+        hour: fixedTime == '자정' ? 0 : 12,
+        minute: 0,
+        hasExplicitMinute: false,
+      );
       continue;
     }
     final minuteText = match.group(3) ?? match.group(5);
+    final hasHalfHour = match.group(4) != null;
     yield (
       period: match.group(1),
       hour: parseKoreanClockNumber(match.group(2)),
-      minute: match.group(4) != null
+      minute: hasHalfHour
           ? 30
           : minuteText == null
               ? 0
               : parseKoreanClockNumber(minuteText),
+      hasExplicitMinute: hasHalfHour || minuteText != null,
     );
   }
 }
