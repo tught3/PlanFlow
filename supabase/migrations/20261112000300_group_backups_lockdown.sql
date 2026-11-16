@@ -479,6 +479,16 @@ begin
     raise exception '로그인이 필요합니다.';
   end if;
 
+  -- Use the same user-before-backup lock order as account deletion.
+  perform 1
+    from public.users
+   where id = current_user_id
+   for key share;
+
+  if not found then
+    raise exception '사용자 프로필을 찾을 수 없습니다.';
+  end if;
+
   select *
     into backup_row
     from public.group_backups
@@ -825,6 +835,11 @@ begin
   loop
     insert_status := invite_record->>'status';
     if insert_status is null or insert_status not in ('pending', 'accepted')
+       -- A pending invite must keep its original age for the removal cutoff.
+       or (
+         insert_status = 'pending'
+         and nullif(invite_record->>'created_at', '') is null
+       )
        -- Detached invite history stays in the snapshot and cannot reactivate.
        or num_nonnulls(
          nullif(invite_record->>'invited_user_id', ''),

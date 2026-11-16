@@ -1,19 +1,28 @@
--- B3: Match account FKs, retain backup data, and detach received invites.
+-- B3: Delete account-owned backup data and detach received invites.
 begin;
 
--- Preserve personal backup snapshots after account deletion while detaching
--- the deleted account identifier. Unowned snapshots remain inaccessible to
--- normal users because all backup operations require the authenticated owner.
-alter table public.user_backups
-  alter column user_id drop not null;
-alter table public.user_backups
-  drop constraint if exists user_backups_user_id_fkey;
-alter table public.user_backups
-  add constraint user_backups_user_id_fkey
-  foreign key (user_id) references public.users (id) on delete set null;
+-- Replace either target check definition, including deployments that renamed it.
+lock table public.group_invites in access exclusive mode;
+do $$
+declare
+  target_check record;
+begin
+  for target_check in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.group_invites'::regclass
+      and contype = 'c'
+      and regexp_replace(lower(pg_get_expr(conbin, conrelid)), '[[:space:]]+', '', 'g') in (
+        '(num_nonnulls(invited_user_id,invited_email,invited_invite_code)=1)',
+        '((num_nonnulls(invited_user_id,invited_email,invited_invite_code)=1)or'
+        '((num_nonnulls(invited_user_id,invited_email,invited_invite_code)=0)and(status<>''pending''::text)))'
+      )
+  loop
+    execute format('alter table public.group_invites drop constraint %I', target_check.conname);
+  end loop;
+end;
+$$;
 
-alter table public.group_invites
-  drop constraint if exists group_invites_target_check;
 alter table public.group_invites
   add constraint group_invites_target_check
   check (
@@ -114,6 +123,7 @@ set search_path = public, pg_temp
 as $$
 declare
   leader_group_rows jsonb;
+  user_email text;
 begin
   -- service_role 게이트: 이 함수는 service_role JWT로만 호출 가능.
   -- 일반 authenticated 사용자의 JWT로 호출하면 current_setting('role')가
@@ -125,6 +135,12 @@ begin
   if target_user_id is null then
     raise exception '대상 사용자 ID가 필요합니다.';
   end if;
+
+  -- Serialize cleanup with new backups referencing this user through a foreign key.
+  perform 1
+    from public.users
+   where id = target_user_id
+   for update;
 
   -- 1) groups.created_by는 상태와 관계없이 사용자 삭제를 제한한다.
   select coalesce(
@@ -147,10 +163,12 @@ begin
   --      소유 그룹은 위에서 이미 확인했다.
   delete from public.group_members where user_id = target_user_id;
 
-  -- Keep group backups intact. The user FK only clears their owner reference.
+  -- Remove owned snapshots before deleting the user, regardless of the backup FK.
+  delete from public.group_backups where created_by = target_user_id;
 
   -- 2-2) 그룹 댓글·위임·초대 중 사용자가 만든 것 정리 (FK CASCADE가 안 걸려있을 수 있어 명시).
-  delete from public.group_event_comments where author_user_id = target_user_id;
+  delete from public.group_event_comments
+    where author_user_id = delete_user_account.target_user_id;
   delete from public.group_role_delegations
     where delegator_user_id = target_user_id or delegate_user_id = target_user_id;
   delete from public.group_invites where invited_by = target_user_id;
@@ -158,13 +176,19 @@ begin
   -- 2-3) 사용자 개인 일정 관련 데이터 (events CASCADE → pre_actions/reminders 자동 삭제).
   delete from public.location_history where user_id = target_user_id;
   delete from public.voice_logs where user_id = target_user_id;
-  -- Personal backup payloads are retained; the FK clears their owner reference.
+  delete from public.user_backups where user_id = target_user_id;
   delete from public.feedback_reports where user_id = target_user_id;
   delete from public.user_settings where user_id = target_user_id;
   delete from public.events where user_id = target_user_id;
 
-  -- The public early-bird signup stores only an email address. Its rows
-  -- are not tied to an account, so account deletion leaves them untouched.
+  select email into user_email
+    from auth.users
+   where id = target_user_id;
+  user_email := nullif(lower(btrim(user_email)), '');
+  if user_email is not null
+    and to_regclass('planflow.early_bird_emails') is not null then
+    delete from planflow.early_bird_emails where email = user_email;
+  end if;
 
   -- 3) 마지막으로 users 테이블에서 사용자 행 삭제.
   --      (auth.users는 Edge Function에서 auth.admin.deleteUser로 삭제.)

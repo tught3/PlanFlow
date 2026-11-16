@@ -199,7 +199,13 @@ void main() {
     expect(_function(schema, 'matches_current_auth_email'), matchesEmail);
     expect(matchesEmail, contains('from auth.users'));
     expect(matchesEmail, contains('where id = auth.uid()'));
-    expect(matchesEmail, contains('email is not distinct from profile_email'));
+    expect(
+      matchesEmail,
+      matches(
+        r"coalesce\(nullif\(lower\(btrim\(email\)\), ''\), ''\)\s*=\s*"
+        r"coalesce\(nullif\(lower\(btrim\(profile_email\)\), ''\), ''\)",
+      ),
+    );
     for (final sql in [users, schema]) {
       expect(
         sql,
@@ -235,22 +241,37 @@ void main() {
     expect(cleanup, contains("'leader_groups'"));
   });
 
-  test('B3 cleanup leaves email-only early-bird rows without account proof',
+  test(
+      'P7b #7 cleanup deletes the Auth email only if the early-bird table exists',
       () {
     for (final sql in [deletion, schema]) {
       final cleanup = _function(sql, 'delete_user_account');
-      expect(cleanup, isNot(matches(r'\bselect\s+email\b')));
       expect(
         cleanup,
-        isNot(matches(r'\bdelete\s+from\s+planflow\.early_bird_emails\b')),
+        matches(r'select email into user_email\s+from auth\.users\s+'
+            r'where id = target_user_id'),
+      );
+      expect(
+        cleanup,
+        matches(
+          r"if user_email is not null\s+and to_regclass\('planflow\.early_bird_emails'\) is not null then\s+"
+          r'delete from planflow\.early_bird_emails\s+where email = user_email;',
+        ),
       );
     }
   });
 
-  test('B3 account deletion keeps backup records and shared schedules', () {
+  test('P7b #1 account deletion removes both owned backup payloads', () {
     for (final sql in [deletion, schema]) {
       final cleanup = _function(sql, 'delete_user_account');
-      expect(cleanup, isNot(matches(r'delete from public\.group_backups')));
+      expect(
+          cleanup,
+          contains(
+              'delete from public.group_backups where created_by = target_user_id;'));
+      expect(
+          cleanup,
+          contains(
+              'delete from public.user_backups where user_id = target_user_id;'));
       expect(
         cleanup,
         contains(
@@ -261,16 +282,12 @@ void main() {
       schema,
       matches(
         r'create table if not exists public\.user_backups[^;]*'
-        r'user_id uuid references public\.users \(id\) on delete set null',
+        r'user_id uuid not null references public\.users \(id\) on delete cascade',
       ),
     );
     expect(
       deletion,
-      contains('foreign key (user_id) references public.users (id) on delete set null'),
-    );
-    expect(
-      deletion,
-      contains('alter column user_id drop not null'),
+      isNot(matches(r'alter table public\.user_backups\b')),
     );
     expect(
       schema,
@@ -284,10 +301,6 @@ void main() {
       _function(schema, 'restore_user_backup'),
       contains('and user_id = uid'),
     );
-    for (final sql in [deletion, schema]) {
-      final cleanup = _function(sql, 'delete_user_account');
-      expect(cleanup, isNot(matches(r'delete from public\.user_backups')));
-    }
     expect(
       schema,
       matches(
@@ -304,6 +317,64 @@ void main() {
         r'and not exists \(select 1 from public\.users where id = old\.created_by\)',
       ),
     );
+  });
+
+  test('P7b #6 account cleanup does not depend on owner FK detachment', () {
+    final ownerLock = RegExp(
+      r'perform 1\s+from public\.users\s+where id = target_user_id\s+for update;',
+    );
+    for (final sql in [deletion, schema]) {
+      final cleanup = _function(sql, 'delete_user_account');
+      final lock = ownerLock.firstMatch(cleanup);
+      final groupBackupDelete =
+          cleanup.indexOf('delete from public.group_backups');
+      final userDelete = cleanup.indexOf('delete from public.users');
+      expect(lock, isNotNull);
+      expect(groupBackupDelete, greaterThan(lock!.end));
+      expect(userDelete, greaterThan(groupBackupDelete));
+    }
+    expect(
+      links.split('begin;').first,
+      contains('20261112000300_group_backups_lockdown.sql must run first'),
+    );
+  });
+
+  test('P7b uses the same user-first lock order for restore and withdrawal',
+      () {
+    for (final sql in [backups, schema]) {
+      final restore = _function(sql, 'restore_group_from_backup');
+      expect(
+        restore,
+        matches(
+          r'perform 1\s+from public\.users\s+where id = current_user_id\s+'
+          r'for key share;[\s\S]*?select \*\s+into backup_row\s+'
+          r'from public\.group_backups\s+where id = backup_id_input\s+for update;',
+        ),
+      );
+    }
+  });
+
+  test('P7b #8 identifies both invite CHECK definitions in the catalog', () {
+    expect(deletion, contains('from pg_constraint'));
+    expect(deletion, contains("conrelid = 'public.group_invites'::regclass"));
+    expect(deletion, contains("contype = 'c'"));
+    expect(deletion, contains('pg_get_expr(conbin, conrelid)'));
+    expect(
+        deletion,
+        contains(
+            'num_nonnulls(invited_user_id,invited_email,invited_invite_code)=1'));
+    expect(
+        deletion,
+        contains(
+            'num_nonnulls(invited_user_id,invited_email,invited_invite_code)=0'));
+    expect(
+        deletion,
+        contains(
+            "format('alter table public.group_invites drop constraint %I',"));
+    expect(
+        deletion,
+        isNot(
+            contains('drop constraint if exists group_invites_target_check')));
   });
 
   test(
@@ -366,6 +437,66 @@ void main() {
     final remove = _function(links, 'remove_group_member');
     expect(_function(schema, 'remove_group_member'), remove);
     expect(remove, matches(r'\binvite_token\s*=\s*default\b'));
+  });
+
+  test('P7b #2a removal cancels pending invites for all three target forms',
+      () {
+    final remove = _function(links, 'remove_group_member');
+    expect(_function(schema, 'remove_group_member'), remove);
+    expect(remove,
+        matches(r'select email\s+into target_email\s+from auth\.users'));
+    expect(
+        remove,
+        matches(r'update public\.group_invites\s+as invite\s+'
+            r"set status = 'cancelled',\s+cancelled_at = "));
+    expect(remove, contains('invite.group_id = group_row.id'));
+    expect(remove, contains("invite.status = 'pending'"));
+    expect(remove, contains('invite.invited_user_id = member_user_id_input'));
+    expect(
+        remove,
+        contains(
+            'lower(invite.invited_invite_code) = lower(target_invite_code)'));
+    expect(
+        remove, contains('lower(invite.invited_email) = lower(target_email)'));
+  });
+
+  test('P7b #2b explicit acceptance requires a fresh invite after removal', () {
+    final accept = _function(schema, 'accept_group_invite');
+    expect(accept, contains('requires_explicit_reinvite'));
+    expect(accept, contains('invite_row.created_at <= member.removed_at'));
+    expect(accept, contains('member.removed_at is null'));
+    expect(_function(links, 'accept_group_invite'), accept);
+    final restore = _function(backups, 'restore_group_from_backup');
+    expect(_function(schema, 'restore_group_from_backup'), restore);
+    expect(
+        restore,
+        matches(r"insert_status = 'pending'\s+and\s+"
+            r"nullif\(invite_record->>'created_at', ''\) is null"));
+    expect(restore, contains("(invite_record->>'created_at')::timestamptz"));
+    expect(restore, contains("(member_record->>'removed_at')::timestamptz"));
+  });
+
+  test('P7b #4 group and member identity is immutable to client roles', () {
+    for (final (table, column) in [
+      ('groups', 'created_by'),
+      ('group_members', 'user_id')
+    ]) {
+      final name = 'protect_' '$table' '_identity';
+      final guard = _function(schema, name);
+      expect(_function(links, name), guard);
+      expect(guard, contains('security invoker'));
+      expect(guard, contains("current_user in ('authenticated', 'anon')"));
+      expect(guard, contains('new.$column is distinct from old.$column'));
+      for (final sql in [schema, links]) {
+        expect(
+            sql,
+            matches('create trigger '
+                '$table'
+                r'_protect_identity'
+                r'\s+before update on public\.'
+                '$table'));
+      }
+    }
   });
 
   test('B4 removal remains recorded when the remover reference is cleared', () {
@@ -477,5 +608,16 @@ void main() {
       matches(r'error: "data_delete_failed",\s*'
           r'message: dataDeleteFailureMessage,\s*requestId,'),
     );
+  });
+
+  test(
+      'P7b #9 every deletion error log includes the response request identifier',
+      () {
+    final source = _read('supabase/functions/delete-account/index.ts');
+    final logs = RegExp(r'console\.error\(([\s\S]*?)\);').allMatches(source);
+    expect(logs, hasLength(5));
+    for (final log in logs) {
+      expect(log.group(1), contains('requestId'));
+    }
   });
 }

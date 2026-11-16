@@ -296,14 +296,22 @@ class _AccountSection extends StatelessWidget {
                     const _DeleteAccountBullet('설정'),
                     const _DeleteAccountBullet('음성 로그'),
                     const _DeleteAccountBullet('위치 기록'),
-                    const _DeleteAccountBullet('백업'),
+                    const _DeleteAccountBullet('백업·그룹 백업 스냅샷'),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '탈퇴하면 위 데이터가 모두 영구 삭제되며, 어떤 방법으로도 복구하거나 되돌릴 수 없습니다.',
+                      style: TextStyle(
+                        color: Color(0xFFB42318),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const Divider(height: 24),
                     const Text('유지되는 데이터:'),
                     const SizedBox(height: 8),
                     const _DeleteAccountBullet('그룹 공유 일정 (다른 멤버 권리)'),
                     const Divider(height: 24),
                     Text(
-                      '그룹 리더인 active 그룹이 있으면 탈퇴가 차단됩니다. 먼저 그룹을 삭제하거나 리더를 위임하세요.',
+                      '소유한 그룹이 남아 있으면 탈퇴할 수 없습니다. 먼저 해당 그룹을 삭제하세요.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: const Color(0xFFB42318),
                             fontWeight: FontWeight.w600,

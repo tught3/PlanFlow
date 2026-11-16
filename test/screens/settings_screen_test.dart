@@ -1278,6 +1278,68 @@ void main() {
     },
   );
 
+  testWidgets('account withdrawal warns about permanent backup deletion and cancels', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+    AppEnv.markSupabaseInitialized();
+    authProvider.setUser('user-1');
+
+    final authService = _FakeAuthService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          groupContextProvider: _fakeEmptyGroupContextProvider(),
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          authService: authService,
+          naverImportService: _FakeNaverOpenApiCalendarService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const ValueKey('settings-delete-account-button'));
+    await _scrollUntilHitTestable(tester, button, maxScrolls: 24);
+    await tester.tap(button.hitTestable());
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget);
+    final backup = find.descendant(
+      of: dialog,
+      matching: find.text('• 백업·그룹 백업 스냅샷'),
+    ).evaluate().length;
+    const warning = '탈퇴하면 위 데이터가 모두 영구 삭제되며, 어떤 방법으로도 복구하거나 되돌릴 수 없습니다.';
+    final warningTexts = tester.widgetList<Text>(find.descendant(
+      of: dialog,
+      matching: find.text(warning),
+    )).toList();
+    expect(find.text('• 그룹 공유 일정 (다른 멤버 권리)'), findsOneWidget);
+
+    final cancel = find.descendant(of: dialog, matching: find.text('취소'));
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+    expect(dialog, findsNothing);
+    expect(find.text('정말 확실합니까?'), findsNothing);
+    expect(authService.deleteAccountCallCount, 0);
+
+    expect(backup, 1);
+    expect(warningTexts, hasLength(1));
+    expect(warningTexts.single.data, contains('복구'));
+    expect(warningTexts.single.style?.color, const Color(0xFFB42318));
+    expect(warningTexts.single.style?.fontWeight, FontWeight.w700);
+  });
+
   testWidgets('logout does not clear saved Naver calendar credentials', (
     tester,
   ) async {
@@ -2167,6 +2229,13 @@ class _FakeAuthService extends AuthService {
   final bool connectCalendarResult;
   int signOutCallCount = 0;
   int connectCalendarCallCount = 0;
+  int deleteAccountCallCount = 0;
+
+  @override
+  Future<DeleteAccountResult> deleteAccount({String? password}) async {
+    deleteAccountCallCount += 1;
+    return const DeleteAccountResult(success: false);
+  }
 
   @override
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {

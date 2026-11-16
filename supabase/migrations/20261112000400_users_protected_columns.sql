@@ -22,7 +22,8 @@ as $$
   select exists (
     select 1 from auth.users
      where id = auth.uid()
-       and email is not distinct from profile_email
+       and coalesce(nullif(lower(btrim(email)), ''), '')
+         = coalesce(nullif(lower(btrim(profile_email)), ''), '')
   );
 $$;
 

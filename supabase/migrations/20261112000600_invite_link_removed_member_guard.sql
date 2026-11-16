@@ -1,6 +1,53 @@
 -- B4: Keep explicit re-invitations, block removed members on shared links,
 -- and rotate the token on removal. The groups row lock orders both actions.
+-- 20261112000300_group_backups_lockdown.sql must run first.
 begin;
+
+create or replace function public.protect_groups_identity()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user in ('authenticated', 'anon')
+    and new.created_by is distinct from old.created_by then
+    raise exception 'groups.created_by cannot change'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.protect_groups_identity() from public, anon, authenticated;
+
+drop trigger if exists groups_protect_identity on public.groups;
+create trigger groups_protect_identity
+  before update on public.groups
+  for each row execute function public.protect_groups_identity();
+
+create or replace function public.protect_group_members_identity()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user in ('authenticated', 'anon')
+    and new.user_id is distinct from old.user_id then
+    raise exception 'group_members.user_id cannot change'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.protect_group_members_identity() from public, anon, authenticated;
+
+drop trigger if exists group_members_protect_identity on public.group_members;
+create trigger group_members_protect_identity
+  before update on public.group_members
+  for each row execute function public.protect_group_members_identity();
 
 create or replace function public.protect_member_reinvite_requirement()
 returns trigger
@@ -61,6 +108,166 @@ drop trigger if exists group_backups_capture_reinvite_requirements on public.gro
 create trigger group_backups_capture_reinvite_requirements
   before insert or update of reinvite_required_user_ids on public.group_backups
   for each row execute function public.capture_backup_reinvite_requirements();
+
+create or replace function public.accept_group_invite(invite_id_input uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  invite_row public.group_invites%rowtype;
+  locked_group public.groups%rowtype;
+  invite_group_id uuid;
+  member_id uuid;
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  -- Archive/delete lock the group row before changing its invites. Use the
+  -- same group -> invite order here to avoid a lock inversion. This first
+  -- lookup only discovers the group id; all authorization/state checks happen
+  -- again after both rows are locked.
+  select group_id
+    into invite_group_id
+    from public.group_invites
+   where id = invite_id_input;
+
+  if not found then
+    raise exception 'group invite not found';
+  end if;
+
+  select *
+    into locked_group
+    from public.groups
+   where id = invite_group_id
+   for update;
+
+  if not found then
+    raise exception '초대된 그룹을 찾을 수 없습니다.';
+  end if;
+
+  select *
+    into invite_row
+    from public.group_invites
+   where id = invite_id_input
+   for update;
+
+  if not found or invite_row.group_id is distinct from invite_group_id then
+    raise exception 'group invite not found';
+  end if;
+
+  if locked_group.status <> 'active' then
+    raise exception '활성화된 그룹만 초대 수락이 가능합니다.';
+  end if;
+
+  if invite_row.status <> 'pending' then
+    raise exception 'pending invite만 수락할 수 있습니다.';
+  end if;
+
+  if invite_row.expires_at <= now() then
+    raise exception '만료된 초대는 수락할 수 없습니다.';
+  end if;
+
+  if not public.is_group_invite_target(
+    invite_row.invited_user_id,
+    invite_row.invited_email,
+    invite_row.invited_invite_code
+  ) then
+    raise exception '내 초대만 처리할 수 있습니다.';
+  end if;
+
+  if exists (
+    select 1
+      from public.group_members
+     where group_id = invite_row.group_id
+       and user_id = current_user_id
+       and status = 'active'
+  ) then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  -- Restored invites retain their creation time and use this cutoff too.
+  if exists (
+    select 1
+      from public.group_members as member
+     where member.group_id = invite_row.group_id
+       and member.user_id = current_user_id
+       and member.status = 'removed'
+       and (
+         member.requires_explicit_reinvite
+         or coalesce(member.removed_by <> member.user_id, false)
+       )
+       and (
+         member.removed_at is null
+         or invite_row.created_at <= member.removed_at
+       )
+  ) then
+    raise exception '강퇴 후 새로 발급된 초대가 필요합니다.';
+  end if;
+
+  -- Accept first in the same transaction. The validated SECURITY DEFINER RPC
+  -- performs this state transition and membership write atomically.
+  update public.group_invites
+     set status = 'accepted',
+         accepted_at = now(),
+         acted_by = current_user_id
+   where id = invite_row.id;
+
+  if not found then
+    raise exception '초대 수락 상태를 갱신할 수 없습니다.';
+  end if;
+
+  -- Reuse the existing soft-removed membership row. This preserves its stable
+  -- id and original created_at while starting a new active membership period.
+  update public.group_members
+     set role = 'member',
+         status = 'active',
+         joined_at = now(),
+         removed_at = null,
+         removed_by = null,
+         updated_at = now()
+   where group_id = invite_row.group_id
+     and user_id = current_user_id
+     and status = 'removed'
+  returning id into member_id;
+
+  if member_id is null then
+    insert into public.group_members (
+      group_id,
+      user_id,
+      role,
+      status,
+      joined_at,
+      created_at,
+      updated_at
+    )
+    values (
+      invite_row.group_id,
+      current_user_id,
+      'member',
+      'active',
+      now(),
+      now(),
+      now()
+    )
+    returning id into member_id;
+  end if;
+
+  if member_id is null then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  return member_id;
+end;
+$$;
+
+revoke all on function public.accept_group_invite(uuid) from public;
+revoke all on function public.accept_group_invite(uuid) from anon;
+grant execute on function public.accept_group_invite(uuid) to authenticated;
+grant execute on function public.accept_group_invite(uuid) to service_role;
 
 create or replace function public.accept_group_invite_link(
   group_id_input uuid,
@@ -224,6 +431,8 @@ declare
   target_member public.group_members%rowtype;
   updated_member public.group_members%rowtype;
   active_leader_count integer;
+  target_invite_code text;
+  target_email text;
 begin
   if current_user_id is null then
     raise exception '로그인이 필요합니다.';
@@ -281,12 +490,34 @@ begin
 
   update public.group_members
      set status = 'removed',
-         removed_at = now(),
+         removed_at = clock_timestamp(),
          removed_by = current_user_id,
          requires_explicit_reinvite = true,
          updated_at = now()
    where id = target_member.id
    returning * into updated_member;
+
+  select invite_code
+    into target_invite_code
+    from public.users
+   where id = member_user_id_input;
+
+  select email
+    into target_email
+    from auth.users
+   where id = member_user_id_input;
+
+  update public.group_invites as invite
+     set status = 'cancelled',
+         cancelled_at = updated_member.removed_at,
+         acted_by = current_user_id
+   where invite.group_id = group_row.id
+     and invite.status = 'pending'
+     and (
+       invite.invited_user_id = member_user_id_input
+       or lower(invite.invited_invite_code) = lower(target_invite_code)
+       or lower(invite.invited_email) = lower(target_email)
+     );
 
   -- Rotate the link while holding the same group lock used for joining.
   update public.groups

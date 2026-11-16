@@ -81,10 +81,11 @@ serve(async (req) => {
       .select();
 
     if (rpcResponse.error) {
-      // Persist only the error code and return an opaque request identifier.
+      // Correlate the response without logging error details or user data.
       console.error(
         "delete_user_account",
         rpcResponse.error.code,
+        requestId,
       );
       return json(
         {
@@ -99,7 +100,7 @@ serve(async (req) => {
 
     rpcRows = (rpcResponse.data ?? []) as DeleteAccountRpcRow[];
   } catch {
-    console.error("delete_user_account", "rpc_exception");
+    console.error("delete_user_account", "rpc_exception", requestId);
     return json(
       {
         success: false,
@@ -114,7 +115,7 @@ serve(async (req) => {
   const rpcResult = rpcRows[0];
   if (!rpcResult) {
     // RPC가 빈 응답을 반환 — 정상 상황이 아님 (fail-closed).
-    console.error("delete_user_account", "rpc_empty_result");
+    console.error("delete_user_account", "rpc_empty_result", requestId);
     return json(
       {
         success: false,
@@ -159,6 +160,7 @@ serve(async (req) => {
       console.error(
         "delete_auth_user",
         deleteAuthError.code ?? "auth_user_delete_failed",
+        requestId,
       );
       return json(
         {
@@ -172,7 +174,7 @@ serve(async (req) => {
       );
     }
   } catch {
-    console.error("delete_auth_user", "auth_user_delete_exception");
+    console.error("delete_auth_user", "auth_user_delete_exception", requestId);
     return json(
       {
         success: false,

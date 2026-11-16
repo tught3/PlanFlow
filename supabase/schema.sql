@@ -78,7 +78,8 @@ as $$
   select exists (
     select 1 from auth.users
      where id = auth.uid()
-       and email is not distinct from profile_email
+       and coalesce(nullif(lower(btrim(email)), ''), '')
+         = coalesce(nullif(lower(btrim(profile_email)), ''), '')
   );
 $$;
 
@@ -418,6 +419,52 @@ drop trigger if exists group_members_set_updated_at on public.group_members;
 create trigger group_members_set_updated_at
   before update on public.group_members
   for each row execute function public.set_updated_at();
+
+create or replace function public.protect_groups_identity()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user in ('authenticated', 'anon')
+    and new.created_by is distinct from old.created_by then
+    raise exception 'groups.created_by cannot change'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.protect_groups_identity() from public, anon, authenticated;
+
+drop trigger if exists groups_protect_identity on public.groups;
+create trigger groups_protect_identity
+  before update on public.groups
+  for each row execute function public.protect_groups_identity();
+
+create or replace function public.protect_group_members_identity()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user in ('authenticated', 'anon')
+    and new.user_id is distinct from old.user_id then
+    raise exception 'group_members.user_id cannot change'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.protect_group_members_identity() from public, anon, authenticated;
+
+drop trigger if exists group_members_protect_identity on public.group_members;
+create trigger group_members_protect_identity
+  before update on public.group_members
+  for each row execute function public.protect_group_members_identity();
 
 create or replace function public.protect_member_reinvite_requirement()
 returns trigger
@@ -769,6 +816,25 @@ begin
        and status = 'active'
   ) then
     raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  -- Restored invites retain their creation time and use this cutoff too.
+  if exists (
+    select 1
+      from public.group_members as member
+     where member.group_id = invite_row.group_id
+       and member.user_id = current_user_id
+       and member.status = 'removed'
+       and (
+         member.requires_explicit_reinvite
+         or coalesce(member.removed_by <> member.user_id, false)
+       )
+       and (
+         member.removed_at is null
+         or invite_row.created_at <= member.removed_at
+       )
+  ) then
+    raise exception '강퇴 후 새로 발급된 초대가 필요합니다.';
   end if;
 
   -- Accept first in the same transaction. The validated SECURITY DEFINER RPC
@@ -1164,6 +1230,8 @@ declare
   target_member public.group_members%rowtype;
   updated_member public.group_members%rowtype;
   active_leader_count integer;
+  target_invite_code text;
+  target_email text;
 begin
   if current_user_id is null then
     raise exception '로그인이 필요합니다.';
@@ -1221,12 +1289,34 @@ begin
 
   update public.group_members
      set status = 'removed',
-         removed_at = now(),
+         removed_at = clock_timestamp(),
          removed_by = current_user_id,
          requires_explicit_reinvite = true,
          updated_at = now()
    where id = target_member.id
    returning * into updated_member;
+
+  select invite_code
+    into target_invite_code
+    from public.users
+   where id = member_user_id_input;
+
+  select email
+    into target_email
+    from auth.users
+   where id = member_user_id_input;
+
+  update public.group_invites as invite
+     set status = 'cancelled',
+         cancelled_at = updated_member.removed_at,
+         acted_by = current_user_id
+   where invite.group_id = group_row.id
+     and invite.status = 'pending'
+     and (
+       invite.invited_user_id = member_user_id_input
+       or lower(invite.invited_invite_code) = lower(target_invite_code)
+       or lower(invite.invited_email) = lower(target_email)
+     );
 
   -- Rotate the link while holding the same group lock used for joining.
   update public.groups
@@ -2761,6 +2851,16 @@ begin
     raise exception '로그인이 필요합니다.';
   end if;
 
+  -- Use the same user-before-backup lock order as account deletion.
+  perform 1
+    from public.users
+   where id = current_user_id
+   for key share;
+
+  if not found then
+    raise exception '사용자 프로필을 찾을 수 없습니다.';
+  end if;
+
   select *
     into backup_row
     from public.group_backups
@@ -3107,6 +3207,11 @@ begin
   loop
     insert_status := invite_record->>'status';
     if insert_status is null or insert_status not in ('pending', 'accepted')
+       -- A pending invite must keep its original age for the removal cutoff.
+       or (
+         insert_status = 'pending'
+         and nullif(invite_record->>'created_at', '') is null
+       )
        -- Detached invite history stays in the snapshot and cannot reactivate.
        or num_nonnulls(
          nullif(invite_record->>'invited_user_id', ''),
@@ -3201,6 +3306,7 @@ set search_path = public, pg_temp
 as $$
 declare
   leader_group_rows jsonb;
+  user_email text;
 begin
   -- service_role 게이트: 이 함수는 service_role JWT로만 호출 가능.
   -- 일반 authenticated 사용자의 JWT로 호출하면 current_setting('role')가
@@ -3212,6 +3318,12 @@ begin
   if target_user_id is null then
     raise exception '대상 사용자 ID가 필요합니다.';
   end if;
+
+  -- Serialize cleanup with new backups referencing this user through a foreign key.
+  perform 1
+    from public.users
+   where id = target_user_id
+   for update;
 
   -- 1) groups.created_by는 상태와 관계없이 사용자 삭제를 제한한다.
   select coalesce(
@@ -3234,10 +3346,12 @@ begin
   --      소유 그룹은 위에서 이미 확인했다.
   delete from public.group_members where user_id = target_user_id;
 
-  -- Keep group backups intact. The user FK only clears their owner reference.
+  -- Remove owned snapshots before deleting the user, regardless of the backup FK.
+  delete from public.group_backups where created_by = target_user_id;
 
   -- 2-2) 그룹 댓글·위임·초대 중 사용자가 만든 것 정리 (FK CASCADE가 안 걸려있을 수 있어 명시).
-  delete from public.group_event_comments where author_user_id = target_user_id;
+  delete from public.group_event_comments
+    where author_user_id = delete_user_account.target_user_id;
   delete from public.group_role_delegations
     where delegator_user_id = target_user_id or delegate_user_id = target_user_id;
   delete from public.group_invites where invited_by = target_user_id;
@@ -3245,13 +3359,19 @@ begin
   -- 2-3) 사용자 개인 일정 관련 데이터 (events CASCADE → pre_actions/reminders 자동 삭제).
   delete from public.location_history where user_id = target_user_id;
   delete from public.voice_logs where user_id = target_user_id;
-  -- Personal backup payloads are retained; the FK clears their owner reference.
+  delete from public.user_backups where user_id = target_user_id;
   delete from public.feedback_reports where user_id = target_user_id;
   delete from public.user_settings where user_id = target_user_id;
   delete from public.events where user_id = target_user_id;
 
-  -- The public early-bird signup stores only an email address. Its rows
-  -- are not tied to an account, so account deletion leaves them untouched.
+  select email into user_email
+    from auth.users
+   where id = target_user_id;
+  user_email := nullif(lower(btrim(user_email)), '');
+  if user_email is not null
+    and to_regclass('planflow.early_bird_emails') is not null then
+    delete from planflow.early_bird_emails where email = user_email;
+  end if;
 
   -- 3) 마지막으로 users 테이블에서 사용자 행 삭제.
   --      (auth.users는 Edge Function에서 auth.admin.deleteUser로 삭제.)
@@ -3687,7 +3807,7 @@ create index if not exists planflow_early_bird_emails_created_idx
 -- 10. user_backups
 create table if not exists public.user_backups (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid references public.users (id) on delete set null,
+  user_id uuid not null references public.users (id) on delete cascade,
   label text,
   payload jsonb not null default '{}'::jsonb,
   item_counts jsonb not null default '{}'::jsonb,
