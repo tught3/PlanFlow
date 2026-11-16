@@ -40,6 +40,11 @@ type DeleteAccountRpcRow = {
   leader_groups: unknown;
 };
 
+const dataDeleteFailureMessage =
+  "계정 데이터 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+const authDeleteFailureMessage =
+  "개인 데이터는 삭제됐지만 인증 계정 정리에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -55,6 +60,7 @@ serve(async (req) => {
     return json({ error: auth.error }, auth.status);
   }
   const userId = auth.userId;
+  const requestId = crypto.randomUUID();
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -75,27 +81,33 @@ serve(async (req) => {
       .select();
 
     if (rpcResponse.error) {
-      // PostgrestError — RLS/함수 예외/등. 사용자에게 message만 노출.
+      // Correlate the response without logging error details or user data.
       console.error(
-        "delete_user_account RPC error:",
+        "delete_user_account",
         rpcResponse.error.code,
-        rpcResponse.error.message,
+        requestId,
       );
       return json(
         {
           success: false,
           error: "data_delete_failed",
-          message: rpcResponse.error.message,
+          message: dataDeleteFailureMessage,
+          requestId,
         },
         500,
       );
     }
 
     rpcRows = (rpcResponse.data ?? []) as DeleteAccountRpcRow[];
-  } catch (err) {
-    console.error("delete_user_account RPC exception:", err);
+  } catch {
+    console.error("delete_user_account", "rpc_exception", requestId);
     return json(
-      { success: false, error: "data_delete_exception" },
+      {
+        success: false,
+        error: "data_delete_exception",
+        message: dataDeleteFailureMessage,
+        requestId,
+      },
       500,
     );
   }
@@ -103,8 +115,16 @@ serve(async (req) => {
   const rpcResult = rpcRows[0];
   if (!rpcResult) {
     // RPC가 빈 응답을 반환 — 정상 상황이 아님 (fail-closed).
-    console.error("delete_user_account RPC empty result");
-    return json({ success: false, error: "rpc_empty_result" }, 500);
+    console.error("delete_user_account", "rpc_empty_result", requestId);
+    return json(
+      {
+        success: false,
+        error: "rpc_empty_result",
+        message: dataDeleteFailureMessage,
+        requestId,
+      },
+      500,
+    );
   }
 
   if (!rpcResult.success) {
@@ -138,27 +158,30 @@ serve(async (req) => {
       // 사용자는 여전히 로그인 가능하지만 모든 개인 데이터가 날아간 상태.
       // 재시도 시도 없이 사용자에게 안내하고, 서버 로그로 감사.
       console.error(
-        "auth.admin.deleteUser failed (data already deleted):",
-        deleteAuthError.message,
+        "delete_auth_user",
+        deleteAuthError.code ?? "auth_user_delete_failed",
+        requestId,
       );
       return json(
         {
           success: false,
           error: "auth_user_delete_failed",
-          message:
-            "개인 데이터는 삭제됐지만 인증 계정 정리에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+          message: authDeleteFailureMessage,
           dataDeleted: true,
+          requestId,
         },
         500,
       );
     }
-  } catch (err) {
-    console.error("auth.admin.deleteUser exception:", err);
+  } catch {
+    console.error("delete_auth_user", "auth_user_delete_exception", requestId);
     return json(
       {
         success: false,
         error: "auth_user_delete_exception",
+        message: authDeleteFailureMessage,
         dataDeleted: true,
+        requestId,
       },
       500,
     );
