@@ -15,6 +15,7 @@ import 'guide_guards.dart';
 import 'guide_instruction_text.dart';
 import 'voice_correction_example.dart';
 import 'guide_providers.dart';
+import 'guide_qa_build_diagnostics.dart';
 import 'guide_scope.dart';
 import 'guide_route_recovery.dart';
 import '../../core/constants.dart';
@@ -23,6 +24,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../screens/onboarding/legacy_intro_screen.dart';
 import '../../screens/voice/voice_input_screen.dart';
 import '../../screens/voice/voice_conversation_screen.dart';
+import '../../services/app_feedback_service.dart';
 import 'package:go_router/go_router.dart';
 
 /// The scope must wrap the root navigator, not an individual Shell route.
@@ -63,6 +65,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
   @override
   void initState() {
     super.initState();
+    logGuideQaBuildDefines();
     WidgetsBinding.instance.addObserver(this);
     guideListeningBubbleHidden.addListener(_onListeningBubbleChanged);
     guideConfirmUserScrolled.addListener(_onListeningBubbleChanged);
@@ -511,6 +514,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
                 ]);
               }));
     }
+    content = GuideSaveFeedbackHost(child: content);
     final progress = _recoveryProgress;
     if (_sessionOnlyRecovery && coordinator != null && progress != null) {
       return ProviderScope(overrides: [

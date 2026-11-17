@@ -3038,7 +3038,8 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-    }, skip: !const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
+    }, skip: !(const bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
+        const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA')));
 
     testWidgets(
         'isolated QA save actual tap passes through live guide coachmark without coordinates',
@@ -3094,7 +3095,8 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-    }, skip: !const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
+    }, skip: !(const bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
+        const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA')));
     // Companion: the same unresolved-coordinate save must stay blocked unless
     // the isolated QA build is compiled in.
     testWidgets('non-QA build still blocks a guide save without coordinates',
@@ -3148,7 +3150,8 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-    }, skip: const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
+    }, skip: const bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
+        const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA'));
   });
 }
 

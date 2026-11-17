@@ -464,6 +464,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   void dispose() {
+    final dismissGuideSaveFeedback = _dismissGuideSaveFeedback;
+    if (dismissGuideSaveFeedback != null) {
+      // The feedback host is above this route. Don't mark it dirty while the
+      // Navigator is disposing the form during a build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        dismissGuideSaveFeedback();
+      });
+    }
     // A rewarded-ad callback can outlive this route when the user backs out.
     // Always clear the process-wide overlay so it cannot cover the next page.
     RewardedAdLoadingOverlay.hide();
@@ -1953,14 +1961,25 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         opened = await _permissionService.requestIgnoreBatteryOptimizations();
       }
 
-      if (!opened && mounted) {
+      if (mounted && _confirmGuideOwner != null) {
+        _showGuideSaveBlocked(
+          opened ? 'alarm_settings_selected' : 'alarm_settings_unavailable',
+          opened
+              ? '알람 권한 설정을 선택해 일정을 저장하지 않았어요. 권한을 확인한 뒤 다시 저장해 주세요.'
+              : '알람 설정을 열지 못해 저장하지 않았어요. Android 설정에서 알람 권한을 확인해 주세요.',
+        );
+      } else if (!opened && mounted) {
         _showMessage(
           '시스템 알람 설정 화면을 열지 못했어요. Android 설정에서 PlanFlow의 정확한 알람을 허용해 주세요.',
         );
       }
       return action;
     } catch (error) {
-      debugPrint('Alarm permission guard check failed (non-blocking): $error');
+      if (_confirmGuideOwner != null) {
+        _logSaveIssue('alarm_permission_check_failed');
+      } else {
+        debugPrint('Alarm permission guard check failed (non-blocking): $error');
+      }
       return _ConfirmAlarmPermissionAction.none;
     }
   }
@@ -1988,6 +2007,66 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   String? _confirmAuthUid;
   EventModel? _confirmPersistedEvent;
   String? _confirmOperationId;
+  VoidCallback? _dismissGuideSaveFeedback;
+
+  static const _guideSaveOwnerChangedMessage =
+      '로그인 또는 안내 세션이 바뀌어 저장하지 않았어요. 현재 안내를 확인해 주세요.';
+  static const _guideSaveLocationMessage = '일정 정의를 보려면 장소와 좌표가 필요해요. '
+      '장소를 선택하거나 지도에서 위치를 골라 주세요.';
+  static const _guideSavedEventMessage =
+      '일정은 저장됐어요. 안내가 이어지지 않았어요. 일정 목록에서 확인해 주세요.';
+  static const _guideSaveUncertainMessage =
+      '일정이 이미 저장됐을 수 있어요. 일정 목록에서 저장 여부를 확인해 주세요.';
+
+  void _showGuideSaveBlocked(String reasonCode, String message) {
+    _logSaveIssue(reasonCode);
+    if (!mounted) return;
+    _dismissGuideSaveFeedback = AppFeedbackService.showGuideSaveBlocked(
+      context: context,
+      reasonCode: reasonCode,
+      message: message,
+    );
+    if (_dismissGuideSaveFeedback == null) _showMessage(message);
+  }
+
+  void _showSaveBlocked(String reasonCode, String message) {
+    if (_confirmGuideOwner != null) {
+      _showGuideSaveBlocked(reasonCode, message);
+    } else if (mounted) {
+      _showMessage(message);
+    }
+  }
+
+  void _logSaveIssue(String reasonCode) {
+    if (kDebugMode) debugPrint('ConfirmScreen save: $reasonCode');
+  }
+
+  bool _saveScreenIsMounted() {
+    if (mounted) return true;
+    if (_confirmGuideOwner != null) _logSaveIssue('screen_closed');
+    return false;
+  }
+
+  bool _saveOwnerStillCurrent(String? originalUid) {
+    if (!_saveScreenIsMounted()) return false;
+    if (_resolveUserId() == originalUid) return true;
+    if (_confirmGuideOwner != null) {
+      _showGuideSaveBlocked(
+        'owner_changed_during_location_permission',
+        _guideSaveOwnerChangedMessage,
+      );
+    }
+    return false;
+  }
+
+  void _showSaveFailure(String reasonCode, String fallbackMessage) {
+    final message = _confirmPersistedEvent != null
+        ? _guideSavedEventMessage
+        : _confirmCreateAttempted
+            ? _guideSaveUncertainMessage
+            : fallbackMessage;
+    _showSaveBlocked(reasonCode, message);
+  }
 
   bool _sameGuideOwner(GuideSnapshot owner, {bool revision = false}) {
     if (!mounted ||
@@ -2005,10 +2084,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   Future<void> _save() async {
     if (_confirmSaveInFlight) return;
+    _dismissGuideSaveFeedback?.call();
+    _dismissGuideSaveFeedback = null;
     _confirmSaveInFlight = true;
     try {
       final current = GuideScope.maybeOf(context)?.state.value;
       if (_confirmGuideOwner != null && !_sameGuideOwner(_confirmGuideOwner!)) {
+        final mayHaveSaved = _confirmCreateAttempted ||
+            _confirmPersistedEvent != null ||
+            _confirmGuideOwner!.createdEventId != null;
+        _showGuideSaveBlocked(
+          'owner_changed',
+          mayHaveSaved
+              ? _guideSaveUncertainMessage
+              : _guideSaveOwnerChangedMessage,
+        );
         return;
       }
       if (current != null && current.run != GuideRun.terminal) {
@@ -2018,7 +2108,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
         if (!_sameGuideOwner(_confirmGuideOwner!) ||
             current.sessionId == null) {
-          _showMessage('안내 로그인 상태를 확인해 주세요.');
+          _showGuideSaveBlocked(
+              'guide_session_unavailable', '안내 로그인 상태를 확인해 주세요.');
           return;
         }
         // A real saved ID must never re-enter createEvent, even after remount.
@@ -2029,14 +2120,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             // Never leave the save tap silently doing nothing: the persisted
             // id exists but the guide operation binding is missing, so a
             // retry cannot be matched. Ask the user to check the list.
-            _showMessage('이미 저장된 일정이에요. 일정 목록에서 확인해 주세요.');
+            _showGuideSaveBlocked('checkpoint_operation_missing',
+                '이미 저장된 일정이에요. 일정 목록에서 확인해 주세요.');
             return;
           }
           _confirmPersistedEvent ??= await _resolveEventRepository()
               ?.fetchEvent(id, userId: current.uid);
-          if (!_sameGuideOwner(_confirmGuideOwner!) ||
-              _confirmPersistedEvent == null ||
-              _confirmPersistedEvent!.id != id) {
+          if (!_saveScreenIsMounted()) return;
+          if (!_sameGuideOwner(_confirmGuideOwner!)) {
+            _showGuideSaveBlocked(
+                'checkpoint_owner_changed', _guideSaveUncertainMessage);
+            return;
+          }
+          if (_confirmPersistedEvent == null || _confirmPersistedEvent!.id != id) {
+            _showGuideSaveBlocked(
+                'checkpoint_event_unavailable', _guideSaveUncertainMessage);
             return;
           }
           if (await _dispatchGuideSaveObserved(_confirmPersistedEvent!)) {
@@ -2045,32 +2143,33 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           return;
         }
         if (_confirmCreateAttempted) {
-          _showMessage('저장 요청 결과가 불확실해요. 일정 목록에서 확인해 주세요. 중복 생성은 하지 않아요.');
+          _showGuideSaveBlocked(
+              'create_result_unknown', _guideSaveUncertainMessage);
           return;
         }
         if (current.run != GuideRun.active ||
             current.errorCode != null ||
             current.step != GuideStep.correctAndSave) {
-          _showMessage('안내가 준비되지 않아 저장할 수 없어요.');
+          _showGuideSaveBlocked(
+              'guide_not_ready', '안내가 준비되지 않아 저장할 수 없어요.');
           return;
         }
       }
       await _saveActual();
-    } catch (error) {
+    } catch (_) {
       // 제목·시작시간 같은 모호한 값으로 저장 여부를 추정하지 않는다.
       // 재연결 근거는 저장소 응답으로 확인된 실제 일정(또는 정식 ID)뿐이다.
       final recovered = _confirmPersistedEvent;
-      if (!mounted) {
-        return;
-      }
+      if (!_saveScreenIsMounted()) return;
       if (recovered != null) {
         _confirmPersistedEvent = recovered;
         _confirmOperationId ??= _confirmSavedOperationId();
         var observed = false;
         try {
           observed = await _dispatchGuideSaveObserved(recovered);
-        } catch (guideError) {
-          debugPrint('Guide save reconnect failed: $guideError');
+        } catch (_) {
+          _showGuideSaveBlocked(
+              'checkpoint_reconnect_failed', _guideSavedEventMessage);
         }
         if (observed) {
           EventRefreshBus.instance.notifyChanged(
@@ -2080,13 +2179,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _navigateAfterSave();
           return;
         }
-        _showMessage('일정은 저장했어요. 안내 연결만 다시 시도해 주세요.');
         return;
       }
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : '저장 상태를 확인하지 못했어요. 잠시 후 확인해 주세요.');
+      if (_confirmGuideOwner != null) {
+        _showGuideSaveBlocked('save_check_failed', _guideSaveUncertainMessage);
+      } else {
+        _showMessage('저장 상태를 확인하지 못했어요. 잠시 후 확인해 주세요.');
       }
     } finally {
       _confirmSaveInFlight = false;
@@ -2100,7 +2198,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<void> _saveActual() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      _showMessage('제목을 입력해 주세요.');
+      _showSaveBlocked('title_required', '제목을 입력해 주세요.');
       return;
     }
 
@@ -2128,10 +2226,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
       );
       if (!placeSatisfied) {
-        _showMessage(
-          '일정 정의를 보려면 장소와 좌표가 필요해요. '
-          '장소를 선택하거나 지도에서 위치를 골라 주세요.',
-        );
+        _showGuideSaveBlocked(
+            'place_or_coordinates_required', _guideSaveLocationMessage);
         return;
       }
     }
@@ -2140,21 +2236,31 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       try {
         await authProvider.syncCurrentSession();
       } catch (error) {
-        debugPrint('ConfirmScreen session sync failed before save: $error');
+        if (_confirmGuideOwner != null) {
+          _logSaveIssue('session_sync_failed');
+        } else {
+          debugPrint('ConfirmScreen session sync failed before save: $error');
+        }
       }
     }
+    if (!_saveScreenIsMounted()) return;
 
     final userId = _resolveUserId();
     if (userId == null) {
-      _showMessage('로그인이 필요합니다.');
+      _showSaveBlocked('login_required', '로그인이 필요합니다.');
       return;
     }
 
     final repository = _resolveEventRepository();
     if (repository == null) {
-      _showMessage('Supabase 환경이 설정되지 않아 저장할 수 없어요.');
-      if (mounted) {
-        context.go(AppRoutes.home);
+      if (_confirmGuideOwner != null) {
+        _showGuideSaveBlocked('repository_unavailable',
+            '일정 저장에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.');
+      } else {
+        _showMessage('Supabase 환경이 설정되지 않아 저장할 수 없어요.');
+        if (mounted) {
+          context.go(AppRoutes.home);
+        }
       }
       return;
     }
@@ -2162,17 +2268,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (_confirmGuideOwner == null) {
       await _maybePromptLeaderAutoShareIfNeeded(userId);
     }
-    if (!mounted) {
-      return;
-    }
+    if (!_saveScreenIsMounted()) return;
 
     // 정확한 알람/배터리 권한이 필요한 Android에서는 실제 저장 전에
     // 먼저 권한을 확인한다. 사용자가 설정으로 이동하면 이번 저장은 중단하고,
     // 앱으로 돌아온 뒤 다시 저장을 눌렀을 때 권한이 확인된 경우에만 생성한다.
     final alarmPermissionAction = await _showAlarmPermissionGuardIfNeeded();
-    if (!mounted) {
-      return;
-    }
+    if (!_saveScreenIsMounted()) return;
     if (alarmPermissionAction != _ConfirmAlarmPermissionAction.none) {
       return;
     }
@@ -2242,25 +2344,33 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       try {
         final alreadyGranted =
             await _permissionService.checkLocationPermission();
-        if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+        if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
         if (!alreadyGranted) {
           await _permissionService.requestLocationPermission();
-          if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+          if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
           // Keep session state fresh after the OS prompt before persisting.
           if (AppEnv.isSupabaseReady) {
             try {
               await authProvider.syncCurrentSession();
             } catch (error) {
-              debugPrint(
-                  'ConfirmScreen session sync after location prompt failed: $error');
+              if (_confirmGuideOwner != null) {
+                _logSaveIssue('session_sync_after_location_permission_failed');
+              } else {
+                debugPrint(
+                    'ConfirmScreen session sync after location prompt failed: $error');
+              }
             }
-            if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+            if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
           }
         }
       } catch (error) {
         // Location is an optional preparation enhancement, never a save gate.
-        debugPrint('ConfirmScreen location permission request skipped: $error');
-        if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+        if (_confirmGuideOwner != null) {
+          _logSaveIssue('location_permission_check_failed');
+        } else {
+          debugPrint('ConfirmScreen location permission request skipped: $error');
+        }
+        if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
       }
     }
     if (_shouldSavePersonalEvent) {
@@ -2276,24 +2386,29 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           userId: userId,
         );
       } catch (error) {
-        debugPrint('Overlap lookup skipped before save: $error');
+        if (_confirmGuideOwner != null) {
+          _logSaveIssue('overlap_lookup_failed');
+        } else {
+          debugPrint('Overlap lookup skipped before save: $error');
+        }
       }
-      if (!mounted) {
-        return;
-      }
+      if (!_saveScreenIsMounted()) return;
       final duplicateWarningEvents = filterDuplicateWarningEvents(
         draft: draftEvent,
         candidates: overlappingEvents,
       );
-      if (!mounted) {
-        return;
-      }
+      if (!_saveScreenIsMounted()) return;
       if (duplicateWarningEvents.isNotEmpty) {
         unawaited(AnalyticsService.logConflictDetected());
         final shouldContinue = await _showOverlapWarning(
           duplicateWarningEvents,
         );
-        if (!shouldContinue || !mounted) {
+        if (!_saveScreenIsMounted()) return;
+        if (!shouldContinue) {
+          if (_confirmGuideOwner != null) {
+            _showGuideSaveBlocked('overlap_save_canceled',
+                '겹치는 일정 확인에서 저장을 취소했어요.');
+          }
           return;
         }
       }
@@ -2317,10 +2432,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         // Retain the real repository insert response before any fallible work.
         _confirmPersistedEvent = savedEvent;
         _confirmOperationId ??= _confirmSavedOperationId();
-        if (!_sameGuideOwner(_confirmGuideOwner!) ||
-            !await _dispatchGuideSaveObserved(savedEvent)) {
-          return;
-        }
+        if (!await _dispatchGuideSaveObserved(savedEvent)) return;
         EventRefreshBus.instance.notifyChanged(
             reason: 'confirm_saved',
             eventId: savedEvent.id,
@@ -2418,30 +2530,25 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
       }
     } on StateError catch (error) {
-      debugPrint('ConfirmScreen save state error: $error');
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : _messageForSaveStateError(error));
+      if (_confirmGuideOwner == null) {
+        debugPrint('ConfirmScreen save state error: $error');
       }
+      _showSaveFailure('save_state_error', _messageForSaveStateError(error));
     } on PostgrestException catch (error) {
-      debugPrint(
-        'ConfirmScreen save postgrest error: '
-        'code=${error.code} message=${error.message} details=${error.details}',
-      );
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : _messageForPostgrestError(error));
+      if (_confirmGuideOwner == null) {
+        debugPrint(
+          'ConfirmScreen save postgrest error: '
+          'code=${error.code} message=${error.message} details=${error.details}',
+        );
       }
+      _showSaveFailure(
+          'save_repository_error', _messageForPostgrestError(error));
     } catch (error, stackTrace) {
-      debugPrint('ConfirmScreen save failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : '저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      if (_confirmGuideOwner == null) {
+        debugPrint('ConfirmScreen save failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
       }
+      _showSaveFailure('save_failed', '저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -2577,40 +2684,72 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   String _confirmSavedOperationId() =>
       'confirmSave:$_parseAttemptId:${identityHashCode(this)}';
 
+  bool _denyGuideCreate(String reasonCode, String message) {
+    _showGuideSaveBlocked(reasonCode, message);
+    return false;
+  }
+
   bool _allowGuideCreate(EventModel draft, GuideSnapshot owner) {
     final current = GuideScope.maybeOf(context)?.state.value;
-    final allowed = _sameGuideOwner(owner, revision: true) &&
-        current != null &&
-        current.sessionId != null &&
-        current.errorCode == null &&
-        draft.userId == owner.uid &&
-        !draft.isMultiDay &&
-        _saveTarget == ScheduleSaveTarget.personalOnly &&
-        guideCreateLocationAllowed(
-          location: _locationController.text,
-          latitude: _locationLat,
-          longitude: _locationLng,
-          allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
-        ) &&
-        GuideMutationPolicy.check(
-                guide: current,
-                intent: GuideMutationIntent(
-                    kind: GuideWriteKind.createPersonal,
-                    operationId: _confirmSavedOperationId(),
-                    isPersonal: true,
-                    isRecurrence: draft.recurrenceRule != null,
-                    changedFields: const <String>{},
-                    userConfirmed: true))
-            .allowed;
-    if (!allowed && mounted) {
-      _showMessage('안내 저장 조건을 확인해 주세요. 개인 단일 일정과 장소가 필요해요.');
+    if (!_sameGuideOwner(owner) ||
+        current == null ||
+        current.sessionId == null ||
+        draft.userId != owner.uid) {
+      return _denyGuideCreate(
+          'create_owner_changed', _guideSaveOwnerChangedMessage);
     }
-    return allowed;
+    if (!_sameGuideOwner(owner, revision: true)) {
+      return _denyGuideCreate('create_revision_changed',
+          '안내 상태가 바뀌어 저장하지 않았어요. 현재 안내를 확인해 주세요.');
+    }
+    if (current.errorCode != null) {
+      return _denyGuideCreate(
+          'create_guide_not_ready', '안내가 준비되지 않아 저장할 수 없어요.');
+    }
+    if (draft.isMultiDay || _saveTarget != ScheduleSaveTarget.personalOnly) {
+      return _denyGuideCreate('create_not_single_personal',
+          '안내에서는 하루 안에 끝나는 개인 일정만 저장할 수 있어요.');
+    }
+    if (!guideCreateLocationAllowed(
+      location: _locationController.text,
+      latitude: _locationLat,
+      longitude: _locationLng,
+      allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
+    )) {
+      return _denyGuideCreate(
+          'place_or_coordinates_required', _guideSaveLocationMessage);
+    }
+    final decision = GuideMutationPolicy.check(
+      guide: current,
+      intent: GuideMutationIntent(
+        kind: GuideWriteKind.createPersonal,
+        operationId: _confirmSavedOperationId(),
+        isPersonal: true,
+        isRecurrence: draft.recurrenceRule != null,
+        changedFields: const <String>{},
+        userConfirmed: true,
+      ),
+    );
+    if (!decision.allowed) {
+      final message = current.createdEventId != null
+          ? _guideSavedEventMessage
+          : draft.recurrenceRule != null
+              ? '안내에서는 반복하지 않는 개인 일정만 저장할 수 있어요.'
+              : '현재 안내 단계에서는 일정을 저장할 수 없어요.';
+      return _denyGuideCreate(
+          decision.reasonCode ?? 'create_policy_denied', message);
+    }
+    return true;
   }
 
   Future<bool> _dispatchGuideSaveObserved(EventModel persistedEvent) async {
     final owner = _confirmGuideOwner;
-    if (owner == null || !_sameGuideOwner(owner)) return false;
+    if (!_saveScreenIsMounted()) return false;
+    if (owner == null || !_sameGuideOwner(owner)) {
+      _showGuideSaveBlocked(
+          'checkpoint_owner_changed', _guideSaveUncertainMessage);
+      return false;
+    }
     final coordinator = GuideScope.maybeOf(context)!;
     final state = coordinator.state.value;
     if (persistedEvent.id.isEmpty ||
@@ -2619,6 +2758,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         persistedEvent.externalId != null ||
         persistedEvent.recurrenceRule != null ||
         persistedEvent.isMultiDay) {
+      _showGuideSaveBlocked(
+          'checkpoint_event_ineligible', _guideSaveUncertainMessage);
       return false;
     }
     final result = await coordinator.dispatch(SaveObserved(
@@ -2680,11 +2821,19 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               }
             }
           }
-        } catch (error) {
-          debugPrint('QA guide continuation failed: $error');
+        } catch (_) {
+          _logSaveIssue('qa_checkpoint_continuation_failed');
         }
       }
-      _showMessage('일정은 저장했어요. 저장 버튼으로 안내 연결만 다시 시도해 주세요.');
+    }
+    if (!accepted) {
+      if (!_saveScreenIsMounted()) return false;
+      if (!_sameGuideOwner(owner)) {
+        _showGuideSaveBlocked(
+            'checkpoint_owner_changed', _guideSaveUncertainMessage);
+      } else {
+        _showGuideSaveBlocked('checkpoint_not_accepted', _guideSavedEventMessage);
+      }
     }
     return accepted;
   }
