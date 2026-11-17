@@ -1247,6 +1247,58 @@ void main() {
     expect(find.text('일정 탭'), findsOneWidget);
   });
 
+  for (final noun in ['일정', '약속', '스케줄']) {
+    testWidgets('P6d VoiceAction edits 회식 followed by $noun을',
+        (tester) async {
+      final today = planflowNow();
+      final start = DateTime(today.year, today.month, today.day + 2, 14);
+      final event = _event(
+        id: 'event-1',
+        title: '회식',
+        startAt: planflowLocalDateTimeToUtc(start),
+      );
+      final repository = _FakeEventRepository(events: [event]);
+
+      await tester.pumpWidget(
+        buildEditAutoApplyHarness(
+          repository: repository,
+          rawText: '회식 $noun을 3시로 옮겨줘',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repository.updatedEvents, hasLength(1));
+      expect(repository.updatedEvents.single.id, event.id);
+      expect(
+        repository.updatedEvents.single.startAt,
+        planflowLocalDateTimeToUtc(start.add(const Duration(hours: 1))),
+      );
+    });
+  }
+
+  testWidgets('P6d ambiguous direct save explains why no change was saved',
+      (tester) async {
+    final original = minutePrecisionFutureEvent();
+    final repository = _FakeEventRepository(events: [original]);
+
+    await tester.pumpWidget(
+      buildEditAutoApplyHarness(
+        repository: repository,
+        rawText: '팀 회의를 오후 2시나 오후 3시로 옮겨주고 중요하게 표시해줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The importance preview keeps the direct-save button available.
+    expect(find.text('중요 일정'), findsOneWidget);
+    expect(repository.updatedEvents, isEmpty);
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('변경할 시각을 하나만 말씀해 주세요.'), findsOneWidget);
+    expect(repository.updatedEvents, isEmpty);
+  });
+
   testWidgets('중요 표시 수정은 바로 저장 시 isCritical을 반영한다', (tester) async {
     final repository = _FakeEventRepository(
       events: [

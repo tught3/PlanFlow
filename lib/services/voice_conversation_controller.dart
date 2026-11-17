@@ -1,5 +1,6 @@
 import '../onboarding/real_ui_guide/guide_contract.dart';
 import '../onboarding/real_ui_guide/guide_guards.dart';
+import '../core/korean_clock_time.dart';
 import '../core/local_time.dart';
 import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
@@ -287,6 +288,7 @@ class VoiceConversationController {
 
     final text = _normalizePendingDeleteReply(input, state.pendingDelete);
     final route = _router.route(text);
+    final editTargetText = _editTargetText(text, route);
     if (text.isEmpty) {
       return _finish(
         state,
@@ -294,6 +296,38 @@ class VoiceConversationController {
         VoiceConversationResult(
           action: VoiceConversationAction.none,
           inputText: input,
+        ),
+      );
+    }
+
+    if (route.intent == VoiceCommandRouteIntent.edit &&
+        !_isQueryIntent(text, route: route) &&
+        hasAmbiguousKoreanClockEditDestination(text)) {
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          assistantMessage: '변경할 시각을 하나만 말씀해 주세요.',
+        ),
+      );
+    }
+
+    if (_isModificationIntent(text, route: route) &&
+        !_isQueryIntent(text, route: route) &&
+        hasInvalidKoreanClockEditDestination(
+          text,
+          routedChangeText: route.changeText,
+          allowImplicit: true,
+        )) {
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          assistantMessage: '변경할 시각을 다시 말씀해 주세요.',
         ),
       );
     }
@@ -456,7 +490,12 @@ class VoiceConversationController {
 
     if (state.pendingConvert == null &&
         _isConvertToPersonalIntent(text, route: route)) {
-      final target = _resolveFollowUpTarget(text, state, route: route);
+      final target = _resolveFollowUpTarget(
+        text,
+        state,
+        route: route,
+        editTargetText: editTargetText,
+      );
       if (target == null) {
         state.pendingTitleSearchText = null;
         return _finish(
@@ -488,7 +527,10 @@ class VoiceConversationController {
       );
     }
 
-    final multiTargets = _resolveExplicitFollowUpTargets(text, state);
+    final multiTargets = _resolveExplicitFollowUpTargets(
+      editTargetText ?? text,
+      state,
+    );
     if (_isModificationIntent(text, route: route) && multiTargets.length > 1) {
       state
         ..visibleEvents = multiTargets
@@ -515,7 +557,11 @@ class VoiceConversationController {
     if (criticalValue != null) {
       // 이미 '중요 표시' 의도가 확정됐으므로 route.intent(add 오분류 가능성,
       // 예: '표시'의 '시'가 시간 표현으로 오매칭)와 무관하게 대상을 찾는다.
-      final target = _resolveFollowUpTarget(text, state);
+      final target = _resolveFollowUpTarget(
+        text,
+        state,
+        editTargetText: editTargetText,
+      );
       if (target == null) {
         state.pendingTitleSearchText = null;
         return _finish(
@@ -587,7 +633,8 @@ class VoiceConversationController {
     // 분기와 동일한 폴백(openEditScreen)을 사용한다. 명시적 분기 없음.
 
     if (_isLocationIntent(text, route: route)) {
-      final ambiguous = _resolveAmbiguousTimeTargets(text, state);
+      final ambiguous =
+          _resolveAmbiguousTimeTargets(editTargetText ?? text, state);
       if (ambiguous.length > 1) {
         state
           ..visibleEvents = ambiguous
@@ -608,7 +655,11 @@ class VoiceConversationController {
         );
       }
       // 이미 '장소 변경' 의도가 확정됐으므로 route.intent와 무관하게 대상을 찾는다.
-      final target = _resolveFollowUpTarget(text, state);
+      final target = _resolveFollowUpTarget(
+        text,
+        state,
+        editTargetText: editTargetText,
+      );
       final locationText = _extractLocationText(text);
       if (target != null && locationText != null) {
         state
@@ -840,7 +891,12 @@ class VoiceConversationController {
       );
     }
 
-    final followUp = _resolveFollowUpTarget(text, state, route: route);
+    final followUp = _resolveFollowUpTarget(
+      text,
+      state,
+      route: route,
+      editTargetText: editTargetText,
+    );
     if (followUp != null) {
       state
         ..focusedEvent = followUp
@@ -856,6 +912,7 @@ class VoiceConversationController {
         state.pendingTitleSearchText = null;
         final autoApply = _isPureDateTimeAutoApply(
           target: followUp,
+          state: state,
           route: route,
           draftEvent: draftEvent,
           locationText: null,
@@ -907,8 +964,33 @@ class VoiceConversationController {
       );
     }
 
+    final duplicateEditTitles = _exactClockEditTitleMatches(
+      text,
+      state,
+      route: route,
+      editTargetText: editTargetText,
+    );
+    if (duplicateEditTitles.length > 1) {
+      state
+        ..visibleEvents = duplicateEditTitles
+        ..selectedEvents = const <EventModel>[]
+        ..focusedEvent = null
+        ..pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          visibleEvents: duplicateEditTitles,
+          selectedEvents: const <EventModel>[],
+          assistantMessage: '같은 제목의 일정이 여러 개예요. 몇 번째 일정인지 말해 주세요.',
+        ),
+      );
+    }
+
     if (_isModificationIntent(text, route: route) &&
-        _isFocusedEventReference(text) &&
+        _isFocusedEventReference(editTargetText ?? text) &&
         state.focusedEvent == null &&
         state.visibleEvents.length > 1) {
       state.pendingTitleSearchText = null;
@@ -928,10 +1010,11 @@ class VoiceConversationController {
     // 지시어("아까 그 일정", "아까 말한 일정" 등)만 있고 포커스 대상이
     // 없을 때, 직전에 언급한 제목으로 재검색하는 공통 폴백(수정·조회).
     // 남용 방지: 지시어 표현이 있을 때만 폴백한다.
-    if (_isFocusedEventReference(text) &&
+    if (_isFocusedEventReference(editTargetText ?? text) &&
         state.focusedEvent == null &&
         state.visibleEvents.length != 1) {
-      final mentionedMatches = _matchesFromLastMentionedTitle(text, state);
+      final mentionedMatches =
+          _matchesFromLastMentionedTitle(editTargetText ?? text, state);
       if (mentionedMatches.length == 1) {
         final mentionedTarget = mentionedMatches.single;
         state
@@ -946,6 +1029,7 @@ class VoiceConversationController {
           );
           final autoApply = _isPureDateTimeAutoApply(
             target: mentionedTarget,
+            state: state,
             route: route,
             draftEvent: draftEvent,
             locationText: null,
@@ -1573,20 +1657,43 @@ class VoiceConversationController {
   }
 
   static const _affirmativeReplies = {
-    '응', '어', '네', '예', '그래', '그래요', '맞아', '맞아요',
-    '좋아', '좋아요', '확인', '오케이', '응그래', '네맞아요',
+    '응',
+    '어',
+    '네',
+    '예',
+    '그래',
+    '그래요',
+    '맞아',
+    '맞아요',
+    '좋아',
+    '좋아요',
+    '확인',
+    '오케이',
+    '응그래',
+    '네맞아요',
   };
 
   static const _deleteConfirmationReplies = {
-    '삭제해', '삭제해줘', '삭제해주세요',
-    '지워', '지워줘', '지워주세요',
-    '없애', '없애줘', '없애주세요',
+    '삭제해',
+    '삭제해줘',
+    '삭제해주세요',
+    '지워',
+    '지워줘',
+    '지워주세요',
+    '없애',
+    '없애줘',
+    '없애주세요',
   };
 
   static const _convertConfirmationReplies = {
-    '옮겨줘', '옮겨주세요', '바꿔줘', '바꿔주세요',
-    '개인일정으로해줘', '개인일정으로해주세요',
-    '개인일정으로옮겨줘', '개인일정으로바꿔줘',
+    '옮겨줘',
+    '옮겨주세요',
+    '바꿔줘',
+    '바꿔주세요',
+    '개인일정으로해줘',
+    '개인일정으로해주세요',
+    '개인일정으로옮겨줘',
+    '개인일정으로바꿔줘',
   };
 
   static final _confirmationSeparators = RegExp(r'[\s\p{P}]+', unicode: true);
@@ -1610,7 +1717,8 @@ class VoiceConversationController {
     final reply = text.replaceAll(_confirmationSeparators, '');
     return reply == '어' ||
         reply == '어음' ||
-        (reply == '응' && (text.contains('?') || text.contains('？')));
+        ((text.contains('?') || text.contains('？')) &&
+            _isConfirmationReply(text, _deleteConfirmationReplies));
   }
 
   bool _isConfirmationReply(String text, Set<String> actionReplies) {
@@ -1651,7 +1759,13 @@ class VoiceConversationController {
         _isDeleteIntent(text, route: route) ||
         isExplicitAdd ||
         _hasCreateEventKeywords(text) ||
-        _resolveFollowUpTarget(text, state, route: route) != null;
+        _resolveFollowUpTarget(
+              text,
+              state,
+              route: route,
+              editTargetText: _editTargetText(text, route),
+            ) !=
+            null;
   }
 
   /// A submitted transcript can start with the previous delete request.
@@ -1687,24 +1801,194 @@ class VoiceConversationController {
         : trimmed;
   }
 
+  String? _editTargetText(String text, VoiceCommandRouteResult route) {
+    if (route.intent != VoiceCommandRouteIntent.edit) return null;
+    if (_isConvertToPersonalIntent(text, route: route) ||
+        _isLocationIntent(text, route: route) ||
+        route.requestedChanges.length != 1 ||
+        !route.requestedChanges.contains('start_at')) {
+      return null;
+    }
+    if (koreanClockTimeParts(text).length == 1 &&
+        route.changeText.trim().isEmpty &&
+        koreanClockEditDestinationText(text, allowImplicit: true) == null) {
+      // An unsplit clock may be the destination; never use it as a target.
+      return '';
+    }
+    return koreanClockEditTargetText(
+      text,
+      routedTargetText:
+          route.changeText.trim().isEmpty ? null : route.targetText,
+    );
+  }
+
+  List<EventModel> _exactClockEditTitleMatches(
+    String text,
+    _VoiceConversationState state, {
+    VoiceCommandRouteResult? route,
+    String? editTargetText,
+  }) {
+    if (route?.intent != VoiceCommandRouteIntent.edit ||
+        editTargetText == null) {
+      return const <EventModel>[];
+    }
+    // Calling without the router fallback verifies a clock destination was
+    // actually removed, rather than merely receiving a routed target string.
+    final extracted = koreanClockEditTargetText(text);
+    if (extracted == text || extracted != editTargetText) {
+      return const <EventModel>[];
+    }
+    return state.visibleEvents
+        .where((event) => _matchesSourceTitle(extracted, event.title))
+        .toList(growable: false);
+  }
+
+  bool _matchesSourceTitle(String source, String title) {
+    final normalized = source.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final name = title.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (name.isEmpty) return false;
+    return RegExp(
+      r'^(?:(?:오늘|내일|모레|글피)\s*)?'
+      r'(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?\s*)?'
+      '${RegExp.escape(name)}'
+      r'(?:을|를|은|는|이|가)?\s*$',
+    ).hasMatch(normalized);
+  }
+
   EventModel? _resolveFollowUpTarget(
     String text,
     _VoiceConversationState state, {
     VoiceCommandRouteResult? route,
+    String? editTargetText,
   }) {
+    final target = _resolveFollowUpTargetUnchecked(
+      text,
+      state,
+      route: route,
+      editTargetText: editTargetText,
+    );
+    if (target == null ||
+        editTargetText == null ||
+        route == null ||
+        utteranceHasExplicitEndOrDurationCue(text)) {
+      return target;
+    }
+    return _sourceMatchesAutoEditTarget(text, route, target, state)
+        ? target
+        : null;
+  }
+
+  bool _sourceMatchesAutoEditTarget(
+    String text,
+    VoiceCommandRouteResult route,
+    EventModel target,
+    _VoiceConversationState state,
+  ) {
+    final normalizedText = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final clockDestination = koreanClockEditDestinationText(
+      normalizedText,
+      allowImplicit: true,
+    );
+    String? sourceText;
+    if (clockDestination != null) {
+      sourceText = normalizedText.substring(
+        0,
+        normalizedText.length - clockDestination.length,
+      );
+    } else {
+      final change = route.changeText.trim().replaceAll(RegExp(r'\s+'), ' ');
+      final changeOffset = normalizedText.lastIndexOf(change);
+      final reference = target.startAt == null
+          ? planflowLocal((_now ?? planflowNow)())
+          : planflowLocal(target.startAt!);
+      if (change.isNotEmpty &&
+          changeOffset > 0 &&
+          (koreanClockTimeParts(change).length == 1 ||
+              (koreanClockTimeParts(change).isEmpty &&
+                  (_parseDateRange(change) != null ||
+                      koreanExplicitRelativeDayOffset(change) != null ||
+                      koreanRelativeWeekMonthDate(change, reference) !=
+                          null)))) {
+        sourceText = normalizedText.substring(0, changeOffset);
+      }
+    }
+    if (sourceText == null) {
+      // Do not guess which clock describes the target when splitting failed.
+      return koreanClockTimeParts(normalizedText).isEmpty &&
+          !koreanMidnightDisplayPattern.hasMatch(normalizedText);
+    }
+    // Like 밤 12시, this display reference does not prove the source day
+    // for an automatic edit. Lookup and deletion still recognize it.
+    if (koreanMidnightDisplayPattern.hasMatch(sourceText)) return false;
+    final start = target.startAt;
+    final sourceRange = _parseDateRangeWithContext(sourceText, state);
+    if (sourceRange != null &&
+        (start == null ||
+            planflowLocal(start).isBefore(sourceRange.start) ||
+            !planflowLocal(start).isBefore(sourceRange.end))) {
+      return false;
+    }
+    // Reject a short title embedded within a longer spoken title;
+    // incomplete STT of a longer candidate remains eligible for matching.
+    final title = target.title.trim();
+    if (!title.contains(RegExp(r'\s+')) &&
+        !_isFocusedEventReference(sourceText)) {
+      final spoken = sourceText
+          .trim()
+          .replaceFirst(RegExp(r'^(?:오늘|내일|모레|글피)\s*'), '')
+          .replaceFirst(
+              RegExp(
+                  r'^(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?\s*'),
+              '')
+          .replaceFirst(RegExp(r'(?:을|를|은|는|이|가)\s*$'), '')
+          .trim();
+      final spokenTitle =
+          spoken.replaceFirst(RegExp(r'\s+(?:일정|약속|스케줄)$'), '');
+      if (spoken != title &&
+          spokenTitle != title &&
+          spoken.contains(title) &&
+          title.isNotEmpty) {
+        return false;
+      }
+    }
+    final sourceClocks = koreanClockTimeParts(sourceText).toList();
+    if (sourceClocks.isEmpty) return true;
+    if (sourceClocks.length != 1 || start == null) return false;
+    final localStart = planflowLocal(start);
+    final sourceClock = _inferLastTimeCandidate(
+      sourceText,
+      originalHour: localStart.hour,
+    );
+    // Midnight at the end of a day is ambiguous without rollover resolution.
+    if (sourceClock == null ||
+        sourceClock.isEndOfDay ||
+        sourceClock.hour != localStart.hour ||
+        sourceClock.minute != localStart.minute) {
+      return false;
+    }
+    return true;
+  }
+
+  EventModel? _resolveFollowUpTargetUnchecked(
+    String text,
+    _VoiceConversationState state, {
+    VoiceCommandRouteResult? route,
+    String? editTargetText,
+  }) {
+    final targetText = editTargetText ?? text;
     if (state.selectedEvents.length > 1) {
-      final selectedOrdinal = _parseOrdinalIndex(text);
+      final selectedOrdinal = _parseOrdinalIndex(targetText);
       if (selectedOrdinal != null &&
           selectedOrdinal >= 0 &&
           selectedOrdinal < state.selectedEvents.length) {
         return state.selectedEvents[selectedOrdinal];
       }
-      if (_isFocusedEventReference(text)) {
+      if (_isFocusedEventReference(targetText)) {
         return state.focusedEvent;
       }
     }
 
-    final ordinalIndex = _parseOrdinalIndex(text);
+    final ordinalIndex = _parseOrdinalIndex(targetText);
     if (ordinalIndex != null) {
       final pool = state.visibleEvents.isNotEmpty
           ? state.visibleEvents
@@ -1719,7 +2003,7 @@ class VoiceConversationController {
       }
     }
 
-    if (_isFocusedEventReference(text)) {
+    if (_isFocusedEventReference(targetText)) {
       if (state.focusedEvent != null) {
         return state.focusedEvent;
       }
@@ -1734,9 +2018,18 @@ class VoiceConversationController {
       return null;
     }
 
+    final fullTitleMatches = _exactClockEditTitleMatches(
+      text,
+      state,
+      route: route,
+      editTargetText: editTargetText,
+    );
+    if (fullTitleMatches.length == 1) return fullTitleMatches.single;
+    if (fullTitleMatches.length > 1) return null;
+
     // 조회 결과 안에서 사용자가 일정 제목 전체를 말했으면 한 단어 제목도
     // 안전하게 선택한다. 같은 제목이 둘 이상이면 자동 수정하지 않는다.
-    final compactInput = _compact(text);
+    final compactInput = _compact(targetText);
     final exactTitleMatches = state.visibleEvents.where((event) {
       final title = _compact(event.title);
       return title.isNotEmpty &&
@@ -1751,9 +2044,12 @@ class VoiceConversationController {
     // 부분 일치로 임의 수정하는 회귀를 막기 위해, 두 토큰 이상이 단 하나의
     // 일정에 일치할 때만 대상 추론을 허용한다.
     if (_isModificationIntent(text, route: route)) {
-      final targetText = route?.targetText.trim();
+      final routedTarget = route?.targetText.trim();
       final queryTokens = _queryTokensForTitleSearch(
-        targetText == null || targetText.isEmpty ? text : targetText,
+        editTargetText ??
+            (routedTarget == null || routedTarget.isEmpty
+                ? text
+                : routedTarget),
       );
       if (queryTokens.length >= 2) {
         final pool =
@@ -1772,7 +2068,12 @@ class VoiceConversationController {
     // 조회 후 "몇 번째 일정"처럼 순번으로 지정하는 방식으로만 이뤄져야 한다.
     // 실증: "모란역으로 가기 일정생성해줘"의 "가기"가 과거 조회 결과에 남아있던
     // 제목 "가기" 일정과 부분일치해, 관련 없는 그 일정을 임의로 편집해버렸다.
-    final time = _parseTimeReference(text);
+    // After title matching fails, a time can identify a date/time edit
+    // only when the source has no unmatched title.
+    if (editTargetText != null && !isGenericKoreanClockEditSource(targetText)) {
+      return null;
+    }
+    final time = _parseTimeReference(targetText);
     if (time != null) {
       final matches = _matchVisibleEventsByTime(time, state.visibleEvents);
       if (matches.length == 1) {
@@ -2107,6 +2408,14 @@ class VoiceConversationController {
     String? locationText,
   }) {
     final resolvedRoute = route ?? _router.route(text);
+    if (hasAmbiguousKoreanClockEditDestination(text) ||
+        hasInvalidKoreanClockEditDestination(
+          text,
+          routedChangeText: resolvedRoute.changeText,
+          allowImplicit: true,
+        )) {
+      return null;
+    }
     var draft = _draftEventForRequestedStart(event, text, route: resolvedRoute);
     var hasChange = draft != null;
     draft ??= event;
@@ -2137,6 +2446,7 @@ class VoiceConversationController {
   /// not visible to the controller; UI must independently fail closed.
   bool _isPureDateTimeAutoApply({
     required EventModel target,
+    required _VoiceConversationState state,
     required VoiceCommandRouteResult route,
     required EventModel? draftEvent,
     required String? locationText,
@@ -2144,6 +2454,10 @@ class VoiceConversationController {
     String? rawText,
   }) {
     if (locationText != null) return false;
+    if (rawText != null &&
+        !_sourceMatchesAutoEditTarget(rawText, route, target, state)) {
+      return false;
+    }
     // 발화에 종료/구간/기간/종일/N박 의도가 있으면 시작 단독 자동 저장에서 제외한다.
     if (utteranceHasExplicitEndOrDurationCue(rawText)) return false;
     if (criticalValue != null) return false;
@@ -2197,33 +2511,71 @@ class VoiceConversationController {
     String text, {
     VoiceCommandRouteResult? route,
   }) {
+    if (route?.intent == VoiceCommandRouteIntent.edit &&
+        hasAmbiguousKoreanClockEditDestination(text)) {
+      return null;
+    }
     final changeText = route?.changeText.trim();
     final sourceText =
         changeText == null || changeText.isEmpty ? text : changeText;
     final originalStartLocal =
         event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
     final currentLocalNow = planflowLocal((_now ?? planflowNow)());
-    final parsingReferenceLocal = _hasExplicitCalendarDateCue(sourceText)
+    var timeCandidate = _inferLastTimeCandidate(
+      sourceText,
+      originalHour: originalStartLocal.hour,
+    );
+    var dateSourceText = sourceText;
+    if (route?.intent == VoiceCommandRouteIntent.edit) {
+      // A routed fragment can omit the period or date of the destination.
+      final destination = koreanClockEditDestinationText(text);
+      if (destination != null) {
+        timeCandidate = _inferLastTimeCandidate(
+          destination,
+          originalHour: originalStartLocal.hour,
+        );
+        if (timeCandidate != null &&
+            (hasKoreanCalendarDateCue(destination) ||
+                koreanExplicitRelativeDayOffset(destination) != null ||
+                koreanRelativeWeekMonthDate(destination, originalStartLocal) !=
+                    null)) {
+          dateSourceText = destination;
+        }
+      }
+    }
+    final rollsToNextDay = timeCandidate?.isEndOfDay ?? false;
+    final parsingReferenceLocal = _hasExplicitCalendarDateCue(dateSourceText) ||
+            (rollsToNextDay && hasKoreanCalendarDateCue(dateSourceText))
         ? currentLocalNow
         : originalStartLocal;
-    final dateCandidate = _inferLastDateCandidate(
-      sourceText,
-      parsingReferenceLocal,
-    );
-    final timeCandidate = _inferLastTimeCandidate(sourceText);
+    final relativeDays = koreanExplicitRelativeDayOffset(dateSourceText);
+    final longRelativeDate =
+        koreanRelativeWeekMonthDate(dateSourceText, originalStartLocal);
+    final dateCandidate = relativeDays == null && longRelativeDate == null
+        ? _inferLastDateCandidate(
+            dateSourceText,
+            parsingReferenceLocal,
+            dateOnly: rollsToNextDay,
+          )
+        : relativeDays == null
+            ? longRelativeDate
+            : originalStartLocal.add(
+                Duration(days: relativeDays),
+              );
     if (dateCandidate == null && timeCandidate == null) {
       return null;
     }
 
-    final baseDate = dateCandidate ??
-        DateTime(
-          originalStartLocal.year,
-          originalStartLocal.month,
-          originalStartLocal.day,
-        );
-    final hour = timeCandidate?.hour ?? originalStartLocal.hour;
-    final minute = timeCandidate?.minute ?? originalStartLocal.minute;
-    return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+    // A time-only edit stays on the existing event's day. Midnight rolls
+    // forward from that day or from the explicitly requested calendar date.
+    final baseDate = dateCandidate ?? originalStartLocal;
+    return DateTime(
+      baseDate.year,
+      baseDate.month,
+      baseDate.day + (rollsToNextDay ? 1 : 0),
+      timeCandidate?.hour ?? originalStartLocal.hour,
+      timeCandidate?.minute ?? originalStartLocal.minute,
+    );
   }
 
   bool _hasExplicitCalendarDateCue(String text) {
@@ -2231,12 +2583,17 @@ class VoiceConversationController {
     return RegExp(
           r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
         ).hasMatch(normalized) ||
-        RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?').hasMatch(normalized);
+        RegExp(r'(?<!\d)\d{1,2}\s*일(?!\s*(?:뒤|후|전|앞))(?:로|에|부터|까지)?')
+            .hasMatch(normalized);
   }
 
-  DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
+  DateTime? _inferLastDateCandidate(
+    String text,
+    DateTime referenceLocal, {
+    bool dateOnly = false,
+  }) {
     final dateMatches = RegExp(
-      r'((?:그\s*)?다음\s*날(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후)(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:전|앞)(?:으로|로|에)?|(?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일',
+      r'((?:그\s*)?다음\s*날(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후)(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:전|앞)(?:으로|로|에)?|(?:이번|다음|다다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일\s*모레|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일',
     ).allMatches(text).toList(growable: false);
     if (dateMatches.isEmpty) {
       return null;
@@ -2244,88 +2601,33 @@ class VoiceConversationController {
     final match = dateMatches.last;
     final snippet = text.substring(
       match.start,
-      (match.end + 20).clamp(0, text.length),
+      // The caller separately applies the day offset for midnight.
+      dateOnly ? match.end : (match.end + 20).clamp(0, text.length),
     );
     return GptService(
       now: () => referenceLocal,
     ).inferStartAtFromRawText(snippet);
   }
 
-  _VoiceRequestedTime? _inferLastTimeCandidate(String text) {
-    final matches = RegExp(
-      r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*([0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*(반))?',
-    ).allMatches(text).toList(growable: false);
-    if (matches.isEmpty) {
-      return null;
-    }
-    final match = matches.last;
-    final hourValue = _koreanNumber(match.group(2));
-    if (hourValue == null) {
-      return null;
-    }
-    final period = match.group(1) ?? '';
-    var hour = hourValue;
-    if (RegExp(r'(오후|낮|점심|저녁|밤)').hasMatch(period) && hour < 12) {
-      hour += 12;
-    }
-    if (period == '새벽' && hour == 12) {
-      hour = 0;
-    }
-    final valueText = match.group(0) ?? '';
-    final minute = match.group(4) != null || valueText.contains('반')
-        ? 30
-        : (_koreanNumber(match.group(3)) ?? 0);
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      return null;
-    }
-    return _VoiceRequestedTime(hour, minute);
-  }
+  KoreanClockTime? _inferLastTimeCandidate(
+    String text, {
+    required int originalHour,
+  }) {
+    final parts = koreanClockTimeParts(text).lastOrNull;
+    if (parts == null) return null;
 
-  int? _koreanNumber(String? raw) {
-    final text = raw?.trim();
-    if (text == null || text.isEmpty) {
-      return null;
-    }
-    final numeric = int.tryParse(text);
-    if (numeric != null) {
-      return numeric;
-    }
-    const numbers = <String, int>{
-      '영': 0,
-      '공': 0,
-      '한': 1,
-      '하나': 1,
-      '일': 1,
-      '두': 2,
-      '둘': 2,
-      '이': 2,
-      '세': 3,
-      '셋': 3,
-      '삼': 3,
-      '네': 4,
-      '넷': 4,
-      '사': 4,
-      '다섯': 5,
-      '오': 5,
-      '여섯': 6,
-      '육': 6,
-      '일곱': 7,
-      '칠': 7,
-      '여덟': 8,
-      '팔': 8,
-      '아홉': 9,
-      '구': 9,
-      '열': 10,
-      '십': 10,
-      '열한': 11,
-      '열하나': 11,
-      '십일': 11,
-      '열두': 12,
-      '열둘': 12,
-      '십이': 12,
-      '삼십': 30,
-    };
-    return numbers[text];
+    final hour = parts.hour;
+    final keepMorning = parts.period == null &&
+        originalHour < 12 &&
+        hour != null &&
+        hour >= 7 &&
+        hour <= 11;
+    return resolveKoreanClockTime(
+      period: parts.period,
+      hour: hour,
+      minute: parts.minute,
+      unmarkedPmDefault: !keepMorning,
+    );
   }
 
   bool _hasRelativeDateShiftCue(String text) {
@@ -2345,9 +2647,7 @@ class VoiceConversationController {
           r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
         ).hasMatch(text) ||
         RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?').hasMatch(text) ||
-        RegExp(
-          r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시',
-        ).hasMatch(text);
+        koreanClockTimeParts(text).isNotEmpty;
   }
 
   int? _relativeDateShiftDays(String text) {
@@ -2514,22 +2814,35 @@ class VoiceConversationController {
   }
 
   _TimeReference? _parseTimeReference(String text) {
-    final match = RegExp(r'(오전|오후|아침|저녁|밤)?\s*(\d{1,2})\s*시').firstMatch(text);
-    if (match == null) {
+    // A displayed 24:00 can refer to an existing midnight schedule.
+    final referenceText = text.replaceAll(koreanMidnightDisplayPattern, '자정 ');
+    final parts = koreanClockTimeParts(referenceText).firstOrNull;
+    if (parts == null) {
       return null;
     }
-    final hour = int.tryParse(match.group(2)!);
-    if (hour == null || hour < 0 || hour > 23) {
+    final time = resolveKoreanClockTime(
+      period: parts.period,
+      hour: parts.hour,
+      minute: parts.minute,
+      unmarkedPmDefault: false,
+    );
+    if (time == null) {
       return null;
     }
-    final period = match.group(1);
-    if (period == '오후' || period == '저녁' || period == '밤') {
-      return _TimeReference(hour == 12 ? 12 : hour + 12, hasPeriod: true);
-    }
-    if (period == '오전' || period == '아침') {
-      return _TimeReference(hour == 12 ? 0 : hour, hasPeriod: true);
-    }
-    return _TimeReference(hour, hasPeriod: false);
+    // Keep both candidates for unmarked references such as "3시 일정".
+    final unmarkedPm = parts.period == null
+        ? resolveKoreanClockTime(
+            period: null,
+            hour: parts.hour,
+            minute: parts.minute,
+            unmarkedPmDefault: true,
+          )
+        : null;
+    return _TimeReference(
+      time.hour,
+      alternateHour: unmarkedPm?.hour,
+      midnightMinute: time.isEndOfDay ? time.minute : null,
+    );
   }
 
   List<EventModel> _matchVisibleEventsByTime(
@@ -2543,14 +2856,9 @@ class VoiceConversationController {
         continue;
       }
       final local = planflowLocal(startAt);
-      if (local.hour == time.hour) {
-        matches.add(event);
-        continue;
-      }
-      if (!time.hasPeriod &&
-          time.hour >= 1 &&
-          time.hour <= 11 &&
-          local.hour == time.hour + 12) {
+      if ((local.hour == time.hour || local.hour == time.alternateHour) &&
+          (time.midnightMinute == null ||
+              local.minute == time.midnightMinute)) {
         matches.add(event);
       }
     }
@@ -2656,13 +2964,6 @@ class VoiceConversationController {
   int _lastDayOfMonth(int year, int month) {
     return DateTime(year, month + 1, 0).day;
   }
-}
-
-class _VoiceRequestedTime {
-  const _VoiceRequestedTime(this.hour, this.minute);
-
-  final int hour;
-  final int minute;
 }
 
 class _VoiceConversationTitleSearch {
@@ -2799,8 +3100,9 @@ class _OrdinalTokenMatch {
 }
 
 class _TimeReference {
-  const _TimeReference(this.hour, {required this.hasPeriod});
+  const _TimeReference(this.hour, {this.alternateHour, this.midnightMinute});
 
   final int hour;
-  final bool hasPeriod;
+  final int? alternateHour;
+  final int? midnightMinute;
 }
