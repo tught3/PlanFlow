@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -25,6 +27,7 @@ import 'package:planflow/widgets/reminder_offset_selector.dart';
 import 'package:planflow/widgets/schedule_save_scope_card.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // UI 음성 테스트와 동일한 규칙: 1월 1일이 목요일인 윤년 아닌 미래 연도.
 // 과거 기준 연도와 같은 요일 배치를 보존해 날짜 칩의 요일 접미사(목/월/금/수)가 유지된다.
@@ -77,6 +80,20 @@ void main() {
         ));
       }
       final guide = _EditorGuide(start);
+      final payload = base64Url.encode(utf8.encode(jsonEncode({
+        'exp': 4102444800,
+      })));
+      final session = Session(
+        accessToken: 'test.$payload.signature',
+        tokenType: 'bearer',
+        user: User(
+          id: event.userId,
+          appMetadata: const {},
+          userMetadata: const {},
+          aud: 'authenticated',
+          createdAt: '',
+        ),
+      );
       final router = GoRouter(
         initialLocation: '/edit',
         routes: [
@@ -87,6 +104,7 @@ void main() {
               initialGuideStartLocal: start,
               eventRepository: repo,
               groupEventRepository: groupRepo,
+              readGuideEditSession: () => session,
             ),
           ),
           GoRoute(

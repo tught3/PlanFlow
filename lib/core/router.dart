@@ -288,10 +288,18 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.confirm,
         builder: (context, state) {
-          final parsedSchedule = state.extra is Map<String, dynamic>
-              ? state.extra! as Map<String, dynamic>
-              : const <String, dynamic>{};
-          return ConfirmScreen(parsedSchedule: parsedSchedule);
+          final extra = state.extra;
+          if (extra is PendingGuideConfirm) {
+            return ConfirmScreen(
+              parsedSchedule: extra.parsedSchedule,
+              pendingGuideConfirm: extra,
+            );
+          }
+          return ConfirmScreen(
+            parsedSchedule: extra is Map<String, dynamic>
+                ? extra
+                : const <String, dynamic>{},
+          );
         },
       ),
       GoRoute(

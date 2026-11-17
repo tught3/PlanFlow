@@ -77,6 +77,7 @@ class EventEditScreen extends StatefulWidget {
     this.groupEventRepository,
     this.permissionService,
     this.initialGuideStartLocal,
+    this.readGuideEditSession,
     this.locationLookupService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
@@ -97,6 +98,9 @@ class EventEditScreen extends StatefulWidget {
   /// The accepted guide preview instant. The editor displays this in the
   /// PlanFlow region and only persists it after an explicit Save.
   final DateTime? initialGuideStartLocal;
+
+  @visibleForTesting
+  final Session? Function()? readGuideEditSession;
 
   /// 장소 검색(지오코딩) 서비스 주입 지점. 좌표가 이미 있으면 호출하지 않아야
   /// 하므로 테스트에서 호출 횟수를 셀 수 있게 한다.
@@ -1697,9 +1701,23 @@ class _EventEditScreenState extends State<EventEditScreen> {
         changedFields()
             .every((field) => field == 'startAt' || field == 'endAt');
 
+    bool hasCurrentOwnerSession(String uid) {
+      if (!authProvider.hasActiveSession || authProvider.userId != uid) {
+        return false;
+      }
+      final readSession = widget.readGuideEditSession;
+      final session = readSession == null
+          ? Supabase.instance.client.auth.currentSession
+          : readSession();
+      return session != null &&
+          session.user.id == uid &&
+          session.expiresAt != null &&
+          !session.isExpired;
+    }
+
     bool checkBeforeWrite(GuideSnapshot expected) {
       if (!isCurrentEditor()) return false;
-      if (authProvider.userId != expected.uid) {
+      if (!hasCurrentOwnerSession(expected.uid)) {
         _showMessage('로그인 상태가 바뀌었어요. 다시 로그인한 뒤 일정을 열어 주세요.');
         return false;
       }
@@ -1717,17 +1735,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
     setState(() => _isSaving = true);
     try {
-      if (widget.eventRepository == null) {
-        if (!AppEnv.isSupabaseReady) {
-          _showMessage('Supabase 빌드 설정값이 주입되지 않았습니다.');
-          return;
-        }
-        await authProvider.syncCurrentSession();
-        if (Supabase.instance.client.auth.currentUser?.id != snapshot.uid) {
-          if (mounted) _showMessage('로그인 후 저장할 수 있습니다.');
-          return;
-        }
+      if (widget.eventRepository == null && !AppEnv.isSupabaseReady) {
+        _showMessage('Supabase 빌드 설정값이 주입되지 않았습니다.');
+        return;
       }
+      // An explicit refresh puts AuthProvider in recovering and unbinds the
+      // guide scope. Validate the live owner session without triggering it.
       if (!checkBeforeWrite(snapshot)) return;
       final overlaps = await _repository.findOverlappingEvents(
         rangeStart: start,
@@ -1824,7 +1837,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         startAt: saved.startAt,
       );
       if (!mounted) return;
-      if (!isCurrentEditor() || authProvider.userId != confirmed.uid) return;
+      if (!isCurrentEditor() || !hasCurrentOwnerSession(confirmed.uid)) return;
       _loadedEvent = saved;
       if (!identical(GuideScope.maybeOf(context), coordinator) ||
           !identical(coordinator.state.value, confirmed)) {

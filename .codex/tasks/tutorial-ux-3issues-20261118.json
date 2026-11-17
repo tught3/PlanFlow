@@ -1,0 +1,692 @@
+{
+  "task_id": "tutorial-ux-3issues-20261118",
+  "status": "IN_PROGRESS",
+  "final_verdict": "PENDING",
+  "current_phase": "integration",
+  "classification": "complex",
+  "initial_difficulty": "complex",
+  "current_difficulty": "complex",
+  "transition_count": 0,
+  "transition_history": [],
+  "direction_lock": "none",
+  "routing_validation": {
+    "status": "VALIDATED",
+    "errors": [],
+    "checked_at": "2026-11-17T03:55:41.849257Z"
+  },
+  "authority": {
+    "transition_approval": "Integrator",
+    "initial_selection": "Planner",
+    "dispatch": "Integrator"
+  },
+  "request": "튜토리얼 근본 수정 3건: 1/7 완료 후 중간 화면 플래시, 6/7 저장 차단, 일정 위치 안내 명확화",
+  "worktree": "E:\\FluxStudio\\PlanFlow\\.tmp\\guide-progress-save-race-20261114",
+  "current_branch": "fix/tutorial-ux-3issues-20261118",
+  "base_head": "4a6984a17972d6ef55df5ebbbe9deb88ec1dd9ab",
+  "origin_main_ref": "da0dc18829608a03d5244b7fc60b381e50302205",
+  "allowed_scope": [
+    "issue 1 minimal route transition fix and route-order test",
+    "issue 2 lifecycle/save-state fix preserving ownership/revision/duplicate guards and success test",
+    "issue 3 guide copy or minimal list-location behavior only if root cause confirms"
+  ],
+  "forbidden": [
+    "production package/app behavior outside issues",
+    "security guard weakening",
+    "skip button behavior",
+    "server SQL/migrations/RPC",
+    "main merge",
+    "unrelated dirty files and other worktrees"
+  ],
+  "plan": [
+    "Explorer root causes",
+    "Planner scope and gates",
+    "Branch from tested QA base 4a6984a1 in task worktree",
+    "Implement 3 scoped fixes and tests",
+    "Test Executor required checks",
+    "Independent Reviewer final diff",
+    "Integrator commit/push and device gate",
+    "Device validation with own ADB lease"
+  ],
+  "evidence": {
+    "tests": [
+      {
+        "check_id": "v13_voice_final",
+        "command": "flutter test --no-pub --reporter expanded test/screens/voice_input_screen_test.dart",
+        "exit_code": 0,
+        "passed": 64,
+        "status": "PASS",
+        "log_path": ".codex/tasks/tutorial-ux-v13-p1-voice-retry.log"
+      },
+      {
+        "check_id": "v13_voice_guide_final",
+        "command": "flutter test --no-pub --reporter expanded test/screens/voice_input_screen_test.dart test/screens/voice_conversation_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart test/screens/guide_step2_save_integration_test.dart test/onboarding/real_ui_guide_lifecycle_pause_test.dart test/onboarding/real_ui_guide",
+        "exit_code": 0,
+        "passed": 354,
+        "skipped": 1,
+        "status": "PASS",
+        "skip_condition": "actual_app_mount_test.dart PLANFLOW_GUIDE_QA 조건",
+        "log_path": ".codex/tasks/tutorial-ux-v13-required-final.log"
+      },
+      {
+        "check_id": "v13_guide_step2_both_defines",
+        "command": "flutter test --no-pub --reporter expanded --dart-define=PLANFLOW_GUIDE_QA=true --dart-define=PLANFLOW_ISOLATED_GUIDE_QA=true test/screens/guide_step2_save_integration_test.dart",
+        "exit_code": 0,
+        "passed": 1,
+        "status": "PASS",
+        "log_path": ".codex/tasks/tutorial-ux-v13-step2-both-defines.log"
+      },
+      {
+        "check_id": "v13_analyze_final",
+        "command": "flutter analyze lib test",
+        "exit_code": null,
+        "status": "STALLED",
+        "reason": "출력 및 프로세스 진행이 멈춰 작업 소유 실행만 종료. 정상 종료 코드를 확보하지 못함.",
+        "log_path": ".codex/tasks/tutorial-ux-v13-analyze-final.log"
+      },
+      {
+        "check_id": "v13_baseline_subset",
+        "command": "flutter test --no-pub",
+        "exit_code": null,
+        "base_head": "4a6984a17972d6ef55df5ebbbe9deb88ec1dd9ab",
+        "status": "FAIL",
+        "baseline": {
+          "passed": 2952,
+          "skipped": 3,
+          "failed": 13,
+          "log_path": "../tutorial-ux-v13-baseline-20261118/.codex/tasks/tutorial-ux-v13-baseline-full-test.log"
+        },
+        "candidate": {
+          "passed": 2953,
+          "skipped": 3,
+          "failed": 14,
+          "log_path": ".codex/tasks/tutorial-ux-v13-candidate-full-test.log"
+        },
+        "new_failures": [
+          "test/ios_release_contract_test.dart: pipe-safe version capture preserves a multi-line producer",
+          "test/screens/event_edit_screen_test.dart: guide edit converts UTC preview and saves only bound time: accepted",
+          "test/screens/event_edit_screen_test.dart: guide edit converts UTC preview and saves only bound time: linked-group",
+          "test/screens/event_edit_screen_test.dart: guide edit converts UTC preview and saves only bound time: stale-range"
+        ],
+        "comparison": "FAILED: normalized candidate failure names do not form a subset"
+      }
+    ],
+    "prompt": "E:\\FluxStudio\\PlanFlow\\docs\\codex-prompts\\2026-11-18-tutorial-issues-v13-codex-prompt.md",
+    "source_files": [
+      "lib/core/router.dart",
+      "lib/onboarding/real_ui_guide/guide_host.dart",
+      "lib/screens/event/event_edit_screen.dart",
+      "lib/screens/voice/confirm_screen.dart",
+      "lib/screens/voice/voice_input_screen.dart",
+      "test/screens/guide_editor_actual_mount_regression_test.dart",
+      "test/screens/voice_input_screen_test.dart",
+      "test/screens/event_edit_screen_test.dart"
+    ],
+    "commit_allowlist": [
+      "lib/core/router.dart",
+      "lib/onboarding/real_ui_guide/guide_host.dart",
+      "lib/screens/event/event_edit_screen.dart",
+      "lib/screens/voice/confirm_screen.dart",
+      "lib/screens/voice/voice_input_screen.dart",
+      "test/screens/guide_editor_actual_mount_regression_test.dart",
+      "test/screens/voice_input_screen_test.dart",
+      ".codex/tasks/tutorial-ux-3issues-20261118.json",
+      "test/screens/event_edit_screen_test.dart"
+    ],
+    "root_causes": [
+      {
+        "issue": 1,
+        "reproduction": "가이드 1/7 마이크에서 전사가 보이는 상태로 완료를 누르고 새 라우트와 첫 프레임을 확인한다.",
+        "cause": "기존 음성 화면의 불투명 가림막이 STT teardown 및 ParseConfirmed 완료까지 표시되고 이후에 Confirm을 push했다.",
+        "locations": [
+          "lib/screens/voice/voice_input_screen.dart:710",
+          "lib/screens/voice/voice_input_screen.dart:1144",
+          "lib/screens/voice/confirm_screen.dart:3888"
+        ],
+        "result": "가이드 Done에서 Confirm을 먼저 열고 내부 로더로 대기한다. 승인 전 에디터 초기화와 쓰기를 막고, ParseConfirmed 시작 후 진행 저장이 끝날 때까지 취소를 잠근다.",
+        "device_confirmation": "PENDING"
+      },
+      {
+        "issue": 2,
+        "reproduction": "가이드 6/7에서 변경된 일정을 저장한다. 동일 소유자와 가이드 연결, 업데이트 횟수, 다음 단계 상세의 재조회 시간을 확인한다.",
+        "cause": "가이드 편집 저장에서 syncCurrentSession 호출이 초기화된 AuthProvider 상태를 recovering으로 바꿀 수 있었다. 그 상태에서는 앱이 활성 가이드 UID를 해제해 저장 가드가 실패할 수 있다. 진행 저장 직렬화와 별개 경로다.",
+        "locations": [
+          "lib/screens/event/event_edit_screen.dart:1704",
+          "lib/providers/auth_provider.dart:278",
+          "lib/app.dart:190"
+        ],
+        "result": "6/7 저장이 강제 인증 갱신을 호출하지 않으며, 활성이고 만료 전인 실제 동일 소유자 세션과 가이드 리비전을 확인한다. 조건부 쓰기, 중복 차단, 저장 결과 재조회가 유지된다.",
+        "device_confirmation": "PENDING"
+      },
+      {
+        "issue": 3,
+        "reproduction": "내일 날짜로 생성한 일정의 3/7 캘린더 표시를 홈의 오늘 일정과 비교한다.",
+        "cause": "홈의 오늘 일정은 오늘 날짜만 분류한다. 내일 저장 일정은 캘린더에서 저장 날짜를 열어 확인하는 정상 동작이다.",
+        "locations": [
+          "lib/screens/home/home_screen.dart:426",
+          "lib/onboarding/real_ui_guide/guide_host.dart:1050"
+        ],
+        "result": "3/7 안내가 홈 오늘 일정의 범위를 설명하고 일정 탭의 저장 날짜를 명시한다.",
+        "device_confirmation": "PENDING"
+      }
+    ],
+    "test_commands": [
+      "flutter test --no-pub --reporter expanded test/screens/voice_input_screen_test.dart",
+      "flutter test --no-pub --reporter expanded test/screens/voice_input_screen_test.dart test/screens/voice_conversation_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart test/screens/guide_step2_save_integration_test.dart test/onboarding/real_ui_guide_lifecycle_pause_test.dart test/onboarding/real_ui_guide",
+      "flutter test --no-pub --reporter expanded --dart-define=PLANFLOW_GUIDE_QA=true --dart-define=PLANFLOW_ISOLATED_GUIDE_QA=true test/screens/guide_step2_save_integration_test.dart",
+      "flutter analyze lib test",
+      "flutter test --no-pub",
+      {
+        "check_id": "v13_diffcheck_post_fixture",
+        "command": "git diff --check",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-diffcheck-post-fixture.log"
+      },
+      {
+        "check_id": "v13_post_fixture_editor_focused_retry",
+        "command": "flutter test --no-pub test/screens/event_edit_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart",
+        "exit_code": null,
+        "status": "STALLED",
+        "log": ".codex/tasks/tutorial-ux-v13-editor-focused-retry.log",
+        "detail": "The Flutter launcher entered update_engine_version.ps1 with no test output or terminal test exit. Only the stage-owned process chain was stopped."
+      },
+      {
+        "check_id": "v13_postfixture_focused",
+        "command": "flutter test --no-pub test/screens/event_edit_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-postfixture-focused.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 59
+      },
+      {
+        "check_id": "v13_required_postfixture",
+        "command": "flutter test --no-pub test/screens/voice_input_screen_test.dart test/screens/voice_conversation_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart test/screens/guide_step2_save_integration_test.dart test/onboarding/real_ui_guide_lifecycle_pause_test.dart test/onboarding/real_ui_guide",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-required-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 354,
+        "skipped": 1
+      },
+      {
+        "check_id": "v13_step2_both_defines_postfixture",
+        "command": "flutter test --no-pub --dart-define=PLANFLOW_GUIDE_QA=true --dart-define=PLANFLOW_ISOLATED_GUIDE_QA=true test/screens/guide_step2_save_integration_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-step2-both-defines-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 1
+      },
+      {
+        "check_id": "v13_analyze_postfixture",
+        "command": "flutter analyze --no-pub lib test",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-analyze-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "issues": 0,
+        "elapsed_seconds": 141.8
+      },
+      {
+        "check_id": "v13_candidate_full_postfixture",
+        "command": "flutter test --no-pub",
+        "exit_code": 1,
+        "status": "FAILURES_RECORDED",
+        "log": ".codex/tasks/tutorial-ux-v13-candidate-full-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 2957,
+        "skipped": 3,
+        "failed": 10
+      },
+      {
+        "check_id": "v13_baseline_full",
+        "command": "flutter test --no-pub",
+        "exit_code": 1,
+        "status": "FAILURES_RECORDED",
+        "log": "../tutorial-ux-v13-baseline-20261118/.codex/tasks/tutorial-ux-v13-baseline-full-test.log",
+        "snapshot": "BASELINE",
+        "passed": 2952,
+        "skipped": 3,
+        "failed": 13
+      },
+      {
+        "check_id": "v13_pipe_safe_baseline_postfixture",
+        "command": "flutter test --no-pub --plain-name \"pipe-safe version capture preserves a multi-line producer\" test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": "../tutorial-ux-v13-baseline-20261118/.codex/tasks/tutorial-ux-v13-pipe-safe-baseline-postfixture.log",
+        "snapshot": "BASELINE",
+        "passed": 1,
+        "TZ": "unset"
+      },
+      {
+        "check_id": "v13_pipe_safe_candidate_postfixture",
+        "command": "flutter test --no-pub --plain-name \"pipe-safe version capture preserves a multi-line producer\" test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-pipe-safe-candidate-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 1,
+        "TZ": "unset"
+      },
+      {
+        "check_id": "v13_diffcheck_postfixture_final",
+        "command": "git diff --check",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-diffcheck-postfixture-final.log",
+        "snapshot": "FINAL_POST_FIXTURE"
+      }
+    ],
+    "device": {
+      "status": "PENDING",
+      "package": "com.fluxstudio.planflow.guideqa",
+      "screen_evidence": []
+    },
+    "branch_delivery": {
+      "status": "READY_TO_COMMIT",
+      "branch": "fix/tutorial-ux-3issues-20261118",
+      "remote_commit": null
+    },
+    "fixture_rework": {
+      "allowed_paths": [
+        "test/screens/event_edit_screen_test.dart"
+      ],
+      "status": "VERIFIED",
+      "production_guard_change": false,
+      "result": "The Test Executor identified three old fixture failures. All five parameter variants now share a same-owner synthetic unexpired session through readGuideEditSession. Existing assertions and production guards were preserved. Implementer reported five focused tests passing and git diff --check exit 0."
+    },
+    "task_state_path": "E:\\FluxStudio\\PlanFlow\\.tmp\\guide-progress-save-race-20261114\\.codex\\tasks\\tutorial-ux-3issues-20261118.json",
+    "final_verification_pending": [
+      "Feature branch commit and ordinary origin push",
+      "Device tutorial through 7/7 with persisted schedule change, sync choice, and finish evidence"
+    ],
+    "verification_snapshot": "Final post-fixture candidate verified. Full-suite exit 1 reflects 10 failures all present in the 13-failure baseline. Candidate-only failures: 0.",
+    "post_fixture_checks": [
+      {
+        "check_id": "v13_diffcheck_post_fixture",
+        "command": "git diff --check",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-diffcheck-post-fixture.log"
+      },
+      {
+        "check_id": "v13_post_fixture_editor_focused_retry",
+        "command": "flutter test --no-pub test/screens/event_edit_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart",
+        "exit_code": null,
+        "status": "STALLED",
+        "log": ".codex/tasks/tutorial-ux-v13-editor-focused-retry.log",
+        "detail": "The Flutter launcher entered update_engine_version.ps1 with no test output or terminal test exit. Only the stage-owned process chain was stopped."
+      },
+      {
+        "check_id": "v13_post_fixture_sdk_start",
+        "command": "flutter --version",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "Flutter 3.41.9; Dart 3.11.5",
+        "log": ".codex/tasks/tutorial-ux-v13-flutter-version-retry.log"
+      },
+      {
+        "check_id": "v13_post_fixture_editor_focused",
+        "command": "flutter test --no-pub test/screens/event_edit_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "59 passed",
+        "log": ".codex/tasks/tutorial-ux-v13-postfixture-focused.log"
+      },
+      {
+        "check_id": "v13_post_fixture_required_suite",
+        "command": "flutter test --no-pub test/screens/voice_input_screen_test.dart test/screens/voice_conversation_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart test/screens/guide_step2_save_integration_test.dart test/onboarding/real_ui_guide_lifecycle_pause_test.dart test/onboarding/real_ui_guide",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "354 passed, 1 skipped",
+        "log": ".codex/tasks/tutorial-ux-v13-required-postfixture.log"
+      },
+      {
+        "check_id": "v13_post_fixture_dual_define",
+        "command": "flutter test --no-pub --dart-define=PLANFLOW_GUIDE_QA=true --dart-define=PLANFLOW_ISOLATED_GUIDE_QA=true test/screens/guide_step2_save_integration_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "1 passed",
+        "log": ".codex/tasks/tutorial-ux-v13-step2-both-defines-postfixture.log"
+      },
+      {
+        "check_id": "v13_post_fixture_analyze",
+        "command": "flutter analyze --no-pub lib test",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "No issues found (141.8s)",
+        "log": ".codex/tasks/tutorial-ux-v13-analyze-postfixture.log"
+      },
+      {
+        "check_id": "v13_post_fixture_candidate_full",
+        "command": "flutter test --no-pub",
+        "exit_code": 1,
+        "status": "FAIL_BASELINE_SUBSET",
+        "summary": "2952 passed, 3 skipped, 10 failed; all 10 failures occur in baseline failure set",
+        "log": ".codex/tasks/tutorial-ux-v13-candidate-full-postfixture.log"
+      },
+      {
+        "check_id": "v13_pipe_safe_baseline",
+        "command": "flutter test --no-pub --plain-name \"pipe-safe version capture preserves a multi-line producer\" test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "1 passed; baseline HEAD 4a6984a17972d6ef55df5ebbbe9deb88ec1dd9ab",
+        "log": ".codex/tasks/tutorial-ux-v13-pipe-safe-baseline-postfixture.log"
+      },
+      {
+        "check_id": "v13_pipe_safe_candidate",
+        "command": "flutter test --no-pub --plain-name \"pipe-safe version capture preserves a multi-line producer\" test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "1 passed; same command/env, sequential after baseline",
+        "log": ".codex/tasks/tutorial-ux-v13-pipe-safe-candidate-postfixture.log"
+      },
+      {
+        "check_id": "v13_post_fixture_diffcheck",
+        "command": "git diff --check",
+        "exit_code": 0,
+        "status": "PASS",
+        "summary": "No whitespace errors; generated registrant LF/CRLF warnings only",
+        "log": ".codex/tasks/tutorial-ux-v13-diffcheck-postfixture-final.log"
+      }
+    ],
+    "post_fixture_not_run": [],
+    "baseline_comparison": {
+      "status": "PASS",
+      "baseline_failure_count": 13,
+      "candidate_failure_count": 10,
+      "candidate_only_failures": [],
+      "source": "Exact failed test names in each raw reporter log, with worktree prefixes removed.",
+      "baseline_summary": "../tutorial-ux-v13-baseline-20261118/.codex/tasks/tutorial-ux-v13-baseline-failures.txt",
+      "candidate_failures": [
+        "test/ios_native_startup_diagnostics_contract_test.dart :: plugin registry observation remains bounded and forwarded",
+        "test/ios_phase3_native_contract_test.dart :: WidgetKit source supports canonical payload, fallback and routes",
+        "test/ios_release_contract_test.dart :: signed release workflow has explicit Apple signing and cleanup gates",
+        "test/ios_simulator_e2e_contract_test.dart :: P13.1 pre-existing workflow files are byte-for-byte unchanged .github/workflows/ios-release.yml matches its recorded SHA-256",
+        "test/onboarding/voice_correction_example_test.dart :: practice copy is exact, ordered, and has no duplicate/demo UI",
+        "test/screens/shell_screen_onboarding_order_test.dart :: shell wires intro, real guide and calendar choice and defers startup work",
+        "test/services/voice_command_analysis_service_test.dart :: VoiceCommandAnalysisService one utterance preserves weekly time, title, and important flag",
+        "test/tooling/build_internal_aab_contract_test.dart :: Play deploy verifies and passes the non-secret map artifact marker",
+        "test/tooling/build_internal_aab_contract_test.dart :: internal AAB builder keeps map preflight and delegates through flutter-local.ps1",
+        "test/widgets/voice_correction_practice_test.dart :: practice copy has one hierarchy and no simulated example controls"
+      ],
+      "baseline_only_failures": [
+        "test/supabase/real_ui_guide_grants_schema_test.dart :: begin exposes the accepted time only for its bound preview or update",
+        "test/supabase/real_ui_guide_grants_schema_test.dart :: replay preserves initial grants and closes stale session entry points",
+        "test/widget_transport_receipt_store_test.dart :: row overflow fails closed without truncation"
+      ]
+    },
+    "post_fixture_final_checks": [
+      {
+        "check_id": "v13_postfixture_focused",
+        "command": "flutter test --no-pub test/screens/event_edit_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-postfixture-focused.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 59
+      },
+      {
+        "check_id": "v13_required_postfixture",
+        "command": "flutter test --no-pub test/screens/voice_input_screen_test.dart test/screens/voice_conversation_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart test/screens/guide_step2_save_integration_test.dart test/onboarding/real_ui_guide_lifecycle_pause_test.dart test/onboarding/real_ui_guide",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-required-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 354,
+        "skipped": 1
+      },
+      {
+        "check_id": "v13_step2_both_defines_postfixture",
+        "command": "flutter test --no-pub --dart-define=PLANFLOW_GUIDE_QA=true --dart-define=PLANFLOW_ISOLATED_GUIDE_QA=true test/screens/guide_step2_save_integration_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-step2-both-defines-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 1
+      },
+      {
+        "check_id": "v13_analyze_postfixture",
+        "command": "flutter analyze --no-pub lib test",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-analyze-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "issues": 0,
+        "elapsed_seconds": 141.8
+      },
+      {
+        "check_id": "v13_candidate_full_postfixture",
+        "command": "flutter test --no-pub",
+        "exit_code": 1,
+        "status": "FAILURES_RECORDED",
+        "log": ".codex/tasks/tutorial-ux-v13-candidate-full-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 2957,
+        "skipped": 3,
+        "failed": 10
+      },
+      {
+        "check_id": "v13_baseline_full",
+        "command": "flutter test --no-pub",
+        "exit_code": 1,
+        "status": "FAILURES_RECORDED",
+        "log": "../tutorial-ux-v13-baseline-20261118/.codex/tasks/tutorial-ux-v13-baseline-full-test.log",
+        "snapshot": "BASELINE",
+        "passed": 2952,
+        "skipped": 3,
+        "failed": 13
+      },
+      {
+        "check_id": "v13_pipe_safe_baseline_postfixture",
+        "command": "flutter test --no-pub --plain-name \"pipe-safe version capture preserves a multi-line producer\" test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": "../tutorial-ux-v13-baseline-20261118/.codex/tasks/tutorial-ux-v13-pipe-safe-baseline-postfixture.log",
+        "snapshot": "BASELINE",
+        "passed": 1,
+        "TZ": "unset"
+      },
+      {
+        "check_id": "v13_pipe_safe_candidate_postfixture",
+        "command": "flutter test --no-pub --plain-name \"pipe-safe version capture preserves a multi-line producer\" test/ios_release_contract_test.dart",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-pipe-safe-candidate-postfixture.log",
+        "snapshot": "FINAL_POST_FIXTURE",
+        "passed": 1,
+        "TZ": "unset"
+      },
+      {
+        "check_id": "v13_diffcheck_postfixture_final",
+        "command": "git diff --check",
+        "exit_code": 0,
+        "status": "PASS",
+        "log": ".codex/tasks/tutorial-ux-v13-diffcheck-postfixture-final.log",
+        "snapshot": "FINAL_POST_FIXTURE"
+      }
+    ]
+  },
+  "initial_receipt": {
+    "planned_roles": [
+      {
+        "status": "PLANNED",
+        "agent": "flux_explorer",
+        "role": "Explorer",
+        "model_reasoning_effort": "medium",
+        "model": "gpt-6-luna"
+      },
+      {
+        "status": "PLANNED",
+        "agent": "flux_planner",
+        "role": "Planner",
+        "model_reasoning_effort": "high",
+        "model": "gpt-6.1-sol"
+      },
+      {
+        "status": "PLANNED",
+        "agent": "flux_complex_implementer",
+        "role": "Complex Implementer",
+        "model_reasoning_effort": "xhigh",
+        "model": "gpt-6.1-sol"
+      },
+      {
+        "status": "PLANNED",
+        "agent": "flux_test_executor",
+        "role": "Test Executor",
+        "model_reasoning_effort": "medium",
+        "model": "gpt-6-luna"
+      },
+      {
+        "status": "PLANNED",
+        "agent": "flux_reviewer",
+        "role": "Reviewer",
+        "model_reasoning_effort": "high",
+        "model": "gpt-6.1-sol"
+      },
+      {
+        "status": "PLANNED",
+        "agent": "flux_integrator",
+        "role": "Integrator",
+        "model_reasoning_effort": "high",
+        "model": "gpt-6.1-sol"
+      }
+    ],
+    "receipt_type": "initial",
+    "classification": "complex",
+    "executed_roles": [],
+    "not_run_roles": [],
+    "emitted_at": "2026-11-17T03:55:41.849257Z",
+    "recorded_time_basis": "초기 라우팅 검증 시각"
+  },
+  "role_reports": {
+    "Explorer": {
+      "assignment": "Read-only root cause analysis for v13 issues 1-3",
+      "status": "RAN",
+      "evidence": "Voice completion dispatches ParseConfirmed then pushes ConfirmScreen; no guide-specific route-order proof. 6/7 save requires active/editPreview; lifecycle suspend can pause and increment revision; r8 serialization is separate. Home today list excludes tomorrow; savedDetail directs to calendar list.",
+      "model_reasoning_effort": "medium",
+      "model": "gpt-6-luna",
+      "agent": "flux_explorer"
+    },
+    "Planner": {
+      "assignment": "Plan requirements, allowed paths, gates, risks",
+      "status": "RAN",
+      "evidence": "Complex classification. Issue1 barrier render while ParseConfirmed awaits; remove visible interim barrier, keep ConfirmScreen internal loading and preserve route guards. Issue2 save gate requires active/editPreview; lifecycle pause increments revision; do not weaken guards; success test through actual editor save. Issue3 tomorrow is intentionally excluded from home today; improve savedDetail copy to direct to calendar tab.",
+      "model_reasoning_effort": "high",
+      "model": "gpt-6.1-sol",
+      "agent": "flux_planner"
+    },
+    "Complex Implementer": {
+      "assignment": "세 이슈를 허용된 소스와 테스트에 구현하고 리뷰의 취소 경합 및 테스트 finder 수정",
+      "status": "RAN",
+      "agent": "flux_complex_implementer",
+      "model": "gpt-6.1-sol",
+      "model_reasoning_effort": "xhigh",
+      "evidence": "Confirm 준비 화면으로 즉시 이동하고 승인 전 부수 효과를 차단. 진행 커밋 중 Back 잠금과 초기 취소 후 재제출을 검증. 6/7 활성 소유자 세션 및 조건부 쓰기 유지. 3/7 일정 탭 안내 개선.",
+      "changed_files": [
+        "lib/core/router.dart",
+        "lib/onboarding/real_ui_guide/guide_host.dart",
+        "lib/screens/event/event_edit_screen.dart",
+        "lib/screens/voice/confirm_screen.dart",
+        "lib/screens/voice/voice_input_screen.dart",
+        "test/screens/guide_editor_actual_mount_regression_test.dart",
+        "test/screens/voice_input_screen_test.dart",
+        "test/screens/event_edit_screen_test.dart"
+      ]
+    },
+    "Test Executor": {
+      "assignment": "수정본의 음성·가이드 및 QA define 회귀, 최종 분석과 전체 기준선 비교",
+      "status": "RAN",
+      "agent": "flux_test_executor",
+      "model": "gpt-6-luna",
+      "model_reasoning_effort": "medium",
+      "evidence": "Post-fixture final: event_edit + guide mount tests 59 passed; six-target suite 354 passed, 1 skipped; both QA defines integration test 1 passed; flutter analyze --no-pub lib test exit 0, no issues; git diff --check exit 0. Candidate full suite: 2952 passed, 3 skipped, 10 failed; all 10 are in baseline failure set (baseline: 2952 passed, 3 skipped, 13 failed), so zero candidate-only failures. Standalone iOS pipe-safe test passed once each on baseline and candidate with identical command/TZ unset. Logs: .codex/tasks/tutorial-ux-v13-postfixture-focused.log, tutorial-ux-v13-required-postfixture.log, tutorial-ux-v13-step2-both-defines-postfixture.log, tutorial-ux-v13-analyze-postfixture.log, tutorial-ux-v13-candidate-full-postfixture.log, tutorial-ux-v13-pipe-safe-{baseline,candidate}-postfixture.log, tutorial-ux-v13-diffcheck-postfixture-final.log. No device run, commit, or push.",
+      "check_ids": [
+        "v13_voice_final",
+        "v13_voice_guide_final",
+        "v13_guide_step2_both_defines",
+        "v13_analyze_final",
+        "v13_baseline_subset",
+        "v13_diffcheck_post_fixture",
+        "v13_post_fixture_editor_focused_retry",
+        "v13_post_fixture_editor_focused",
+        "v13_post_fixture_required_suite",
+        "v13_post_fixture_dual_define",
+        "v13_post_fixture_analyze",
+        "v13_post_fixture_candidate_full",
+        "v13_pipe_safe_baseline",
+        "v13_pipe_safe_candidate",
+        "v13_post_fixture_diffcheck",
+        "v13_postfixture_focused",
+        "v13_required_postfixture",
+        "v13_step2_both_defines_postfixture",
+        "v13_analyze_postfixture",
+        "v13_candidate_full_postfixture",
+        "v13_baseline_full",
+        "v13_pipe_safe_baseline_postfixture",
+        "v13_pipe_safe_candidate_postfixture",
+        "v13_diffcheck_postfixture_final"
+      ],
+      "latest_result": "PASS for final offline delivery gates with baseline subset comparison.",
+      "latest_agent": "flux_test_executor"
+    },
+    "Reviewer": {
+      "assignment": "7개 변경 경로의 최종 diff와 회귀에서 보안·승인·저장 경계를 독립 검토",
+      "status": "RAN",
+      "agent": "flux_reviewer",
+      "model": "gpt-6.1-sol",
+      "model_reasoning_effort": "high",
+      "evidence": "Independent final reviewer inspected the eight code/test paths and the canonical instructions. Added same-owner unexpired session fixture maintains existing assertions. Owner/session/revision, duplicate protection, conditional time update and persisted readback remain enforced.",
+      "verdict": "FINDINGS",
+      "highest_severity": "MEDIUM",
+      "verification_gap": [
+        "P1: Prove the real UI transition frame from 1/7 voice Done to 2/7 with continuous screen or route timing evidence. Focused tests use mock navigator/coordinator fixtures.",
+        "P2: Check guide run/revision around the real QA 6/7 save and verify the persisted times in 7/7. Fixture tests do not establish which of the two save fences originally emitted the retry message."
+      ],
+      "final_diff_status": "REVIEWED against 4a6984a1, all eight source/test paths",
+      "blocker_high_count": 0
+    },
+    "Integrator": {
+      "assignment": "최종 검증·리뷰를 대조하고 지정 브랜치에 허용 경로만 커밋·푸시. 기기 증거를 포함해 최종 판정.",
+      "status": "RAN",
+      "agent": "flux_integrator",
+      "model": "gpt-6.1-sol",
+      "model_reasoning_effort": "high",
+      "evidence": "Inspected final eight-path code and test diff, reviewed independent role reports and exact final test exits, and reproduced baseline failure subset calculation directly from the raw logs. Explicit nine-path commit prepared. Device gates remain pending.",
+      "candidate_paths": [
+        "lib/core/router.dart",
+        "lib/onboarding/real_ui_guide/guide_host.dart",
+        "lib/screens/event/event_edit_screen.dart",
+        "lib/screens/voice/confirm_screen.dart",
+        "lib/screens/voice/voice_input_screen.dart",
+        "test/screens/guide_editor_actual_mount_regression_test.dart",
+        "test/screens/voice_input_screen_test.dart"
+      ],
+      "disposition": "PENDING",
+      "current_status": "Offline integration verified; feature branch push and device gate tracked separately."
+    },
+    "Failure Analyst": {
+      "assignment": "기준선 대비 edit 테스트 3건과 iOS pipe-safe 테스트 1건을 분석하고 수정/재검증 범위를 판정",
+      "status": "RAN",
+      "agent": "flux_failure_analyst",
+      "model": "gpt-6.1-sol",
+      "model_reasoning_effort": "high",
+      "evidence": "기존 위젯 테스트가 authProvider.setUser 및 가짜 EventRepository만 구성했다. 6/7의 강화된 실제 세션 조회가 초기화하지 않은 Supabase로 들어가 accepted/linked-group/stale-range가 원래 검증 분기에 이르지 않았다. 같은 소유자와 만료 전인 합성 Session을 기존 주입 지점에 전달하면 기존 저장 및 차단 의미를 검증할 수 있다.",
+      "recommended_changed_paths": [
+        "test/screens/event_edit_screen_test.dart"
+      ],
+      "classification": "Simple",
+      "completion": "Final read-only report received",
+      "ios_pipe_safe": "Candidate full-suite failure was a 30-second shell timeout with no shell exit or assertion mismatch. The test and inline shell command are byte-identical to baseline and do not read v13 source. This is consistent with prior host-sensitive timeouts. Same-environment focused contrast remains verification work for Test Executor.",
+      "recommended_verification": [
+        "flutter test --no-pub test/screens/event_edit_screen_test.dart test/screens/guide_editor_actual_mount_regression_test.dart",
+        "Compare the full candidate failing test-name set to the saved baseline",
+        "Compare the identical pipe-safe case in both worktrees using the same shell environment"
+      ]
+    }
+  },
+  "stage_failures": [],
+  "last_update": "2026-11-17T16:01:24+09:00"
+}

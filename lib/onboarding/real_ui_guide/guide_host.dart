@@ -1047,7 +1047,8 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       GuideStep.savedDetail => (
           '3/7 · 저장된 일정 확인',
           id == 'calendar.saved'
-              ? '실제로 저장됐어요. 일정 탭에서 방금 저장한 일정을 눌러주세요.'
+              ? '일정이 저장됐어요. 홈의 ‘오늘 일정’에는 오늘 일정만 보여요. '
+                  '‘일정’ 탭에서 저장한 날짜의 일정을 눌러 주세요.'
               : id == 'calendar.retry'
                   ? '저장한 일정을 찾지 못했어요. ‘다시 확인’으로 기존 목록만 새로 불러와요. 새 일정은 만들지 않아요.'
                   : '‘저장된 일정 확인’에서 제목, 날짜·시간과 장소를 확인한 뒤, 화면 아래의 ‘준비·출발 안내 확인’ 버튼을 눌러 주세요.'
@@ -1103,7 +1104,10 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
         }
         // The feature intro has its own buttons. Its route may appear before
         // the current guide target mounts, so suppress the waiting card too.
-        if (legacyIntroCurrent) return const SizedBox.shrink();
+        if (legacyIntroCurrent ||
+            _targetIsCurrent(_resolveAnchor('confirm.guidePending').context)) {
+          return const SizedBox.shrink();
+        }
         // 말하는 중에도 무엇을 말해야 하는지 화면에 남아 있어야 한다.
         // 말풍선이 음성 원문을 가리면 안 되므로 음성 원문과 마이크를 밝은
         // 구멍으로 뚫고, 그 바로 위에 연습 카드를 띄운다.

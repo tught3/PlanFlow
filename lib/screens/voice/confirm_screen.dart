@@ -68,10 +68,25 @@ import '../../onboarding/real_ui_guide/guide_create_location_policy.dart';
 import '../../widgets/guided_anchor.dart';
 part 'confirm_widgets.dart';
 
+/// In-memory route payload for a voice submission still being authorized.
+class PendingGuideConfirm {
+  const PendingGuideConfirm({
+    required this.parsedSchedule,
+    required this.authorize,
+  });
+
+  final Map<String, dynamic> parsedSchedule;
+  final Future<bool> Function(
+    bool Function() isCurrentRoute,
+    bool Function() beginGuideTransition,
+  ) authorize;
+}
+
 class ConfirmScreen extends StatefulWidget {
   ConfirmScreen({
     super.key,
     this.parsedSchedule = const <String, dynamic>{},
+    this.pendingGuideConfirm,
     this.userId,
     this.eventRepository,
     this.groupContextProvider,
@@ -103,6 +118,7 @@ class ConfirmScreen extends StatefulWidget {
             travelTimeBufferService ?? TravelTimeBufferService();
 
   final Map<String, dynamic> parsedSchedule;
+  final PendingGuideConfirm? pendingGuideConfirm;
   final String? userId;
   final EventRepository? eventRepository;
   final GroupContextProvider? groupContextProvider;
@@ -352,9 +368,64 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       .convert(utf8.encode('$_parseAttemptId\n${rawText.trim()}'))
       .toString();
 
+  bool _editorInitialized = false;
+  bool _guidePreparationRejected = false;
+  bool _guideTransitionCommitting = false;
+
   @override
   void initState() {
     super.initState();
+    final pending = widget.pendingGuideConfirm;
+    if (pending == null) {
+      _initializeEditor();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_authorizeGuidePreparation(pending));
+    });
+  }
+
+  Future<void> _authorizeGuidePreparation(PendingGuideConfirm pending) async {
+    final route = ModalRoute.of(context);
+    bool isCurrent() => mounted && route?.isCurrent == true;
+
+    bool beginGuideTransition() {
+      if (!isCurrent() || _guideTransitionCommitting) return false;
+      setState(() => _guideTransitionCommitting = true);
+      return true;
+    }
+
+    var authorized = false;
+    try {
+      if (isCurrent()) {
+        authorized = await pending.authorize(isCurrent, beginGuideTransition);
+      }
+    } catch (error) {
+      debugPrint('ConfirmScreen guide preparation failed: ${error.runtimeType}');
+    }
+    if (!mounted) return;
+    if (!authorized || !isCurrent()) {
+      if (isCurrent() && context.canPop()) {
+        context.pop('cancelled');
+      } else {
+        setState(() {
+          _guideTransitionCommitting = false;
+          _guidePreparationRejected = true;
+        });
+      }
+      return;
+    }
+    setState(_initializeEditor);
+  }
+
+  void _cancelGuidePreparation() {
+    if (!_guideTransitionCommitting && context.canPop()) {
+      context.pop('cancelled');
+    }
+  }
+
+  void _initializeEditor() {
+    _editorInitialized = true;
     _parseAttemptId = _stringValue(widget.parsedSchedule['parse_attempt_id']) ??
         '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(widget.parsedSchedule)}';
     widget.parsedSchedule['parse_attempt_id'] = _parseAttemptId;
@@ -464,6 +535,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   void dispose() {
+    if (!_editorInitialized) {
+      _scrollController.dispose();
+      _newSupplyFocusNode.dispose();
+      super.dispose();
+      return;
+    }
     final dismissGuideSaveFeedback = _dismissGuideSaveFeedback;
     if (dismissGuideSaveFeedback != null) {
       // The feedback host is above this route. Don't mark it dirty while the
@@ -3798,6 +3875,42 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!_editorInitialized) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _cancelGuidePreparation();
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('일정 생성'),
+            leading: IconButton(
+              tooltip: '취소',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _guideTransitionCommitting
+                  ? null
+                  : _cancelGuidePreparation,
+            ),
+          ),
+          body: GuidedAnchor(
+            id: 'confirm.guidePending',
+            registry: realUiGuideAnchorRegistry,
+            child: Center(
+              child: _guidePreparationRejected
+                  ? const Text('안내 상태가 바뀌었어요. 음성 입력에서 다시 시도해 주세요.')
+                  : const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('일정 내용을 준비하고 있어요.'),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
     final theme = Theme.of(context);
     final showParsePendingLoader =
         widget.parsedSchedule['parse_pending'] == true &&

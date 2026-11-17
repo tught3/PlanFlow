@@ -3,6 +3,7 @@
 // GuideScope (no FlutterError), must seed the requested time, and must not
 // dispatch, autosave, or write to any repository on mount.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,23 @@ import 'package:planflow/screens/event/event_detail_screen.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+Session _editorTestSession(String uid, {required bool expired}) {
+  final expires = expired ? 1 : 4102444800;
+  final payload = base64Url.encode(utf8.encode(jsonEncode({'exp': expires})));
+  return Session(
+    accessToken: 'test.$payload.signature',
+    tokenType: 'bearer',
+    user: User(
+      id: uid,
+      appMetadata: const {},
+      userMetadata: const {},
+      aud: 'authenticated',
+      createdAt: '',
+    ),
+  );
+}
 
 /// Compares editor wall fields independently of the runner's timezone.
 bool _sameWallFields(DateTime a, DateTime b) {
@@ -188,6 +206,7 @@ class _CountingRepo extends EventRepository {
 
   EventModel? current;
   Future<EventModel?>? updatedReadback;
+  Future<List<EventModel>>? overlaps;
   int writes = 0;
   int reads = 0;
   @override
@@ -221,6 +240,18 @@ class _CountingRepo extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) async {
     writes++;
     return current = event;
+  }
+
+  @override
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+    Set<String> excludedEventIds = const {},
+  }) async {
+    final lookup = overlaps;
+    return lookup == null ? [] : await lookup;
   }
 
   @override
@@ -566,6 +597,7 @@ void main() {
     );
     final detailReadback = Completer<EventModel?>();
     final repo = _CountingRepo(owned)..updatedReadback = detailReadback.future;
+    Session? editorSession;
     authProvider.setUser('u');
     addTearDown(() => authProvider.setUser(null));
     final router = GoRouter(
@@ -578,6 +610,7 @@ void main() {
             eventId: owned.id,
             eventRepository: repo,
             initialGuideStartLocal: requested,
+            readGuideEditSession: () => editorSession,
           ),
         ),
         GoRoute(
@@ -604,6 +637,33 @@ void main() {
     expect(repo.writes, 0);
     expect(advances, 0);
 
+    for (final deniedSession in [
+      null,
+      _editorTestSession('other-user', expired: false),
+      _editorTestSession('u', expired: true),
+    ]) {
+      editorSession = deniedSession;
+      await tester.tap(find.text('저장'));
+      await tester.pumpAndSettle();
+      expect(repo.writes, 0);
+      expect(advances, 0);
+      expect(find.byType(EventEditScreen), findsOneWidget);
+    }
+
+    editorSession = _editorTestSession('u', expired: false);
+    final overlapLookup = Completer<List<EventModel>>();
+    repo.overlaps = overlapLookup.future;
+    await tester.tap(find.text('저장'));
+    await tester.pump();
+    final guideState = c.state as ValueNotifier<GuideSnapshot>;
+    guideState.value = before.copyWith(revision: before.revision + 1);
+    overlapLookup.complete([]);
+    await tester.pumpAndSettle();
+    expect(repo.writes, 0);
+    expect(find.byType(EventEditScreen), findsOneWidget);
+
+    guideState.value = before;
+    advances = 0;
     await tester.tap(find.text('저장'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
