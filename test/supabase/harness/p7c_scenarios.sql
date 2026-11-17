@@ -1,3 +1,12 @@
+\set ON_ERROR_STOP on
+do $$
+begin
+  if current_database() not like $pattern$p7c\_%$pattern$ then
+    raise exception 'P7c scenarios require a disposable database with a p7c_ prefix';
+  end if;
+end;
+$$;
+
 \set leader 10000000-0000-4000-8000-000000000001
 \set member 10000000-0000-4000-8000-000000000002
 \set recipient 10000000-0000-4000-8000-000000000003
