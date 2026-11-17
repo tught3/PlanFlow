@@ -6,6 +6,67 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 
 void main() {
+  for (final scenario in [
+    (
+      label: 'January 31 skips February',
+      start: DateTime(2026, 1, 31, 9), // banned-ok: Fixed calendar fixture independent of the current clock.
+      from: DateTime(2026, 2), // banned-ok: Fixed calendar fixture independent of the current clock.
+      until: DateTime(2026, 4), // banned-ok: Fixed calendar fixture independent of the current clock.
+      rule: 'FREQ=MONTHLY',
+      expected: [DateTime(2026, 3, 31, 9)], // banned-ok: Fixed calendar fixture independent of the current clock.
+    ),
+    (
+      label: 'leap day returns in the next leap year',
+      start: DateTime(2024, 2, 29, 9), // banned-ok: Fixed calendar fixture independent of the current clock.
+      from: DateTime(2025),
+      until: DateTime(2029),
+      rule: 'FREQ=YEARLY',
+      expected: [DateTime(2028, 2, 29, 9)], // banned-ok: Fixed calendar fixture independent of the current clock.
+    ),
+    (
+      label: 'daily interval outlives old scan limit',
+      start: DateTime(2020, 1, 1, 9), // banned-ok: Fixed calendar fixture independent of the current clock.
+      from: DateTime(2024, 1, 1), // banned-ok: Fixed calendar fixture independent of the current clock.
+      until: DateTime(2024, 1, 6), // banned-ok: Fixed calendar fixture independent of the current clock.
+      rule: 'FREQ=DAILY;INTERVAL=2',
+      expected: [DateTime(2024, 1, 2, 9), DateTime(2024, 1, 4, 9)], // banned-ok: Fixed calendar fixture independent of the current clock.
+    ),
+    (
+      label: 'fortnight weekdays stay anchored after old scan limit',
+      start: DateTime(2020, 1, 1, 9), // banned-ok: Fixed calendar fixture independent of the current clock.
+      from: DateTime(2026, 1, 1), // banned-ok: Fixed calendar fixture independent of the current clock.
+      until: DateTime(2026, 1, 18), // banned-ok: Fixed calendar fixture independent of the current clock.
+      rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE',
+      expected: [DateTime(2026, 1, 5, 9), DateTime(2026, 1, 7, 9)], // banned-ok: Fixed calendar fixture independent of the current clock.
+    ),
+  ]) {
+    test('overlap follows shared recurrence: ${scenario.label}', () {
+      final anchor = planflowLocalDateTimeToUtc(scenario.start);
+      final event = EventModel(
+        id: 'recurring-1',
+        userId: 'user-1',
+        title: 'recurring',
+        startAt: anchor,
+        endAt: anchor.add(const Duration(hours: 1)),
+        recurrenceRule: scenario.rule,
+      );
+      final shared = expandRecurringEvent(
+        event: event,
+        rangeStart: scenario.from,
+        rangeEnd: scenario.until,
+      );
+      final overlap = expandEventOccurrencesForOverlap(
+        event,
+        rangeStart: scenario.from,
+        rangeEnd: scenario.until,
+      );
+      DateTime? wallTime(EventModel event) =>
+          event.startAt!.isUtc ? planflowLocal(event.startAt!) : event.startAt;
+      expect(shared.map(wallTime), scenario.expected);
+      expect(overlap.map(wallTime), shared.map(wallTime));
+    });
+  }
+
   group('monthly overlap expansion', () {
     EventModel monthlyEvent(DateTime start, String rule) {
       final startUtc = planflowLocalDateTimeToUtc(start);

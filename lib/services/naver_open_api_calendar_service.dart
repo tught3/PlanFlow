@@ -168,21 +168,24 @@ class NaverOpenApiCalendarService {
             await _eventRepository.attachExternalSyncMetadataIfCompatible(
               existing: planFlowOrigin,
               incoming: eventModel,
+              adoptIncomingSource: false,
             );
-            skippedCount += 1;
-            diagnostics.duplicateSkipped += 1;
-            diagnostics.addSkipReason('PlanFlow 원본 일정 되가져오기');
-            emit(_progress(
-              mode: mode,
-              message: 'PlanFlow에서 보낸 일정은 중복 저장하지 않는 중입니다.',
-              index: i + 1,
-              total: schedules.length,
-              savedCount: savedCount,
-              skippedCount: skippedCount,
-              failedCount: failedCount,
-            ));
-            continue;
           }
+          skippedCount += 1;
+          diagnostics.duplicateSkipped += 1;
+          diagnostics.addSkipReason(planFlowOrigin == null
+              ? 'PlanFlow에서 삭제된 일정'
+              : 'PlanFlow 원본 일정 되가져오기');
+          emit(_progress(
+            mode: mode,
+            message: 'PlanFlow에서 보낸 일정은 중복 저장하지 않는 중입니다.',
+            index: i + 1,
+            total: schedules.length,
+            savedCount: savedCount,
+            skippedCount: skippedCount,
+            failedCount: failedCount,
+          ));
+          continue;
         }
 
         // 같은 제목+시작시간 중복 감지

@@ -1194,18 +1194,15 @@ class CalendarSyncService {
         .where((event) => event.startAt != null)
         .where((event) => !event.startAt!.isBefore(lowerBound))
         .where((event) => !_isExternalCalendarSource(event.source))
-        .where((event) {
-      if (event.externalCalendarId != 'naver:default') {
-        return true;
-      }
-      final lastSyncedAt = event.lastSyncedAt;
-      final updatedAt = event.updatedAt;
-      if (lastSyncedAt == null || updatedAt == null) {
-        return true;
-      }
-      return updatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
-    }).toList()
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+        .where((event) =>
+            event.externalCalendarId != 'naver:default' ||
+            _isExportVersionDirty(event))
+        .toList()
+      ..sort((a, b) => _compareForExport(
+            a,
+            b,
+            linkedCalendar: 'naver:default',
+          ));
     return filtered.take(_naverExportLimit).toList(growable: false);
   }
 
@@ -1320,35 +1317,17 @@ class CalendarSyncService {
   Future<int> _exportPlanFlowEventsToGoogle(gcal.CalendarApi api) async {
     final now = DateTime.now().toUtc();
     final lowerBound = now.subtract(const Duration(days: 1));
-    final events = await _eventRepository.listEvents(userId: _currentUserId());
+    final events = (await _eventRepository.listEvents(userId: _currentUserId()))
+        .where((event) => _shouldExportToGoogle(event, lowerBound))
+        .toList()
+      ..sort((a, b) => _compareForExport(
+            a,
+            b,
+            linkedCalendar: 'google:primary',
+          ));
     var exportedItems = 0;
 
     for (final event in events) {
-      final startAt = event.startAt;
-      if (startAt == null || startAt.isBefore(lowerBound)) {
-        continue;
-      }
-      if (_isExternalCalendarSource(event.source)) {
-        continue;
-      }
-
-      final externalCalendarId = event.externalCalendarId ?? '';
-      final externalId = event.externalId ?? '';
-      if (externalId.isNotEmpty &&
-          externalCalendarId.isNotEmpty &&
-          externalCalendarId != 'google:primary') {
-        continue;
-      }
-      if (externalId.isNotEmpty &&
-          event.externalUpdatedAt != null &&
-          event.updatedAt != null &&
-          event.externalUpdatedAt!.toUtc().isAfter(event.updatedAt!.toUtc())) {
-        debugPrint(
-          'Google export skipped because external event is newer: ${event.id}',
-        );
-        continue;
-      }
-
       // 폭주 가드: 60초/30회 한도 초과 시 루프 중단 (이미 보낸 것은 유지)
       if (!await _guard.tryConsume(ApiName.googleCalendar)) {
         debugPrint(
@@ -1370,32 +1349,11 @@ class CalendarSyncService {
     EventModel event,
   ) async {
     final now = DateTime.now().toUtc();
-    final lowerBound = now.subtract(const Duration(days: 1));
-    final startAt = event.startAt;
-    if (startAt == null || startAt.isBefore(lowerBound)) {
-      return 0;
-    }
-    if (_isExternalCalendarSource(event.source)) {
+    if (!_shouldExportToGoogle(event, now.subtract(const Duration(days: 1)))) {
       return 0;
     }
 
-    final externalCalendarId = event.externalCalendarId ?? '';
-    final externalId = event.externalId ?? '';
-    if (externalId.isNotEmpty &&
-        externalCalendarId.isNotEmpty &&
-        externalCalendarId != 'google:primary') {
-      return 0;
-    }
-    if (externalId.isNotEmpty &&
-        event.externalUpdatedAt != null &&
-        event.updatedAt != null &&
-        event.externalUpdatedAt!.toUtc().isAfter(event.updatedAt!.toUtc())) {
-      debugPrint(
-        'Google export skipped because external event is newer: ${event.id}',
-      );
-      return 0;
-    }
-
+    final externalId = event.externalId?.trim() ?? '';
     final googleEvent = _eventToGoogleEvent(event);
     final gcal.Event saved;
     if (externalId.isEmpty) {
@@ -1406,71 +1364,83 @@ class CalendarSyncService {
 
     final savedExternalId = saved.id?.trim();
     if (savedExternalId != null && savedExternalId.isNotEmpty) {
-      await _eventRepository.updateEvent(
-        EventModel(
-          id: event.id,
-          userId: event.userId,
-          title: event.title,
-          startAt: event.startAt,
-          endAt: event.endAt,
-          location: event.location,
-          locationLat: event.locationLat,
-          locationLng: event.locationLng,
-          memo: event.memo,
-          supplies: event.supplies,
-          suppliesChecked: event.suppliesChecked,
-          participants: event.participants,
-          targets: event.targets,
-          isCritical: event.isCritical,
-          recurrenceRule: event.recurrenceRule,
-          isAllDay: event.isAllDay,
-          isMultiDay: event.isMultiDay,
-          parentEventId: event.parentEventId,
-          category: event.category,
-          source: event.source,
-          externalId: savedExternalId,
-          externalCalendarId: 'google:primary',
-          externalUpdatedAt: saved.updated?.toUtc() ?? now,
-          lastSyncedAt: now,
-          createdAt: event.createdAt,
-          updatedAt: event.updatedAt,
-        ),
+      await _eventRepository.updateExternalSyncMetadata(
+        eventId: event.id,
+        userId: event.userId,
+        externalId: savedExternalId,
+        externalCalendarId: 'google:primary',
+        externalUpdatedAt: saved.updated?.toUtc() ?? now,
+        lastSyncedAt: event.updatedAt ?? now,
       );
     }
     return 1;
   }
 
+  bool _shouldExportToGoogle(EventModel event, DateTime lowerBound) {
+    final startAt = event.startAt;
+    if (startAt == null ||
+        startAt.isBefore(lowerBound) ||
+        _isExternalCalendarSource(event.source)) {
+      return false;
+    }
+
+    final externalId = event.externalId?.trim() ?? '';
+    if (externalId.isEmpty) {
+      return true;
+    }
+    final externalCalendarId = event.externalCalendarId?.trim() ?? '';
+    if (externalCalendarId.isNotEmpty &&
+        externalCalendarId != 'google:primary') {
+      return false;
+    }
+    final externalUpdatedAt = event.externalUpdatedAt;
+    final updatedAt = event.updatedAt;
+    if (externalUpdatedAt != null &&
+        updatedAt != null &&
+        externalUpdatedAt.isAfter(updatedAt)) {
+      debugPrint(
+        'Google export skipped because external event is newer: ${event.id}',
+      );
+      return false;
+    }
+    return _isExportVersionDirty(event);
+  }
+
+  static bool _isExportVersionDirty(EventModel event) {
+    final lastSyncedAt = event.lastSyncedAt;
+    final updatedAt = event.updatedAt;
+    return event.externalId?.trim().isNotEmpty != true ||
+        lastSyncedAt == null ||
+        updatedAt == null ||
+        updatedAt.isAfter(lastSyncedAt);
+  }
+
+  static int _compareForExport(
+    EventModel a,
+    EventModel b, {
+    required String linkedCalendar,
+  }) {
+    int priority(
+            EventModel event) =>
+        event.externalId?.trim().isNotEmpty == true &&
+                (event.externalCalendarId == linkedCalendar ||
+                    (linkedCalendar == 'google:primary' &&
+                        event.externalCalendarId?.trim().isNotEmpty != true))
+            ? 1
+            : 0;
+    final byPriority = priority(a).compareTo(priority(b));
+    return byPriority == 0 ? a.startAt!.compareTo(b.startAt!) : byPriority;
+  }
+
   Future<void> _markEventSyncedToNaver(EventModel event) async {
     final now = DateTime.now().toUtc();
-    await _eventRepository.updateEvent(
-      EventModel(
-        id: event.id,
-        userId: event.userId,
-        title: event.title,
-        startAt: event.startAt,
-        endAt: event.endAt,
-        location: event.location,
-        locationLat: event.locationLat,
-        locationLng: event.locationLng,
-        memo: event.memo,
-        supplies: event.supplies,
-        suppliesChecked: event.suppliesChecked,
-        participants: event.participants,
-        targets: event.targets,
-        isCritical: event.isCritical,
-        recurrenceRule: event.recurrenceRule,
-        isAllDay: event.isAllDay,
-        isMultiDay: event.isMultiDay,
-        parentEventId: event.parentEventId,
-        category: event.category,
-        source: event.source,
-        externalId: _naverEventUid(event),
-        externalCalendarId: 'naver:default',
-        externalUpdatedAt: now,
-        lastSyncedAt: now,
-        createdAt: event.createdAt,
-        updatedAt: event.updatedAt,
-      ),
+    await _eventRepository.updateExternalSyncMetadata(
+      eventId: event.id,
+      userId: event.userId,
+      externalId: _naverEventUid(event),
+      externalCalendarId: 'naver:default',
+      externalUpdatedAt: now,
+      lastSyncedAt: event.updatedAt ?? now,
     );
   }
 
@@ -1736,6 +1706,27 @@ class CalendarSyncService {
         );
         continue;
       }
+      final planFlowEventId = _planFlowEventIdFromGoogleEvent(googleEvent);
+      // The export marker identifies a PlanFlow original. Attach a compatible
+      // link while preserving PlanFlow's content and last provider revision.
+      if (planFlowEventId != null) {
+        final planFlowOrigin = await _eventRepository.fetchEvent(
+          planFlowEventId,
+          userId: _currentUserId(),
+        );
+        if (planFlowOrigin == null) {
+          debugPrint('Google import skipped: PlanFlow에서 삭제된 일정');
+          continue;
+        }
+        await _eventRepository.attachExternalSyncMetadataIfCompatible(
+          existing: planFlowOrigin,
+          incoming: model,
+          adoptIncomingSource: false,
+        );
+        syncedItems += 1;
+        continue;
+      }
+
       final existing = await _findExistingGoogleEvent(
         storedExternalId,
         externalCalendarId: entry.externalCalendarId,
@@ -1745,61 +1736,28 @@ class CalendarSyncService {
       }
       if (existing != null) {
         await _eventRepository.updateEvent(
-          EventModel(
-            id: existing.id,
-            userId: existing.userId,
+          existing.copyWith(
             title: model.title,
             startAt: model.startAt,
+            clearStartAt: model.startAt == null,
             endAt: model.endAt,
+            clearEndAt: model.endAt == null,
             location: model.location,
-            locationLat: existing.locationLat,
-            locationLng: existing.locationLng,
+            clearLocation: model.location == null,
             memo: model.memo,
-            supplies: existing.supplies,
-            suppliesChecked: existing.suppliesChecked,
-            participants: existing.participants,
-            targets: existing.targets,
-            isCritical: existing.isCritical,
-            recurrenceRule: existing.recurrenceRule,
+            clearMemo: model.memo == null,
             // Google is the source of truth for these flags during import.
-            // In particular, an old row may retain isMultiDay=true after a
-            // provider fixes a birthday's exclusive date-only end.
             isAllDay: model.isAllDay,
             isMultiDay: model.isMultiDay,
-            parentEventId: existing.parentEventId,
-            category: existing.category,
-            source: existing.source,
             externalId: storedExternalId,
             externalCalendarId: entry.externalCalendarId,
             externalUpdatedAt: model.externalUpdatedAt,
+            clearExternalUpdatedAt: model.externalUpdatedAt == null,
             lastSyncedAt: model.lastSyncedAt,
-            createdAt: existing.createdAt,
-            updatedAt: existing.updatedAt,
+            clearLastSyncedAt: model.lastSyncedAt == null,
           ),
         );
       } else {
-        final planFlowEventId = _planFlowEventIdFromGoogleEvent(googleEvent);
-        final planFlowOrigin = planFlowEventId == null
-            ? null
-            : await _eventRepository.fetchEvent(
-                planFlowEventId,
-                userId: _currentUserId(),
-              );
-        if (planFlowOrigin != null) {
-          final linked =
-              await _eventRepository.attachExternalSyncMetadataIfCompatible(
-            existing: planFlowOrigin,
-            incoming: model,
-          );
-          debugPrint(
-            'Google import reflected PlanFlow event handled: '
-            'incoming="${logSafeText(model.title)}" ${model.startAt} '
-            'existing=${planFlowOrigin.id} linked=${linked != null}',
-          );
-          syncedItems += 1;
-          continue;
-        }
-
         final duplicate = await _findSameTitleStartDuplicate(
           model,
           excludedSources: const <String>{'google'},

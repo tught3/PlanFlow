@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -96,9 +95,10 @@ void _expectOccurrences(Map<String, dynamic> payload) {
 void main() {
   group('collectEventPages', () {
     for (final finalPageLength in [0, 37]) {
-      test('stops on a page with $finalPageLength rows', () async {
+      test('collects a final page with $finalPageLength rows before stopping',
+          () async {
         final ranges = <(int, int)>[];
-        final lengths = finalPageLength == 0 ? [1000, 0] : [1000, 1000, 37];
+        final lengths = [1000, if (finalPageLength != 0) finalPageLength, 0];
         final events = await collectEventPages((from, to) async {
           final length = lengths[ranges.length];
           ranges.add((from, to));
@@ -108,30 +108,72 @@ void main() {
         expect(events,
             hasLength(lengths.fold<int>(0, (sum, length) => sum + length)));
         expect(ranges, [
-          for (var i = 0; i < lengths.length; i++) (i * 1000, i * 1000 + 999),
+          (0, 999),
+          (1000, 1999),
+          if (finalPageLength != 0)
+            (1000 + finalPageLength, 1999 + finalPageLength),
         ]);
       });
     }
 
-    test('stops at 50 full pages and logs the safety limit once', () async {
-      final messages = <String>[];
-      final savedDebugPrint = debugPrint;
-      debugPrint = (message, {wrapWidth}) => messages.add(message!);
-      addTearDown(() => debugPrint = savedDebugPrint);
-
+    test('throws on the safety limit without returning partial data', () async {
       var requests = 0;
-      final events = await collectEventPages((from, to) async {
-        expect((from, to), (requests * 1000, requests * 1000 + 999));
-        requests++;
-        return List.filled(1000, null);
-      });
-
-      expect(events, hasLength(50000));
-      expect(requests, 50);
-      expect(messages, hasLength(1));
-      expect(messages.single, contains('50-page safety limit'));
+      final fullPage = List.filled(1000, null);
+      await expectLater(
+        collectEventPages((from, to) async {
+          expect((from, to), (requests * 1000, requests * 1000 + 999));
+          requests++;
+          expect(requests, lessThanOrEqualTo(500));
+          return fullPage;
+        }),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('500-page safety limit'),
+        )),
+      );
+      expect(requests, 500);
     });
   });
+
+  for (final capacity in [1000, 173]) {
+    test('fetchExternalIdsBySource reads beyond server cap $capacity',
+        () async {
+      final rows = [
+        for (var i = 0; i <= 1000; i++)
+          {
+            'id': 'row-${i.toString().padLeft(4, '0')}',
+            'external_id': 'external-${i == 1 ? 0 : i}',
+          },
+      ];
+      final cursors = <String?>[];
+      final repository = await _repository((request) async {
+        final query = request.url.queryParameters;
+        expect(query['user_id'], 'eq.$_userId');
+        expect(query['source'], 'eq.naver_caldav');
+        expect(query['external_id'], 'not.is.null');
+        final cursor = query['id']?.substring(3);
+        cursors.add(cursor);
+        return _json(
+            request,
+            rows
+                .where(
+                    (row) => cursor == null || row['id']!.compareTo(cursor) > 0)
+                .take(capacity)
+                .toList());
+      });
+      final ids =
+          await repository.fetchExternalIdsBySource(source: ' naver_caldav ');
+      expect(ids, hasLength(1000));
+      expect(ids, containsAll(['external-0', 'external-1000']));
+      expect(cursors, [
+        null,
+        for (var i = capacity; i < rows.length; i += capacity)
+          rows[i - 1]['id'],
+        rows.last['id']
+      ]);
+    });
+  }
 
   test('selects both occurrence columns and retains them after a read/edit',
       () async {
@@ -145,6 +187,9 @@ void main() {
     final repository = await _repository((request) async {
       requests.add(request);
       if (request.method == 'GET') {
+        if (request.url.queryParameters['offset'] == '1') {
+          return _json(request, []);
+        }
         final selected = _columns(request);
         return _json(request, [
           {
@@ -176,6 +221,9 @@ void main() {
       if (request.method == 'PATCH') {
         return _json(request, {...row, ..._body(request)});
       }
+      if (request.url.queryParameters['offset'] == '1') {
+        return _json(request, []);
+      }
       return _json(request, [
         {
           for (final key in row.keys)
@@ -185,7 +233,7 @@ void main() {
     });
 
     final loaded = (await repository.listEvents()).single;
-    expect(requests, hasLength(2));
+    expect(requests, hasLength(3));
     expect(
         _columns(requests.first), containsAll([_overriddenKey, _deletedKey]));
     expect(_columns(requests[1]), contains('recurrence_rule'));
@@ -195,7 +243,7 @@ void main() {
       overriddenOccurrenceDate: DateTime.parse(_overridden),
       deletedOccurrenceDates: [DateTime.parse(_deleted)],
     ));
-    expect(requests, hasLength(3));
+    expect(requests, hasLength(4));
     expect(_body(requests.last), isNot(contains(_overriddenKey)));
     expect(_body(requests.last), isNot(contains(_deletedKey)));
     expect(_body(requests.last)['recurrence_rule'], _weekly);
@@ -354,6 +402,7 @@ void main() {
       'source': 'manual',
       'external_etag': 'stored-etag',
       'external_updated_at': '2026-11-09T00:00:00Z',
+      'last_synced_at': '2026-11-09T00:00:00Z',
     });
     final incoming = EventModel.fromJson(_row(extra: {
       'source': 'naver_caldav',
@@ -391,7 +440,7 @@ void main() {
             unorderedEquals([
               'external_id',
               'external_calendar_id',
-              'last_synced_at',
+              if (adoptSource) 'last_synced_at',
               if (adoptSource) 'source',
             ]));
         expect(payload['external_id'], 'x');
@@ -404,6 +453,29 @@ void main() {
         expect(result.externalEtag, 'stored-etag');
       });
     }
+
+    test('reflected PlanFlow metadata does not adopt the incoming revision',
+        () async {
+      Map<String, dynamic>? write;
+      final repository = await _repository((request) async {
+        final payload = write = _body(request);
+        return _json(request, {...currentRow, ...payload});
+      });
+      final existing = EventModel.fromJson(currentRow);
+      final result = await repository.attachExternalSyncMetadataIfCompatible(
+        existing: existing,
+        incoming: incoming.copyWith(
+          externalEtag: 'remote-new-revision',
+          externalUpdatedAt: DateTime.utc(2026, 11, 12),
+        ),
+        adoptIncomingSource: false,
+      );
+      expect(write, isNot(contains('external_etag')));
+      expect(write, isNot(contains('external_updated_at')));
+      expect(write, isNot(contains('last_synced_at')));
+      expect(result!.externalEtag, existing.externalEtag);
+      expect(result.externalUpdatedAt, existing.externalUpdatedAt);
+    });
 
     test('metadata attachment keeps legacy writes limited to supported keys',
         () async {
@@ -440,7 +512,8 @@ void main() {
       expect(requests.every((request) => request.method == 'PATCH'), isTrue);
       expect(_columns(requests[1]), isNot(contains(_overriddenKey)));
       expect(_columns(requests.last), isNot(contains('external_calendar_id')));
-      expect(_body(requests.last), {'external_id': 'x', 'source': 'naver_caldav'});
+      expect(
+          _body(requests.last), {'external_id': 'x', 'source': 'naver_caldav'});
       expect(result!.externalId, 'x');
       expect(result.source, 'naver_caldav');
       expect(result.memo, 'local memo');
@@ -481,12 +554,14 @@ void main() {
   });
 
   for (final scenario in [
-    (rows: 2037, legacy: false, pages: 3),
-    (rows: 1000, legacy: false, pages: 2),
-    (rows: 2037, legacy: true, pages: 3),
+    (rows: 2037, legacy: false, maxRows: 1000, offsets: [0, 1000, 2000, 2037]),
+    (rows: 1000, legacy: false, maxRows: 1000, offsets: [0, 1000]),
+    (rows: 2037, legacy: true, maxRows: 1000, offsets: [0, 1000, 2000, 2037]),
+    (rows: 237, legacy: false, maxRows: 100, offsets: [0, 100, 200, 237]),
   ]) {
-    test('pages through ${scenario.rows} rows (legacy=${scenario.legacy})',
-        () async {
+    test(
+        'pages through ${scenario.rows} rows '
+        '(legacy=${scenario.legacy}, maxRows=${scenario.maxRows})', () async {
       final ranges = <(int, int)>[];
       final repository = await _repository((request) async {
         if (scenario.legacy && _columns(request).contains('recurrence_rule')) {
@@ -499,17 +574,19 @@ void main() {
             query['order']!.split(',').map((entry) => entry.split('.').first),
             ['start_at', 'id']);
         ranges.add((offset, offset + size - 1));
-        final remaining = (scenario.rows - offset).clamp(0, size);
+        final remaining =
+            (scenario.rows - offset).clamp(0, scenario.maxRows);
         return _json(
           request,
           List.generate(remaining, (i) => _row(id: 'event-${offset + i}')),
         );
       });
       final events = await repository.listEvents();
-      expect(events, hasLength(scenario.rows));
-      expect(events.last.id, 'event-${scenario.rows - 1}');
+      expect(events.map((event) => event.id), [
+        for (var i = 0; i < scenario.rows; i++) 'event-$i',
+      ]);
       expect(ranges, [
-        for (var i = 0; i < scenario.pages; i++) (i * 1000, i * 1000 + 999),
+        for (final offset in scenario.offsets) (offset, offset + 999),
       ]);
     });
   }

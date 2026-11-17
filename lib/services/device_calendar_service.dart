@@ -568,22 +568,20 @@ class DeviceCalendarService {
       final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
         event.eventKey,
       );
-      final planFlowOrigin = planFlowOriginId == null
-          ? null
-          : await _eventRepository.fetchEvent(
-              planFlowOriginId,
-              userId: userId,
-            );
-      if (planFlowOrigin != null) {
-        await _eventRepository.attachExternalSyncMetadataIfCompatible(
-          existing: planFlowOrigin,
-          incoming: eventModel,
+      if (planFlowOriginId != null) {
+        final planFlowOrigin = await _eventRepository.fetchEvent(
+          planFlowOriginId,
+          userId: userId,
         );
-        debugPrint(
-          'Device calendar reflected PlanFlow event handled: '
-          'incoming="${eventModel.title}" ${eventModel.startAt} '
-          'existing=${planFlowOrigin.id}',
-        );
+        if (planFlowOrigin == null) {
+          debugPrint('Device calendar import skipped: PlanFlow에서 삭제된 일정');
+        } else {
+          await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: planFlowOrigin,
+            incoming: eventModel,
+            adoptIncomingSource: false,
+          );
+        }
         return _DeviceCalendarEventImportOutcome.skipped();
       }
 
