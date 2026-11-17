@@ -450,6 +450,83 @@ void main() {
       expect(payload?.draft.startAt, isIn(expectedUtc));
     });
 
+    for (final noun in ['일정', '약속', '스케줄']) {
+      test('P6d controller edits 회식 followed by $noun을', () {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final event = _event('target', '회식', _dateAt(today, 0, 14));
+        final controller = VoiceConversationController(
+          events: [event],
+          now: () => planflowLocalDateTimeToUtc(today),
+        );
+        expect(controller.handle('오늘 일정 보여줘').visibleEvents.single.id,
+            event.id);
+
+        final result = controller.handle('회식 $noun을 3시로 옮겨줘');
+
+        expect(result.targetEvent?.id, event.id);
+        expect(result.draftEvent?.startAt,
+            planflowLocalDateTimeToUtc(_dateAt(today, 0, 15)));
+      });
+    }
+
+    for (final input in ['금요일 자정으로', '내일 자정에', '금요일 3시로']) {
+      testWidgets('P6d controller and VoiceAction date policy: $input',
+          (tester) async {
+        final today = _dateAt(planflowNow(), 0, 8);
+        final original = _dateAt(today, 14, 14);
+        final event = _event('target', '회식', original)
+            .copyWith(externalId: 'linked');
+        final observedDays = <DateTime>{};
+        final payload = await _openVoiceActionDraft(
+          tester,
+          event: event,
+          input: input,
+          observeDate: observedDays.add,
+        );
+
+        final expectedStarts = <DateTime>[];
+        for (final day in observedDays) {
+          final expected = switch (input) {
+            '금요일 자정으로' => _dateAt(
+                _nextWeekdayOnOrAfter(_dateAt(day, 1), DateTime.friday), 1),
+            '내일 자정에' => _dateAt(day, 2),
+            _ => _dateAt(
+                _nextWeekdayOnOrAfter(_dateAt(original, 1), DateTime.friday),
+                0,
+                15,
+              ),
+          };
+          final expectedUtc = planflowLocalDateTimeToUtc(expected);
+          expectedStarts.add(expectedUtc);
+          final controller = VoiceConversationController(
+            events: [event],
+            now: () => planflowLocalDateTimeToUtc(_dateAt(day, 0, 8)),
+          );
+          final result = controller.handle('첫번째 일정 $input 옮겨줘');
+
+          expect(result.targetEvent?.id, event.id);
+          expect(result.draftEvent?.startAt, expectedUtc);
+        }
+        expect(payload?.draft.startAt, isIn(expectedStarts));
+      });
+    }
+
+    testWidgets('P6d VoiceAction keeps a past date for a time-only edit',
+        (tester) async {
+      final past = _dateAt(planflowNow(), -7, 14);
+      final event =
+          _event('target', '회식', past).copyWith(externalId: 'linked');
+      final payload = await _openVoiceActionDraft(
+        tester,
+        event: event,
+        input: '3시로',
+        observeDate: (_) {},
+      );
+
+      expect(payload?.draft.startAt,
+          planflowLocalDateTimeToUtc(_dateAt(past, 0, 15)));
+    });
+
     test('P6c a noon destination does not select the existing noon schedule',
         () {
       final today = _dateAt(planflowNow(), 0, 8);

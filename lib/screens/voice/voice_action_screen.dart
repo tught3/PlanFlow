@@ -1388,6 +1388,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       _normalizedRawText,
       allowImplicit: true,
     )) {
+      _showAmbiguousRequestedStartTime();
       return;
     }
     final groupEvent = _groupEventById[event.id];
@@ -1887,6 +1888,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     );
   }
 
+  void _showAmbiguousRequestedStartTime() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('변경할 시각을 하나만 말씀해 주세요.')),
+    );
+  }
+
   Future<void> _openEdit(EventModel event) async {
     if (_hasInvalidRequestedStartTime) {
       _showInvalidRequestedStartTime();
@@ -1896,11 +1904,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       _normalizedRawText,
       allowImplicit: true,
     )) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('변경할 시각을 하나만 말씀해 주세요.')),
-        );
-      }
+      _showAmbiguousRequestedStartTime();
       return;
     }
     if (_groupEventById[event.id] != null) {
@@ -2383,6 +2387,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             r'^(?:(?:오늘|내일|모레|글피)\s*)?'
             r'(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?\s*)?'
             '${RegExp.escape(title)}'
+            r'(?:\s+(?:일정|약속|스케줄))?'
             r'(?:을|를|은|는|이|가)?\s*$',
           ).hasMatch(normalizedTarget);
       final matchesGenericClockTarget = dateOnlyChange &&

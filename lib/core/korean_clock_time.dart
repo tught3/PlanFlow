@@ -90,13 +90,16 @@ final koreanMidnightDisplayPattern = RegExp(_displayMidnight);
 final _colonClock = RegExp(r'(?<![\d:])\d{1,2}:\d{2}(?![\d:])');
 final _compactClock = RegExp(r'(?<![\d:])(\d{1,2})(\d{2})(?![\d:])');
 final _clockPeriodAtEnd = RegExp('(?:$_clockPeriod)\\s*\$');
+// The final lookahead applies to the fixed-time branch (자정 or 정오).
+// The edit pattern also accepts conjunctions there and has a separate 24:00 branch.
 final _clockPattern = RegExp('$_clockPatternSource(?=$_clockEnding)');
 final _editClockPattern = RegExp(
     '$_clockPatternSource(?=$_clockEnding|$_clockLink)|$_displayMidnight');
 
 // An unmarked hour written in Korean needs a word boundary or a time particle.
 // Otherwise words such as "오시는", "한시라도", and "세시풍속" look like hours.
-final _unmarkedKoreanHourEnding = RegExp('$_clockEnding|정도');
+final _unmarkedKoreanHourEnding =
+    RegExp('$_clockEnding|정도|(?:엔|이|가|요)(?![가-힣])');
 final _editClockLinkEnding = RegExp(_clockLink);
 const _editModifier = r'(?:좀|조금|잠시|잠깐|꼭|다시|그냥|바로|제발|한\s*번)';
 final _editDestinationEnding = RegExp(

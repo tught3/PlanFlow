@@ -106,6 +106,18 @@ void main() {
       expect(koreanClockTimeParts('예약일시를 알려줘'), isEmpty);
     });
 
+    test('P6d reads standalone Korean hours before common endings', () {
+      for (final (input, hour) in [('세시엔', 3), ('다섯시가', 5), ('세시요', 3)]) {
+        expect(
+          koreanClockTimeParts(input).map((parts) => parts.hour),
+          [hour],
+          reason: input,
+        );
+      }
+      expect(koreanClockTimeParts('오시는 분 일정 삭제해줘'), isEmpty);
+      expect(koreanClockTimeParts('일시 확인해줘'), isEmpty);
+    });
+
     test('P6c ordinary Korean words are not clock times', () {
       for (final input in [
         '오시는 분 일정 삭제해줘',

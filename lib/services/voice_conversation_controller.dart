@@ -1942,7 +1942,12 @@ class VoiceConversationController {
               '')
           .replaceFirst(RegExp(r'(?:을|를|은|는|이|가)\s*$'), '')
           .trim();
-      if (spoken != title && spoken.contains(title) && title.isNotEmpty) {
+      final spokenTitle =
+          spoken.replaceFirst(RegExp(r'\s+(?:일정|약속|스케줄)$'), '');
+      if (spoken != title &&
+          spokenTitle != title &&
+          spoken.contains(title) &&
+          title.isNotEmpty) {
         return false;
       }
     }
