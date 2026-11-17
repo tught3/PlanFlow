@@ -108,6 +108,46 @@ void main() {
       expect(reminderBooked, isFalse);
     });
 
+    test('P5d does not count an occupied departure slot twice', () async {
+      final notifications = _BatchQueueNotificationService();
+      const departureKey = 'p5d-existing-departure';
+      final departureId = notifications.notificationIdFor(departureKey);
+      notifications.pendingIds.add(departureId);
+      for (
+        var index = 0;
+        notifications.pendingIds.length < localAlarmResyncLimit - 1;
+        index++
+      ) {
+        notifications.pendingIds.add(index);
+      }
+      final batch = LocalAlarmResyncBatch(notificationService: notifications);
+      final start = DateTime.now().add(const Duration(hours: 1));
+      final allowances = <int>[];
+      var validationCalls = 0;
+      batch.add(start, 1, (allowed) async {
+        allowances.add(allowed);
+        return 1;
+      });
+      batch.add(
+        start.add(const Duration(minutes: 10)),
+        1,
+        (allowed) async {
+          allowances.add(allowed);
+          return 1;
+        },
+        departureKey: departureKey,
+        canReplacePending: () async => false,
+        validatePending: () async {
+          validationCalls++;
+        },
+      );
+
+      expect(await batch.book(), isTrue);
+      expect(allowances, [1, 1]);
+      expect(validationCalls, 0);
+      expect(notifications.pendingIds, contains(departureId));
+    });
+
     for (final outcome in ['cancelled', 'retained', 'unknown']) {
       test('zero-book departure with $outcome slot counts actual capacity',
           () async {

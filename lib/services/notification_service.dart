@@ -96,10 +96,13 @@ class LocalAlarmResyncBatch {
 
     // Validate existing departures before allocation whenever the requested
     // slots could exceed capacity. This never books or replaces an alarm.
-    final requestedSlots = ordered.fold<int>(
-      0,
-      (total, entry) => total + entry.value.slots,
-    );
+    final requestedSlots = ordered.fold<int>(0, (total, entry) {
+      final booking = entry.value;
+      final key = booking.departureKey;
+      final reusesSlot =
+          key != null && pending.contains(_notifications.notificationIdFor(key));
+      return total + booking.slots - (reusesSlot ? 1 : 0);
+    });
     if (occupied + requestedSlots > limit) {
       for (final entry in ordered) {
         final booking = entry.value;

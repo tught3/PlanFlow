@@ -412,7 +412,11 @@ class DepartureAlarmService {
     final now = _currentTime;
     final shouldFireNow = !departAt.isAfter(now);
     if (shouldFireNow && !fireDueDeparture) {
-      await _cancelInvalidPendingDeparture(event, startAt);
+      await _cancelInvalidPendingDeparture(
+        event,
+        startAt,
+        cancelLegacySlot: true,
+      );
       return _recordAndReturnScheduleResult(
         event,
         DepartureAlarmScheduleResult.skipped(
@@ -489,18 +493,32 @@ class DepartureAlarmService {
     await _cancelInvalidPendingDeparture(event, startAt);
   }
 
+  Future<({DateTime? notifyAt})?> _readPendingDepartureSlot(
+    String key,
+  ) async {
+    try {
+      return await _notifications.pendingDepartureSlot(key);
+    } catch (error) {
+      debugPrint('Pending departure lookup failed: ${error.runtimeType}');
+      return null;
+    }
+  }
+
   Future<void> _cancelInvalidPendingDeparture(
     EventModel event,
-    DateTime startAt,
-  ) async {
-    final slot = await _notifications.pendingDepartureSlot(
+    DateTime startAt, {
+    bool cancelLegacySlot = false,
+  }) async {
+    final slot = await _readPendingDepartureSlot(
       eventAlarmKey(event, 'departure'),
     );
     if (slot == null) return;
     final notifyAt = slot.notifyAt;
-    if (notifyAt != null &&
-        notifyAt.isAfter(_currentTime) &&
-        notifyAt.isBefore(startAt)) {
+    // Older payloads have no timestamp. Only discard them when a route
+    // calculation has established that the departure time has passed.
+    if (notifyAt == null) {
+      if (!cancelLegacySlot) return;
+    } else if (notifyAt.isAfter(_currentTime) && notifyAt.isBefore(startAt)) {
       return;
     }
     await _cancelDepartureArtifacts(
@@ -702,14 +720,20 @@ class DepartureAlarmService {
           // A legacy tap can arrive long after its occurrence. Do not infer
           // the next occurrence until its own departure window has opened.
           if (startAt.isAfter(confirmedAt)) {
-            // The booked instant is authoritative when route estimates have
-            // since changed. A failed queue read leaves the future slot alone.
-            final slot = await _notifications.pendingDepartureSlot(
-              eventAlarmKey(event, 'departure'),
-            );
-            final notifyAt =
-                slot?.notifyAt ?? startAt.subtract(margin + travelBuffer);
-            if (confirmedAt.isBefore(notifyAt)) continue;
+            final departureKey = eventAlarmKey(event, 'departure');
+            final slot = await _readPendingDepartureSlot(departureKey);
+            final notifyAt = slot?.notifyAt;
+            if (notifyAt != null) {
+              // The booked time is authoritative when route estimates change.
+              if (confirmedAt.isBefore(notifyAt)) continue;
+            } else if (confirmedAt.isBefore(
+                  startAt.subtract(margin + travelBuffer),
+                ) &&
+                !await _hasRecentDueDeparture(departureKey, confirmedAt)) {
+              // The shell can open from a due alarm whose slot is gone. Its
+              // per-occurrence fire record still identifies this departure.
+              continue;
+            }
           }
           return CriticalAlarmOccurrence(startAt);
         }
@@ -1200,8 +1224,32 @@ class DepartureAlarmService {
     return _currentTime.difference(previous) >= Duration(minutes: minutes);
   }
 
-  Future<DateTime?> _lastDueDepartureFiredAt(String eventId) async {
+  Future<bool> _hasRecentDueDeparture(
+    String departureKey,
+    DateTime confirmedAt,
+  ) async {
+    try {
+      final firedAt = await _lastDueDepartureFiredAt(
+        departureKey,
+        reload: true,
+      );
+      if (firedAt == null) return false;
+      final age = confirmedAt.difference(firedAt);
+      // Match the shell's pending-departure age limit.
+      return !age.isNegative && age <= const Duration(minutes: 5);
+    } catch (error) {
+      debugPrint('Due departure lookup failed: ${error.runtimeType}');
+      return false;
+    }
+  }
+
+  Future<DateTime?> _lastDueDepartureFiredAt(
+    String eventId, {
+    bool reload = false,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
+    // The due alarm may have been posted from a background isolate.
+    if (reload) await preferences.reload();
     return _parseDateTime(
       preferences.getString('$_lastVisibleNotifyPrefix$eventId'),
     );
