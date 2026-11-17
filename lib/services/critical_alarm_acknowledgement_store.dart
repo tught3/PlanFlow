@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/safe_prefs.dart';
 
-/// 알림 payload에는 시작 시각이 들어 있지 않다. `_persistCriticalAcknowledge`
+/// 기존 단건 알림 payload에는 시작 시각이 들어 있지 않다. `_persistCriticalAcknowledge`
 /// 가 DB 조회에 실패한 경우 [unknownStartSentinel]을 저장해 "eventId 단위로만
 /// acknowledged" 상태를 표현한다. [isAcknowledged]는 sentinel과 real startAt을
 /// 비교하므로 sentinel 케이스에서는 false를 반환한다(real startAt ≠ sentinel).
@@ -13,6 +13,9 @@ abstract class CriticalAlarmAcknowledgementStore {
   const CriticalAlarmAcknowledgementStore();
 
   Future<bool> isAcknowledged(String eventId, DateTime startAt);
+
+  Future<bool> isOccurrenceAcknowledged(String key, DateTime startAt) =>
+      isAcknowledged(key, startAt);
 
   /// Sentinel(=[unknownStartSentinel])이 저장돼 있으면 true. "startAt을
   /// 모른 채로" ack된 일정의 재예약을 막기 위해 호출측에서 사용한다.
@@ -39,6 +42,7 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
   const SharedPreferencesCriticalAlarmAcknowledgementStore();
 
   static const String _prefix = 'critical_alarm:ack:';
+  static final _occurrenceKeyPattern = RegExp(r':critical:\d{8}$');
   String _key(String id) => '$_prefix${id.trim()}';
 
   /// Local/UTC DateTime of the same instant must compare equal.
@@ -67,6 +71,19 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
   }
 
   @override
+  Future<bool> isOccurrenceAcknowledged(String key, DateTime startAt) async {
+    final prefs = await _prefs();
+    if (prefs == null) return false;
+    // A native action can write the dated key from a background isolate.
+    try {
+      await prefs.reload();
+    } catch (_) {
+      // The background store may be temporarily unavailable. Keep cached ACKs.
+    }
+    return prefs.getString(_key(key)) == _normalize(startAt);
+  }
+
+  @override
   Future<bool> hasUnknownStartAcknowledgement(String eventId) async {
     if (eventId.trim().isEmpty) return false;
     final prefs = await _prefs();
@@ -87,8 +104,22 @@ class SharedPreferencesCriticalAlarmAcknowledgementStore
     if (eventId.trim().isEmpty) return;
     final prefs = await _prefs();
     if (prefs == null) throw StateError('SharedPreferences unavailable');
-    if (!await prefs.setString(_key(eventId), _normalize(startAt))) {
+    final acknowledgedKey = _key(eventId);
+    if (!await prefs.setString(acknowledgedKey, _normalize(startAt))) {
       throw StateError('Critical acknowledgement write failed');
+    }
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
+    for (final key in prefs.getKeys()) {
+      // A confirmation can come from a notification retained by the OS.
+      if (key != acknowledgedKey &&
+          key.startsWith(_prefix) &&
+          _occurrenceKeyPattern.hasMatch(key)) {
+        final value = prefs.get(key);
+        final occurrence = value is String ? DateTime.tryParse(value) : null;
+        if (occurrence != null && occurrence.isBefore(cutoff)) {
+          await prefs.remove(key);
+        }
+      }
     }
   }
 

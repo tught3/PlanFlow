@@ -1,5 +1,4 @@
 import '../onboarding/real_ui_guide/guide_contract.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
@@ -33,6 +32,8 @@ import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
+import '../services/departure_alarm_service.dart';
+import '../services/notification_service.dart';
 import '../services/voice_conversation_entitlement.dart';
 import '../services/feature_tour_service.dart';
 import '../screens/shell_screen.dart';
@@ -296,33 +297,11 @@ GoRouter createAppRouter({
       ),
       GoRoute(
         path: AppRoutes.eventDetail,
-        builder: (context, state) {
-          final event =
-              state.extra is EventModel ? state.extra! as EventModel : null;
-          return EventDetailScreen(
-            event: event,
-            eventId: _resolveEventId(state, event),
-            showDeparturePrompt:
-                state.uri.queryParameters['departureAction'] == 'prompt',
-            showCriticalAckButton:
-                state.uri.queryParameters['criticalAck'] == '1',
-          );
-        },
+        builder: _buildEventDetailScreen,
       ),
       GoRoute(
         path: AppRoutes.eventDetailWithId,
-        builder: (context, state) {
-          final event =
-              state.extra is EventModel ? state.extra! as EventModel : null;
-          return EventDetailScreen(
-            event: event,
-            eventId: _resolveEventId(state, event),
-            showDeparturePrompt:
-                state.uri.queryParameters['departureAction'] == 'prompt',
-            showCriticalAckButton:
-                state.uri.queryParameters['criticalAck'] == '1',
-          );
-        },
+        builder: _buildEventDetailScreen,
       ),
       GoRoute(
         path: AppRoutes.eventEdit,
@@ -373,6 +352,11 @@ GoRouter createAppRouter({
             eventId: q['eventId'] ?? '',
             initialTitle: q['title'],
             travelMinutes: int.tryParse(q['eta'] ?? ''),
+            departureAlarmService: DepartureAlarmService(
+              confirmationOccurrence: CriticalAlarmOccurrence.tryParse(
+                q[NotificationService.departureOccurrenceRouteQueryKey],
+              ),
+            ),
           );
         },
       ),
@@ -519,6 +503,21 @@ GroupContextProvider? _groupContextProviderExtra(GoRouterState state) {
     }
   }
   return null;
+}
+
+Widget _buildEventDetailScreen(BuildContext context, GoRouterState state) {
+  final event = state.extra is EventModel ? state.extra! as EventModel : null;
+  final query = state.uri.queryParameters;
+  final token = query[CriticalAlarmOccurrence.routeQueryKey];
+  final occurrence = CriticalAlarmOccurrence.tryParse(token);
+  return EventDetailScreen(
+    event: event,
+    eventId: _resolveEventId(state, event),
+    showDeparturePrompt: query['departureAction'] == 'prompt',
+    showCriticalAckButton:
+        query['criticalAck'] == '1' && (token == null || occurrence != null),
+    criticalAlarmOccurrence: occurrence,
+  );
 }
 
 String? _resolveEventId(GoRouterState state, EventModel? event) {

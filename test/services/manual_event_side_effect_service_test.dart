@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/diag_logger.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -264,11 +267,13 @@ void main() {
       final gateway = _FakeManualEventGateway();
       final notifications = _FakeNotificationService();
       final departure = _FakeDepartureAlarmService();
+      final today = DateTime.now();
+      final resyncAt = DateTime(today.year, today.month, today.day, 6);
       final tenOClock = EventModel(
         id: 'ten-place',
         userId: 'user-1',
         title: '10시 거래처 방문',
-        startAt: DateTime(2026, 5, 8, 10),
+        startAt: DateTime(today.year, today.month, today.day, 10),
         location: '강릉아산병원',
         locationLat: 37.7563,
         locationLng: 128.8758,
@@ -277,7 +282,7 @@ void main() {
         id: 'nine-place',
         userId: 'user-1',
         title: '9시 고객 미팅',
-        startAt: DateTime(2026, 5, 8, 9),
+        startAt: DateTime(today.year, today.month, today.day, 9),
         location: '강릉역',
         locationLat: 37.7646,
         locationLng: 128.8995,
@@ -289,7 +294,7 @@ void main() {
         ),
         departureAlarmService: departure,
         notificationService: notifications,
-        now: () => DateTime(2026, 5, 8, 6),
+        now: () => resyncAt,
       );
 
       await service.syncAfterSave(
@@ -307,13 +312,15 @@ void main() {
       expect(tenTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(nineTitles.any(_isPreparationStartAlarmTitle), true);
       expect(tenTitles.any(_isPreparationStartAlarmTitle), false);
-      expect(
-        notifications.cancelledNotificationIds,
-        containsAll(<int>[
-          notifications.notificationIdFor('nine-place:departure'),
-          notifications.notificationIdFor('ten-place:departure'),
-        ]),
-      );
+      for (final event in [nineOClock, tenOClock]) {
+        final key = eventAlarmKey(event, 'departure');
+        final ids = eventAlarmCancellationKeys(key, resyncAt)
+            .map(notifications.notificationIdFor);
+        expect(
+            notifications.cancelledNotificationIds, isNot(contains(ids.first)));
+        expect(
+            notifications.cancelledNotificationIds, containsAll(ids.skip(1)));
+      }
       expect(
         departure.scheduledEventIds,
         containsAll(<String>[
@@ -369,11 +376,13 @@ void main() {
       final gateway = _FakeManualEventGateway();
       final notifications = _FakeNotificationService();
       final departure = _FakeDepartureAlarmService();
+      final today = DateTime.now();
+      final resyncAt = DateTime(today.year, today.month, today.day, 6);
       final remaining = EventModel(
         id: 'remaining-place',
         userId: 'user-1',
         title: '남은 외부 일정',
-        startAt: DateTime(2026, 5, 8, 10),
+        startAt: DateTime(today.year, today.month, today.day, 10),
         location: '대전역',
         locationLat: 36.332,
         locationLng: 127.434,
@@ -383,7 +392,7 @@ void main() {
         eventRepository: _FakeEventRepository(events: <EventModel>[remaining]),
         departureAlarmService: departure,
         notificationService: notifications,
-        now: () => DateTime(2026, 5, 8, 6),
+        now: () => resyncAt,
       );
 
       await service.cleanupAfterDelete('deleted-event', userId: 'user-1');
@@ -395,10 +404,13 @@ void main() {
           .where((row) => row['event_id'] == 'remaining-place')
           .map((row) => row['title'].toString());
       expect(remainingTitles.any(_isDepartureExternalAlarmTitle), true);
+      final ids = eventAlarmCancellationKeys(
+        eventAlarmKey(remaining, 'departure'),
+        resyncAt,
+      ).map(notifications.notificationIdFor);
       expect(
-        notifications.cancelledNotificationIds,
-        contains(notifications.notificationIdFor('remaining-place:departure')),
-      );
+          notifications.cancelledNotificationIds, isNot(contains(ids.first)));
+      expect(notifications.cancelledNotificationIds, containsAll(ids.skip(1)));
       expect(departure.scheduledEventIds, ['remaining-place']);
     });
 
@@ -730,6 +742,537 @@ void main() {
         contains(notifications.notificationIdFor('moved-past:departure')),
       );
       expect(departure.scheduledEventIds, isEmpty);
+    });
+
+    test('P5c over-cap manual resync validates stale and valid departures',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      SharedPreferences.setMockInitialValues({});
+      final now = DateTime.now().toUtc();
+      final stale = EventModel(
+        id: 'stale-slot',
+        userId: 'user-1',
+        title: 'Task',
+        startAt: now.add(const Duration(hours: 2)),
+        locationLat: 37.5,
+        locationLng: 127,
+      );
+      final valid = stale.copyWith(
+        id: 'valid-slot',
+        startAt: now.add(const Duration(hours: 3)),
+      );
+      final notifications = _FakeNotificationService();
+      final staleId =
+          notifications.notificationIdFor(eventAlarmKey(stale, 'departure'));
+      final validId =
+          notifications.notificationIdFor(eventAlarmKey(valid, 'departure'));
+      notifications.pendingLocal = {
+        staleId: PendingNotificationRequest(staleId, null, null, null),
+        validId: PendingNotificationRequest(validId, null, null, null),
+      };
+      for (var index = 0; notifications.pendingLocal!.length < 57; index++) {
+        notifications.pendingLocal!.putIfAbsent(
+          index,
+          () => PendingNotificationRequest(index, null, null, null),
+        );
+      }
+      final departure =
+          _ValidatingDepartureAlarmService(notifications, stale.id);
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: departure,
+        notificationService: notifications,
+        currentLocationProvider: () async => null,
+        now: () => now,
+      );
+
+      await service.recalculateAlarmsForEvents(
+        events: [stale, valid],
+        userId: 'user-1',
+        now: now,
+        cacheOnlyLocation: true,
+      );
+
+      expect(departure.validatedEventIds, containsAll([stale.id, valid.id]));
+      expect(notifications.pendingLocal!.keys, isNot(contains(staleId)));
+      expect(notifications.pendingLocal!.keys, contains(validId));
+      expect(notifications.pendingLocal, hasLength(56));
+    });
+
+    group('recurring alarm scheduling', () {
+      // banned-ok: P5 requires this fixed test clock. The service never reads wall time in these tests.
+      final now = planflowSeoulDateTimeToUtc(DateTime(2026, 11, 12, 8));
+
+      DateTime atKst(int dayOffset, int hour) =>
+          now.add(Duration(days: dayOffset, hours: hour - 8));
+      final weekly = EventModel(
+        id: 'weekly',
+        userId: 'user-1',
+        title: 'Weekly',
+        startAt: atKst(-23, 10),
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+        location: 'Destination',
+        locationLat: 37.5,
+        locationLng: 127,
+      );
+      late _FakeNotificationService notifications;
+      late _FakeDepartureAlarmService departure;
+      late _FakeManualEventGateway gateway;
+      late ManualEventSideEffectService service;
+      late DateTime clock;
+
+      setUp(() {
+        SharedPreferences.setMockInitialValues({});
+        clock = now;
+        notifications = _FakeNotificationService();
+        departure = _FakeDepartureAlarmService();
+        gateway = _FakeManualEventGateway();
+        service = ManualEventSideEffectService(
+          gateway: gateway,
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: departure,
+          notificationService: notifications,
+          currentLocationProvider: () async => null,
+          now: () => clock,
+        );
+      });
+
+      Future<bool> reminders(List<EventModel> events) =>
+          service.resyncRemindersForEvents(events: events, userId: 'user-1');
+
+      int reminderId(String key) => notifications.notificationIdFor(key);
+
+      test('weekly series with a past anchor schedules the next reminder',
+          () async {
+        expect(await reminders([weekly]), isTrue);
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('weekly:push:20261117')]);
+        expect(
+            notifications.scheduledEventReminderNotifyAts.single
+                .isAtSameMomentAs(atKst(5, 9)),
+            isTrue);
+        expect(gateway.deletedReminderEventIds, ['weekly']);
+        expect(gateway.insertedReminders.single['event_id'], 'weekly');
+      });
+
+      test(
+          'daily series uses one distinct id per start in the seven-day window',
+          () async {
+        final daily = weekly.copyWith(
+          startAt: atKst(-11, 9),
+          recurrenceRule: 'FREQ=DAILY',
+        );
+        expect(await reminders([daily]), isTrue);
+        expect(notifications.scheduledEventReminderIds, [
+          for (var day = 12; day <= 18; day++)
+            reminderId('weekly:push:202611$day'),
+        ]);
+      });
+
+      test('iOS resync books 56 earliest alarms and fills the rolling window',
+          () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final series = [
+          for (var index = 0; index < 9; index++)
+            EventModel(
+              id: 'daily-$index',
+              userId: 'user-1',
+              title: 'Daily $index',
+              startAt: atKst(-2, 9 + index),
+              recurrenceRule: 'FREQ=DAILY',
+            ),
+        ];
+        expect(await reminders(series.reversed.toList()), isTrue);
+        expect(notifications.scheduledEventReminderIds, [
+          for (var day = 12; day <= 17; day++)
+            for (var index = 0; index < 9; index++)
+              reminderId('daily-$index:push:202611$day'),
+          reminderId('daily-0:push:20261118'),
+          reminderId('daily-1:push:20261118'),
+        ]);
+        expect(gateway.insertedReminders, hasLength(63));
+
+        clock = atKst(1, 8);
+        notifications.scheduledEventReminderIds.clear();
+        expect(await reminders(series), isTrue);
+        expect(notifications.scheduledEventReminderIds, hasLength(56));
+        expect(notifications.scheduledEventReminderIds,
+            contains(reminderId('daily-2:push:20261118')));
+      });
+
+      test('iOS resync counts pending alerts and replaces later departure',
+          () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final alreadyDue = weekly.copyWith(
+          id: 'due-fallback',
+          startAt: atKst(0, 12),
+          recurrenceRule: 'FREQ=DAILY;INTERVAL=365',
+        );
+        final later = alreadyDue.copyWith(
+          id: 'later-departure',
+          startAt: atKst(0, 15),
+        );
+        final dueId = reminderId('due-fallback:departure:20261112');
+        final laterId = reminderId('later-departure:departure:20261112');
+        final unrelatedId = reminderId('unrelated-alert');
+        notifications.pendingLocal = {
+          dueId: PendingNotificationRequest(dueId, null, null, null),
+          laterId: PendingNotificationRequest(laterId, null, null, null),
+          unrelatedId:
+              PendingNotificationRequest(unrelatedId, null, null, null),
+        };
+        departure.replaceablePendingEventIds.add(later.id);
+        final events = [
+          for (var index = 0; index < 56; index++)
+            EventModel(
+              id: 'earlier-$index',
+              userId: 'user-1',
+              title: 'Earlier $index',
+              startAt: atKst(0, 10).add(Duration(minutes: index)),
+            ),
+          alreadyDue,
+          later,
+        ];
+        final batch = LocalAlarmResyncBatch(notificationService: notifications);
+        await service.resyncRemindersForEvents(
+          events: events,
+          userId: 'user-1',
+          localAlarmBatch: batch,
+        );
+        await service.recalculateAlarmsForEvents(
+          events: events,
+          userId: 'user-1',
+          localAlarmBatch: batch,
+          cacheOnlyLocation: true,
+        );
+        await batch.book();
+
+        final pending = notifications.pendingLocal!.keys;
+        expect(pending, hasLength(56));
+        expect(pending, containsAll([dueId, unrelatedId]));
+        expect(pending, isNot(contains(laterId)));
+        expect(
+          pending.where((id) => id != dueId && id != unrelatedId),
+          unorderedEquals([
+            for (var index = 0; index < 54; index++)
+              reminderId('earlier-$index:push'),
+          ]),
+        );
+      });
+
+      test('pending read failure still rebooks refreshed alarms', () async {
+        const eventId = 'refresh-existing';
+        final id = reminderId('$eventId:push');
+        final unrelatedId = reminderId('unrelated-pending');
+        notifications.pendingLocal = {
+          id: PendingNotificationRequest(id, null, null, null),
+          unrelatedId:
+              PendingNotificationRequest(unrelatedId, null, null, null),
+        };
+        notifications.failPendingRead = true;
+
+        expect(
+          await reminders([
+            EventModel(
+              id: eventId,
+              userId: 'user-1',
+              title: 'Upcoming',
+              startAt: atKst(0, 10),
+            ),
+          ]),
+          isFalse,
+        );
+
+        expect(notifications.cancelledNotificationIds, contains(id));
+        expect(notifications.scheduledEventReminderIds, [id]);
+        expect(notifications.pendingLocal!.keys, containsAll([id, unrelatedId]));
+        expect(DiagLogger.dump(), contains('total pending alarms unknown'));
+      });
+
+      test('a failing pending classifier preserves the alert and runs later jobs',
+          () async {
+        const key = 'cached:departure';
+        final id = reminderId(key);
+        notifications.pendingLocal = {
+          id: PendingNotificationRequest(id, null, null, null),
+        };
+        var laterBooked = false;
+        final batch = service.createLocalAlarmResyncBatch()
+          ..add(
+            atKst(0, 10),
+            1,
+            (_) async => 0,
+            departureKey: key,
+            canReplacePending: () async => throw StateError('bad cache'),
+          )
+          ..add(atKst(0, 11), 1, (_) async {
+            laterBooked = true;
+            return 1;
+          });
+        bool? succeeded;
+        Object? escaped;
+        try {
+          succeeded = await batch.book();
+        } catch (error) {
+          escaped = error;
+        }
+
+        expect(escaped, isNull);
+        expect(succeeded, isFalse);
+        expect(laterBooked, isTrue);
+        expect(notifications.pendingLocal!.keys, contains(id));
+        expect(
+          DiagLogger.dump(),
+          contains('Could not assess pending departure: StateError'),
+        );
+      });
+
+      test('a failed critical booking does not prevent later alarm kinds',
+          () async {
+        clock = DateTime.now().toUtc().add(const Duration(days: 1));
+        const earlyId = 'early-critical';
+        const laterId = 'later-external';
+        notifications.failingCriticalTitle = earlyId;
+        final events = [
+          EventModel(
+            id: earlyId,
+            userId: 'user-1',
+            title: earlyId,
+            startAt: clock.add(const Duration(hours: 3)),
+            isCritical: true,
+            useStrongAlarm: true,
+            recurrenceRule: 'FREQ=DAILY;COUNT=1',
+          ),
+          EventModel(
+            id: laterId,
+            userId: 'user-1',
+            title: '거래처 방문',
+            startAt: clock.add(const Duration(hours: 4)),
+            location: '강남역',
+            locationLat: 37.4979,
+            locationLng: 127.0276,
+          ),
+        ];
+        final batch = LocalAlarmResyncBatch(notificationService: notifications);
+        await service.resyncRemindersForEvents(
+          events: events,
+          userId: 'user-1',
+          localAlarmBatch: batch,
+        );
+        await service.recalculateAlarmsForEvents(
+          events: events,
+          userId: 'user-1',
+          localAlarmBatch: batch,
+          cacheOnlyLocation: true,
+        );
+        Object? bookingError;
+        try {
+          await batch.book();
+        } catch (error) {
+          bookingError = error;
+        }
+
+        expect(bookingError, isNull);
+        expect(notifications.failedCriticalBookings, 1);
+        expect(
+          notifications.scheduledEventReminderIds,
+          containsAll([
+            reminderId('$laterId:push'),
+            reminderId('$laterId:smart_preparation:0'),
+          ]),
+        );
+        expect(departure.scheduledEventIds, contains(laterId));
+        expect(DiagLogger.dump(), contains('Local alarm resync booking failed'));
+      });
+
+      test('deleted occurrence stays unscheduled and its old id is cancelled',
+          () async {
+        expect(
+            await reminders([
+              weekly.copyWith(deletedOccurrenceDates: [
+                atKst(5, 0),
+              ]),
+            ]),
+            isTrue);
+        expect(notifications.scheduledEventReminderIds, isEmpty);
+        expect(notifications.cancelledNotificationIds,
+            contains(reminderId('weekly:push:20261117')));
+      });
+
+      test('a moved override replaces the generated original', () async {
+        final override = EventModel(
+          id: 'override',
+          userId: 'user-1',
+          title: 'Moved',
+          parentEventId: weekly.id,
+          overriddenOccurrenceDate: atKst(5, 0),
+          startAt: atKst(6, 14),
+        );
+        expect(await reminders([weekly, override]), isTrue);
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('override:push')]);
+        notifications.scheduledEventReminderIds.clear();
+        final movedOutOfWindow = override.copyWith(startAt: atKst(13, 14));
+        expect(await reminders([weekly, movedOutOfWindow]), isTrue);
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('override:push')]);
+      });
+
+      test('critical acknowledgement suppresses a single occurrence', () async {
+        final critical =
+            weekly.copyWith(isCritical: true, useStrongAlarm: true);
+        expect(await reminders([critical]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds,
+            [reminderId('weekly:critical:20261117')]);
+        await const SharedPreferencesCriticalAlarmAcknowledgementStore()
+            .markAcknowledged(
+          critical.id,
+          atKst(5, 10),
+        );
+        notifications.scheduledCriticalAlarmIds.clear();
+        expect(await reminders([critical]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds, isEmpty);
+        clock = clock.add(const Duration(days: 7));
+        expect(await reminders([critical]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds,
+            [reminderId('weekly:critical:20261124')]);
+      });
+
+      test('native critical actions confirm only the delivered recurrence',
+          () async {
+        final daily = weekly.copyWith(
+          isCritical: true,
+          useStrongAlarm: true,
+          recurrenceRule: 'FREQ=DAILY',
+        );
+        expect(await reminders([daily]), isTrue);
+        final first = reminderId('weekly:critical:20261112');
+        final second = reminderId('weekly:critical:20261113');
+        final third = reminderId('weekly:critical:20261114');
+        final acks = const SharedPreferencesCriticalAlarmAcknowledgementStore();
+
+        Future<void> confirm(int id) async {
+          final payload = notifications.scheduledCriticalPayloads[id]!;
+          await handleNotificationResponseAction(
+            NotificationResponse(
+              id: id,
+              notificationResponseType:
+                  NotificationResponseType.selectedNotificationAction,
+              actionId: NotificationService.criticalAcknowledgedActionId,
+              payload: payload
+                      .endsWith(NotificationService.criticalAlarmPayloadSuffix)
+                  ? payload
+                  : '$payload${NotificationService.criticalAlarmPayloadSuffix}',
+            ),
+            notificationService: notifications,
+            eventRepository: _FakeEventRepository(events: [daily]),
+          );
+        }
+
+        notifications.cancelledNotificationIds.clear();
+        await confirm(first);
+        expect(
+            await acks.isAcknowledged('weekly:critical:20261112', atKst(0, 10)),
+            isTrue);
+        expect(notifications.cancelledEventIds, isEmpty);
+        expect(notifications.cancelledNotificationIds, contains(first));
+        expect(notifications.cancelledNotificationIds, isNot(contains(second)));
+
+        await confirm(second);
+        expect(
+            await acks.isAcknowledged('weekly:critical:20261113', atKst(1, 10)),
+            isTrue);
+        expect(
+            await acks.isAcknowledged('weekly:critical:20261112', atKst(0, 10)),
+            isTrue);
+        expect(notifications.cancelledResponseIds, [first, second]);
+        expect(notifications.cancelledNotificationIds, isNot(contains(third)));
+
+        notifications.scheduledCriticalAlarmIds.clear();
+        expect(await reminders([daily]), isTrue);
+        expect(notifications.scheduledCriticalAlarmIds, isNot(contains(first)));
+        expect(
+            notifications.scheduledCriticalAlarmIds, isNot(contains(second)));
+        expect(notifications.scheduledCriticalAlarmIds, contains(third));
+      });
+
+      test('saving a changed weekday schedules its next occurrence', () async {
+        await service.syncAfterSave(
+          event: weekly.copyWith(recurrenceRule: 'FREQ=WEEKLY;BYDAY=WE'),
+          userId: 'user-1',
+        );
+        expect(notifications.cancelledEventIds, contains('weekly'));
+        expect(notifications.scheduledEventReminderIds,
+            [reminderId('weekly:push:20261118')]);
+      });
+
+      test('saving preserves reminders if recurrence lookup fails', () async {
+        final failingService = ManualEventSideEffectService(
+          gateway: gateway,
+          eventRepository: _FailingListEventRepository(),
+          departureAlarmService: departure,
+          notificationService: notifications,
+          currentLocationProvider: () async => null,
+          now: () => clock,
+        );
+
+        final result =
+            await failingService.syncAfterSave(event: weekly, userId: 'user-1');
+
+        expect(result.remindersSynced, isFalse);
+        expect(result.notificationsSynced, isFalse);
+        expect(result.preActionsCleared, isFalse);
+        expect(notifications.cancelledEventIds, isEmpty);
+        expect(notifications.cancelledNotificationIds, isEmpty);
+        expect(gateway.deletedReminderEventIds, isEmpty);
+        expect(gateway.deletedPreActionEventIds, isEmpty);
+        expect(gateway.insertedReminders, isEmpty);
+        expect(departure.clearedAcknowledgementEventIds, isEmpty);
+      });
+
+      test('saving clears old reminders after a successful empty expansion',
+          () async {
+        final result = await service.syncAfterSave(
+          event: weekly.copyWith(deletedOccurrenceDates: [atKst(5, 0)]),
+          userId: 'user-1',
+        );
+
+        expect(result.isFullySynced, isTrue);
+        expect(notifications.cancelledEventIds, [weekly.id]);
+        expect(gateway.deletedReminderEventIds, [weekly.id]);
+        expect(notifications.scheduledEventReminderIds, isEmpty);
+        expect(gateway.insertedReminders, isEmpty);
+      });
+
+      test('departure recalculation passes the generated start time', () async {
+        clock = atKst(4, 12);
+        await service.recalculateAlarmsForEvents(
+          events: [weekly],
+          userId: 'user-1',
+        );
+        expect(departure.scheduledEventIds, [weekly.id]);
+        expect(
+            departure.scheduledEventStarts.single.isAtSameMomentAs(
+              atKst(5, 10),
+            ),
+            isTrue);
+      });
+
+      test('clears local alarms when an edit removes the start', () async {
+        final withoutStart = EventModel(
+          id: weekly.id,
+          userId: 'user-1',
+          title: 'Unscheduled',
+        );
+        await service.syncAfterSave(event: withoutStart, userId: 'user-1');
+        expect(notifications.cancelledEventIds, [weekly.id]);
+        expect(departure.clearedAcknowledgementEventIds, [weekly.id]);
+        expect(notifications.scheduledEventReminderIds, isEmpty);
+      });
     });
 
     test('resyncRemindersForEvents replaces DB rows and local alarms',
@@ -1669,6 +2212,13 @@ class _FakeEventRepository extends EventRepository {
   }
 }
 
+class _FailingListEventRepository extends _FakeEventRepository {
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    throw StateError('event listing failed');
+  }
+}
+
 class _CountingEventRepository extends _FakeEventRepository {
   int listCallCount = 0;
 
@@ -1706,11 +2256,26 @@ class _FakeNotificationService extends NotificationService {
   final scheduledEventReminderNotifyAts = <DateTime>[];
   final scheduledCriticalAlarmIds = <int>[];
   final scheduledCriticalNotifyAts = <DateTime>[];
+  final scheduledCriticalPayloads = <int, String>{};
+  final cancelledResponseIds = <int>[];
+  Map<int, PendingNotificationRequest>? pendingLocal;
+  bool failPendingRead = false;
+  String? failingCriticalTitle;
+  int failedCriticalBookings = 0;
+
+  @override
+  Future<void> cancelResponseNotification(int? notificationId) async {
+    if (notificationId != null) {
+      cancelledResponseIds.add(notificationId);
+    }
+  }
+
   final cancelledSmartPreparationEventIds = <String>[];
 
   @override
   Future<void> cancel(int id) async {
     cancelledNotificationIds.add(id);
+    pendingLocal?.remove(id);
   }
 
   @override
@@ -1724,6 +2289,12 @@ class _FakeNotificationService extends NotificationService {
   }
 
   @override
+  Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async {
+    if (failPendingRead) throw StateError('pending list unavailable');
+    return pendingLocal?.values.toList() ?? [];
+  }
+
+  @override
   Future<void> scheduleEventReminder({
     required int id,
     required String title,
@@ -1734,6 +2305,7 @@ class _FakeNotificationService extends NotificationService {
   }) async {
     scheduledEventReminderIds.add(id);
     scheduledEventReminderNotifyAts.add(notifyAt);
+    pendingLocal?[id] = PendingNotificationRequest(id, title, body, payload);
   }
 
   @override
@@ -1758,8 +2330,15 @@ class _FakeNotificationService extends NotificationService {
     String? payload,
     bool useStrongAlarm = true,
   }) async {
+    if (title == failingCriticalTitle && failedCriticalBookings == 0) {
+      failedCriticalBookings++;
+      throw StateError('critical booking failed');
+    }
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);
+    if (payload != null) {
+      scheduledCriticalPayloads[id] = payload;
+    }
     return NotificationScheduleResult(
       status: NotificationScheduleStatus.scheduled,
       notifyAt: notifyAt,
@@ -1771,9 +2350,19 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   int scheduleForEventCallCount = 0;
   int scheduleNextMonitorCallCount = 0;
   final scheduledEventIds = <String>[];
+  final scheduledEventStarts = <DateTime>[];
   final acknowledgedEventIds = <String>[];
   final clearedAcknowledgementEventIds = <String>[];
+  final replaceablePendingEventIds = <String>{};
   Duration? lastSafetyMarginOverride;
+
+  @override
+  Future<bool> canReplacePendingDeparture(
+    EventModel event, {
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
+  }) async =>
+      replaceablePendingEventIds.contains(event.id);
 
   @override
   Future<DepartureAlarmScheduleResult> scheduleForEvent(
@@ -1786,6 +2375,7 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   }) async {
     scheduleForEventCallCount += 1;
     scheduledEventIds.add(event.id);
+    scheduledEventStarts.add(event.startAt!);
     lastSafetyMarginOverride = safetyMarginOverride;
     return DepartureAlarmScheduleResult.scheduled(
       notifyAt: DateTime(2026, 5, 8, 8),
@@ -1809,5 +2399,39 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   @override
   Future<void> clearAcknowledgement(String eventId) async {
     clearedAcknowledgementEventIds.add(eventId);
+  }
+}
+
+class _ValidatingDepartureAlarmService extends _FakeDepartureAlarmService {
+  _ValidatingDepartureAlarmService(this.notifications, this.staleId);
+
+  final _FakeNotificationService notifications;
+  final String staleId;
+  final validatedEventIds = <String>[];
+
+  @override
+  Future<void> validatePendingDeparture(EventModel event) async {
+    validatedEventIds.add(event.id);
+    if (event.id == staleId) {
+      await notifications.cancelDepartureSlot(eventAlarmKey(event, 'departure'));
+    }
+  }
+
+  @override
+  Future<DepartureAlarmScheduleResult> scheduleForEvent(
+    EventModel event, {
+    bool rescheduleMonitor = true,
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
+    bool fireDueDeparture = false,
+    bool cacheOnlyLocation = false,
+  }) async {
+    scheduledEventIds.add(event.id);
+    if (event.id == staleId) {
+      await notifications
+          .cancelDepartureSlot(eventAlarmKey(event, 'departure'));
+      return const DepartureAlarmScheduleResult.skipped('stale_fallback');
+    }
+    return const DepartureAlarmScheduleResult.skipped('fallback_retained');
   }
 }

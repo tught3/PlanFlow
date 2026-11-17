@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/constants.dart';
 import '../core/diag_logger.dart';
+import '../core/local_time.dart';
 import '../core/router.dart';
 import '../data/repositories/event_repository.dart';
 import 'critical_alarm_acknowledgement_store.dart';
@@ -15,6 +18,274 @@ import 'critical_alarm_preflight_service.dart';
 import 'departure_acknowledgement_store.dart';
 import 'launch_signal_ledger.dart';
 import 'naver_ics_reminder_policy.dart';
+
+/// Books local alerts in event-start order against the shared pending queue.
+class LocalAlarmResyncBatch {
+  LocalAlarmResyncBatch({required NotificationService notificationService})
+      : _notifications = notificationService;
+
+  final NotificationService _notifications;
+  final _bookings = <({
+    DateTime startAt,
+    int slots,
+    Future<int> Function(int) book,
+    String? departureKey,
+    Future<bool> Function()? canReplacePending,
+    Future<void> Function()? validatePending,
+    void Function()? onSkip,
+  })>[];
+
+  void add(
+    DateTime startAt,
+    int slots,
+    Future<int> Function(int) book, {
+    String? departureKey,
+    Future<bool> Function()? canReplacePending,
+    Future<void> Function()? validatePending,
+    void Function()? onSkip,
+  }) {
+    if (slots > 0) {
+      _bookings.add((
+        startAt: startAt,
+        slots: slots,
+        book: book,
+        departureKey: departureKey,
+        canReplacePending: canReplacePending,
+        validatePending: validatePending,
+        onSkip: onSkip,
+      ));
+    }
+  }
+
+  Future<bool> book() async {
+    final ordered = _bookings.asMap().entries.toList()
+      ..sort((a, b) {
+        final byStart = a.value.startAt.compareTo(b.value.startAt);
+        return byStart == 0 ? a.key.compareTo(b.key) : byStart;
+      });
+    _bookings.clear();
+    if (ordered.isEmpty) return true;
+
+    var succeeded = true;
+    var trimmed = 0;
+    var pending = <int>{};
+    try {
+      pending = (await _notifications.pendingRequestsForCleanup())
+          .map((request) => request.id)
+          .toSet();
+    } catch (error) {
+      // The callers may already have cleared jobs they intend to rebook.
+      // Continue with the per-resync cap and leave existing queue entries alone.
+      succeeded = false;
+      DiagLogger.log(
+        'LocalAlarmResync',
+        'Could not read pending alarms: ${error.runtimeType}; '
+            'total pending alarms unknown',
+      );
+    }
+
+    var occupied = pending.length;
+    final limit = localAlarmResyncLimit;
+
+    Future<void> reconcilePendingId(int id) async {
+      final current = await _notifications.pendingRequestsForCleanup();
+      if (!current.any((request) => request.id == id) && pending.remove(id)) {
+        occupied--;
+      }
+    }
+
+    // Validate existing departures before allocation whenever the requested
+    // slots could exceed capacity. This never books or replaces an alarm.
+    final requestedSlots = ordered.fold<int>(0, (total, entry) {
+      final booking = entry.value;
+      final key = booking.departureKey;
+      final reusesSlot =
+          key != null && pending.contains(_notifications.notificationIdFor(key));
+      return total + booking.slots - (reusesSlot ? 1 : 0);
+    });
+    if (occupied + requestedSlots > limit) {
+      for (final entry in ordered) {
+        final booking = entry.value;
+        final key = booking.departureKey;
+        final validate = booking.validatePending;
+        if (key == null || validate == null) continue;
+        final id = _notifications.notificationIdFor(key);
+        if (!pending.contains(id)) continue;
+        try {
+          await validate();
+          await reconcilePendingId(id);
+        } catch (error) {
+          succeeded = false;
+          DiagLogger.log(
+            'LocalAlarmResync',
+            'Could not validate pending departure: ${error.runtimeType}',
+          );
+        }
+      }
+    }
+
+    final replaceable = <int, ({String key, int id})>{};
+    for (var index = 0; index < ordered.length; index++) {
+      final booking = ordered[index].value;
+      final key = booking.departureKey;
+      final canReplace = booking.canReplacePending;
+      if (key == null || canReplace == null) continue;
+      final id = _notifications.notificationIdFor(key);
+      if (!pending.contains(id)) continue;
+      try {
+        if (await canReplace()) {
+          replaceable[index] = (key: key, id: id);
+        }
+      } catch (error) {
+        succeeded = false;
+        DiagLogger.log(
+          'LocalAlarmResync',
+          'Could not assess pending departure: ${error.runtimeType}',
+        );
+      }
+    }
+
+    Future<void> cancelLaterDeparture(int index) async {
+      final slot = replaceable.remove(index)!;
+      try {
+        await _notifications.cancelDepartureSlot(slot.key);
+        await reconcilePendingId(slot.id);
+      } catch (error) {
+        succeeded = false;
+        DiagLogger.log(
+          'LocalAlarmResync',
+          'Could not cancel later departure: ${error.runtimeType}',
+        );
+      }
+    }
+
+    while (occupied > limit && replaceable.isNotEmpty) {
+      await cancelLaterDeparture(replaceable.keys.last);
+    }
+    for (var index = 0; index < ordered.length; index++) {
+      final booking = ordered[index].value;
+      final key = booking.departureKey;
+      final id = key == null ? null : _notifications.notificationIdFor(key);
+      final alreadyBooked = pending.contains(id);
+      replaceable.remove(index);
+      if (!alreadyBooked) {
+        while (limit - occupied < booking.slots && replaceable.isNotEmpty) {
+          await cancelLaterDeparture(replaceable.keys.last);
+        }
+      }
+      final allowed = math.min(
+        booking.slots,
+        math.max(0, limit - occupied + (alreadyBooked ? 1 : 0)),
+      );
+      trimmed += booking.slots - allowed;
+      if (allowed == 0) {
+        booking.onSkip?.call();
+        continue;
+      }
+      try {
+        final booked = await booking.book(allowed);
+        if (!alreadyBooked) {
+          occupied += booked;
+          if (id != null && booked > 0) pending.add(id);
+        } else if (booked == 0 && id != null) {
+          // A skipped departure may have canceled its old slot. Only reclaim
+          // capacity when the queue confirms that this exact ID is absent.
+          try {
+            await reconcilePendingId(id);
+          } catch (error) {
+            succeeded = false;
+            DiagLogger.log(
+              'LocalAlarmResync',
+              'Could not verify pending departure: ${error.runtimeType}',
+            );
+          }
+        }
+      } catch (error) {
+        // A booking may fail after reserving some of its slots.
+        if (!alreadyBooked) occupied += allowed;
+        succeeded = false;
+        DiagLogger.log(
+          'LocalAlarmResync',
+          'Local alarm resync booking failed: ${error.runtimeType}',
+        );
+      }
+    }
+    if (trimmed > 0) {
+      DiagLogger.log(
+        'LocalAlarmResync',
+        'Local alarm resync trimmed $trimmed alarms (limit $limit)',
+      );
+    }
+    return succeeded;
+  }
+}
+
+/// Local calendar suffix shared by recurring alarm scheduling and cancellation.
+String eventAlarmDateSuffix(DateTime time) {
+  final day = planflowLocal(time);
+  return _eventAlarmDateDigits(day);
+}
+
+String _eventAlarmDateDigits(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}'
+    '${day.month.toString().padLeft(2, '0')}'
+    '${day.day.toString().padLeft(2, '0')}';
+
+/// The unsuffixed slot plus today and seven more local dates.
+Iterable<String> eventAlarmCancellationKeys(String key, DateTime now) sync* {
+  yield key;
+  final today = planflowLocalDay(now);
+  for (var offset = 0; offset < 8; offset++) {
+    final day = DateTime(today.year, today.month, today.day + offset);
+    yield '$key:${_eventAlarmDateDigits(day)}';
+  }
+}
+
+const iosLocalAlarmResyncLimit = 56;
+const androidLocalAlarmResyncLimit = 400;
+
+int get localAlarmResyncLimit => defaultTargetPlatform == TargetPlatform.iOS
+    ? iosLocalAlarmResyncLimit
+    : androidLocalAlarmResyncLimit;
+
+/// Identity of the alarm as scheduled, including its original local date.
+class CriticalAlarmOccurrence {
+  CriticalAlarmOccurrence(DateTime startAt)
+      : this._(startAt.toUtc(), eventAlarmDateSuffix(startAt));
+
+  const CriticalAlarmOccurrence._(this.startAt, this.dateSuffix);
+
+  static const routeQueryKey = 'criticalOccurrence';
+  static const _payloadMarker = ':occurrence:';
+
+  final DateTime startAt;
+  final String dateSuffix;
+
+  String get token => '$dateSuffix.${startAt.microsecondsSinceEpoch}';
+
+  String payloadFor(String eventId) =>
+      'event:$eventId$_payloadMarker$token${NotificationService.criticalAlarmPayloadSuffix}';
+
+  String alarmKey(String eventId, String kind) => '$eventId:$kind:$dateSuffix';
+
+  String acknowledgementKey(String eventId) => alarmKey(eventId, 'critical');
+
+  static CriticalAlarmOccurrence? tryParse(String? token) {
+    if (token == null) return null;
+    final parts = token.split('.');
+    if (parts.length != 2 || !RegExp(r'^[0-9]{8}$').hasMatch(parts.first)) {
+      return null;
+    }
+    final micros = int.tryParse(parts.last);
+    if (micros == null) return null;
+    try {
+      final start = DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
+      return CriticalAlarmOccurrence._(start, parts.first);
+    } on ArgumentError {
+      return null;
+    }
+  }
+}
 
 enum NotificationScheduleStatus {
   scheduled,
@@ -598,11 +869,24 @@ class NotificationService {
       eventId,
       notifications: this,
     );
-    await cancel(notificationIdFor('$eventId:push'));
-    await cancel(notificationIdFor('$eventId:critical'));
-    await cancel(notificationIdFor('$eventId:departure'));
+    final now = DateTime.now();
+    for (final kind in ['push', 'critical', 'departure']) {
+      for (final key in eventAlarmCancellationKeys('$eventId:$kind', now)) {
+        await cancel(notificationIdFor(key));
+      }
+    }
     await cancelSmartPreparationAlarms(eventId);
     await cancelPreActionAlarms(eventId);
+  }
+
+  /// Cancels the three dated channels for the acknowledged occurrence.
+  Future<void> cancelCriticalAlarmOccurrence(
+    String eventId,
+    CriticalAlarmOccurrence occurrence,
+  ) async {
+    for (final kind in ['push', 'critical', 'departure']) {
+      await cancel(notificationIdFor(occurrence.alarmKey(eventId, kind)));
+    }
   }
 
   /// Cancels only the event reminder channels. Departure and smart-prep
@@ -622,6 +906,23 @@ class NotificationService {
   Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async {
     await initialize();
     return _plugin.pendingNotificationRequests();
+  }
+
+  /// The pending request has no native timestamp field. New departure jobs
+  /// include their scheduled instant in the payload for resync validation.
+  Future<({DateTime? notifyAt})?> pendingDepartureSlot(String key) async {
+    final id = notificationIdFor(key);
+    for (final request in await pendingRequestsForCleanup()) {
+      if (request.id == id) {
+        final payload = request.payload;
+        return (
+          notifyAt: payload != null && payload.startsWith('departure:')
+              ? _departureFromPayload(payload).notifyAt
+              : null,
+        );
+      }
+    }
+    return null;
   }
 
   /// 동적 강한알람 체인이 출발 타이밍을 소유하는 일정에서, 이미 예약된
@@ -662,13 +963,29 @@ class NotificationService {
   }
 
   Future<void> cancelDepartureNotifications(String eventId) async {
-    await cancel(notificationIdFor('$eventId:departure'));
+    for (final key in eventAlarmCancellationKeys(
+      '$eventId:departure',
+      DateTime.now(),
+    )) {
+      await cancelDepartureSlot(key);
+    }
+  }
+
+  Future<void> cancelDepartureOccurrence(
+    String eventId,
+    CriticalAlarmOccurrence occurrence,
+  ) =>
+      cancelDepartureSlot(occurrence.alarmKey(eventId, 'departure'));
+
+  Future<void> cancelDepartureSlot(String key) async {
+    await cancel(notificationIdFor(key));
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return;
     }
     try {
       await AndroidAlarmManager.cancel(
-        _stableNotificationId('$eventId:departure_preflight'),
+        _stableNotificationId(
+            key.replaceFirst(':departure', ':departure_preflight')),
       );
     } catch (error, stackTrace) {
       debugPrint('Cancel departure preflight failed: $error');
@@ -953,9 +1270,8 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse:
           _backgroundNotificationResponseCallback,
       onDidReceiveNotificationResponse: (response) {
-        // Acknowledge/body taps must cancel every pending event alarm before
-        // navigating; otherwise the detail screen can be opened while the
-        // same alarm remains armed.
+        // Handle the response before navigation. A recurring critical body
+        // tap forwards its occurrence to the detail confirmation.
         unawaited(() async {
           await handleNotificationResponseAction(response);
           final route = routeForNotificationResponse(response);
@@ -1450,27 +1766,34 @@ class NotificationService {
       if (response.actionId == criticalAcknowledgedActionId) {
         return null;
       }
-      final eventId = _eventIdFromEventPayload(payload);
-      if (eventId.isEmpty) {
+      final event = _eventFromPayload(payload);
+      if (event.id.isEmpty) {
         return null;
       }
-      // M1: criticalAck는 강한알람(critical alarm) payload에만 붙는다.
-      // 일반 리마인더/준비알람/"내일 다시 알림"은 같은 event: prefix를
-      // 쓰지만 criticalAlarmPayloadSuffix가 없으므로 붙지 않는다.
-      final query = _isCriticalAlarmPayload(payload) ? '?criticalAck=1' : '';
-      return '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}$query';
+      final query = <String, String>{
+        if (_isCriticalAlarmPayload(payload)) 'criticalAck': '1',
+        if (event.occurrence case final occurrence?)
+          CriticalAlarmOccurrence.routeQueryKey: occurrence.token,
+      };
+      return Uri(
+        path: '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+        queryParameters: query.isEmpty ? null : query,
+      ).toString();
     }
 
     if (payload.startsWith('departure:')) {
-      final eventId = payload.substring('departure:'.length).trim();
-      if (eventId.isEmpty) {
+      final departure = _departureFromPayload(payload);
+      if (departure.id.isEmpty) {
         return null;
       }
       if (response.actionId == departureAcknowledgedActionId) {
         return null;
       }
-      return '${AppRoutes.departureAlarm}'
-          '?eventId=${Uri.encodeComponent(eventId)}';
+      return Uri(path: AppRoutes.departureAlarm, queryParameters: {
+        'eventId': departure.id,
+        if (departure.occurrence case final occurrence?)
+          departureOccurrenceRouteQueryKey: occurrence.token,
+      }).toString();
     }
 
     return null;
@@ -1497,19 +1820,120 @@ class NotificationService {
         payload.endsWith(criticalAlarmPayloadSuffix);
   }
 
-  /// `event:` payload(강한알람 suffix가 붙어 있을 수도 있음)에서 순수
-  /// eventId만 추출한다.
-  static String _eventIdFromEventPayload(String payload) {
-    var value = payload.startsWith('event:')
-        ? payload.substring('event:'.length)
-        : payload;
-    if (value.endsWith(criticalAlarmPayloadSuffix)) {
-      value = value.substring(
-        0,
-        value.length - criticalAlarmPayloadSuffix.length,
-      );
+  static const departureOccurrenceRouteQueryKey = 'departureOccurrence';
+  static const _departureNotifyAtMarker = ':notifyAt:';
+
+  static String departurePayloadFor(
+    String eventId, {
+    CriticalAlarmOccurrence? occurrence,
+    DateTime? notifyAt,
+  }) {
+    final occurrencePart = occurrence == null
+        ? ''
+        : '${CriticalAlarmOccurrence._payloadMarker}${occurrence.token}';
+    final notifyAtPart = notifyAt == null
+        ? ''
+        : '$_departureNotifyAtMarker${notifyAt.microsecondsSinceEpoch}';
+    return 'departure:$eventId$occurrencePart$notifyAtPart';
+  }
+
+  static String departureAcknowledgementKey(
+    String eventId,
+    CriticalAlarmOccurrence occurrence,
+  ) =>
+      '$eventId:departure:${occurrence.token}';
+
+  static const departureAcknowledgementPreferencePrefix =
+      'departure_alarm:ack:';
+
+  /// Keep the confirmation just written, including responses to old notices.
+  static Future<void> pruneDepartureOccurrenceAcknowledgements({
+    required String acknowledgedKey,
+    required DateTime now,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final cutoff = now.subtract(const Duration(days: 30));
+      const prefix = departureAcknowledgementPreferencePrefix;
+      const marker = ':departure:';
+      for (final key in prefs.getKeys()) {
+        if (!key.startsWith(prefix) || key == '$prefix$acknowledgedKey') {
+          continue;
+        }
+        final markerIndex = key.lastIndexOf(marker);
+        if (markerIndex < prefix.length) continue;
+        final occurrence = CriticalAlarmOccurrence.tryParse(
+          key.substring(markerIndex + marker.length),
+        );
+        if (occurrence != null && occurrence.startAt.isBefore(cutoff)) {
+          await prefs.remove(key);
+        }
+      }
+    } catch (error) {
+      debugPrint(
+          'Departure acknowledgement pruning failed: ${error.runtimeType}');
     }
-    return value.trim();
+  }
+
+  static ({
+    String id,
+    CriticalAlarmOccurrence? occurrence,
+    DateTime? notifyAt,
+  }) _departureFromPayload(String payload) {
+    var value = payload.substring('departure:'.length);
+    final notifyAtIndex = value.lastIndexOf(_departureNotifyAtMarker);
+    DateTime? notifyAt;
+    if (notifyAtIndex >= 0) {
+      final micros = int.tryParse(
+        value.substring(notifyAtIndex + _departureNotifyAtMarker.length),
+      );
+      if (micros != null) {
+        try {
+          notifyAt = DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
+        } on ArgumentError {
+          // Invalid metadata must never qualify a slot for preservation.
+        }
+      }
+      value = value.substring(0, notifyAtIndex);
+    }
+    const marker = CriticalAlarmOccurrence._payloadMarker;
+    final markerIndex = value.lastIndexOf(marker);
+    if (markerIndex < 0) {
+      return (id: value.trim(), occurrence: null, notifyAt: notifyAt);
+    }
+    final occurrence = CriticalAlarmOccurrence.tryParse(
+      value.substring(markerIndex + marker.length),
+    );
+    if (occurrence == null) return (id: '', occurrence: null, notifyAt: null);
+    return (
+      id: value.substring(0, markerIndex).trim(),
+      occurrence: occurrence,
+      notifyAt: notifyAt,
+    );
+  }
+
+  static ({String id, CriticalAlarmOccurrence? occurrence}) _eventFromPayload(
+    String payload,
+  ) {
+    var value = payload.substring('event:'.length);
+    if (_isCriticalAlarmPayload(payload)) {
+      value =
+          value.substring(0, value.length - criticalAlarmPayloadSuffix.length);
+      final marker = CriticalAlarmOccurrence._payloadMarker;
+      final markerIndex = value.lastIndexOf(marker);
+      if (markerIndex >= 0) {
+        final occurrence = CriticalAlarmOccurrence.tryParse(
+          value.substring(markerIndex + marker.length),
+        );
+        if (occurrence == null) return (id: '', occurrence: null);
+        return (
+          id: value.substring(0, markerIndex).trim(),
+          occurrence: occurrence
+        );
+      }
+    }
+    return (id: value.trim(), occurrence: null);
   }
 
   int _stableNotificationId(String id) {
@@ -1591,11 +2015,8 @@ class NotificationService {
 /// 출발은 즉시 확인 상태로 바꾸고, 중요 알람의 내일 액션은 일정 자체를
 /// 수정하지 않은 채 다음 날 오전 9시에 다시 확인하도록 예약한다.
 ///
-/// 중요 알람의 "확인(출발)" 액션은 (1) 강한알람/리마인더/스마트 준비/사전 액션
-/// 등 동일 event에 묶인 모든 로컬 알림을 취소하고, (2) 같은 시작 시각에 대한
-/// 사용자 확인을 SharedPreferences에 영구 저장해 다음 동기화/마이그레이션에서
-/// 같은 시각 기준으로는 다시 예약되지 않게 한다. 시작 시각이 변경되면
-/// 저장된 ISO와 매칭되지 않으므로 다시 울린다.
+/// 중요 알람의 "확인(출발)"은 같은 시작 시각이 다시 예약되지 않도록
+/// 확인을 기록한다. 반복 알림은 응답을 보낸 회차만 취소한다.
 @visibleForTesting
 Future<void> handleNotificationResponseAction(
   NotificationResponse response, {
@@ -1608,45 +2029,86 @@ Future<void> handleNotificationResponseAction(
   final actionId = response.actionId;
   if (actionId == NotificationService.departureAcknowledgedActionId &&
       payload.startsWith('departure:')) {
-    final eventId = payload.substring('departure:'.length).trim();
+    final departure = NotificationService._departureFromPayload(payload);
+    final eventId = departure.id;
+    final occurrence = departure.occurrence;
     if (eventId.isNotEmpty) {
       final store = departureAcknowledgementStore ??
           const SharedPreferencesDepartureAcknowledgementStore();
       final notifications = notificationService ??
           NotificationService(allowPermissionRequests: false);
+      final acknowledgedKey = occurrence == null
+          ? eventId
+          : NotificationService.departureAcknowledgementKey(
+              eventId, occurrence);
       await notifications.cancelResponseNotification(response.id);
-      await notifications.cancelDepartureNotifications(eventId);
-      // Persist only after dismissal so slow/unavailable preferences cannot
-      // leave the currently sounding notification posted.
-      await store.markAcknowledged(eventId);
+      // Persist after dismissal so preference latency cannot leave it sounding.
+      if (occurrence == null) {
+        // Older payloads have no occurrence identity. The response ID was
+        // dismissed above; clear only the legacy slot shared by those payloads.
+        await notifications.cancelDepartureSlot('$eventId:departure');
+        await store.markAcknowledged(acknowledgedKey);
+      } else {
+        try {
+          await store.markAcknowledged(acknowledgedKey);
+        } finally {
+          await notifications.cancelDepartureOccurrence(eventId, occurrence);
+        }
+      }
+      if (departureAcknowledgementStore == null) {
+        await NotificationService.pruneDepartureOccurrenceAcknowledgements(
+          acknowledgedKey: acknowledgedKey,
+          now: DateTime.now(),
+        );
+      }
     }
     return;
   }
 
   if (actionId == NotificationService.criticalRemindTomorrowActionId &&
       payload.startsWith('event:')) {
-    final eventId = NotificationService._eventIdFromEventPayload(payload);
-    if (eventId.isNotEmpty) {
+    final event = NotificationService._eventFromPayload(payload);
+    if (event.id.isNotEmpty) {
       await (notificationService ?? NotificationService())
-          .scheduleCriticalReminderTomorrow(eventId: eventId);
+          .scheduleCriticalReminderTomorrow(eventId: event.id);
     }
     return;
   }
 
-  // Critical acknowledgement and a regular event body tap both mean the
-  // user has acted on the event. Cancel all sibling alarms before routing.
+  final isCriticalAcknowledgement =
+      actionId == NotificationService.criticalAcknowledgedActionId;
   if (payload.startsWith('event:') &&
-      (actionId == NotificationService.criticalAcknowledgedActionId ||
+      (isCriticalAcknowledgement ||
           response.notificationResponseType ==
               NotificationResponseType.selectedNotification)) {
-    final eventId = NotificationService._eventIdFromEventPayload(payload);
+    final event = NotificationService._eventFromPayload(payload);
+    final eventId = event.id;
     if (eventId.isNotEmpty) {
       final notifications = notificationService ??
           NotificationService(allowPermissionRequests: false);
+      final occurrence = event.occurrence;
+      if (occurrence != null) {
+        if (isCriticalAcknowledgement) {
+          try {
+            await notifications.cancelResponseNotification(response.id);
+          } finally {
+            await _persistCriticalAcknowledge(
+              eventId: eventId,
+              occurrence: occurrence,
+              criticalAlarmAcknowledgementStore:
+                  criticalAlarmAcknowledgementStore,
+              eventRepository: eventRepository,
+            );
+            await notifications.cancelCriticalAlarmOccurrence(
+                eventId, occurrence);
+          }
+        }
+        return;
+      }
       // 중요 알람 액션은 같은 event로 묶인 모든 로컬 알림(푸시/중요/출발/
       // 스마트 준비/사전 액션)을 함께 취소한다. 단순 body 탭은 리마인더만
       // 취소해 출발/스마트 준비는 유지한다(사용자 의도 분리).
-      if (actionId == NotificationService.criticalAcknowledgedActionId) {
+      if (isCriticalAcknowledgement) {
         // Cancel the exact posted alarm first. This dismisses Android's
         // sound/vibration with the notification and remains safe to repeat.
         // Event-derived sibling cancellation is additional cleanup, not the
@@ -1673,41 +2135,37 @@ Future<void> handleNotificationResponseAction(
 
 /// 강한알람 확인을 영구화한다.
 ///
-/// payload에는 eventId만 있고 startTime은 들어 있지 않다(현재 구현). startTime을
-/// 모르면 store에 [unknownStartSentinel]을 저장해 eventId 기준으로만
-/// 매칭시키고, 다음 동기화에서 `hasAcknowledgement` 검사로 재예약을 막는다.
-/// 단, 다음 사용자 ack(시작 시각을 아는 경우)이나 `clearAcknowledgement` 호출로
-/// 덮어쓰면 다시 울리게 된다.
+/// 회차 정보가 없는 기존 payload만 저장소에서 시작 시각을 조회한다.
+/// 조회가 실패하면 [unknownStartSentinel]을 기록한다.
 ///
 /// 백그라운드 isolate 액션 경로에서는 SharedPreferences가 일시적으로
 /// 끊길 수 있다(tryGetPrefs가 false 반환). 이 경로에서는 store 호출 실패를
 /// 삼키고 알림 정지만 보장한다(다음 실행에서 재시도).
 Future<void> _persistCriticalAcknowledge({
   required String eventId,
+  CriticalAlarmOccurrence? occurrence,
   required CriticalAlarmAcknowledgementStore? criticalAlarmAcknowledgementStore,
   required EventRepository? eventRepository,
 }) async {
   final store = criticalAlarmAcknowledgementStore ??
       const SharedPreferencesCriticalAlarmAcknowledgementStore();
-  DateTime? startAt;
-  try {
-    final repository = eventRepository ?? EventRepository.supabase();
-    final event = await repository.fetchEvent(eventId);
-    startAt = event?.startAt;
-  } catch (error, stackTrace) {
-    debugPrint('Critical ack startAt lookup failed: $error');
-    debugPrintStack(stackTrace: stackTrace);
+  DateTime? startAt = occurrence?.startAt;
+  if (occurrence == null) {
+    try {
+      final repository = eventRepository ?? EventRepository.supabase();
+      final event = await repository.fetchEvent(eventId);
+      startAt = event?.startAt;
+    } catch (error, stackTrace) {
+      debugPrint('Critical ack startAt lookup failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   try {
-    if (startAt != null) {
-      await store.markAcknowledged(eventId, startAt);
-    } else {
-      // 시작 시각을 모르는 경우 sentinel 저장. `isAcknowledged`는 sentinel과
-      // 실제 startAt을 비교하므로 false를 반환한다. 호출측은 `hasAcknowledgement`
-      // 로 sentinel을 감지해 "시작 시각을 모르는 채로" 재예약을 막는다.
-      await store.markAcknowledged(eventId, unknownStartSentinel);
-    }
+    await store.markAcknowledged(
+      occurrence?.acknowledgementKey(eventId) ?? eventId,
+      startAt ?? unknownStartSentinel,
+    );
   } catch (error, stackTrace) {
     debugPrint('Critical ack store write failed: $error');
     debugPrintStack(stackTrace: stackTrace);

@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/diag_logger.dart';
 import '../core/env.dart';
+import '../core/local_time.dart';
+import '../core/recurrence_expansion.dart';
 import '../core/supabase_auth_options.dart';
 import '../data/models/event_model.dart';
 import '../data/models/user_settings_model.dart';
@@ -19,6 +21,83 @@ import 'map_service.dart';
 import 'notification_service.dart';
 import 'pending_departure_store.dart';
 import 'travel_time_buffer_service.dart';
+
+const recurringAlarmWindow = Duration(days: 7);
+
+bool isRecurringAlarmEvent(EventModel event) =>
+    event.recurrenceRule?.trim().isNotEmpty ?? false;
+
+String eventAlarmKey(EventModel event, String kind) {
+  final key = '${event.id}:$kind';
+  final startAt = event.startAt;
+  if (startAt == null || !isRecurringAlarmEvent(event)) {
+    return key;
+  }
+  return '$key:${eventAlarmDateSuffix(startAt)}';
+}
+
+/// Expands in the PlanFlow calendar zone, then returns absolute alarm times.
+List<EventModel> upcomingAlarmOccurrences(
+  Iterable<EventModel> events, {
+  required DateTime from,
+  required DateTime until,
+  bool includeFutureNonRecurring = false,
+  bool includeNonRecurringBoundaries = false,
+}) {
+  final localFrom = planflowLocal(from);
+  final localUntil = planflowLocal(until);
+  final candidates = <EventModel>[];
+  final overrides = <EventModel>[];
+
+  for (final event in events) {
+    if (event.parentEventId != null && event.overriddenOccurrenceDate != null) {
+      overrides.add(event.copyWith(clearStartAt: true));
+    }
+    final startAt = event.startAt;
+    if (startAt == null) {
+      continue;
+    }
+    if (!isRecurringAlarmEvent(event)) {
+      final startsAfterBoundary = startAt.isAfter(from) ||
+          (includeNonRecurringBoundaries && startAt.isAtSameMomentAs(from));
+      final startsBeforeBoundary = startAt.isBefore(until) ||
+          (includeNonRecurringBoundaries && startAt.isAtSameMomentAs(until));
+      if (startsAfterBoundary &&
+          (includeFutureNonRecurring || startsBeforeBoundary)) {
+        candidates.add(event);
+      }
+      continue;
+    }
+    for (final occurrence in expandRecurringEvent(
+      event: event,
+      rangeStart: localFrom,
+      rangeEnd: localUntil,
+      includeOccurrence: (occurrence, from, until) {
+        final startAt = occurrence.startAt!;
+        return !startAt.isBefore(from) && startAt.isBefore(until);
+      },
+    )) {
+      // Invalid or unsupported rules can return the unchanged anchor.
+      final startAt = identical(occurrence, event)
+          ? event.startAt!
+          : planflowLocalDateTimeToUtc(occurrence.startAt!);
+      if (startAt.isBefore(from) || !startAt.isBefore(until)) {
+        continue;
+      }
+      final duration = event.endAt?.difference(event.startAt!);
+      candidates.add(event.copyWith(
+        startAt: startAt,
+        endAt: duration == null ? null : startAt.add(duration),
+      ));
+    }
+  }
+  final upcoming = overrides.isEmpty
+      ? candidates
+      : hideOverriddenRecurringOccurrences([...candidates, ...overrides])
+          .where((event) => event.startAt != null)
+          .toList();
+  return upcoming..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+}
 
 typedef DepartureAlarmPreflightScheduler = Future<bool> Function({
   required EventModel event,
@@ -39,6 +118,7 @@ class DepartureAlarmService {
     Future<bool> Function(int alarmId)? preflightCanceller,
     DepartureAcknowledgementStore? acknowledgementStore,
     PendingDepartureStore? pendingDepartureStore,
+    CriticalAlarmOccurrence? confirmationOccurrence,
     DateTime Function()? now,
   })  : _permissionService = permissionService,
         _currentLocationProvider = currentLocationProvider,
@@ -50,6 +130,7 @@ class DepartureAlarmService {
         _preflightCanceller = preflightCanceller,
         _acknowledgementStore = acknowledgementStore,
         _pendingDepartureStore = pendingDepartureStore,
+        _confirmationOccurrence = confirmationOccurrence,
         _now = now;
 
   static const String label = '출발 알림';
@@ -72,6 +153,9 @@ class DepartureAlarmService {
   static const Duration monitorLookAhead = Duration(hours: 24);
   static const String _monitorAlarmId = 'departure_alarm:monitor';
   static const Duration _immediateNotificationDelay = Duration(seconds: 3);
+  // Start the recalculation before the visible fallback is due so they cannot
+  // both post an alarm at the same time.
+  static const Duration _preflightLeadTime = Duration(seconds: 30);
   static const String _lastEventIdKey = 'departure_alarm:last_event_id';
   static const String _lastEventTitleKey = 'departure_alarm:last_event_title';
   static const String _lastStatusKey = 'departure_alarm:last_status';
@@ -109,6 +193,7 @@ class DepartureAlarmService {
   final Future<bool> Function(int alarmId)? _preflightCanceller;
   final DepartureAcknowledgementStore? _acknowledgementStore;
   final PendingDepartureStore? _pendingDepartureStore;
+  final CriticalAlarmOccurrence? _confirmationOccurrence;
   final DateTime Function()? _now;
 
   AppPermissionService get _permissions =>
@@ -172,6 +257,71 @@ class DepartureAlarmService {
     /// 백그라운드 isolate(모니터·preflight 콜백)에서 호출할 때 true로 설정한다.
     /// 라이브 GPS 조회를 건너뛰고 캐시된 위치만 사용해 LocationManager 폭주를 막는다.
     bool cacheOnlyLocation = false,
+  }) =>
+      _scheduleForEvent(
+        event,
+        rescheduleMonitor: rescheduleMonitor,
+        safetyMarginOverride: safetyMarginOverride,
+        travelModeOverride: travelModeOverride,
+        fireDueDeparture: fireDueDeparture,
+        cacheOnlyLocation: cacheOnlyLocation,
+      );
+
+  /// A pending alert can be displaced only when the cached route still places
+  /// the departure time in the future. Preserve the fallback if timing is unknown.
+  Future<bool> canReplacePendingDeparture(
+    EventModel event, {
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
+  }) async {
+    final startAt = event.startAt;
+    final destinationLat = event.locationLat;
+    final destinationLng = event.locationLng;
+    if (startAt == null || destinationLat == null || destinationLng == null) {
+      return false;
+    }
+    final origin = await _resolveOriginLocation(cacheOnly: true);
+    if (origin == null) return false;
+
+    final estimate = await _estimateDepartureTravelTime(
+      event,
+      origin: origin,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+      travelModeOverride: travelModeOverride,
+      cacheOnlyLocation: true,
+    );
+    final margin =
+        safetyMarginOverride ?? const Duration(minutes: defaultSafetyMarginMin);
+    return startAt.subtract(estimate.buffer + margin).isAfter(_currentTime);
+  }
+
+  Future<TravelTimeBufferEstimate> _estimateDepartureTravelTime(
+    EventModel event, {
+    required GeoPoint origin,
+    required double destinationLat,
+    required double destinationLng,
+    required MapTravelMode? travelModeOverride,
+    required bool cacheOnlyLocation,
+  }) =>
+      _travelTime.estimateWithMapApis(
+        originLat: origin.latitude,
+        originLng: origin.longitude,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        mode: travelModeOverride ?? _travelModeFromEvent(event),
+        locationText: event.location,
+        skipRemote: cacheOnlyLocation,
+      );
+
+  Future<DepartureAlarmScheduleResult> _scheduleForEvent(
+    EventModel event, {
+    required bool rescheduleMonitor,
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
+    bool fireDueDeparture = false,
+    bool cacheOnlyLocation = false,
+    DateTime? fallbackAt,
   }) async {
     final startAt = event.startAt;
     final destinationLat = event.locationLat;
@@ -188,7 +338,7 @@ class DepartureAlarmService {
         const DepartureAlarmScheduleResult.skipped('missing_destination'),
       );
     }
-    if (await _acknowledgements.isAcknowledged(event.id)) {
+    if (await _isDepartureAcknowledged(event)) {
       return _recordAndReturnScheduleResult(
         event,
         const DepartureAlarmScheduleResult.skipped(
@@ -196,20 +346,26 @@ class DepartureAlarmService {
         ),
       );
     }
-    if (fireDueDeparture && !await _canFireDueDeparture(event.id)) {
-      return _recordAndReturnScheduleResult(
-        event,
-        const DepartureAlarmScheduleResult.skipped(
-          'departure_repeat_throttled',
-        ),
-      );
-    }
+    final departureKey = isRecurringAlarmEvent(event)
+        ? eventAlarmKey(event, 'departure')
+        : event.id;
 
     final origin = await _resolveOriginLocation(cacheOnly: cacheOnlyLocation);
     if (origin == null) {
+      if (fallbackAt != null) {
+        return const DepartureAlarmScheduleResult.skipped('fallback_retained');
+      }
       if (fireDueDeparture) {
+        if (!await _canFireDueDeparture(departureKey)) {
+          return _recordAndReturnScheduleResult(
+            event,
+            const DepartureAlarmScheduleResult.skipped(
+              'departure_repeat_throttled',
+            ),
+          );
+        }
         final notifyAt = _currentTime.add(_immediateNotificationDelay);
-        await _scheduleVisibleDepartureNotification(
+        final scheduled = await _scheduleVisibleDepartureNotification(
           event: event,
           notifyAt: notifyAt,
           travelMinutes: null,
@@ -217,7 +373,15 @@ class DepartureAlarmService {
               const Duration(minutes: defaultSafetyMarginMin),
           isDueNow: true,
         );
-        await _recordDueDepartureFired(event.id);
+        if (!scheduled) {
+          return _recordAndReturnScheduleResult(
+            event,
+            const DepartureAlarmScheduleResult.skipped(
+              'notification_schedule_failed',
+            ),
+          );
+        }
+        await _recordDueDepartureFired(departureKey);
         return _recordAndReturnScheduleResult(
           event,
           DepartureAlarmScheduleResult.scheduled(
@@ -226,30 +390,33 @@ class DepartureAlarmService {
           ),
         );
       }
+      await _cancelInvalidPendingDeparture(event, startAt);
       return _recordAndReturnScheduleResult(
         event,
         const DepartureAlarmScheduleResult.skipped('missing_origin'),
       );
     }
 
-    final estimate = await _travelTime.estimateWithMapApis(
-      originLat: origin.latitude,
-      originLng: origin.longitude,
+    final estimate = await _estimateDepartureTravelTime(
+      event,
+      origin: origin,
       destinationLat: destinationLat,
       destinationLng: destinationLng,
-      mode: travelModeOverride ?? _travelModeFromEvent(event),
-      locationText: event.location,
       // 백그라운드(모니터/동기화)에선 routes API 대신 로컬 추정만 사용해 폭주 방지.
-      skipRemote: cacheOnlyLocation,
+      travelModeOverride: travelModeOverride,
+      cacheOnlyLocation: cacheOnlyLocation,
     );
     final resolvedSafetyMargin =
         safetyMarginOverride ?? const Duration(minutes: defaultSafetyMarginMin);
     final departAt = startAt.subtract(estimate.buffer + resolvedSafetyMargin);
-    final shouldFireNow = fireDueDeparture && !departAt.isAfter(_currentTime);
-    final notifyAt = shouldFireNow
-        ? _currentTime.add(_immediateNotificationDelay)
-        : _notifyAtFor(departAt);
-    if (notifyAt == null) {
+    final now = _currentTime;
+    final shouldFireNow = !departAt.isAfter(now);
+    if (shouldFireNow && !fireDueDeparture) {
+      await _cancelInvalidPendingDeparture(
+        event,
+        startAt,
+        cancelLegacySlot: true,
+      );
       return _recordAndReturnScheduleResult(
         event,
         DepartureAlarmScheduleResult.skipped(
@@ -259,27 +426,50 @@ class DepartureAlarmService {
       );
     }
 
-    var preflightScheduled = false;
+    if (fallbackAt != null && !fallbackAt.isAfter(_currentTime)) {
+      return const DepartureAlarmScheduleResult.skipped('fallback_already_due');
+    }
+    if (shouldFireNow && !await _canFireDueDeparture(departureKey)) {
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped(
+          'departure_repeat_throttled',
+        ),
+      );
+    }
+    final notifyAt = shouldFireNow
+        ? _currentTime.add(_immediateNotificationDelay)
+        : departAt;
+    final visibleScheduled = await _scheduleVisibleDepartureNotification(
+      event: event,
+      notifyAt: notifyAt,
+      travelMinutes: estimate.minutes,
+      safetyMargin: resolvedSafetyMargin,
+      isDueNow: shouldFireNow,
+    );
+    int? rearmedPreflightId;
     if (!shouldFireNow) {
-      preflightScheduled = await _scheduleDeparturePreflight(
+      final rearmed = await _scheduleDeparturePreflight(
         event: event,
-        preflightAt: notifyAt,
+        notifyAt: notifyAt,
+        fallbackAt: visibleScheduled ? notifyAt : null,
         safetyMargin: resolvedSafetyMargin,
         travelMode: travelModeOverride ?? _travelModeFromEvent(event),
       );
-    }
-
-    if (!preflightScheduled) {
-      await _scheduleVisibleDepartureNotification(
-        event: event,
-        notifyAt: notifyAt,
-        travelMinutes: estimate.minutes,
-        safetyMargin: resolvedSafetyMargin,
-        isDueNow: shouldFireNow,
-      );
-      if (fireDueDeparture) {
-        await _recordDueDepartureFired(event.id);
+      if (rearmed) {
+        rearmedPreflightId =
+            _stableAlarmId(eventAlarmKey(event, 'departure_preflight'));
       }
+    } else if (visibleScheduled) {
+      await _recordDueDepartureFired(departureKey);
+    }
+    if (!visibleScheduled && rearmedPreflightId == null) {
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped(
+          'notification_schedule_failed',
+        ),
+      );
     }
 
     if (rescheduleMonitor) {
@@ -291,17 +481,93 @@ class DepartureAlarmService {
       DepartureAlarmScheduleResult.scheduled(
         notifyAt: notifyAt,
         travelMinutes: estimate.minutes,
+        rearmedPreflightId: rearmedPreflightId,
       ),
+    );
+  }
+
+  /// Checks an existing fallback without booking or replacing an alarm.
+  Future<void> validatePendingDeparture(EventModel event) async {
+    final startAt = event.startAt;
+    if (startAt == null) return;
+    await _cancelInvalidPendingDeparture(event, startAt);
+  }
+
+  Future<({DateTime? notifyAt})?> _readPendingDepartureSlot(
+    String key,
+  ) async {
+    try {
+      return await _notifications.pendingDepartureSlot(key);
+    } catch (error) {
+      debugPrint('Pending departure lookup failed: ${error.runtimeType}');
+      return null;
+    }
+  }
+
+  Future<void> _cancelInvalidPendingDeparture(
+    EventModel event,
+    DateTime startAt, {
+    bool cancelLegacySlot = false,
+  }) async {
+    final slot = await _readPendingDepartureSlot(
+      eventAlarmKey(event, 'departure'),
+    );
+    if (slot == null) return;
+    final notifyAt = slot.notifyAt;
+    // Older payloads have no timestamp. Only discard them when a route
+    // calculation has established that the departure time has passed.
+    if (notifyAt == null) {
+      if (!cancelLegacySlot) return;
+    } else if (notifyAt.isAfter(_currentTime) && notifyAt.isBefore(startAt)) {
+      return;
+    }
+    await _cancelDepartureArtifacts(
+      event.id,
+      dateSuffix:
+          isRecurringAlarmEvent(event) ? eventAlarmDateSuffix(startAt) : null,
     );
   }
 
   Future<DepartureAlarmScheduleResult> runPreflightForEvent(
     String eventId, {
     String? userId,
+    DateTime? occurrenceStartAt,
+    DateTime? fallbackAt,
+    int? alarmId,
+  }) async {
+    final suffix = occurrenceStartAt == null
+        ? ''
+        : ':${eventAlarmDateSuffix(occurrenceStartAt)}';
+    final firedId = alarmId ??
+        _stableAlarmId('${eventId.trim()}:departure_preflight$suffix');
+    DepartureAlarmScheduleResult? result;
+    try {
+      result = await _runPreflightForEvent(
+        eventId,
+        userId: userId,
+        occurrenceStartAt: occurrenceStartAt,
+        fallbackAt: fallbackAt,
+      );
+      return result;
+    } finally {
+      if (result?._rearmedPreflightId != firedId) {
+        await _cancelDeparturePreflightById(firedId);
+      }
+    }
+  }
+
+  Future<DepartureAlarmScheduleResult> _runPreflightForEvent(
+    String eventId, {
+    String? userId,
+    DateTime? occurrenceStartAt,
+    DateTime? fallbackAt,
   }) async {
     final resolvedEventId = eventId.trim();
     if (resolvedEventId.isEmpty) {
       return const DepartureAlarmScheduleResult.skipped('missing_event_id');
+    }
+    if (fallbackAt != null && !fallbackAt.isAfter(_currentTime)) {
+      return const DepartureAlarmScheduleResult.skipped('fallback_already_due');
     }
 
     final resolvedUserId = userId ?? _currentSupabaseUserId();
@@ -312,12 +578,41 @@ class DepartureAlarmService {
       return const DepartureAlarmScheduleResult.skipped('supabase');
     }
 
-    final event =
+    final anchor =
         await _events.fetchEvent(resolvedEventId, userId: resolvedUserId);
-    if (event == null) {
+    final dateSuffix = occurrenceStartAt == null
+        ? null
+        : eventAlarmDateSuffix(occurrenceStartAt);
+    if (anchor == null) {
+      // The isolated client can see no row under RLS. Leave the fallback booked.
       return const DepartureAlarmScheduleResult.skipped('event_not_found');
     }
-    if (await _acknowledgements.isAcknowledged(event.id)) {
+    var event = anchor;
+    if (occurrenceStartAt != null) {
+      final related = await _events.listEvents(userId: resolvedUserId);
+      final candidates = upcomingAlarmOccurrences(
+        [anchor, ...related.where((item) => item.parentEventId == anchor.id)],
+        from: occurrenceStartAt.subtract(const Duration(seconds: 1)),
+        until: occurrenceStartAt.add(const Duration(seconds: 1)),
+      );
+      if (!isRecurringAlarmEvent(anchor) ||
+          !candidates.any((item) =>
+              item.id == anchor.id &&
+              item.startAt!.isAtSameMomentAs(occurrenceStartAt))) {
+        await _notifications.cancel(
+          _notifications.notificationIdFor(
+            '$resolvedEventId:departure:$dateSuffix',
+          ),
+        );
+        return const DepartureAlarmScheduleResult.skipped('occurrence_changed');
+      }
+      event = candidates.firstWhere((item) => item.id == anchor.id);
+    } else if (isRecurringAlarmEvent(anchor)) {
+      // A pre-WAVE2 callback has no occurrence identity. The rolling monitor
+      // handles subsequent occurrences.
+      return const DepartureAlarmScheduleResult.skipped('missing_occurrence');
+    }
+    if (await _isDepartureAcknowledged(event)) {
       return const DepartureAlarmScheduleResult.skipped(
         'departure_acknowledged',
       );
@@ -328,12 +623,33 @@ class DepartureAlarmService {
       minutes: _settingsSafetyMarginMinutes(settings?.departureSafetyMarginMin),
     );
     final travelMode = _travelModeFromSettings(settings?.travelMode);
-    return scheduleForEvent(
+    return _scheduleForEvent(
       event,
       rescheduleMonitor: false,
       safetyMarginOverride: safetyMargin,
       travelModeOverride: travelMode,
       fireDueDeparture: true,
+      fallbackAt: fallbackAt,
+    );
+  }
+
+  Future<bool> _isDepartureAcknowledged(EventModel event) async {
+    if (!isRecurringAlarmEvent(event)) {
+      return _acknowledgements.isAcknowledged(event.id);
+    }
+    if (_acknowledgementStore == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.reload();
+      } catch (error) {
+        debugPrint('Departure acknowledgement reload failed: $error');
+      }
+    }
+    return _acknowledgements.isAcknowledged(
+      NotificationService.departureAcknowledgementKey(
+        event.id,
+        CriticalAlarmOccurrence(event.startAt!),
+      ),
     );
   }
 
@@ -342,9 +658,90 @@ class DepartureAlarmService {
     if (normalizedEventId.isEmpty) {
       return;
     }
-    await _acknowledgements.markAcknowledged(normalizedEventId);
-    await _cancelDepartureArtifacts(normalizedEventId);
+    final confirmedAt = _currentTime;
+    final occurrence = _confirmationOccurrence ??
+        await _resolveDepartureAcknowledgement(normalizedEventId, confirmedAt);
+    final ackKey = occurrence == null
+        ? normalizedEventId
+        : NotificationService.departureAcknowledgementKey(
+            normalizedEventId,
+            occurrence,
+          );
+    await _acknowledgements.markAcknowledged(ackKey);
+    if (_confirmationOccurrence == null) {
+      await _cancelDepartureArtifacts(normalizedEventId);
+    }
+    if (occurrence != null) {
+      await _cancelDepartureArtifacts(
+        normalizedEventId,
+        dateSuffix: occurrence.dateSuffix,
+      );
+    }
     await _pendingDepartures.clear();
+    if (_acknowledgementStore == null) {
+      await NotificationService.pruneDepartureOccurrenceAcknowledgements(
+        acknowledgedKey: ackKey,
+        now: confirmedAt,
+      );
+    }
+  }
+
+  Future<CriticalAlarmOccurrence?> _resolveDepartureAcknowledgement(
+    String eventId,
+    DateTime confirmedAt,
+  ) async {
+    final userId = _currentSupabaseUserId();
+    if (userId == null && _eventRepository == null) return null;
+    try {
+      final anchor = await _events.fetchEvent(eventId, userId: userId);
+      if (anchor == null || !isRecurringAlarmEvent(anchor)) return null;
+      final related = await _events.listEvents(userId: anchor.userId);
+      final settings = await _loadSettings(anchor.userId);
+      final margin = Duration(
+        minutes:
+            _settingsSafetyMarginMinutes(settings?.departureSafetyMarginMin),
+      );
+      final travelBuffer = _travelTime
+          .estimate(
+            latitude: anchor.locationLat,
+            longitude: anchor.locationLng,
+            locationText: anchor.location,
+          )
+          .buffer;
+      final occurrences = upcomingAlarmOccurrences(
+        [anchor, ...related.where((item) => item.parentEventId == eventId)],
+        // A notice without occurrence metadata may be confirmed after it starts.
+        from: confirmedAt.subtract(margin + travelBuffer),
+        until: confirmedAt.add(recurringAlarmWindow),
+      );
+      for (final event in occurrences) {
+        if (event.id == eventId) {
+          final startAt = event.startAt!;
+          // A legacy tap can arrive long after its occurrence. Do not infer
+          // the next occurrence until its own departure window has opened.
+          if (startAt.isAfter(confirmedAt)) {
+            final departureKey = eventAlarmKey(event, 'departure');
+            final slot = await _readPendingDepartureSlot(departureKey);
+            final notifyAt = slot?.notifyAt;
+            if (notifyAt != null) {
+              // The booked time is authoritative when route estimates change.
+              if (confirmedAt.isBefore(notifyAt)) continue;
+            } else if (confirmedAt.isBefore(
+                  startAt.subtract(margin + travelBuffer),
+                ) &&
+                !await _hasRecentDueDeparture(departureKey, confirmedAt)) {
+              // The shell can open from a due alarm whose slot is gone. Its
+              // per-occurrence fire record still identifies this departure.
+              continue;
+            }
+          }
+          return CriticalAlarmOccurrence(startAt);
+        }
+      }
+    } catch (error) {
+      debugPrint('Departure acknowledgement occurrence lookup failed: $error');
+    }
+    return null;
   }
 
   Future<void> clearAcknowledgement(String eventId) async {
@@ -352,9 +749,38 @@ class DepartureAlarmService {
     if (normalizedEventId.isEmpty) {
       return;
     }
-    await _acknowledgements.clearAcknowledged(normalizedEventId);
+    final suffixes = _departureCancellationDateSuffixes(_currentTime);
+    try {
+      await _acknowledgements.clearAcknowledged(normalizedEventId);
+      if (_acknowledgementStore == null) {
+        const prefix =
+            NotificationService.departureAcknowledgementPreferencePrefix;
+        final prefs = await SharedPreferences.getInstance();
+        for (final key in prefs.getKeys()) {
+          if (key.startsWith('$prefix$normalizedEventId:departure:')) {
+            await prefs.remove(key);
+          }
+        }
+      } else {
+        for (final suffix in suffixes) {
+          await _acknowledgements.clearAcknowledged(
+            '$normalizedEventId:departure:$suffix',
+          );
+        }
+      }
+    } catch (error) {
+      debugPrint(
+          'Departure acknowledgement cleanup failed: ${error.runtimeType}');
+    }
     await _cancelDepartureArtifacts(normalizedEventId);
-    await _pendingDepartures.clear();
+    for (final suffix in suffixes) {
+      await _cancelDepartureArtifacts(normalizedEventId, dateSuffix: suffix);
+    }
+    try {
+      await _pendingDepartures.clear();
+    } catch (error) {
+      debugPrint('Pending departure cleanup failed: ${error.runtimeType}');
+    }
   }
 
   /// 그룹에 속한 모든 일정에 예약된 출발 알람(preflight + pending + 표시 알림)
@@ -387,6 +813,10 @@ class DepartureAlarmService {
         if (id == null || id.isEmpty) continue;
         try {
           await _cancelDepartureArtifacts(id);
+          for (final suffix
+              in _departureCancellationDateSuffixes(_currentTime)) {
+            await _cancelDepartureArtifacts(id, dateSuffix: suffix);
+          }
         } catch (e, st) {
           debugPrint(
             'DepartureAlarmService.cancelAlarmsForGroup: cancelArtifacts($id) failed: $e',
@@ -428,12 +858,16 @@ class DepartureAlarmService {
     var scheduled = 0;
     var skipped = 0;
     var hasUrgentEvent = false;
-    for (final event in events) {
-      final startAt = event.startAt;
-      if (startAt == null || startAt.isBefore(now) || startAt.isAfter(until)) {
-        continue;
-      }
-      if (await _acknowledgements.isAcknowledged(event.id)) {
+    final batch = LocalAlarmResyncBatch(notificationService: _notifications);
+    final upcoming = upcomingAlarmOccurrences(
+      events,
+      from: now,
+      until: until,
+      includeNonRecurringBoundaries: true,
+    );
+    for (final event in upcoming) {
+      final startAt = event.startAt!;
+      if (await _isDepartureAcknowledged(event)) {
         skipped += 1;
         continue;
       }
@@ -443,21 +877,36 @@ class DepartureAlarmService {
       if (event.locationLat == null || event.locationLng == null) {
         continue;
       }
-      final eventResult = await scheduleForEvent(
-        event,
-        rescheduleMonitor: false,
-        safetyMarginOverride: safetyMargin,
-        travelModeOverride: travelMode,
-        // 모니터 콜백은 백그라운드 isolate에서 실행되므로
-        // 라이브 GPS 조회를 금지하고 캐시만 사용한다.
-        cacheOnlyLocation: true,
+      batch.add(
+        startAt,
+        1,
+        (_) async {
+          final result = await scheduleForEvent(
+            event,
+            rescheduleMonitor: false,
+            safetyMarginOverride: safetyMargin,
+            travelModeOverride: travelMode,
+            // 모니터는 백그라운드에서 라이브 GPS 대신 캐시만 사용한다.
+            cacheOnlyLocation: true,
+          );
+          if (result.isScheduled) {
+            scheduled += 1;
+            return 1;
+          }
+          skipped += 1;
+          return 0;
+        },
+        departureKey: eventAlarmKey(event, 'departure'),
+        validatePending: () => validatePendingDeparture(event),
+        canReplacePending: () => canReplacePendingDeparture(
+          event,
+          safetyMarginOverride: safetyMargin,
+          travelModeOverride: travelMode,
+        ),
+        onSkip: () => skipped += 1,
       );
-      if (eventResult.isScheduled) {
-        scheduled += 1;
-      } else {
-        skipped += 1;
-      }
     }
+    await batch.book();
     final urgentInterval = await _urgentMonitorInterval();
     final result = DepartureAlarmMonitorResult(
       scheduled: scheduled,
@@ -486,6 +935,7 @@ class DepartureAlarmService {
       nextMonitorAt,
       _monitorAlarmId.hashCode & 0x7fffffff,
       _departureAlarmMonitorCallback,
+      rescheduleOnReboot: true,
       exact: false,
       allowWhileIdle: false,
       wakeup: false,
@@ -496,10 +946,13 @@ class DepartureAlarmService {
 
   Future<bool> _scheduleDeparturePreflight({
     required EventModel event,
-    required DateTime preflightAt,
+    required DateTime notifyAt,
+    required DateTime? fallbackAt,
     required Duration safetyMargin,
     required MapTravelMode travelMode,
   }) async {
+    final preflightAt =
+        fallbackAt == null ? notifyAt : notifyAt.subtract(_preflightLeadTime);
     if (!preflightAt.isAfter(_currentTime)) {
       return false;
     }
@@ -525,14 +978,18 @@ class DepartureAlarmService {
       }
       return await AndroidAlarmManager.oneShotAt(
         preflightAt,
-        _stableAlarmId('${event.id}:departure_preflight'),
+        _stableAlarmId(eventAlarmKey(event, 'departure_preflight')),
         _departureAlarmPreflightCallback,
+        rescheduleOnReboot: true,
         exact: true,
         allowWhileIdle: true,
         wakeup: true,
         params: <String, dynamic>{
           'event_id': event.id,
           'user_id': event.userId,
+          if (fallbackAt != null) 'fallback_at': fallbackAt.toIso8601String(),
+          if (isRecurringAlarmEvent(event))
+            'occurrence_start_at': event.startAt!.toIso8601String(),
         },
       );
     } catch (error, stackTrace) {
@@ -542,7 +999,7 @@ class DepartureAlarmService {
     }
   }
 
-  Future<void> _scheduleVisibleDepartureNotification({
+  Future<bool> _scheduleVisibleDepartureNotification({
     required EventModel event,
     required DateTime notifyAt,
     required int? travelMinutes,
@@ -550,12 +1007,19 @@ class DepartureAlarmService {
     required bool isDueNow,
   }) async {
     final notificationId = _notifications.notificationIdFor(
-      '${event.id}:departure',
+      eventAlarmKey(event, 'departure'),
     );
     final body = _bodyFor(
       event,
       travelMinutes,
       safetyMargin: safetyMargin,
+    );
+    final payload = NotificationService.departurePayloadFor(
+      event.id,
+      occurrence: isRecurringAlarmEvent(event)
+          ? CriticalAlarmOccurrence(event.startAt!)
+          : null,
+      notifyAt: notifyAt,
     );
     final criticalResult =
         await _notifications.scheduleDepartureAlarmWithResult(
@@ -563,47 +1027,63 @@ class DepartureAlarmService {
       title: '지금 출발해야 해요',
       body: body,
       notifyAt: notifyAt,
-      payload: 'departure:${event.id}',
+      payload: payload,
     );
-    if (!criticalResult.isScheduled) {
+    var scheduled = criticalResult.isScheduled;
+    if (!scheduled) {
       debugPrint(
         'Departure alarm critical channel fallback: '
         '${criticalResult.status.name} ${criticalResult.message ?? ''}',
       );
-      await _notifications.scheduleDepartureFallbackWithResult(
+      final fallback = await _notifications.scheduleDepartureFallbackWithResult(
         id: notificationId,
         title: '지금 출발해야 해요',
         body: body,
         notifyAt: notifyAt,
-        payload: 'departure:${event.id}',
+        payload: payload,
       );
+      scheduled = fallback.isScheduled;
     }
 
     // 알람이 지금(±즉시) 발동하는 경우에만, 앱이 알림 대신 백그라운드/포그라운드
     // 상태에서 곧바로 출발 알람 화면을 띄울 수 있도록 보류 상태를 기록한다.
-    // 미래에 예약된 알림(preflight 미스케줄 fallback 등)은 기록하지 않는다.
-    if (isDueNow) {
+    // A future alarm does not open the departure screen yet.
+    if (isDueNow && scheduled) {
       await _pendingDepartures.write(PendingDeparture(
         eventId: event.id,
         title: event.title,
         fireAt: _currentTime,
       ));
     }
+    return scheduled;
   }
 
-  Future<void> _cancelDepartureArtifacts(String eventId) async {
+  Iterable<String> _departureCancellationDateSuffixes(DateTime now) =>
+      eventAlarmCancellationKeys('departure', now)
+          .skip(1)
+          .map((key) => key.substring('departure:'.length));
+
+  Future<void> _cancelDepartureArtifacts(
+    String eventId, {
+    String? dateSuffix,
+  }) async {
     final normalizedEventId = eventId.trim();
     if (normalizedEventId.isEmpty) {
       return;
     }
+    final suffix = dateSuffix == null ? '' : ':$dateSuffix';
     await _notifications.cancel(
-      _notifications.notificationIdFor('$normalizedEventId:departure'),
+      _notifications.notificationIdFor('$normalizedEventId:departure$suffix'),
     );
-    await _cancelDeparturePreflight(normalizedEventId);
+    await _cancelDeparturePreflight(
+      '$normalizedEventId:departure_preflight$suffix',
+    );
   }
 
-  Future<bool> _cancelDeparturePreflight(String eventId) async {
-    final alarmId = _stableAlarmId('$eventId:departure_preflight');
+  Future<bool> _cancelDeparturePreflight(String key) =>
+      _cancelDeparturePreflightById(_stableAlarmId(key));
+
+  Future<bool> _cancelDeparturePreflightById(int alarmId) async {
     final injectedCanceller = _preflightCanceller;
     if (injectedCanceller != null) {
       try {
@@ -661,15 +1141,6 @@ class DepartureAlarmService {
           preferences.getString(_lastMonitorSkippedReasonKey),
       monitorScheduled: preferences.getBool(_monitorScheduledKey),
     );
-  }
-
-  DateTime? _notifyAtFor(DateTime departAt) {
-    final now = _currentTime;
-    if (departAt.isAfter(now)) {
-      return departAt;
-    }
-    final grace = now.add(const Duration(minutes: 1));
-    return grace;
   }
 
   MapTravelMode _travelModeFromEvent(EventModel event) {
@@ -753,8 +1224,32 @@ class DepartureAlarmService {
     return _currentTime.difference(previous) >= Duration(minutes: minutes);
   }
 
-  Future<DateTime?> _lastDueDepartureFiredAt(String eventId) async {
+  Future<bool> _hasRecentDueDeparture(
+    String departureKey,
+    DateTime confirmedAt,
+  ) async {
+    try {
+      final firedAt = await _lastDueDepartureFiredAt(
+        departureKey,
+        reload: true,
+      );
+      if (firedAt == null) return false;
+      final age = confirmedAt.difference(firedAt);
+      // Match the shell's pending-departure age limit.
+      return !age.isNegative && age <= const Duration(minutes: 5);
+    } catch (error) {
+      debugPrint('Due departure lookup failed: ${error.runtimeType}');
+      return false;
+    }
+  }
+
+  Future<DateTime?> _lastDueDepartureFiredAt(
+    String eventId, {
+    bool reload = false,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
+    // The due alarm may have been posted from a background isolate.
+    if (reload) await preferences.reload();
     return _parseDateTime(
       preferences.getString('$_lastVisibleNotifyPrefix$eventId'),
     );
@@ -941,13 +1436,17 @@ class DepartureAlarmScheduleResult {
   const DepartureAlarmScheduleResult.scheduled({
     required this.notifyAt,
     required this.travelMinutes,
-  }) : skippedReason = null;
+    int? rearmedPreflightId,
+  })  : skippedReason = null,
+        _rearmedPreflightId = rearmedPreflightId;
 
   const DepartureAlarmScheduleResult.skipped(
     this.skippedReason, {
     this.travelMinutes,
-  }) : notifyAt = null;
+  })  : notifyAt = null,
+        _rearmedPreflightId = null;
 
+  final int? _rearmedPreflightId;
   final DateTime? notifyAt;
   final int? travelMinutes;
   final String? skippedReason;
@@ -1061,6 +1560,8 @@ Future<void> _departureAlarmPreflightCallback(
   int id,
   Map<String, dynamic> params,
 ) async {
+  const service = DepartureAlarmService();
+  var delegatedCleanup = false;
   try {
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
       await Supabase.initialize(
@@ -1082,16 +1583,26 @@ Future<void> _departureAlarmPreflightCallback(
       await const DepartureAlarmService().refreshUpcoming(userId: userId);
       return;
     }
-    final result = await const DepartureAlarmService().runPreflightForEvent(
+    final occurrenceStartAt =
+        DateTime.tryParse(params['occurrence_start_at'] as String? ?? '');
+    final fallbackAt =
+        DateTime.tryParse(params['fallback_at'] as String? ?? '');
+    delegatedCleanup = true;
+    final result = await service.runPreflightForEvent(
       eventId,
       userId: userId,
+      occurrenceStartAt: occurrenceStartAt,
+      fallbackAt: fallbackAt,
+      alarmId: id,
     );
     await _recordPreflightRun(eventId: eventId, result: result);
   } catch (error, stackTrace) {
     debugPrint('Departure alarm preflight skipped: $error');
     debugPrintStack(stackTrace: stackTrace);
   } finally {
-    final service = const DepartureAlarmService();
+    if (!delegatedCleanup) {
+      await service._cancelDeparturePreflightById(id);
+    }
     await service.scheduleNextMonitor(
       interval: await service._urgentMonitorInterval(),
     );

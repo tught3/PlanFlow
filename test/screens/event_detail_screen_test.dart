@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,6 +20,8 @@ import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/screens/event/event_detail_screen.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
+import 'package:planflow/services/critical_alarm_acknowledgement_store.dart';
+import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -533,6 +536,114 @@ void main() {
     );
   });
 
+  testWidgets('recurring critical body tap confirms its occurrence in detail',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final today = DateTime.now().toUtc();
+    final anchor = DateTime.utc(today.year, today.month, today.day, 9);
+    final firstStart = anchor.add(const Duration(days: 1));
+    final secondStart = anchor.add(const Duration(days: 2));
+    final firstDate = eventAlarmDateSuffix(firstStart);
+    final secondDate = eventAlarmDateSuffix(secondStart);
+    final event = EventModel(
+      id: 'recurring-detail',
+      userId: 'user-1',
+      title: '반복 알림 확인',
+      startAt: anchor,
+      isCritical: true,
+      recurrenceRule: 'FREQ=DAILY',
+    );
+    final notifications = _FakeNotificationService();
+    final scheduler = ManualEventSideEffectService(
+      notificationService: notifications,
+      now: () => anchor,
+    );
+    final acks = const SharedPreferencesCriticalAlarmAcknowledgementStore();
+
+    Future<String> tapAlarm(DateTime occurrenceStart) async {
+      await scheduler.scheduleLocalNotifications(
+        event.copyWith(startAt: occurrenceStart),
+      );
+      final id = notifications.scheduledCriticalPayloads.keys.last;
+      final payload = notifications.scheduledCriticalPayloads[id]!;
+      final response = NotificationResponse(
+        id: id,
+        notificationResponseType: NotificationResponseType.selectedNotification,
+        payload:
+            payload.endsWith(NotificationService.criticalAlarmPayloadSuffix)
+                ? payload
+                : '$payload${NotificationService.criticalAlarmPayloadSuffix}',
+      );
+      await handleNotificationResponseAction(
+        response,
+        eventRepository: _FakeEventRepository(event),
+        notificationService: notifications,
+      );
+      return NotificationService.routeForNotificationResponse(response)!;
+    }
+
+    final firstRoute = await tapAlarm(firstStart);
+    expect(Uri.parse(firstRoute).path, '${AppRoutes.eventDetail}/${event.id}');
+    expect(
+        Uri.parse(firstRoute).queryParameters, contains('criticalOccurrence'));
+    expect(notifications.cancelledReminderEventIds, isEmpty);
+    expect(notifications.cancelledNotificationIds, isEmpty);
+    expect(await acks.hasAcknowledgement(event.id), isFalse);
+    expect(
+      await acks.hasAcknowledgement('${event.id}:critical:$firstDate'),
+      isFalse,
+    );
+
+    final router = GoRouter(
+      initialLocation: firstRoute,
+      routes: [
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, state) => EventDetailScreen(
+            event: event,
+            eventRepository: _FakeEventRepository(event),
+            showCriticalAckButton:
+                state.uri.queryParameters['criticalAck'] == '1',
+            criticalAlarmOccurrence: CriticalAlarmOccurrence.tryParse(
+              state.uri.queryParameters[CriticalAlarmOccurrence.routeQueryKey],
+            ),
+            notificationService: notifications,
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+    expect(
+        await acks.isAcknowledged(
+            '${event.id}:critical:$firstDate', firstStart),
+        isTrue);
+    expect(notifications.fullCancelledEventIds, isEmpty);
+    expect(
+      notifications.cancelledNotificationIds,
+      [
+        for (final kind in ['push', 'critical', 'departure'])
+          notifications.notificationIdFor('${event.id}:$kind:$firstDate'),
+      ],
+    );
+
+    router.go(await tapAlarm(secondStart));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인(출발)'));
+    await tester.pumpAndSettle();
+    expect(
+        await acks.isAcknowledged(
+            '${event.id}:critical:$secondDate', secondStart),
+        isTrue);
+    expect(
+        await acks.isAcknowledged(
+            '${event.id}:critical:$firstDate', firstStart),
+        isTrue);
+    expect(notifications.fullCancelledEventIds, isEmpty);
+  });
+
   testWidgets('EventDetailScreen 확인(출발) 더블 탭은 멱등이다 (취소 한 번만 호출)',
       (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -760,6 +871,31 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
 class _FakeNotificationService extends NotificationService {
   final cancelledReminderEventIds = <String>[];
   final fullCancelledEventIds = <String>[];
+  final cancelledNotificationIds = <int>[];
+  final scheduledCriticalPayloads = <int, String>{};
+
+  @override
+  Future<void> cancel(int id) async {
+    cancelledNotificationIds.add(id);
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleCriticalAlarmWithResult({
+    required int id,
+    required String title,
+    required DateTime notifyAt,
+    String? body,
+    String? payload,
+    bool useStrongAlarm = true,
+  }) async {
+    if (payload != null) {
+      scheduledCriticalPayloads[id] = payload;
+    }
+    return NotificationScheduleResult(
+      status: NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
+    );
+  }
 
   @override
   Future<void> cancelEventNotifications(String eventId) async {

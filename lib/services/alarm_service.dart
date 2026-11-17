@@ -79,6 +79,7 @@ class AlarmService {
       scheduledAt,
       _alarmIdFrom(id),
       _briefingAlarmCallback,
+      rescheduleOnReboot: true,
       exact: true,
       allowWhileIdle: true,
       wakeup: true,
@@ -139,6 +140,14 @@ class AlarmService {
   int _alarmIdFrom(String id) => id.hashCode & 0x7fffffff;
 }
 
+@visibleForTesting
+bool isBriefingAlarmStale(DateTime now, Object? scheduledAt) {
+  final scheduled =
+      scheduledAt is String ? DateTime.tryParse(scheduledAt) : null;
+  return scheduled != null &&
+      now.difference(scheduled) >= const Duration(minutes: 15);
+}
+
 /// Background isolate callback for briefing alarms.
 ///
 /// Because this runs in a separate isolate, we need to re-initialize
@@ -159,6 +168,11 @@ Future<void> _briefingAlarmCallback(
   );
 
   try {
+    if (isBriefingAlarmStale(DateTime.now(), params['scheduled_at'])) {
+      DiagLogger.log('BriefingAlarm', 'stale alarm skipped type=$briefingType');
+      return;
+    }
+
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,

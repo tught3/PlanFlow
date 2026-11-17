@@ -13,6 +13,175 @@ import 'package:planflow/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  group('P5c review: resync queue capacity', () {
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    for (final remaining in [0, 1]) {
+      test(
+          'P5c review3 validates late stale slot before $remaining free slots are allocated',
+          () async {
+        final notifications = _BatchQueueNotificationService();
+        const staleKey = 'review3-stale';
+        const validKey = 'review3-valid';
+        final staleId = notifications.notificationIdFor(staleKey);
+        final validId = notifications.notificationIdFor(validKey);
+        notifications.pendingIds.addAll([staleId, validId]);
+        for (var index = 0;
+            notifications.pendingIds.length < localAlarmResyncLimit - remaining;
+            index++) {
+          notifications.pendingIds.add(index);
+        }
+        final batch = LocalAlarmResyncBatch(notificationService: notifications);
+        final start = DateTime.now().add(const Duration(hours: 1));
+        final booked = <int>[];
+        final validated = <String>[];
+        for (var index = 0; index < remaining + 1; index++) {
+          batch.add(start.add(Duration(minutes: index)), 1, (_) async {
+            booked.add(index);
+            final id =
+                notifications.notificationIdFor('review3-reminder-$index');
+            notifications.pendingIds.add(id);
+            return 1;
+          });
+        }
+        batch.add(
+            start.add(const Duration(minutes: 10)),
+            1,
+            (_) async {
+              notifications.pendingIds.remove(staleId);
+              return 0;
+            },
+            departureKey: staleKey,
+            canReplacePending: () async => false,
+            validatePending: () async {
+              validated.add(staleKey);
+              notifications.pendingIds.remove(staleId);
+            });
+        batch.add(start.add(const Duration(minutes: 20)), 1, (_) async => 0,
+            departureKey: validKey,
+            canReplacePending: () async => false,
+            validatePending: () async => validated.add(validKey));
+
+        await batch.book();
+
+        expect(booked,
+            [for (var index = 0; index < remaining + 1; index++) index]);
+        expect(validated, containsAll([staleKey, validKey]));
+        expect(notifications.pendingIds, isNot(contains(staleId)));
+        expect(notifications.pendingIds, contains(validId));
+      });
+    }
+
+    test('P5c review3 cannot reclaim a slot when validation read fails',
+        () async {
+      final notifications = _BatchQueueNotificationService();
+      const staleKey = 'review3-unknown';
+      final staleId = notifications.notificationIdFor(staleKey);
+      notifications.pendingIds.add(staleId);
+      for (var index = 0;
+          notifications.pendingIds.length < localAlarmResyncLimit;
+          index++) {
+        notifications.pendingIds.add(index);
+      }
+      final batch = LocalAlarmResyncBatch(notificationService: notifications);
+      final start = DateTime.now().add(const Duration(hours: 1));
+      var reminderBooked = false;
+      var validationCalled = false;
+      batch.add(start, 1, (_) async {
+        reminderBooked = true;
+        return 1;
+      });
+      batch.add(start.add(const Duration(minutes: 10)), 1, (_) async => 0,
+          departureKey: staleKey,
+          canReplacePending: () async => false,
+          validatePending: () async {
+            validationCalled = true;
+            notifications.pendingIds.remove(staleId);
+            notifications.failReadsAfterFirst = true;
+          });
+
+      final result = await batch.book();
+
+      expect(validationCalled, isTrue);
+      expect(result, isFalse);
+      expect(reminderBooked, isFalse);
+    });
+
+    test('P5d does not count an occupied departure slot twice', () async {
+      final notifications = _BatchQueueNotificationService();
+      const departureKey = 'p5d-existing-departure';
+      final departureId = notifications.notificationIdFor(departureKey);
+      notifications.pendingIds.add(departureId);
+      for (
+        var index = 0;
+        notifications.pendingIds.length < localAlarmResyncLimit - 1;
+        index++
+      ) {
+        notifications.pendingIds.add(index);
+      }
+      final batch = LocalAlarmResyncBatch(notificationService: notifications);
+      final start = DateTime.now().add(const Duration(hours: 1));
+      final allowances = <int>[];
+      var validationCalls = 0;
+      batch.add(start, 1, (allowed) async {
+        allowances.add(allowed);
+        return 1;
+      });
+      batch.add(
+        start.add(const Duration(minutes: 10)),
+        1,
+        (allowed) async {
+          allowances.add(allowed);
+          return 1;
+        },
+        departureKey: departureKey,
+        canReplacePending: () async => false,
+        validatePending: () async {
+          validationCalls++;
+        },
+      );
+
+      expect(await batch.book(), isTrue);
+      expect(allowances, [1, 1]);
+      expect(validationCalls, 0);
+      expect(notifications.pendingIds, contains(departureId));
+    });
+
+    for (final outcome in ['cancelled', 'retained', 'unknown']) {
+      test('zero-book departure with $outcome slot counts actual capacity',
+          () async {
+        final notifications = _BatchQueueNotificationService();
+        const departureKey = 'review-departure';
+        final departureId = notifications.notificationIdFor(departureKey);
+        notifications.pendingIds.add(departureId);
+        for (var i = 0;
+            notifications.pendingIds.length < localAlarmResyncLimit;
+            i++) {
+          if (i != departureId) notifications.pendingIds.add(i);
+        }
+        final batch = LocalAlarmResyncBatch(notificationService: notifications);
+        final start = DateTime.now().add(const Duration(hours: 1));
+        var reminderBooked = false;
+        batch.add(start, 1, (_) async {
+          if (outcome == 'cancelled') {
+            notifications.pendingIds.remove(departureId);
+          }
+          if (outcome == 'unknown') notifications.failReadsAfterFirst = true;
+          return 0;
+        }, departureKey: departureKey);
+        batch.add(start.add(const Duration(minutes: 1)), 1, (_) async {
+          reminderBooked = true;
+          return 1;
+        });
+
+        await batch.book();
+
+        expect(reminderBooked, outcome == 'cancelled');
+      });
+    }
+  });
+
   group('NotificationService', () {
     TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -791,4 +960,21 @@ class _ThrowingCriticalAlarmAckStore
 
   @override
   Future<void> clearAcknowledgement(String eventId) async {}
+}
+
+class _BatchQueueNotificationService extends NotificationService {
+  final pendingIds = <int>{};
+  bool failReadsAfterFirst = false;
+  int readCount = 0;
+
+  @override
+  Future<List<PendingNotificationRequest>> pendingRequestsForCleanup() async {
+    readCount++;
+    if (failReadsAfterFirst && readCount > 1) {
+      throw StateError('queue unavailable');
+    }
+    return pendingIds
+        .map((id) => PendingNotificationRequest(id, null, null, null))
+        .toList();
+  }
 }
