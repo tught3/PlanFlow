@@ -599,7 +599,9 @@ class AdService {
   Future<bool> showForParseSchedule({
     required String requestId,
     void Function(String stage)? onProgress,
+    bool Function()? canShowAd,
   }) async {
+    if (canShowAd?.call() == false) return false;
     if (!isAdsRuntimeSupported()) {
       DiagLogger.log(
         'RewardedAd',
@@ -622,6 +624,7 @@ class AdService {
     _promptShown += 1;
     await AnalyticsService.logAdPromptShown();
     try {
+      if (canShowAd?.call() == false) return false;
       onProgress?.call('loading');
       // A caller may arrive before app-start priming has completed. Await one
       // initialization attempt here; initialize() is idempotent. Without this,
@@ -661,7 +664,9 @@ class AdService {
           return false;
         }
       }
+      if (canShowAd?.call() == false) return false;
       final loaded = await _loadRewardedAd(requestId: requestId);
+      if (canShowAd?.call() == false) return false;
       if (!loaded) {
         await AnalyticsService.logAdLoadFailed(
           reason: 'load_failed',
@@ -672,9 +677,11 @@ class AdService {
       }
       await AnalyticsService.logAdLoadSuccess(requestId: requestId);
 
-      onProgress?.call('shown');
       await AnalyticsService.logAdStarted(requestId: requestId);
-      final completed = await _showRewardedAd();
+      final completed = await _showRewardedAd(
+        canShowAd: canShowAd,
+        onShowing: () => onProgress?.call('shown'),
+      );
       if (!completed) {
         await AnalyticsService.logAdLoadFailed(
           reason: 'cancelled_or_backgrounded',
@@ -765,7 +772,12 @@ class AdService {
   Future<VoiceConversationAdOutcome> showForVoiceConversationWithOutcome({
     required String requestId,
     void Function(String stage)? onProgress,
+    bool Function()? canShowAd,
   }) async {
+    const suppressed = VoiceConversationAdOutcome(
+      VoiceConversationAdOutcomeKind.disabled,
+    );
+    if (canShowAd?.call() == false) return suppressed;
     if (!isAdsRuntimeSupported()) {
       DiagLogger.log(
         'RewardedAd',
@@ -864,8 +876,10 @@ class AdService {
         );
         return outcome;
       }
+      if (canShowAd?.call() == false) return suppressed;
       onProgress?.call('loading');
       final load = await _loadRewardedAdDetailed(userInitiated: true);
+      if (canShowAd?.call() == false) return suppressed;
       if (load.kind != _AdLoadOutcomeKind.loaded) {
         _recordVoiceAttempt(
           requestId,
@@ -896,8 +910,10 @@ class AdService {
       await AnalyticsService.logVoiceConvAdShown(requestId: requestId);
       _recordVoiceAttempt(requestId, 'shown');
 
-      onProgress?.call('shown');
-      final completed = await _showRewardedAd();
+      final completed = await _showRewardedAd(
+        canShowAd: canShowAd,
+        onShowing: () => onProgress?.call('shown'),
+      );
       if (!completed) {
         final showFailed = _lastShowFailed;
         _recordVoiceAttempt(
@@ -1167,7 +1183,10 @@ class AdService {
   }
 
   /// 캐시된 _rewardedAd를 표시하고, 보상 획득 여부를 반환.
-  Future<bool> _showRewardedAd() async {
+  Future<bool> _showRewardedAd({
+    bool Function()? canShowAd,
+    VoidCallback? onShowing,
+  }) async {
     final ad = _rewardedAd;
     if (ad == null) {
       return false;
@@ -1177,6 +1196,8 @@ class AdService {
     _lastShowErrorDomain = null;
     _lastShowErrorMessage = null;
     try {
+      if (canShowAd?.call() == false) return false;
+      onShowing?.call();
       return await runRewardedAdLifecycle(
         drive: ({
           required void Function() onUserEarnedReward,

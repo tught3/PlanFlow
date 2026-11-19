@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
@@ -15,6 +16,7 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/event/event_detail_screen.dart';
@@ -626,9 +628,12 @@ void main() {
       ],
     );
     addTearDown(router.dispose);
-    await tester.pumpWidget(GuideScope(
-      coordinator: c,
-      child: MaterialApp.router(routerConfig: router),
+    await tester.pumpWidget(ProviderScope(
+      overrides: [realUiGuideCoordinatorProvider.overrideWithValue(c)],
+      child: GuideScope(
+        coordinator: c,
+        child: MaterialApp.router(routerConfig: router),
+      ),
     ));
     await tester.pumpAndSettle();
 

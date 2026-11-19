@@ -240,11 +240,17 @@ class _DailyFreeAdGateDelegate implements ScheduleParseAdGateDelegate {
 
 /// 일반 quota consume 호출 횟수를 세는 fake(peek는 소진 상태로 고정).
 class _CountingEntitlementDelegate implements ScheduleParseEntitlementDelegate {
+  int peekCalls = 0;
   final List<String> consumedSessionIds = <String>[];
 
   @override
-  Future<ScheduleParseEntitlementPeek?> peek() async =>
-      const ScheduleParseEntitlementPeek(dailyRemaining: 0, requiresAd: true);
+  Future<ScheduleParseEntitlementPeek?> peek() async {
+    peekCalls++;
+    return const ScheduleParseEntitlementPeek(
+      dailyRemaining: 0,
+      requiresAd: true,
+    );
+  }
 
   @override
   Future<ScheduleParseConsumeResult?> consume(String sessionId) async {
@@ -677,6 +683,47 @@ void main() {
       tester.widget<TextFormField>(_titleField()).controller?.text,
       '늦게 끝난 파싱',
     );
+  });
+
+  testWidgets(
+      'practice replay parses without ads or ordinary usage and preserves '
+      'pending ordinary consumption', (tester) async {
+    final entitlement = _CountingEntitlementDelegate();
+    ScheduleParseEntitlementService.instance.delegateForTest = entitlement;
+    final coordinator = _GuideStubCoordinator(
+      _GuideStubCoordinator.activeCreate().copyWith(isReplay: true),
+    );
+    GuideQuotaRuntime.bind(coordinator, uid: _uid);
+    const pendingBinding = 'ordinary-draft';
+    const pendingRequest = 'ordinary-request';
+    await tester.runAsync(() => AdRewardState.instance.markPendingConsume(
+          requestId: pendingRequest,
+          binding: pendingBinding,
+          feature: 'schedule_parse',
+        ));
+    final completer = Completer<Map<String, dynamic>>();
+    final gpt = _DeferredGptService(completer);
+    await _pumpConfirm(tester, gptService: gpt, coordinator: coordinator);
+    await _settleParse(tester);
+    expect(gpt.calls, 1);
+    expect(coordinator.authorizeCalls, isEmpty);
+    expect(find.byType(Dialog), findsNothing);
+
+    coordinator.becomeTerminal();
+    completer.complete(_successParse('다시 시작한 안내 일정'));
+    await _settleParse(tester);
+
+    expect(tester.widget<TextFormField>(_titleField()).controller?.text,
+        '다시 시작한 안내 일정');
+    expect(entitlement.peekCalls, 0);
+    expect(entitlement.consumedSessionIds, isEmpty);
+    final pendingAfterReplay = await tester.runAsync(
+      () => AdRewardState.instance.pendingConsumeRequestId(
+        binding: pendingBinding,
+        feature: 'schedule_parse',
+      ),
+    );
+    expect(pendingAfterReplay, pendingRequest);
   });
 
   testWidgets(

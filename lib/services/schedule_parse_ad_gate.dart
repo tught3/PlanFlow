@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../onboarding/real_ui_guide/guide_contract.dart';
+import '../onboarding/real_ui_guide/guide_scope.dart';
 import '../widgets/rewarded_ad_dialog.dart';
 import 'ad_consent_service.dart';
 import 'ad_service.dart';
@@ -88,6 +89,7 @@ class ScheduleParseAdGate {
     GuideCoordinator? guideCoordinator,
     GuideOperation? guideOperation,
     void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideReplayEntry entry)? onGuideReplayAllowed,
     void Function(GuideAccess access)? onGuideDenied,
   }) async {
     lastDenialReason = null;
@@ -96,6 +98,7 @@ class ScheduleParseAdGate {
       // 이미 진행 중이면 사일런트하게 무시(사용자 인지 불필요).
       return;
     }
+    if (!context.mounted) return;
     if (guideCoordinator != null && guideOperation != null) {
       // _tryGuidePath는 정확히 하나의 콜백(onGuideAllowed 또는
       // onGuideDenied)을 호출하는 것을 보장한다. 가이드 인자가 공급된 요청은
@@ -106,20 +109,37 @@ class ScheduleParseAdGate {
         coordinator: guideCoordinator,
         operation: guideOperation,
         onGuideAllowed: onGuideAllowed,
+        onGuideReplayAllowed: onGuideReplayAllowed,
         onGuideDenied: onGuideDenied,
       );
       return;
     }
-    if (!context.mounted) {
+    final scoped = guideCoordinator ?? GuideScope.maybeOf(context);
+    bool guideBlocksOrdinary() => GuideQuotaRuntime.blocksOrdinaryUse(
+          uid: SupabaseClientAccess.authCurrentId(),
+          scoped: scoped,
+        );
+    if (guideBlocksOrdinary()) {
+      _deny(ScheduleParseGateDenialReason.guideInProgress, onDenied);
       return;
     }
     _inFlight = true;
     try {
       await _runGate(
         context: context,
-        onEnterAllowed: onEnterAllowed,
+        onEnterAllowed: (grant) {
+          if (guideBlocksOrdinary()) {
+            _deny(ScheduleParseGateDenialReason.guideInProgress, onDenied);
+            return;
+          }
+          onEnterAllowed(grant);
+        },
         onDenied: onDenied,
         onAdProgress: onAdProgress,
+        canShowAds: () => !GuideQuotaRuntime.blocksAdDisplay(
+          uid: SupabaseClientAccess.authCurrentId(),
+          scoped: scoped,
+        ),
       );
     } finally {
       _inFlight = false;
@@ -135,6 +155,7 @@ class ScheduleParseAdGate {
     required GuideCoordinator coordinator,
     required GuideOperation operation,
     void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideReplayEntry entry)? onGuideReplayAllowed,
     void Function(GuideAccess access)? onGuideDenied,
   }) async {
     void deny(GuideAccess access) {
@@ -159,6 +180,23 @@ class ScheduleParseAdGate {
         snapshot.sessionId!.isEmpty) {
       deny(const GuideAccess(
           status: GuideAccessStatus.denied, reasonCode: 'stale_session'));
+      return;
+    }
+    final operationId = _nextGuideOperationId(auth: auth, operation: operation);
+    if (snapshot.isReplay) {
+      final entry = GuideReplayEntry.issue(
+        coordinator: coordinator,
+        uid: auth,
+        kind: GuideChargeKind.scheduleParse,
+        operation: operation,
+        id: operationId,
+      );
+      if (entry == null || onGuideReplayAllowed == null) {
+        deny(const GuideAccess(
+            status: GuideAccessStatus.denied, reasonCode: 'replay_not_ready'));
+      } else {
+        onGuideReplayAllowed(entry);
+      }
       return;
     }
     final GuideStep phase = switch (operation) {
@@ -186,8 +224,8 @@ class ScheduleParseAdGate {
     );
     final GuideAccess access = await guideAuthorize(
       context: adapterContext,
-      operationId: _nextGuideOperationId(auth: auth, operation: operation),
-      authUidProvider: () => auth,
+      operationId: operationId,
+      authUidProvider: () => SupabaseClientAccess.authCurrentId() ?? '',
     );
     if (access.status == GuideAccessStatus.granted && access.permit != null) {
       onGuideAllowed?.call(access.permit!);
@@ -216,7 +254,14 @@ class ScheduleParseAdGate {
     required void Function(ScheduleParseEntryGrant grant) onEnterAllowed,
     void Function(ScheduleParseGateDenialReason reason)? onDenied,
     void Function(String stage)? onAdProgress,
+    required bool Function() canShowAds,
   }) async {
+    bool denyIfAdsBlocked() {
+      if (canShowAds()) return false;
+      _deny(ScheduleParseGateDenialReason.adsUnavailable, onDenied);
+      return true;
+    }
+
     final delegate = _delegateForTest;
     if (delegate != null) {
       await delegate.tryEnter(
@@ -268,6 +313,7 @@ class ScheduleParseAdGate {
     }
 
     // 3. 광고 요청 가능 여부(동의/네트워크 등) 확인.
+    if (denyIfAdsBlocked()) return;
     await AdConsentService.instance.ensureReady(userInitiated: true);
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
@@ -282,6 +328,7 @@ class ScheduleParseAdGate {
 
     // 4. 광고 다이얼로그. 동의 확인이 끝난 명시적 요청에서 미리 로드를
     // 시작해 다이얼로그 확인 직후 캐시/인플라이트 결과를 재사용한다.
+    if (denyIfAdsBlocked()) return;
     final requestId = _requestId();
     unawaited(
       AdService.instance
@@ -295,6 +342,7 @@ class ScheduleParseAdGate {
       _deny(ScheduleParseGateDenialReason.userCanceled, onDenied);
       return;
     }
+    if (denyIfAdsBlocked()) return;
     final confirmed = await RewardedAdDialog.show(
       context,
       freeTrialCount: RemoteConfigService.scheduleParseDailyFreeCount,
@@ -305,9 +353,11 @@ class ScheduleParseAdGate {
     }
 
     // 5. 광고 표시.
+    if (denyIfAdsBlocked()) return;
     final watched = await AdService.instance.showForParseSchedule(
       requestId: requestId,
       onProgress: onAdProgress,
+      canShowAd: canShowAds,
     );
     if (watched) {
       onEnterAllowed(
@@ -419,6 +469,7 @@ enum ScheduleParseGateDenialReason {
   adsUnavailable,
   userCanceled,
   adFailed,
+  guideInProgress,
 }
 
 /// [ScheduleParseGateDenialReason]별 사용자 안내 메시지.
@@ -428,6 +479,8 @@ enum ScheduleParseGateDenialReason {
 /// `voiceConversationGateDenialMessage`와 동일 패턴).
 String scheduleParseGateDenialMessage(ScheduleParseGateDenialReason reason) {
   switch (reason) {
+    case ScheduleParseGateDenialReason.guideInProgress:
+      return '안내 화면에서 일정을 입력해 주세요.';
     case ScheduleParseGateDenialReason.entitlementUnavailable:
       return '무료 사용 횟수를 확인하지 못했어요. 잠시 후 다시 시도하거나 직접 입력해 주세요.';
     case ScheduleParseGateDenialReason.rewardedDisabled:

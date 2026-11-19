@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import 'guide_quota_adapter.dart';
 import 'remote_config_service.dart';
 
 /// [VoiceConversationEntitlementService._peek]가 RPC
@@ -48,6 +49,9 @@ Map<String, dynamic> buildVoiceConversationConsumeParams({
 /// 이 값은 분석 파라미터/UI 분기에만 쓰이는 제한된 열거형이다. 자유텍스트를
 /// 절대 담지 않는다.
 enum EntitlementSource {
+  /// A replay step admitted by the current guide session.
+  guideReplay,
+
   /// 최초 누적 무료 횟수 소비.
   initialFree,
 
@@ -81,7 +85,17 @@ class VoiceConversationEntryGrant {
     required this.source,
     required this.initialRemainingAtGate,
     required this.dailyRemainingAtGate,
-  });
+  })  : assert(source != EntitlementSource.guideReplay),
+        guideReplay = null;
+
+  VoiceConversationEntryGrant.forGuideReplay(GuideReplayEntry entry)
+      : sessionId = entry.id,
+        source = EntitlementSource.guideReplay,
+        initialRemainingAtGate = 0,
+        dailyRemainingAtGate = 0,
+        guideReplay = entry;
+
+  final GuideReplayEntry? guideReplay;
 
   /// 이 진입 시도를 유일하게 식별하는 문자열.
   final String sessionId;

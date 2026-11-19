@@ -26,7 +26,6 @@ import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
 import '../../onboarding/real_ui_guide/guide_bubble_visibility.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
-import '../../onboarding/real_ui_guide/guide_host.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 import 'confirm_screen.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
@@ -1432,10 +1431,39 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             replay.step != GuideStep.querySpeech)) {
       return;
     }
+    void openConversation(
+        {VoiceConversationEntryGrant? grant, GuidePermit? permit}) {
+      if (!mounted || submitGeneration != _submitGeneration) return;
+      final current = GuideScope.maybeOf(context)?.state.value;
+      final captured = _guideCaptureEvidence;
+      final operationId = permit?.operationId ?? grant?.guideReplay?.id;
+      final valid = operationId != null &&
+          captured != null &&
+          captured['uid'] == current?.uid &&
+          captured['sessionId'] == current?.sessionId;
+      unawaited(_pushVoiceRoute(
+        '${AppRoutes.voiceConversation}?autoStart=1',
+        extra: <String, dynamic>{
+          'initial_text': queryText,
+          if (grant != null) 'entry_grant': grant,
+          if (permit != null) 'guideEntryPermit': permit,
+          if (valid)
+            'guideInitialVoiceEvidence': <String, Object?>{
+              ...captured,
+              'operationId': operationId,
+              'operation': 'query',
+              'inputText': queryText,
+            },
+        },
+        submitGeneration: submitGeneration,
+        guideOrigin: guideOrigin,
+      ));
+    }
+
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
-      guideCoordinator: replay == null ? coordinator : null,
+      guideCoordinator: state?.isInProgress == true ? coordinator : null,
       guideOperation: GuideOperation.query,
       onGuideDenied: (_) {
         if (!mounted || submitGeneration != _submitGeneration) return;
@@ -1446,29 +1474,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             content: Text('안내를 계속하지 못했어요. 잠시 후 다시 시도해 주세요.'),
           ));
       },
-      onGuideAllowed: (permit) {
-        if (!mounted || submitGeneration != _submitGeneration) return;
-        final state = GuideScope.maybeOf(context)?.state.value;
-        final captured = _guideCaptureEvidence;
-        final valid = captured != null &&
-            captured['uid'] == state?.uid &&
-            captured['sessionId'] == state?.sessionId;
-        unawaited(_pushVoiceRoute(
-          '${AppRoutes.voiceConversation}?autoStart=1',
-          extra: <String, dynamic>{
-            'initial_text': queryText,
-            'guideEntryPermit': permit,
-            if (valid)
-              'guideInitialVoiceEvidence': <String, Object?>{
-                ...captured,
-                'operationId': permit.operationId,
-                'operation': 'query',
-                'inputText': queryText,
-              },
-          },
-          submitGeneration: submitGeneration,
-          guideOrigin: guideOrigin,
-        ));
+      onGuideAllowed: (permit) => openConversation(permit: permit),
+      onGuideReplayAllowed: (entry) {
+        if (!mounted ||
+            ModalRoute.of(context)?.isCurrent == false ||
+            !entry.allows(
+              coordinator: GuideScope.maybeOf(context),
+              uid: overrideUserId ?? authProvider.userId,
+              kind: GuideChargeKind.voiceConversation,
+              operation: GuideOperation.query,
+            )) {
+          return;
+        }
+        openConversation(grant: VoiceConversationEntryGrant.forGuideReplay(entry));
       },
       onDenied: (reason) {
         if (mounted) {
@@ -1480,54 +1498,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             );
         }
       },
-      onEnterAllowed: (VoiceConversationEntryGrant grant) async {
-        if (!mounted || submitGeneration != _submitGeneration) {
-          return;
-        }
-        if (replay != null) {
-          bool ownsScreen() =>
-              mounted &&
-              submitGeneration == _submitGeneration &&
-              (overrideUserId ?? authProvider.userId) == replay.uid &&
-              ModalRoute.of(context)?.isCurrent != false;
-          final ready = grant.source == EntitlementSource.adRewarded
-              ? await resumeGuideReplayAfterReward(
-                  coordinator: coordinator!,
-                  captured: replay,
-                  stillOwnsScreen: ownsScreen,
-                  accountChanges: authProvider,
-                )
-              : replay;
-          if (ready == null ||
-              !ownsScreen() ||
-              !identical(coordinator?.state.value, ready)) {
-            return;
-          }
-        }
-        final captured = _guideCaptureEvidence;
-        final validReplayCapture = replay != null &&
-            captured != null &&
-            captured['uid'] == replay.uid &&
-            captured['sessionId'] == replay.sessionId;
-        unawaited(
-          _pushVoiceRoute(
-            '${AppRoutes.voiceConversation}?autoStart=1',
-            extra: <String, dynamic>{
-              'initial_text': queryText,
-              'entry_grant': grant,
-              if (validReplayCapture)
-                'guideInitialVoiceEvidence': <String, Object?>{
-                  ...captured,
-                  'operationId': grant.sessionId,
-                  'operation': 'query',
-                  'inputText': queryText,
-                },
-            },
-            submitGeneration: submitGeneration,
-            guideOrigin: guideOrigin,
-          ),
-        );
-      },
+      onEnterAllowed: (grant) => openConversation(grant: grant),
     );
   }
 

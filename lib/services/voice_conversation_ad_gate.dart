@@ -7,6 +7,7 @@ import '../core/analytics_service.dart';
 import '../core/env.dart';
 import '../core/diag_logger.dart';
 import '../onboarding/real_ui_guide/guide_contract.dart';
+import '../onboarding/real_ui_guide/guide_scope.dart';
 import '../widgets/voice_conversation_ad_dialog.dart';
 import 'ad_consent_service.dart';
 import 'ad_service.dart';
@@ -73,6 +74,7 @@ class VoiceConversationAdGate {
   /// 무료 횟수 1회 사용.
   /// - 성공 시 잔여 횟수 반환 (실패/미초기화 시 null).
   Future<int?> useFreeTrial(String userId) async {
+    if (GuideQuotaRuntime.blocksOrdinaryUse(uid: userId)) return null;
     final delegate = _delegateForTest;
     if (delegate != null) {
       return delegate.useFreeTrial(userId);
@@ -103,6 +105,7 @@ class VoiceConversationAdGate {
     GuideCoordinator? guideCoordinator,
     GuideOperation? guideOperation,
     void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideReplayEntry entry)? onGuideReplayAllowed,
     void Function(GuideAccess access)? onGuideDenied,
   }) async {
     lastDenialReason = null;
@@ -110,24 +113,25 @@ class VoiceConversationAdGate {
       // 이미 진행 중이면 사일런트하게 무시 (사용자 인지 불필요).
       return;
     }
+    if (!context.mounted) return;
     if (guideCoordinator != null && guideOperation != null) {
-      final GuideAccess? access = await _tryGuidePath(
-        context: context,
+      await _tryGuidePath(
         userId: userId,
         coordinator: guideCoordinator,
         operation: guideOperation,
         onGuideAllowed: onGuideAllowed,
+        onGuideReplayAllowed: onGuideReplayAllowed,
         onGuideDenied: onGuideDenied,
       );
-      // Outside guide (no binding, terminal, or non-voiceConversation
-      // context) keeps existing gate semantics. VoiceConversation gate
-      // is the only one that maps [GuideOperation] -> kind voiceConversation.
-      // null is produced only when the runtime has no matching binding.
-      // Any result from a bound guide, including unavailable, is final and
-      // must not consume a normal entitlement or start an ad-backed session.
-      if (access != null) return;
+      return;
     }
-    if (!context.mounted) {
+    final scoped = guideCoordinator ?? GuideScope.maybeOf(context);
+    bool guideBlocksOrdinary() => GuideQuotaRuntime.blocksOrdinaryUse(
+          uid: userId,
+          scoped: scoped,
+        );
+    if (guideBlocksOrdinary()) {
+      _deny(VoiceConversationGateDenialReason.guideInProgress, onDenied);
       return;
     }
     _inFlight.add(userId);
@@ -135,32 +139,43 @@ class VoiceConversationAdGate {
       await _runGate(
         context: context,
         userId: userId,
-        onEnterAllowed: onEnterAllowed,
+        onEnterAllowed: (grant) {
+          if (guideBlocksOrdinary()) {
+            _deny(VoiceConversationGateDenialReason.guideInProgress, onDenied);
+            return;
+          }
+          onEnterAllowed(grant);
+        },
         onDenied: onDenied,
+        canShowAds: () => !GuideQuotaRuntime.blocksAdDisplay(
+          uid: userId,
+          scoped: scoped,
+        ),
       );
     } finally {
       _inFlight.remove(userId);
     }
   }
 
-  Future<GuideAccess?> _tryGuidePath({
-    required BuildContext context,
+  Future<void> _tryGuidePath({
     required String userId,
     required GuideCoordinator coordinator,
     required GuideOperation operation,
     void Function(GuidePermit permit)? onGuideAllowed,
+    void Function(GuideReplayEntry entry)? onGuideReplayAllowed,
     void Function(GuideAccess access)? onGuideDenied,
   }) async {
     final live = GuideQuotaRuntime.current(() => userId);
     if (live == null) {
-      // No live matching binding: caller may use the normal gate.
-      return null;
+      onGuideDenied?.call(const GuideAccess(
+          status: GuideAccessStatus.unavailable, reasonCode: 'guide_unbound'));
+      return;
     }
     if (!identical(live, coordinator)) {
       const access = GuideAccess(
           status: GuideAccessStatus.denied, reasonCode: 'stale_binding');
       onGuideDenied?.call(access);
-      return access;
+      return;
     }
     final snapshot = coordinator.state.value;
     if (snapshot.uid != userId ||
@@ -169,7 +184,25 @@ class VoiceConversationAdGate {
       const access = GuideAccess(
           status: GuideAccessStatus.denied, reasonCode: 'stale_session');
       onGuideDenied?.call(access);
-      return access;
+      return;
+    }
+    final operationId =
+        _nextGuideOperationId(userId: userId, operation: operation);
+    if (snapshot.isReplay) {
+      final entry = GuideReplayEntry.issue(
+        coordinator: coordinator,
+        uid: userId,
+        kind: GuideChargeKind.voiceConversation,
+        operation: operation,
+        id: operationId,
+      );
+      if (entry == null || onGuideReplayAllowed == null) {
+        onGuideDenied?.call(const GuideAccess(
+            status: GuideAccessStatus.denied, reasonCode: 'replay_not_ready'));
+      } else {
+        onGuideReplayAllowed(entry);
+      }
+      return;
     }
     final GuideStep phase = switch (operation) {
       GuideOperation.createParse => GuideStep.correctAndSave,
@@ -192,7 +225,7 @@ class VoiceConversationAdGate {
     );
     final GuideAccess access = await guideAuthorize(
       context: adapterContext,
-      operationId: _nextGuideOperationId(userId: userId, operation: operation),
+      operationId: operationId,
       authUidProvider: () => userId,
     );
     if (access.status == GuideAccessStatus.granted && access.permit != null) {
@@ -200,7 +233,6 @@ class VoiceConversationAdGate {
     } else {
       onGuideDenied?.call(access);
     }
-    return access;
   }
 
   // A fresh ID prevents a retry from replaying an earlier guide permit.
@@ -221,7 +253,14 @@ class VoiceConversationAdGate {
     required String userId,
     required void Function(VoiceConversationEntryGrant grant) onEnterAllowed,
     void Function(VoiceConversationGateDenialReason reason)? onDenied,
+    required bool Function() canShowAds,
   }) async {
+    bool denyIfAdsBlocked() {
+      if (canShowAds()) return false;
+      _deny(VoiceConversationGateDenialReason.adsUnavailable, onDenied);
+      return true;
+    }
+
     final delegate = _delegateForTest;
     if (delegate != null) {
       await delegate.tryEnter(
@@ -317,6 +356,7 @@ class VoiceConversationAdGate {
       _deny(VoiceConversationGateDenialReason.userCanceled, onDenied);
       return;
     }
+    if (denyIfAdsBlocked()) return;
     final confirmed = await showVoiceConversationAdDialog(
       context,
       freeTrialCount: RemoteConfigService.voiceConversationDailyFreeCount,
@@ -329,6 +369,7 @@ class VoiceConversationAdGate {
 
     // 4. 사용자가 실제로 광고 시청을 선택한 뒤에만 광고 동의/요청 가능 여부를
     // 확인한다. 불가하면 다이얼로그가 사라진 뒤 명시적 E-ADS0 안내를 보여준다.
+    if (denyIfAdsBlocked()) return;
     await AdConsentService.instance.ensureReady(userInitiated: true);
     final adsOk = await AdConsentService.instance.canRequestAdsLive;
     if (!adsOk) {
@@ -349,6 +390,7 @@ class VoiceConversationAdGate {
 
     // 5. 광고를 준비하고 표시한다. 보상은
     // showForVoiceConversationWithOutcome에서 실제 시청 완료 후에만 부여된다.
+    if (denyIfAdsBlocked()) return;
     final requestId = _requestId();
     unawaited(
       AdService.instance
@@ -357,6 +399,7 @@ class VoiceConversationAdGate {
     final outcome =
         await AdService.instance.showForVoiceConversationWithOutcome(
       requestId: requestId,
+      canShowAd: canShowAds,
     );
     DiagLogger.log(
       'RewardedAdGate',
@@ -540,11 +583,14 @@ enum VoiceConversationGateDenialReason {
   adsUnavailable,
   userCanceled,
   adFailed,
+  guideInProgress,
 }
 
 String voiceConversationGateDenialMessage(
     VoiceConversationGateDenialReason reason) {
   switch (reason) {
+    case VoiceConversationGateDenialReason.guideInProgress:
+      return '안내 화면에서 AI일정대화를 시작해 주세요.';
     case VoiceConversationGateDenialReason.inFlight:
       return 'AI일정대화를 여는 중이에요. 잠시만 기다려 주세요.';
     case VoiceConversationGateDenialReason.entitlementUnavailable:
@@ -571,6 +617,8 @@ String voiceConversationGateDenialMessage(
 String voiceConversationGateDenialCode(
     VoiceConversationGateDenialReason reason) {
   switch (reason) {
+    case VoiceConversationGateDenialReason.guideInProgress:
+      return 'E-GUIDE';
     case VoiceConversationGateDenialReason.inFlight:
       return 'E-GATE1';
     case VoiceConversationGateDenialReason.entitlementUnavailable:

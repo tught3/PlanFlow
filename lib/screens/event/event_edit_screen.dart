@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show kDebugMode, listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -50,7 +52,43 @@ import '../../widgets/guided_anchor.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
-import '../../onboarding/real_ui_guide/guide_scope.dart';
+
+const _logGuideSaveGateDiagnostics = kDebugMode &&
+    bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
+    bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA');
+
+void _logGuideSaveGate(
+  String branch,
+  GuideSnapshot? snapshot, {
+  required bool eventIdPresent,
+  Map<String, Object?>? dispatch,
+}) {
+  final errorCode = snapshot?.errorCode;
+  // Progress storage can supply an arbitrary string. Emit only known codes.
+  final safeErrorCode = switch (errorCode) {
+    null => null,
+    guideCreatedCheckpointPendingCode ||
+    guideQaSavedBindingUnconfirmedCode ||
+    'created_binding_conflict' =>
+      errorCode,
+    _ when GuideFailureKind.values.any((kind) => kind.code == errorCode) ||
+        snapshot?.failureDiagnostic?.code == errorCode =>
+      errorCode,
+    _ => 'unrecognized',
+  };
+  final data = <String, Object?>{
+    'branch': branch,
+    'run': snapshot?.run.name,
+    'step': snapshot?.step.name,
+    'revision': snapshot?.revision,
+    'errorCode': safeErrorCode,
+    'createdEventIdPresent': snapshot?.createdEventId?.isNotEmpty ?? false,
+    'eventIdPresent': eventIdPresent,
+    'guideSessionIdPresent': snapshot?.sessionId?.isNotEmpty ?? false,
+    if (dispatch != null) ...dispatch,
+  };
+  debugPrint('PLANFLOW_GUIDE_6OF7_SAVE_GATE ${jsonEncode(data)}');
+}
 
 String _newEventUuid() {
   final random = Random.secure();
@@ -611,11 +649,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
     context.go(AppRoutes.home);
   }
 
-  GuideSnapshot? _guideEditPreviewState() {
-    final coordinator = GuideScope.maybeOf(context);
-    if (coordinator == null) return null;
-    final state = coordinator.state.value;
-    if (state.uid.isEmpty ||
+  GuideCoordinator? _readGuideCoordinator() => context
+      .getInheritedWidgetOfExactType<UncontrolledProviderScope>()
+      ?.container
+      .read(realUiGuideCoordinatorProvider);
+
+  GuideSnapshot? _guideEditPreviewState(GuideSnapshot? state) {
+    if (state == null ||
+        state.uid.isEmpty ||
         state.sessionId == null ||
         state.run != GuideRun.active ||
         state.step != GuideStep.editPreview) {
@@ -1204,11 +1245,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return;
     }
 
-    final guide = GuideScope.maybeOf(context);
+    final guide = _readGuideCoordinator();
+    final state = guide?.state.value;
     if (widget.initialGuideStartLocal != null ||
-        guide?.state.value.step == GuideStep.editPreview) {
-      final snapshot = _guideEditPreviewState();
+        state?.step == GuideStep.editPreview) {
+      final snapshot = _guideEditPreviewState(state);
       if (guide == null || snapshot == null) {
+        if (_logGuideSaveGateDiagnostics) {
+          _logGuideSaveGate(
+            'entry',
+            state,
+            eventIdPresent: _loadedEvent?.id.isNotEmpty ?? false,
+          );
+        }
         _showMessage('안내를 다시 이어간 뒤 저장해 주세요.');
         return;
       }
@@ -1561,7 +1610,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           // Updated proof is emitted only after the actual detail renders.
         }
         if (mounted) {
-          final guide = GuideScope.maybeOf(context)?.state.value;
+          final guide = _readGuideCoordinator()?.state.value;
           if (savedEvent != null &&
               guide?.run == GuideRun.active &&
               guide?.step == GuideStep.editPreview &&
@@ -1721,7 +1770,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _showMessage('로그인 상태가 바뀌었어요. 다시 로그인한 뒤 일정을 열어 주세요.');
         return false;
       }
-      if (!identical(GuideScope.maybeOf(context), coordinator) ||
+      if (!identical(_readGuideCoordinator(), coordinator) ||
           !identical(coordinator.state.value, expected)) {
         _showMessage('안내 상태가 바뀌었어요. 안내를 이어간 뒤 저장해 주세요.');
         return false;
@@ -1789,6 +1838,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
           return;
         }
       }
+      final beforeDispatch =
+          _logGuideSaveGateDiagnostics ? coordinator.state.value : null;
       final confirmed = await coordinator.dispatch(EditConfirmed(
         uid: snapshot.uid,
         sessionId: snapshot.sessionId!,
@@ -1796,6 +1847,38 @@ class _EventEditScreenState extends State<EventEditScreen> {
         operationId: operationId,
         confirmedStartLocal: start,
       ));
+      final dispatchDetails = beforeDispatch == null
+          ? null
+          : <String, Object?>{
+              'expectedRevision': snapshot.revision,
+              'snapshotRevision': snapshot.revision,
+              'confirmedRevision': confirmed.revision,
+              'beforeDispatchRevision': beforeDispatch.revision,
+              'beforeDispatchRun': beforeDispatch.run.name,
+              'beforeDispatchStep': beforeDispatch.step.name,
+              'beforeDispatchOwnerMatches': beforeDispatch.uid == snapshot.uid,
+              'beforeDispatchSessionMatches':
+                  beforeDispatch.sessionId == snapshot.sessionId,
+              'beforeDispatchTargetMatches':
+                  beforeDispatch.createdEventId == loaded.id,
+              'beforeDispatchTimeMatches':
+                  beforeDispatch.expectedUpdatedStartLocal == start,
+              'returnedSameSnapshot': identical(confirmed, beforeDispatch),
+              'returnedOwnerMatches': confirmed.uid == snapshot.uid,
+              'returnedSessionMatches':
+                  confirmed.sessionId == snapshot.sessionId,
+              'returnedTargetMatches': confirmed.createdEventId == loaded.id,
+              'returnedTimeMatches':
+                  confirmed.expectedUpdatedStartLocal == start,
+            };
+      if (dispatchDetails != null) {
+        _logGuideSaveGate(
+          'dispatchReturned',
+          confirmed,
+          eventIdPresent: loaded.id.isNotEmpty,
+          dispatch: dispatchDetails,
+        );
+      }
       if (!checkBeforeWrite(confirmed)) return;
       if (confirmed.uid != snapshot.uid ||
           confirmed.sessionId != snapshot.sessionId ||
@@ -1804,6 +1887,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
           confirmed.createdEventId != loaded.id ||
           confirmed.expectedUpdatedStartLocal != start ||
           confirmed.revision != snapshot.revision + 1) {
+        if (dispatchDetails != null) {
+          _logGuideSaveGate(
+            'postDispatch',
+            confirmed,
+            eventIdPresent: loaded.id.isNotEmpty,
+            dispatch: dispatchDetails,
+          );
+        }
         _showMessage('안내를 다시 이어간 뒤 저장해 주세요.');
         return;
       }
@@ -1839,7 +1930,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (!mounted) return;
       if (!isCurrentEditor() || !hasCurrentOwnerSession(confirmed.uid)) return;
       _loadedEvent = saved;
-      if (!identical(GuideScope.maybeOf(context), coordinator) ||
+      if (!identical(_readGuideCoordinator(), coordinator) ||
           !identical(coordinator.state.value, confirmed)) {
         _showMessage('일정은 저장됐어요. 안내를 이어간 뒤 변경된 시간을 확인해 주세요.');
         return;
@@ -2696,10 +2787,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.initialGuideStartLocal != null) {
+      return _buildEditor(context, guidedEdit: true);
+    }
+    if (context.getInheritedWidgetOfExactType<UncontrolledProviderScope>() ==
+        null) {
+      return _buildEditor(context, guidedEdit: false);
+    }
+    return Consumer(
+      builder: (context, ref, child) => ValueListenableBuilder<GuideSnapshot>(
+        valueListenable: ref.watch(realUiGuideCoordinatorProvider).state,
+        builder: (context, state, child) =>
+            _buildEditor(context, guidedEdit: state.step == GuideStep.editPreview),
+      ),
+    );
+  }
+
+  Widget _buildEditor(BuildContext context, {required bool guidedEdit}) {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
-    final guidedEdit = widget.initialGuideStartLocal != null ||
-        GuideScope.maybeOf(context)?.state.value.step == GuideStep.editPreview;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,

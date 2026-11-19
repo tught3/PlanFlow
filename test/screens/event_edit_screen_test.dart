@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:go_router/go_router.dart';
@@ -18,6 +19,7 @@ import 'package:planflow/features/groups/repositories/group_event_repository.dar
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -45,6 +47,7 @@ final int _fixtureYear = _alignedFutureFixtureYear();
 void main() {
   for (final variant in [
     'accepted',
+    'accepted-without-GuideScope',
     'wrong-time',
     'wrong-field',
     'stale-range',
@@ -117,11 +120,17 @@ void main() {
       );
       addTearDown(router.dispose);
       addTearDown(guide.state.dispose);
-      await tester.pumpWidget(GuideScope(
-        coordinator: guide,
-        child: MaterialApp.router(routerConfig: router),
+      final app = MaterialApp.router(routerConfig: router);
+      final outsideGuideScope = variant == 'accepted-without-GuideScope';
+      await tester.pumpWidget(ProviderScope(
+        overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide)],
+        child:
+            outsideGuideScope ? app : GuideScope(coordinator: guide, child: app),
       ));
       await tester.pumpAndSettle();
+      if (outsideGuideScope) {
+        expect(find.byType(GuideScope), findsNothing);
+      }
       final editor = tester.widget<CalendarStyleEventEditor>(
           find.byType(CalendarStyleEventEditor));
       expect(editor.startAt, DateTime(_fixtureYear, 6, 12, 17));
@@ -141,13 +150,15 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('저장').first);
       await tester.pumpAndSettle();
-      if (variant == 'accepted') {
+      if (variant == 'accepted' || outsideGuideScope) {
         expect(repo.fetchEventCalls, readsBefore + 1);
         expect(guide.confirmations.single.confirmedStartLocal, start);
+        expect(guide.confirmations.single.expectedRevision, 1);
         expect(repo.writes.single.startAt, start);
         expect(repo.writes.single.endAt, start.add(const Duration(hours: 1)));
         expect(repo.writes.single.memo, event.memo);
         expect(find.text('saved:event-1'), findsOneWidget);
+        expect(find.text('안내를 다시 이어간 뒤 저장해 주세요.'), findsNothing);
       } else {
         expect(guide.confirmations, isEmpty);
         expect(repo.writes, isEmpty);

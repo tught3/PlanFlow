@@ -57,13 +57,14 @@ import '../../widgets/rewarded_ad_dialog.dart';
 import '../../widgets/schedule_save_scope_card.dart';
 import '../../services/ad_service.dart';
 import '../../services/ad_reward_state.dart';
+import '../../services/guide_quota_adapter.dart';
+import '../../services/real_ui_guide_grant_service.dart' show SupabaseClientAccess;
 import '../../services/schedule_parse_ad_gate.dart';
 import '../../services/schedule_parse_entitlement.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
-import '../../onboarding/real_ui_guide/guide_host.dart';
 import '../../onboarding/real_ui_guide/guide_create_location_policy.dart';
 import '../../widgets/guided_anchor.dart';
 part 'confirm_widgets.dart';
@@ -1301,7 +1302,26 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return false;
   }
 
-  void _maybeHydrateParsedSchedule({GuidePermit? guidePermit}) {
+  bool _guideOwnsParseAdmission() => GuideQuotaRuntime.blocksOrdinaryUse(
+        uid: authProvider.userId ?? SupabaseClientAccess.authCurrentId(),
+        scoped: GuideScope.maybeOf(context),
+      );
+
+  void _guideParseDenied() {
+    if (!mounted) return;
+    setState(() {
+      widget.parsedSchedule['parse_pending'] = false;
+      widget.parsedSchedule['parse_failed'] = true;
+      _isHydratingParsedSchedule = false;
+      _showInitialHydrationLoader = false;
+      _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
+    });
+  }
+
+  void _maybeHydrateParsedSchedule({
+    GuidePermit? guidePermit,
+    GuideReplayEntry? replayEntry,
+  }) {
     if (widget.parsedSchedule['manual_text_confirmed'] == true &&
         widget.parsedSchedule['parse_pending'] != true) {
       return;
@@ -1315,36 +1335,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!shouldHydrate || rawText == null || rawText.isEmpty) {
       return;
     }
-    _hydrateParsedSchedule(rawText, guidePermit: guidePermit);
+    unawaited(_hydrateParsedSchedule(
+      rawText,
+      guidePermit: guidePermit,
+      replayEntry: replayEntry,
+    ));
   }
 
-  /// GPT 자동 파싱이 필요한 진입인지 판단하고, Remote Config가 광고 활성이라면
-  /// 사용자에게 "광고 보고 분석하기" 다이얼로그를 먼저 띄운다.
-  /// 보상 부여 시 GPT 파싱을, 거절/실패 시 수동 입력 모드로 강제한다.
-  Future<void> _maybeRunAdGateThenHydrate() async {
-    if (_adGateHandled) {
-      return;
-    }
-    _adGateHandled = true;
-
-    // 광고 게이트가 필요한 상황: parse_pending=true && rawText 존재.
-    // (이미 rawText가 채워져 hydrate 대상일 때만 광고 게이트)
-    if (widget.parsedSchedule['parse_pending'] != true) {
-      _maybeHydrateParsedSchedule();
-      return;
-    }
-    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
-    if (rawText == null || rawText.isEmpty) {
-      _maybeHydrateParsedSchedule();
-      return;
-    }
-
+  Future<bool> _restoreOrdinaryParseGrant(String parseBinding) async {
     // 이전 parse 성공 후 entitlement RPC가 실패한 경우에는 앱 재시작 뒤에도
     // 새 GPT 호출보다 먼저 같은 sessionId 소비를 재시도한다.
-    final parseBinding = _scheduleParseBinding(rawText);
     final pendingBinding = await AdRewardState.instance.pendingConsumeBinding(
       feature: 'schedule_parse',
     );
+    if (!mounted || _guideOwnsParseAdmission()) return false;
     if (pendingBinding != null && pendingBinding != parseBinding) {
       // The original draft is no longer available in this route. Discard the
       // orphaned local state and continue through a fresh gate instead of
@@ -1352,6 +1356,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       await AdRewardState.instance.clearPendingConsume(
         feature: 'schedule_parse',
       );
+      if (!mounted || _guideOwnsParseAdmission()) return false;
       await AdService.instance.clearReward(feature: 'schedule_parse');
     }
     final pendingConsume =
@@ -1361,6 +1366,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                 binding: parseBinding,
                 feature: 'schedule_parse',
               );
+    if (!mounted || _guideOwnsParseAdmission()) return false;
     if (pendingConsume != null) {
       _scheduleParseGrant = ScheduleParseEntryGrant(
         sessionId: pendingConsume,
@@ -1369,17 +1375,19 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       );
       _parseConsumptionPending = true;
       await _retryPendingParseConsumption();
-      return;
+      return true;
     }
 
     // 보상 잔여 상태가 있으면 (앱 재시작 후 또는 이전 시도 잔여) hydrate.
     var reentry = await AdRewardState.instance.consumeActiveRequestId(
       feature: 'schedule_parse',
     );
+    if (!mounted || _guideOwnsParseAdmission()) return false;
     if (reentry != null) {
       final activeBinding = await AdRewardState.instance.activeGrantBinding(
         feature: 'schedule_parse',
       );
+      if (!mounted || _guideOwnsParseAdmission()) return false;
       if (activeBinding == null || activeBinding != parseBinding) {
         await AdRewardState.instance.clear(
           feature: 'schedule_parse',
@@ -1398,12 +1406,30 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         dailyRemainingAtGate: 0,
       );
       _maybeHydrateParsedSchedule();
+      return true;
+    }
+    return false;
+  }
+
+  /// Check the guide or ordinary entitlement before automatic parsing.
+  Future<void> _maybeRunAdGateThenHydrate() async {
+    if (_adGateHandled) return;
+    _adGateHandled = true;
+
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+    if (widget.parsedSchedule['parse_pending'] != true ||
+        rawText == null ||
+        rawText.isEmpty) {
+      _maybeHydrateParsedSchedule();
       return;
     }
 
-    if (!mounted) {
+    final parseBinding = _scheduleParseBinding(rawText);
+    final startedInGuide = _guideOwnsParseAdmission();
+    if (!startedInGuide && await _restoreOrdinaryParseGrant(parseBinding)) {
       return;
     }
+    if (!mounted) return;
 
     // ScheduleParseAdGate가 하루 무료 잔여를 먼저 확인한다. 잔여가 남아
     // 있으면 광고 다이얼로그 없이 즉시 onEnterAllowed가 호출되고, 소진된
@@ -1414,19 +1440,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 캐시하지 않으므로 다음 재시도/재파싱이 이전 permit을 재사용할 수
     // 없고, 매 시도는 게이트에서 새 서버 승인(고유 operationId)을 받는다.
     GuidePermit? freshGuidePermit;
+    GuideReplayEntry? freshReplayEntry;
     try {
       final guideCoordinator = GuideScope.maybeOf(context);
-      final guideState = guideCoordinator?.state.value;
-      var replay = guideState?.isReplay == true && guideState!.isInProgress
-          ? guideState
-          : null;
-      final guideParseAttempt = guideState != null &&
-          !guideState.isReplay &&
-          guideState.run == GuideRun.active &&
-          guideState.uid.isNotEmpty &&
-          guideState.sessionId != null;
-      bool currentReplay() => replay == null ||
-          (mounted && identical(guideCoordinator?.state.value, replay));
+      final guideParseAttempt = startedInGuide || _guideOwnsParseAdmission();
+      if (guideParseAttempt && guideCoordinator == null) {
+        _guideParseDenied();
+        return;
+      }
       ScheduleParseEntryGrant? approvedGrant;
       await ScheduleParseAdGate.instance.tryEnterScheduleParse(
         context: context,
@@ -1436,16 +1457,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           freshGuidePermit = permit;
           _parseAuthorized = true;
         },
-        onGuideDenied: (_) {
-          if (!mounted) return;
-          setState(() {
-            widget.parsedSchedule['parse_pending'] = false;
-            widget.parsedSchedule['parse_failed'] = true;
-            _isHydratingParsedSchedule = false;
-            _showInitialHydrationLoader = false;
-            _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
-          });
+        onGuideReplayAllowed: (entry) {
+          freshReplayEntry = entry;
+          _parseAuthorized = true;
         },
+        onGuideDenied: (_) => _guideParseDenied(),
         onAdProgress: (stage) {
           if (!mounted) {
             return;
@@ -1481,27 +1497,24 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         },
       );
 
+      if (!mounted) return;
       final grant = approvedGrant;
-      final capturedReplay = replay;
-      if (grant != null && capturedReplay != null) {
-        final accepted = await _acceptReplayParseGrant(
-            grant, guideCoordinator!, capturedReplay);
-        if (accepted == null) return;
-        replay = accepted;
-      }
-      if (!mounted || !currentReplay()) {
-        return;
-      }
-      if (grant != null) _recordScheduleParseGrant(grant);
-
-      if (freshGuidePermit != null) {
-        _maybeHydrateParsedSchedule(guidePermit: freshGuidePermit);
-      } else if (_scheduleParseGrant != null) {
+      if (freshGuidePermit != null || freshReplayEntry != null) {
+        _maybeHydrateParsedSchedule(
+          guidePermit: freshGuidePermit,
+          replayEntry: freshReplayEntry,
+        );
+      } else if (!guideParseAttempt && grant != null) {
+        if (_guideOwnsParseAdmission()) {
+          _guideParseDenied();
+          return;
+        }
+        _recordScheduleParseGrant(grant);
         await AdRewardState.instance.bindActiveGrant(
           binding: parseBinding,
           feature: 'schedule_parse',
         );
-        if (!mounted || !currentReplay()) return;
+        if (!mounted) return;
         // 진입 승인됨. GPT 파싱 실행(실제 소비는 파싱 시작 시점에 처리).
         _maybeHydrateParsedSchedule();
       }
@@ -1524,28 +1537,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
-  Future<GuideSnapshot?> _acceptReplayParseGrant(
-    ScheduleParseEntryGrant grant,
-    GuideCoordinator coordinator,
-    GuideSnapshot captured,
-  ) async {
-    bool ownsScreen() =>
-        mounted &&
-        authProvider.userId == captured.uid &&
-        ModalRoute.of(context)?.isCurrent != false;
-    if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
-      return resumeGuideReplayAfterReward(
-        coordinator: coordinator,
-        captured: captured,
-        stillOwnsScreen: ownsScreen,
-        accountChanges: authProvider,
-      );
-    }
-    return ownsScreen() && identical(coordinator.state.value, captured)
-        ? captured
-        : null;
-  }
-
   void _recordScheduleParseGrant(ScheduleParseEntryGrant grant) {
     _scheduleParseGrant = grant;
     if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
@@ -1554,7 +1545,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   Future<void> _retryAiHydration() async {
-    if (_parseConsumptionPending) {
+    final guideParseAttempt = _guideOwnsParseAdmission();
+    if (_parseConsumptionPending && !guideParseAttempt) {
       unawaited(_retryPendingParseConsumption());
       return;
     }
@@ -1570,20 +1562,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 받아야 하며, 승인 거절(만료/uid 불일치/phase 불일치/replay)은 일반
     // 무료 사용이나 AI 호출로 절대 대체하지 않는다(fail-closed).
     final guideCoordinator = GuideScope.maybeOf(context);
-    final guideState = guideCoordinator?.state.value;
-    var replay = guideState?.isReplay == true && guideState!.isInProgress
-        ? guideState
-        : null;
-    bool currentReplay() => replay == null ||
-        (mounted && identical(guideCoordinator?.state.value, replay));
-    final guideParseAttempt = guideState != null &&
-        !guideState.isReplay &&
-        guideState.run == GuideRun.active &&
-        guideState.uid.isNotEmpty &&
-        guideState.sessionId != null;
 
     if (guideParseAttempt) {
+      if (guideCoordinator == null) {
+        _guideParseDenied();
+        return;
+      }
       GuidePermit? retryPermit;
+      GuideReplayEntry? retryReplayEntry;
       try {
         await ScheduleParseAdGate.instance.tryEnterScheduleParse(
           context: context,
@@ -1598,16 +1584,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             retryPermit = permit;
             _parseAuthorized = true;
           },
-          onGuideDenied: (_) {
-            if (!mounted) return;
-            setState(() {
-              widget.parsedSchedule['parse_pending'] = false;
-              widget.parsedSchedule['parse_failed'] = true;
-              _isHydratingParsedSchedule = false;
-              _showInitialHydrationLoader = false;
-              _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
-            });
+          onGuideReplayAllowed: (entry) {
+            retryReplayEntry = entry;
+            _parseAuthorized = true;
           },
+          onGuideDenied: (_) => _guideParseDenied(),
         );
       } catch (error, stackTrace) {
         debugPrint('ConfirmScreen guided parse retry failed: $error');
@@ -1626,7 +1607,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       if (!mounted) {
         return;
       }
-      if (retryPermit == null) {
+      if (retryPermit == null && retryReplayEntry == null) {
         // onGuideDenied가 이미 fail-closed 상태를 반영했다. 일반 전환 없음.
         return;
       }
@@ -1639,8 +1620,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       // dispatch 시점에 잡은 permit을 이 요청의 레인으로 고정한다. 응답을
       // 기다리는 동안 가이드가 skip/종료되어도 이 요청은 일반 소비로
       // 전환되지 않는다(_hydrateParsedSchedule은 파라미터로만 판단).
-      unawaited(
-          _hydrateParsedSchedule(rawText.trim(), guidePermit: retryPermit));
+      unawaited(_hydrateParsedSchedule(
+        rawText.trim(),
+        guidePermit: retryPermit,
+        replayEntry: retryReplayEntry,
+      ));
       return;
     }
 
@@ -1685,14 +1669,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           },
         );
         final grant = approvedGrant;
-        final capturedReplay = replay;
-        if (grant != null && capturedReplay != null) {
-          final accepted = await _acceptReplayParseGrant(
-              grant, guideCoordinator!, capturedReplay);
-          if (accepted == null) return;
-          replay = accepted;
-        }
-        if (!mounted || !currentReplay()) {
+        if (!mounted) return;
+        if (_guideOwnsParseAdmission()) {
+          _guideParseDenied();
           return;
         }
         if (grant != null) _recordScheduleParseGrant(grant);
@@ -1727,7 +1706,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         return;
       }
     }
-    if (!mounted || !currentReplay()) return;
+    if (!mounted) return;
     setState(() {
       widget.parsedSchedule['parse_pending'] = true;
       widget.parsedSchedule['parse_failed'] = false;
@@ -1738,7 +1717,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   Future<void> _retryPendingParseConsumption() async {
-    if (_isHydratingParsedSchedule || _scheduleParseGrant == null) {
+    if (!mounted ||
+        _guideOwnsParseAdmission() ||
+        _isHydratingParsedSchedule ||
+        _scheduleParseGrant == null) {
       return;
     }
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
@@ -1787,20 +1769,25 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<void> _hydrateParsedSchedule(
     String rawText, {
     GuidePermit? guidePermit,
+    GuideReplayEntry? replayEntry,
   }) async {
-    if (_isHydratingParsedSchedule) {
+    if (!mounted || _isHydratingParsedSchedule) {
       return;
     }
-    final guide = GuideScope.maybeOf(context)?.state.value;
-    if (guide != null &&
-        guide.isReplay &&
-        guide.isInProgress &&
-        (guide.run != GuideRun.active ||
-            guide.uid != authProvider.userId ||
-            (guide.step != GuideStep.createSpeech &&
-                guide.step != GuideStep.correctAndSave) ||
-            guidePermit != null ||
-            _scheduleParseGrant == null)) {
+    final guided = guidePermit != null || replayEntry != null;
+    if (replayEntry != null &&
+        (ModalRoute.of(context)?.isCurrent == false ||
+            !replayEntry.allows(
+              coordinator: GuideScope.maybeOf(context),
+              uid: authProvider.userId ?? SupabaseClientAccess.authCurrentId(),
+              kind: GuideChargeKind.scheduleParse,
+              operation: GuideOperation.createParse,
+            ))) {
+      _guideParseDenied();
+      return;
+    }
+    if (!guided && _guideOwnsParseAdmission()) {
+      _guideParseDenied();
       return;
     }
 
@@ -1841,15 +1828,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       // 결과에서는 grant를 유지해 사용자가 재시도할 수 있고, 광고 보상
       // grant도 같은 시도에서 중복 소비되지 않는다.
       if (parsed['parse_failed'] != true &&
-          guidePermit == null &&
+          !guided &&
           grant != null &&
           grant.source != ScheduleParseEntitlementSource.adFailedFreePass) {
         // Persist the server-side idempotent consume before clearing the
         // local reward. If the RPC is temporarily unavailable, retain the
         // reward so a later re-entry can retry the same session instead of
         // silently losing the grant or opening an unbounded free path.
-        final consumed = await ScheduleParseEntitlementService.instance
-            .consume(grant.sessionId);
+        final consumed = _guideOwnsParseAdmission()
+            ? null
+            : await ScheduleParseEntitlementService.instance
+                .consume(grant.sessionId);
         if (consumed != null) {
           await AdRewardState.instance.clearPendingConsume(
             feature: 'schedule_parse',

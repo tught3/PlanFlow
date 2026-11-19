@@ -18,12 +18,17 @@ import 'package:planflow/features/groups/repositories/group_event_repository.dar
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart' show realUiGuideVersion;
+import 'package:planflow/onboarding/real_ui_guide/guide_local_backend.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_route_recovery.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
+import 'package:planflow/services/ad_service.dart';
 import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/app_permission_service.dart';
+import 'package:planflow/services/guide_quota_adapter.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/stt_service.dart';
@@ -424,12 +429,17 @@ class _NoLocationPermissionService extends AppPermissionService {
 /// [VoiceConversationEntitlementService]의 consume() 호출 횟수/인자를
 /// 검증하기 위한 fake delegate.
 class _FakeEntitlementDelegate implements VoiceConversationEntitlementDelegate {
+  int peekCalls = 0;
   int consumeCalls = 0;
   final List<String> consumedSessionIds = <String>[];
+  VoiceConversationEntitlementPeek? peekResult;
   VoiceConversationConsumeResult? consumeResult;
 
   @override
-  Future<VoiceConversationEntitlementPeek?> peek() async => null;
+  Future<VoiceConversationEntitlementPeek?> peek() async {
+    peekCalls++;
+    return peekResult;
+  }
 
   @override
   Future<VoiceConversationConsumeResult?> consume(String sessionId) async {
@@ -574,7 +584,7 @@ class _SilentAdGateDelegateWithReason
 }
 
 class _QueryGuide implements GuideCoordinator {
-  _QueryGuide()
+  _QueryGuide({bool replay = false})
       : state = ValueNotifier(GuideSnapshot(
           uid: 'user-1',
           version: 'real_ui_v1',
@@ -584,6 +594,7 @@ class _QueryGuide implements GuideCoordinator {
           step: GuideStep.querySpeech,
           run: GuideRun.active,
           createdEventId: 'saved-event',
+          isReplay: replay,
         ));
 
   @override
@@ -662,12 +673,214 @@ void main() {
     );
   }
 
-  for (final resultKind in ['empty', 'other', 'target']) {
+  testWidgets(
+    'a local guide replay queries its saved event without ads or daily usage',
+    (tester) async {
+      const uid = 'user-1';
+      authProvider.setUser(uid);
+      addTearDown(() => authProvider.setUser(null));
+      final originalStart =
+          planflowLocalDateTimeToUtc(DateTime(_voiceFixtureYear, 5, 29, 18));
+      final practiceEvent = EventModel(
+        id: 'replay-practice-event',
+        userId: uid,
+        title: '다시 시작한 튜토리얼 일정',
+        startAt: originalStart,
+      );
+      EventModel? persistedEvent;
+      final progress = LocalGuideProgressStore();
+      final guide = RealUiGuideCoordinator(
+        backend: LocalGuideBackend(
+          progress: progress,
+          fetchBoundEvent: (owner, id) async =>
+              owner == persistedEvent?.userId && id == persistedEvent?.id
+                  ? persistedEvent
+                  : null,
+        ),
+        progress: progress,
+        version: realUiGuideVersion,
+      );
+      GuideSnapshot current() => guide.state.value;
+
+      await guide.start(uid: uid);
+      final firstSession = current().sessionId;
+      await guide.terminate(GuideExit.skip);
+      expect(await guide.restartCompletedGuide(uid: uid), isTrue);
+      final replaySession = current().sessionId;
+      expect(replaySession, isNot(firstSession));
+      expect(current().isReplay, isTrue);
+      final binding = GuideQuotaRuntime.bind(guide, uid: uid);
+      addTearDown(() => GuideQuotaRuntime.unbind(binding));
+
+      await guide.dispatch(HomeMicTapped(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+      ));
+      await guide.dispatch(ParseConfirmed(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+        operationId: 'replay-create-parse',
+      ));
+      persistedEvent = practiceEvent;
+      await guide.dispatch(SaveObserved(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+        operationId: 'replay-save',
+        persistedEvent: practiceEvent,
+      ));
+      expect(current().step, GuideStep.savedDetail);
+      await guide.dispatch(DetailObserved(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+        persistedEvent: practiceEvent,
+        preparationResolved: false,
+        departureResolved: false,
+        setupHelpAcknowledged: true,
+      ));
+      await guide.dispatch(QueryMicTapped(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+      ));
+      expect(current().step, GuideStep.querySpeech);
+
+      final entitlement = _FakeEntitlementDelegate()
+        ..peekResult = const VoiceConversationEntitlementPeek(
+          initialRemaining: 0,
+          dailyRemaining: 0,
+          requiresAd: true,
+        );
+      VoiceConversationEntitlementService.instance.delegateForTest =
+          entitlement;
+      addTearDown(
+        () => VoiceConversationEntitlementService.instance.delegateForTest =
+            null,
+      );
+      final adService = AdService.instance;
+      final lastAdAttempt = adService.lastVoiceAttempt;
+      final adGate = VoiceConversationAdGate.instance;
+      await pumpConversation(tester, const Scaffold());
+      late GuideReplayEntry replayEntry;
+      await adGate.tryEnterVoiceConversation(
+        context: tester.element(find.byType(Scaffold)),
+        userId: uid,
+        guideCoordinator: guide,
+        guideOperation: GuideOperation.query,
+        onEnterAllowed: (_) => fail('Unexpected ordinary voice grant'),
+        onGuideDenied: (access) => fail('Replay denied: ${access.reasonCode}'),
+        onGuideReplayAllowed: (entry) => replayEntry = entry,
+      );
+
+      final text = '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘';
+      await pumpConversation(
+        tester,
+        GuideScope(
+          coordinator: guide,
+          child: VoiceConversationScreen(
+            repository: _FakeEventRepository([practiceEvent]),
+            groupRepository: _FakeGroupRepository(const []),
+            initialText: text,
+            entryGrant: VoiceConversationEntryGrant.forGuideReplay(replayEntry),
+            guideInitialVoiceEvidence: {
+              'uid': uid,
+              'sessionId': replaySession!,
+              'source': 'stt_service_capture',
+              'operation': 'query',
+              'inputText': text,
+              'captureId': 'replay-query-capture',
+              'operationId': replayEntry.id,
+              'capturedAtUtc': DateTime.now().toUtc().toIso8601String(),
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining(practiceEvent.title), findsOneWidget);
+      expect(current().createdEventId, practiceEvent.id);
+      expect(current().step, GuideStep.changeSpeech);
+      expect(current().run, GuideRun.active);
+      expect(entitlement.peekCalls, 0);
+      expect(entitlement.consumeCalls, 0);
+      expect(find.byType(Dialog), findsNothing);
+      expect(adService.lastVoiceAttempt, same(lastAdAttempt));
+
+      await pumpConversation(tester, const Scaffold());
+      final updatedStart = originalStart.add(const Duration(hours: 1));
+      final updatedEvent = practiceEvent.copyWith(startAt: updatedStart);
+      await guide.dispatch(EditPreviewObserved(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+        targetEventId: practiceEvent.id,
+        requestedStartLocal: updatedStart,
+      ));
+      persistedEvent = updatedEvent;
+      await guide.dispatch(UpdateObserved(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+        operationId: 'replay-update',
+        persistedEvent: updatedEvent,
+      ));
+      await guide.dispatch(SyncChoicePresented(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+      ));
+      await guide.dispatch(SyncChoiceClosed(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+      ));
+      expect(current().step, GuideStep.completed);
+      expect(current().run, GuideRun.terminal);
+
+      entitlement
+        ..peekResult = const VoiceConversationEntitlementPeek(
+          initialRemaining: 0,
+          dailyRemaining: 1,
+          requiresAd: false,
+        )
+        ..consumeResult = const VoiceConversationConsumeResult(
+          source: 'daily_free',
+          initialRemaining: 0,
+          dailyRemaining: 0,
+        );
+      late VoiceConversationEntryGrant normalEntry;
+      await adGate.tryEnterVoiceConversation(
+        context: tester.element(find.byType(Scaffold)),
+        userId: uid,
+        onEnterAllowed: (grant) => normalEntry = grant,
+        onDenied: (reason) => fail('Ordinary voice grant denied: $reason'),
+      );
+      expect(entitlement.peekCalls, 1);
+      expect(entitlement.consumeCalls, 0);
+      await pumpConversation(
+        tester,
+        VoiceConversationScreen(
+          repository: _FakeEventRepository([updatedEvent]),
+          groupRepository: _FakeGroupRepository(const []),
+          initialText: text,
+          entryGrant: normalEntry,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(entitlement.consumedSessionIds, [normalEntry.sessionId]);
+      expect(entitlement.consumeCalls, 1);
+    },
+  );
+
+  for (final resultKind in ['empty', 'other', 'target', 'replay']) {
     testWidgets('guide query anchors $resultKind result safely',
         (tester) async {
       authProvider.setUser('user-1');
       addTearDown(() => authProvider.setUser(null));
-      final guide = _QueryGuide();
+      final replay = resultKind == 'replay';
+      final guide = _QueryGuide(replay: replay);
       final text = '$_voiceFixtureYear년 5월 29일 일정 다 보여 줘';
       final permit = GuidePermit(
         grantId: 'entry-grant',
@@ -678,10 +891,40 @@ void main() {
         operation: GuideOperation.query,
         expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 2)),
       );
+      VoiceConversationEntryGrant entry = const VoiceConversationEntryGrant(
+        sessionId: 'entry',
+        source: EntitlementSource.initialFree,
+        initialRemainingAtGate: 1,
+        dailyRemainingAtGate: 1,
+      );
+      final entitlement = _FakeEntitlementDelegate();
+      if (replay) {
+        final binding = GuideQuotaRuntime.bind(guide, uid: 'user-1');
+        addTearDown(() => GuideQuotaRuntime.unbind(binding));
+        VoiceConversationEntitlementService.instance.delegateForTest =
+            entitlement;
+        addTearDown(() =>
+            VoiceConversationEntitlementService.instance.delegateForTest =
+                null);
+        await pumpConversation(tester, const Scaffold());
+        await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+          context: tester.element(find.byType(Scaffold)),
+          userId: 'user-1',
+          guideCoordinator: guide,
+          guideOperation: GuideOperation.query,
+          onEnterAllowed: (_) => fail('Unexpected ordinary voice grant'),
+          onGuideDenied: (access) => fail('Replay denied: ${access.reasonCode}'),
+          onGuideReplayAllowed: (proof) {
+            entry = VoiceConversationEntryGrant.forGuideReplay(proof);
+          },
+        );
+        expect(entry.guideReplay, isNotNull);
+        expect(find.byType(Dialog), findsNothing);
+      }
       final events = <EventModel>[
         if (resultKind != 'empty')
           EventModel(
-            id: resultKind == 'target' ? 'saved-event' : 'other-event',
+            id: resultKind == 'target' || replay ? 'saved-event' : 'other-event',
             userId: 'user-1',
             title: '조회 일정',
             startAt: planflowLocalDateTimeToUtc(
@@ -696,13 +939,8 @@ void main() {
             repository: _FakeEventRepository(events),
             groupRepository: _FakeGroupRepository(const []),
             initialText: text,
-            entryGrant: const VoiceConversationEntryGrant(
-              sessionId: 'entry',
-              source: EntitlementSource.initialFree,
-              initialRemainingAtGate: 1,
-              dailyRemainingAtGate: 1,
-            ),
-            guideEntryPermit: permit,
+            entryGrant: entry,
+            guideEntryPermit: replay ? null : permit,
             guideInitialVoiceEvidence: {
               'uid': 'user-1',
               'sessionId': 'guide-session',
@@ -710,14 +948,14 @@ void main() {
               'operation': 'query',
               'inputText': text,
               'captureId': 'capture',
-              'operationId': permit.operationId,
+              'operationId': entry.guideReplay?.id ?? permit.operationId,
               'capturedAtUtc': DateTime.now().toUtc().toIso8601String(),
             },
           ),
         ),
       );
       await tester.pumpAndSettle();
-      final retry = resultKind != 'target';
+      final retry = resultKind != 'target' && !replay;
       final retryContext =
           realUiGuideAnchorRegistry.keyFor('query.retry')?.currentContext;
       final resultContext =
@@ -739,6 +977,11 @@ void main() {
           findsOneWidget);
       expect(guide.signals.whereType<QueryObserved>().length, retry ? 0 : 1);
       expect(guide.state.value.step, GuideStep.querySpeech);
+      if (replay) {
+        expect(entitlement.peekCalls, 0);
+        expect(entitlement.consumeCalls, 0);
+        expect(guide.charges, isEmpty);
+      }
       await tester.pumpWidget(const SizedBox.shrink());
       guide.state.dispose();
     });

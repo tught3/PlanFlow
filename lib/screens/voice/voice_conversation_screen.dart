@@ -2,7 +2,7 @@ import 'dart:async';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
-import '../../onboarding/real_ui_guide/guide_host.dart';
+import '../../services/guide_quota_adapter.dart';
 import '../../onboarding/real_ui_guide/guide_route_recovery.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../widgets/guided_anchor.dart';
@@ -294,7 +294,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   bool get _guideMode =>
       _guideSessionEntered ||
       (_guide?.state.value.isInProgress ?? false) ||
-      widget.guideEntryPermit != null;
+      widget.guideEntryPermit != null ||
+      _effectiveEntryGrant?.guideReplay != null ||
+      GuideQuotaRuntime.blocksOrdinaryUse(uid: authProvider.userId);
   bool get _guideCanListen =>
       !_guideMode ||
       (_foreground &&
@@ -327,14 +329,17 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     final operationId =
         'conversation:${s.sessionId}:${s.revision}:${DateTime.now().microsecondsSinceEpoch}';
     if (s.isReplay) {
-      if (_effectiveEntryGrant == null ||
-          (s.step != GuideStep.querySpeech &&
-              s.step != GuideStep.queryResults &&
-              s.step != GuideStep.changeSpeech)) {
+      if (_effectiveEntryGrant?.guideReplay?.allows(
+            coordinator: coordinator,
+            uid: authProvider.userId,
+            kind: GuideChargeKind.voiceConversation,
+            operation: op,
+          ) !=
+          true) {
         return null;
       }
-      // This identifies a UI observation. The ordinary entry grant is the
-      // only entitlement on a replay.
+      // The replay admission is bound to this guide session. Each turn still
+      // gets its own observation and must pass the normal guide evidence checks.
       return (
         uid: s.uid,
         sessionId: s.sessionId!,
@@ -521,6 +526,18 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
+      guideCoordinator: replay == null ? null : _guide,
+      guideOperation: replay?.step == GuideStep.changeSpeech
+          ? GuideOperation.changeTime
+          : GuideOperation.query,
+      onGuideReplayAllowed: (entry) {
+        if (mounted &&
+            authProvider.userId == replay?.uid &&
+            ModalRoute.of(context)?.isCurrent != false &&
+            identical(_guide?.state.value, replay)) {
+          approvedGrant = VoiceConversationEntryGrant.forGuideReplay(entry);
+        }
+      },
       onDenied: (reason) {
         if (mounted) {
           _closeAfterEntryGateDenied(
@@ -532,27 +549,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     );
     final grant = approvedGrant;
     if (grant != null && mounted) {
-      if (replay == null) {
-        _resolvedEntryGrant = grant;
-      } else {
-        bool ownsScreen() =>
-            mounted &&
-            authProvider.userId == replay.uid &&
-            ModalRoute.of(context)?.isCurrent != false;
-        final ready = grant.source == EntitlementSource.adRewarded
-            ? await resumeGuideReplayAfterReward(
-                coordinator: _guide!,
-                captured: replay,
-                stillOwnsScreen: ownsScreen,
-                accountChanges: authProvider,
-              )
-            : replay;
-        if (ready != null &&
-            ownsScreen() &&
-            identical(_guide?.state.value, ready)) {
-          _resolvedEntryGrant = grant;
-        }
-      }
+      _resolvedEntryGrant = grant;
     }
     _completeEntryGrantReadyIfNeeded();
     if (_resolvedEntryGrant == null && !_entryGateDenied) {
@@ -591,6 +588,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 분석 이벤트를 남긴다. 소비 자체가 실패해도(fail-open) 세션 시작
   /// 이벤트는 항상 남긴다.
   Future<void> _consumeEntitlement(VoiceConversationEntryGrant grant) async {
+    if (_guideMode || grant.source == EntitlementSource.guideReplay) return;
     // adFailedFreePass는 광고도 무료횟수도 소진된 상태에서의 예외 통과다
     // (VoiceConversationAdGate.maybeFreePassGrant 참조). 이 경로는 정상적인
     // 무료소진이 아니므로 consume()을 호출하지 않는다.
@@ -619,6 +617,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     EntitlementSource source,
   ) {
     switch (source) {
+      case EntitlementSource.guideReplay:
+        throw StateError('Guide replay does not use ordinary entitlement analytics.');
       case EntitlementSource.initialFree:
         return VoiceConvSessionSource.initialFree;
       case EntitlementSource.dailyFree:
@@ -639,7 +639,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     final s = _guide?.state.value;
     if (e == null || s == null) return false;
     final operationId = s.isReplay && p == null
-        ? widget.entryGrant?.sessionId
+        ? widget.entryGrant?.guideReplay?.id
         : p != null &&
                 !s.isReplay &&
                 p.uid == s.uid &&
@@ -945,7 +945,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     // 정확히 1회만 소비하도록 동기적으로 먼저 플래그를 선점한 뒤, 실제
     // RPC 소비는 블로킹 없이 fire-and-forget으로 진행한다(소비 실패해도
     // 사용자 명령 처리 자체는 막지 않음 — fail-open).
-    final guidePermit = _guideMode ? await _authorizeGuideTurn() : null;
+    final startedInGuide = _guideMode;
+    final guidePermit = startedInGuide ? await _authorizeGuideTurn() : null;
     if (!mounted) return;
     final replay = guidePermit?.replay;
     bool replayCurrent() => replay == null ||
@@ -962,11 +963,12 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         return;
       }
     }
-    if (_guideMode && guidePermit == null) {
+    final guided = startedInGuide || _guideMode;
+    if (guided && guidePermit == null) {
       _showGuideFeedback('전송을 완료하지 못했어요. 잠시 후 다시 눌러 주세요.');
       return;
     }
-    if ((!_guideMode || replay != null) && !_usageConsumedForSession) {
+    if (!guided && !_usageConsumedForSession) {
       _usageConsumedForSession = true;
       final grant = _effectiveEntryGrant;
       if (grant != null) {
