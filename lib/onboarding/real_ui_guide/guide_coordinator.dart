@@ -27,6 +27,15 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
   static const String _qaPendingBindingCode =
       guideQaSavedBindingUnconfirmedCode;
   static const bool _qaAdvanceEnabled = guideQaAdvanceEnabled;
+
+  static DateTime _plainDateTime(DateTime value) =>
+      value.runtimeType == DateTime
+          ? value
+          : DateTime.fromMicrosecondsSinceEpoch(
+              value.microsecondsSinceEpoch,
+              isUtc: value.isUtc,
+            );
+
   int _epoch = 0;
   final Set<String> _inFlight = <String>{};
   @override
@@ -423,9 +432,11 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
             (local.step == GuideStep.syncChoice &&
                 remote.step == GuideStep.updatedDetail));
     final expectedStart = boundPreview && remote.expectedStartAt != null
-        ? remote.expectedStartAt!.toUtc()
+        ? _plainDateTime(remote.expectedStartAt!.toUtc())
         : keepLocalPreview
-            ? local.expectedUpdatedStartLocal?.toUtc()
+            ? local.expectedUpdatedStartLocal == null
+                ? null
+                : _plainDateTime(local.expectedUpdatedStartLocal!.toUtc())
             : null;
     return local.copyWith(
         sessionId: remote.sessionId,
@@ -527,8 +538,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
                 run: GuideRun.active,
                 createdEventId: persistedEvent.id,
                 savedCreateOperationId: operationId,
-                originalStartLocal: persistedEvent.startAt,
-                savedLocalDate: persistedEvent.startAt,
+                originalStartLocal: _plainDateTime(persistedEvent.startAt!),
+                savedLocalDate: _plainDateTime(persistedEvent.startAt!),
                 dateTimeZone: remote.dateTimeZone,
                 serverRevision: remote.serverRevision);
           }
@@ -557,8 +568,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
                 run: GuideRun.active,
                 createdEventId: persistedEvent.id,
                 savedCreateOperationId: operationId,
-                originalStartLocal: persistedEvent.startAt,
-                savedLocalDate: persistedEvent.startAt,
+                originalStartLocal: _plainDateTime(persistedEvent.startAt!),
+                savedLocalDate: _plainDateTime(persistedEvent.startAt!),
                 errorCode: _qaPendingBindingCode,
                 mayListenContinuously: false);
           }
@@ -634,18 +645,19 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
             :final targetEventId,
             :final requestedStartLocal
           ):
+          final requestedStart = _plainDateTime(requestedStartLocal);
           if (before.step == GuideStep.changeSpeech &&
               targetEventId == before.createdEventId &&
-              requestedStartLocal != before.originalStartLocal) {
+              requestedStart != before.originalStartLocal) {
             final r = await _backend.advance(
                 snapshot: before,
                 action: GuideBackendAction.editPreview,
                 requestId: 'preview:${before.sessionId}:${before.revision}',
-                expectedStartLocal: requestedStartLocal);
+                expectedStartLocal: requestedStart);
             if (epoch == _epoch) {
               next = before.copyWith(
                   step: GuideStep.editPreview,
-                  expectedUpdatedStartLocal: requestedStartLocal,
+                  expectedUpdatedStartLocal: requestedStart,
                   serverRevision: r.serverRevision,
                   mayListenContinuously: false);
             }

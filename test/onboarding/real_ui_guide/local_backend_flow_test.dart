@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
@@ -112,6 +113,72 @@ void main() {
     expect(flow.state.sessionId, isNot(firstReplay));
     expect(flow.state.isReplay, isTrue);
     expect(flow.state.step, GuideStep.homeMic);
+  });
+
+  test('two local runs save converted edit times without a cold resume',
+      () async {
+    final flow = _Flow();
+    await flow.reopen(GuideStep.intro);
+
+    Future<void> completeRun(EventModel event, Duration shift) async {
+      flow.boundEvent = event;
+      await flow.createSpeech();
+      await flow.correctAndSave();
+      await flow.saveObserved(event: event);
+      await flow.detailAcknowledged(event: event);
+      await flow.queryMicTapped();
+      await flow.queryObserved(event: event);
+      expect(flow.state.step, GuideStep.changeSpeech);
+
+      final expected = event.startAt!.add(shift);
+      final requested = planflowLocalDateTimeToUtc(planflowLocal(expected));
+      final preview = await flow.editPreview(event: event, startAt: requested);
+      expect(preview.run, GuideRun.active);
+      expect(preview.step, GuideStep.editPreview);
+      final previewStart = preview.expectedUpdatedStartLocal!;
+      expect(previewStart == expected, isTrue);
+      expect(expected == previewStart, isTrue);
+
+      final confirmed = await flow.dispatch(EditConfirmed(
+        uid: _uid,
+        sessionId: preview.sessionId,
+        expectedRevision: preview.revision,
+        operationId: 'confirm-${event.id}',
+        confirmedStartLocal: expected,
+      ));
+      expect(confirmed.step, GuideStep.editPreview);
+      expect(confirmed.revision, preview.revision + 1);
+      expect(confirmed.serverRevision, preview.serverRevision);
+
+      final updated = event.copyWith(startAt: expected);
+      flow.boundEvent = updated;
+      await flow.updateObserved(event: updated);
+      expect(flow.state.step, GuideStep.updatedDetail);
+      await flow.dispatch(SyncChoicePresented(
+        uid: _uid,
+        sessionId: flow.state.sessionId,
+        expectedRevision: flow.state.revision,
+      ));
+      await flow.dispatch(SyncChoiceClosed(
+        uid: _uid,
+        sessionId: flow.state.sessionId,
+        expectedRevision: flow.state.revision,
+      ));
+      expect(flow.state.step, GuideStep.completed);
+      expect(flow.state.run, GuideRun.terminal);
+    }
+
+    await completeRun(_event(), const Duration(hours: 1));
+    final firstSessionId = flow.state.sessionId;
+    expect(await flow.coordinator.restartCompletedGuide(uid: _uid), isTrue);
+    expect(flow.state.step, GuideStep.homeMic);
+    expect(flow.state.isReplay, isTrue);
+    expect(flow.state.sessionId, isNot(firstSessionId));
+    expect(flow.state.createdEventId, isNull);
+    await completeRun(
+      _event().copyWith(id: 'replay-event'),
+      const Duration(hours: 3),
+    );
   });
 
   for (final step in [GuideStep.createSpeech, GuideStep.correctAndSave]) {
@@ -335,6 +402,51 @@ void main() {
           List.filled(ineligibleEvents.length + 3, (_uid, _eventId)));
     });
   }
+
+  // banned-ok: Fixed instants on the same Korean date across UTC midnight.
+  final lateMorning = DateTime.utc(2031, 6, 12, 0, 30);
+  final earlyMorning = lateMorning.subtract(const Duration(hours: 1));
+  const koreaOffset = Duration(hours: 9);
+  test(
+    'edit preview accepts 09:30 to 08:30 on the same Korean date',
+    () async {
+      final flow = _Flow();
+      await flow.reopen(GuideStep.intro);
+      final event = _event(startAt: lateMorning);
+      flow.boundEvent = event;
+      await flow.createSpeech();
+      await flow.correctAndSave();
+      await flow.saveObserved(event: event);
+      await flow.detailAcknowledged(event: event);
+      await flow.queryMicTapped();
+      await flow.queryObserved(event: event);
+      flow.boundEventReads.clear();
+
+      final before = flow.state;
+      final savedWallTime = lateMorning.toLocal();
+      final earlyWallTime = earlyMorning.toLocal();
+      expect(savedWallTime.hour, 9);
+      expect(earlyWallTime.hour, 8);
+      expect(savedWallTime.day, earlyWallTime.day);
+      expect(earlyMorning.day, isNot(lateMorning.day));
+      final requested = planflowSeoulDateTimeToUtc(earlyWallTime);
+      final preview = await flow.backend.advance(
+        snapshot: before,
+        action: GuideBackendAction.editPreview,
+        requestId: 'same-korean-date-preview',
+        expectedStartLocal: requested,
+      );
+
+      expect(preview.step, GuideStep.editPreview);
+      expect(preview.serverRevision, before.serverRevision + 1);
+      expect(preview.expectedStartAt, earlyMorning);
+      expect(flow.boundEventReads, [(_uid, _eventId)]);
+    },
+    skip: lateMorning.toLocal().timeZoneOffset == koreaOffset &&
+            earlyMorning.toLocal().timeZoneOffset == koreaOffset
+        ? false
+        : 'Backend date checking uses the device local timezone.',
+  );
 
   test('edit preview rejects a new calendar date before advancing', () async {
     final flow = _Flow();
@@ -625,11 +737,12 @@ class _Flow {
         operationId: operationId,
       ));
 
-  Future<GuideSnapshot> detailAcknowledged() => dispatch(DetailObserved(
+  Future<GuideSnapshot> detailAcknowledged({EventModel? event}) =>
+      dispatch(DetailObserved(
         uid: _uid,
         sessionId: state.sessionId,
         expectedRevision: state.revision,
-        persistedEvent: _event(),
+        persistedEvent: event ?? _event(),
         preparationResolved: false,
         departureResolved: false,
         setupHelpAcknowledged: true,
@@ -641,14 +754,15 @@ class _Flow {
         expectedRevision: state.revision,
       ));
 
-  Future<GuideSnapshot> queryObserved() => dispatch(QueryObserved(
+  Future<GuideSnapshot> queryObserved({EventModel? event}) =>
+      dispatch(QueryObserved(
         uid: _uid,
         sessionId: state.sessionId,
         expectedRevision: state.revision,
         operationId: 'query-result',
         binding: GuideVisibleBinding(
-          ordered: [_event()],
-          targetEventId: _eventId,
+          ordered: [event ?? _event()],
+          targetEventId: event?.id ?? _eventId,
           firstIsTarget: true,
           guideRevision: state.revision,
           missingTarget: false,
@@ -657,20 +771,22 @@ class _Flow {
         ),
       ));
 
-  Future<GuideSnapshot> editPreview() => dispatch(EditPreviewObserved(
+  Future<GuideSnapshot> editPreview({EventModel? event, DateTime? startAt}) =>
+      dispatch(EditPreviewObserved(
         uid: _uid,
         sessionId: state.sessionId,
         expectedRevision: state.revision,
-        targetEventId: _eventId,
-        requestedStartLocal: _updatedAt,
+        targetEventId: event?.id ?? _eventId,
+        requestedStartLocal: startAt ?? _updatedAt,
       ));
 
-  Future<GuideSnapshot> updateObserved() => dispatch(UpdateObserved(
+  Future<GuideSnapshot> updateObserved({EventModel? event}) =>
+      dispatch(UpdateObserved(
         uid: _uid,
         sessionId: state.sessionId,
         expectedRevision: state.revision,
         operationId: 'update-event',
-        persistedEvent: _event(startAt: _updatedAt),
+        persistedEvent: event ?? _event(startAt: _updatedAt),
       ));
 
   GuideChargeContext context({

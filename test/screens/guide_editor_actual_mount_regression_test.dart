@@ -10,12 +10,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/models/pre_action_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_local_backend.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/providers/auth_provider.dart';
@@ -23,6 +25,7 @@ import 'package:planflow/screens/event/event_detail_screen.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 Session _editorTestSession(String uid, {required bool expired}) {
@@ -137,59 +140,68 @@ Future<RealUiGuideCoordinator> _bootAtEditPreview(
       createdEventId: 'created-1');
   final c = RealUiGuideCoordinator(
       backend: backend, progress: progress, version: 'real_ui_v1');
-  var s = await c.start(uid: 'u');
-  s = await c.dispatch(IntroFinished(uid: 'u', expectedRevision: s.revision));
-  s = await c.dispatch(
-      HomeMicTapped(uid: 'u', sessionId: 's', expectedRevision: s.revision));
-  s = await c.dispatch(
-      CaptureStarted(uid: 'u', sessionId: 's', expectedRevision: s.revision));
-  // CaptureStarted is a recognizer-open no-op; SaveObserved is only honoured
-  // from correctAndSave, so the fixture must confirm the parse first.
-  s = await c.dispatch(ParseConfirmed(
-      uid: 'u',
-      sessionId: 's',
-      expectedRevision: s.revision,
-      operationId: 'create-parse'));
+  await c.start(uid: 'u');
   final saved = EventModel(
       id: 'created-1',
       userId: 'u',
       title: 'real',
       // banned-ok: Fixed appointment fixture for the editor mount assertion.
       startAt: DateTime.utc(2026, 10, 20, 4));
+  await _advanceToEditPreview(c, saved, expected);
+  return c;
+}
+
+Future<GuideSnapshot> _advanceToEditPreview(
+    RealUiGuideCoordinator c, EventModel saved, DateTime expected) async {
+  var s = c.state.value;
+  final uid = s.uid;
+  final sessionId = s.sessionId;
+  if (s.step == GuideStep.intro) {
+    s = await c.dispatch(IntroFinished(uid: uid, expectedRevision: s.revision));
+  }
+  s = await c.dispatch(HomeMicTapped(
+      uid: uid, sessionId: sessionId, expectedRevision: s.revision));
+  s = await c.dispatch(CaptureStarted(
+      uid: uid, sessionId: sessionId, expectedRevision: s.revision));
+  // CaptureStarted is a recognizer-open no-op; SaveObserved is only honoured
+  // from correctAndSave, so the fixture must confirm the parse first.
+  s = await c.dispatch(ParseConfirmed(
+      uid: uid,
+      sessionId: sessionId,
+      expectedRevision: s.revision,
+      operationId: 'create-parse'));
   s = await c.dispatch(SaveObserved(
-      uid: 'u',
-      sessionId: 's',
+      uid: uid,
+      sessionId: sessionId,
       expectedRevision: s.revision,
       persistedEvent: saved,
       operationId: 'create-op'));
-  final loaded = saved;
   s = await c.dispatch(DetailObserved(
-      uid: 'u',
-      sessionId: 's',
+      uid: uid,
+      sessionId: sessionId,
       expectedRevision: s.revision,
-      persistedEvent: loaded,
+      persistedEvent: saved,
       preparationResolved: false,
       departureResolved: false,
       setupHelpAcknowledged: true));
   // Drive query → changeSpeech → editPreview using the contract transitions.
-  s = await c.dispatch(
-      QueryMicTapped(uid: 'u', sessionId: 's', expectedRevision: s.revision));
+  s = await c.dispatch(QueryMicTapped(
+      uid: uid, sessionId: sessionId, expectedRevision: s.revision));
   // Provide a binding with the target first; this is what the conversation
   // screen would have produced.
-  final binding = GuideResultOrder.bind(guide: s, results: [loaded]);
+  final binding = GuideResultOrder.bind(guide: s, results: [saved]);
   s = await c.dispatch(QueryObserved(
-      uid: 'u',
-      sessionId: 's',
+      uid: uid,
+      sessionId: sessionId,
       expectedRevision: s.revision,
       binding: binding,
       operationId: 'query-op'));
-  s = await c.dispatch(EditPreviewObserved(
-      uid: 'u',
-      sessionId: 's',
+  return c.dispatch(EditPreviewObserved(
+      uid: uid,
+      sessionId: sessionId,
       expectedRevision: s.revision,
-      targetEventId: 'created-1',
+      targetEventId: saved.id,
       requestedStartLocal: expected));
-  return c;
 }
 
 class _EmptySmartPreparationAlarmService extends SmartPreparationAlarmService {
@@ -326,6 +338,9 @@ void main() {
         reason: 'CalendarStyleEventEditor must mount under the guide anchor');
     final editor = tester.widget<CalendarStyleEventEditor>(editorFinder);
     expect(_sameWallFields(editor.startAt, expectedWallTime), isTrue);
+    expect(planflowLocalDateTimeToUtc(editor.startAt), requested,
+        reason:
+            'the displayed wall time must round-trip to the preview UTC instant');
     expect(editor.endAt, isNotNull,
         reason: 'editor.endAt must default to start+1h when no event end');
     expect(
@@ -574,6 +589,141 @@ void main() {
     expect(backend.previewCalls, previewBefore);
     expect(backend.verifiedCalls, verifiedBefore);
     expect(repo.writes, 0);
+  });
+
+  testWidgets('both guide runs save once and complete without remounting the app',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final progress = LocalGuideProgressStore();
+    final repo = _CountingRepo();
+    final backend = LocalGuideBackend(
+      progress: progress,
+      fetchBoundEvent: (uid, id) => repo.fetchEvent(id, userId: uid),
+    );
+    final coordinator = RealUiGuideCoordinator(
+      backend: backend,
+      progress: progress,
+      version: realUiGuideVersion,
+    );
+    const uid = 'u';
+    authProvider.setUser(uid);
+    addTearDown(() => authProvider.setUser(null));
+    final session = _editorTestSession(uid, expired: false);
+    final router = GoRouter(
+      initialLocation: AppRoutes.home,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (_, __) => const Scaffold(),
+        ),
+        GoRoute(
+          path: '/edit',
+          builder: (_, state) => EventEditScreen(
+            event: repo.current!,
+            eventId: repo.current!.id,
+            eventRepository: repo,
+            initialGuideStartLocal: state.extra as DateTime,
+            readGuideEditSession: () => session,
+          ),
+        ),
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:eventId',
+          builder: (_, state) => EventDetailScreen(
+            event: state.extra as EventModel,
+            eventId: state.pathParameters['eventId'],
+            eventRepository: repo,
+            smartPreparationAlarmService:
+                const _EmptySmartPreparationAlarmService(),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    final started = await coordinator.start(uid: uid);
+    expect(started.step, GuideStep.intro);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [realUiGuideCoordinatorProvider.overrideWithValue(coordinator)],
+      child: GuideScope(
+        coordinator: coordinator,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    Future<void> completeRun(int round, Duration shift) async {
+      final event = EventModel(
+        id: 'event-$round',
+        userId: uid,
+        title: 'Practice event $round',
+        // banned-ok: Fixed local noon keeps both instants on one device day.
+        startAt: DateTime(2031, 6, 10 + round, 12).toUtc(),
+      );
+      repo.current = event;
+      final expected = event.startAt!.add(shift);
+      final previewStart =
+          planflowLocalDateTimeToUtc(planflowLocal(expected)).toUtc();
+      final preview =
+          await _advanceToEditPreview(coordinator, event, previewStart);
+      expect(preview.step, GuideStep.editPreview);
+      expect(preview.createdEventId, event.id);
+
+      router.go('/edit', extra: previewStart);
+      await tester.pumpAndSettle();
+      expect(find.byType(EventEditScreen), findsOneWidget);
+      expect(repo.writes, round - 1);
+
+      final transitions = <GuideSnapshot>[];
+      void recordTransition() => transitions.add(coordinator.state.value);
+      coordinator.state.addListener(recordTransition);
+      try {
+        await tester.tap(find.text('저장'));
+        await tester.pumpAndSettle();
+      } finally {
+        coordinator.state.removeListener(recordTransition);
+      }
+      expect(tester.takeException(), isNull);
+      expect(repo.writes, round);
+      expect(repo.current?.id, event.id);
+      expect(repo.current?.startAt, expected);
+      expect(find.byType(EventDetailScreen), findsOneWidget);
+      expect(find.text('안내를 다시 이어간 뒤 저장해 주세요.'), findsNothing);
+      expect(
+        transitions.map((s) => (s.step, s.revision)).toList(),
+        [
+          (GuideStep.editPreview, preview.revision + 1),
+          (GuideStep.updatedDetail, preview.revision + 2),
+        ],
+      );
+      final updated = coordinator.state.value;
+      expect(updated.step, GuideStep.updatedDetail);
+      final actual = updated.expectedUpdatedStartLocal!;
+      expect(actual.runtimeType, DateTime);
+      expect(actual == expected, isTrue);
+      expect(expected == actual, isTrue);
+
+      await tester.tap(find.text('변경된 시간 확인'));
+      await tester.pumpAndSettle();
+      final sync = coordinator.state.value;
+      expect(sync.step, GuideStep.syncChoice);
+      final completed = await coordinator.dispatch(SyncChoiceClosed(
+        uid: uid,
+        sessionId: sync.sessionId,
+        expectedRevision: sync.revision,
+      ));
+      expect(completed.step, GuideStep.completed);
+      expect(completed.run, GuideRun.terminal);
+      await tester.pumpAndSettle();
+    }
+
+    await completeRun(1, const Duration(hours: 1));
+    final firstSessionId = coordinator.state.value.sessionId;
+    expect(await coordinator.restartCompletedGuide(uid: uid), isTrue);
+    final replay = coordinator.state.value;
+    expect(replay.isReplay, isTrue);
+    expect(replay.step, GuideStep.homeMic);
+    expect(replay.sessionId, isNot(firstSessionId));
+    await completeRun(2, const Duration(hours: 3));
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('Save writes once and advances only after detail readback',

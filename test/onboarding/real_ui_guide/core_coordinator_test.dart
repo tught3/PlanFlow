@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 class FakeProgress implements GuideProgressStore {
   GuideSnapshot? value;
@@ -321,6 +323,63 @@ void main() {
     expect(await c.dispatch(close), same(completed));
     expect(finishRequests, ['finish:s:completed']);
     finishReply.complete();
+  });
+
+  test('edit preview normalizes UTC and Seoul TZDateTime values', () async {
+    const version = 'real_ui_v1';
+    ensureTimeZonesInitialized();
+    final day = DateTime.utc(2031, 6, 12);
+    final seoul = tz.getLocation('Asia/Seoul');
+    for (final requested in [
+      tz.TZDateTime.utc(day.year, day.month, day.day, 8, 0, 0, 0, 123),
+      tz.TZDateTime(seoul, day.year, day.month, day.day, 17, 0, 0, 0, 123),
+    ]) {
+      final backend = FakeBackend()
+        ..current = const GuideBackendState(
+          sessionId: 's',
+          serverRevision: 3,
+          step: GuideStep.changeSpeech,
+          createdEventId: 'bound',
+        );
+      final progress = FakeProgress()
+        ..value = GuideSnapshot(
+          uid: 'u',
+          version: version,
+          sessionId: 's',
+          revision: 4,
+          serverRevision: 3,
+          step: GuideStep.changeSpeech,
+          run: GuideRun.active,
+          createdEventId: 'bound',
+          originalStartLocal: day,
+        );
+      final coordinator = RealUiGuideCoordinator(
+        backend: backend,
+        progress: progress,
+        version: version,
+      );
+      final ready = await coordinator.start(uid: 'u');
+
+      final preview = await coordinator.dispatch(EditPreviewObserved(
+        uid: 'u',
+        sessionId: ready.sessionId,
+        expectedRevision: ready.revision,
+        targetEventId: 'bound',
+        requestedStartLocal: requested,
+      ));
+
+      expect(preview.step, GuideStep.editPreview);
+      final actual = preview.expectedUpdatedStartLocal!;
+      final expected = DateTime.fromMicrosecondsSinceEpoch(
+        requested.microsecondsSinceEpoch,
+        isUtc: requested.isUtc,
+      );
+      expect(actual.runtimeType, DateTime);
+      expect(actual.isUtc, requested.isUtc);
+      expect(actual.microsecondsSinceEpoch, requested.microsecondsSinceEpoch);
+      expect(actual == expected, isTrue);
+      expect(expected == actual, isTrue);
+    }
   });
 
   test(
