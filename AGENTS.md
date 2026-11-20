@@ -10,14 +10,14 @@
 - 프로젝트 노트 (PlanFlow): `03_Projects/FLUXSTUDIO/planflow.md`
 
 ## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 8개). 작업과 관련 있어 보이면 열람할 것.
+전체 목록: `04_Memory/Preference/` (status: confirmed, 총 11개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
-- **no_visible_console_windows**: 사용자가 일부러 띄운 창을 제외한 모든 프로세스는 화면에 보이면 안 된다. 백그라운드·예약·스크립트 실행이 검은 콘솔 창(깜빡임 포함)을 만드는 것은 결함이다. (`04_Memory/Preference/no_visible_console_windows.md`)
-- **instruction_md_auto_optimize**: 모든 세션·모든 도구에서 AGENTS.md·CLAUDE.md·preference 등 지시 문서를 추가/변경/삭제할 때, CEO에게 요청받지 않아도 자동으로 최적화... (`04_Memory/Preference/instruction_md_auto_optimize.md`)
-- **auto-finish-after-each-task**: 모든 프로젝트·모든 세션·모든 코딩 프로그램에서, 작업 단위가 실제로 완료될 때마다 "마무리해" 지시 없이 자동으로 마무리 시퀀스를 실행한다. 항상, 어디서든,... (`04_Memory/Preference/auto-finish-after-each-task.md`)
-- **humanlike-cadence-naver-actions**: Naver 계열 액션은 사람이 하는 것처럼 일정하고 인간적인 cadence로 실행해야 한다. 기계적인 high-throughput 패턴 (예: sub-1초/요청,... (`04_Memory/Preference/humanlike-cadence-naver-actions.md`)
-- **pro-main-relay-pipeline**: opencode 메인 세션(사용자 창) 진입 모델은 MiniMax-M3다 (OC-P14, 2026-08-16). 진입 에이전트(pro-main)는 사용자 지시를... (`04_Memory/Preference/pro-main-relay-pipeline.md`)
+- **보고양식맞춰서_완료보고해줘**: 모든 구현 작업이 끝나면 사용자가 요청한 항목별 결과를 빠짐없이 대조한 완료보고를 즉시 제공한다. 보고서는 한 번에 복사해 붙여넣기 쉽도록 하나의 자기완결형 Ma... (`04_Memory/Preference/보고양식맞춰서_완료보고해줘.md`)
+- **worker-watchdog-policy**: 백그라운드 worker가 예상 시간을 초과하면 무조건 확인한다. 단순 대기 금지. (`04_Memory/Preference/worker-watchdog-policy.md`)
+- **flux_routing_tiers_detail**:  (`04_Memory/Preference/flux_routing_tiers_detail.md`)
+- **auto-finish-after-main-merge**:  (`04_Memory/Preference/auto-finish-after-main-merge.md`)
+- **flux_gates_detail**:  (`04_Memory/Preference/flux_gates_detail.md`)
 
 <!-- [WIKI:END] -->
 
