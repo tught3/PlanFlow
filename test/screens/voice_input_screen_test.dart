@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,9 +9,11 @@ import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/services/stt_service.dart';
+import 'package:planflow/services/guide_quota_adapter.dart';
 import 'package:planflow/services/voice_command_analysis_service.dart';
 import 'package:planflow/services/voice_conversation_ad_gate.dart';
 import 'package:planflow/services/voice_conversation_entitlement.dart';
+import 'package:planflow/screens/voice/confirm_screen.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/screens/voice/voice_input_screen.dart';
 
@@ -307,6 +310,10 @@ class _DelayedCancelSttService extends _FakeSttService {
 }
 
 class _CapturePhaseCoordinator implements GuideCoordinator {
+  _CapturePhaseCoordinator({this.parseGate});
+
+  final Future<void>? parseGate;
+
   @override
   final ValueNotifier<GuideSnapshot> state = ValueNotifier<GuideSnapshot>(
       const GuideSnapshot(
@@ -323,6 +330,8 @@ class _CapturePhaseCoordinator implements GuideCoordinator {
     if (signal is ParseConfirmed &&
         signal.expectedRevision == state.value.revision) {
       parses++;
+      final gate = parseGate;
+      if (gate != null) await gate;
       state.value = state.value.copyWith(
           step: GuideStep.correctAndSave, revision: state.value.revision + 1);
     }
@@ -333,16 +342,83 @@ class _CapturePhaseCoordinator implements GuideCoordinator {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _QueryPhaseCoordinator implements GuideCoordinator {
+  @override
+  final ValueNotifier<GuideSnapshot> state = ValueNotifier<GuideSnapshot>(
+    const GuideSnapshot(
+      uid: 'user-1',
+      version: 'real_ui_v1',
+      sessionId: 'query-session',
+      revision: 1,
+      serverRevision: 1,
+      step: GuideStep.querySpeech,
+      run: GuideRun.active,
+      createdEventId: 'saved-event',
+    ),
+  );
+  bool deny = false;
+  int authorizeCalls = 0;
+  GuideChargeContext? lastCharge;
+  final List<String> operationIds = <String>[];
+
+  @override
+  Future<GuideSnapshot> dispatch(GuideSignal signal) async => state.value;
+
+  @override
+  Future<GuideAccess> authorize({
+    required GuideChargeContext context,
+    required String operationId,
+  }) async {
+    authorizeCalls++;
+    operationIds.add(operationId);
+    lastCharge = context;
+    if (deny) {
+      return const GuideAccess(
+        status: GuideAccessStatus.denied,
+        reasonCode: 'retry_later',
+      );
+    }
+    return GuideAccess(
+      status: GuideAccessStatus.granted,
+      permit: GuidePermit(
+        grantId: 'grant',
+        uid: context.uid,
+        sessionId: context.sessionId,
+        operationId: operationId,
+        kind: context.kind,
+        operation: context.operation,
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 2)),
+      ),
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
-  for (final mode in ['done', 'auto', 'typed', 'stale', 'manual']) {
+  for (final mode in [
+    'done',
+    'denied',
+    'cancel',
+    'auto',
+    'typed',
+    'stale',
+    'manual',
+  ]) {
     testWidgets('guide capture phase: $mode', (tester) async {
-      final coordinator = _CapturePhaseCoordinator();
-      final stt = _FakeSttService();
+      final opensPendingConfirm = mode == 'done' || mode == 'denied';
+      final parseGate = opensPendingConfirm ? Completer<void>() : null;
+      final coordinator =
+          _CapturePhaseCoordinator(parseGate: parseGate?.future);
+      final delayedCleanup = mode == 'cancel' ? _DelayedCancelSttService() : null;
+      final stt = delayedCleanup ?? _FakeSttService();
       final analysis = _FakeDraftAnalysisService(parsedSchedule: {
         'title': '내일 오전 10시 정장집 방문',
         'parse_failed': false,
       });
       var navigations = 0;
+      PendingGuideConfirm? pendingConfirm;
       final router = GoRouter(initialLocation: AppRoutes.voice, routes: [
         GoRoute(
             path: AppRoutes.voice,
@@ -352,8 +428,16 @@ void main() {
                 voiceAnalysisService: analysis)),
         GoRoute(
             path: AppRoutes.confirm,
-            builder: (_, __) {
+            builder: (_, state) {
               navigations++;
+              final extra = state.extra;
+              if (extra is PendingGuideConfirm) {
+                pendingConfirm = extra;
+                return ConfirmScreen(
+                  parsedSchedule: extra.parsedSchedule,
+                  pendingGuideConfirm: extra,
+                );
+              }
               expect(coordinator.state.value.step, GuideStep.correctAndSave);
               return const Text('accepted-confirm');
             }),
@@ -392,9 +476,77 @@ void main() {
           await tester.tap(find.text('완료'));
         }
       }
+      if (delayedCleanup != null) {
+        // Cancel before the coordinator can dispatch. Late native cleanup
+        // must leave the captured guide revision and transcript reusable.
+        final untilCancel = coordinator.state.value;
+        for (var i = 0; i < 60 && delayedCleanup.cancelCalls == 0; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(delayedCleanup.cancelCalls, greaterThan(0));
+        expect(find.byType(ConfirmScreen), findsOneWidget);
+        expect(coordinator.parses, 0);
+        final abandonedDraft = pendingConfirm!.parsedSchedule;
+        await tester.tap(find.byTooltip('취소'));
+        await tester.pump();
+        delayedCleanup.releaseNativeCleanup();
+        await tester.pumpAndSettle();
+        expect(coordinator.state.value, same(untilCancel));
+        expect(coordinator.parses, 0);
+        expect(abandonedDraft['parse_attempt_id'], isNull);
+        expect(find.byType(VoiceInputScreen), findsOneWidget);
+        await tester.tap(find.byKey(
+            const ValueKey('voice-input-confirm-current-text-button')));
+      }
+      if (parseGate != null) {
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(coordinator.parses, 1);
+        expect(navigations, 1);
+        expect(find.byType(VoiceInputScreen), findsNothing);
+        expect(find.byType(ConfirmScreen), findsOneWidget);
+        expect(find.text('일정 내용을 준비하고 있어요.'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        expect(find.text('일정 저장'), findsNothing);
+        final cancel = find.widgetWithIcon(IconButton, Icons.arrow_back);
+        expect(tester.widget<IconButton>(cancel).onPressed, isNull);
+        await tester.binding.handlePopRoute();
+        await tester.pump();
+        expect(find.byType(ConfirmScreen), findsOneWidget);
+        expect(coordinator.parses, 1);
+        final draft = pendingConfirm!.parsedSchedule;
+        expect(draft.containsKey('parse_attempt_id'), isFalse);
+        if (mode == 'denied') {
+          coordinator.state.value =
+              coordinator.state.value.copyWith(sessionId: 'changed-session');
+        } else {
+          // Use a deterministic draft so the editor can open offline.
+          draft['parse_pending'] = false;
+        }
+        parseGate.complete();
+      }
       await tester.pumpAndSettle();
       expect(coordinator.parses, mode == 'typed' || mode == 'stale' ? 0 : 1);
-      expect(navigations, mode == 'typed' || mode == 'stale' ? 0 : 1);
+      expect(
+        navigations,
+        switch (mode) {
+          'typed' || 'stale' => 0,
+          'cancel' => 2,
+          _ => 1,
+        },
+      );
+      if (mode == 'done') {
+        expect(find.byType(ConfirmScreen), findsOneWidget);
+        expect(find.byType(TextField), findsWidgets);
+        expect(pendingConfirm!.parsedSchedule['parse_attempt_id'], isNotNull);
+      } else if (mode == 'denied') {
+        expect(find.byType(ConfirmScreen), findsNothing);
+        expect(find.byType(VoiceInputScreen), findsOneWidget);
+        expect(pendingConfirm!.parsedSchedule['parse_attempt_id'], isNull);
+      } else if (mode == 'cancel') {
+        expect(find.text('accepted-confirm'), findsOneWidget);
+      }
       await tester.pumpWidget(const SizedBox.shrink());
       router.dispose();
       coordinator.state.dispose();
@@ -474,6 +626,7 @@ void main() {
     // 게이트 delegate는 static 싱글턴(VoiceConversationAdGate.instance)에
     // 걸리므로, 한 테스트가 설정한 delegate가 다음 테스트로 새는 것을 막는다.
     VoiceConversationAdGate.instance.delegateForTest = null;
+    GuideQuotaRuntime.reset();
   });
 
   testWidgets('위젯 자동 시작은 초기 무음 실패 시 한 번 다시 시도한다', (tester) async {
@@ -2658,6 +2811,76 @@ void main() {
     expect(delegate.capturedUserId, 'user-1');
     expect(find.textContaining('음성 대화:'), findsOneWidget);
   });
+
+  for (final denyFirst in [false, true]) {
+    testWidgets(
+        '4/7 현재 내용으로 입력은 조회 화면으로 이동하고 거부 후 같은 내용을 재시도한다 '
+        '(deny first: $denyFirst)', (tester) async {
+      final coordinator = _QueryPhaseCoordinator()..deny = denyFirst;
+      GuideQuotaRuntime.bind(coordinator, uid: 'user-1');
+      Map<String, dynamic>? routeExtra;
+      final router = GoRouter(
+        initialLocation: AppRoutes.voice,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voice,
+            builder: (_, __) => VoiceInputScreen(
+              autoStartOverride: false,
+              userIdOverride: 'user-1',
+              sttService: _FakeSttService(),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.voiceConversation,
+            builder: (_, state) {
+              routeExtra = state.extra as Map<String, dynamic>;
+              return const Text('guide query opened');
+            },
+          ),
+        ],
+      );
+      await tester.pumpWidget(GuideScope(
+        coordinator: coordinator,
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      const query = '내일 일정 확인해줘';
+      await tester.enterText(find.byType(TextField), query);
+      await tester.pumpAndSettle();
+      final button =
+          find.byKey(const ValueKey('voice-input-confirm-current-text-button'));
+      final target = find.byKey(realUiGuideAnchorRegistry.keyFor('voice.start')!);
+      expect(tester.getRect(target),
+          tester.getRect(find.byKey(const ValueKey('voice-primary-button'))));
+      expect(tester.getRect(target).overlaps(tester.getRect(button)), isFalse);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      if (denyFirst) {
+        expect(find.text('안내를 계속하지 못했어요. 잠시 후 다시 시도해 주세요.'), findsOneWidget);
+        expect(find.text('guide query opened'), findsNothing);
+        expect(
+            tester.widget<TextField>(find.byType(TextField)).controller?.text,
+            query);
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        coordinator.deny = false;
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('guide query opened'), findsOneWidget);
+      expect(routeExtra?['initial_text'], query);
+      expect(routeExtra?['guideEntryPermit'], isA<GuidePermit>());
+      expect(routeExtra?.containsKey('guideInitialVoiceEvidence'), isFalse);
+      expect(coordinator.lastCharge?.phase, GuideStep.querySpeech);
+      expect(coordinator.authorizeCalls, denyFirst ? 2 : 1);
+      if (denyFirst) {
+        expect(coordinator.operationIds[0], isNot(coordinator.operationIds[1]));
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      router.dispose();
+      coordinator.state.dispose();
+    });
+  }
 
   testWidgets('게이트 통과 시 원래 조회 원문이 정확히 그대로 전달된다', (tester) async {
     VoiceConversationAdGate.instance.delegateForTest =

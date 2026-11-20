@@ -1,9 +1,79 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/local_time.dart';
 import '../../core/recurrence_expansion.dart' show expandRecurringEvent;
+import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../models/event_model.dart';
+
+/// Orders background work for a tutorial event while its routes change.
+abstract final class GuideEventSaveFollowUps {
+  static final _pending = <(String, String), Future<void>>{};
+  static final _deferredExports = <(String, String, String)>{};
+
+  static Future<void> enqueue(
+    EventModel event,
+    Future<void> Function() work,
+  ) {
+    final key = (event.userId, event.id);
+    final previous = _pending[key] ?? Future<void>.value();
+    late final Future<void> next;
+    next = previous.then((_) => work()).catchError((Object error) {
+      debugPrint('Guide event post-save work failed: ${error.runtimeType}');
+    }).whenComplete(() {
+      if (identical(_pending[key], next)) _pending.remove(key);
+    });
+    return _pending[key] = next;
+  }
+
+  static void deferCalendarSync({
+    required ValueListenable<GuideSnapshot> state,
+    required EventModel event,
+    required EventRepository repository,
+    required bool Function() stillOwnsEvent,
+    required Future<void> Function(EventModel) export,
+  }) {
+    final initial = state.value;
+    final sessionId = initial.sessionId;
+    if (sessionId == null) return;
+    bool matches(GuideSnapshot snapshot) =>
+        snapshot.sessionId == sessionId &&
+        snapshot.uid == event.userId &&
+        snapshot.createdEventId == event.id;
+
+    if (!initial.isInProgress || !matches(initial)) return;
+    final key = (event.userId, sessionId, event.id);
+    if (!_deferredExports.add(key)) return;
+    void onChange() {
+      final current = state.value;
+      final stillBound = matches(current);
+      if (stillBound && current.isInProgress) return;
+      state.removeListener(onChange);
+      _deferredExports.remove(key);
+      if (!stillBound) return;
+      unawaited(enqueue(event, () async {
+        if (!stillOwnsEvent()) return;
+        final latest = repository is SupabaseEventRepository
+            ? await repository.fetchEvent(
+                event.id,
+                userId: event.userId,
+                requireGuideEligibility: true,
+              )
+            : await repository.fetchEvent(event.id, userId: event.userId);
+        if (latest != null &&
+            latest.id == event.id &&
+            latest.userId == event.userId &&
+            stillOwnsEvent()) {
+          await export(latest);
+        }
+      }));
+    }
+
+    state.addListener(onChange);
+  }
+}
 
 abstract class EventRepository {
   const EventRepository();
@@ -14,6 +84,32 @@ abstract class EventRepository {
   Future<List<EventModel>> listEvents({String? userId});
 
   Future<EventModel?> fetchEvent(String eventId, {String? userId});
+
+  Future<EventModel?> resolveEventLocationIfUnchanged({
+    required EventModel original,
+    required String location,
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (!original.hasUnresolvedLocation ||
+        !EventModel.hasValidCoordinatePair(lat: latitude, lng: longitude)) {
+      return null;
+    }
+    final current = await fetchEvent(original.id, userId: original.userId);
+    if (current == null ||
+        current.id != original.id ||
+        current.userId != original.userId ||
+        current.location != original.location ||
+        current.locationLat != original.locationLat ||
+        current.locationLng != original.locationLng) {
+      return null;
+    }
+    return updateEvent(current.copyWith(
+      location: location,
+      locationLat: latitude,
+      locationLng: longitude,
+    ));
+  }
 
   Future<EventModel?> fetchEventBySourceExternalId({
     required String source,
@@ -157,6 +253,15 @@ abstract class EventRepository {
       );
 
   Future<EventModel> updateEvent(EventModel event);
+
+  /// Updates the time of an owned event only if its stored range still matches.
+  Future<EventModel?> updateEventTimeIfUnchanged({
+    required EventModel original,
+    required DateTime startAt,
+    required DateTime? endAt,
+  }) =>
+      throw UnimplementedError(
+          'updateEventTimeIfUnchanged is not implemented.');
 
   Future<EventModel> updateSuppliesChecked({
     required String eventId,
@@ -466,14 +571,103 @@ class SupabaseEventRepository extends EventRepository {
   }
 
   @override
-  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+  Future<EventModel?> fetchEvent(
+    String eventId, {
+    String? userId,
+    bool requireGuideEligibility = false,
+  }) async {
     final resolvedUserId = _resolveUserId(userId);
-    final response = await _selectEventById(eventId, resolvedUserId);
+    final response = await _selectEventById(
+      eventId,
+      resolvedUserId,
+      requireGuideEligibility: requireGuideEligibility,
+    );
 
     if (response == null) {
       return null;
     }
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel?> updateEventTimeIfUnchanged({
+    required EventModel original,
+    required DateTime startAt,
+    required DateTime? endAt,
+  }) async {
+    final userId = _resolveCurrentUserId();
+    _validateWritableEvent(original, userId);
+    final previousEnd = original.endAt?.toUtc().toIso8601String();
+    final previousRecurrence = original.recurrenceRule;
+    if (previousRecurrence != null && previousRecurrence.isNotEmpty) {
+      return null;
+    }
+    final rows = await _withEventSchema<List<dynamic>>((schema) {
+      final update = _client
+          .from(_tableName)
+          .update({
+            'start_at': startAt.toUtc().toIso8601String(),
+            'end_at': endAt?.toUtc().toIso8601String(),
+          })
+          .eq('id', original.id)
+          .eq('user_id', userId)
+          .eq('start_at', original.startAt!.toUtc().toIso8601String())
+          .isFilter('group_event_id', null)
+          .isFilter('parent_event_id', null)
+          .isFilter('external_id', null)
+          .eq('is_multi_day', false);
+      final range = previousEnd == null
+          ? update.isFilter('end_at', null)
+          : update.eq('end_at', previousEnd);
+      final scoped = previousRecurrence == null
+          ? range.isFilter('recurrence_rule', null)
+          : range.eq('recurrence_rule', previousRecurrence);
+      return scoped.select(_columnsFor(schema));
+    }, allowLegacy: false);
+    if (rows.isEmpty) return null;
+    if (rows.length != 1) {
+      throw StateError('Expected one row from the scoped event time update.');
+    }
+    return EventModel.fromJson(_rowAsJson(rows.single));
+  }
+
+  /// Fill coordinates for an unresolved place without rewriting other fields
+  /// that may have been edited while the lookup was pending.
+  @override
+  Future<EventModel?> resolveEventLocationIfUnchanged({
+    required EventModel original,
+    required String location,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final userId = _resolveCurrentUserId();
+    _validateWritableEvent(original, userId);
+    if (!original.hasUnresolvedLocation ||
+        !EventModel.hasValidCoordinatePair(lat: latitude, lng: longitude)) {
+      return null;
+    }
+    final response = await _withEventSchema((schema) {
+      var query = _client
+          .from(_tableName)
+          .update({
+            'location': location,
+            'location_lat': latitude,
+            'location_lng': longitude,
+          })
+          .eq('id', original.id)
+          .eq('user_id', userId)
+          .eq('location', original.location!);
+      final originalLat = original.locationLat;
+      final originalLng = original.locationLng;
+      query = originalLat == null
+          ? query.isFilter('location_lat', null)
+          : query.eq('location_lat', originalLat);
+      query = originalLng == null
+          ? query.isFilter('location_lng', null)
+          : query.eq('location_lng', originalLng);
+      return query.select(_columnsFor(schema)).maybeSingle();
+    });
+    return response == null ? null : EventModel.fromJson(_rowAsJson(response));
   }
 
   @override
@@ -899,16 +1093,25 @@ class SupabaseEventRepository extends EventRepository {
 
   Future<Map<String, dynamic>?> _selectEventById(
     String eventId,
-    String userId,
-  ) =>
-      _withEventSchema(
-        (schema) => _client
+    String userId, {
+    required bool requireGuideEligibility,
+  }) =>
+      _withEventSchema((schema) {
+        var query = _client
             .from(_tableName)
             .select(_columnsFor(schema))
             .eq('id', eventId)
-            .eq('user_id', userId)
-            .maybeSingle(),
-      );
+            .eq('user_id', userId);
+        if (requireGuideEligibility) {
+          query = query
+              .isFilter('group_event_id', null)
+              .isFilter('parent_event_id', null)
+              .isFilter('recurrence_rule', null)
+              .isFilter('external_id', null)
+              .inFilter('source', ['manual', 'voice']);
+        }
+        return query.maybeSingle();
+      }, allowLegacy: !requireGuideEligibility);
 
   Future<Map<String, dynamic>?> _selectEventBySourceExternalId({
     required String source,
@@ -1000,8 +1203,9 @@ class SupabaseEventRepository extends EventRepository {
   }
 
   Future<T> _withEventSchema<T>(
-    Future<T> Function(_EventSchema schema) request,
-  ) async {
+    Future<T> Function(_EventSchema schema) request, {
+    bool allowLegacy = true,
+  }) async {
     var schema = _hasOccurrenceColumns
         ? _EventSchema.full
         : _EventSchema.withoutOccurrences;
@@ -1020,7 +1224,7 @@ class SupabaseEventRepository extends EventRepository {
                 text.contains('deleted_occurrence_dates'))) {
           _hasOccurrenceColumns = false;
           schema = _EventSchema.withoutOccurrences;
-        } else if (_isMissingSyncSchemaError(text)) {
+        } else if (allowLegacy && _isMissingSyncSchemaError(text)) {
           schema = _EventSchema.legacy;
         } else {
           rethrow;

@@ -11,8 +11,11 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/widgets/guided_anchor.dart';
+import 'package:planflow/widgets/guided_coachmark_overlay.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
@@ -140,6 +143,189 @@ void main() {
     expect(find.text('준비·출발 안내 확인'), findsNothing);
     expect(guide.ackCalls, 0);
   });
+
+  testWidgets('updated detail keeps the real confirmation visible and tappable',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final size in [const Size(360, 772), const Size(320, 600)]) {
+      tester.view.physicalSize = size;
+      final start = DateTime.utc(2030, 1, 2, 6);
+      final updated = EventModel(
+        id: 'updated-guide',
+        userId: 'guide-owner',
+        title: 'Changed event',
+        startAt: start,
+        endAt: start.add(const Duration(hours: 1)),
+        location: 'North Station',
+      );
+      final guide = _DetailGuide(
+        savedEventId: updated.id,
+        uid: updated.userId,
+        step: GuideStep.updatedDetail,
+        expectedUpdatedStartLocal: start,
+      );
+      final router = GoRouter(
+        initialLocation: AppRoutes.eventDetail,
+        routes: [
+          GoRoute(
+            path: AppRoutes.eventDetail,
+            builder: (_, __) => Stack(children: [
+              EventDetailScreen(
+                event: updated,
+                eventRepository: _DetailReadbackRepository(updated),
+              ),
+              Positioned.fill(child: RealUiGuideCoachmark(coordinator: guide)),
+            ]),
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (_, __) => const Scaffold(body: Text('Home tab')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(GuideScope(
+        coordinator: guide,
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump();
+
+      final overlay = tester
+          .widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      expect(overlay.targetId, 'updated.confirm');
+      expect(overlay.additionalTargetIds, contains('updated.time'));
+      expect(overlay.pulseTargetIds,
+          containsAll(<String>['updated.confirm', 'updated.time']));
+      expect(overlay.alignBubbleAboveTarget, isTrue);
+      expect(overlay.preferBubbleBetweenTargets, isTrue);
+      expect(overlay.preferLowerBubbleSlot, isTrue);
+      final button = find.text('변경된 시간 확인');
+      expect(button, findsOneWidget);
+      final buttonRect = tester.getRect(
+          find.ancestor(of: button, matching: find.byType(FilledButton)).first);
+      final bubble = find
+          .ancestor(
+              of: find.text('7/7 · 변경 완료'), matching: find.byType(Material))
+          .first;
+      expect(buttonRect.bottom, lessThanOrEqualTo(size.height));
+      final bubbleRect = tester.getRect(bubble);
+      expect(bubbleRect.overlaps(buttonRect), isFalse,
+          reason: 'the 7/7 card must not cover the real confirmation button');
+      expect(
+          buttonRect.top - bubbleRect.bottom, closeTo(overlay.padding + 12, 1));
+      final title = find.text('Changed event').first;
+      expect(bubbleRect.overlaps(tester.getRect(title)), isFalse,
+          reason: 'the event title must remain readable');
+      final time = find.byWidgetPredicate((widget) =>
+          widget is Text && (widget.data?.contains('2030-01-02') ?? false));
+      expect(time, findsWidgets);
+      final timeAnchorKey = realUiGuideAnchorRegistry.keyFor('updated.time');
+      expect(timeAnchorKey?.currentContext, isNotNull);
+      final timeAnchor = find.byKey(timeAnchorKey!);
+      expect(timeAnchor, findsOneWidget);
+      expect(find.descendant(of: timeAnchor, matching: time), findsWidgets);
+      expect(bubbleRect.overlaps(tester.getRect(timeAnchor)), isFalse,
+          reason: 'the changed time highlight must not be covered');
+      expect(bubbleRect.overlaps(tester.getRect(time.first)), isFalse,
+          reason: 'the changed time must remain readable');
+      expect(tester.takeException(), isNull);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(guide.syncChoiceCalls, 1);
+      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(find.text('변경된 시간 확인'), findsNothing);
+      expect(find.text('Home tab'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      router.dispose();
+      guide.state.dispose();
+    }
+  });
+
+  for (final replacement in [null, 'account', 'session']) {
+    testWidgets(
+        replacement == null
+            ? 'updated detail goes Home when saving spans a background pause'
+            : 'updated detail leaves navigation alone after changing $replacement',
+        (tester) async {
+      final start = DateTime.utc(2030, 1, 2, 6);
+      final updated = EventModel(
+        id: 'updated-guide',
+        userId: 'guide-owner',
+        title: 'Changed event',
+        startAt: start,
+        endAt: start.add(const Duration(hours: 1)),
+      );
+      final save = Completer<void>();
+      final guide = _DetailGuide(
+        savedEventId: updated.id,
+        uid: updated.userId,
+        step: GuideStep.updatedDetail,
+        expectedUpdatedStartLocal: start,
+        syncChoiceSave: save.future,
+      );
+      final router = GoRouter(
+        initialLocation: AppRoutes.eventDetail,
+        routes: [
+          GoRoute(
+            path: AppRoutes.eventDetail,
+            builder: (_, __) => EventDetailScreen(
+              event: updated,
+              eventRepository: _DetailReadbackRepository(updated),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (_, __) => const Scaffold(body: Text('Home tab')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      addTearDown(guide.state.dispose);
+      final binding = tester.binding;
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      binding.addObserver(guide);
+      addTearDown(() => binding.removeObserver(guide));
+      await tester.pumpWidget(GuideScope(
+        coordinator: guide,
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('변경된 시간 확인'));
+      await tester.pump();
+      expect(guide.syncChoiceCalls, 1);
+      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(find.text('Home tab'), findsNothing);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      final paused = guide.state.value;
+      expect(paused.run, GuideRun.paused);
+      expect(paused.pauseReason, GuidePauseReason.background);
+      if (replacement == 'account') {
+        guide.state.value = paused.copyWith(uid: 'other-owner');
+      } else if (replacement == 'session') {
+        guide.state.value = paused.copyWith(sessionId: 'other-session');
+      }
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      save.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Home tab'),
+          replacement == null ? findsOneWidget : findsNothing);
+      expect(find.byType(EventDetailScreen),
+          replacement == null ? findsNothing : findsOneWidget);
+      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(guide.syncChoiceCalls, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('EventDetailScreen back falls back to home when opened directly',
       (tester) async {
@@ -695,8 +881,13 @@ void main() {
   });
 }
 
-class _DetailGuide implements GuideCoordinator {
-  _DetailGuide({required String savedEventId, required String uid})
+class _DetailGuide with WidgetsBindingObserver implements GuideCoordinator {
+  _DetailGuide(
+      {required String savedEventId,
+      required String uid,
+      GuideStep step = GuideStep.savedDetail,
+      DateTime? expectedUpdatedStartLocal,
+      this.syncChoiceSave})
       : state = ValueNotifier(GuideSnapshot(
           uid: uid,
           revision: 1,
@@ -704,17 +895,42 @@ class _DetailGuide implements GuideCoordinator {
           version: 'real_ui_v1',
           sessionId: 'detail-session',
           run: GuideRun.active,
-          step: GuideStep.savedDetail,
+          step: step,
           createdEventId: savedEventId,
+          expectedUpdatedStartLocal: expectedUpdatedStartLocal,
         ));
 
   @override
   final ValueNotifier<GuideSnapshot> state;
+  final Future<void>? syncChoiceSave;
   int ackCalls = 0;
+  int syncChoiceCalls = 0;
   @override
   Future<GuideSnapshot> dispatch(GuideSignal signal) async {
     if (signal is DetailObserved) ackCalls++;
+    if (signal is SyncChoicePresented) {
+      syncChoiceCalls++;
+      final current = state.value;
+      state.value = current.copyWith(
+        step: GuideStep.syncChoice,
+        revision: current.revision + 1,
+      );
+      await syncChoiceSave;
+    }
     return state.value;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    final current = state.value;
+    if (lifecycle == AppLifecycleState.paused &&
+        current.run == GuideRun.active) {
+      state.value = current.copyWith(
+        run: GuideRun.paused,
+        pauseReason: GuidePauseReason.background,
+        revision: current.revision + 1,
+      );
+    }
   }
 
   @override

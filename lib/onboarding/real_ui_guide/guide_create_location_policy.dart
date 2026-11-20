@@ -1,8 +1,7 @@
 /// Location requirement for a personal guide-created event.
 ///
 /// Place text remains mandatory in every mode. Unresolved coordinates are
-/// permitted only when the caller has independently established the isolated
-/// debug QA fence.
+/// permitted when the caller can resolve them after saving.
 bool guideCreateLocationAllowed({
   required String location,
   required double? latitude,

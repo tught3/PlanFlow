@@ -19,8 +19,18 @@ void main() {
     // argument order at this call site does not determine execution order.
     expect(startupSequence, contains('intro: _maybeOpenFeatureTour'));
     expect(startupSequence, contains('guide: () => _waitForRealGuide'));
-    expect(startupSequence, contains('syncChoice: () => runOnboardingStageChain('));
-    expect(startupSequence, contains('() => _maybeShowExternalCalendarSyncGuide()'));
+    expect(
+      startupSequence,
+      contains(
+        'syncChoice: () => widget.runPostTourOnboardingStages && _guideChoicePendingFor(userId)',
+      ),
+    );
+    expect(startupSequence, contains('? _maybeShowExternalCalendarSyncGuide()'));
+    expect(startupSequence, contains(': runOnboardingStageChain('));
+    expect(
+      startupSequence,
+      contains('() async { await _maybeShowExternalCalendarSyncGuide(); }'),
+    );
     expect(shellSource, contains('_routeGate.beginStartupWorkDeferral()'));
     expect(shellSource, contains('_routeGate.completeStartupWorkDeferral()'));
     expect(shellSource, contains('_sessionOnboardingUserId'));

@@ -1,22 +1,37 @@
 import 'dart:convert';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/real_ui_guide_grant_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/safe_prefs.dart';
+import '../../data/repositories/event_repository.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/guided_anchor.dart';
 import 'guide_contract.dart';
 import 'guide_coordinator.dart';
+import 'guide_guards.dart';
+import 'guide_local_backend.dart';
 
 final realUiGuideAnchorRegistry = GuidedAnchorRegistry();
-final realUiGuideBackendProvider = Provider<GuideBackendPort>(
-    (ref) => SupabaseRealUiGuideGrantService(client: Supabase.instance.client));
 final realUiGuideProgressStoreProvider =
     Provider<GuideProgressStore>((ref) => LocalGuideProgressStore());
+final realUiGuideBackendProvider =
+    Provider<GuideBackendPort>((ref) => LocalGuideBackend(
+          progress: ref.watch(realUiGuideProgressStoreProvider),
+          fetchBoundEvent: (uid, id) async {
+            if (!authProvider.hasActiveSession || authProvider.userId != uid) {
+              return null;
+            }
+            final event = await SupabaseEventRepository()
+                .fetchEvent(id, userId: uid, requireGuideEligibility: true)
+                .timeout(const Duration(seconds: 15));
+            return authProvider.hasActiveSession && authProvider.userId == uid
+                ? event
+                : null;
+          },
+        ));
 final realUiGuideCoordinatorProvider = Provider<GuideCoordinator>((ref) =>
     RealUiGuideCoordinator(
         backend: ref.watch(realUiGuideBackendProvider),
         progress: ref.watch(realUiGuideProgressStoreProvider),
-        version: 'real_ui_v1'));
+        version: realUiGuideVersion));
 
 class LocalGuideProgressStore implements GuideProgressStore {
   Future<void> _saveQueue = Future<void>.value();
@@ -43,9 +58,12 @@ class LocalGuideProgressStore implements GuideProgressStore {
         savedCreateOperationId: m['savedCreateOperationId'] as String?,
         dateTimeZone: m['dateTimeZone'] as String?,
         errorCode: m['errorCode'] as String?,
+        failureDiagnostic:
+            GuideFailureDiagnostic.fromJson(m['failureDiagnostic']),
         savedLocalDate: date('savedLocalDate'),
         originalStartLocal: date('originalStartLocal'),
         expectedUpdatedStartLocal: date('expectedUpdatedStartLocal'),
+        isReplay: m['isReplay'] == true,
         calendarSyncHeld: m['calendarSyncHeld'] == true);
   }
 
@@ -71,10 +89,13 @@ class LocalGuideProgressStore implements GuideProgressStore {
       'savedCreateOperationId': s.savedCreateOperationId,
       'dateTimeZone': s.dateTimeZone,
       'errorCode': s.errorCode,
+      if (s.failureDiagnostic != null)
+        'failureDiagnostic': s.failureDiagnostic!.toJson(),
       'savedLocalDate': s.savedLocalDate?.toIso8601String(),
       'originalStartLocal': s.originalStartLocal?.toIso8601String(),
       'expectedUpdatedStartLocal':
           s.expectedUpdatedStartLocal?.toIso8601String(),
+      'isReplay': s.isReplay,
       'calendarSyncHeld': s.calendarSyncHeld
     });
     if (!await prefs.setString(storageKey, raw)) {

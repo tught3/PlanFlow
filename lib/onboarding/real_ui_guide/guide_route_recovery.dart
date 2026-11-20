@@ -17,6 +17,7 @@ class GuideRouteRecovery {
         s.sessionId == snapshot.sessionId && s.revision == snapshot.revision &&
         s.serverRevision == snapshot.serverRevision &&
         s.createdEventId == snapshot.createdEventId &&
+        s.expectedUpdatedStartLocal == snapshot.expectedUpdatedStartLocal &&
         s.step == snapshot.step && s.run == GuideRun.active;
   }
 
@@ -28,6 +29,15 @@ class GuideRouteRecovery {
 
   bool get restoresResults => snapshot.step == GuideStep.queryResults ||
       snapshot.step == GuideStep.changeSpeech;
+
+  bool get _alreadySaved {
+    final expected = snapshot.expectedUpdatedStartLocal;
+    return expected != null &&
+        (event.startAt?.isAtSameMomentAs(expected) ?? false);
+  }
+
+  bool get opensEditPreview =>
+      snapshot.step == GuideStep.editPreview && !_alreadySaved;
 
   String get location {
     switch (snapshot.step) {
@@ -47,8 +57,13 @@ class GuideRouteRecovery {
         if (snapshot.expectedUpdatedStartLocal == null) {
           throw StateError('missing_preview_requires_same_phase_refresh');
         }
-        return '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}';
+        return opensEditPreview
+            ? '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}'
+            : '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}';
       case GuideStep.updatedDetail:
+        if (!_alreadySaved) {
+          throw StateError('updated_event_does_not_match_preview');
+        }
         return '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}';
       default:
         throw StateError('unsupported_recovery_step');
@@ -71,7 +86,9 @@ class GuideRouteRecovery {
           now.uid == s.uid && now.version == s.version &&
           now.sessionId == s.sessionId && now.revision == s.revision &&
           now.serverRevision == s.serverRevision && now.step == s.step &&
-          now.createdEventId == s.createdEventId && now.run == GuideRun.active;
+          now.createdEventId == s.createdEventId &&
+          now.expectedUpdatedStartLocal == s.expectedUpdatedStartLocal &&
+          now.run == GuideRun.active;
     }
     final events = await read(s.uid, s.createdEventId!);
     if (!current()) return null;

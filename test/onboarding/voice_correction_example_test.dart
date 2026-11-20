@@ -10,10 +10,14 @@ void main() {
           body: SingleChildScrollView(child: VoiceCorrectionExample())),
     ));
     final heading = tester.widget<Text>(find.text('말하기 교정 연습'));
-    final instruction = tester.widget<Text>(
-        find.byKey(const ValueKey('voice-correction-practice-sequence')));
-    final explanation = tester.widget<Text>(
-        find.byKey(const ValueKey('voice-correction-practice-explanation')));
+    final instruction = tester.widget<Text>(find.descendant(
+      of: find.byKey(const ValueKey('voice-correction-practice-sequence')),
+      matching: find.byType(Text),
+    ));
+    final explanation = tester.widget<Text>(find.descendant(
+      of: find.byKey(const ValueKey('voice-correction-practice-explanation')),
+      matching: find.byType(Text),
+    ));
     expect(
         instruction.data,
         '음성으로 일정 입력하기 버튼을 누르고\n'
@@ -28,11 +32,15 @@ void main() {
     expect(explanationSpan.toPlainText(),
         '“오후 1시에”가 입력됐다가 “아니”라고 말하면 지워집니다. 이어서 “오후 2시에 강남역에서 일정”이라고 말하면 “내일 오후 2시에 강남역에서 일정”으로 입력됩니다. (“아니” 대신 “다시”라고 말하면 전체 삭제)');
     expect(heading.style!.fontSize, greaterThan(instruction.style!.fontSize!));
-    expect(instruction.style!.fontSize,
-        greaterThan(explanation.style?.fontSize ?? 0));
+    expect(instruction.style!.fontSize, 14);
+    expect(explanation.style!.fontSize, 14);
+    expect(instruction.style!.fontWeight, FontWeight.w600);
+    final completion = tester.widget<Text>(
+        find.text('말을 다 한 뒤 ‘완료’ 버튼을 눌러 주세요.'));
+    expect(completion.style!.fontSize, 14);
+    expect(completion.style!.fontWeight, FontWeight.w700);
     expect(find.textContaining('말하면서 고치기'), findsNothing);
     expect(find.textContaining('완료누르기'), findsNothing);
-    expect(find.textContaining('완료 버튼'), findsNothing);
     expect(find.byKey(const ValueKey('voice-correction-example-toggle')),
         findsNothing);
     expect(find.byKey(const ValueKey('voice-correction-final-goal')),

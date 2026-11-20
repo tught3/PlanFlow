@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import '../../core/diag_logger.dart';
 import 'guide_contract.dart';
 
-class RealUiGuideCoordinator implements GuideCoordinator {
+class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator {
   RealUiGuideCoordinator(
       {required GuideBackendPort backend,
       required GuideProgressStore progress,
@@ -21,8 +24,18 @@ class RealUiGuideCoordinator implements GuideCoordinator {
   final ValueNotifier<GuideSnapshot> _state;
   static const String _pendingCode = guideCreatedCheckpointPendingCode;
   static const String _conflictCode = 'created_binding_conflict';
-  static const String _qaPendingBindingCode = guideQaSavedBindingUnconfirmedCode;
+  static const String _qaPendingBindingCode =
+      guideQaSavedBindingUnconfirmedCode;
   static const bool _qaAdvanceEnabled = guideQaAdvanceEnabled;
+
+  static DateTime _plainDateTime(DateTime value) =>
+      value.runtimeType == DateTime
+          ? value
+          : DateTime.fromMicrosecondsSinceEpoch(
+              value.microsecondsSinceEpoch,
+              isUtc: value.isUtc,
+            );
+
   int _epoch = 0;
   final Set<String> _inFlight = <String>{};
   @override
@@ -34,10 +47,29 @@ class RealUiGuideCoordinator implements GuideCoordinator {
   Future<GuideSnapshot> start({required String uid}) async {
     final epoch = ++_epoch;
     final initial = _state.value;
-    final loaded = await _progress.load(uid: uid, version: version);
-    if (epoch != _epoch || !identical(_state.value, initial)) {
+    final fresh = GuideSnapshot(
+        uid: uid,
+        version: version,
+        revision: 0,
+        serverRevision: 0,
+        step: GuideStep.intro,
+        run: GuideRun.active,
+        calendarSyncHeld: true);
+    GuideSnapshot? loaded;
+    try {
+      loaded = await _progress.load(uid: uid, version: version);
+    } catch (_) {
+      if (_current(initial, epoch)) {
+        const failure =
+            GuideFailureDiagnostic(GuideFailureKind.progressLoadFailed);
+        final currentUser = initial.uid == uid && initial.version == version;
+        // Never overwrite a checkpoint we could not read.
+        _set(_withFailure(currentUser ? initial : fresh, failure));
+        _logFailure(failure);
+      }
       return _state.value;
     }
+    if (!_current(initial, epoch)) return _state.value;
     // Storage is not an authority for another account or guide version.
     final local =
         loaded?.uid == uid && loaded?.version == version ? loaded : null;
@@ -49,65 +81,224 @@ class RealUiGuideCoordinator implements GuideCoordinator {
           : local);
       return _state.value;
     }
-    // Pending checkpoints and known-binding conflicts both fail closed.
-    final checkpointPending =
-        local?.errorCode == _pendingCode || local?.errorCode == _conflictCode;
-    GuideBackendState? remote;
+    final result = await _begin(uid: uid, requestId: 'begin:$uid:$version');
+    if (!_current(initial, epoch)) return _state.value;
+    final base = local ?? fresh;
+    final snapshot = switch (result) {
+      GuideBeginGranted(:final state) =>
+        _reconcile(base, state, allowUnboundConflictRecovery: true),
+      final GuideBeginFailed failed => _afterBeginFailure(base, failed),
+    };
+    final beginFailure = snapshot.failureDiagnostic;
+    if (beginFailure != null) _logFailure(beginFailure);
     try {
-      remote = await _backend.begin(
-          uid: uid, version: version, requestId: 'begin:$uid:$version');
+      await _progress.save(snapshot);
+      if (_current(initial, epoch)) _set(snapshot);
     } catch (_) {
-      remote = null;
-    }
-    if (epoch != _epoch || !identical(_state.value, initial)) {
-      return _state.value;
-    }
-    if (remote == null) {
-      final unboundCreate = local != null &&
-          local.createdEventId == null &&
-          local.sessionId != null &&
-          (local.step == GuideStep.createSpeech ||
-              local.step == GuideStep.correctAndSave);
-      _set(local?.copyWith(
-              step: unboundCreate ? GuideStep.homeMic : null,
-              run: checkpointPending ? GuideRun.blocked : GuideRun.active,
-              errorCode:
-                  checkpointPending ? local.errorCode : 'backend_unavailable',
-              mayListenContinuously: false) ??
-          GuideSnapshot(
-              uid: uid,
-              version: version,
-              revision: 0,
-              serverRevision: 0,
-              step: GuideStep.intro,
-              run: GuideRun.active,
-              errorCode: 'backend_unavailable',
-              calendarSyncHeld: true));
-    } else {
-      final base = local ??
-          GuideSnapshot(
-              uid: uid,
-              version: version,
-              revision: 0,
-              serverRevision: 0,
-              step: GuideStep.intro,
-              run: GuideRun.active,
-              calendarSyncHeld: true);
-      final s = _reconcile(base, remote, allowUnboundConflictRecovery: true);
-      _set(s);
-      await _progress.save(s);
+      const storeFailure =
+          GuideFailureDiagnostic(GuideFailureKind.progressSaveFailed);
+      _logFailure(storeFailure);
+      if (_current(initial, epoch)) {
+        // Keep the pre-existing checkpoint if persistence failed and keep
+        // the begin failure visible when logging that failure also failed.
+        final failed = _withFailure(base, beginFailure ?? storeFailure);
+        _set(failed);
+        await _saveFailureCheckpoint(failed);
+      }
     }
     return _state.value;
   }
 
+  Future<GuideBeginResult> _begin(
+      {required String uid, required String requestId}) async {
+    try {
+      return await _backend
+          .begin(uid: uid, version: version, requestId: requestId)
+          .timeout(guideBeginTimeout);
+    } on TimeoutException {
+      return const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.timeout));
+    } catch (_) {
+      return const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.backendUnavailable));
+    }
+  }
+
+  static bool _isBindingCheckpoint(GuideSnapshot snapshot) =>
+      snapshot.errorCode == _pendingCode ||
+      snapshot.errorCode == _conflictCode ||
+      snapshot.errorCode == _qaPendingBindingCode;
+
+  static GuideSnapshot _withFailure(
+    GuideSnapshot before,
+    GuideFailureDiagnostic failure, {
+    GuideRun run = GuideRun.blocked,
+  }) =>
+      before.copyWith(
+          run: run,
+          errorCode: _isBindingCheckpoint(before) ? before.errorCode : failure.code,
+          failureDiagnostic: failure,
+          mayListenContinuously: false);
+
+  GuideSnapshot _afterBeginFailure(
+      GuideSnapshot before, GuideBeginFailed failure, {bool retry = false}) {
+    final predecessor = failure.terminalPredecessor;
+    if (failure.failure.kind == GuideFailureKind.terminal &&
+        predecessor != null &&
+        (predecessor.step == GuideStep.completed ||
+            predecessor.step == GuideStep.skipped) &&
+        !_isBindingCheckpoint(before)) {
+      // Modern wire can restore the real terminal checkpoint for Settings
+      // replay. A legacy denial has no predecessor and remains blocked.
+      final terminal = _reconcile(before, predecessor);
+      return terminal.copyWith(failureDiagnostic: failure.failure);
+    }
+    final transient = switch (failure.failure.kind) {
+      GuideFailureKind.timeout ||
+      GuideFailureKind.network ||
+      GuideFailureKind.backendUnavailable => true,
+      _ => false,
+    };
+    final bindingCheckpoint = _isBindingCheckpoint(before);
+    final unboundCreate = !bindingCheckpoint &&
+        before.createdEventId == null &&
+        before.sessionId != null &&
+        (before.step == GuideStep.createSpeech ||
+            before.step == GuideStep.correctAndSave);
+    if (retry &&
+        transient &&
+        !bindingCheckpoint &&
+        !unboundCreate &&
+        before.errorCode != null) {
+      // A failed retry adds diagnostic evidence without replacing the
+      // checkpoint that still requires a canonical response.
+      return before.copyWith(
+          failureDiagnostic: failure.failure, mayListenContinuously: false);
+    }
+    final normalized = transient && unboundCreate
+        ? before.copyWith(step: GuideStep.homeMic)
+        : before;
+    return _withFailure(normalized, failure.failure,
+        run: transient && !bindingCheckpoint && (!retry || unboundCreate)
+            ? GuideRun.active
+            : GuideRun.blocked);
+  }
+
+  static void _logFailure(GuideFailureDiagnostic failure) {
+    final details = [
+      'code=${failure.code}',
+      if (failure.reasonCode case final reason?) 'reason_code=$reason',
+      if (failure.phase case final phase?) 'phase=$phase',
+      if (failure.statusCode case final status?) 'status=$status',
+    ];
+    DiagLogger.log('RealUiGuide', details.join(' '));
+  }
+
+  Future<void> _saveFailureCheckpoint(GuideSnapshot snapshot) async {
+    try {
+      await _progress.save(snapshot);
+    } catch (_) {
+      _logFailure(const GuideFailureDiagnostic(GuideFailureKind.progressSaveFailed));
+    }
+  }
+
   bool _current(GuideSnapshot before, int epoch) =>
       epoch == _epoch && identical(_state.value, before);
+
+  @override
+  Future<bool> restartCompletedGuide({required String uid}) async {
+    final before = _state.value;
+    final backend = _backend;
+    final previous = before.sessionId;
+    if (backend is! GuideReplayBackendPort ||
+        uid.isEmpty ||
+        before.uid != uid ||
+        before.run != GuideRun.terminal ||
+        (before.step != GuideStep.completed && before.step != GuideStep.skipped) ||
+        previous == null ||
+        previous.isEmpty) {
+      return false;
+    }
+    final epoch = _epoch;
+    final key = 'restart:$previous';
+    if (!_inFlight.add(key)) return false;
+    try {
+      final replayBackend = backend as GuideReplayBackendPort;
+      Future<GuideBackendState?> currentServerSession() async {
+        final outcome =
+            await _begin(uid: uid, requestId: 'replay-check:$previous');
+        return switch (outcome) {
+          GuideBeginGranted(:final state) => state,
+          GuideBeginFailed(:final terminalPredecessor) => terminalPredecessor,
+        };
+      }
+      var remote = await currentServerSession();
+      if (!_current(before, epoch) || remote == null) return false;
+
+      final predecessor = remote.sessionId;
+      if (predecessor != previous && !remote.isReplay) return false;
+      if (remote.step == GuideStep.completed ||
+          remote.step == GuideStep.skipped ||
+          (predecessor == previous && remote.step == GuideStep.updatedDetail)) {
+        // A legacy client may have completed locally while its server phase
+        // remained updated. Only that exact cached session may use this path.
+        remote = await replayBackend.restart(
+            uid: uid,
+            version: version,
+            previousSessionId: predecessor,
+            requestId: 'restart:$predecessor');
+        if (!_current(before, epoch)) return false;
+        // A concurrent device can win the restart after our read. Continue
+        // its active successor without creating another session.
+        remote ??= await currentServerSession();
+      }
+      if (!_current(before, epoch) ||
+          remote == null ||
+          !remote.isReplay ||
+          remote.sessionId.isEmpty ||
+          remote.sessionId == previous ||
+          remote.step == GuideStep.completed ||
+          remote.step == GuideStep.skipped) {
+        return false;
+      }
+      final base = GuideSnapshot(
+          uid: uid,
+          version: version,
+          revision: before.revision + 1,
+          serverRevision: 0,
+          step: GuideStep.homeMic,
+          run: GuideRun.active,
+          dateTimeZone: before.dateTimeZone,
+          isReplay: true,
+          calendarSyncHeld: true);
+      final replay = _reconcile(base, remote);
+      if (replay.run != GuideRun.active) return false;
+      await _progress.save(replay);
+      if (!_current(before, epoch)) return false;
+      _set(replay);
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      _inFlight.remove(key);
+    }
+  }
 
   // Shared read-only reconciliation for cold start and explicit retry.
   // A pending checkpoint is not proof of a server binding. Keep its actual
   // event/operation/session fence rather than manufacture or replay a bind.
   GuideSnapshot _reconcile(GuideSnapshot local, GuideBackendState remote,
       {bool allowUnboundConflictRecovery = false}) {
+    if ((remote.isReplay || local.isReplay) &&
+        local.sessionId != null &&
+        (local.sessionId != remote.sessionId || local.isReplay != remote.isReplay)) {
+      return local.copyWith(
+          run: GuideRun.blocked,
+          errorCode: 'guide_session_changed',
+          failureDiagnostic:
+              const GuideFailureDiagnostic(GuideFailureKind.sessionChanged),
+          mayListenContinuously: false);
+    }
     final localId = local.createdEventId;
     final differentIds = localId != null &&
         remote.createdEventId != null &&
@@ -116,6 +307,66 @@ class RealUiGuideCoordinator implements GuideCoordinator {
       return local.copyWith(
           run: GuideRun.blocked,
           errorCode: _conflictCode,
+          clearFailureDiagnostic: true,
+          mayListenContinuously: false);
+    }
+    final boundPreview = remote.step == GuideStep.editPreview ||
+        remote.step == GuideStep.updatedDetail;
+    final sameBoundSession = local.sessionId == remote.sessionId &&
+        localId != null &&
+        localId.isNotEmpty &&
+        localId == remote.createdEventId;
+    if (boundPreview && remote.createdEventId?.isNotEmpty != true) {
+      return _withFailure(
+          local,
+          GuideFailureDiagnostic.fromWire(GuideFailureKind.boundEventMissing,
+              phase: remote.step == GuideStep.editPreview ? 'preview' : 'updated'));
+    }
+    if (boundPreview &&
+        ((local.sessionId != null && local.sessionId != remote.sessionId) ||
+            (localId != null && !sameBoundSession) ||
+            remote.serverRevision < local.serverRevision)) {
+      return local.copyWith(
+          run: GuideRun.blocked,
+          errorCode: 'guide_operation_failed',
+          clearFailureDiagnostic: true,
+          mayListenContinuously: false);
+    }
+    if (local.step == GuideStep.editPreview &&
+        remote.step == GuideStep.changeSpeech &&
+        (local.expectedUpdatedStartLocal != null ||
+            local.sessionId == null ||
+            local.sessionId != remote.sessionId ||
+            localId == null ||
+            localId.isEmpty ||
+            localId != remote.createdEventId ||
+            remote.serverRevision < local.serverRevision)) {
+      // Older clients persisted 'edit' as a preview without a start time.
+      // Only the same bound session can identify that legacy checkpoint.
+      final transientFailure = const {
+            GuideFailureKind.timeout,
+            GuideFailureKind.network,
+            GuideFailureKind.backendUnavailable,
+          }.contains(local.failureDiagnostic?.kind) ||
+          const {'timeout', 'network', 'backend_unavailable'}
+              .contains(local.errorCode);
+      final protectedFailure = _isBindingCheckpoint(local) ||
+          local.errorCode == 'guide_session_changed' ||
+          local.errorCode == 'guide_bound_event_missing' ||
+          local.failureDiagnostic?.kind == GuideFailureKind.sessionChanged ||
+          local.failureDiagnostic?.kind ==
+              GuideFailureKind.boundEventMissing;
+      final preserveFailure = protectedFailure ||
+          (!transientFailure &&
+              (local.errorCode != null || local.failureDiagnostic != null));
+      return local.copyWith(
+          run: GuideRun.blocked,
+          errorCode: preserveFailure
+              ? local.errorCode ?? local.failureDiagnostic!.code
+              : 'guide_operation_failed',
+          failureDiagnostic: preserveFailure
+              ? local.failureDiagnostic
+              : const GuideFailureDiagnostic(GuideFailureKind.operationFailed),
           mayListenContinuously: false);
     }
     if (allowUnboundConflictRecovery &&
@@ -132,7 +383,9 @@ class RealUiGuideCoordinator implements GuideCoordinator {
     }
     if (local.errorCode == _pendingCode || local.errorCode == _conflictCode) {
       return local.copyWith(
-          run: GuideRun.blocked, mayListenContinuously: false);
+          run: GuideRun.blocked,
+          clearFailureDiagnostic: true,
+          mayListenContinuously: false);
     }
     // A saved binding from a known session cannot be grafted onto a new,
     // unbound create session. A matching canonical ID is binding evidence.
@@ -143,6 +396,7 @@ class RealUiGuideCoordinator implements GuideCoordinator {
       return local.copyWith(
           run: GuideRun.blocked,
           errorCode: _conflictCode,
+          clearFailureDiagnostic: true,
           mayListenContinuously: false);
     }
     // Preserve intro-seen markers, but discard unbound ephemeral create
@@ -167,6 +421,23 @@ class RealUiGuideCoordinator implements GuideCoordinator {
             ? local.step
             : remote.step;
     final done = step == GuideStep.completed || step == GuideStep.skipped;
+    // Older deployments omit the accepted start. Only a local checkpoint
+    // from the exact same bound revision can fill that omission.
+    final keepLocalPreview = !remote.expectedStartAtReported &&
+        sameBoundSession &&
+        remote.serverRevision == local.serverRevision &&
+        (step == GuideStep.editPreview || step == GuideStep.updatedDetail) &&
+        (local.step == GuideStep.editPreview ||
+            local.step == GuideStep.updatedDetail ||
+            (local.step == GuideStep.syncChoice &&
+                remote.step == GuideStep.updatedDetail));
+    final expectedStart = boundPreview && remote.expectedStartAt != null
+        ? _plainDateTime(remote.expectedStartAt!.toUtc())
+        : keepLocalPreview
+            ? local.expectedUpdatedStartLocal == null
+                ? null
+                : _plainDateTime(local.expectedUpdatedStartLocal!.toUtc())
+            : null;
     return local.copyWith(
         sessionId: remote.sessionId,
         serverRevision: remote.serverRevision,
@@ -175,7 +446,10 @@ class RealUiGuideCoordinator implements GuideCoordinator {
         clearErrorCode: true,
         createdEventId: localId ?? remote.createdEventId,
         savedLocalDate: local.savedLocalDate ?? remote.savedLocalDate,
+        expectedUpdatedStartLocal: expectedStart,
+        clearExpectedUpdatedStartLocal: expectedStart == null,
         dateTimeZone: remote.dateTimeZone ?? local.dateTimeZone,
+        isReplay: remote.isReplay,
         calendarSyncHeld: done ? false : local.calendarSyncHeld,
         mayListenContinuously: false);
   }
@@ -264,15 +538,12 @@ class RealUiGuideCoordinator implements GuideCoordinator {
                 run: GuideRun.active,
                 createdEventId: persistedEvent.id,
                 savedCreateOperationId: operationId,
-                originalStartLocal: persistedEvent.startAt,
-                savedLocalDate: persistedEvent.startAt,
+                originalStartLocal: _plainDateTime(persistedEvent.startAt!),
+                savedLocalDate: _plainDateTime(persistedEvent.startAt!),
                 dateTimeZone: remote.dateTimeZone,
                 serverRevision: remote.serverRevision);
           }
-        case SaveUnconfirmedObserved(
-            :final persistedEvent,
-            :final operationId
-          ):
+        case SaveUnconfirmedObserved(:final persistedEvent, :final operationId):
           // QA 전용 로컬 전진: 서버 확인 없이도 실제 저장된 일정으로 다음
           // 안내 단계를 이어간다. 서버 바인딩이 아니므로 createdEventId 는
           // 로컬에만 기록된다. SaveObserved 가 실패해 체크포인트로 남은
@@ -297,8 +568,8 @@ class RealUiGuideCoordinator implements GuideCoordinator {
                 run: GuideRun.active,
                 createdEventId: persistedEvent.id,
                 savedCreateOperationId: operationId,
-                originalStartLocal: persistedEvent.startAt,
-                savedLocalDate: persistedEvent.startAt,
+                originalStartLocal: _plainDateTime(persistedEvent.startAt!),
+                savedLocalDate: _plainDateTime(persistedEvent.startAt!),
                 errorCode: _qaPendingBindingCode,
                 mayListenContinuously: false);
           }
@@ -333,8 +604,7 @@ class RealUiGuideCoordinator implements GuideCoordinator {
                 throw StateError('created binding recovery was not confirmed');
               }
               acknowledgedSnapshot = before.copyWith(
-                  serverRevision: bound.serverRevision,
-                  clearErrorCode: true);
+                  serverRevision: bound.serverRevision, clearErrorCode: true);
             }
             final r = await _backend.advance(
                 snapshot: acknowledgedSnapshot,
@@ -352,7 +622,8 @@ class RealUiGuideCoordinator implements GuideCoordinator {
             next = before.copyWith(step: GuideStep.querySpeech);
           }
         case QueryObserved(:final binding, :final operationId):
-          if (before.step == GuideStep.querySpeech &&
+          if ((before.step == GuideStep.querySpeech ||
+                  before.step == GuideStep.queryResults) &&
               binding.guideRevision == before.revision &&
               binding.firstIsTarget &&
               !binding.missingTarget &&
@@ -374,33 +645,30 @@ class RealUiGuideCoordinator implements GuideCoordinator {
             :final targetEventId,
             :final requestedStartLocal
           ):
+          final requestedStart = _plainDateTime(requestedStartLocal);
           if (before.step == GuideStep.changeSpeech &&
               targetEventId == before.createdEventId &&
-              requestedStartLocal != before.originalStartLocal) {
+              requestedStart != before.originalStartLocal) {
             final r = await _backend.advance(
                 snapshot: before,
                 action: GuideBackendAction.editPreview,
                 requestId: 'preview:${before.sessionId}:${before.revision}',
-                expectedStartLocal: requestedStartLocal);
+                expectedStartLocal: requestedStart);
             if (epoch == _epoch) {
               next = before.copyWith(
                   step: GuideStep.editPreview,
-                  expectedUpdatedStartLocal: requestedStartLocal,
+                  expectedUpdatedStartLocal: requestedStart,
                   serverRevision: r.serverRevision,
                   mayListenContinuously: false);
             }
           }
-        case EditConfirmed(:final confirmedStartLocal, :final operationId):
+        case EditConfirmed(:final confirmedStartLocal):
           if (before.step == GuideStep.editPreview &&
               confirmedStartLocal == before.expectedUpdatedStartLocal) {
-            final r = await _backend.advance(
-                snapshot: before,
-                action: GuideBackendAction.editPreview,
-                requestId: operationId,
-                expectedStartLocal: confirmedStartLocal);
-            if (epoch == _epoch) {
-              next = before.copyWith(serverRevision: r.serverRevision);
-            }
+            // EditPreviewObserved already moved the server to preview.
+            // Save is confirmed locally; the server advances when the app
+            // reads back the persisted update.
+            next = before.copyWith();
           }
         case UpdateObserved(:final persistedEvent, :final operationId):
           if (before.step == GuideStep.editPreview &&
@@ -431,40 +699,60 @@ class RealUiGuideCoordinator implements GuideCoordinator {
                 calendarSyncHeld: false);
           }
         case ResumeRequested():
+          final refreshingPreview = before.expectedUpdatedStartLocal == null &&
+              (before.step == GuideStep.editPreview ||
+                  before.step == GuideStep.updatedDetail);
           if (before.run == GuideRun.blocked ||
               before.errorCode == 'backend_unavailable' ||
+              before.errorCode == 'guide_operation_failed' ||
+              before.errorCode == 'guide_session_changed' ||
               before.errorCode == _pendingCode ||
-              before.errorCode == _conflictCode) {
-            GuideBackendState? remote;
-            try {
-              remote = await _backend.begin(
-                  uid: before.uid,
-                  version: before.version,
-                  requestId:
-                      'resume:${before.uid}:${before.version}:${before.revision}');
-            } catch (_) {
-              remote = null;
-            }
+              before.errorCode == _conflictCode ||
+              before.failureDiagnostic != null ||
+              (before.run == GuideRun.active && refreshingPreview)) {
+            final result = await _begin(
+                uid: before.uid,
+                requestId:
+                    'resume:${before.uid}:${before.version}:${before.revision}');
             if (!_current(before, epoch)) return _state.value;
-            if (remote != null) {
-              next = _reconcile(before, remote);
-            } else if (before.errorCode != _pendingCode &&
-                before.errorCode != _conflictCode &&
-                before.createdEventId == null &&
-                before.sessionId != null &&
-                (before.step == GuideStep.createSpeech ||
-                    before.step == GuideStep.correctAndSave)) {
-              // Offline normalization to homeMic is only safe for ephemeral
-              // local substeps. A persisted pending or conflict checkpoint
-              // is a fail-closed record; keep its run/errorCode until the
-              // server binding is reconciled instead of substituting
-              // backend_unavailable, which would silently drop the
-              // evidence that kept the guide from advancing.
-              next = before.copyWith(
-                  step: GuideStep.homeMic,
-                  run: GuideRun.active,
-                  errorCode: 'backend_unavailable',
-                  mayListenContinuously: false);
+            switch (result) {
+              case GuideBeginGranted(state: final remote):
+                // The server may already have verified the update. A missing
+                // preview must not restart an earlier tutorial operation.
+                if (!refreshingPreview ||
+                    remote.step == GuideStep.updatedDetail ||
+                    (before.step == GuideStep.editPreview &&
+                        remote.step == GuideStep.editPreview)) {
+                  next = _reconcile(before, remote);
+                } else if (refreshingPreview &&
+                    (const {
+                          GuideFailureKind.timeout,
+                          GuideFailureKind.network,
+                          GuideFailureKind.backendUnavailable,
+                        }.contains(before.failureDiagnostic?.kind) ||
+                        const {
+                          'timeout',
+                          'network',
+                          'backend_unavailable',
+                        }.contains(before.errorCode)) &&
+                    !_isBindingCheckpoint(before) &&
+                    before.errorCode != 'guide_session_changed' &&
+                    before.errorCode != 'guide_bound_event_missing') {
+                  // A legacy preview without an expected start is normally a
+                  // read-only no-op when the server still reports changeSpeech.
+                  // If a prior begin failed, however, do not leave that stale
+                  // timeout/auth message on the retry screen indefinitely.
+                  // Preserve the local binding and revision evidence while
+                  // replacing only the failure state.
+                  next = before.copyWith(
+                      run: GuideRun.blocked,
+                      errorCode: 'guide_operation_failed',
+                      failureDiagnostic: const GuideFailureDiagnostic(
+                          GuideFailureKind.operationFailed),
+                      mayListenContinuously: false);
+                }
+              case final GuideBeginFailed failed:
+                next = _afterBeginFailure(before, failed, retry: true);
             }
           } else if (before.run == GuideRun.paused) {
             next = before.copyWith(
@@ -474,35 +762,41 @@ class RealUiGuideCoordinator implements GuideCoordinator {
       if (!_current(before, epoch)) return _state.value;
       if (next != null) {
         next = next.copyWith(revision: before.revision + 1);
+        final failure = next.failureDiagnostic;
+        if (failure != null && !identical(failure, before.failureDiagnostic)) {
+          _logFailure(failure);
+        }
         published = next;
         _set(next);
         await _progress.save(next);
+        if (signal is SyncChoiceClosed && _current(next, epoch)) {
+          unawaited(_finishServerSession(next, GuideExit.completed));
+        }
       }
       return _state.value;
-    } catch (e) {
+    } catch (_) {
       final ownPublished = published;
-      if (epoch == _epoch &&
-          (identical(_state.value, before) ||
-              (ownPublished != null &&
-                  identical(_state.value, ownPublished)))) {
-        final failed = signal is SaveObserved
+      final failure = GuideFailureDiagnostic(ownPublished != null
+          ? GuideFailureKind.progressSaveFailed
+          : GuideFailureKind.operationFailed);
+      if (_current(before, epoch) ||
+          (ownPublished != null && _current(ownPublished, epoch))) {
+        final saved = signal is SaveObserved
             ? before.copyWith(
                 createdEventId: signal.persistedEvent.id,
                 savedCreateOperationId: signal.operationId,
-                run: GuideRun.blocked,
-                errorCode: _pendingCode,
-                revision: before.revision + 1)
-            : before.copyWith(
-                run: GuideRun.blocked,
-                // 아직 서버 바인딩이 확인되지 않은 QA 상태는 그대로 유지한다.
-                // 그래야 다음 DetailObserved 가 같은 저장 ID/연산으로 재연결을
-                // 다시 시도할 수 있다. 확인 없이 단계만 넘기지 않는다.
-                errorCode: before.errorCode == _qaPendingBindingCode
-                    ? _qaPendingBindingCode
-                    : 'guide_operation_failed',
-                revision: before.revision + 1);
+                errorCode: _pendingCode)
+            : before;
+        final previousFailure = ownPublished?.failureDiagnostic;
+        final primaryFailure =
+            identical(previousFailure, before.failureDiagnostic)
+                ? failure
+                : previousFailure ?? failure;
+        final failed = _withFailure(saved, primaryFailure)
+            .copyWith(revision: before.revision + 1);
         _set(failed);
-        await _progress.save(_state.value);
+        _logFailure(failure);
+        await _saveFailureCheckpoint(failed);
       }
       return _state.value;
     } finally {
@@ -512,16 +806,20 @@ class RealUiGuideCoordinator implements GuideCoordinator {
 
   @override
   void suspend(GuidePauseReason reason) {
+    // A cold start can still be awaiting storage or begin with no live state.
+    _epoch++;
     final s = _state.value;
-    if (!_live) {
+    if (!_live ||
+        (s.run == GuideRun.paused &&
+            (s.pauseReason == reason || reason == GuidePauseReason.background))) {
       return;
     }
-    _epoch++;
     _set(s.copyWith(
         run: GuideRun.paused,
+        pauseReason: reason,
         mayListenContinuously: false,
         revision: s.revision + 1));
-    _progress.save(_state.value);
+    unawaited(_saveFailureCheckpoint(_state.value));
   }
 
   @override
@@ -537,14 +835,18 @@ class RealUiGuideCoordinator implements GuideCoordinator {
         mayListenContinuously: false,
         revision: s.revision + 1));
     await _progress.save(_state.value);
-    if (s.sessionId != null) {
-      try {
-        await _backend.finish(
-            snapshot: s,
-            exit: exit,
-            requestId: 'finish:${s.sessionId}:${exit.name}');
-      } catch (_) {}
-    }
+    await _finishServerSession(s, exit);
+  }
+
+  Future<void> _finishServerSession(GuideSnapshot snapshot, GuideExit exit) async {
+    final sessionId = snapshot.sessionId;
+    if (sessionId == null) return;
+    try {
+      await _backend.finish(
+          snapshot: snapshot,
+          exit: exit,
+          requestId: 'finish:$sessionId:${exit.name}');
+    } catch (_) {}
   }
 
   @override
@@ -562,6 +864,10 @@ class RealUiGuideCoordinator implements GuideCoordinator {
         context.createdEventId != s.createdEventId) {
       return const GuideAccess(
           status: GuideAccessStatus.denied, reasonCode: 'stale_context');
+    }
+    if (s.isReplay) {
+      return const GuideAccess(
+          status: GuideAccessStatus.denied, reasonCode: 'ordinary_quota_required');
     }
     final allowed = switch ((context.operation, context.kind)) {
       (GuideOperation.createParse, GuideChargeKind.scheduleParse) =>

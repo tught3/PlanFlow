@@ -198,13 +198,13 @@ class _Backend implements GuideBackendPort {
   int finishes = 0;
   final exits = <GuideExit>[];
   @override
-  Future<GuideBackendState?> begin(
+  Future<GuideBeginResult> begin(
       {required String uid,
       required String version,
       required String requestId}) async {
     begins++;
-    return const GuideBackendState(
-        sessionId: 'host-qa', serverRevision: 1, step: GuideStep.intro);
+    return const GuideBeginGranted(GuideBackendState(
+        sessionId: 'host-qa', serverRevision: 1, step: GuideStep.intro));
   }
 
   @override

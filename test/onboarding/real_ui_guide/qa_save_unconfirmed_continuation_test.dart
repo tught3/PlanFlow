@@ -41,11 +41,11 @@ class FakeBackend implements GuideBackendPort {
       sessionId: 's', serverRevision: 1, step: GuideStep.intro);
 
   @override
-  Future<GuideBackendState?> begin(
+  Future<GuideBeginResult> begin(
           {required String uid,
           required String version,
           required String requestId}) async =>
-      current;
+      GuideBeginGranted(current);
 
   @override
   Future<GuideBackendState> advance(

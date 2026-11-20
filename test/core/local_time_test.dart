@@ -25,6 +25,25 @@ void main() {
     expect(local, DateTime(2026, 5, 10, 10, 30));
   });
 
+  test('both wall time converters return plain UTC with symmetric equality',
+      () {
+    final day = DateTime.utc(2031, 6, 12);
+    final wallTime = DateTime(day.year, day.month, day.day, 7, 30, 15, 123, 456);
+    final expected = DateTime.utc(
+        day.year, day.month, day.day - 1, 22, 30, 15, 123, 456);
+
+    for (final convert in [
+      planflowLocalDateTimeToUtc,
+      planflowSeoulDateTimeToUtc,
+    ]) {
+      final actual = convert(wallTime);
+      expect(actual.runtimeType, DateTime);
+      expect(actual.isUtc, isTrue);
+      expect(actual == expected, isTrue);
+      expect(expected == actual, isTrue);
+    }
+  });
+
   test('event day intersection treats end boundary as exclusive', () {
     final startAt = DateTime.utc(2026, 5, 4, 15);
     final endAt = DateTime.utc(2026, 5, 5, 15);

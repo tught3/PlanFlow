@@ -149,6 +149,105 @@ void main() {
   });
 
   group('VoiceConversationAdGate — zero normal consume under bound guide', () {
+    for (final phase in [GuideStep.querySpeech, GuideStep.queryResults]) {
+      testWidgets('query authorization uses the live $phase phase',
+          (tester) async {
+        final coord = _StubCoordinator(_StubSnapshot.alive(
+          uid: 'uid-A',
+          phase: phase,
+        ));
+        coord.nextAccess = GuideAccess(
+          status: GuideAccessStatus.granted,
+          permit: GuidePermit(
+            grantId: 'gid',
+            uid: 'uid-A',
+            sessionId: 'sess-uid-A',
+            operationId: 'echo',
+            kind: GuideChargeKind.voiceConversation,
+            operation: GuideOperation.query,
+            expiresAtUtc:
+                DateTime.now().toUtc().add(const Duration(minutes: 2)),
+          ),
+        );
+        GuideQuotaRuntime.bind(coord, uid: 'uid-A');
+        var normalCalls = 0;
+        var delegateCalls = 0;
+        VoiceConversationAdGate.instance.delegateForTest =
+            _SpyAdGateDelegate(onTryEnter: () => delegateCalls++);
+        GuidePermit? permit;
+        await tester.pumpWidget(MaterialApp(
+            home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => unawaited(
+              VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+                context: context,
+                userId: 'uid-A',
+                guideCoordinator: coord,
+                guideOperation: GuideOperation.query,
+                onGuideAllowed: (value) => permit = value,
+                onEnterAllowed: (_) => normalCalls++,
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        )));
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        expect(coord.chargeContexts.map((context) => context.phase),
+            [phase, phase]);
+        expect(coord.operationIds, hasLength(2));
+        expect(coord.operationIds[0], isNot(coord.operationIds[1]));
+        expect(permit, isNotNull);
+        expect(normalCalls, 0);
+        expect(delegateCalls, 0);
+      });
+    }
+
+    for (final scenario in ['wrong phase', 'paused']) {
+      testWidgets('query rejects a $scenario guide without normal grant',
+          (tester) async {
+        final coord = _StubCoordinator(_StubSnapshot.alive(
+          uid: 'uid-A',
+          phase: scenario == 'wrong phase'
+              ? GuideStep.savedDetail
+              : GuideStep.querySpeech,
+          run: scenario == 'paused' ? GuideRun.paused : GuideRun.active,
+        ));
+        GuideQuotaRuntime.bind(coord, uid: 'uid-A');
+        var normalCalls = 0;
+        var delegateCalls = 0;
+        GuideAccess? denied;
+        VoiceConversationAdGate.instance.delegateForTest =
+            _SpyAdGateDelegate(onTryEnter: () => delegateCalls++);
+        await tester.pumpWidget(MaterialApp(
+            home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => unawaited(
+              VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+                context: context,
+                userId: 'uid-A',
+                guideCoordinator: coord,
+                guideOperation: GuideOperation.query,
+                onGuideDenied: (value) => denied = value,
+                onEnterAllowed: (_) => normalCalls++,
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        )));
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        expect(denied?.reasonCode, 'stale_or_blocked');
+        expect(coord.chargeContexts, isEmpty);
+        expect(normalCalls, 0);
+        expect(delegateCalls, 0);
+      });
+    }
+
     testWidgets(
       'active guide returns from guide path; legacy delegate never sees '
       'onEnterAllowed even when delegate would normally grant',
@@ -168,7 +267,7 @@ void main() {
             grantId: 'gid',
             uid: 'uid-A',
             sessionId: 'sess-uid-A',
-            operationId: 'voice_conv:uid-A:createParse',
+            operationId: 'echo',
             kind: GuideChargeKind.voiceConversation,
             operation: GuideOperation.createParse,
             expiresAtUtc:
@@ -261,60 +360,104 @@ void main() {
       },
     );
 
-    testWidgets(
-      'unavailable response from guide → onGuideDenied fires, '
-      'onEnterAllowed does NOT',
-      (tester) async {
-        final coord = _StubCoordinator(_StubSnapshot.alive(
-          uid: 'uid-A',
-          revision: 1,
-          serverRevision: 1,
-          phase: GuideStep.queryResults,
-          kind: GuideChargeKind.voiceConversation,
-          operation: GuideOperation.query,
-        ));
-        coord.nextAccess = const GuideAccess(
-            status: GuideAccessStatus.unavailable, reasonCode: 'rpc_failed');
-        GuideQuotaRuntime.bind(coord, uid: 'uid-A');
+    for (final failureReason in ['rpc_failed', 'guide_unbound']) {
+      testWidgets(
+        'bound unavailable $failureReason → onGuideDenied fires, '
+        'onEnterAllowed does NOT',
+        (tester) async {
+          final coord = _StubCoordinator(_StubSnapshot.alive(
+            uid: 'uid-A',
+            revision: 1,
+            serverRevision: 1,
+            phase: GuideStep.queryResults,
+            kind: GuideChargeKind.voiceConversation,
+            operation: GuideOperation.query,
+          ));
+          coord.nextAccess = GuideAccess(
+              status: GuideAccessStatus.unavailable, reasonCode: failureReason);
+          GuideQuotaRuntime.bind(coord, uid: 'uid-A');
 
-        VoiceConversationEntryGrant? normalEntry;
-        GuideAccess? denied;
+          VoiceConversationEntryGrant? normalEntry;
+          GuideAccess? denied;
+          var delegateCalls = 0;
+          VoiceConversationAdGate.instance.delegateForTest =
+              _SpyAdGateDelegate(onTryEnter: () => delegateCalls++);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Builder(
-              builder: (context) {
-                return ElevatedButton(
-                  onPressed: () {
-                    unawaited(
-                      VoiceConversationAdGate.instance
-                          .tryEnterVoiceConversation(
-                        context: context,
-                        userId: 'uid-A',
-                        onEnterAllowed: (g) => normalEntry = g,
-                        guideCoordinator: coord,
-                        guideOperation: GuideOperation.query,
-                        onGuideDenied: (a) => denied = a,
-                      ),
-                    );
-                  },
-                  child: const Text('open'),
-                );
-              },
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () {
+                      unawaited(
+                        VoiceConversationAdGate.instance
+                            .tryEnterVoiceConversation(
+                          context: context,
+                          userId: 'uid-A',
+                          onEnterAllowed: (g) => normalEntry = g,
+                          guideCoordinator: coord,
+                          guideOperation: GuideOperation.query,
+                          onGuideDenied: (a) => denied = a,
+                        ),
+                      );
+                    },
+                    child: const Text('open'),
+                  );
+                },
+              ),
+            ),
+          );
+
+          await tester.tap(find.text('open'));
+          await tester.pumpAndSettle();
+
+          expect(normalEntry, isNull,
+              reason:
+                  'unavailable guide response MUST NOT become a normal grant');
+          expect(denied, isNotNull);
+          expect(denied!.reasonCode, failureReason);
+          expect(delegateCalls, 0);
+        },
+      );
+    }
+
+    testWidgets('a different live binding denies the stale coordinator',
+        (tester) async {
+      final live = _StubCoordinator(
+          _StubSnapshot.alive(uid: 'uid-A', phase: GuideStep.querySpeech));
+      final stale = _StubCoordinator(
+          _StubSnapshot.alive(uid: 'uid-A', phase: GuideStep.querySpeech));
+      GuideQuotaRuntime.bind(live, uid: 'uid-A');
+      var delegateCalls = 0;
+      var normalCalls = 0;
+      GuideAccess? denied;
+      VoiceConversationAdGate.instance.delegateForTest =
+          _SpyAdGateDelegate(onTryEnter: () => delegateCalls++);
+      await tester.pumpWidget(MaterialApp(
+          home: Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () => unawaited(
+            VoiceConversationAdGate.instance.tryEnterVoiceConversation(
+              context: context,
+              userId: 'uid-A',
+              guideCoordinator: stale,
+              guideOperation: GuideOperation.query,
+              onGuideDenied: (value) => denied = value,
+              onEnterAllowed: (_) => normalCalls++,
             ),
           ),
-        );
+          child: const Text('open'),
+        ),
+      )));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text('open'));
-        await tester.pumpAndSettle();
-
-        expect(normalEntry, isNull,
-            reason:
-                'unavailable guide response MUST NOT become a normal grant');
-        expect(denied, isNotNull);
-        expect(denied!.reasonCode, 'rpc_failed');
-      },
-    );
+      expect(denied?.reasonCode, 'stale_binding');
+      expect(live.chargeContexts, isEmpty);
+      expect(stale.chargeContexts, isEmpty);
+      expect(normalCalls, 0);
+      expect(delegateCalls, 0);
+    });
   });
 
   group('ScheduleParseAdGate guide path — permit uniqueness and callback', () {
@@ -438,16 +581,16 @@ void main() {
 
 // ── Fakes ────────────────────────────────────────────────────────
 
-class _StubSnapshot implements GuideSnapshot {
-  _StubSnapshot({
-    required this.uid,
-    required this.version,
-    required this.revision,
-    required this.serverRevision,
-    required this.step,
-    required this.run,
-    this.sessionId,
-    this.createdEventId,
+class _StubSnapshot extends GuideSnapshot {
+  const _StubSnapshot({
+    required super.uid,
+    required super.version,
+    required super.revision,
+    required super.serverRevision,
+    required super.step,
+    required super.run,
+    super.sessionId,
+    super.createdEventId,
   });
 
   factory _StubSnapshot.alive({
@@ -455,6 +598,7 @@ class _StubSnapshot implements GuideSnapshot {
     int revision = 1,
     int serverRevision = 1,
     GuideStep phase = GuideStep.correctAndSave,
+    GuideRun run = GuideRun.active,
     GuideChargeKind kind = GuideChargeKind.scheduleParse,
     GuideOperation operation = GuideOperation.createParse,
   }) =>
@@ -464,7 +608,7 @@ class _StubSnapshot implements GuideSnapshot {
         revision: revision,
         serverRevision: serverRevision,
         step: phase,
-        run: GuideRun.active,
+        run: run,
         sessionId: 'sess-$uid',
         createdEventId: null,
       );
@@ -478,70 +622,6 @@ class _StubSnapshot implements GuideSnapshot {
         run: GuideRun.terminal,
         sessionId: null,
       );
-
-  @override
-  final String uid;
-  @override
-  final String version;
-  @override
-  final int revision;
-  @override
-  final int serverRevision;
-  @override
-  final GuideStep step;
-  @override
-  final GuideRun run;
-  @override
-  final String? sessionId;
-  @override
-  final String? createdEventId;
-  @override
-  String? get savedCreateOperationId => null;
-  @override
-  bool get speechCaptured => false;
-  @override
-  String? get dateTimeZone => null;
-  @override
-  String? get errorCode => null;
-  @override
-  DateTime? get savedLocalDate => null;
-  @override
-  DateTime? get originalStartLocal => null;
-  @override
-  DateTime? get expectedUpdatedStartLocal => null;
-  @override
-  bool get calendarSyncHeld => false;
-  @override
-  bool get mayListenContinuously => false;
-  @override
-  bool get isInProgress => run != GuideRun.terminal;
-  @override
-  GuideSnapshot copyWith({
-    String? uid,
-    String? version,
-    String? sessionId,
-    bool clearSessionId = false,
-    String? createdEventId,
-    bool clearCreatedEventId = false,
-    String? savedCreateOperationId,
-    String? dateTimeZone,
-    int? revision,
-    int? serverRevision,
-    GuideStep? step,
-    GuideRun? run,
-    String? errorCode,
-    bool clearErrorCode = false,
-    DateTime? savedLocalDate,
-    bool clearSavedLocalDate = false,
-    DateTime? originalStartLocal,
-    bool clearOriginalStartLocal = false,
-    DateTime? expectedUpdatedStartLocal,
-    bool clearExpectedUpdatedStartLocal = false,
-    bool? calendarSyncHeld,
-    bool? mayListenContinuously,
-    bool? speechCaptured,
-  }) =>
-      this;
 }
 
 class _StubCoordinator implements GuideCoordinator {
@@ -572,12 +652,14 @@ class _StubCoordinator implements GuideCoordinator {
     required GuideChargeContext context,
     required String operationId,
   }) async {
+    chargeContexts.add(context);
     operationIds.add(operationId);
     return nextAccess;
   }
 
   /// authorize()가 받은 operationId 기록 — 시도별 고유성 검증용.
   final List<String> operationIds = <String>[];
+  final List<GuideChargeContext> chargeContexts = <GuideChargeContext>[];
 }
 
 class _SpyAdGateDelegate implements VoiceConversationAdGateDelegate {

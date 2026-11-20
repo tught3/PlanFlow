@@ -84,10 +84,102 @@ class GuideQuotaRuntime {
     return null;
   }
 
+  /// A visible guide or the current account's bound guide owns admission.
+  /// An out-of-date visible guide must not fall back to ordinary quota.
+  static bool blocksOrdinaryUse({
+    required String? uid,
+    GuideCoordinator? scoped,
+  }) =>
+      (scoped?.state.value.isInProgress ?? false) ||
+      current(() => uid ?? '') != null;
+
+  /// Isolated guide QA has no ad display path, even between guide sessions.
+  static bool blocksAdDisplay({
+    required String? uid,
+    GuideCoordinator? scoped,
+  }) =>
+      guideQaAdvanceEnabled || blocksOrdinaryUse(uid: uid, scoped: scoped);
+
   /// Test-only reset. Drops every binding.
   static void reset() {
     _bindings.clear();
   }
+}
+
+/// In-memory admission for a practice replay. It never represents payment,
+/// an ordinary quota grant, or a first-run guide permit.
+class GuideReplayEntry {
+  GuideReplayEntry._(this._coordinator, this._origin, this.kind, this.id);
+
+  final GuideCoordinator _coordinator;
+  final GuideSnapshot _origin;
+  final GuideChargeKind kind;
+  final String id;
+
+  static GuideReplayEntry? issue({
+    required GuideCoordinator coordinator,
+    required String uid,
+    required GuideChargeKind kind,
+    required GuideOperation operation,
+    required String id,
+  }) {
+    final snapshot = coordinator.state.value;
+    if (id.isEmpty ||
+        uid.isEmpty ||
+        uid != snapshot.uid ||
+        snapshot.sessionId?.isNotEmpty != true ||
+        snapshot.version.isEmpty ||
+        !snapshot.isReplay ||
+        snapshot.run != GuideRun.active ||
+        !identical(GuideQuotaRuntime.current(() => uid), coordinator) ||
+        !_allows(snapshot, kind, operation)) {
+      return null;
+    }
+    return GuideReplayEntry._(coordinator, snapshot, kind, id);
+  }
+
+  bool allows({
+    required GuideCoordinator? coordinator,
+    required String? uid,
+    required GuideChargeKind kind,
+    required GuideOperation operation,
+  }) {
+    final current = _coordinator.state.value;
+    return kind == this.kind &&
+        identical(coordinator, _coordinator) &&
+        uid == _origin.uid &&
+        identical(GuideQuotaRuntime.current(() => _origin.uid), _coordinator) &&
+        current.uid == _origin.uid &&
+        current.version == _origin.version &&
+        current.sessionId == _origin.sessionId &&
+        current.createdEventId == _origin.createdEventId &&
+        current.isReplay &&
+        current.run == GuideRun.active &&
+        (kind == GuideChargeKind.scheduleParse
+            ? identical(current, _origin)
+            : current.revision >= _origin.revision &&
+                current.step.index >= _origin.step.index) &&
+        _allows(current, kind, operation);
+  }
+
+  static bool _allows(
+    GuideSnapshot snapshot,
+    GuideChargeKind kind,
+    GuideOperation operation,
+  ) =>
+      switch ((kind, operation)) {
+        (GuideChargeKind.scheduleParse, GuideOperation.createParse) =>
+          snapshot.step == GuideStep.createSpeech ||
+              snapshot.step == GuideStep.correctAndSave,
+        (GuideChargeKind.voiceConversation, GuideOperation.query) =>
+          snapshot.createdEventId?.isNotEmpty == true &&
+              (snapshot.step == GuideStep.querySpeech ||
+                  snapshot.step == GuideStep.queryResults),
+        (GuideChargeKind.voiceConversation, GuideOperation.changeTime) =>
+          snapshot.createdEventId?.isNotEmpty == true &&
+              snapshot.step == GuideStep.changeSpeech,
+        _ => false,
+      };
 }
 
 /// Opaque identity token returned by [GuideQuotaRuntime.bind]. The

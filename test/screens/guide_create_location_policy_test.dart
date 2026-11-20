@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_create_location_policy.dart';
 
 void main() {
-  test('unresolved guide coordinates are allowed only behind QA policy', () {
+  test('a named guide place can save while coordinates are pending', () {
     expect(
         guideCreateLocationAllowed(
             location: 'Somewhere',
@@ -24,6 +24,6 @@ void main() {
             longitude: null,
             allowUnresolvedCoordinates: true),
         isFalse,
-        reason: 'nonempty place remains mandatory even in QA');
+        reason: 'a nonempty place remains mandatory');
   });
 }

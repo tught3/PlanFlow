@@ -39,20 +39,26 @@ DateTime planflowLocal(DateTime value) {
   );
 }
 
-DateTime planflowLocalDateTimeToUtc(DateTime localValue) {
-  final location = _planflowLocation();
+DateTime _wallTimeToPlainUtc(tz.Location location, DateTime wallTime) {
   final zoned = tz.TZDateTime(
     location,
-    localValue.year,
-    localValue.month,
-    localValue.day,
-    localValue.hour,
-    localValue.minute,
-    localValue.second,
-    localValue.millisecond,
-    localValue.microsecond,
+    wallTime.year,
+    wallTime.month,
+    wallTime.day,
+    wallTime.hour,
+    wallTime.minute,
+    wallTime.second,
+    wallTime.millisecond,
+    wallTime.microsecond,
   );
-  return zoned.toUtc();
+  return DateTime.fromMicrosecondsSinceEpoch(
+    zoned.microsecondsSinceEpoch,
+    isUtc: true,
+  );
+}
+
+DateTime planflowLocalDateTimeToUtc(DateTime localValue) {
+  return _wallTimeToPlainUtc(_planflowLocation(), localValue);
 }
 
 DateTime planflowNow() {
@@ -91,18 +97,8 @@ bool planflowEventIntersectsLocalDay({
 }
 
 DateTime planflowSeoulDateTimeToUtc(DateTime seoulTime) {
-  final location = _planflowLocation(PlanFlowRegions.korea.timeZoneId);
-  return tz
-      .TZDateTime(
-        location,
-        seoulTime.year,
-        seoulTime.month,
-        seoulTime.day,
-        seoulTime.hour,
-        seoulTime.minute,
-        seoulTime.second,
-        seoulTime.millisecond,
-        seoulTime.microsecond,
-      )
-      .toUtc();
+  return _wallTimeToPlainUtc(
+    _planflowLocation(PlanFlowRegions.korea.timeZoneId),
+    seoulTime,
+  );
 }

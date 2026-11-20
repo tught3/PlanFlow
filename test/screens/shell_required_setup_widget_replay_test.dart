@@ -30,6 +30,8 @@ import 'package:planflow/l10n/app_localizations.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_host.dart'
     show GuideSyncChoiceStore;
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/onboarding/legacy_intro_screen.dart';
 import 'package:planflow/screens/onboarding/permission_onboarding_screen.dart';
 import 'package:planflow/screens/shell_screen.dart';
@@ -56,8 +58,9 @@ class _QueuedTourStore extends FeatureTourStore {
 
   @override
   Future<bool> shouldShow() {
-    if (autoAnswer != null)
+    if (autoAnswer != null) {
       return Future<bool>.value(autoAnswer! && !completed);
+    }
     final c = Completer<bool>();
     calls.add(c);
     return c.future;
@@ -98,6 +101,7 @@ Future<_Harness> _pump(
   WidgetTester tester, {
   required String? user,
   required _QueuedTourStore store,
+  GuideCoordinator? guide,
 }) async {
   final auth = AuthProvider()..start();
   if (user != null) auth.setUser(user);
@@ -184,23 +188,103 @@ Future<_Harness> _pump(
     gate.dispose();
     auth.dispose();
   });
-  await tester.pumpWidget(TestGuideScope(
-      auth: auth,
-      child: MaterialApp.router(
-        routerConfig: router,
-        locale: const Locale('ko', 'KR'),
-        supportedLocales: const <Locale>[
-          Locale('ko', 'KR'),
-          Locale('en', 'US')
-        ],
-        localizationsDelegates: const <LocalizationsDelegate<Object>>[
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-      )));
+  final app = MaterialApp.router(
+    routerConfig: router,
+    locale: const Locale('ko', 'KR'),
+    supportedLocales: const <Locale>[Locale('ko', 'KR'), Locale('en', 'US')],
+    localizationsDelegates: const <LocalizationsDelegate<Object>>[
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+    ],
+  );
+  await tester.pumpWidget(guide == null
+      ? TestGuideScope(auth: auth, child: app)
+      : GuideScope(coordinator: guide, child: app));
   return h;
+}
+
+class _CompletingGuide with WidgetsBindingObserver implements GuideCoordinator {
+  _CompletingGuide()
+      : state = ValueNotifier(const GuideSnapshot(
+          uid: 'a',
+          version: 'real_ui_v1',
+          revision: 1,
+          serverRevision: 1,
+          sessionId: 'guide-session',
+          createdEventId: 'updated',
+          step: GuideStep.updatedDetail,
+          run: GuideRun.active,
+        ));
+
+  @override
+  final ValueNotifier<GuideSnapshot> state;
+  final syncChoices = <SyncChoiceClosed>[];
+  int resumes = 0;
+
+  @override
+  Future<GuideSnapshot> dispatch(GuideSignal signal) async {
+    final current = state.value;
+    if (signal.uid != current.uid ||
+        signal.sessionId != current.sessionId ||
+        signal.expectedRevision != current.revision) {
+      return current;
+    }
+    if (signal is ResumeRequested && current.run == GuideRun.paused) {
+      resumes++;
+      state.value = current.copyWith(
+          run: GuideRun.active, revision: current.revision + 1);
+    }
+    if (signal is SyncChoiceClosed) {
+      syncChoices.add(signal);
+      if (current.step == GuideStep.syncChoice && current.run == GuideRun.active) {
+        state.value = current.copyWith(
+            step: GuideStep.completed, run: GuideRun.terminal);
+      }
+    }
+    return state.value;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    if (lifecycle == AppLifecycleState.hidden ||
+        lifecycle == AppLifecycleState.paused) {
+      suspend(GuidePauseReason.background);
+    }
+  }
+
+  @override
+  void suspend(GuidePauseReason reason) {
+    final current = state.value;
+    if (current.run == GuideRun.active) {
+      state.value = current.copyWith(
+          run: GuideRun.paused,
+          pauseReason: reason,
+          revision: current.revision + 1);
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+void _observeCompletingGuide(WidgetTester tester, _CompletingGuide guide) {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  tester.binding.addObserver(guide);
+  addTearDown(() => tester.binding.removeObserver(guide));
+}
+
+void _backgroundApp(WidgetTester tester) {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+}
+
+void _foregroundApp(WidgetTester tester) {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 }
 
 /// Mirrors _handleHomeWidgetUri: hold first, then submit the pending target.
@@ -259,7 +343,8 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{
       ExternalCalendarSyncGuideService.guideSeenKey('a'): true,
       ExternalCalendarSyncGuideService.guideSeenKey('b'): true,
-      for (final uid in closedGuideChoices) GuideSyncChoiceStore().key(uid): true,
+      for (final uid in closedGuideChoices)
+        GuideSyncChoiceStore().key(uid): true,
     });
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
@@ -271,10 +356,177 @@ void main() {
     SharedPreferencesAsyncPlatform.instance = null;
   });
 
+  for (final settings in [false, true]) {
+    testWidgets(
+        'Home shows sync then celebration before ${settings ? "Settings" : "normal use"}',
+        (tester) async {
+      // Both the ordinary sync prompt and an earlier choice were seen.
+      seedPrefs();
+      final guide = _CompletingGuide();
+      addTearDown(guide.state.dispose);
+      final h = await _pump(tester,
+          user: 'a', store: _QueuedTourStore(autoAnswer: false), guide: guide);
+      await _pumpUntil(
+          tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
+      final detail = '${AppRoutes.eventDetail}/updated';
+      h.router.go(detail); // 6/7 save replaces the previous shell in production.
+      await _pumpUntil(tester, () => h.currentUri.path == detail);
+      expect(h.currentUri.path, detail);
+      await _pumpFor(tester, 10); // Finish the underlying route transition.
+
+      guide.state.value =
+          guide.state.value.copyWith(step: GuideStep.syncChoice);
+      h.router.go(AppRoutes.home); // The real 7/7 button does this after dispatch.
+      await _pumpUntil(
+          tester, () => find.text('외부 캘린더 동기화 안내').evaluate().isNotEmpty);
+      const completion = '모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.';
+      expect(h.currentUri.path, AppRoutes.home);
+      expect(find.text('외부 캘린더 동기화 안내'), findsOneWidget);
+      expect(find.text(completion), findsNothing);
+      await _pumpFor(tester, 10); // Allow the dialog route to finish entering.
+      await tester.tap(find.text(settings ? '동기화 설정' : '동기화 안 함'));
+      await _pumpUntil(tester, () => find.text(completion).evaluate().isNotEmpty);
+      expect(find.text(completion), findsOneWidget);
+      expect(h.currentUri.path, AppRoutes.home);
+      expect(guide.state.value.step, GuideStep.completed);
+      expect(guide.state.value.run, GuideRun.terminal);
+      await _pumpFor(tester, 10);
+      await tester.tap(find.widgetWithText(FilledButton, '확인'));
+      final destination = settings ? AppRoutes.settings : AppRoutes.home;
+      await _pumpUntil(tester, () => h.currentUri.path == destination);
+      await _pumpFor(tester, 10);
+      expect(h.currentUri.path, destination);
+      expect(find.text(completion), findsNothing);
+      expect(find.text('외부 캘린더 동기화 안내'), findsNothing);
+    });
+  }
+
+  testWidgets('sync and celebration wait for Home and dismissal stays pending',
+      (tester) async {
+    seedPrefs(closedGuideChoices: {});
+    final guide = _CompletingGuide();
+    addTearDown(guide.state.dispose);
+    final h = await _pump(tester,
+        user: 'a', store: _QueuedTourStore(autoAnswer: false), guide: guide);
+    await _pumpUntil(
+        tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
+    unawaited(h.router.push(AppRoutes.featureTour));
+    await _pumpUntil(tester, () => h.currentUri.path == AppRoutes.featureTour);
+    await _pumpFor(tester, 10);
+    guide.state.value = guide.state.value.copyWith(step: GuideStep.syncChoice);
+    await _pumpFor(tester, 15);
+    expect(find.text('외부 캘린더 동기화 안내'), findsNothing);
+    expect(guide.state.value.step, GuideStep.syncChoice);
+    expect(h.currentUri.path, AppRoutes.featureTour);
+
+    h.router.pop();
+    await _pumpUntil(
+        tester, () => find.text('외부 캘린더 동기화 안내').evaluate().isNotEmpty);
+    expect(h.currentUri.path, AppRoutes.home);
+    await _pumpFor(tester, 10);
+    Navigator.of(tester.element(find.text('외부 캘린더 동기화 안내'))).pop();
+    await _pumpFor(tester, 10);
+    const completion = '모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.';
+    expect(guide.state.value.step, GuideStep.syncChoice);
+    expect(find.text(completion), findsNothing);
+    await _pumpUntil(
+        tester, () => find.text('동기화 안 함').evaluate().isNotEmpty);
+    await tester.tap(find.text('동기화 안 함'));
+    await _pumpUntil(tester, () => find.text(completion).evaluate().isNotEmpty);
+    expect(guide.state.value.step, GuideStep.completed);
+    expect(find.text(completion), findsOneWidget);
+    expect(h.currentUri.path, AppRoutes.home);
+  });
+
+  for (final alreadyShowing in [false, true]) {
+    testWidgets(
+        'background pause keeps the ${alreadyShowing ? "open" : "pending"} sync choice bound to Home',
+        (tester) async {
+      seedPrefs(closedGuideChoices: {});
+      final guide = _CompletingGuide();
+      addTearDown(guide.state.dispose);
+      _observeCompletingGuide(tester, guide);
+      final h = await _pump(tester,
+          user: 'a', store: _QueuedTourStore(autoAnswer: false), guide: guide);
+      await _pumpUntil(
+          tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
+      final syncTitle = find.text('외부 캘린더 동기화 안내');
+      if (!alreadyShowing) {
+        unawaited(h.router.push(AppRoutes.featureTour));
+        await _pumpUntil(tester, () => h.currentUri.path == AppRoutes.featureTour);
+        await _pumpFor(tester, 10);
+      }
+      guide.state.value = guide.state.value.copyWith(step: GuideStep.syncChoice);
+      if (alreadyShowing) {
+        await _pumpUntil(tester, () => syncTitle.evaluate().isNotEmpty);
+        expect(syncTitle, findsOneWidget);
+      } else {
+        await _pumpFor(tester, 10);
+        expect(syncTitle, findsNothing);
+      }
+
+      _backgroundApp(tester);
+      expect(guide.state.value.run, GuideRun.paused);
+      expect(guide.syncChoices, isEmpty);
+      final pausedRevision = guide.state.value.revision;
+      if (!alreadyShowing) h.router.pop();
+      await _pumpFor(tester, 5);
+      expect(guide.resumes, 0);
+      if (!alreadyShowing) expect(syncTitle, findsNothing);
+      _foregroundApp(tester);
+      await _pumpUntil(tester, () => syncTitle.evaluate().isNotEmpty);
+      expect(syncTitle, findsOneWidget);
+      expect(h.currentUri.path, AppRoutes.home);
+      await _pumpFor(tester, 10);
+      await tester.tap(find.text('동기화 안 함'));
+      final celebration = find.text('모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.');
+      await _pumpUntil(tester, () => celebration.evaluate().isNotEmpty);
+      expect(guide.resumes, 1);
+      expect(guide.syncChoices.single.expectedRevision, pausedRevision + 1);
+      expect(guide.state.value.run, GuideRun.terminal);
+      expect(celebration, findsOneWidget);
+      expect(h.currentUri.path, AppRoutes.home);
+    });
+  }
+
+  for (final switchAccount in [false, true]) {
+    testWidgets(
+        'background sync choice rejects a changed ${switchAccount ? "account" : "session"}',
+        (tester) async {
+      seedPrefs(closedGuideChoices: {});
+      final guide = _CompletingGuide();
+      addTearDown(guide.state.dispose);
+      _observeCompletingGuide(tester, guide);
+      final h = await _pump(tester,
+          user: 'a', store: _QueuedTourStore(autoAnswer: false), guide: guide);
+      await _pumpUntil(
+          tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
+      guide.state.value = guide.state.value.copyWith(step: GuideStep.syncChoice);
+      final syncTitle = find.text('외부 캘린더 동기화 안내');
+      await _pumpUntil(tester, () => syncTitle.evaluate().isNotEmpty);
+      expect(syncTitle, findsOneWidget);
+
+      _backgroundApp(tester);
+      if (switchAccount) {
+        h.auth.setUser('b');
+      } else {
+        guide.state.value = guide.state.value.copyWith(sessionId: 'other-guide');
+      }
+      _foregroundApp(tester);
+      await _pumpFor(tester, 10);
+      final noSync = find.text('동기화 안 함');
+      if (noSync.evaluate().isNotEmpty) await tester.tap(noSync);
+      await _pumpFor(tester, 15);
+      expect(guide.syncChoices, isEmpty);
+      expect(guide.resumes, 0);
+      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(find.text('모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.'), findsNothing);
+    });
+  }
+
   testWidgets(
       'already-onboarded user: Shell reaches readiness and replays the '
-      'pending calendar target once',
-      (tester) async {
+      'pending calendar target once', (tester) async {
     seedPrefs();
     final h = await _pump(tester,
         user: 'a', store: _QueuedTourStore(autoAnswer: false));

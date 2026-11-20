@@ -64,7 +64,7 @@ void main() {
     );
     final state = await service.begin(
         uid: _uid, version: 'real_ui_v1', requestId: 'resume');
-    expect(state?.step, GuideStep.editPreview);
+    expect((state as GuideBeginGranted).state.step, GuideStep.editPreview);
     final access =
         await service.authorize(context: _context, operationId: 'change-1');
     expect(access.status, GuideAccessStatus.granted);
@@ -162,7 +162,7 @@ void main() {
       final service = SupabaseRealUiGuideGrantService(client: client);
       final state = await service.begin(
           uid: _uid, version: 'real_ui_v1', requestId: 'same-client');
-      expect(state?.sessionId, _session);
+      expect((state as GuideBeginGranted).state.sessionId, _session);
       expect(requests, hasLength(1));
     } finally {
       await client.dispose();

@@ -460,6 +460,9 @@ class _CalendarMonthProjection {
 class _CalendarScreenState extends State<CalendarScreen> {
   String? _guideSelectedId;
   GuideSnapshot? _calendarGuide;
+  (String, String?, String, DateTime)? _guideReadbackBinding;
+  Timer? _guideReadbackDeadline;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -514,6 +517,42 @@ class _CalendarScreenState extends State<CalendarScreen> {
         s.createdEventId != null &&
         s.savedLocalDate != null &&
         DateUtils.isSameDay(date, s.savedLocalDate);
+  }
+
+  (String, String?, String, DateTime)? get _currentGuideReadbackBinding {
+    final guide = _calendarGuide;
+    final id = guide?.createdEventId;
+    if (guide == null || id == null || !_guideSavedView) return null;
+    return (guide.uid, guide.sessionId, id, DateUtils.dateOnly(_selectedDate));
+  }
+
+  void _clearGuideReadbackWait() {
+    _guideReadbackBinding = null;
+    _guideReadbackDeadline?.cancel();
+    _guideReadbackDeadline = null;
+  }
+
+  bool _showGuideReadbackLoader(bool missing) {
+    final binding = missing ? _currentGuideReadbackBinding : null;
+    if (_guideReadbackBinding != binding) {
+      _clearGuideReadbackWait();
+      if (binding != null) {
+        _guideReadbackBinding = binding;
+        _guideReadbackDeadline = Timer(const Duration(seconds: 2), () {
+          if (!mounted || _guideReadbackBinding != binding) return;
+          if (_currentGuideReadbackBinding != binding ||
+              _eventsForSelectedDate.any(_isGuideSavedEvent)) {
+            _clearGuideReadbackWait();
+            return;
+          }
+          _guideReadbackDeadline = null;
+          // Recheck at the end of the grace period, when an earlier empty
+          // response may be stale. _loadEvents queues behind an in-flight read.
+          unawaited(_loadEvents());
+        });
+      }
+    }
+    return binding != null && (_guideReadbackDeadline != null || _isRefreshing);
   }
 
   bool _isGuideSavedEvent(EventModel event) {
@@ -650,6 +689,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   void dispose() {
+    _clearGuideReadbackWait();
     _briefingCancelled = true;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     // Always remove safely, even if a scoped platform override changed.
@@ -1428,6 +1468,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
     final selectedDateLabel = _koreanDateLabel(_selectedDate);
     final dayEvents = _eventsForSelectedDate;
+    final guideEventMissing = _currentGuideReadbackBinding != null &&
+        !dayEvents.any(_isGuideSavedEvent);
+    final waitingForGuideEvent = _showGuideReadbackLoader(guideEventMissing);
     final groupDayEvents = _overlayEventsForSelectedDate;
     final totalDayEventCount = dayEvents.length + groupDayEvents.length;
     final selectedGroupLabel =
@@ -1547,7 +1590,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    if (_guideSavedView && !dayEvents.any(_isGuideSavedEvent))
+                    if (waitingForGuideEvent)
+                      GuidedAnchor(
+                        id: 'calendar.loading',
+                        registry: realUiGuideAnchorRegistry,
+                        child: Card(
+                          child: ListTile(
+                            leading: const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            title: Semantics(
+                              liveRegion: true,
+                              child: const Text('저장 중…'),
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (guideEventMissing &&
+                        _loadState == _CalendarLoadState.ready)
                       Card(
                         child: ListTile(
                           title: const Text('저장된 안내 일정을 현재 목록에서 확인할 수 없어요.'),
@@ -1557,17 +1619,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             registry: realUiGuideAnchorRegistry,
                             child: TextButton(
                               key: const ValueKey('guide-calendar-retry'),
-                              onPressed: () => _loadEvents(),
+                              onPressed: () {
+                                _clearGuideReadbackWait();
+                                unawaited(_loadEvents());
+                              },
                               child: const Text('다시 확인'),
                             ),
                           ),
                         ),
                       ),
-                    if (dayEvents.isEmpty && groupDayEvents.isEmpty)
-                      _EmptyAgendaCard(
-                        onVoice: () => context.push(AppRoutes.voice),
-                      )
-                    else ...[
+                    if (dayEvents.isEmpty && groupDayEvents.isEmpty) ...[
+                      if (!guideEventMissing)
+                        _EmptyAgendaCard(
+                          onVoice: () => context.push(AppRoutes.voice),
+                        ),
+                    ] else ...[
                       if (dayEvents.isNotEmpty) ...[
                         _AgendaSectionHeader(
                           title: '개인 일정',

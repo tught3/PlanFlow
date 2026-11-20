@@ -27,7 +27,9 @@ import '../../l10n/app_l10n.dart';
 import '../../onboarding/real_ui_guide/guide_bubble_visibility.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
+import 'confirm_screen.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/guided_anchor.dart';
 
 class VoiceInputScreen extends StatefulWidget {
@@ -83,6 +85,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   bool _isExitingVoiceInput = false;
   /// 완료를 누른 뒤 다음 화면이 올라올 때까지 이전 화면을 가리는 상태.
   bool _isRoutingToNextScreen = false;
+  bool _keepGuideVoiceViewDuringSubmit = false;
   bool _isVoiceRouteOpen = false;
   bool _didDeactivateCancel = false;
   bool _isFinishingVoiceFlow = false;
@@ -271,13 +274,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     )));
   }
 
-  Future<bool> _dispatchGuideParseConfirmed(Object? draft, int submitGeneration,
-      {({
-        GuideCoordinator coordinator,
-        GuideSnapshot snapshot
-      })? origin}) async {
-    // A request that began outside an active guide remains an ordinary request.
-    if (origin == null) return true;
+  bool _matchesGuideSubmission(
+    Object? draft,
+    int submitGeneration,
+    ({GuideCoordinator coordinator, GuideSnapshot snapshot}) origin,
+  ) {
     final coordinator = origin.coordinator;
     final originSnapshot = origin.snapshot;
     // Validate the immutable submission origin before the non-create-phase
@@ -317,7 +318,28 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         submitGeneration != _submitGeneration) {
       return false;
     }
+    return true;
+  }
+
+  Future<bool> _dispatchGuideParseConfirmed(
+    Object? draft,
+    int submitGeneration, {
+    ({GuideCoordinator coordinator, GuideSnapshot snapshot})? origin,
+    bool Function()? isCurrentRoute,
+    bool Function()? beginGuideTransition,
+  }) async {
+    if (origin == null) return true;
+    if (isCurrentRoute?.call() == false ||
+        !_matchesGuideSubmission(draft, submitGeneration, origin)) {
+      return false;
+    }
+    final coordinator = origin.coordinator;
+    final state = coordinator.state.value;
+    final evidence = _guideCaptureEvidence!;
     if (state.step == GuideStep.correctAndSave) return true;
+    // Once a guide revision can commit, keep Confirm open until that result
+    // can be checked against the captured submission.
+    if (beginGuideTransition?.call() == false) return false;
     final accepted = await coordinator.dispatch(ParseConfirmed(
       uid: state.uid,
       sessionId: state.sessionId!,
@@ -328,7 +350,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         !_isDisposing &&
         !_isExitingVoiceInput &&
         submitGeneration == _submitGeneration &&
+        isCurrentRoute?.call() != false &&
         identical(_guideCaptureEvidence, evidence) &&
+        identical(GuideScope.maybeOf(context), coordinator) &&
         identical(coordinator.state.value, accepted) &&
         accepted.uid == state.uid &&
         accepted.sessionId == state.sessionId &&
@@ -366,7 +390,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (!mounted ||
         !_isCurrentListenSession(generation) ||
         token != _partialTranscriptToken ||
-        _isFinishingVoiceFlow) return;
+        _isFinishingVoiceFlow) {
+      return;
+    }
     final coordinator = GuideScope.maybeOf(context);
     final state = coordinator?.state.value;
     if (coordinator == null ||
@@ -374,7 +400,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         state.uid.isEmpty ||
         state.sessionId == null ||
         state.run != GuideRun.active ||
-        state.step != GuideStep.createSpeech) return;
+        state.step != GuideStep.createSpeech) {
+      return;
+    }
     unawaited(coordinator.dispatch(SpeechObserved(
       uid: state.uid,
       sessionId: state.sessionId!,
@@ -685,10 +713,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     final capturedText = _rawTextController.text.trim().isNotEmpty
         ? _rawTextController.text.trim()
         : _recognizedText?.trim() ?? '';
-    // 완료를 누른 순간부터 다음 화면이 실제로 올라올 때까지 이 화면 전체를
-    // 가려 둔다. 이전에는 의도 분류·텍스트 정리 대기 동안 마이크 버튼과
-    // '현재 내용으로 입력' 버튼이 1초 정도 그대로 보였다.
-    setState(() => _isRoutingToNextScreen = true);
+    // Keep the guide's recording view in place while its transition is
+    // verified, so the next visible screen is the real confirmation route.
+    setState(() {
+      _isRoutingToNextScreen = true;
+      _keepGuideVoiceViewDuringSubmit = _captureGuideSubmissionOrigin() != null;
+    });
     _isFinishingVoiceFlow = true;
     _partialTranscriptToken++;
     // listenSessionGeneration을 증가시켜 listen() 루프가 이 세션의 result를
@@ -1110,23 +1140,18 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     });
   }
 
-  Future<void> _pushVoiceRoute(
-    String location, {
-    Object? extra,
-    required int submitGeneration,
-    ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
-  }) async {
+  Future<bool> _prepareVoiceRoute(int submitGeneration) async {
     await _finishVoiceFlow();
     if (!mounted || submitGeneration != _submitGeneration) {
       if (mounted) {
         setState(() => _isFinishingVoiceFlow = false);
       }
-      return;
+      return false;
     }
     // 완료 버튼은 native stop을 기다리지 않고 다음 화면으로 이동한다. 이때
     // `_isListening`은 이미 false여서 deactivate의 취소 경로를 타지 않을 수
-    // 있다. route push 전에 현재 세션을 무효화하고 native recognizer를
-    // cancel해, 이전 수정 명령의 늦은 결과가 다음 음성 입력으로 이어지는
+    // 있다. 다음 화면에서 입력을 허용하기 전에 현재 세션을 무효화하고
+    // native recognizer를 cancel해, 이전 명령의 늦은 결과가 다음 입력에 섞이는
     // 것을 막는다.
     _partialTranscriptToken++;
     _listenSessionGeneration++;
@@ -1136,8 +1161,45 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       if (mounted) {
         setState(() => _isFinishingVoiceFlow = false);
       }
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _pushVoiceRoute(
+    String location, {
+    Object? extra,
+    required int submitGeneration,
+    ({GuideCoordinator coordinator, GuideSnapshot snapshot})? guideOrigin,
+  }) async {
+    if (location == AppRoutes.confirm &&
+        _keepGuideVoiceViewDuringSubmit &&
+        _isRoutingToNextScreen &&
+        guideOrigin != null) {
+      if (!_matchesGuideSubmission(extra, submitGeneration, guideOrigin)) {
+        _resetVoiceCommandSubmitGuard(clearSignature: true);
+        return;
+      }
+      final draft = extra! as Map<String, dynamic>;
+      _openVoiceRoute(
+        location,
+        PendingGuideConfirm(
+          parsedSchedule: draft,
+          authorize: (isCurrentRoute, beginGuideTransition) async {
+            if (!await _prepareVoiceRoute(submitGeneration)) return false;
+            return _dispatchGuideParseConfirmed(
+              draft,
+              submitGeneration,
+              origin: guideOrigin,
+              isCurrentRoute: isCurrentRoute,
+              beginGuideTransition: beginGuideTransition,
+            );
+          },
+        ),
+      );
       return;
     }
+    if (!await _prepareVoiceRoute(submitGeneration)) return;
     if (location == AppRoutes.confirm &&
         !await _dispatchGuideParseConfirmed(extra, submitGeneration,
             origin: guideOrigin)) {
@@ -1153,6 +1215,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       }
       return;
     }
+    _openVoiceRoute(location, extra);
+  }
+
+  void _openVoiceRoute(String location, Object? extra) {
     final routeFuture = context.push<Object?>(location, extra: extra);
     _isVoiceRouteOpen = true;
     unawaited(routeFuture.then<void>(
@@ -1353,35 +1419,74 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }
+    final coordinator = GuideScope.maybeOf(context);
+    final state = coordinator?.state.value;
+    final replay = state != null && state.isReplay && state.isInProgress
+        ? state
+        : null;
+    if (replay != null &&
+        (replay.run != GuideRun.active ||
+            replay.uid != userId ||
+            replay.sessionId == null ||
+            replay.step != GuideStep.querySpeech)) {
+      return;
+    }
+    void openConversation(
+        {VoiceConversationEntryGrant? grant, GuidePermit? permit}) {
+      if (!mounted || submitGeneration != _submitGeneration) return;
+      final current = GuideScope.maybeOf(context)?.state.value;
+      final captured = _guideCaptureEvidence;
+      final operationId = permit?.operationId ?? grant?.guideReplay?.id;
+      final valid = operationId != null &&
+          captured != null &&
+          captured['uid'] == current?.uid &&
+          captured['sessionId'] == current?.sessionId;
+      unawaited(_pushVoiceRoute(
+        '${AppRoutes.voiceConversation}?autoStart=1',
+        extra: <String, dynamic>{
+          'initial_text': queryText,
+          if (grant != null) 'entry_grant': grant,
+          if (permit != null) 'guideEntryPermit': permit,
+          if (valid)
+            'guideInitialVoiceEvidence': <String, Object?>{
+              ...captured,
+              'operationId': operationId,
+              'operation': 'query',
+              'inputText': queryText,
+            },
+        },
+        submitGeneration: submitGeneration,
+        guideOrigin: guideOrigin,
+      ));
+    }
+
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
-      guideCoordinator: GuideScope.maybeOf(context),
+      guideCoordinator: state?.isInProgress == true ? coordinator : null,
       guideOperation: GuideOperation.query,
-      onGuideDenied: (_) {},
-      onGuideAllowed: (permit) {
+      onGuideDenied: (_) {
         if (!mounted || submitGeneration != _submitGeneration) return;
-        final state = GuideScope.maybeOf(context)?.state.value;
-        final captured = _guideCaptureEvidence;
-        final valid = captured != null &&
-            captured['uid'] == state?.uid &&
-            captured['sessionId'] == state?.sessionId;
-        unawaited(_pushVoiceRoute(
-          '${AppRoutes.voiceConversation}?autoStart=1',
-          extra: <String, dynamic>{
-            'initial_text': queryText,
-            'guideEntryPermit': permit,
-            if (valid)
-              'guideInitialVoiceEvidence': <String, Object?>{
-                ...captured,
-                'operationId': permit.operationId,
-                'operation': 'query',
-                'inputText': queryText,
-              },
-          },
-          submitGeneration: submitGeneration,
-          guideOrigin: guideOrigin,
-        ));
+        _resetVoiceCommandSubmitGuard(clearSignature: true);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('안내를 계속하지 못했어요. 잠시 후 다시 시도해 주세요.'),
+          ));
+      },
+      onGuideAllowed: (permit) => openConversation(permit: permit),
+      onGuideReplayAllowed: (entry) {
+        if (!mounted ||
+            ModalRoute.of(context)?.isCurrent == false ||
+            !entry.allows(
+              coordinator: GuideScope.maybeOf(context),
+              uid: overrideUserId ?? authProvider.userId,
+              kind: GuideChargeKind.voiceConversation,
+              operation: GuideOperation.query,
+            )) {
+          return;
+        }
+        openConversation(grant: VoiceConversationEntryGrant.forGuideReplay(entry));
       },
       onDenied: (reason) {
         if (mounted) {
@@ -1393,22 +1498,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             );
         }
       },
-      onEnterAllowed: (VoiceConversationEntryGrant grant) {
-        if (!mounted || submitGeneration != _submitGeneration) {
-          return;
-        }
-        unawaited(
-          _pushVoiceRoute(
-            '${AppRoutes.voiceConversation}?autoStart=1',
-            extra: <String, dynamic>{
-              'initial_text': queryText,
-              'entry_grant': grant,
-            },
-            submitGeneration: submitGeneration,
-            guideOrigin: guideOrigin,
-          ),
-        );
-      },
+      onEnterAllowed: (grant) => openConversation(grant: grant),
     );
   }
 
@@ -1778,7 +1868,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     final l10n = appL10n(context);
     // 말하는 동안 안내 말풍선을 잠시 걷어 음성 원문이 가려지지 않게 한다.
     // 빌드 중 리스너 알림을 피하려고 마이크로태스크로 미룬다.
-    final hideGuideBubble = _isListening && _guideHighlightsVoiceControls;
+    final keepVoiceView =
+        _isRoutingToNextScreen && _keepGuideVoiceViewDuringSubmit;
+    final showRecording = _isListening || keepVoiceView;
+    final hideGuideBubble = showRecording && _guideHighlightsVoiceControls;
     if (guideListeningBubbleHidden.value != hideGuideBubble) {
       scheduleMicrotask(
           () => guideListeningBubbleHidden.value = hideGuideBubble);
@@ -1801,83 +1894,86 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             onPressed: () => unawaited(_handleBackNavigation()),
           ),
         ),
-        bottomNavigationBar: _VoiceBottomControls(
-          isListening: _isListening,
-          hasText: _rawTextController.text.trim().isNotEmpty,
-          statusMessage: _statusMessage ?? _analysisStatusMessage,
-          onCancel: _cancelVoiceFlow,
-          onUndo: _undoLastSegment,
-          onClear: _clearTranscript,
-          onManualSubmit: _confirmManualText,
-          onHome: () => unawaited(
-            _exitVoiceInput(() => context.go(AppRoutes.home)),
-          ),
-          onCalendar: () => unawaited(
-            _exitVoiceInput(() => context.go(AppRoutes.calendar)),
-          ),
-          onSettings: () => unawaited(
-            _exitVoiceInput(() => context.go(AppRoutes.settings)),
+        bottomNavigationBar: AbsorbPointer(
+          absorbing: keepVoiceView,
+          child: _VoiceBottomControls(
+            isListening: showRecording,
+            hasText: _rawTextController.text.trim().isNotEmpty,
+            statusMessage: _statusMessage ?? _analysisStatusMessage,
+            onCancel: _cancelVoiceFlow,
+            onUndo: _undoLastSegment,
+            onClear: _clearTranscript,
+            onManualSubmit: _confirmManualText,
+            onHome: () => unawaited(
+              _exitVoiceInput(() => context.go(AppRoutes.home)),
+            ),
+            onCalendar: () => unawaited(
+              _exitVoiceInput(() => context.go(AppRoutes.calendar)),
+            ),
+            onSettings: () => unawaited(
+              _exitVoiceInput(() => context.go(AppRoutes.settings)),
+            ),
           ),
         ),
         body: Stack(children: [
-          SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppConstants.defaultPadding),
-            child: ResponsiveContent(
-              maxWidth: context.planflowWindowInfo.contentMaxWidth,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _VoiceCommandGuide(theme: theme)),
-                  const SizedBox(height: 8),
-                  _ListeningGuide(
-                    isListening: _isListening,
-                    restartCount: _sttRestartCount,
-                  ),
-                  const SizedBox(height: 10),
-                  GuidedAnchor(
-                    id: 'voice.review',
-                    registry: realUiGuideAnchorRegistry,
-                    child: _VoiceTranscriptSection(
-                      isListening: _isListening,
-                      recognizedText: _recognizedText,
-                      controller: _rawTextController,
-                      focusNode: _rawTextFocusNode,
-                      onTapTranscript: () =>
-                          unawaited(_activateManualTranscriptEditing()),
-                      onManualSubmit: _continueWithRawText,
-                      highlighted: _guideHighlightsVoiceControls,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  GuidedAnchor(
-                    id: 'voice.start',
-                    registry: realUiGuideAnchorRegistry,
-                    child: _VoicePrimaryButton(
-                      isListening: _isListening,
-                      hasText: _rawTextController.text.trim().isNotEmpty,
-                      onTapStart: _handleVoiceStartPressed,
-                      onTapFinish: _handleVoiceDonePressed,
-                      onManualSubmit: _confirmManualText,
-                      highlighted: _guideHighlightsVoiceControls,
-                    ),
-                  ),
-                  if (_rawTextController.text.trim().isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        '현재 내용으로 입력하려면 텍스트를 먼저 입력해 주세요.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: PlanFlowColors.textSecondary,
-                            ),
+          AbsorbPointer(
+            absorbing: keepVoiceView,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                child: ResponsiveContent(
+                  maxWidth: context.planflowWindowInfo.contentMaxWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _VoiceCommandGuide(theme: theme)),
+                      const SizedBox(height: 8),
+                      _ListeningGuide(
+                        isListening: showRecording,
+                        restartCount: _sttRestartCount,
                       ),
-                    ),
-                ],
+                      const SizedBox(height: 10),
+                      GuidedAnchor(
+                        id: 'voice.review',
+                        registry: realUiGuideAnchorRegistry,
+                        child: _VoiceTranscriptSection(
+                          isListening: showRecording,
+                          recognizedText: _recognizedText,
+                          controller: _rawTextController,
+                          focusNode: _rawTextFocusNode,
+                          onTapTranscript: () =>
+                              unawaited(_activateManualTranscriptEditing()),
+                          onManualSubmit: _continueWithRawText,
+                          highlighted: _guideHighlightsVoiceControls,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _VoicePrimaryButton(
+                        isListening: showRecording,
+                        hasText: _rawTextController.text.trim().isNotEmpty,
+                        onTapStart: _handleVoiceStartPressed,
+                        onTapFinish: _handleVoiceDonePressed,
+                        onManualSubmit: _confirmManualText,
+                        highlighted: _guideHighlightsVoiceControls,
+                      ),
+                      if (_rawTextController.text.trim().isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            '현재 내용으로 입력하려면 텍스트를 먼저 입력해 주세요.',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: PlanFlowColors.textSecondary,
+                                    ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-          ),
-          if (_isRoutingToNextScreen)
+          if (_isRoutingToNextScreen && !keepVoiceView)
             const Positioned.fill(child: _NextScreenTransitionBarrier()),
         ]),
       ),
@@ -2190,7 +2286,10 @@ class _VoicePrimaryButton extends StatelessWidget {
         : hasText
             ? '음성으로 다시 입력하기'
             : l10n.voicePrimaryStart;
-    final voiceButton = FilledButton.icon(
+    final voiceButton = GuidedAnchor(
+      id: 'voice.start',
+      registry: realUiGuideAnchorRegistry,
+      child: FilledButton.icon(
       key: const ValueKey('voice-primary-button'),
       onPressed: isListening ? onTapFinish : onTapStart,
       icon: Icon(isListening ? Icons.check : Icons.mic),
@@ -2203,6 +2302,7 @@ class _VoicePrimaryButton extends StatelessWidget {
           : (highlighted
               ? _highlightedAccentButtonStyle()
               : _tertiaryAccentButtonStyle()),
+      ),
     );
 
     if (isListening) {
@@ -2214,13 +2314,17 @@ class _VoicePrimaryButton extends StatelessWidget {
         Expanded(child: voiceButton),
         const SizedBox(width: 8),
         Expanded(
-          child: FilledButton.icon(
+          child: GuidedAnchor(
+            id: 'voice.submit',
+            registry: realUiGuideAnchorRegistry,
+            child: FilledButton.icon(
             key: const ValueKey('voice-input-confirm-current-text-button'),
             onPressed: hasText ? onManualSubmit : null,
             icon: const Icon(Icons.check_circle_outline),
             label: const FittedBox(
               fit: BoxFit.scaleDown,
               child: Text('현재 내용으로 입력'),
+            ),
             ),
           ),
         ),

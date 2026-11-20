@@ -12,7 +12,7 @@ class FakeProgress implements GuideProgressStore {
   Future<GuideSnapshot?> load(
       {required String uid, required String version}) async {
     loadCalls++;
-    return value?.uid == uid ? value : null;
+    return value?.uid == uid && value?.version == version ? value : null;
   }
 
   @override
@@ -34,7 +34,7 @@ void main() {
       final progress = FakeProgress();
       progress.value = GuideSnapshot(
         uid: 'u',
-        version: 'real_ui_v1',
+        version: realUiGuideVersion,
         revision: 0,
         serverRevision: 0,
         step: GuideStep.intro,
@@ -56,7 +56,7 @@ void main() {
       expect(progress.value?.run, GuideRun.active,
           reason: 'marker must not be marked completed/skipped');
       expect(progress.value?.uid, 'u');
-      expect(progress.value?.version, 'real_ui_v1');
+      expect(progress.value?.version, realUiGuideVersion);
     });
 
     test(
@@ -72,7 +72,7 @@ void main() {
 
       expect(progress.value, isNotNull);
       expect(progress.value!.uid, 'fresh-user');
-      expect(progress.value!.version, 'real_ui_v1');
+      expect(progress.value!.version, realUiGuideVersion);
       expect(progress.value!.step, GuideStep.homeMic);
       expect(progress.value!.run, GuideRun.active);
       expect(progress.value!.sessionId, isNull,
@@ -89,7 +89,7 @@ void main() {
       final laterStep = GuideStep.createSpeech;
       final existing = GuideSnapshot(
         uid: 'u',
-        version: 'real_ui_v1',
+        version: realUiGuideVersion,
         sessionId: 'session-1',
         revision: 7,
         serverRevision: 3,
@@ -131,7 +131,7 @@ void main() {
       final progress = FakeProgress();
       progress.value = GuideSnapshot(
         uid: 'u-a',
-        version: 'real_ui_v1',
+        version: realUiGuideVersion,
         revision: 0,
         serverRevision: 0,
         step: GuideStep.intro,
@@ -163,7 +163,7 @@ void main() {
       final progress = FakeProgress();
       progress.value = GuideSnapshot(
         uid: 'u-a',
-        version: 'real_ui_v1',
+        version: realUiGuideVersion,
         revision: 0,
         serverRevision: 0,
         step: GuideStep.intro,
@@ -199,7 +199,7 @@ void main() {
         ..saveError = StateError('storage unavailable');
       progress.value = GuideSnapshot(
         uid: 'u',
-        version: 'real_ui_v1',
+        version: realUiGuideVersion,
         revision: 0,
         serverRevision: 0,
         step: GuideStep.intro,

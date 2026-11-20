@@ -33,6 +33,7 @@ import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/location_resolution_status.dart';
 import '../../widgets/guided_anchor.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_instruction_text.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 
@@ -397,7 +398,24 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       sessionId: state.sessionId!,
       expectedRevision: state.revision,
     ));
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // The Home shell resumes a sync choice paused while this write was pending.
+    final current = coordinator.state.value;
+    if (ModalRoute.of(context)?.isCurrent == true &&
+        identical(GuideScope.maybeOf(context), coordinator) &&
+        current.uid == state.uid &&
+        current.version == state.version &&
+        current.sessionId == state.sessionId &&
+        current.createdEventId == state.createdEventId &&
+        current.isReplay == state.isReplay &&
+        current.step == GuideStep.syncChoice &&
+        (current.run == GuideRun.active ||
+            (current.run == GuideRun.paused &&
+                current.pauseReason == GuidePauseReason.background))) {
+      context.go(AppRoutes.home);
+    } else {
+      setState(() {});
+    }
   }
 
   bool _guideAckVisible() {
@@ -815,6 +833,60 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
+      bottomNavigationBar: _guideAckVisible()
+          ? SafeArea(
+              top: false,
+              child: Center(
+                heightFactor: 1,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                      maxWidth: context.planflowWindowInfo.contentMaxWidth),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                    child: GuidedAnchor(
+                      id: 'saved.confirm',
+                      registry: realUiGuideAnchorRegistry,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _handleGuideDepartureAck,
+                          child: const Text('준비·출발 안내 확인'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : _updatedGuideMatches() &&
+                  GuideScope.maybeOf(context)?.state.value.step ==
+                      GuideStep.updatedDetail
+              ? SafeArea(
+                  top: false,
+                  child: Center(
+                    heightFactor: 1,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                          maxWidth: context.planflowWindowInfo.contentMaxWidth),
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.all(AppConstants.defaultPadding),
+                        child: GuidedAnchor(
+                          id: 'updated.confirm',
+                          registry: realUiGuideAnchorRegistry,
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: _handleUpdatedGuideAck,
+                              child: const Text('변경된 시간 확인'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
       appBar: AppBar(
         title: const Text('일정 상세'),
         leading: BackButton(onPressed: _handleBackNavigation),
@@ -863,7 +935,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         _InfoRow(label: '날짜·시간', value: timeLabel),
                       if (event.location?.trim().isNotEmpty ?? false)
                         _InfoRow(label: '장소', value: event.location!.trim()),
-                      const Text('화면의 제목, 날짜와 장소가 실제 저장된 내용과 맞는지 확인해 주세요.'),
+                      const GuideInstructionText(
+                          '화면의 제목, 날짜와 장소가 실제 저장된 내용과 맞는지 확인해 주세요.'),
                     ],
                   ),
                 ),
@@ -905,7 +978,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   title: '기본 정보',
                   children: [
                     if (timeLabel != null)
-                      _InfoRow(label: '시간', value: timeLabel),
+                      if (_updatedGuideMatches() &&
+                          GuideScope.maybeOf(context)?.state.value.step ==
+                              GuideStep.updatedDetail)
+                        GuidedAnchor(
+                          id: 'updated.time',
+                          registry: realUiGuideAnchorRegistry,
+                          child: _InfoRow(label: '시간', value: timeLabel),
+                        )
+                      else
+                        _InfoRow(label: '시간', value: timeLabel),
                     if (event.location != null)
                       _InfoRow(label: '장소', value: event.location!),
                     if (event.hasLocationText)
@@ -938,12 +1020,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ],
                 ),
               ),
-              if (_updatedGuideMatches() &&
-                  GuideScope.maybeOf(context)?.state.value.step ==
-                      GuideStep.updatedDetail)
-                FilledButton(
-                    onPressed: _handleUpdatedGuideAck,
-                    child: const Text('변경된 시간 확인')),
               if (event.supplies.isNotEmpty) ...[
                 const SizedBox(height: AppConstants.sectionSpacing),
                 _InfoCard(
@@ -972,13 +1048,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           formatDateTime: _formatDateTime,
                         ),
                       if (_guideAckVisible()) ...[
-                        const Text(
+                        const GuideInstructionText(
                             '저장한 일정과 장소를 확인해 주세요. 준비를 시작할 시간과 늦지 않게 출발할 시간을 알려드려요.'),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: _handleGuideDepartureAck,
-                          child: const Text('준비·출발 안내 확인'),
-                        ),
                       ],
                     ],
                   ),

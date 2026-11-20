@@ -41,7 +41,9 @@ class FakeAdService extends AdService {
   Future<bool> showForParseSchedule({
     required String requestId,
     void Function(String stage)? onProgress,
+    bool Function()? canShowAd,
   }) async {
+    if (canShowAd?.call() == false) return false;
     showForParseScheduleCallCount += 1;
     parseScheduleRequestIds.add(requestId);
     onProgress?.call('loading');
@@ -54,7 +56,13 @@ class FakeAdService extends AdService {
   Future<VoiceConversationAdOutcome> showForVoiceConversationWithOutcome({
     required String requestId,
     void Function(String stage)? onProgress,
+    bool Function()? canShowAd,
   }) async {
+    if (canShowAd?.call() == false) {
+      return const VoiceConversationAdOutcome(
+        VoiceConversationAdOutcomeKind.disabled,
+      );
+    }
     showForVoiceConversationCallCount += 1;
     voiceConversationRequestIds.add(requestId);
     onProgress?.call('loading');

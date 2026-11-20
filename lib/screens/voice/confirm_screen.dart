@@ -57,6 +57,9 @@ import '../../widgets/rewarded_ad_dialog.dart';
 import '../../widgets/schedule_save_scope_card.dart';
 import '../../services/ad_service.dart';
 import '../../services/ad_reward_state.dart';
+import '../../services/guide_quota_adapter.dart';
+import '../../services/real_ui_guide_grant_service.dart'
+    show SupabaseClientAccess;
 import '../../services/schedule_parse_ad_gate.dart';
 import '../../services/schedule_parse_entitlement.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
@@ -67,10 +70,25 @@ import '../../onboarding/real_ui_guide/guide_create_location_policy.dart';
 import '../../widgets/guided_anchor.dart';
 part 'confirm_widgets.dart';
 
+/// In-memory route payload for a voice submission still being authorized.
+class PendingGuideConfirm {
+  const PendingGuideConfirm({
+    required this.parsedSchedule,
+    required this.authorize,
+  });
+
+  final Map<String, dynamic> parsedSchedule;
+  final Future<bool> Function(
+    bool Function() isCurrentRoute,
+    bool Function() beginGuideTransition,
+  ) authorize;
+}
+
 class ConfirmScreen extends StatefulWidget {
   ConfirmScreen({
     super.key,
     this.parsedSchedule = const <String, dynamic>{},
+    this.pendingGuideConfirm,
     this.userId,
     this.eventRepository,
     this.groupContextProvider,
@@ -81,10 +99,12 @@ class ConfirmScreen extends StatefulWidget {
     HomeWidgetService? homeWidgetService,
     LocationLookupService? locationLookupService,
     SmartPreparationAlarmService? smartPreparationAlarmService,
+    this.departureAlarmService = const DepartureAlarmService(),
     this.permissionService,
     this.voiceCorrectionRuleRepository,
     VoiceCorrectionLearningService? voiceCorrectionLearningService,
     TravelTimeBufferService? travelTimeBufferService,
+    this.exportCalendarAfterSave,
     this.nowProvider,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
         gptService = gptService ?? GptService(),
@@ -102,6 +122,7 @@ class ConfirmScreen extends StatefulWidget {
             travelTimeBufferService ?? TravelTimeBufferService();
 
   final Map<String, dynamic> parsedSchedule;
+  final PendingGuideConfirm? pendingGuideConfirm;
   final String? userId;
   final EventRepository? eventRepository;
   final GroupContextProvider? groupContextProvider;
@@ -112,10 +133,12 @@ class ConfirmScreen extends StatefulWidget {
   final HomeWidgetService homeWidgetService;
   final LocationLookupService locationLookupService;
   final SmartPreparationAlarmService smartPreparationAlarmService;
+  final DepartureAlarmService departureAlarmService;
   final AppPermissionService? permissionService;
   final VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository;
   final VoiceCorrectionLearningService voiceCorrectionLearningService;
   final TravelTimeBufferService travelTimeBufferService;
+  final Future<void> Function(EventModel)? exportCalendarAfterSave;
   final DateTime Function()? nowProvider;
 
   @override
@@ -351,9 +374,65 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       .convert(utf8.encode('$_parseAttemptId\n${rawText.trim()}'))
       .toString();
 
+  bool _editorInitialized = false;
+  bool _guidePreparationRejected = false;
+  bool _guideTransitionCommitting = false;
+
   @override
   void initState() {
     super.initState();
+    final pending = widget.pendingGuideConfirm;
+    if (pending == null) {
+      _initializeEditor();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_authorizeGuidePreparation(pending));
+    });
+  }
+
+  Future<void> _authorizeGuidePreparation(PendingGuideConfirm pending) async {
+    final route = ModalRoute.of(context);
+    bool isCurrent() => mounted && route?.isCurrent == true;
+
+    bool beginGuideTransition() {
+      if (!isCurrent() || _guideTransitionCommitting) return false;
+      setState(() => _guideTransitionCommitting = true);
+      return true;
+    }
+
+    var authorized = false;
+    try {
+      if (isCurrent()) {
+        authorized = await pending.authorize(isCurrent, beginGuideTransition);
+      }
+    } catch (error) {
+      debugPrint(
+          'ConfirmScreen guide preparation failed: ${error.runtimeType}');
+    }
+    if (!mounted) return;
+    if (!authorized || !isCurrent()) {
+      if (isCurrent() && context.canPop()) {
+        context.pop('cancelled');
+      } else {
+        setState(() {
+          _guideTransitionCommitting = false;
+          _guidePreparationRejected = true;
+        });
+      }
+      return;
+    }
+    setState(_initializeEditor);
+  }
+
+  void _cancelGuidePreparation() {
+    if (!_guideTransitionCommitting && context.canPop()) {
+      context.pop('cancelled');
+    }
+  }
+
+  void _initializeEditor() {
+    _editorInitialized = true;
     _parseAttemptId = _stringValue(widget.parsedSchedule['parse_attempt_id']) ??
         '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(widget.parsedSchedule)}';
     widget.parsedSchedule['parse_attempt_id'] = _parseAttemptId;
@@ -463,6 +542,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   void dispose() {
+    if (!_editorInitialized) {
+      _scrollController.dispose();
+      _newSupplyFocusNode.dispose();
+      super.dispose();
+      return;
+    }
+    final dismissGuideSaveFeedback = _dismissGuideSaveFeedback;
+    if (dismissGuideSaveFeedback != null) {
+      // The feedback host is above this route. Don't mark it dirty while the
+      // Navigator is disposing the form during a build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        dismissGuideSaveFeedback();
+      });
+    }
     // A rewarded-ad callback can outlive this route when the user backs out.
     // Always clear the process-wide overlay so it cannot cover the next page.
     RewardedAdLoadingOverlay.hide();
@@ -1067,28 +1160,30 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   /// 저장 후 백그라운드에서 장소 좌표를 채운다(저장 자체는 막지 않음).
   /// [savedEvent]가 있으면(개인 일정 저장) 해상도 성공 시 그 이벤트를
-  /// updateEvent로 좌표를 채운다. 화면이 이미 닫혔어도(mounted==false) DB
+  /// 장소와 좌표를 갱신한다. 화면이 이미 닫혔어도(mounted==false) DB
   /// 업데이트는 계속 진행한다 — UI 상태(_locationLat 등)만 mounted를 확인한다.
-  Future<void> _resolveLocationCoordinatesAfterSave({
+  Future<EventModel?> _resolveLocationCoordinatesAfterSave({
     required EventModel? savedEvent,
     required EventRepository repository,
   }) async {
     if (_skipOptionalMapLookupForQa) {
       debugPrint('[GeoResolve] stage=skip reason=qa_map_skip after_save');
-      return;
+      return savedEvent;
     }
-    final query = _locationController.text.trim();
+    final query = (savedEvent?.location ?? _locationController.text).trim();
+    final hasCoordinates = savedEvent?.hasValidLocationCoordinates ??
+        (_locationLat != null && _locationLng != null);
     if (query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
-        (_locationLat != null && _locationLng != null)) {
+        hasCoordinates) {
       // 이미 좌표가 있거나 개인 별칭이면 스킵
       DiagLogger.log(
         'GeoResolve',
         '스킵: 쿼리="${query.isEmpty ? '(빈값)' : query}" '
-            '이미보유=${_locationLat != null && _locationLng != null} '
+            '이미보유=$hasCoordinates '
             '개인별칭=${query.isNotEmpty && _shouldSkipAutomaticLocationResolution(query)}',
       );
-      return;
+      return savedEvent;
     }
 
     if (mounted) {
@@ -1122,11 +1217,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         if (results.isEmpty) {
           DiagLogger.log('GeoResolve', '실패: 쿼리="$query" 결과없음 → 좌표 미설정');
         }
-        return;
+        return savedEvent;
       }
 
       final selected = results.first;
-      final resolvedLabel = selected.bestPlaceLabel.trim();
+      // Keep the bound place text stable while the guide edits the time.
+      final resolvedLabel =
+          _confirmGuideOwner == null ? selected.bestPlaceLabel.trim() : query;
       final finalLabel = resolvedLabel.isNotEmpty ? resolvedLabel : query;
       if (mounted) {
         _isApplyingHydration = true;
@@ -1149,18 +1246,22 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         '성공: 쿼리="$query" 선택="${selected.name}" lat=${selected.latitude} lng=${selected.longitude}',
       );
       if (savedEvent != null) {
-        await repository.updateEvent(
-          savedEvent.copyWith(
-            location: finalLabel,
-            locationLat: selected.latitude,
-            locationLng: selected.longitude,
-          ),
+        final resolved = await repository.resolveEventLocationIfUnchanged(
+          original: savedEvent,
+          location: finalLabel,
+          latitude: selected.latitude,
+          longitude: selected.longitude,
         );
-        EventRefreshBus.instance.notifyChanged(
-          reason: 'confirm_location_resolved',
-          eventId: savedEvent.id,
-          startAt: savedEvent.startAt,
-        );
+        if (resolved != null) {
+          EventRefreshBus.instance.notifyChanged(
+            reason: 'confirm_location_resolved',
+            eventId: resolved.id,
+            startAt: resolved.startAt,
+          );
+          return resolved;
+        }
+        return await repository.fetchEvent(savedEvent.id,
+            userId: savedEvent.userId);
       }
     } catch (error) {
       debugPrint('ConfirmScreen save-time location resolution failed: $error');
@@ -1173,6 +1274,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         });
       }
     }
+    return savedEvent;
   }
 
   bool _shouldSkipAutomaticLocationResolution(String query) {
@@ -1215,7 +1317,26 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return false;
   }
 
-  void _maybeHydrateParsedSchedule({GuidePermit? guidePermit}) {
+  bool _guideOwnsParseAdmission() => GuideQuotaRuntime.blocksOrdinaryUse(
+        uid: authProvider.userId ?? SupabaseClientAccess.authCurrentId(),
+        scoped: GuideScope.maybeOf(context),
+      );
+
+  void _guideParseDenied() {
+    if (!mounted) return;
+    setState(() {
+      widget.parsedSchedule['parse_pending'] = false;
+      widget.parsedSchedule['parse_failed'] = true;
+      _isHydratingParsedSchedule = false;
+      _showInitialHydrationLoader = false;
+      _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
+    });
+  }
+
+  void _maybeHydrateParsedSchedule({
+    GuidePermit? guidePermit,
+    GuideReplayEntry? replayEntry,
+  }) {
     if (widget.parsedSchedule['manual_text_confirmed'] == true &&
         widget.parsedSchedule['parse_pending'] != true) {
       return;
@@ -1229,36 +1350,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!shouldHydrate || rawText == null || rawText.isEmpty) {
       return;
     }
-    _hydrateParsedSchedule(rawText, guidePermit: guidePermit);
+    unawaited(_hydrateParsedSchedule(
+      rawText,
+      guidePermit: guidePermit,
+      replayEntry: replayEntry,
+    ));
   }
 
-  /// GPT 자동 파싱이 필요한 진입인지 판단하고, Remote Config가 광고 활성이라면
-  /// 사용자에게 "광고 보고 분석하기" 다이얼로그를 먼저 띄운다.
-  /// 보상 부여 시 GPT 파싱을, 거절/실패 시 수동 입력 모드로 강제한다.
-  Future<void> _maybeRunAdGateThenHydrate() async {
-    if (_adGateHandled) {
-      return;
-    }
-    _adGateHandled = true;
-
-    // 광고 게이트가 필요한 상황: parse_pending=true && rawText 존재.
-    // (이미 rawText가 채워져 hydrate 대상일 때만 광고 게이트)
-    if (widget.parsedSchedule['parse_pending'] != true) {
-      _maybeHydrateParsedSchedule();
-      return;
-    }
-    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
-    if (rawText == null || rawText.isEmpty) {
-      _maybeHydrateParsedSchedule();
-      return;
-    }
-
+  Future<bool> _restoreOrdinaryParseGrant(String parseBinding) async {
     // 이전 parse 성공 후 entitlement RPC가 실패한 경우에는 앱 재시작 뒤에도
     // 새 GPT 호출보다 먼저 같은 sessionId 소비를 재시도한다.
-    final parseBinding = _scheduleParseBinding(rawText);
     final pendingBinding = await AdRewardState.instance.pendingConsumeBinding(
       feature: 'schedule_parse',
     );
+    if (!mounted || _guideOwnsParseAdmission()) return false;
     if (pendingBinding != null && pendingBinding != parseBinding) {
       // The original draft is no longer available in this route. Discard the
       // orphaned local state and continue through a fresh gate instead of
@@ -1266,6 +1371,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       await AdRewardState.instance.clearPendingConsume(
         feature: 'schedule_parse',
       );
+      if (!mounted || _guideOwnsParseAdmission()) return false;
       await AdService.instance.clearReward(feature: 'schedule_parse');
     }
     final pendingConsume =
@@ -1275,6 +1381,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                 binding: parseBinding,
                 feature: 'schedule_parse',
               );
+    if (!mounted || _guideOwnsParseAdmission()) return false;
     if (pendingConsume != null) {
       _scheduleParseGrant = ScheduleParseEntryGrant(
         sessionId: pendingConsume,
@@ -1283,17 +1390,19 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       );
       _parseConsumptionPending = true;
       await _retryPendingParseConsumption();
-      return;
+      return true;
     }
 
     // 보상 잔여 상태가 있으면 (앱 재시작 후 또는 이전 시도 잔여) hydrate.
     var reentry = await AdRewardState.instance.consumeActiveRequestId(
       feature: 'schedule_parse',
     );
+    if (!mounted || _guideOwnsParseAdmission()) return false;
     if (reentry != null) {
       final activeBinding = await AdRewardState.instance.activeGrantBinding(
         feature: 'schedule_parse',
       );
+      if (!mounted || _guideOwnsParseAdmission()) return false;
       if (activeBinding == null || activeBinding != parseBinding) {
         await AdRewardState.instance.clear(
           feature: 'schedule_parse',
@@ -1312,12 +1421,30 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         dailyRemainingAtGate: 0,
       );
       _maybeHydrateParsedSchedule();
+      return true;
+    }
+    return false;
+  }
+
+  /// Check the guide or ordinary entitlement before automatic parsing.
+  Future<void> _maybeRunAdGateThenHydrate() async {
+    if (_adGateHandled) return;
+    _adGateHandled = true;
+
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+    if (widget.parsedSchedule['parse_pending'] != true ||
+        rawText == null ||
+        rawText.isEmpty) {
+      _maybeHydrateParsedSchedule();
       return;
     }
 
-    if (!mounted) {
+    final parseBinding = _scheduleParseBinding(rawText);
+    final startedInGuide = _guideOwnsParseAdmission();
+    if (!startedInGuide && await _restoreOrdinaryParseGrant(parseBinding)) {
       return;
     }
+    if (!mounted) return;
 
     // ScheduleParseAdGate가 하루 무료 잔여를 먼저 확인한다. 잔여가 남아
     // 있으면 광고 다이얼로그 없이 즉시 onEnterAllowed가 호출되고, 소진된
@@ -1328,13 +1455,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 캐시하지 않으므로 다음 재시도/재파싱이 이전 permit을 재사용할 수
     // 없고, 매 시도는 게이트에서 새 서버 승인(고유 operationId)을 받는다.
     GuidePermit? freshGuidePermit;
+    GuideReplayEntry? freshReplayEntry;
     try {
       final guideCoordinator = GuideScope.maybeOf(context);
-      final guideState = guideCoordinator?.state.value;
-      final guideParseAttempt = guideState != null &&
-          guideState.run == GuideRun.active &&
-          guideState.uid.isNotEmpty &&
-          guideState.sessionId != null;
+      final guideParseAttempt = startedInGuide || _guideOwnsParseAdmission();
+      if (guideParseAttempt && guideCoordinator == null) {
+        _guideParseDenied();
+        return;
+      }
+      ScheduleParseEntryGrant? approvedGrant;
       await ScheduleParseAdGate.instance.tryEnterScheduleParse(
         context: context,
         guideCoordinator: guideParseAttempt ? guideCoordinator : null,
@@ -1343,16 +1472,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           freshGuidePermit = permit;
           _parseAuthorized = true;
         },
-        onGuideDenied: (_) {
-          if (!mounted) return;
-          setState(() {
-            widget.parsedSchedule['parse_pending'] = false;
-            widget.parsedSchedule['parse_failed'] = true;
-            _isHydratingParsedSchedule = false;
-            _showInitialHydrationLoader = false;
-            _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
-          });
+        onGuideReplayAllowed: (entry) {
+          freshReplayEntry = entry;
+          _parseAuthorized = true;
         },
+        onGuideDenied: (_) => _guideParseDenied(),
         onAdProgress: (stage) {
           if (!mounted) {
             return;
@@ -1364,16 +1488,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             overlayVisible = true;
           }
         },
-        onEnterAllowed: (grant) {
-          _scheduleParseGrant = grant;
-          if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
-            unawaited(
-              AnalyticsService.logAdFeatureSuccess(
-                requestId: grant.sessionId,
-              ),
-            );
-          }
-        },
+        onEnterAllowed: (grant) => approvedGrant = grant,
         onDenied: (reason) {
           if (!mounted) {
             return;
@@ -1397,17 +1512,24 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         },
       );
 
-      if (!mounted) {
-        return;
-      }
-
-      if (freshGuidePermit != null) {
-        _maybeHydrateParsedSchedule(guidePermit: freshGuidePermit);
-      } else if (_scheduleParseGrant != null) {
+      if (!mounted) return;
+      final grant = approvedGrant;
+      if (freshGuidePermit != null || freshReplayEntry != null) {
+        _maybeHydrateParsedSchedule(
+          guidePermit: freshGuidePermit,
+          replayEntry: freshReplayEntry,
+        );
+      } else if (!guideParseAttempt && grant != null) {
+        if (_guideOwnsParseAdmission()) {
+          _guideParseDenied();
+          return;
+        }
+        _recordScheduleParseGrant(grant);
         await AdRewardState.instance.bindActiveGrant(
           binding: parseBinding,
           feature: 'schedule_parse',
         );
+        if (!mounted) return;
         // 진입 승인됨. GPT 파싱 실행(실제 소비는 파싱 시작 시점에 처리).
         _maybeHydrateParsedSchedule();
       }
@@ -1430,8 +1552,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
   }
 
+  void _recordScheduleParseGrant(ScheduleParseEntryGrant grant) {
+    _scheduleParseGrant = grant;
+    if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
+      unawaited(
+          AnalyticsService.logAdFeatureSuccess(requestId: grant.sessionId));
+    }
+  }
+
   Future<void> _retryAiHydration() async {
-    if (_parseConsumptionPending) {
+    final guideParseAttempt = _guideOwnsParseAdmission();
+    if (_parseConsumptionPending && !guideParseAttempt) {
       unawaited(_retryPendingParseConsumption());
       return;
     }
@@ -1447,14 +1578,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 받아야 하며, 승인 거절(만료/uid 불일치/phase 불일치/replay)은 일반
     // 무료 사용이나 AI 호출로 절대 대체하지 않는다(fail-closed).
     final guideCoordinator = GuideScope.maybeOf(context);
-    final guideState = guideCoordinator?.state.value;
-    final guideParseAttempt = guideState != null &&
-        guideState.run == GuideRun.active &&
-        guideState.uid.isNotEmpty &&
-        guideState.sessionId != null;
 
     if (guideParseAttempt) {
+      if (guideCoordinator == null) {
+        _guideParseDenied();
+        return;
+      }
       GuidePermit? retryPermit;
+      GuideReplayEntry? retryReplayEntry;
       try {
         await ScheduleParseAdGate.instance.tryEnterScheduleParse(
           context: context,
@@ -1469,16 +1600,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             retryPermit = permit;
             _parseAuthorized = true;
           },
-          onGuideDenied: (_) {
-            if (!mounted) return;
-            setState(() {
-              widget.parsedSchedule['parse_pending'] = false;
-              widget.parsedSchedule['parse_failed'] = true;
-              _isHydratingParsedSchedule = false;
-              _showInitialHydrationLoader = false;
-              _hydrateMessage = '안내 사용 승인을 확인하지 못했어요. 일반 무료 사용으로 전환하지 않았어요.';
-            });
+          onGuideReplayAllowed: (entry) {
+            retryReplayEntry = entry;
+            _parseAuthorized = true;
           },
+          onGuideDenied: (_) => _guideParseDenied(),
         );
       } catch (error, stackTrace) {
         debugPrint('ConfirmScreen guided parse retry failed: $error');
@@ -1497,7 +1623,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       if (!mounted) {
         return;
       }
-      if (retryPermit == null) {
+      if (retryPermit == null && retryReplayEntry == null) {
         // onGuideDenied가 이미 fail-closed 상태를 반영했다. 일반 전환 없음.
         return;
       }
@@ -1510,8 +1636,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       // dispatch 시점에 잡은 permit을 이 요청의 레인으로 고정한다. 응답을
       // 기다리는 동안 가이드가 skip/종료되어도 이 요청은 일반 소비로
       // 전환되지 않는다(_hydrateParsedSchedule은 파라미터로만 판단).
-      unawaited(
-          _hydrateParsedSchedule(rawText.trim(), guidePermit: retryPermit));
+      unawaited(_hydrateParsedSchedule(
+        rawText.trim(),
+        guidePermit: retryPermit,
+        replayEntry: retryReplayEntry,
+      ));
       return;
     }
 
@@ -1522,19 +1651,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final parseBinding = _scheduleParseBinding(rawText);
     if (_scheduleParseGrant == null) {
       bool overlayVisible = false;
+      ScheduleParseEntryGrant? approvedGrant;
       try {
         await ScheduleParseAdGate.instance.tryEnterScheduleParse(
           context: context,
-          onEnterAllowed: (grant) {
-            _scheduleParseGrant = grant;
-            if (grant.source == ScheduleParseEntitlementSource.adRewarded) {
-              unawaited(
-                AnalyticsService.logAdFeatureSuccess(
-                  requestId: grant.sessionId,
-                ),
-              );
-            }
-          },
+          onEnterAllowed: (grant) => approvedGrant = grant,
           onDenied: (reason) {
             if (!mounted) {
               return;
@@ -1563,9 +1684,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             }
           },
         );
-        if (!mounted) {
+        final grant = approvedGrant;
+        if (!mounted) return;
+        if (_guideOwnsParseAdmission()) {
+          _guideParseDenied();
           return;
         }
+        if (grant != null) _recordScheduleParseGrant(grant);
         final freshGrant = _scheduleParseGrant;
         if (freshGrant != null &&
             freshGrant.source == ScheduleParseEntitlementSource.adRewarded) {
@@ -1597,6 +1722,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         return;
       }
     }
+    if (!mounted) return;
     setState(() {
       widget.parsedSchedule['parse_pending'] = true;
       widget.parsedSchedule['parse_failed'] = false;
@@ -1607,7 +1733,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   Future<void> _retryPendingParseConsumption() async {
-    if (_isHydratingParsedSchedule || _scheduleParseGrant == null) {
+    if (!mounted ||
+        _guideOwnsParseAdmission() ||
+        _isHydratingParsedSchedule ||
+        _scheduleParseGrant == null) {
       return;
     }
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
@@ -1656,8 +1785,25 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Future<void> _hydrateParsedSchedule(
     String rawText, {
     GuidePermit? guidePermit,
+    GuideReplayEntry? replayEntry,
   }) async {
-    if (_isHydratingParsedSchedule) {
+    if (!mounted || _isHydratingParsedSchedule) {
+      return;
+    }
+    final guided = guidePermit != null || replayEntry != null;
+    if (replayEntry != null &&
+        (ModalRoute.of(context)?.isCurrent == false ||
+            !replayEntry.allows(
+              coordinator: GuideScope.maybeOf(context),
+              uid: authProvider.userId ?? SupabaseClientAccess.authCurrentId(),
+              kind: GuideChargeKind.scheduleParse,
+              operation: GuideOperation.createParse,
+            ))) {
+      _guideParseDenied();
+      return;
+    }
+    if (!guided && _guideOwnsParseAdmission()) {
+      _guideParseDenied();
       return;
     }
 
@@ -1698,15 +1844,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       // 결과에서는 grant를 유지해 사용자가 재시도할 수 있고, 광고 보상
       // grant도 같은 시도에서 중복 소비되지 않는다.
       if (parsed['parse_failed'] != true &&
-          guidePermit == null &&
+          !guided &&
           grant != null &&
           grant.source != ScheduleParseEntitlementSource.adFailedFreePass) {
         // Persist the server-side idempotent consume before clearing the
         // local reward. If the RPC is temporarily unavailable, retain the
         // reward so a later re-entry can retry the same session instead of
         // silently losing the grant or opening an unbounded free path.
-        final consumed = await ScheduleParseEntitlementService.instance
-            .consume(grant.sessionId);
+        final consumed = _guideOwnsParseAdmission()
+            ? null
+            : await ScheduleParseEntitlementService.instance
+                .consume(grant.sessionId);
         if (consumed != null) {
           await AdRewardState.instance.clearPendingConsume(
             feature: 'schedule_parse',
@@ -1895,14 +2043,26 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         opened = await _permissionService.requestIgnoreBatteryOptimizations();
       }
 
-      if (!opened && mounted) {
+      if (mounted && _confirmGuideOwner != null) {
+        _showGuideSaveBlocked(
+          opened ? 'alarm_settings_selected' : 'alarm_settings_unavailable',
+          opened
+              ? '알람 권한 설정을 선택해 일정을 저장하지 않았어요. 권한을 확인한 뒤 다시 저장해 주세요.'
+              : '알람 설정을 열지 못해 저장하지 않았어요. Android 설정에서 알람 권한을 확인해 주세요.',
+        );
+      } else if (!opened && mounted) {
         _showMessage(
           '시스템 알람 설정 화면을 열지 못했어요. Android 설정에서 PlanFlow의 정확한 알람을 허용해 주세요.',
         );
       }
       return action;
     } catch (error) {
-      debugPrint('Alarm permission guard check failed (non-blocking): $error');
+      if (_confirmGuideOwner != null) {
+        _logSaveIssue('alarm_permission_check_failed');
+      } else {
+        debugPrint(
+            'Alarm permission guard check failed (non-blocking): $error');
+      }
       return _ConfirmAlarmPermissionAction.none;
     }
   }
@@ -1929,7 +2089,67 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   GuideSnapshot? _confirmGuideOwner;
   String? _confirmAuthUid;
   EventModel? _confirmPersistedEvent;
+  bool _confirmPostSaveTriggered = false;
   String? _confirmOperationId;
+  VoidCallback? _dismissGuideSaveFeedback;
+
+  static const _guideSaveOwnerChangedMessage =
+      '로그인 또는 안내 세션이 바뀌어 저장하지 않았어요. 현재 안내를 확인해 주세요.';
+  static const _guideSaveLocationMessage = '일정 장소를 입력해 주세요.';
+  static const _guideSavedEventMessage =
+      '일정은 저장됐어요. 안내가 이어지지 않았어요. 일정 목록에서 확인해 주세요.';
+  static const _guideSaveUncertainMessage =
+      '일정이 이미 저장됐을 수 있어요. 일정 목록에서 저장 여부를 확인해 주세요.';
+
+  void _showGuideSaveBlocked(String reasonCode, String message) {
+    _logSaveIssue(reasonCode);
+    if (!mounted) return;
+    _dismissGuideSaveFeedback = AppFeedbackService.showGuideSaveBlocked(
+      context: context,
+      reasonCode: reasonCode,
+      message: message,
+    );
+    if (_dismissGuideSaveFeedback == null) _showMessage(message);
+  }
+
+  void _showSaveBlocked(String reasonCode, String message) {
+    if (_confirmGuideOwner != null) {
+      _showGuideSaveBlocked(reasonCode, message);
+    } else if (mounted) {
+      _showMessage(message);
+    }
+  }
+
+  void _logSaveIssue(String reasonCode) {
+    if (kDebugMode) debugPrint('ConfirmScreen save: $reasonCode');
+  }
+
+  bool _saveScreenIsMounted() {
+    if (mounted) return true;
+    if (_confirmGuideOwner != null) _logSaveIssue('screen_closed');
+    return false;
+  }
+
+  bool _saveOwnerStillCurrent(String? originalUid) {
+    if (!_saveScreenIsMounted()) return false;
+    if (_resolveUserId() == originalUid) return true;
+    if (_confirmGuideOwner != null) {
+      _showGuideSaveBlocked(
+        'owner_changed_during_location_permission',
+        _guideSaveOwnerChangedMessage,
+      );
+    }
+    return false;
+  }
+
+  void _showSaveFailure(String reasonCode, String fallbackMessage) {
+    final message = _confirmPersistedEvent != null
+        ? _guideSavedEventMessage
+        : _confirmCreateAttempted
+            ? _guideSaveUncertainMessage
+            : fallbackMessage;
+    _showSaveBlocked(reasonCode, message);
+  }
 
   bool _sameGuideOwner(GuideSnapshot owner, {bool revision = false}) {
     if (!mounted ||
@@ -1947,10 +2167,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   Future<void> _save() async {
     if (_confirmSaveInFlight) return;
+    _dismissGuideSaveFeedback?.call();
+    _dismissGuideSaveFeedback = null;
     _confirmSaveInFlight = true;
     try {
       final current = GuideScope.maybeOf(context)?.state.value;
       if (_confirmGuideOwner != null && !_sameGuideOwner(_confirmGuideOwner!)) {
+        final mayHaveSaved = _confirmCreateAttempted ||
+            _confirmPersistedEvent != null ||
+            _confirmGuideOwner!.createdEventId != null;
+        _showGuideSaveBlocked(
+          'owner_changed',
+          mayHaveSaved
+              ? _guideSaveUncertainMessage
+              : _guideSaveOwnerChangedMessage,
+        );
         return;
       }
       if (current != null && current.run != GuideRun.terminal) {
@@ -1960,7 +2191,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         }
         if (!_sameGuideOwner(_confirmGuideOwner!) ||
             current.sessionId == null) {
-          _showMessage('안내 로그인 상태를 확인해 주세요.');
+          _showGuideSaveBlocked(
+              'guide_session_unavailable', '안내 로그인 상태를 확인해 주세요.');
           return;
         }
         // A real saved ID must never re-enter createEvent, even after remount.
@@ -1971,86 +2203,98 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             // Never leave the save tap silently doing nothing: the persisted
             // id exists but the guide operation binding is missing, so a
             // retry cannot be matched. Ask the user to check the list.
-            _showMessage('이미 저장된 일정이에요. 일정 목록에서 확인해 주세요.');
+            _showGuideSaveBlocked('checkpoint_operation_missing',
+                '이미 저장된 일정이에요. 일정 목록에서 확인해 주세요.');
             return;
           }
-          _confirmPersistedEvent ??= await _resolveEventRepository()
-              ?.fetchEvent(id, userId: current.uid);
-          if (!_sameGuideOwner(_confirmGuideOwner!) ||
-              _confirmPersistedEvent == null ||
+          final repository = _resolveEventRepository();
+          if (repository == null) {
+            _showGuideSaveBlocked(
+                'checkpoint_repository_unavailable', _guideSavedEventMessage);
+            return;
+          }
+          _confirmPersistedEvent ??=
+              await repository.fetchEvent(id, userId: current.uid);
+          if (!_saveScreenIsMounted()) return;
+          if (!_sameGuideOwner(_confirmGuideOwner!)) {
+            _showGuideSaveBlocked(
+                'checkpoint_owner_changed', _guideSaveUncertainMessage);
+            return;
+          }
+          if (_confirmPersistedEvent == null ||
               _confirmPersistedEvent!.id != id) {
+            _showGuideSaveBlocked(
+                'checkpoint_event_unavailable', _guideSaveUncertainMessage);
             return;
           }
           if (await _dispatchGuideSaveObserved(_confirmPersistedEvent!)) {
-            _navigateAfterSave();
+            await _finalizeConfirmSave(
+              userId: current.uid,
+              savedEvent: _confirmPersistedEvent,
+              repository: repository,
+            );
           }
           return;
         }
         if (_confirmCreateAttempted) {
-          _showMessage('저장 요청 결과가 불확실해요. 일정 목록에서 확인해 주세요. 중복 생성은 하지 않아요.');
+          _showGuideSaveBlocked(
+              'create_result_unknown', _guideSaveUncertainMessage);
           return;
         }
         if (current.run != GuideRun.active ||
             current.errorCode != null ||
             current.step != GuideStep.correctAndSave) {
-          _showMessage('안내가 준비되지 않아 저장할 수 없어요.');
+          _showGuideSaveBlocked('guide_not_ready', '안내가 준비되지 않아 저장할 수 없어요.');
           return;
         }
       }
       await _saveActual();
-    } catch (error) {
+    } catch (_) {
       // 제목·시작시간 같은 모호한 값으로 저장 여부를 추정하지 않는다.
       // 재연결 근거는 저장소 응답으로 확인된 실제 일정(또는 정식 ID)뿐이다.
       final recovered = _confirmPersistedEvent;
-      if (!mounted) {
-        return;
-      }
+      if (!_saveScreenIsMounted()) return;
       if (recovered != null) {
         _confirmPersistedEvent = recovered;
         _confirmOperationId ??= _confirmSavedOperationId();
         var observed = false;
         try {
           observed = await _dispatchGuideSaveObserved(recovered);
-        } catch (guideError) {
-          debugPrint('Guide save reconnect failed: $guideError');
+        } catch (_) {
+          _showGuideSaveBlocked(
+              'checkpoint_reconnect_failed', _guideSavedEventMessage);
         }
         if (observed) {
-          EventRefreshBus.instance.notifyChanged(
-              reason: 'confirm_saved',
-              eventId: recovered.id,
-              startAt: recovered.startAt);
-          _navigateAfterSave();
-          return;
+          final repository = _resolveEventRepository();
+          if (repository != null) {
+            await _finalizeConfirmSave(
+              userId: recovered.userId,
+              savedEvent: recovered,
+              repository: repository,
+            );
+          }
         }
-        _showMessage('일정은 저장했어요. 안내 연결만 다시 시도해 주세요.');
         return;
       }
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : '저장 상태를 확인하지 못했어요. 잠시 후 확인해 주세요.');
+      if (_confirmGuideOwner != null) {
+        _showGuideSaveBlocked('save_check_failed', _guideSaveUncertainMessage);
+      } else {
+        _showMessage('저장 상태를 확인하지 못했어요. 잠시 후 확인해 주세요.');
       }
     } finally {
       _confirmSaveInFlight = false;
     }
   }
 
-  static const bool _allowUnresolvedGuideCoordinates = kDebugMode &&
-      bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
-      bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA');
-
   Future<void> _saveActual() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      _showMessage('제목을 입력해 주세요.');
+      _showSaveBlocked('title_required', '제목을 입력해 주세요.');
       return;
     }
 
-    // Real UI guide: when the coordinator is bound at correctAndSave, the
-    // review section requires a real place + resolved destination coords
-    // (or an explicit manual picker selection) before save can advance. The
-    // guide must NOT overwrite the user's actual sentence — the title and
-    // location text remain exactly what the user typed.
+    // A guide event needs a place name. Coordinate lookup can finish in the
+    // background, just as it does for a normal save.
     final guideCoordinator = GuideScope.maybeOf(context);
     final guideSnapshot = guideCoordinator?.state.value;
     final guideGateActive = guideSnapshot != null &&
@@ -2060,20 +2304,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         guideSnapshot.step == GuideStep.correctAndSave;
     if (guideGateActive) {
       final locationText = _locationController.text.trim();
-      // A manual picker selection is signalled by resolved coords already
-      // (LocationPickFlow writes lat/lng on selection). Coords from the GPT
-      // hydration also qualify when the user has not edited the place.
       final placeSatisfied = guideCreateLocationAllowed(
         location: locationText,
         latitude: _locationLat,
         longitude: _locationLng,
-        allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
+        allowUnresolvedCoordinates: true,
       );
       if (!placeSatisfied) {
-        _showMessage(
-          '일정 정의를 보려면 장소와 좌표가 필요해요. '
-          '장소를 선택하거나 지도에서 위치를 골라 주세요.',
-        );
+        _showGuideSaveBlocked(
+            'place_or_coordinates_required', _guideSaveLocationMessage);
         return;
       }
     }
@@ -2082,21 +2321,31 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       try {
         await authProvider.syncCurrentSession();
       } catch (error) {
-        debugPrint('ConfirmScreen session sync failed before save: $error');
+        if (_confirmGuideOwner != null) {
+          _logSaveIssue('session_sync_failed');
+        } else {
+          debugPrint('ConfirmScreen session sync failed before save: $error');
+        }
       }
     }
+    if (!_saveScreenIsMounted()) return;
 
     final userId = _resolveUserId();
     if (userId == null) {
-      _showMessage('로그인이 필요합니다.');
+      _showSaveBlocked('login_required', '로그인이 필요합니다.');
       return;
     }
 
     final repository = _resolveEventRepository();
     if (repository == null) {
-      _showMessage('Supabase 환경이 설정되지 않아 저장할 수 없어요.');
-      if (mounted) {
-        context.go(AppRoutes.home);
+      if (_confirmGuideOwner != null) {
+        _showGuideSaveBlocked(
+            'repository_unavailable', '일정 저장에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.');
+      } else {
+        _showMessage('Supabase 환경이 설정되지 않아 저장할 수 없어요.');
+        if (mounted) {
+          context.go(AppRoutes.home);
+        }
       }
       return;
     }
@@ -2104,17 +2353,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (_confirmGuideOwner == null) {
       await _maybePromptLeaderAutoShareIfNeeded(userId);
     }
-    if (!mounted) {
-      return;
-    }
+    if (!_saveScreenIsMounted()) return;
 
     // 정확한 알람/배터리 권한이 필요한 Android에서는 실제 저장 전에
     // 먼저 권한을 확인한다. 사용자가 설정으로 이동하면 이번 저장은 중단하고,
     // 앱으로 돌아온 뒤 다시 저장을 눌렀을 때 권한이 확인된 경우에만 생성한다.
     final alarmPermissionAction = await _showAlarmPermissionGuardIfNeeded();
-    if (!mounted) {
-      return;
-    }
+    if (!_saveScreenIsMounted()) return;
     if (alarmPermissionAction != _ConfirmAlarmPermissionAction.none) {
       return;
     }
@@ -2126,11 +2371,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 이 pass가 실패하거나 화면이 이미 닫혀도 home_screen의
     // _resolveEventsMissingCoords가 다음 홈 로드 때 이어서 보정하므로 안전망이
     // 이미 있다(중복 안전망, 데이터 유실 없음).
-    final pendingLocationQuery = _locationController.text.trim();
-    final needsBackgroundLocationResolve = pendingLocationQuery.isNotEmpty &&
-        !_shouldSkipAutomaticLocationResolution(pendingLocationQuery) &&
-        (_locationLat == null || _locationLng == null);
-
     final normalizedStartAt = planflowLocalDateTimeToUtc(_startAt);
     final normalizedEndAt =
         _endAt == null ? null : planflowLocalDateTimeToUtc(_endAt!);
@@ -2174,8 +2414,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final isOneOff = recurrenceRule == null || recurrenceRule.isEmpty;
     final eventStartForPermission = draftEvent.startAt ?? _startAt;
     final isFutureEvent = eventStartForPermission.isAfter(_localNow());
-    final hasResolvedDestination = draftEvent.locationLat != null &&
-        draftEvent.locationLng != null;
+    final hasResolvedDestination =
+        draftEvent.locationLat != null && draftEvent.locationLng != null;
     if (_shouldSavePersonalEvent &&
         isOneOff &&
         isFutureEvent &&
@@ -2184,24 +2424,34 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       try {
         final alreadyGranted =
             await _permissionService.checkLocationPermission();
-        if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+        if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
         if (!alreadyGranted) {
           await _permissionService.requestLocationPermission();
-          if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+          if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
           // Keep session state fresh after the OS prompt before persisting.
           if (AppEnv.isSupabaseReady) {
             try {
               await authProvider.syncCurrentSession();
             } catch (error) {
-              debugPrint('ConfirmScreen session sync after location prompt failed: $error');
+              if (_confirmGuideOwner != null) {
+                _logSaveIssue('session_sync_after_location_permission_failed');
+              } else {
+                debugPrint(
+                    'ConfirmScreen session sync after location prompt failed: $error');
+              }
             }
-            if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+            if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
           }
         }
       } catch (error) {
         // Location is an optional preparation enhancement, never a save gate.
-        debugPrint('ConfirmScreen location permission request skipped: $error');
-        if (!mounted || _resolveUserId() != ownerBeforePermission) return;
+        if (_confirmGuideOwner != null) {
+          _logSaveIssue('location_permission_check_failed');
+        } else {
+          debugPrint(
+              'ConfirmScreen location permission request skipped: $error');
+        }
+        if (!_saveOwnerStillCurrent(ownerBeforePermission)) return;
       }
     }
     if (_shouldSavePersonalEvent) {
@@ -2217,24 +2467,29 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           userId: userId,
         );
       } catch (error) {
-        debugPrint('Overlap lookup skipped before save: $error');
+        if (_confirmGuideOwner != null) {
+          _logSaveIssue('overlap_lookup_failed');
+        } else {
+          debugPrint('Overlap lookup skipped before save: $error');
+        }
       }
-      if (!mounted) {
-        return;
-      }
+      if (!_saveScreenIsMounted()) return;
       final duplicateWarningEvents = filterDuplicateWarningEvents(
         draft: draftEvent,
         candidates: overlappingEvents,
       );
-      if (!mounted) {
-        return;
-      }
+      if (!_saveScreenIsMounted()) return;
       if (duplicateWarningEvents.isNotEmpty) {
         unawaited(AnalyticsService.logConflictDetected());
         final shouldContinue = await _showOverlapWarning(
           duplicateWarningEvents,
         );
-        if (!shouldContinue || !mounted) {
+        if (!_saveScreenIsMounted()) return;
+        if (!shouldContinue) {
+          if (_confirmGuideOwner != null) {
+            _showGuideSaveBlocked(
+                'overlap_save_canceled', '겹치는 일정 확인에서 저장을 취소했어요.');
+          }
           return;
         }
       }
@@ -2258,18 +2513,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         // Retain the real repository insert response before any fallible work.
         _confirmPersistedEvent = savedEvent;
         _confirmOperationId ??= _confirmSavedOperationId();
-        if (!_sameGuideOwner(_confirmGuideOwner!) ||
-            !await _dispatchGuideSaveObserved(savedEvent)) {
-          return;
-        }
-        EventRefreshBus.instance.notifyChanged(
-            reason: 'confirm_saved',
-            eventId: savedEvent.id,
-            startAt: savedEvent.startAt);
-        _navigateAfterSave();
-        return;
+        if (!await _dispatchGuideSaveObserved(savedEvent)) return;
       }
-      if (_shouldSaveGroupEvent) {
+      if (_confirmGuideOwner == null && _shouldSaveGroupEvent) {
         final targetGroups = _selectedGroupsForSharing;
         if (savedEvent == null) {
           // 그룹 전용 저장: 선택한 그룹마다 독립 그룹일정 생성.
@@ -2303,86 +2549,32 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         );
       }
 
-      if (needsBackgroundLocationResolve) {
-        unawaited(
-          _resolveLocationCoordinatesAfterSave(
-            savedEvent: savedEvent,
-            repository: repository,
-          ),
-        );
-      }
-
-      _PostSaveFollowUpResult? postSaveResult;
-      if (savedEvent != null) {
-        unawaited(_recordVoiceCorrectionLearning(userId: userId));
-
-        postSaveResult = await _scheduleImmediateAlarmNotifications(
-          event: savedEvent,
-        );
-
-        unawaited(
-          _runPostSaveFollowUps(
-            userId: userId,
-            event: savedEvent,
-            repository: repository,
-          ),
-        );
-      }
-
-      if (mounted) {
-        // 저장 성공 SnackBar는 바로 뒤이은 일정탭 화면 전환과 겹쳐 잔상으로 보이므로
-        // 띄우지 않는다. 일정탭 진입 + 목록에 새 일정 표시가 저장 완료 피드백을 대신한다.
-        // (저장 실패 시에는 화면이 그대로라 SnackBar를 정상 표시한다.)
-        // 단, 개인 일정 없이 그룹에만 공유한 경우에는 다른 피드백 수단이 없으므로 메시지를 띄운다.
-        if (savedEvent == null) {
-          _showMessage('그룹에 일정을 공유했어요.');
-        }
-        EventRefreshBus.instance.notifyChanged(
-          reason: 'confirm_saved',
-          eventId: savedEvent?.id,
-          startAt: savedEvent?.startAt ?? draftEvent.startAt,
-        );
-        unawaited(AnalyticsService.logScheduleConfirmed());
-        if (savedEvent != null) {
-          unawaited(AnalyticsService.logEventCreated(source: 'voice'));
-          unawaited(ReviewService.onEventSaved());
-        }
-        final alarmWarning = postSaveResult?.alarmWarningMessage;
-        if (alarmWarning != null) {
-          _showMessage(alarmWarning);
-        }
-        if (savedEvent != null) {
-          _navigateAfterSave();
-        } else {
-          // 그룹 전용 저장에는 개인 알람이 없으므로 권한 가드를 건너뛰고 바로 이동.
-          _navigateAfterSave();
-        }
-      }
-    } on StateError catch (error) {
-      debugPrint('ConfirmScreen save state error: $error');
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : _messageForSaveStateError(error));
-      }
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'ConfirmScreen save postgrest error: '
-        'code=${error.code} message=${error.message} details=${error.details}',
+      await _finalizeConfirmSave(
+        userId: userId,
+        savedEvent: savedEvent,
+        repository: repository,
+        groupStartAt: draftEvent.startAt,
       );
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : _messageForPostgrestError(error));
+    } on StateError catch (error) {
+      if (_confirmGuideOwner == null) {
+        debugPrint('ConfirmScreen save state error: $error');
       }
+      _showSaveFailure('save_state_error', _messageForSaveStateError(error));
+    } on PostgrestException catch (error) {
+      if (_confirmGuideOwner == null) {
+        debugPrint(
+          'ConfirmScreen save postgrest error: '
+          'code=${error.code} message=${error.message} details=${error.details}',
+        );
+      }
+      _showSaveFailure(
+          'save_repository_error', _messageForPostgrestError(error));
     } catch (error, stackTrace) {
-      debugPrint('ConfirmScreen save failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      if (mounted) {
-        _showMessage(_confirmPersistedEvent != null
-            ? '일정은 저장했어요. 안내 연결만 다시 시도해 주세요.'
-            : '저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      if (_confirmGuideOwner == null) {
+        debugPrint('ConfirmScreen save failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
       }
+      _showSaveFailure('save_failed', '저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -2390,6 +2582,77 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         });
       }
     }
+  }
+
+  Future<void> _finalizeConfirmSave({
+    required String userId,
+    required EventModel? savedEvent,
+    required EventRepository repository,
+    DateTime? groupStartAt,
+  }) async {
+    if (_confirmPostSaveTriggered) return;
+    final guideOwner = _confirmGuideOwner;
+    if (guideOwner != null && !_sameGuideOwner(guideOwner)) return;
+    final guide = guideOwner == null ? null : GuideScope.maybeOf(context);
+    _confirmPostSaveTriggered = true;
+    final query = (savedEvent?.location ?? _locationController.text).trim();
+    final needsCoordinates = !_shouldSkipAutomaticLocationResolution(query) &&
+        (savedEvent?.hasUnresolvedLocation ??
+            (_locationLat == null || _locationLng == null));
+    final locationResolution = needsCoordinates
+        ? _resolveLocationCoordinatesAfterSave(
+            savedEvent: savedEvent,
+            repository: repository,
+          )
+        : null;
+
+    _PostSaveFollowUpResult? postSaveResult;
+    if (savedEvent != null) {
+      unawaited(_recordVoiceCorrectionLearning(userId: userId));
+      postSaveResult = await _scheduleImmediateAlarmNotifications(
+        event: savedEvent,
+      );
+      Future<void> followUps() => _runPostSaveFollowUps(
+            userId: userId,
+            event: savedEvent,
+            repository: repository,
+            locationResolution: guide == null ? null : locationResolution,
+            guided: guide != null,
+          );
+      if (guide == null) {
+        unawaited(followUps());
+      } else {
+        unawaited(GuideEventSaveFollowUps.enqueue(savedEvent, followUps));
+        GuideEventSaveFollowUps.deferCalendarSync(
+          state: guide.state,
+          event: savedEvent,
+          repository: repository,
+          stillOwnsEvent: () =>
+              authProvider.userId == _confirmAuthUid &&
+              (repository is! SupabaseEventRepository ||
+                  authProvider.userId == userId),
+          export: _exportCalendarAfterSave,
+        );
+      }
+    }
+
+    if (!mounted || (guideOwner != null && !_sameGuideOwner(guideOwner))) {
+      return;
+    }
+    if (savedEvent == null) _showMessage('그룹에 일정을 공유했어요.');
+    EventRefreshBus.instance.notifyChanged(
+      reason: 'confirm_saved',
+      eventId: savedEvent?.id,
+      startAt: savedEvent?.startAt ?? groupStartAt,
+    );
+    unawaited(AnalyticsService.logScheduleConfirmed());
+    if (savedEvent != null) {
+      unawaited(AnalyticsService.logEventCreated(source: 'voice'));
+      if (guideOwner == null) unawaited(ReviewService.onEventSaved());
+    }
+    final alarmWarning = postSaveResult?.alarmWarningMessage;
+    if (alarmWarning != null) _showMessage(alarmWarning);
+    _navigateAfterSave();
   }
 
   String _messageForSaveStateError(StateError error) {
@@ -2518,40 +2781,72 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   String _confirmSavedOperationId() =>
       'confirmSave:$_parseAttemptId:${identityHashCode(this)}';
 
+  bool _denyGuideCreate(String reasonCode, String message) {
+    _showGuideSaveBlocked(reasonCode, message);
+    return false;
+  }
+
   bool _allowGuideCreate(EventModel draft, GuideSnapshot owner) {
     final current = GuideScope.maybeOf(context)?.state.value;
-    final allowed = _sameGuideOwner(owner, revision: true) &&
-        current != null &&
-        current.sessionId != null &&
-        current.errorCode == null &&
-        draft.userId == owner.uid &&
-        !draft.isMultiDay &&
-        _saveTarget == ScheduleSaveTarget.personalOnly &&
-        guideCreateLocationAllowed(
-          location: _locationController.text,
-          latitude: _locationLat,
-          longitude: _locationLng,
-          allowUnresolvedCoordinates: _allowUnresolvedGuideCoordinates,
-        ) &&
-        GuideMutationPolicy.check(
-                guide: current,
-                intent: GuideMutationIntent(
-                    kind: GuideWriteKind.createPersonal,
-                    operationId: _confirmSavedOperationId(),
-                    isPersonal: true,
-                    isRecurrence: draft.recurrenceRule != null,
-                    changedFields: const <String>{},
-                    userConfirmed: true))
-            .allowed;
-    if (!allowed && mounted) {
-      _showMessage('안내 저장 조건을 확인해 주세요. 개인 단일 일정과 장소가 필요해요.');
+    if (!_sameGuideOwner(owner) ||
+        current == null ||
+        current.sessionId == null ||
+        draft.userId != owner.uid) {
+      return _denyGuideCreate(
+          'create_owner_changed', _guideSaveOwnerChangedMessage);
     }
-    return allowed;
+    if (!_sameGuideOwner(owner, revision: true)) {
+      return _denyGuideCreate(
+          'create_revision_changed', '안내 상태가 바뀌어 저장하지 않았어요. 현재 안내를 확인해 주세요.');
+    }
+    if (current.errorCode != null) {
+      return _denyGuideCreate(
+          'create_guide_not_ready', '안내가 준비되지 않아 저장할 수 없어요.');
+    }
+    if (draft.isMultiDay || _saveTarget != ScheduleSaveTarget.personalOnly) {
+      return _denyGuideCreate(
+          'create_not_single_personal', '안내에서는 하루 안에 끝나는 개인 일정만 저장할 수 있어요.');
+    }
+    if (!guideCreateLocationAllowed(
+      location: _locationController.text,
+      latitude: _locationLat,
+      longitude: _locationLng,
+      allowUnresolvedCoordinates: true,
+    )) {
+      return _denyGuideCreate(
+          'place_or_coordinates_required', _guideSaveLocationMessage);
+    }
+    final decision = GuideMutationPolicy.check(
+      guide: current,
+      intent: GuideMutationIntent(
+        kind: GuideWriteKind.createPersonal,
+        operationId: _confirmSavedOperationId(),
+        isPersonal: true,
+        isRecurrence: draft.recurrenceRule != null,
+        changedFields: const <String>{},
+        userConfirmed: true,
+      ),
+    );
+    if (!decision.allowed) {
+      final message = current.createdEventId != null
+          ? _guideSavedEventMessage
+          : draft.recurrenceRule != null
+              ? '안내에서는 반복하지 않는 개인 일정만 저장할 수 있어요.'
+              : '현재 안내 단계에서는 일정을 저장할 수 없어요.';
+      return _denyGuideCreate(
+          decision.reasonCode ?? 'create_policy_denied', message);
+    }
+    return true;
   }
 
   Future<bool> _dispatchGuideSaveObserved(EventModel persistedEvent) async {
     final owner = _confirmGuideOwner;
-    if (owner == null || !_sameGuideOwner(owner)) return false;
+    if (!_saveScreenIsMounted()) return false;
+    if (owner == null || !_sameGuideOwner(owner)) {
+      _showGuideSaveBlocked(
+          'checkpoint_owner_changed', _guideSaveUncertainMessage);
+      return false;
+    }
     final coordinator = GuideScope.maybeOf(context)!;
     final state = coordinator.state.value;
     if (persistedEvent.id.isEmpty ||
@@ -2560,6 +2855,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         persistedEvent.externalId != null ||
         persistedEvent.recurrenceRule != null ||
         persistedEvent.isMultiDay) {
+      _showGuideSaveBlocked(
+          'checkpoint_event_ineligible', _guideSaveUncertainMessage);
       return false;
     }
     final result = await coordinator.dispatch(SaveObserved(
@@ -2580,7 +2877,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       if (_qaUnconfirmedSaveContinuationAllowed) {
         try {
           var current = coordinator.state.value;
-          if (_sameGuideOwner(owner) && current.uid == owner.uid &&
+          if (_sameGuideOwner(owner) &&
+              current.uid == owner.uid &&
               current.sessionId == owner.sessionId &&
               current.run == GuideRun.blocked &&
               current.errorCode == guideCreatedCheckpointPendingCode &&
@@ -2599,7 +2897,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               return true;
             }
             current = coordinator.state.value;
-            if (_sameGuideOwner(owner) && current.uid == owner.uid &&
+            if (_sameGuideOwner(owner) &&
+                current.uid == owner.uid &&
                 current.sessionId == owner.sessionId &&
                 current.run == GuideRun.blocked &&
                 current.errorCode == guideCreatedCheckpointPendingCode &&
@@ -2619,11 +2918,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               }
             }
           }
-        } catch (error) {
-          debugPrint('QA guide continuation failed: $error');
+        } catch (_) {
+          _logSaveIssue('qa_checkpoint_continuation_failed');
         }
       }
-      _showMessage('일정은 저장했어요. 저장 버튼으로 안내 연결만 다시 시도해 주세요.');
+    }
+    if (!accepted) {
+      if (!_saveScreenIsMounted()) return false;
+      if (!_sameGuideOwner(owner)) {
+        _showGuideSaveBlocked(
+            'checkpoint_owner_changed', _guideSaveUncertainMessage);
+      } else {
+        _showGuideSaveBlocked(
+            'checkpoint_not_accepted', _guideSavedEventMessage);
+      }
     }
     return accepted;
   }
@@ -2967,7 +3275,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       label: 'reminders',
     );
     await _tryFollowUp(() async {
-      final result = await const DepartureAlarmService().scheduleForEvent(
+      final result = await widget.departureAlarmService.scheduleForEvent(
         event,
         safetyMarginOverride: departureSafetyMargin,
       );
@@ -3151,6 +3459,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     required String userId,
     required EventModel event,
     required EventRepository repository,
+    Future<EventModel?>? locationResolution,
+    bool guided = false,
   }) async {
     UserSettingsModel? settings;
     if (AppEnv.isSupabaseReady) {
@@ -3165,24 +3475,55 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       minutes: settings?.departureSafetyMarginMin ??
           DepartureAlarmService.safetyMargin.inMinutes,
     );
+    final resolved =
+        locationResolution == null ? event : await locationResolution;
+    if (resolved == null ||
+        (guided && authProvider.userId != _confirmAuthUid)) {
+      return;
+    }
+    // The edit may already have committed; its queued reschedule needs the
+    // create reminder's original offset, even if geocoding returned the edit.
+    final effectiveEvent = guided
+        ? event.copyWith(
+            locationLat: resolved.locationLat,
+            locationLng: resolved.locationLng,
+          )
+        : resolved;
     await _saveRelatedRecords(
       userId: userId,
-      event: event,
+      event: effectiveEvent,
       departureSafetyMargin: departureSafetyMargin,
     );
     await _resyncExternalPreparationForDay(
       userId: userId,
-      event: event,
+      event: effectiveEvent,
       settings: settings,
+      preferCurrent: guided,
     );
-    await _updateHomeWidget(repository, event);
-    unawaited(CalendarAutoSyncService().syncAfterEventSave(event));
-    unawaited(
-      EventPreparationService().prepareAfterSave(
-        event,
-        departureSafetyMargin: departureSafetyMargin,
-      ),
+    await _updateHomeWidget(repository, effectiveEvent);
+    final preparation = EventPreparationService(
+      eventRepository: repository,
+      departureAlarmService: widget.departureAlarmService,
+    ).prepareAfterSave(
+      effectiveEvent,
+      departureSafetyMargin: departureSafetyMargin,
+      resolveCoordinates: !guided || effectiveEvent.hasResolvedLocation,
     );
+    if (guided) {
+      await preparation;
+    } else {
+      unawaited(_exportCalendarAfterSave(effectiveEvent));
+      unawaited(preparation);
+    }
+  }
+
+  Future<void> _exportCalendarAfterSave(EventModel event) async {
+    final export = widget.exportCalendarAfterSave;
+    if (export == null) {
+      await CalendarAutoSyncService().syncAfterEventSave(event);
+    } else {
+      await export(event);
+    }
   }
 
   List<Map<String, dynamic>> _buildPreActionPayloads({
@@ -3219,6 +3560,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     required String userId,
     required EventModel event,
     UserSettingsModel? settings,
+    bool preferCurrent = false,
   }) async {
     final eventStartAt = event.startAt;
     final repository = _resolveEventRepository();
@@ -3229,9 +3571,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       final resolvedSettings =
           settings ?? await SettingsRepository.supabase().fetchSettings(userId);
       final events = await repository.listEvents(userId: userId);
+      if (preferCurrent &&
+          !events.any((candidate) =>
+              candidate.id == event.id &&
+              candidate.startAt == eventStartAt &&
+              candidate.endAt == event.endAt)) {
+        // A later edit will resync from its own current schedule.
+        return;
+      }
       final updatedEvents = <EventModel>[
         for (final candidate in events)
-          if (candidate.id == event.id) event else candidate,
+          if (!preferCurrent && candidate.id == event.id) event else candidate,
       ];
       if (updatedEvents.every((candidate) => candidate.id != event.id)) {
         updatedEvents.add(event);
@@ -3588,6 +3938,41 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!_editorInitialized) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _cancelGuidePreparation();
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('일정 생성'),
+            leading: IconButton(
+              tooltip: '취소',
+              icon: const Icon(Icons.arrow_back),
+              onPressed:
+                  _guideTransitionCommitting ? null : _cancelGuidePreparation,
+            ),
+          ),
+          body: GuidedAnchor(
+            id: 'confirm.guidePending',
+            registry: realUiGuideAnchorRegistry,
+            child: Center(
+              child: _guidePreparationRejected
+                  ? const Text('안내 상태가 바뀌었어요. 음성 입력에서 다시 시도해 주세요.')
+                  : const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('일정 내용을 준비하고 있어요.'),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
     final theme = Theme.of(context);
     final showParsePendingLoader =
         widget.parsedSchedule['parse_pending'] == true &&
@@ -3754,6 +4139,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                           id: 'confirm.review',
                           registry: realUiGuideAnchorRegistry,
                           child: CalendarStyleEventEditor(
+                            guideFieldAnchorPrefix: 'confirm',
                             titleController: _titleController,
                             locationController: _locationController,
                             memoController: _memoController,

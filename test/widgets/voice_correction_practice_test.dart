@@ -17,7 +17,7 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('voice-correction-practice-explanation')),
         findsOneWidget);
-    expect(find.textContaining('완료'), findsNothing);
+    expect(find.text('말을 다 한 뒤 ‘완료’ 버튼을 눌러 주세요.'), findsOneWidget);
     expect(find.textContaining('말하면서 고치기'), findsNothing);
     expect(find.textContaining('예시 보기'), findsNothing);
     expect(find.textContaining('처음부터 보기'), findsNothing);

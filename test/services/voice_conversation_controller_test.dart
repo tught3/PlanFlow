@@ -11,6 +11,7 @@ import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/screens/voice/voice_action_screen.dart';
 import 'package:planflow/screens/voice/voice_input_screen.dart';
 import 'package:planflow/services/gpt_service.dart';
@@ -458,8 +459,8 @@ void main() {
           events: [event],
           now: () => planflowLocalDateTimeToUtc(today),
         );
-        expect(controller.handle('오늘 일정 보여줘').visibleEvents.single.id,
-            event.id);
+        expect(
+            controller.handle('오늘 일정 보여줘').visibleEvents.single.id, event.id);
 
         final result = controller.handle('회식 $noun을 3시로 옮겨줘');
 
@@ -474,8 +475,8 @@ void main() {
           (tester) async {
         final today = _dateAt(planflowNow(), 0, 8);
         final original = _dateAt(today, 14, 14);
-        final event = _event('target', '회식', original)
-            .copyWith(externalId: 'linked');
+        final event =
+            _event('target', '회식', original).copyWith(externalId: 'linked');
         final observedDays = <DateTime>{};
         final payload = await _openVoiceActionDraft(
           tester,
@@ -514,8 +515,7 @@ void main() {
     testWidgets('P6d VoiceAction keeps a past date for a time-only edit',
         (tester) async {
       final past = _dateAt(planflowNow(), -7, 14);
-      final event =
-          _event('target', '회식', past).copyWith(externalId: 'linked');
+      final event = _event('target', '회식', past).copyWith(externalId: 'linked');
       final payload = await _openVoiceActionDraft(
         tester,
         event: event,
@@ -1112,24 +1112,26 @@ void main() {
     test('P6c round10c clock-only target date edit controller', () {
       final today = _dateAt(planflowNow(), 0, 8);
       final eventDay = today.weekday == DateTime.friday ? 1 : 0;
-      final fridayOffset = (DateTime.friday - today.weekday + 7) % 7;
-      final event = _event('target', '회의', _dateAt(today, eventDay, 14));
+      final eventDate = _dateAt(today, eventDay, 14);
+      final destination = _nextWeekdayOnOrAfter(eventDate, DateTime.friday);
+      final event = _event('target', '회의', eventDate);
       final controller = VoiceConversationController(
         events: [event],
         now: () => planflowLocalDateTimeToUtc(today),
       )..handle(eventDay == 0 ? '오늘 일정 보여줘' : '내일 일정 보여줘');
       final result = controller.handle('오후 2시 일정을 금요일로 옮겨줘');
       expect(result.targetEvent?.id, event.id);
-      expect(result.draftEvent?.startAt,
-          planflowLocalDateTimeToUtc(_dateAt(today, fridayOffset, 14)));
+      expect(
+          result.draftEvent?.startAt, planflowLocalDateTimeToUtc(destination));
     });
 
     testWidgets('P6c round10c clock-only target date edit VoiceInput',
         (tester) async {
       final today = _dateAt(planflowNow(), 0, 8);
       final eventDay = today.weekday == DateTime.friday ? 1 : 0;
-      final fridayOffset = (DateTime.friday - today.weekday + 7) % 7;
-      final event = _event('target', '회의', _dateAt(today, eventDay, 14));
+      final eventDate = _dateAt(today, eventDay, 14);
+      final destination = _nextWeekdayOnOrAfter(eventDate, DateTime.friday);
+      final event = _event('target', '회의', eventDate);
       final repository = _VoiceTimeWriteSpy(event);
       await _submitVoiceInputToAction(
         tester,
@@ -1141,7 +1143,7 @@ void main() {
       expect(repository.savedEvents, hasLength(1));
       expect(repository.savedEvents.single.id, event.id);
       expect(repository.savedEvents.single.startAt,
-          planflowLocalDateTimeToUtc(_dateAt(today, fridayOffset, 14)));
+          planflowLocalDateTimeToUtc(destination));
     });
 
     for (final (eventHour, shouldSave) in [(15, false), (14, true)]) {
@@ -1334,8 +1336,8 @@ void main() {
         events: [hospital],
         now: () => planflowLocalDateTimeToUtc(today),
       );
-      expect(controller.handle('오늘 일정 보여줘').visibleEvents.single.id,
-          hospital.id);
+      expect(
+          controller.handle('오늘 일정 보여줘').visibleEvents.single.id, hospital.id);
 
       final result = controller.handle(input);
 
@@ -1928,6 +1930,72 @@ void main() {
   });
 
   group('VoiceConversationController', () {
+    test('yearless guide query uses the bound saved date across New Year', () {
+      final currentYear = _fixtureYear;
+      final savedDate = DateTime(currentYear + 1, 1, 1);
+      final saved = _event(
+        'guide-saved',
+        '연습 일정',
+        DateTime(currentYear + 1, 1, 1, 15),
+      );
+      final sameDayThisYear = _event(
+        'this-year',
+        '올해 일정',
+        DateTime(currentYear, 1, 1, 15),
+      );
+      final otherDay = _event(
+        'other-date',
+        '다른 날짜 일정',
+        DateTime(currentYear + 1, 1, 2, 15),
+      );
+      final nextYear = _event(
+        'next-year',
+        '다음 해 일정',
+        DateTime(currentYear + 2, 1, 1, 15),
+      );
+      var guide = GuideSnapshot(
+        uid: saved.userId,
+        version: 'real_ui_v1',
+        sessionId: 'tutorial',
+        revision: 1,
+        serverRevision: 1,
+        run: GuideRun.active,
+        step: GuideStep.querySpeech,
+        createdEventId: saved.id,
+        savedLocalDate: savedDate,
+      );
+      var now = DateTime(currentYear, 12, 31, 12);
+      final controller = VoiceConversationController(
+        events: [saved, sameDayThisYear, otherDay, nextYear],
+        now: () => now,
+        guideSnapshot: () => guide,
+      );
+
+      final result = controller.handle('1월 1일 일정 보여 줘.');
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.queryRange?.start, savedDate);
+      expect(result.visibleEvents.map((event) => event.id), [saved.id]);
+
+      final explicit = controller.handle('$currentYear년 1월 1일 일정 보여줘');
+      expect(explicit.queryRange?.start, DateTime(currentYear, 1, 1));
+      expect(explicit.visibleEvents.map((event) => event.id),
+          [sameDayThisYear.id]);
+
+      now = DateTime(currentYear + 1, 1, 2, 12);
+      final active = controller.handle('1월 1일 일정 보여줘');
+      expect(active.queryRange?.start, savedDate);
+      expect(active.visibleEvents.map((event) => event.id), [saved.id]);
+
+      final other = controller.handle('1월 2일 일정 보여줘');
+      expect(other.queryRange?.start, DateTime(currentYear + 1, 1, 2));
+      expect(other.visibleEvents.map((event) => event.id), [otherDay.id]);
+
+      guide = guide.copyWith(run: GuideRun.paused);
+      final paused = controller.handle('1월 1일 일정 보여줘');
+      expect(paused.queryRange?.start, DateTime(currentYear + 2, 1, 1));
+      expect(paused.visibleEvents.map((event) => event.id), [nextYear.id]);
+    });
+
     test(
       '반복일정 회차가 조회 범위 안에 있으면 단발 일정과 함께 조회 결과에 포함된다',
       () {

@@ -2,11 +2,13 @@ import 'dart:async';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
+import '../../services/guide_quota_adapter.dart';
 import '../../onboarding/real_ui_guide/guide_route_recovery.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../widgets/guided_anchor.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -25,6 +27,7 @@ import '../../features/groups/repositories/group_event_repository.dart';
 import '../../features/groups/repositories/group_repository.dart';
 import '../../features/groups/services/group_event_share_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/app_feedback_service.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_range_utils.dart';
 import '../../services/event_refresh_bus.dart';
@@ -146,15 +149,122 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   GuideVisibleBinding? _guideBinding;
   bool _foreground = true;
   int? _guideResultsMessageIndex;
+  GlobalKey? _guideFirstQueryResultKey;
   bool _guideSessionEntered = false;
   bool _didRestoreGuideResults = false;
+  ({GuideSnapshot snapshot, String text})? _guidedVoiceDraft;
+  Completer<void>? _guidedCaptureSettled;
+  bool _isSendingGuidedVoice = false;
+
+  GuideSnapshot? get _guidedComposerSnapshot {
+    final snapshot = _guide?.state.value;
+    if (snapshot == null ||
+        snapshot.sessionId == null ||
+        snapshot.run != GuideRun.active ||
+        snapshot.uid != authProvider.userId ||
+        !_foreground ||
+        !(ModalRoute.of(context)?.isCurrent ?? false)) {
+      return null;
+    }
+    return switch (snapshot.step) {
+      GuideStep.querySpeech ||
+      GuideStep.queryResults ||
+      GuideStep.changeSpeech =>
+        snapshot,
+      _ => null,
+    };
+  }
+
+  Future<void> _submitComposer() async {
+    if (!_guideMode) {
+      await _submitText(null);
+      return;
+    }
+    if (_isSendingGuidedVoice || _isSubmitting) return;
+    final snapshot = _guidedComposerSnapshot;
+    if (snapshot == null) {
+      _showGuideTurnUnavailable();
+      return;
+    }
+    setState(() => _isSendingGuidedVoice = true);
+    try {
+      final inputGeneration = _inputTurnGeneration;
+      final capture = _guidedCaptureSettled;
+      if (capture != null) {
+        final settled = _isListening
+            ? widget.sttService.stopActiveListen().then((_) => capture.future)
+            : capture.future;
+        await settled.timeout(const Duration(seconds: 4));
+      }
+      if (!mounted) return;
+      if (!identical(snapshot, _guidedComposerSnapshot)) {
+        _showGuideTurnUnavailable();
+        return;
+      }
+      if (inputGeneration != _inputTurnGeneration) {
+        _showGuideCaptureRequired();
+        return;
+      }
+      final draft = _guidedVoiceDraft;
+      if (draft == null ||
+          !identical(draft.snapshot, snapshot) ||
+          draft.text != _inputController.text) {
+        _showGuideCaptureRequired();
+        return;
+      }
+      await _submitText(draft.text,
+          fromVoiceFinal: true, manualGuideSnapshot: snapshot);
+    } catch (error) {
+      debugPrint('VoiceConversationScreen guided send failed: $error');
+      if (mounted) {
+        if (identical(snapshot, _guidedComposerSnapshot)) {
+          unawaited(_pauseVoiceInput());
+          _showGuideCaptureRequired();
+        } else {
+          _showGuideTurnUnavailable();
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isSendingGuidedVoice = false);
+    }
+  }
+
+  void _showGuideCaptureRequired() {
+    _showGuideFeedback('마이크로 다시 말한 뒤 전송을 눌러 주세요.');
+  }
+
+  void _showGuideTurnUnavailable() {
+    _showGuideFeedback('현재 안내 단계를 확인한 뒤 마이크로 다시 입력해 주세요.');
+  }
+
+  void _showGuideQueryRetry() {
+    _showGuideFeedback('저장한 일정의 날짜를 마이크로 다시 조회한 뒤 변경해 주세요.');
+  }
+
+  void _showGuideFeedback(String message) {
+    if (mounted &&
+        _foreground &&
+        _guide?.state.value.uid == authProvider.userId &&
+        (ModalRoute.of(context)?.isCurrent ?? false)) {
+      AppFeedbackService.showSnackBar(message, context: context);
+    }
+  }
+
+  bool _hasGuideDraft(GuideSnapshot snapshot, String? submittedText) {
+    final draft = _guidedVoiceDraft;
+    return draft != null &&
+        identical(draft.snapshot, snapshot) &&
+        draft.text == submittedText &&
+        draft.text == _inputController.text;
+  }
 
   void _restoreGuideResultsReadOnly() {
     final recovery = widget.guideRouteRecovery;
     if (_didRestoreGuideResults || recovery == null) return;
     _didRestoreGuideResults = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false) ||
+      if (!mounted ||
+          !(ModalRoute.of(context)?.isCurrent ?? false) ||
           !recovery.restoresResults ||
           !recovery.isCurrent(_guide, authProvider.userId)) {
         return;
@@ -171,7 +281,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         _guideBinding = binding;
         _guideResultsMessageIndex = _messages.length;
         _messages.add(_ConversationMessage.assistant(
-            '저장한 일정이에요. 마이크를 누르면 시간 변경을 이어갈 수 있어요.',
+            s.step == GuideStep.queryResults
+                ? '저장한 일정이에요. 일정을 다시 조회한 뒤 시간을 변경해 보세요.'
+                : '저장한 일정이에요. 마이크를 누르면 시간 변경을 이어갈 수 있어요.',
             events: binding.ordered));
         _isLoading = false;
         _keepListening = false;
@@ -179,10 +291,13 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       });
     });
   }
+
   bool get _guideMode =>
       _guideSessionEntered ||
       (_guide?.state.value.isInProgress ?? false) ||
-      widget.guideEntryPermit != null;
+      widget.guideEntryPermit != null ||
+      _effectiveEntryGrant?.guideReplay != null ||
+      GuideQuotaRuntime.blocksOrdinaryUse(uid: authProvider.userId);
   bool get _guideCanListen =>
       !_guideMode ||
       (_foreground &&
@@ -191,7 +306,14 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           (ModalRoute.of(context)?.isCurrent ?? false) &&
           !_voicePausedByUser);
 
-  Future<GuidePermit?> _authorizeGuideTurn() async {
+  Future<({
+    String uid,
+    String sessionId,
+    String operationId,
+    GuideOperation operation,
+    DateTime? expiresAtUtc,
+    GuideSnapshot? replay,
+  })?> _authorizeGuideTurn() async {
     final coordinator = _guide;
     final s = coordinator?.state.value;
     if (coordinator == null ||
@@ -205,6 +327,29 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         s.step == GuideStep.changeSpeech || s.step == GuideStep.editPreview
             ? GuideOperation.changeTime
             : GuideOperation.query;
+    final operationId =
+        'conversation:${s.sessionId}:${s.revision}:${DateTime.now().microsecondsSinceEpoch}';
+    if (s.isReplay) {
+      if (_effectiveEntryGrant?.guideReplay?.allows(
+            coordinator: coordinator,
+            uid: authProvider.userId,
+            kind: GuideChargeKind.voiceConversation,
+            operation: op,
+          ) !=
+          true) {
+        return null;
+      }
+      // The replay admission is bound to this guide session. Each turn still
+      // gets its own observation and must pass the normal guide evidence checks.
+      return (
+        uid: s.uid,
+        sessionId: s.sessionId!,
+        operationId: operationId,
+        operation: op,
+        expiresAtUtc: null,
+        replay: s,
+      );
+    }
     final access = await coordinator.authorize(
         context: GuideChargeContext(
             uid: s.uid,
@@ -216,8 +361,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
             revision: s.revision,
             serverRevision: s.serverRevision,
             createdEventId: s.createdEventId),
-        operationId:
-            'conversation:${s.sessionId}:${s.revision}:${DateTime.now().microsecondsSinceEpoch}');
+        operationId: operationId);
     final current = coordinator.state.value;
     if (!mounted ||
         authProvider.userId != s.uid ||
@@ -234,7 +378,14 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
             p.operation == op &&
             p.kind == GuideChargeKind.voiceConversation &&
             p.expiresAtUtc.isAfter(DateTime.now().toUtc())
-        ? p
+        ? (
+            uid: p.uid,
+            sessionId: p.sessionId,
+            operationId: p.operationId,
+            operation: p.operation,
+            expiresAtUtc: p.expiresAtUtc,
+            replay: null,
+          )
         : null;
   }
 
@@ -356,22 +507,43 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// - 게이트가 실제로 진입을 거부한 경우(광고 실패 등 정책상 거부)에는
   ///   화면을 닫고 안내 스낵바를 보여준다.
   Future<void> _resolveEntryGrantViaSelfGate() async {
-    if (_guideMode) {
-      _completeEntryGrantReadyIfNeeded();
-      return;
-    }
     if (!mounted) {
       _completeEntryGrantReadyIfNeeded();
       return;
     }
     final userId = authProvider.userId;
+    final s = _guide?.state.value;
+    final replay = s != null &&
+            s.isReplay &&
+            s.run == GuideRun.active &&
+            s.uid == userId &&
+            s.sessionId != null
+        ? s
+        : null;
+    if (_guideMode && replay == null) {
+      _completeEntryGrantReadyIfNeeded();
+      return;
+    }
     if (userId == null || userId.isEmpty) {
       _completeEntryGrantReadyIfNeeded();
       return;
     }
+    VoiceConversationEntryGrant? approvedGrant;
     await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
       context: context,
       userId: userId,
+      guideCoordinator: replay == null ? null : _guide,
+      guideOperation: replay?.step == GuideStep.changeSpeech
+          ? GuideOperation.changeTime
+          : GuideOperation.query,
+      onGuideReplayAllowed: (entry) {
+        if (mounted &&
+            authProvider.userId == replay?.uid &&
+            ModalRoute.of(context)?.isCurrent != false &&
+            identical(_guide?.state.value, replay)) {
+          approvedGrant = VoiceConversationEntryGrant.forGuideReplay(entry);
+        }
+      },
       onDenied: (reason) {
         if (mounted) {
           _closeAfterEntryGateDenied(
@@ -379,10 +551,12 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           );
         }
       },
-      onEnterAllowed: (grant) {
-        _resolvedEntryGrant = grant;
-      },
+      onEnterAllowed: (grant) => approvedGrant = grant,
     );
+    final grant = approvedGrant;
+    if (grant != null && mounted) {
+      _resolvedEntryGrant = grant;
+    }
     _completeEntryGrantReadyIfNeeded();
     if (_resolvedEntryGrant == null && !_entryGateDenied) {
       final lastReason =
@@ -420,7 +594,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 분석 이벤트를 남긴다. 소비 자체가 실패해도(fail-open) 세션 시작
   /// 이벤트는 항상 남긴다.
   Future<void> _consumeEntitlement(VoiceConversationEntryGrant grant) async {
-    if (_guideMode) return;
+    if (_guideMode || grant.source == EntitlementSource.guideReplay) return;
     // adFailedFreePass는 광고도 무료횟수도 소진된 상태에서의 예외 통과다
     // (VoiceConversationAdGate.maybeFreePassGrant 참조). 이 경로는 정상적인
     // 무료소진이 아니므로 consume()을 호출하지 않는다.
@@ -449,6 +623,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     EntitlementSource source,
   ) {
     switch (source) {
+      case EntitlementSource.guideReplay:
+        throw StateError('Guide replay does not use ordinary entitlement analytics.');
       case EntitlementSource.initialFree:
         return VoiceConvSessionSource.initialFree;
       case EntitlementSource.dailyFree:
@@ -467,7 +643,18 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     final e = widget.guideInitialVoiceEvidence;
     final p = widget.guideEntryPermit;
     final s = _guide?.state.value;
-    if (e == null || p == null || s == null) return false;
+    if (e == null || s == null) return false;
+    final operationId = s.isReplay && p == null
+        ? widget.entryGrant?.guideReplay?.id
+        : p != null &&
+                !s.isReplay &&
+                p.uid == s.uid &&
+                p.sessionId == s.sessionId &&
+                p.operation == GuideOperation.query &&
+                p.kind == GuideChargeKind.voiceConversation &&
+                p.expiresAtUtc.isAfter(DateTime.now().toUtc())
+            ? p.operationId
+            : null;
     final timestamp = DateTime.tryParse(e['capturedAtUtc']?.toString() ?? '');
     final age = timestamp == null
         ? null
@@ -481,12 +668,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         e['inputText'] == text &&
         e['captureId'] is String &&
         (e['captureId'] as String).trim().isNotEmpty &&
-        e['operationId'] == p.operationId &&
-        p.uid == s.uid &&
-        p.sessionId == s.sessionId &&
-        p.operation == GuideOperation.query &&
-        p.kind == GuideChargeKind.voiceConversation &&
-        p.expiresAtUtc.isAfter(DateTime.now().toUtc()) &&
+        operationId != null &&
+        e['operationId'] == operationId &&
         age != null &&
         age.inSeconds >= 0 &&
         age.inMinutes < 5;
@@ -529,6 +712,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     if (!_foreground && _guideMode) {
+      _guidedVoiceDraft = null;
       _listenGeneration += 1;
       _inputTurnGeneration += 1;
       _isListening = false;
@@ -553,6 +737,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   @override
   void deactivate() {
+    _guidedVoiceDraft = null;
     _listenGeneration += 1;
     _inputTurnGeneration += 1;
     if (_guideMode) _voicePausedByUser = true;
@@ -741,6 +926,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     bool fromVoiceFinal = false,
     bool fromGuideInitialCapture = false,
     bool inputGenerationAlreadyInvalidated = false,
+    GuideSnapshot? manualGuideSnapshot,
   }) async {
     // self-gate(딥링크 등 entryGrant 미보유 진입)가 아직 끝나지 않았는데
     // 사용자가 입력창의 전송 버튼을 직접 눌러 이 함수가 먼저 호출될 수
@@ -761,6 +947,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       // 안내는 불필요.)
       return;
     }
+    if (manualGuideSnapshot != null &&
+        !identical(manualGuideSnapshot, _guidedComposerSnapshot)) {
+      _showGuideTurnUnavailable();
+      return;
+    }
     final rawText = (overrideText ?? _inputController.text).trim();
     final text = _conversation.normalizePendingDeleteReply(rawText);
     if (text.isEmpty || _isSubmitting) {
@@ -775,9 +966,30 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     // 정확히 1회만 소비하도록 동기적으로 먼저 플래그를 선점한 뒤, 실제
     // RPC 소비는 블로킹 없이 fire-and-forget으로 진행한다(소비 실패해도
     // 사용자 명령 처리 자체는 막지 않음 — fail-open).
-    final guidePermit = _guideMode ? await _authorizeGuideTurn() : null;
-    if (_guideMode && guidePermit == null) return;
-    if (!_guideMode && !_usageConsumedForSession) {
+    final startedInGuide = _guideMode;
+    final guidePermit = startedInGuide ? await _authorizeGuideTurn() : null;
+    if (!mounted) return;
+    final replay = guidePermit?.replay;
+    bool replayCurrent() => replay == null ||
+        (authProvider.userId == replay.uid &&
+            identical(_guide?.state.value, replay));
+    if (!replayCurrent()) return;
+    if (manualGuideSnapshot != null) {
+      if (!identical(manualGuideSnapshot, _guidedComposerSnapshot)) {
+        _showGuideTurnUnavailable();
+        return;
+      }
+      if (!_hasGuideDraft(manualGuideSnapshot, overrideText)) {
+        _showGuideCaptureRequired();
+        return;
+      }
+    }
+    final guided = startedInGuide || _guideMode;
+    if (guided && guidePermit == null) {
+      _showGuideFeedback('전송을 완료하지 못했어요. 잠시 후 다시 눌러 주세요.');
+      return;
+    }
+    if (!guided && !_usageConsumedForSession) {
       _usageConsumedForSession = true;
       final grant = _effectiveEntryGrant;
       if (grant != null) {
@@ -831,6 +1043,19 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       _armSubmittedVoiceEchoSuppression(text);
     }
     await widget.sttService.clearActiveTranscript();
+    if (!mounted || !replayCurrent()) return;
+    if (manualGuideSnapshot != null &&
+        !identical(manualGuideSnapshot, _guidedComposerSnapshot)) {
+      _showGuideTurnUnavailable();
+      return;
+    }
+    if (manualGuideSnapshot != null) {
+      if (!_hasGuideDraft(manualGuideSnapshot, overrideText)) {
+        _showGuideCaptureRequired();
+        return;
+      }
+      _guidedVoiceDraft = null;
+    }
     _setConversationInputText('');
     setState(() {
       _isSubmitting = true;
@@ -839,6 +1064,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     });
     _scrollToBottom();
 
+    var keepGuideQueryResultInView = false;
     try {
       final canLoadEvents = widget.repository != null ||
           (AppEnv.isSupabaseReady && authProvider.isSignedIn);
@@ -846,30 +1072,61 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         await _loadEvents(background: true, propagateError: true);
         if (!mounted) return;
       }
+      if (!mounted || !replayCurrent()) return;
+      if (manualGuideSnapshot != null &&
+          !identical(manualGuideSnapshot, _guidedComposerSnapshot)) {
+        _showGuideTurnUnavailable();
+        return;
+      }
       _conversation.replaceEvents(_events);
+      final queryBinding = _guideBinding;
+      if (manualGuideSnapshot?.step == GuideStep.changeSpeech &&
+          queryBinding != null) {
+        // A rejected follow-up must not change which visible event "first"
+        // resolves to on the next attempt.
+        _conversation.bindGuideResults(
+            manualGuideSnapshot!, queryBinding.ordered);
+      }
       final hadPendingConfirmation =
           _conversation.pendingDelete != null ||
           _conversation.pendingConvert != null;
       final result = _conversation.handle(rawText);
+      if (manualGuideSnapshot?.step == GuideStep.queryResults &&
+          result.action != VoiceConversationAction.showEvents) {
+        _showGuideQueryRetry();
+        return;
+      }
       if (_guideMode &&
-          result.action != VoiceConversationAction.showEvents &&
-          result.action != VoiceConversationAction.none) {
+          (guidePermit?.operation == GuideOperation.changeTime ||
+              (result.action != VoiceConversationAction.showEvents &&
+                  result.action != VoiceConversationAction.none))) {
         final s = _guide?.state.value;
         final b = _guideBinding;
         final target = result.targetEvent;
-        final start = result.draftEvent?.startAt;
+        final spokenStart = result.draftEvent?.startAt;
+        final start = spokenStart?.toUtc();
         if (s == null ||
+            s.sessionId == null ||
+            s.step != GuideStep.changeSpeech ||
             b == null ||
-            target == null ||
-            start == null ||
             authProvider.userId != s.uid ||
             !GuideResultOrder.validForOrdinalEdit(
                 guide: s, binding: b, expectedRevision: s.revision) ||
-            target.id != s.createdEventId ||
             !fromVoiceFinal ||
-            guidePermit?.operation != GuideOperation.changeTime ||
-            !result.canAutoApplyDateChange ||
-            start == target.startAt) {
+            guidePermit?.operation != GuideOperation.changeTime) {
+          _showGuideTurnUnavailable();
+          return;
+        }
+        if (target == null || target.id != s.createdEventId || start == null) {
+          _showGuideFeedback('첫 번째 일정과 바꿀 시간을 마이크로 다시 말한 뒤 전송해 주세요.');
+          return;
+        }
+        if (target.startAt?.isAtSameMomentAs(start) ?? false) {
+          _showGuideFeedback('이미 그 시간으로 저장되어 있어요. 다른 시간을 말해 주세요.');
+          return;
+        }
+        if (!result.canAutoApplyDateChange) {
+          _showGuideFeedback('다른 내용은 빼고 바꿀 시간만 말한 뒤 전송해 주세요.');
           return;
         }
         await _guide!.dispatch(EditPreviewObserved(
@@ -878,18 +1135,16 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
             expectedRevision: s.revision,
             targetEventId: target.id,
             requestedStartLocal: start));
-        final now = _guide!.state.value;
-        if (!mounted ||
-            authProvider.userId != s.uid ||
-            now.uid != s.uid ||
-            now.sessionId != s.sessionId ||
-            now.run != GuideRun.active ||
-            now.step != GuideStep.editPreview ||
-            now.expectedUpdatedStartLocal != start) {
+        if (!_canOpenGuideEditPreview(s, start)) {
+          _showGuideTurnUnavailable();
           return;
         }
         await _stopVoiceBeforeNavigation();
         if (!mounted) return;
+        if (!_canOpenGuideEditPreview(s, start)) {
+          _showGuideTurnUnavailable();
+          return;
+        }
         await context.push(
             '${AppRoutes.eventEdit}/${Uri.encodeComponent(target.id)}',
             extra: <String, Object>{
@@ -1044,7 +1299,15 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       }
 
       if (!mounted) return;
+      final isGuideQueryResult = _guideMode &&
+          result.action == VoiceConversationAction.showEvents &&
+          guidePermit?.operation == GuideOperation.query;
+      final firstResultKey = isGuideQueryResult ? GlobalKey() : null;
       setState(() {
+        if (firstResultKey != null) {
+          _guideResultsMessageIndex = _messages.length;
+          _guideFirstQueryResultKey = firstResultKey;
+        }
         _messages.add(
           _ConversationMessage.assistant(
             messageOverride ?? _messageForResult(result),
@@ -1054,38 +1317,15 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           ),
         );
       });
-      if (_guideMode &&
-          result.action == VoiceConversationAction.showEvents &&
+      if (firstResultKey != null &&
           guidePermit != null &&
           (fromVoiceFinal || fromGuideInitialCapture)) {
-        final s = _guide!.state.value;
-        final binding = _conversation.bindGuideResults(s, result.visibleEvents);
-        _guideResultsMessageIndex = _messages.length - 1;
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted ||
-              authProvider.userId != s.uid ||
-              _guide!.state.value.revision != s.revision ||
-              !(ModalRoute.of(context)?.isCurrent ?? false) ||
-              realUiGuideAnchorRegistry
-                  .keyFor('query.results')
-                  ?.currentContext
-                  ?.findRenderObject() is! RenderBox) {
-            return;
-          }
-          await _guide!.dispatch(QueryObserved(
-              uid: s.uid,
-              sessionId: s.sessionId!,
-              expectedRevision: s.revision,
-              binding: binding,
-              operationId: guidePermit.operationId));
-          if (!mounted ||
-              authProvider.userId != s.uid ||
-              _guide!.state.value.sessionId != s.sessionId) {
-            return;
-          }
-          _guideBinding = _conversation.bindGuideResults(
-              _guide!.state.value, binding.ordered);
-        });
+        keepGuideQueryResultInView = await _observeVisibleGuideQuery(
+          result.visibleEvents,
+          guidePermit,
+          firstResultKey: firstResultKey,
+          fromManualCapture: manualGuideSnapshot != null,
+        );
       }
     } catch (error) {
       debugPrint('VoiceConversationScreen submit failed: $error');
@@ -1100,7 +1340,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
-        _scrollToBottom();
+        if (!keepGuideQueryResultInView) _scrollToBottom();
         if (keepVoiceInputActive &&
             _keepListening &&
             !_voicePausedByUser &&
@@ -1113,8 +1353,155 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
   }
 
+  Future<bool> _observeVisibleGuideQuery(
+    List<EventModel> visibleEvents,
+    ({
+      String uid,
+      String sessionId,
+      String operationId,
+      GuideOperation operation,
+      DateTime? expiresAtUtc,
+      GuideSnapshot? replay,
+    }) permit, {
+    required GlobalKey firstResultKey,
+    required bool fromManualCapture,
+  }) async {
+    final coordinator = _guide;
+    final s = _guidedComposerSnapshot;
+    if (coordinator == null ||
+        s == null ||
+        permit.uid != s.uid ||
+        permit.sessionId != s.sessionId ||
+        (s.step != GuideStep.querySpeech &&
+            !(s.step == GuideStep.queryResults && fromManualCapture))) {
+      _showGuideTurnUnavailable();
+      return false;
+    }
+    final binding = GuideResultOrder.bind(guide: s, results: visibleEvents);
+    if (!GuideResultOrder.validForOrdinalEdit(
+        guide: s, binding: binding, expectedRevision: s.revision)) {
+      if (s.step == GuideStep.queryResults) _showGuideQueryRetry();
+      return false;
+    }
+
+    bool stillCurrent() =>
+        mounted &&
+        identical(s, _guidedComposerSnapshot) &&
+        identical(firstResultKey, _guideFirstQueryResultKey) &&
+        (permit.expiresAtUtc?.isAfter(DateTime.now().toUtc()) ??
+            identical(permit.replay, s));
+
+    // Keep the turn busy through list layout and the guide transition, so the
+    // next capture cannot start on the old snapshot.
+    if (!await _revealGuideQueryResult(firstResultKey, stillCurrent) ||
+        !stillCurrent()) {
+      _showGuideQueryRetry();
+      return false;
+    }
+    final next = await coordinator.dispatch(QueryObserved(
+        uid: s.uid,
+        sessionId: permit.sessionId,
+        expectedRevision: s.revision,
+        binding: binding,
+        operationId: permit.operationId));
+    if (!mounted) return false;
+    if (!identical(next, _guidedComposerSnapshot) ||
+        next.step != GuideStep.changeSpeech ||
+        next.sessionId != s.sessionId ||
+        next.createdEventId != s.createdEventId) {
+      _showGuideTurnUnavailable();
+      return false;
+    }
+    _guideBinding = _conversation.bindGuideResults(next, binding.ordered);
+    return true;
+  }
+
+  Future<bool> _revealGuideQueryResult(
+      GlobalKey firstResultKey, bool Function() stillCurrent) async {
+    // The tail can be outside the ListView's cache. Recompute its estimated
+    // extent after each layout until the current result card is built.
+    const maxLayoutPasses = 5;
+    for (var pass = 0; pass < maxLayoutPasses; pass++) {
+      await WidgetsBinding.instance.endOfFrame;
+      final cardContext = firstResultKey.currentContext;
+      if (cardContext == null || !cardContext.mounted) {
+        if (!stillCurrent()) return false;
+        if (_scrollController.hasClients &&
+            _scrollController.position.hasContentDimensions) {
+          _scrollController.position.jumpTo(
+              _scrollController.position.maxScrollExtent);
+        }
+        continue;
+      }
+      if (!stillCurrent()) return false;
+      if (!_scrollController.hasClients) continue;
+      final position = _scrollController.position;
+      if (!position.hasContentDimensions) continue;
+
+      final anchorContext =
+          realUiGuideAnchorRegistry.keyFor('query.results')?.currentContext;
+      final card = cardContext.findRenderObject();
+      if (anchorContext == null ||
+          card is! RenderBox ||
+          !card.attached ||
+          !card.hasSize) {
+        position.jumpTo(position.maxScrollExtent);
+        continue;
+      }
+      var hasCurrentAnchor = false;
+      cardContext.visitAncestorElements((ancestor) {
+        hasCurrentAnchor = identical(ancestor, anchorContext);
+        return !hasCurrentAnchor;
+      });
+      if (!hasCurrentAnchor ||
+          !identical(Scrollable.maybeOf(cardContext)?.position, position)) {
+        return false;
+      }
+
+      final viewport = RenderAbstractViewport.maybeOf(card);
+      if (viewport is! RenderBox) return false;
+      final viewportBox = viewport as RenderBox;
+      if (!viewportBox.attached || !viewportBox.hasSize) {
+        return false;
+      }
+      final cardRect =
+          card.localToGlobal(Offset.zero, ancestor: viewportBox) & card.size;
+      final visible = cardRect.intersect(Offset.zero & viewportBox.size);
+      if (visible.isFinite &&
+          visible.width > 0 &&
+          visible.height >= card.size.height.clamp(0.0, 40.0)) {
+        return true;
+      }
+      await position.ensureVisible(card, alignment: 0.0);
+    }
+    return false;
+  }
+
+  bool _canOpenGuideEditPreview(GuideSnapshot before, DateTime start) {
+    if (!mounted ||
+        !_foreground ||
+        authProvider.userId != before.uid ||
+        !(ModalRoute.of(context)?.isCurrent ?? false)) {
+      return false;
+    }
+    final current = _guide?.state.value;
+    return current != null &&
+        current.uid == before.uid &&
+        current.sessionId == before.sessionId &&
+        current.createdEventId == before.createdEventId &&
+        current.run == GuideRun.active &&
+        current.step == GuideStep.editPreview &&
+        current.expectedUpdatedStartLocal == start;
+  }
+
   Future<void> _listenOnce() async {
     if (!_guideCanListen) return;
+    if (_guideMode && (_isSendingGuidedVoice || _isSubmitting)) return;
+    final manualGuideSnapshot = _guidedComposerSnapshot;
+    if (_guideMode && manualGuideSnapshot == null) {
+      _showGuideTurnUnavailable();
+      return;
+    }
     if (_isListening) {
       debugPrint('VoiceConversationScreen listen ignored: already listening');
       return;
@@ -1124,6 +1511,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     _isRestartPending = false;
     _manualEditInterruptedListening = false;
     _nativeVoiceReady = false;
+    _guidedVoiceDraft = null;
+    final guidedCapture =
+        manualGuideSnapshot == null ? null : Completer<void>();
+    _guidedCaptureSettled = guidedCapture;
     final listenGeneration = ++_listenGeneration;
     final inputGeneration = _inputTurnGeneration;
     var shouldRetryEarlyFailure = false;
@@ -1136,7 +1527,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     });
     _setConversationInputText('');
     // 대화 꼬리에 붙는 음성 상태 버블이 바로 시야에 들어오게 맨 아래로 스크롤.
-    _scrollToBottom();
+    if (manualGuideSnapshot?.step != GuideStep.changeSpeech) {
+      _scrollToBottom();
+    }
     _armConversationWatchdog(listenGeneration);
     try {
       final result = await widget.sttService.listen(
@@ -1220,6 +1613,17 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           });
         }
       } else if (result.isSuccess && submitText.isNotEmpty) {
+        if (manualGuideSnapshot != null) {
+          if (inputGeneration == _inputTurnGeneration &&
+              identical(manualGuideSnapshot, _guidedComposerSnapshot)) {
+            _guidedVoiceDraft =
+                (snapshot: manualGuideSnapshot, text: submitText);
+            _setConversationInputText(submitText);
+          }
+          _keepListening = false;
+          _isRestartPending = false;
+          return;
+        }
         if (mounted && listenGeneration == _listenGeneration) {
           setState(() {
             _isListening = false;
@@ -1275,6 +1679,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         );
       });
     } finally {
+      guidedCapture?.complete();
+      if (identical(_guidedCaptureSettled, guidedCapture)) {
+        _guidedCaptureSettled = null;
+      }
       _conversationWatchdogTimer?.cancel();
       if (mounted && listenGeneration == _listenGeneration) {
         setState(() {
@@ -1484,6 +1892,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<void> _pauseVoiceInput() async {
+    _guidedVoiceDraft = null;
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
@@ -2270,6 +2679,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<void> _stopVoiceBeforeNavigation() async {
+    _guidedVoiceDraft = null;
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
@@ -2670,6 +3080,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (_isApplyingInputReset || _isApplyingVoiceTranscript) {
       return;
     }
+    _guidedVoiceDraft = null;
     _inputTurnGeneration += 1;
     _interruptVoiceForManualEntry();
   }
@@ -2943,6 +3354,9 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                           final occurrenceDate = activePending?.occurrenceDate;
                           final bubble = _MessageBubble(
                             message: message,
+                            firstResultKey: index == _guideResultsMessageIndex
+                                ? _guideFirstQueryResultKey
+                                : null,
                             deletedEventIds: _deletedEventIds,
                             onEventTap: _showEventActionSheet,
                             onConfirmDelete: activePending == null
@@ -2958,13 +3372,22 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                           );
                           if (_guideMode &&
                               index == _guideResultsMessageIndex &&
-                              message.events.isNotEmpty &&
                               (ModalRoute.of(context)?.isCurrent ?? false)) {
-                            return GuidedAnchor(
-                              id: 'query.results',
-                              registry: realUiGuideAnchorRegistry,
-                              child: bubble,
-                            );
+                            final snapshot = _guide!.state.value;
+                            final retry = (snapshot.step ==
+                                        GuideStep.querySpeech ||
+                                    snapshot.step == GuideStep.queryResults) &&
+                                GuideResultOrder.bind(
+                                        guide: snapshot,
+                                        results: message.events)
+                                    .missingTarget;
+                            if (retry || message.events.isNotEmpty) {
+                              return GuidedAnchor(
+                                id: retry ? 'query.retry' : 'query.results',
+                                registry: realUiGuideAnchorRegistry,
+                                child: bubble,
+                              );
+                            }
                           }
                           return bubble;
                         }
@@ -2989,15 +3412,17 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                 top: false,
                 child: _ConversationInputBar(
                   controller: _inputController,
-                  isSubmitting: _isSubmitting,
+                  isSubmitting: _isSubmitting || _isSendingGuidedVoice,
                   isListening: _isListening,
                   keepListening: _keepListening,
                   voicePausedByUser: _voicePausedByUser,
                   isRestartPending: _isRestartPending,
                   onListen: () =>
                       _startConversationListen(resetRetryPolicy: true),
-                  onStopListening: _pauseVoiceInput,
-                  onSubmit: () => _submitText(null),
+                  onStopListening: _guidedCaptureSettled != null
+                      ? widget.sttService.stopActiveListen
+                      : _pauseVoiceInput,
+                  onSubmit: _submitComposer,
                   onChanged: _handleInputChanged,
                   onInputFocus: _handleInputFocus,
                 ),
@@ -3152,6 +3577,7 @@ class _ConversationMessage {
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
+    this.firstResultKey,
     required this.deletedEventIds,
     required this.onEventTap,
     this.onConfirmDelete,
@@ -3159,6 +3585,7 @@ class _MessageBubble extends StatelessWidget {
   });
 
   final _ConversationMessage message;
+  final GlobalKey? firstResultKey;
   final Set<String> deletedEventIds;
   final ValueChanged<EventModel> onEventTap;
   final VoidCallback? onConfirmDelete;
@@ -3211,6 +3638,10 @@ class _MessageBubble extends StatelessWidget {
                 (entry) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _ConversationEventCard(
+                    key: entry.key == 0 &&
+                            identical(entry.value, message.events.first)
+                        ? firstResultKey
+                        : null,
                     index: entry.key + 1,
                     event: entry.value,
                     onTap: () => onEventTap(entry.value),
@@ -3254,6 +3685,7 @@ class _MessageBubble extends StatelessWidget {
 
 class _ConversationEventCard extends StatelessWidget {
   const _ConversationEventCard({
+    super.key,
     required this.index,
     required this.event,
     required this.onTap,
@@ -3408,65 +3840,78 @@ class _ConversationInputBarState extends State<_ConversationInputBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _VoiceConversationControl(
-              isListening: widget.isListening,
-              keepListening: widget.keepListening,
-              voicePausedByUser: widget.voicePausedByUser,
-              isRestartPending: widget.isRestartPending,
-              onListen: widget.onListen,
-              onStopListening: widget.onStopListening,
+            GuidedAnchor(
+              id: 'query.retryMic',
+              registry: realUiGuideAnchorRegistry,
+              child: _VoiceConversationControl(
+                isListening: widget.isListening,
+                keepListening: widget.keepListening,
+                voicePausedByUser: widget.voicePausedByUser,
+                isRestartPending: widget.isRestartPending,
+                onListen: widget.onListen,
+                onStopListening: widget.onStopListening,
+              ),
             ),
             const SizedBox(height: 8),
             // 인식된 텍스트는 입력창에 실시간으로 채워지므로 입력창 하나가
             // 곧 미리보기다(별도 미리보기 카드 없음). 여러 줄 문장도 잘 보이도록
             // 줄 수를 넉넉히 두고, 전송 버튼은 입력창 높이에 맞춰 함께 늘어난다.
             // IntrinsicHeight로 Row 높이를 입력창 높이에 묶어 stretch가 작동하게 한다.
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: widget.controller,
-                      focusNode: _inputFocusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      style: const TextStyle(fontSize: 17, height: 1.4),
-                      textInputAction: TextInputAction.send,
-                      decoration: InputDecoration(
-                        hintText: '예: 5월 7일 일정 보여줘',
-                        suffixIcon: _hasInputFocus
-                            ? IconButton(
-                                onPressed: _dismissKeyboard,
-                                tooltip: '키보드 닫기',
-                                icon: Semantics(
-                                  label: '키보드 닫기',
-                                  button: true,
-                                  child: const Icon(Icons.keyboard_hide),
-                                ),
-                              )
-                            : null,
-                        filled: widget.isListening,
-                        fillColor: widget.isListening
-                            ? PlanFlowColors.primaryFaint
-                            : null,
+            GuidedAnchor(
+              id: 'query.composer',
+              registry: realUiGuideAnchorRegistry,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: widget.controller,
+                        focusNode: _inputFocusNode,
+                        minLines: 1,
+                        maxLines: 5,
+                        style: const TextStyle(fontSize: 17, height: 1.4),
+                        textInputAction: TextInputAction.send,
+                        decoration: InputDecoration(
+                          hintText: '예: 5월 7일 일정 보여줘',
+                          suffixIcon: _hasInputFocus
+                              ? IconButton(
+                                  onPressed: _dismissKeyboard,
+                                  tooltip: '키보드 닫기',
+                                  icon: Semantics(
+                                    label: '키보드 닫기',
+                                    button: true,
+                                    child: const Icon(Icons.keyboard_hide),
+                                  ),
+                                )
+                              : null,
+                          filled: widget.isListening,
+                          fillColor: widget.isListening
+                              ? PlanFlowColors.primaryFaint
+                              : null,
+                        ),
+                        onTap: widget.onInputFocus,
+                        onChanged: widget.onChanged,
+                        onSubmitted: (_) => _submitAndDismissKeyboard(),
                       ),
-                      onTap: widget.onInputFocus,
-                      onChanged: widget.onChanged,
-                      onSubmitted: (_) => _submitAndDismissKeyboard(),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed:
-                        widget.isSubmitting ? null : _submitAndDismissKeyboard,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(64, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    const SizedBox(width: 8),
+                    GuidedAnchor(
+                      id: 'query.send',
+                      registry: realUiGuideAnchorRegistry,
+                      child: FilledButton(
+                        onPressed: widget.isSubmitting
+                            ? null
+                            : _submitAndDismissKeyboard,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(64, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                        ),
+                        child: const Text('전송'),
+                      ),
                     ),
-                    child: const Text('전송'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

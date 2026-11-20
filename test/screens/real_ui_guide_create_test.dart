@@ -26,11 +26,11 @@ class _FakeBackend implements GuideBackendPort {
   GuideBackendState current = const GuideBackendState(
       sessionId: 's', serverRevision: 1, step: GuideStep.homeMic);
   @override
-  Future<GuideBackendState?> begin(
+  Future<GuideBeginResult> begin(
           {required String uid,
           required String version,
           required String requestId}) async =>
-      current;
+      GuideBeginGranted(current);
   @override
   Future<GuideBackendState> advance(
       {required GuideSnapshot snapshot,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
@@ -16,6 +18,52 @@ import 'package:planflow/services/real_ui_guide_grant_service.dart';
 void main() {
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
+  });
+
+  testWidgets('late denial from a timed-out begin leaves retry wire intact',
+      (tester) async {
+    final stalled = Completer<Object?>();
+    var begins = 0;
+    var authorizes = 0;
+    final service = SupabaseRealUiGuideGrantService.forTesting(
+      currentUid: () => 'uid-A',
+      rpc: (name, _) async {
+        if (name == kRpcBegin) {
+          begins++;
+          if (begins == 1) return stalled.future;
+          return _beginFixture();
+        }
+        expect(name, kRpcAuthorize);
+        authorizes++;
+        return <String, Object?>{'status': 'denied', 'reason_code': 'probe'};
+      },
+    );
+    Future<GuideBeginResult> begin() => service.begin(
+        uid: 'uid-A', version: 'real_ui_v1', requestId: 'resume-request');
+
+    final first = begin();
+    await tester.pump(guideBeginTimeout);
+    expect(await first, isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'timeout'));
+    final retried = await begin();
+    expect((retried as GuideBeginGranted).state.sessionId, 'sess');
+    stalled.complete(<String, Object?>{'status': 'denied'});
+    await tester.pump();
+
+    await service.authorize(
+      context: const GuideChargeContext(
+        uid: 'uid-A',
+        version: 'real_ui_v1',
+        sessionId: 'sess',
+        kind: GuideChargeKind.scheduleParse,
+        operation: GuideOperation.createParse,
+        phase: GuideStep.createSpeech,
+        revision: 1,
+        serverRevision: 1,
+      ),
+      operationId: 'check-wire-cache',
+    );
+    expect(begins, 2);
+    expect(authorizes, 1);
   });
 
   group('GuideRpcInvoker is the only seam (no Supabase.instance in tests)', () {
@@ -39,14 +87,14 @@ void main() {
         currentUid: () => currentUid,
       );
 
-      final state = await service.begin(
+      final result = await service.begin(
         uid: 'uid-A',
         version: 'real_ui_v1',
         requestId: 'req-1',
       );
 
-      expect(state, isNotNull);
-      expect(state!.sessionId, 'sess-1');
+      final state = (result as GuideBeginGranted).state;
+      expect(state.sessionId, 'sess-1');
       expect(state.step, GuideStep.intro,
           reason: 'wire phase create must not acknowledge the local intro');
       expect(state.serverRevision, 1);
@@ -57,8 +105,134 @@ void main() {
     });
   });
 
+  test('late begin cannot replace a freshly restarted session', () async {
+    final old = Completer<Object?>();
+    final service = SupabaseRealUiGuideGrantService.forTesting(
+      currentUid: () => 'uid-A',
+      rpc: (name, params) async {
+        if (name == kRpcBegin) return old.future;
+        expect(name, kRpcRestart);
+        expect(params['p_previous_session_id'], 'sess');
+        return {
+          ..._beginFixture(),
+          'session_id': 'replay',
+          'revision': 0,
+          'is_replay': true,
+        };
+      },
+    );
+    final late = service.begin(
+        uid: 'uid-A', version: 'real_ui_v1', requestId: 'previous');
+    final replay = await service.restart(
+        uid: 'uid-A',
+        version: 'real_ui_v1',
+        previousSessionId: 'sess',
+        requestId: 'restart:sess');
+    old.complete(_beginFixture());
+    expect(replay?.sessionId, 'replay');
+    expect(replay?.isReplay, isTrue);
+    expect(await late, isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'guide_session_changed'));
+  });
+
   group('begin()', () {
-    test('returns null on empty uid / version / requestId without RPC',
+    test('terminal checkpoint can restore Settings without a grant wire',
+        () async {
+      var rpcCalls = 0;
+      final service = SupabaseRealUiGuideGrantService.forTesting(
+        currentUid: () => 'uid-A',
+        rpc: (name, _) async {
+          rpcCalls++;
+          expect(name, kRpcBegin);
+          return {
+            'status': 'denied',
+            'reason_code': 'session_terminal',
+            'session_id': 'sess',
+            'phase': 'terminal',
+            'revision': 8,
+            'terminal_reason': 'completed',
+            'is_replay': true,
+          };
+        },
+      );
+      final result = await service.begin(
+          uid: 'uid-A', version: 'real_ui_v1', requestId: 'cold-start');
+      expect(result, isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'terminal'));
+      final state = (result as GuideBeginFailed).terminalPredecessor;
+      expect(state?.step, GuideStep.completed);
+      expect(state?.sessionId, 'sess');
+      expect(state?.isReplay, isTrue);
+      final access = await service.authorize(
+        context: const GuideChargeContext(
+          uid: 'uid-A',
+          version: 'real_ui_v1',
+          sessionId: 'sess',
+          kind: GuideChargeKind.scheduleParse,
+          operation: GuideOperation.createParse,
+          phase: GuideStep.createSpeech,
+          revision: 1,
+          serverRevision: 8,
+        ),
+        operationId: 'check-terminal-wire',
+      );
+      expect(access.reasonCode, 'unknown_server_state');
+      expect(rpcCalls, 1);
+    });
+
+    test('bound preview and updated begin replies decode an accepted UTC time',
+        () async {
+      for (final (phase, step) in [
+        ('preview', GuideStep.editPreview),
+        ('updated', GuideStep.updatedDetail),
+      ]) {
+        final service = SupabaseRealUiGuideGrantService.forTesting(
+          rpc: (_, __) async => {
+            ..._beginFixture(phase: phase),
+            'event_id': 'bound',
+            // banned-ok: Fixed offset-bearing reply fixture.
+            'expected_start_at': '2026-11-16T17:00:00+09:00',
+          },
+          currentUid: () => 'uid-A',
+        );
+        final result =
+            await service.begin(uid: 'uid-A', version: 'v', requestId: 'r');
+        final state = (result as GuideBeginGranted).state;
+        expect(state.step, step);
+        expect(state.expectedStartAtReported, isTrue);
+        // banned-ok: Fixed UTC equivalent of the reply fixture.
+        expect(state.expectedStartAt, DateTime.utc(2026, 11, 16, 8));
+      }
+    });
+
+    test('begin ignores unbound, wrong-phase, or invalid expected times', () {
+      for (final (phase, id, timestamp, reported) in <(
+        String,
+        String?,
+        String?,
+        bool
+      )>[
+        // banned-ok: Fixed timestamps for positive-wire-field negative cases.
+        ('preview', null, '2026-11-16T08:00:00Z', false),
+        ('edit', 'bound', '2026-11-16T08:00:00Z', false),
+        ('preview', 'bound', '2026-11-16T08:00:00', true),
+        ('preview', 'bound', '2026-02-30T08:00:00Z', true),
+        ('updated', 'bound', null, true),
+      ]) {
+        final state = GuideBackendJson.decodeBeginOrDeny({
+          ..._beginFixture(phase: phase),
+          'event_id': id,
+          'expected_start_at': timestamp,
+        });
+        expect(state?.expectedStartAt, isNull);
+        expect(state?.expectedStartAtReported, reported);
+      }
+      final legacy = GuideBackendJson.decodeBeginOrDeny({
+        ..._beginFixture(phase: 'preview'),
+        'event_id': 'bound',
+      });
+      expect(legacy?.expectedStartAtReported, isFalse);
+    });
+
+    test('returns malformed on empty uid / version / requestId without RPC',
         () async {
       var invocations = 0;
       final service = SupabaseRealUiGuideGrantService.forTesting(
@@ -71,20 +245,20 @@ void main() {
 
       expect(
         await service.begin(uid: '', version: 'v', requestId: 'r'),
-        isNull,
+        isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'malformed'),
       );
       expect(
         await service.begin(uid: 'uid-A', version: '', requestId: 'r'),
-        isNull,
+        isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'malformed'),
       );
       expect(
         await service.begin(uid: 'uid-A', version: 'v', requestId: ''),
-        isNull,
+        isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'malformed'),
       );
       expect(invocations, 0);
     });
 
-    test('UID mismatch before await → null, no RPC', () async {
+    test('UID mismatch before await returns diagnostic without RPC', () async {
       var invocations = 0;
       final service = SupabaseRealUiGuideGrantService.forTesting(
         rpc: (_, __) async {
@@ -100,11 +274,11 @@ void main() {
         requestId: 'req-1',
       );
 
-      expect(state, isNull);
+      expect(state, isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'local_uid_mismatch'));
       expect(invocations, 0);
     });
 
-    test('UID changes during RPC → null (stale UID race)', () async {
+    test('UID changes during RPC and the stale result is discarded', () async {
       final service = SupabaseRealUiGuideGrantService.forTesting(
         rpc: (_, __) async {
           await Future<void>.delayed(Duration.zero);
@@ -126,10 +300,10 @@ void main() {
       final f = service.begin(uid: 'uid-A', version: 'v', requestId: 'r');
       _switchingUid = 'uid-B';
       final state = await f;
-      expect(state, isNull);
+      expect(state, isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'local_uid_mismatch'));
     });
 
-    test('expired status maps to null', () async {
+    test('expired status has a typed reason', () async {
       final service = SupabaseRealUiGuideGrantService.forTesting(
         rpc: (_, __) async => <String, Object?>{
           'status': 'expired',
@@ -145,7 +319,7 @@ void main() {
       );
       expect(
         await service.begin(uid: 'uid-A', version: 'v', requestId: 'r'),
-        isNull,
+        isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'expired'),
       );
     });
 
@@ -165,18 +339,18 @@ void main() {
       );
       expect(
         await service.begin(uid: 'uid-A', version: 'v', requestId: 'r'),
-        isNull,
+        isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'malformed'),
       );
     });
 
-    test('RPC throws → null', () async {
+    test('unknown RPC error becomes backend_unavailable', () async {
       final service = SupabaseRealUiGuideGrantService.forTesting(
         rpc: (_, __) async => throw StateError('boom'),
         currentUid: () => 'uid-A',
       );
       expect(
         await service.begin(uid: 'uid-A', version: 'v', requestId: 'r'),
-        isNull,
+        isA<GuideBeginFailed>().having((result) => result.failure.code, 'code', 'backend_unavailable'),
       );
     });
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 import '../../services/feature_tour_service.dart';
+import '../../widgets/guided_anchor.dart';
 
 /// Legacy 3-page voice-first intro.
 ///
@@ -19,6 +20,9 @@ class LegacyIntroScreen extends StatefulWidget {
     this.onCompleted,
     this.requireFinalConfirmation = true,
   });
+
+  /// Identifies this route so the interactive guide leaves its buttons clear.
+  static const routeAnchorId = 'startup.legacyIntro';
 
   /// Storage adapter. Must be supplied by the caller so each user can
   /// plug in their own backend (test fake, server-backed store, etc.).
@@ -133,7 +137,7 @@ class _LegacyIntroScreenState extends State<LegacyIntroScreen> {
   @override
   Widget build(BuildContext context) {
     final isLastPage = _pageIndex == _pages.length - 1;
-    return PopScope(
+    final intro = PopScope(
       canPop: !widget.requireFinalConfirmation,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !widget.requireFinalConfirmation) {
@@ -261,6 +265,7 @@ class _LegacyIntroScreenState extends State<LegacyIntroScreen> {
         ),
       ),
     );
+    return GuidedAnchor(id: LegacyIntroScreen.routeAnchorId, child: intro);
   }
 }
 

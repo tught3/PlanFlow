@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' show ClientException;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/models/event_model.dart';
@@ -26,6 +28,7 @@ typedef GuideRpcInvoker = Future<Object?> Function(
 
 @visibleForTesting
 const String kRpcBegin = 'begin_real_ui_guide';
+const String kRpcRestart = 'restart_real_ui_guide';
 
 @visibleForTesting
 const String kRpcAuthorize = 'authorize_real_ui_guide_operation';
@@ -45,7 +48,8 @@ const int kMinCalendarOffsetMinutes = -14 * 60;
 @visibleForTesting
 const int kMaxCalendarOffsetMinutes = 14 * 60;
 
-class SupabaseRealUiGuideGrantService implements GuideBackendPort {
+class SupabaseRealUiGuideGrantService
+    implements GuideBackendPort, GuideReplayBackendPort {
   SupabaseRealUiGuideGrantService({required SupabaseClient client})
       : _invoker = _supabaseInvokerFor(client),
         _uidProvider = (() => client.auth.currentUser?.id),
@@ -88,6 +92,7 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
     DateTime expiresAt
   })? _wireState;
   String? _lastUid;
+  int _sessionGeneration = 0;
 
   bool _rememberWire(
       Object? raw, GuideBackendState state, String uid, String version) {
@@ -115,30 +120,159 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
   // ── GuideBackendPort ──────────────────────────────────────────
 
   @override
-  Future<GuideBackendState?> begin({
+  Future<GuideBeginResult> begin({
     required String uid,
     required String version,
     required String requestId,
   }) async {
-    if (uid.isEmpty || version.isEmpty || requestId.isEmpty) return null;
+    if (uid.isEmpty || version.isEmpty || requestId.isEmpty) {
+      return const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.malformed));
+    }
     final uidBefore = _readUid();
-    if (uidBefore == null || uidBefore != uid) return null;
+    if (uidBefore != uid) return _beginUidFailure(uidBefore);
+    final generation = _sessionGeneration;
     final Object? raw;
     try {
+      // A timed-out response cannot update the cached session later.
       raw = await _invoker(
         kRpcBegin,
         buildBeginParams(version: version, requestId: requestId),
-      );
+      ).timeout(guideBeginTimeout);
+    } catch (error) {
+      final stale = _beginStaleFailure(uid, generation);
+      return stale ?? _beginException(error);
+    }
+    final stale = _beginStaleFailure(uid, generation);
+    if (stale != null) return stale;
+
+    try {
+      final row = GuideBackendJson._rowOrNull(raw);
+      final status = row?['status'];
+      final phase = row?['phase'];
+      final reason = row?['reason_code'];
+      GuideFailureDiagnostic diagnostic(GuideFailureKind kind) =>
+          GuideFailureDiagnostic.fromWire(kind, reasonCode: reason, phase: phase);
+
+      if (status != 'granted') {
+        _wireState = null;
+        if (status == 'denied' && reason == 'session_terminal') {
+          return GuideBeginFailed(diagnostic(GuideFailureKind.terminal),
+              terminalPredecessor: GuideBackendJson.decodeBeginOrDeny(row));
+        }
+        if (status == 'expired') {
+          return GuideBeginFailed(diagnostic(GuideFailureKind.expired));
+        }
+        if (status == 'denied') {
+          return GuideBeginFailed(diagnostic(GuideFailureKind.denied));
+        }
+        return GuideBeginFailed(diagnostic(GuideFailureKind.malformed));
+      }
+
+      final decoded = GuideBackendJson.decodeBeginOrDeny(row);
+      final expiry = GuideBackendJson._readDate(row?['expires_at']);
+      if (decoded == null ||
+          decoded.step == GuideStep.completed ||
+          decoded.step == GuideStep.skipped ||
+          expiry == null) {
+        _wireState = null;
+        return GuideBeginFailed(diagnostic(GuideFailureKind.malformed));
+      }
+      if (!expiry.isAfter(_now())) {
+        _wireState = null;
+        return GuideBeginFailed(diagnostic(GuideFailureKind.wireExpired));
+      }
+      final previousSession = _wireState?.sessionId;
+      if (!_rememberWire(row, decoded, uid, version)) {
+        _wireState = null;
+        return GuideBeginFailed(diagnostic(GuideFailureKind.sessionChanged));
+      }
+      if (previousSession != decoded.sessionId) _sessionGeneration++;
+      return GuideBeginGranted(decoded);
+    } catch (_) {
+      _wireState = null;
+      return const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.malformed));
+    }
+  }
+
+  GuideBeginFailed? _beginStaleFailure(String uid, int generation) {
+    final uidAfter = _readUid();
+    if (uidAfter != uid) return _beginUidFailure(uidAfter);
+    if (_sessionGeneration != generation) {
+      return const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.sessionChanged));
+    }
+    return null;
+  }
+
+  static GuideBeginFailed _beginUidFailure(String? uid) => GuideBeginFailed(
+      GuideFailureDiagnostic(uid == null
+          ? GuideFailureKind.authError
+          : GuideFailureKind.localUidMismatch));
+
+  static GuideBeginFailed _beginException(Object error) {
+    if (error is TimeoutException) {
+      return const GuideBeginFailed(
+          GuideFailureDiagnostic(GuideFailureKind.timeout));
+    }
+    final code = switch (error) {
+      PostgrestException(:final code) => code,
+      AuthException(:final statusCode) => statusCode,
+      _ => null,
+    };
+    final statusCode = int.tryParse(code ?? '');
+    final kind = switch (code) {
+      '401' || '403' || '42501' || 'PGRST301' || 'PGRST302' || 'PGRST303' =>
+        GuideFailureKind.authError,
+      '408' || '504' => GuideFailureKind.timeout,
+      '502' || '503' => GuideFailureKind.network,
+      _ when error is SocketException || error is ClientException =>
+        GuideFailureKind.network,
+      _ when error is AuthException => GuideFailureKind.authError,
+      _ => GuideFailureKind.backendUnavailable,
+    };
+    return GuideBeginFailed(
+        GuideFailureDiagnostic.fromWire(kind, statusCode: statusCode));
+  }
+
+  @override
+  Future<GuideBackendState?> restart({
+    required String uid,
+    required String version,
+    required String previousSessionId,
+    required String requestId,
+  }) async {
+    if (uid.isEmpty ||
+        version.isEmpty ||
+        previousSessionId.isEmpty ||
+        requestId.isEmpty ||
+        _readUid() != uid) {
+      return null;
+    }
+    final generation = _sessionGeneration;
+    final Object? raw;
+    try {
+      raw = await _invoker(kRpcRestart, {
+        'p_version': version,
+        'p_previous_session_id': previousSessionId,
+        'p_request_id': requestId,
+      }).timeout(guideBeginTimeout);
     } catch (_) {
       return null;
     }
-    final uidAfter = _readUid();
-    if (uidAfter == null || uidAfter != uid) return null;
+    if (_readUid() != uid || generation != _sessionGeneration) return null;
     final decoded = GuideBackendJson.decodeBeginOrDeny(raw);
-    if (decoded == null || !_rememberWire(raw, decoded, uid, version)) {
-      _wireState = null;
+    if (decoded == null ||
+        !decoded.isReplay ||
+        decoded.sessionId == previousSessionId ||
+        decoded.step != GuideStep.intro ||
+        decoded.serverRevision != 0 ||
+        decoded.createdEventId != null ||
+        !_rememberWire(raw, decoded, uid, version)) {
       return null;
     }
+    _sessionGeneration++;
     return decoded;
   }
 
@@ -172,6 +306,14 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
     if (uidBefore == null || uidBefore != uid) {
       throw StateError('advance() lost its authenticated UID');
     }
+    final wire = _wireState;
+    if (wire != null &&
+        wire.uid == uid &&
+        wire.version == snapshot.version &&
+        wire.sessionId != snapshot.sessionId) {
+      throw StateError('advance() received a stale session');
+    }
+    final generation = _sessionGeneration;
     final Object? raw;
     try {
       raw = await _invoker(kRpcAdvance, params);
@@ -181,6 +323,9 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
     final uidAfter = _readUid();
     if (uidAfter == null || uidAfter != uid) {
       throw StateError('advance() lost its authenticated UID mid-call');
+    }
+    if (generation != _sessionGeneration) {
+      throw StateError('advance() session changed mid-call');
     }
     final decoded = GuideBackendJson.decodeAdvanceOrDeny(raw);
     if (decoded == null) {
@@ -243,6 +388,7 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
       return const GuideAccess(
           status: GuideAccessStatus.expired, reasonCode: 'session_expired');
     }
+    final generation = _sessionGeneration;
     final Object? raw;
     try {
       raw = await _invoker(
@@ -264,6 +410,10 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
     if (uidAfter == null || uidAfter != uid) {
       return const GuideAccess(
           status: GuideAccessStatus.denied, reasonCode: 'stale_uid_after');
+    }
+    if (generation != _sessionGeneration) {
+      return const GuideAccess(
+          status: GuideAccessStatus.denied, reasonCode: 'stale_session_after');
     }
     return GuideBackendJson.decodeAuthorizeOrDeny(
       raw,
@@ -292,14 +442,22 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
     );
     final uidBefore = _readUid();
     if (uidBefore == null || uidBefore != snapshot.uid) return;
+    final wire = _wireState;
+    if (wire != null &&
+        wire.uid == snapshot.uid &&
+        wire.version == snapshot.version &&
+        wire.sessionId != snapshot.sessionId) {
+      return;
+    }
+    final generation = _sessionGeneration;
     Object? raw;
     try {
-      raw = await _invoker(kRpcFinish, params);
+      raw = await _invoker(kRpcFinish, params).timeout(guideBeginTimeout);
     } catch (_) {
       return;
     }
     final uidAfter = _readUid();
-    if (uidAfter == null || uidAfter != snapshot.uid) return;
+    if (uidAfter != snapshot.uid || generation != _sessionGeneration) return;
     // Local termination is best effort. A denied/malformed finish is not an ack.
     _wireState = null;
     GuideBackendJson.decodeFinishOrDeny(raw);
@@ -310,6 +468,7 @@ class SupabaseRealUiGuideGrantService implements GuideBackendPort {
     if (_lastUid != uid) {
       _wireState = null;
       _lastUid = uid;
+      _sessionGeneration++;
     }
     if (uid == null) return null;
     final trimmed = uid.trim();
@@ -536,18 +695,33 @@ class GuideBackendJson {
     final row = _rowOrNull(raw);
     if (row == null) return null;
     final status = _readString(row, 'status');
-    if (status == 'denied' || status == 'expired') {
-      return null;
-    }
-    if (status != 'granted') return null;
     final sessionId = _readString(row, 'session_id');
     if (sessionId.isEmpty) return null;
-    final phase = _wirePhaseToStep(_readString(row, 'phase'));
-    if (phase == null) return null;
     final revision = _readInt(row['revision']);
     if (revision == null) return null;
+    if (status == 'denied' &&
+        row['reason_code'] == 'session_terminal' &&
+        row['phase'] == 'terminal') {
+      final step = switch (row['terminal_reason']) {
+        'completed' => GuideStep.completed,
+        'skip' || 'cancel' => GuideStep.skipped,
+        _ => null,
+      };
+      if (step == null) return null;
+      return GuideBackendState(
+        sessionId: sessionId,
+        serverRevision: revision,
+        step: step,
+        isReplay: row['is_replay'] == true,
+      );
+    }
+    if (status != 'granted') return null;
+    final phase = _wirePhaseToStep(_readString(row, 'phase'));
+    if (phase == null) return null;
     final eventId = _readOptionalString(row, 'event_id');
     final savedLocalDate = _readOptionalDate(row, 'saved_local_date');
+    final boundPreview = eventId != null &&
+        (phase == GuideStep.editPreview || phase == GuideStep.updatedDetail);
     return GuideBackendState(
       sessionId: sessionId,
       serverRevision: revision,
@@ -555,6 +729,11 @@ class GuideBackendJson {
       createdEventId: eventId,
       savedLocalDate: savedLocalDate,
       dateTimeZone: _readOptionalString(row, 'date_time_zone'),
+      isReplay: row['is_replay'] == true,
+      expectedStartAt:
+          boundPreview ? _readPreviewStart(row['expected_start_at']) : null,
+      expectedStartAtReported:
+          boundPreview && row.containsKey('expected_start_at'),
     );
   }
 
@@ -692,6 +871,23 @@ class GuideBackendJson {
     return null;
   }
 
+  static final _previewStartPattern = RegExp(
+      r'^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d'
+      r'(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$');
+
+  static DateTime? _readPreviewStart(Object? raw) {
+    if (raw is! String) return null;
+    final match = _previewStartPattern.firstMatch(raw);
+    if (match == null) return null;
+    final date = match.group(1)!;
+    final civilDay = DateTime.tryParse('${date}T00:00:00Z');
+    // DateTime.parse normalizes invalid calendar dates such as February 30.
+    if (civilDay == null || !civilDay.toIso8601String().startsWith('${date}T')) {
+      return null;
+    }
+    return DateTime.tryParse(raw)?.toUtc();
+  }
+
   static GuideStep? _wirePhaseToStep(String phase) {
     switch (phase) {
       // The server's coarse `create` phase represents the whole first-run
@@ -706,7 +902,8 @@ class GuideBackendJson {
       case 'query':
         return GuideStep.querySpeech;
       case 'edit':
-        return GuideStep.editPreview;
+        // The server has accepted the query, but has no change to preview yet.
+        return GuideStep.changeSpeech;
       case 'preview':
         return GuideStep.editPreview;
       case 'updated':
