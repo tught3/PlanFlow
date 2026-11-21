@@ -426,8 +426,20 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 
   void _cancelGuidePreparation() {
-    if (!_guideTransitionCommitting && context.canPop()) {
-      context.pop('cancelled');
+    if (!_guideTransitionCommitting) _handleCancelBack();
+  }
+
+  void _handleCancelBack() {
+    unawaited(AnalyticsService.logScheduleCancelled());
+    final skipped = skipActiveGuideOnBack(context);
+    if (GoRouter.maybeOf(context) != null) {
+      if (skipped) {
+        context.go(AppRoutes.home);
+      } else if (context.canPop()) {
+        context.pop('cancelled');
+      }
+    } else if (Navigator.canPop(context)) {
+      Navigator.of(context).pop('cancelled');
     }
   }
 
@@ -3985,10 +3997,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         leading: IconButton(
           tooltip: '취소',
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            unawaited(AnalyticsService.logScheduleCancelled());
-            context.pop('cancelled');
-          },
+          onPressed: _handleCancelBack,
         ),
         actions: [
           Padding(
@@ -4256,12 +4265,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         ),
       ),
     );
+    final editor = PopScope(
+      canPop: !GuideScope.isActiveBackSkippableOf(context),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && GuideScope.isActiveBackSkippableOf(context)) {
+          _handleCancelBack();
+        }
+      },
+      child: scaffold,
+    );
     if (!showParsePendingLoader) {
-      return scaffold;
+      return editor;
     }
     return Stack(
       children: [
-        scaffold,
+        editor,
         Positioned.fill(
           child: AbsorbPointer(
             absorbing: true,

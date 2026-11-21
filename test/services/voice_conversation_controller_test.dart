@@ -43,6 +43,26 @@ DateTime _dateAt(DateTime date, int dayOffset, [int hour = 0, int minute = 0]) {
   return DateTime(date.year, date.month, date.day + dayOffset, hour, minute);
 }
 
+class _CountingVoiceCommandRouter extends VoiceCommandRouter {
+  int routeCallCount = 0;
+
+  @override
+  VoiceCommandRouteResult route(
+    String rawText, {
+    VoiceCommandRouteIntent? intent,
+    VoiceTextCleanupContext context = VoiceTextCleanupContext.add,
+    Iterable<VoiceTextCleanupCandidate> candidates = const [],
+  }) {
+    routeCallCount++;
+    return super.route(
+      rawText,
+      intent: intent,
+      context: context,
+      candidates: candidates,
+    );
+  }
+}
+
 void main() {
   group('pending destructive voice actions', () {
     VoiceConversationController makeController({
@@ -1842,6 +1862,27 @@ void main() {
   });
 
   group('음성 수정 대상 매칭', () {
+    test('ordinal time edit matches an event titled 일정', () {
+      final today = DateTime(_fixtureYear, 5, 7, 8);
+      final event = _event('generic-title', '일정', _dateAt(today, 1, 14));
+      final controller = VoiceConversationController(
+        events: [event],
+        now: () => today,
+      );
+
+      final query = controller.handle('내일 일정 보여줘');
+      expect(query.action, VoiceConversationAction.showEvents);
+      expect(query.visibleEvents.map((item) => item.id), ['generic-title']);
+
+      final result = controller.handle('첫 번째 일정을 오후 5시로 변경해 줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, event.id);
+      expect(result.canAutoApplyDateChange, isTrue);
+      expect(planflowLocal(result.draftEvent!.startAt!).hour, 17);
+      expect(planflowLocal(result.draftEvent!.endAt!).hour, 18);
+    });
+
     test('STT로 이름 일부가 빠져도 단일 제목 토큰 일치 수정은 기존 일정을 연다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
@@ -2484,6 +2525,23 @@ void main() {
       expect(result.action, VoiceConversationAction.showEvents);
       expect(result.visibleEvents.map((event) => event.id), <String>['match']);
       expect(result.visibleEvents.single.title, '김창민 만나기');
+    });
+
+    test('title search reuses the already parsed route', () {
+      final router = _CountingVoiceCommandRouter();
+      final controller = VoiceConversationController(
+        router: router,
+        events: <EventModel>[
+          _event('match', '김창민 만나기', DateTime(_fixtureYear, 6, 19, 9)),
+        ],
+        now: () => DateTime(_fixtureYear, 6, 7, 8),
+      );
+
+      final result = controller.handle('김창민 만나기 일정 찾아봐');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.single.id, 'match');
+      expect(router.routeCallCount, 1);
     });
 
     test('title search requires all name and role tokens to match', () {

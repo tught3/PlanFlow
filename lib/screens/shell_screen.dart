@@ -85,6 +85,13 @@ const _shellDestinations = <_ShellDestination>[
 
 const double _shellTabSwipeEdgeWidth = 24;
 
+enum _ExternalCalendarGuideAction {
+  skipGuide,
+  dismissStale,
+  decline,
+  openSettings
+}
+
 class _ShellDestination {
   const _ShellDestination({
     required this.label,
@@ -615,34 +622,37 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             mounted &&
             _authProvider.userId == userId &&
             authEpoch == _sessionAuthEpoch,
-        syncChoice: () => widget.runPostTourOnboardingStages && _guideChoicePendingFor(userId)
+        syncChoice: () => widget.runPostTourOnboardingStages &&
+                _guideChoicePendingFor(userId)
             ? _maybeShowExternalCalendarSyncGuide()
             : runOnboardingStageChain(
-          stages: <OnboardingStage>[
-            if (widget.runPostTourOnboardingStages) ...<OnboardingStage>[
-              OnboardingStage(
-                'external_calendar_guide',
-                () async { await _maybeShowExternalCalendarSyncGuide(); },
+                stages: <OnboardingStage>[
+                  if (widget.runPostTourOnboardingStages) ...<OnboardingStage>[
+                    OnboardingStage(
+                      'external_calendar_guide',
+                      () async {
+                        await _maybeShowExternalCalendarSyncGuide();
+                      },
+                    ),
+                  ],
+                ],
+                // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
+                // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
+                // 게이트는 그래도 풀린다.
+                shouldContinue: () =>
+                    mounted &&
+                    _authProvider.userId == userId &&
+                    _requiredFeatureTourConfirmed &&
+                    _requiredPermissionConfirmed,
+                releaseGate: () {
+                  if (mounted &&
+                      _observedUserId == userId &&
+                      _authProvider.userId == userId) {
+                    _clearOnboardingGate();
+                  }
+                },
+                presentationTimeout: _onboardingPresentationTimeout,
               ),
-            ],
-          ],
-          // 위젯이 사라졌으면 이후 단계는 의미가 없다. 체인은 false를 돌려주고
-          // (세션 완료 표시를 하지 않는다 — 실제로 온보딩을 못 보여줬기 때문)
-          // 게이트는 그래도 풀린다.
-          shouldContinue: () =>
-              mounted &&
-              _authProvider.userId == userId &&
-              _requiredFeatureTourConfirmed &&
-              _requiredPermissionConfirmed,
-          releaseGate: () {
-            if (mounted &&
-                _observedUserId == userId &&
-                _authProvider.userId == userId) {
-              _clearOnboardingGate();
-            }
-          },
-          presentationTimeout: _onboardingPresentationTimeout,
-        ),
       );
     } catch (error, stackTrace) {
       // 어떤 예외도 게이트 해제를 막아선 안 된다. 호출부가 unawaited라
@@ -1127,7 +1137,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           (snapshot.run == GuideRun.paused &&
               snapshot.pauseReason == GuidePauseReason.background));
 
-  Future<bool> _waitForGuideHome(GoRouter router, bool Function() sameAccount) async {
+  Future<bool> _waitForGuideHome(
+      GoRouter router, bool Function() sameAccount) async {
     _clearOnboardingGate();
     final waiter = Completer<bool>();
     void checkRoute() {
@@ -1142,6 +1153,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         }
       }
     }
+
     _guideHomeWaiter = waiter;
     _guideHomeStateChanged = checkRoute;
     router.routerDelegate.addListener(checkRoute);
@@ -1180,6 +1192,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         ? snapshot
         : null;
     final syncStore = GuideSyncChoiceStore();
+    bool ownsGuide() =>
+        sameAccount() &&
+        identical(
+          context.getInheritedWidgetOfExactType<GuideScope>()?.coordinator,
+          coordinator,
+        );
     bool sameGuideSession(GuideSnapshot current) =>
         guideChoice != null &&
         current.uid == userId &&
@@ -1190,7 +1208,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     Future<GuideSnapshot?> readyGuideChoice() async {
       if (!await _waitForGuideHome(router, sameAccount)) return null;
       final current = coordinator!.state.value;
-      if (!sameGuideSession(current) || !_isGuideSyncChoice(current, userId)) {
+      if (!ownsGuide() ||
+          !sameGuideSession(current) ||
+          !_isGuideSyncChoice(current, userId)) {
         return null;
       }
       if (current.run == GuideRun.active) return current;
@@ -1200,7 +1220,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           expectedRevision: current.revision));
       if (!await _waitForGuideHome(router, sameAccount)) return null;
       final resumed = coordinator.state.value;
-      if (!sameAccount() ||
+      if (!ownsGuide() ||
           !sameGuideSession(resumed) ||
           resumed.step != GuideStep.syncChoice ||
           resumed.run != GuideRun.active) {
@@ -1226,47 +1246,111 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       if (!shouldShow || !sameAccount()) return sameAccount();
     }
 
-    // showDialog도 라우트를 동기적으로 올린다 — 띄우는 즉시 게이트를 내린다.
-    bool? openSettings;
+    _ExternalCalendarGuideAction? choice;
     do {
       if (guideChoice != null && await readyGuideChoice() == null) {
         _checkedExternalCalendarGuide = false;
         return false;
       }
       if (!mounted || !sameAccount()) return false;
-      openSettings = await _presentInteractive(() => showDialog<bool>(
-          context: context,
-          barrierDismissible: guideChoice == null,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text('외부 캘린더 동기화 안내'),
-              content: const Text(
-                '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
-                '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
+      final scope = context.getInheritedWidgetOfExactType<GuideScope>();
+      final allowGuideBack =
+          guideChoice != null && scope?.allowBackSkip == true;
+      final navigator = Navigator.of(context, rootNavigator: true);
+      bool isCurrentGuideChoice(GuideSnapshot current) =>
+          ownsGuide() &&
+          GuideScope.allowBackSkipOf(context) &&
+          sameGuideSession(current) &&
+          _isGuideSyncChoice(current, userId);
+      final route = DialogRoute<_ExternalCalendarGuideAction>(
+        context: context,
+        themes: InheritedTheme.capture(from: context, to: navigator.context),
+        barrierDismissible: guideChoice == null,
+        builder: (dialogContext) {
+          final dialog = AlertDialog(
+            title: const Text('외부 캘린더 동기화 안내'),
+            content: const Text(
+              '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
+              '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
+            ),
+            actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+            actions: [
+              PlanFlowActionButtons(
+                buttons: [
+                  PlanFlowActionButton(
+                    label: '동기화 안 함',
+                    onPressed: () =>
+                        navigator.pop(_ExternalCalendarGuideAction.decline),
+                    type: ActionButtonType.secondary,
+                    flex: 1,
+                  ),
+                  PlanFlowActionButton(
+                    label: '동기화 설정',
+                    onPressed: () => navigator
+                        .pop(_ExternalCalendarGuideAction.openSettings),
+                    type: ActionButtonType.primary,
+                    flex: 1,
+                  ),
+                ],
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-              actions: [
-                PlanFlowActionButtons(
-                  buttons: [
-                    PlanFlowActionButton(
-                      label: '동기화 안 함',
-                      onPressed: () => Navigator.of(context).pop(false),
-                      type: ActionButtonType.secondary,
-                      flex: 1,
-                    ),
-                    PlanFlowActionButton(
-                      label: '동기화 설정',
-                      onPressed: () => Navigator.of(context).pop(true),
-                      type: ActionButtonType.primary,
-                      flex: 1,
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ));
-    } while (guideChoice != null && openSettings == null);
+            ],
+          );
+          if (!allowGuideBack) return dialog;
+          return PopScope<_ExternalCalendarGuideAction>(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop && ModalRoute.isCurrentOf(dialogContext) == true) {
+                navigator.pop(isCurrentGuideChoice(coordinator!.state.value)
+                    ? _ExternalCalendarGuideAction.skipGuide
+                    : _ExternalCalendarGuideAction.dismissStale);
+              }
+            },
+            child: dialog,
+          );
+        },
+      );
+      final unregisterBack =
+          allowGuideBack ? scope?.registerSyncChoiceRoute?.call(route) : null;
+      try {
+        choice = await _presentInteractive(() => navigator.push(route));
+      } finally {
+        unregisterBack?.call();
+      }
+      if (!mounted || !sameAccount()) return false;
+      if (choice == _ExternalCalendarGuideAction.dismissStale) {
+        _checkedExternalCalendarGuide = false;
+        return false;
+      }
+      if (choice == _ExternalCalendarGuideAction.skipGuide) {
+        final current = coordinator!.state.value;
+        if (!isCurrentGuideChoice(current)) {
+          _checkedExternalCalendarGuide = false;
+          return false;
+        }
+        try {
+          await coordinator.terminate(GuideExit.skip);
+        } catch (_) {
+          // Still check whether the coordinator reached the exit checkpoint.
+        }
+        bool ownsExit() {
+          final latest = coordinator.state.value;
+          return ownsGuide() &&
+              sameGuideSession(latest) &&
+              latest.run == GuideRun.terminal &&
+              latest.step == GuideStep.skipped;
+        }
+
+        if (!ownsExit()) return false;
+        try {
+          await syncStore.close(userId);
+        } catch (_) {
+          // Release the route gate for this process if prefs are unavailable.
+        }
+        if (!ownsExit()) return false;
+        _routeGate.closeGuideChoice(userId);
+        return true;
+      }
+    } while (guideChoice != null && choice == null);
 
     if (!sameAccount()) return false;
     if (guideChoice != null) {
@@ -1299,7 +1383,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
 
     if (guideChoice != null) {
-      if (!await _waitForGuideHome(router, sameAccount) || !mounted || !sameAccount()) {
+      if (!await _waitForGuideHome(router, sameAccount) ||
+          !mounted ||
+          !sameAccount()) {
         return false;
       }
       await showDialog<void>(
@@ -1318,7 +1404,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       );
     }
 
-    if (sameAccount() && openSettings == true) {
+    if (sameAccount() && choice == _ExternalCalendarGuideAction.openSettings) {
       router.go('${AppRoutes.settings}?open=naver-caldav');
     }
     return sameAccount();
@@ -1532,7 +1618,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           if (didPop) {
             return;
           }
+          final skipped = skipActiveGuideOnBack(context);
           if (_currentIndex != 0) {
+            if (skipped && GoRouter.maybeOf(context) != null) {
+              context.go(AppRoutes.home);
+              return;
+            }
             setState(() {
               _currentIndex = 0;
             });
@@ -1541,7 +1632,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             }
             return;
           }
-          SystemNavigator.pop();
+          if (!skipped) SystemNavigator.pop();
         },
         child: LayoutBuilder(
           builder: (context, constraints) {

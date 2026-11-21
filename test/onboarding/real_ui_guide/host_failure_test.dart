@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:planflow/core/startup_route_gate.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
@@ -216,6 +217,69 @@ class _RewardGuide extends _Guide {
 }
 
 void main() {
+  for (final recovery in [false, true]) {
+    testWidgets('Router Back consumes guide ${recovery ? 'recovery' : 'waiting'} '
+        'and delegates subsequent route Back', (tester) async {
+      final owner = recovery ? 'router-recovery-user' : 'router-waiting-user';
+      final guide = recovery
+          ? _FailureGuide(GuideFailureKind.backendUnavailable)
+          : _Guide();
+      final router = GoRouter(routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, _) => Scaffold(
+            body: TextButton(
+              onPressed: () => context.push('/next'),
+              child: const Text('Next route'),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/next',
+          builder: (_, __) => const Scaffold(body: Text('Current route')),
+        ),
+      ]);
+      addTearDown(router.dispose);
+      addTearDown(guide.notifier.dispose);
+      addTearDown(() => startupRouteGate.closeGuideChoice(owner));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide)],
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (_, child) => RootGuideScope(
+            uid: owner,
+            backButtonDispatcher: router.backButtonDispatcher,
+            bindRuntime: (_) => Object(),
+            unbindRuntime: (_) {},
+            child: child!,
+          ),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(
+        recovery
+            ? find.byKey(const ValueKey('guide-retry'))
+            : find.textContaining('안내할 실제 화면을 기다리고 있어요'),
+        findsOneWidget,
+      );
+      expect(find.text('안내 건너뛰기'), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(guide.state.value.run, GuideRun.terminal);
+      expect(guide.state.value.step, GuideStep.skipped);
+      await tester.tap(find.text('Next route'));
+      await tester.pumpAndSettle();
+      expect(find.text('Current route'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Next route'), findsOneWidget);
+      expect(find.text('Current route'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
   tearDown(() {
     startupRouteGate.closeGuideChoice('qa-one');
@@ -303,6 +367,8 @@ void main() {
 
   testWidgets('factory failure blocks actions until explicit session-only skip',
       (tester) async {
+    const owner = 'factory-failure-user';
+    addTearDown(() => startupRouteGate.closeGuideChoice(owner));
     int actions = 0;
     GuideCoordinator? seen;
     GuideCoordinator? provided;
@@ -332,24 +398,24 @@ void main() {
             }),
           )),
         );
-    await tester.pumpWidget(tree('qa-one'));
+    await tester.pumpWidget(tree(owner));
     await tester.pump(const Duration(milliseconds: 1));
-    expect(find.byKey(const ValueKey('guide-session-skip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-session-skip')), findsNothing);
     await tester.tapAt(
         tester.getCenter(find.byKey(const ValueKey('underlying-action'))));
     expect(actions, 0);
-    await tester.tap(find.byKey(const ValueKey('guide-session-skip')));
+    await tester.binding.handlePopRoute();
     await tester.pump(const Duration(milliseconds: 1));
     expect(seen, isNotNull);
     expect(identical(seen, provided), isTrue);
-    expect(seen!.state.value.uid, 'qa-one');
+    expect(seen!.state.value.uid, owner);
     expect(seen!.state.value.step, GuideStep.skipped);
     expect(seen!.state.value.run, GuideRun.terminal);
     expect(seen!.state.value.sessionId, isNull);
-    expect(startupRouteGate.calendarSyncHeldFor('qa-one'), isTrue);
+    expect(startupRouteGate.calendarSyncHeldFor(owner), isTrue);
     final access = await seen!.authorize(
         context: const GuideChargeContext(
-            uid: 'qa-one',
+            uid: owner,
             version: 'real_ui_v1',
             sessionId: 'not-a-grant',
             kind: GuideChargeKind.scheduleParse,
@@ -364,7 +430,7 @@ void main() {
     expect(actions, 1); // Only after the explicit guide-skip gesture.
     await tester.pumpWidget(tree('qa-two'));
     await tester.pump(const Duration(milliseconds: 1));
-    expect(find.byKey(const ValueKey('guide-session-skip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-session-skip')), findsNothing);
     expect(seen, isNull); // A second UID never inherits session-only skip.
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -389,7 +455,7 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 1));
     expect(guide.starts, 0);
-    await tester.tap(find.byKey(const ValueKey('guide-session-skip')));
+    await tester.binding.handlePopRoute();
     await tester.pump(const Duration(milliseconds: 1));
     expect(current!.state.value.step, GuideStep.skipped);
     expect(current!.state.value.uid, 'qa-one');
@@ -559,7 +625,8 @@ void main() {
     await tester.tap(switchAccount);
     await tester.pump();
     expect(switchedAccounts, ['qa-one']);
-    for (final action in [switchAccount, retry, skip]) {
+    expect(skip, findsNothing);
+    for (final action in [switchAccount, retry]) {
       expect(tester.widget<TextButton>(action).onPressed, isNull);
     }
 
@@ -634,8 +701,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
     expect(guide.state.value.step, GuideStep.homeMic);
     final skip = find.byKey(const ValueKey('guide-missing-target-skip'));
-    expect(skip, findsOneWidget);
-    await tester.tap(skip);
+    expect(skip, findsNothing);
+    expect(find.textContaining('안내할 실제 화면을 기다리고 있어요'), findsOneWidget);
+    await tester.binding.handlePopRoute();
     await tester.pump(const Duration(milliseconds: 1));
     expect(guide.state.value.step, GuideStep.skipped);
     expect(guide.state.value.run, GuideRun.terminal);
@@ -791,7 +859,7 @@ void main() {
     expect(find.textContaining('로그인 정보를 확인할 수 없어요'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-failure-code')), findsNothing);
     expect(find.byKey(const ValueKey('guide-switch-qa-account')), findsNothing);
-    expect(find.byKey(const ValueKey('guide-skip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-skip')), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

@@ -1105,7 +1105,7 @@ class VoiceConversationController {
       }
     }
 
-    final titleSearch = _searchEventsByTitleOrPeople(text, state);
+    final titleSearch = _searchEventsByTitleOrPeople(text, state, route: route);
     if (titleSearch.inRangeMatches.isNotEmpty) {
       final matched = titleSearch.inRangeMatches;
       // banned-ok: 'Token'은 제목 검색용 단어 토큰이지 시크릿이 아님(오탐)
@@ -1962,7 +1962,8 @@ class VoiceConversationController {
     // incomplete STT of a longer candidate remains eligible for matching.
     final title = target.title.trim();
     if (!title.contains(RegExp(r'\s+')) &&
-        !_isFocusedEventReference(sourceText)) {
+        !_isFocusedEventReference(sourceText) &&
+        _parseOrdinalIndex(sourceText) == null) {
       final spoken = sourceText
           .trim()
           .replaceFirst(RegExp(r'^(?:오늘|내일|모레|글피)\s*'), '')
@@ -1972,11 +1973,10 @@ class VoiceConversationController {
               '')
           .replaceFirst(RegExp(r'(?:을|를|은|는|이|가)\s*$'), '')
           .trim();
-      final spokenTitle =
-          spoken.replaceFirst(RegExp(r'\s+(?:일정|약속|스케줄)$'), '');
+      final spokenTitle = spoken.replaceFirst(RegExp(r'\s+(?:일정|약속|스케줄)$'), '');
       if (spoken != title &&
           spokenTitle != title &&
-          spoken.contains(title) &&
+          spokenTitle.contains(title) &&
           title.isNotEmpty) {
         return false;
       }
@@ -2147,10 +2147,11 @@ class VoiceConversationController {
   _VoiceConversationTitleSearch _searchEventsByTitleOrPeople(
     String text,
     _VoiceConversationState state, {
+    VoiceCommandRouteResult? route,
     DateTime? windowStart,
     DateTime? windowEnd,
   }) {
-    if (!_isQueryIntent(text)) {
+    if (!_isQueryIntent(text, route: route)) {
       return const _VoiceConversationTitleSearch();
     }
     final queryTokens = _queryTokensForTitleSearch(text);

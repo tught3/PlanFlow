@@ -52,6 +52,7 @@ import '../../widgets/guided_anchor.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 
 const _logGuideSaveGateDiagnostics = kDebugMode &&
     bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
@@ -655,6 +656,15 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _handleBackNavigation() {
+    final skipped = skipActiveGuideOnBack(context);
+    if (GoRouter.maybeOf(context) == null) {
+      if (Navigator.canPop(context)) Navigator.of(context).pop();
+      return;
+    }
+    if (skipped) {
+      context.go(AppRoutes.home);
+      return;
+    }
     if (context.canPop()) {
       context.pop();
       return;
@@ -2901,7 +2911,17 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PopScope(
+        canPop: !GuideScope.isActiveBackSkippableOf(context),
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && GuideScope.isActiveBackSkippableOf(context)) {
+            _handleBackNavigation();
+          }
+        },
+        child: _buildContent(context),
+      );
+
+  Widget _buildContent(BuildContext context) {
     if (widget.initialGuideStartLocal != null) {
       return _buildEditor(context, guidedEdit: true);
     }

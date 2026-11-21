@@ -24,6 +24,7 @@ class ColdProgress implements GuideProgressStore {
 
 class ColdBackend implements GuideBackendPort {
   int begins = 0;
+  final finishes = <(String?, GuideExit)>[];
   Future<GuideBackendState?> Function(String)? responder;
   @override
   Future<GuideBeginResult> begin(
@@ -55,8 +56,9 @@ class ColdBackend implements GuideBackendPort {
   Future<void> finish(
           {required GuideSnapshot snapshot,
           required GuideExit exit,
-          required String requestId}) =>
-      throw StateError('unexpected finish');
+          required String requestId}) async {
+    finishes.add((snapshot.sessionId, exit));
+  }
 }
 
 GuideSnapshot local(
@@ -88,6 +90,53 @@ GuideSnapshot local(
 const intro = GuideBackendState(
     sessionId: 'actual', serverRevision: 11, step: GuideStep.intro);
 void main() {
+  test('product cold start skips stored incomplete bound progress', () async {
+    final p = ColdProgress()
+      ..value = local(step: GuideStep.editPreview, created: 'event');
+    final b = ColdBackend();
+    final c = RealUiGuideCoordinator(backend: b, progress: p, version: 'v');
+
+    final state = await c.start(uid: 'u', skipIncompleteOnColdStart: true);
+
+    expect(state.run, GuideRun.terminal);
+    expect(state.step, GuideStep.skipped);
+    expect(state.sessionId, 'old');
+    expect(state.createdEventId, 'event');
+    expect(state.calendarSyncHeld, isFalse);
+    expect(p.value, same(state));
+    expect(b.begins, 0);
+    expect(b.finishes, [('old', GuideExit.skip)]);
+  });
+
+  test('cold start without a grant records no invented session', () async {
+    final p = ColdProgress()
+      ..value = local(run: GuideRun.blocked).copyWith(clearSessionId: true);
+    final b = ColdBackend();
+    final c = RealUiGuideCoordinator(backend: b, progress: p, version: 'v');
+
+    final state = await c.start(uid: 'u', skipIncompleteOnColdStart: true);
+
+    expect(state.run, GuideRun.terminal);
+    expect(state.step, GuideStep.skipped);
+    expect(state.sessionId, isNull);
+    expect(b.begins, 1);
+    expect(b.finishes, isEmpty);
+  });
+
+  test('cold-start opt-in starts a fresh guide when no checkpoint exists',
+      () async {
+    final p = ColdProgress();
+    final b = ColdBackend()..responder = (_) async => intro;
+    final c = RealUiGuideCoordinator(backend: b, progress: p, version: 'v');
+
+    final state = await c.start(uid: 'u', skipIncompleteOnColdStart: true);
+
+    expect(state.run, GuideRun.active);
+    expect(state.step, GuideStep.intro);
+    expect(b.begins, 1);
+    expect(b.finishes, isEmpty);
+  });
+
   for (final step in [GuideStep.editPreview, GuideStep.updatedDetail]) {
     test('cold ${step.name} restores accepted time with no preferences',
         () async {

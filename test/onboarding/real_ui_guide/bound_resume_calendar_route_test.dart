@@ -68,7 +68,7 @@ Finder _savedAnchor() => find.byWidgetPredicate(
     (w) => w is GuidedAnchor && w.id == 'calendar.saved',
     skipOffstage: false);
 Finder _overlay() => find.byType(GuidedCoachmarkOverlay);
-Finder _waitingPanel() => find.byKey(const ValueKey('guide-missing-target-skip'));
+Finder _waitingPanel() => find.textContaining('안내할 실제 화면을 기다리고 있어요');
 
 DateTime? _parse(String? raw) =>
     raw == null || raw.trim().isEmpty ? null : DateTime.tryParse(raw.trim());

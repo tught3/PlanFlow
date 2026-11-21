@@ -155,6 +155,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   ({GuideSnapshot snapshot, String text})? _guidedVoiceDraft;
   Completer<void>? _guidedCaptureSettled;
   bool _isSendingGuidedVoice = false;
+  VoidCallback? _dismissGuideFeedback;
 
   GuideSnapshot? get _guidedComposerSnapshot {
     final snapshot = _guide?.state.value;
@@ -230,23 +231,33 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   void _showGuideCaptureRequired() {
-    _showGuideFeedback('마이크로 다시 말한 뒤 전송을 눌러 주세요.');
+    _showGuideFeedback('capture_required', '마이크로 다시 말한 뒤 전송을 눌러 주세요.');
   }
 
   void _showGuideTurnUnavailable() {
-    _showGuideFeedback('현재 안내 단계를 확인한 뒤 마이크로 다시 입력해 주세요.');
+    _showGuideFeedback('turn_unavailable', '현재 안내 단계를 확인한 뒤 마이크로 다시 입력해 주세요.');
   }
 
   void _showGuideQueryRetry() {
-    _showGuideFeedback('저장한 일정의 날짜를 마이크로 다시 조회한 뒤 변경해 주세요.');
+    _showGuideFeedback('query_retry', '저장한 일정의 날짜를 마이크로 다시 조회한 뒤 변경해 주세요.');
   }
 
-  void _showGuideFeedback(String message) {
+  void _showGuideFeedback(String reasonCode, String message) {
     if (mounted &&
         _foreground &&
         _guide?.state.value.uid == authProvider.userId &&
         (ModalRoute.of(context)?.isCurrent ?? false)) {
-      AppFeedbackService.showSnackBar(message, context: context);
+      debugPrint(
+          '[VoiceConversationGuide] reason=$reasonCode message=$message');
+      _dismissGuideFeedback?.call();
+      _dismissGuideFeedback = AppFeedbackService.showGuideSaveBlocked(
+        context: context,
+        reasonCode: reasonCode,
+        message: message,
+      );
+      if (_dismissGuideFeedback == null) {
+        AppFeedbackService.showSnackBar(message, context: context);
+      }
     }
   }
 
@@ -306,14 +317,15 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           (ModalRoute.of(context)?.isCurrent ?? false) &&
           !_voicePausedByUser);
 
-  Future<({
-    String uid,
-    String sessionId,
-    String operationId,
-    GuideOperation operation,
-    DateTime? expiresAtUtc,
-    GuideSnapshot? replay,
-  })?> _authorizeGuideTurn() async {
+  Future<
+      ({
+        String uid,
+        String sessionId,
+        String operationId,
+        GuideOperation operation,
+        DateTime? expiresAtUtc,
+        GuideSnapshot? replay,
+      })?> _authorizeGuideTurn() async {
     final coordinator = _guide;
     final s = coordinator?.state.value;
     if (coordinator == null ||
@@ -624,7 +636,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   ) {
     switch (source) {
       case EntitlementSource.guideReplay:
-        throw StateError('Guide replay does not use ordinary entitlement analytics.');
+        throw StateError(
+            'Guide replay does not use ordinary entitlement analytics.');
       case EntitlementSource.initialFree:
         return VoiceConvSessionSource.initialFree;
       case EntitlementSource.dailyFree:
@@ -781,6 +794,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (!_usageConsumedForSession) {
       unawaited(AnalyticsService.logVoiceConvSessionAbandonedBeforeUse());
     }
+    final dismissGuideFeedback = _dismissGuideFeedback;
+    if (dismissGuideFeedback != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => dismissGuideFeedback());
+    }
     authProvider.removeListener(_handleGuideAuthChange);
     WidgetsBinding.instance.removeObserver(this);
     _keepListening = false;
@@ -855,16 +873,18 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
   /// 병합한다. 그룹 일정은 [_eventModelFromGroupEvent]로 개인 EventModel
   /// 형태로 변환해 컨트롤러의 순번/시간 매칭 로직을 재사용한다. 원본은
   /// 조회 결과와 함께 반환해 수정 라우팅에서 역참조할 수 있게 한다.
-  Future<({
-    List<EventModel> events,
-    Map<String, GroupEventModel> groupById,
-  })> _fetchMergedEvents({
+  Future<
+      ({
+        List<EventModel> events,
+        Map<String, GroupEventModel> groupById,
+      })> _fetchMergedEvents({
     String? userId,
   }) async {
     final personalEvents = await _repository.listEvents(userId: userId);
     final groupCandidates = await _loadGroupEventCandidates();
     final merged = <EventModel>[
-      ...personalEvents.where((event) => !_fullyDeletedEventIds.contains(event.id)),
+      ...personalEvents
+          .where((event) => !_fullyDeletedEventIds.contains(event.id)),
       ...groupCandidates.events,
     ];
     merged.sort((a, b) {
@@ -970,7 +990,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     final guidePermit = startedInGuide ? await _authorizeGuideTurn() : null;
     if (!mounted) return;
     final replay = guidePermit?.replay;
-    bool replayCurrent() => replay == null ||
+    bool replayCurrent() =>
+        replay == null ||
         (authProvider.userId == replay.uid &&
             identical(_guide?.state.value, replay));
     if (!replayCurrent()) return;
@@ -986,7 +1007,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     final guided = startedInGuide || _guideMode;
     if (guided && guidePermit == null) {
-      _showGuideFeedback('전송을 완료하지 못했어요. 잠시 후 다시 눌러 주세요.');
+      _showGuideFeedback('send_failed', '전송을 완료하지 못했어요. 잠시 후 다시 눌러 주세요.');
       return;
     }
     if (!guided && !_usageConsumedForSession) {
@@ -1087,8 +1108,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         _conversation.bindGuideResults(
             manualGuideSnapshot!, queryBinding.ordered);
       }
-      final hadPendingConfirmation =
-          _conversation.pendingDelete != null ||
+      final hadPendingConfirmation = _conversation.pendingDelete != null ||
           _conversation.pendingConvert != null;
       final result = _conversation.handle(rawText);
       if (manualGuideSnapshot?.step == GuideStep.queryResults &&
@@ -1118,15 +1138,19 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           return;
         }
         if (target == null || target.id != s.createdEventId || start == null) {
-          _showGuideFeedback('첫 번째 일정과 바꿀 시간을 마이크로 다시 말한 뒤 전송해 주세요.');
+          _showGuideFeedback(
+            'missing_target_or_time',
+            '첫 번째 일정과 바꿀 시간을 마이크로 다시 말한 뒤 전송해 주세요.',
+          );
           return;
         }
         if (target.startAt?.isAtSameMomentAs(start) ?? false) {
-          _showGuideFeedback('이미 그 시간으로 저장되어 있어요. 다른 시간을 말해 주세요.');
+          _showGuideFeedback(
+              'unchanged_time', '이미 그 시간으로 저장되어 있어요. 다른 시간을 말해 주세요.');
           return;
         }
         if (!result.canAutoApplyDateChange) {
-          _showGuideFeedback('다른 내용은 빼고 바꿀 시간만 말한 뒤 전송해 주세요.');
+          _showGuideFeedback('time_only', '다른 내용은 빼고 바꿀 시간만 말한 뒤 전송해 주세요.');
           return;
         }
         await _guide!.dispatch(EditPreviewObserved(
@@ -1169,10 +1193,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       // 기본 _messageForResult(result)을 그대로 쓰고, null 이 아니면 그
       // 문자열을 그대로 쓴다(특히 '저장됨' 표현을 말하지 않아야 하는 폴백
       // 경로에서 사용한다).
-      String? messageOverride =
-          hadPendingConfirmation && result.action == VoiceConversationAction.none
-              ? result.assistantMessage
-              : null;
+      String? messageOverride = hadPendingConfirmation &&
+              result.action == VoiceConversationAction.none
+          ? result.assistantMessage
+          : null;
       // 폴백 시 메시지 카드에 실어 보낼 일정 목록. null 이면 result 의
       // visibleEvents 를 그대로 쓴다. 자동 저장 실패 시 원본이 아니라
       // 제안된 드래프트(새 날짜)를 실어서, 편집 버튼으로 다시 열 때 요청한
@@ -1428,8 +1452,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (!stillCurrent()) return false;
         if (_scrollController.hasClients &&
             _scrollController.position.hasContentDimensions) {
-          _scrollController.position.jumpTo(
-              _scrollController.position.maxScrollExtent);
+          _scrollController.position
+              .jumpTo(_scrollController.position.maxScrollExtent);
         }
         continue;
       }
@@ -2745,11 +2769,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       final sideEffectService = _sideEffectService;
       await _repository.deleteEvent(event.id, userId: userId);
       runCleanup = () => _cleanupDeletedEvent(
-        event.id,
-        userId,
-        settingsRepository: settingsRepository,
-        sideEffectService: sideEffectService,
-      );
+            event.id,
+            userId,
+            settingsRepository: settingsRepository,
+            sideEffectService: sideEffectService,
+          );
       _deletedEventIds.add(event.id);
       _fullyDeletedEventIds.add(event.id);
       _setConversationInputText('');
@@ -3038,6 +3062,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (_isExitingConversation) {
       return;
     }
+    if (skipActiveGuideOnBack(context)) {
+      await _exitConversation();
+      return;
+    }
     final shouldExit = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -3053,6 +3081,10 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       return;
     }
     _isExitingConversation = true;
+    final owner = authProvider.userId;
+    final route = ModalRoute.of(context);
+    _dismissGuideFeedback?.call();
+    _dismissGuideFeedback = null;
     var navigated = false;
     try {
       _voicePhase = _VoiceConversationPhase.exiting;
@@ -3063,7 +3095,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       _isRestartPending = false;
       _manualEditInterruptedListening = false;
       _didRetryConversationEarlyFailure = false;
-      if (!mounted) return;
+      if (!mounted ||
+          route?.isCurrent != true ||
+          authProvider.userId != owner) {
+        return;
+      }
       context.go(AppRoutes.home);
       navigated = true;
     } finally {
@@ -3308,22 +3344,30 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: const Text('AI 일정 대화'),
-          leading: IconButton(
-            tooltip: '뒤로가기',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleConversationBack,
+          leading: GuidedAnchor(
+            id: 'guide.back',
+            registry: realUiGuideAnchorRegistry,
+            child: IconButton(
+              tooltip: '뒤로가기',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _handleConversationBack,
+            ),
           ),
           actions: [
-            TextButton(
-              onPressed: _handleConversationBack,
-              style: TextButton.styleFrom(
-                foregroundColor: PlanFlowColors.primary,
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
+            GuidedAnchor(
+              id: 'guide.exit',
+              registry: realUiGuideAnchorRegistry,
+              child: TextButton(
+                onPressed: _handleConversationBack,
+                style: TextButton.styleFrom(
+                  foregroundColor: PlanFlowColors.primary,
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
                 ),
+                child: const Text('종료'),
               ),
-              child: const Text('종료'),
             ),
           ],
         ),
@@ -3347,7 +3391,8 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
                           final message = _messages[index];
                           final pending = message.pendingDelete;
                           final activePending = pending != null &&
-                                  identical(_conversation.pendingDelete, pending) &&
+                                  identical(
+                                      _conversation.pendingDelete, pending) &&
                                   !_deletedEventIds.contains(pending.event.id)
                               ? pending
                               : null;
@@ -3672,9 +3717,7 @@ class _MessageBubble extends StatelessWidget {
             onPressed: onConfirmDelete,
             icon: const Icon(Icons.delete_sweep_outlined),
             label: Text(
-              _isRecurringEvent(pendingDelete.event)
-                  ? '전체 삭제'
-                  : '삭제 확인',
+              _isRecurringEvent(pendingDelete.event) ? '전체 삭제' : '삭제 확인',
             ),
           ),
         ],

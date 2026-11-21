@@ -44,7 +44,10 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
       _state.value.uid.isNotEmpty && _state.value.run != GuideRun.terminal;
   void _set(GuideSnapshot s) => _state.value = s;
   @override
-  Future<GuideSnapshot> start({required String uid}) async {
+  Future<GuideSnapshot> start({
+    required String uid,
+    bool skipIncompleteOnColdStart = false,
+  }) async {
     final epoch = ++_epoch;
     final initial = _state.value;
     final fresh = GuideSnapshot(
@@ -81,6 +84,9 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
           : local);
       return _state.value;
     }
+    if (skipIncompleteOnColdStart && local != null) {
+      return _skipIncompleteRun(local, initial, epoch);
+    }
     final result = await _begin(uid: uid, requestId: 'begin:$uid:$version');
     if (!_current(initial, epoch)) return _state.value;
     final base = local ?? fresh;
@@ -105,6 +111,59 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
         _set(failed);
         await _saveFailureCheckpoint(failed);
       }
+    }
+    return _state.value;
+  }
+
+  Future<GuideSnapshot> _skipIncompleteRun(
+      GuideSnapshot local, GuideSnapshot initial, int epoch) async {
+    var checkpoint = local;
+    if (local.sessionId?.isNotEmpty != true) {
+      // An intro marker can exist before begin has bound a session. Resolve
+      // its real identity so Settings can restart it after the exit.
+      final result = await _begin(
+          uid: local.uid, requestId: 'begin:${local.uid}:$version');
+      if (!_current(initial, epoch)) return _state.value;
+      final remote = switch (result) {
+        GuideBeginGranted(:final state) => state,
+        GuideBeginFailed(:final failure, :final terminalPredecessor)
+            when failure.kind == GuideFailureKind.terminal &&
+                (terminalPredecessor?.step == GuideStep.completed ||
+                    terminalPredecessor?.step == GuideStep.skipped) =>
+          terminalPredecessor,
+        _ => null,
+      };
+      if (remote != null && remote.sessionId.isNotEmpty) {
+        checkpoint = local.copyWith(
+          sessionId: remote.sessionId,
+          serverRevision: remote.serverRevision,
+          step: remote.step,
+          isReplay: remote.isReplay,
+          createdEventId: remote.createdEventId,
+          savedLocalDate: remote.savedLocalDate,
+          dateTimeZone: remote.dateTimeZone,
+        );
+      }
+    }
+    final alreadyTerminal = checkpoint.step == GuideStep.completed ||
+        checkpoint.step == GuideStep.skipped;
+    final skipped = checkpoint.copyWith(
+      run: GuideRun.terminal,
+      step: alreadyTerminal ? checkpoint.step : GuideStep.skipped,
+      calendarSyncHeld: false,
+      mayListenContinuously: false,
+      clearErrorCode: true,
+      clearFailureDiagnostic: true,
+      revision: local.revision + 1,
+    );
+    // Closing the visible guide must work when persistence is unavailable.
+    await _saveFailureCheckpoint(skipped);
+    if (!_current(initial, epoch)) return _state.value;
+    _set(skipped);
+    if (!alreadyTerminal &&
+        checkpoint.sessionId?.isNotEmpty == true &&
+        _current(skipped, epoch)) {
+      await _finishServerSession(checkpoint, GuideExit.skip);
     }
     return _state.value;
   }
@@ -825,17 +884,18 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
   @override
   Future<void> terminate(GuideExit exit) async {
     final s = _state.value;
-    _epoch++;
-    _set(s.copyWith(
+    final epoch = ++_epoch;
+    final terminal = s.copyWith(
         run: GuideRun.terminal,
         step: exit == GuideExit.completed
             ? GuideStep.completed
             : GuideStep.skipped,
         calendarSyncHeld: false,
         mayListenContinuously: false,
-        revision: s.revision + 1));
-    await _progress.save(_state.value);
-    await _finishServerSession(s, exit);
+        revision: s.revision + 1);
+    _set(terminal);
+    await _progress.save(terminal);
+    if (_current(terminal, epoch)) await _finishServerSession(s, exit);
   }
 
   Future<void> _finishServerSession(GuideSnapshot snapshot, GuideExit exit) async {

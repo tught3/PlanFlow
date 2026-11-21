@@ -212,7 +212,7 @@ void main() {
   setUp(_installConfirmScreenTestEnvironment);
   tearDown(_tearDownConfirmScreenTestEnvironment);
 
-  registerConfirmScreenGuideSaveStageTests();
+  registerConfirmScreenGuideSaveStageTests(runWidgetSaveRegression: true);
 
   testWidgets(
       'ConfirmScreen schedules critical alarm when important is enabled',
@@ -2672,7 +2672,12 @@ class _CountingEntitlementDelegate implements ScheduleParseEntitlementDelegate {
 
 /// Registers only the real ConfirmScreen save-stage regression. The native
 /// adapter imports this function instead of the whole ConfirmScreen suite.
-void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
+void registerConfirmScreenGuideSaveStageTests({
+  bool nativeOsSaveTap = false,
+  bool runWidgetSaveRegression = false,
+}) {
+  const isolatedGuideQa = bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
+      bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA');
   group('ConfirmScreen save stage with the real guide host', () {
     setUp(_installConfirmScreenTestEnvironment);
     tearDown(_tearDownConfirmScreenTestEnvironment);
@@ -3039,8 +3044,7 @@ void registerConfirmScreenGuideSaveStageTests({bool nativeOsSaveTap = false}) {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-    }, skip: !(const bool.fromEnvironment('PLANFLOW_GUIDE_QA') &&
-        const bool.fromEnvironment('PLANFLOW_ISOLATED_GUIDE_QA')));
+    }, skip: !runWidgetSaveRegression && !isolatedGuideQa);
 
     testWidgets(
         'guide save through the coachmark accepts coordinates pending and schedules its alarm',

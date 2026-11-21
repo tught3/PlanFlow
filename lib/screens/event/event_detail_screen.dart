@@ -150,6 +150,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       widget.groupRepository ?? GroupRepository.supabase();
 
   void _handleBackNavigation() {
+    final skipped = skipActiveGuideOnBack(context);
+    if (GoRouter.maybeOf(context) == null) {
+      if (Navigator.canPop(context)) Navigator.of(context).pop();
+      return;
+    }
+    if (skipped) {
+      context.go(AppRoutes.home);
+      return;
+    }
     if (context.canPop()) {
       context.pop();
       return;
@@ -793,7 +802,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PopScope(
+        canPop: !GuideScope.isActiveBackSkippableOf(context),
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && GuideScope.isActiveBackSkippableOf(context)) {
+            _handleBackNavigation();
+          }
+        },
+        child: _buildDetail(context),
+      );
+
+  Widget _buildDetail(BuildContext context) {
     final theme = Theme.of(context);
     final event = _event;
 

@@ -214,9 +214,9 @@ void main() {
 
     expect(guide.state.value.run, GuideRun.paused);
     expect(find.byKey(const ValueKey('guide-retry')), findsOneWidget);
-    expect(find.byKey(const ValueKey('guide-skip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-skip')), findsNothing);
     expect(
-        find.text('안내가 잠시 멈췄어요. 다시 시도하거나 건너뛸 수 있어요.'),
+        find.text('안내가 잠시 멈췄어요. 다시 시도하거나 뒤로가기로 안내를 닫을 수 있어요.'),
         findsOneWidget);
     await tester.tapAt(
         tester.getCenter(find.byKey(const ValueKey('underlying-action'))));

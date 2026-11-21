@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -243,6 +244,72 @@ void main() {
       router.dispose();
       guide.state.dispose();
     }
+  });
+
+  testWidgets('system Back exits 7/7 on a single GoRouter detail route',
+      (tester) async {
+    final updated = EventModel(
+      id: 'updated-root-back',
+      userId: 'detail-guide-owner',
+      title: 'Updated event',
+      startAt: DateTime.utc(2030, 1, 2, 8),
+      endAt: DateTime.utc(2030, 1, 2, 9),
+    );
+    final guide = _DetailGuide(
+      savedEventId: updated.id,
+      uid: updated.userId,
+      step: GuideStep.updatedDetail,
+      expectedUpdatedStartLocal: updated.startAt,
+    );
+    final router = GoRouter(initialLocation: AppRoutes.home, routes: [
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (_, __) => const Scaffold(body: Text('Home tab')),
+      ),
+      GoRoute(
+        path: '${AppRoutes.eventDetail}/:eventId',
+        builder: (_, __) => EventDetailScreen(
+          event: updated,
+          eventRepository: _DetailReadbackRepository(updated),
+        ),
+      ),
+    ]);
+    addTearDown(router.dispose);
+    addTearDown(guide.state.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide)],
+      child: MaterialApp.router(
+        routerConfig: router,
+        builder: (_, child) => RootGuideScope(
+          uid: updated.userId,
+          router: router,
+          backButtonDispatcher: router.backButtonDispatcher,
+          bindRuntime: (_) => Object(),
+          unbindRuntime: (_) {},
+          child: child!,
+        ),
+      ),
+    ));
+    router.go('${AppRoutes.eventDetail}/${updated.id}');
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(router.canPop(), isFalse);
+    expect(find.text('7/7 · 변경 완료'), findsOneWidget);
+    expect(find.text('변경된 시간 확인'), findsOneWidget);
+    expect(guide.exits, isEmpty);
+
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('Home tab'), findsOneWidget);
+    expect(find.byType(EventDetailScreen), findsNothing);
+    expect(guide.state.value.run, GuideRun.terminal);
+    expect(guide.state.value.step, GuideStep.skipped);
+    expect(guide.exits, [GuideExit.skip]);
+    expect(guide.syncChoiceCalls, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   for (final replacement in [null, 'account', 'session']) {
@@ -905,6 +972,30 @@ class _DetailGuide with WidgetsBindingObserver implements GuideCoordinator {
   final Future<void>? syncChoiceSave;
   int ackCalls = 0;
   int syncChoiceCalls = 0;
+  final exits = <GuideExit>[];
+
+  @override
+  Future<GuideSnapshot> start({required String uid}) async => state.value;
+
+  @override
+  Future<void> terminate(GuideExit exit) async {
+    exits.add(exit);
+    state.value =
+        state.value.copyWith(run: GuideRun.terminal, step: GuideStep.skipped);
+  }
+
+  @override
+  void suspend(GuidePauseReason reason) {
+    final current = state.value;
+    if (current.run == GuideRun.active) {
+      state.value = current.copyWith(
+        run: GuideRun.paused,
+        pauseReason: reason,
+        revision: current.revision + 1,
+      );
+    }
+  }
+
   @override
   Future<GuideSnapshot> dispatch(GuideSignal signal) async {
     if (signal is DetailObserved) ackCalls++;

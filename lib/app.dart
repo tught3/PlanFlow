@@ -1766,6 +1766,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
                           : null,
                       child: RootGuideScope(
                         uid: entry.uid,
+                        backButtonDispatcher: appRouter.backButtonDispatcher,
+                        router: appRouter,
                         isGuideQa: _canSwitchGuideQaAccount,
                         onSwitchQaAccount: switchAccount,
                         bindRuntime: (coordinator) => GuideQuotaRuntime.bind(

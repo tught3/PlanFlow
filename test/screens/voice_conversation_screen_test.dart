@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
@@ -19,7 +20,9 @@ import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
-import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart' show realUiGuideVersion;
+import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart'
+    show realUiGuideVersion;
 import 'package:planflow/onboarding/real_ui_guide/guide_local_backend.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_route_recovery.dart';
@@ -27,6 +30,7 @@ import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/services/ad_service.dart';
 import 'package:planflow/services/api_usage_guard.dart';
+import 'package:planflow/services/app_feedback_service.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/guide_quota_adapter.dart';
 import 'package:planflow/services/location_lookup_service.dart';
@@ -601,6 +605,7 @@ class _QueryGuide implements GuideCoordinator {
   final ValueNotifier<GuideSnapshot> state;
   final List<GuideSignal> signals = [];
   final List<GuideChargeContext> charges = [];
+  final List<GuideExit> exits = [];
 
   @override
   Future<GuideSnapshot> start({required String uid}) async => state.value;
@@ -622,7 +627,13 @@ class _QueryGuide implements GuideCoordinator {
   void suspend(GuidePauseReason reason) {}
 
   @override
-  Future<void> terminate(GuideExit exit) async {}
+  Future<void> terminate(GuideExit exit) async {
+    exits.add(exit);
+    state.value = state.value.copyWith(
+      step: GuideStep.skipped,
+      run: GuideRun.terminal,
+    );
+  }
 
   @override
   Future<GuideAccess> authorize(
@@ -757,8 +768,8 @@ void main() {
       VoiceConversationEntitlementService.instance.delegateForTest =
           entitlement;
       addTearDown(
-        () => VoiceConversationEntitlementService.instance.delegateForTest =
-            null,
+        () =>
+            VoiceConversationEntitlementService.instance.delegateForTest = null,
       );
       final adService = AdService.instance;
       final lastAdAttempt = adService.lastVoiceAttempt;
@@ -903,9 +914,8 @@ void main() {
         addTearDown(() => GuideQuotaRuntime.unbind(binding));
         VoiceConversationEntitlementService.instance.delegateForTest =
             entitlement;
-        addTearDown(() =>
-            VoiceConversationEntitlementService.instance.delegateForTest =
-                null);
+        addTearDown(() => VoiceConversationEntitlementService
+            .instance.delegateForTest = null);
         await pumpConversation(tester, const Scaffold());
         await VoiceConversationAdGate.instance.tryEnterVoiceConversation(
           context: tester.element(find.byType(Scaffold)),
@@ -913,7 +923,8 @@ void main() {
           guideCoordinator: guide,
           guideOperation: GuideOperation.query,
           onEnterAllowed: (_) => fail('Unexpected ordinary voice grant'),
-          onGuideDenied: (access) => fail('Replay denied: ${access.reasonCode}'),
+          onGuideDenied: (access) =>
+              fail('Replay denied: ${access.reasonCode}'),
           onGuideReplayAllowed: (proof) {
             entry = VoiceConversationEntryGrant.forGuideReplay(proof);
           },
@@ -924,7 +935,9 @@ void main() {
       final events = <EventModel>[
         if (resultKind != 'empty')
           EventModel(
-            id: resultKind == 'target' || replay ? 'saved-event' : 'other-event',
+            id: resultKind == 'target' || replay
+                ? 'saved-event'
+                : 'other-event',
             userId: 'user-1',
             title: '조회 일정',
             startAt: planflowLocalDateTimeToUtc(
@@ -987,7 +1000,7 @@ void main() {
     });
   }
 
-  testWidgets('guide change waits for Send and submits a captured turn once',
+  testWidgets('guide change sends a captured ordinal for a schedule named 일정',
       (tester) async {
     authProvider.setUser('user-1');
     addTearDown(() => authProvider.setUser(null));
@@ -998,7 +1011,7 @@ void main() {
     final original = EventModel(
       id: 'saved-event',
       userId: 'user-1',
-      title: '조회 일정',
+      title: '일정',
       startAt:
           planflowLocalDateTimeToUtc(DateTime(_voiceFixtureYear, 5, 29, 14)),
       endAt: planflowLocalDateTimeToUtc(DateTime(_voiceFixtureYear, 5, 29, 15)),
@@ -1062,6 +1075,108 @@ void main() {
     expect(find.text('일정 편집'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  for (final trigger in ['system Back', 'AppBar Back', '종료']) {
+    testWidgets(
+        '5/7 feedback overlays coachmark and '
+        '$trigger goes Home', (tester) async {
+      authProvider.setUser('user-1');
+      addTearDown(() => authProvider.setUser(null));
+      final guide = _QueryGuide();
+      addTearDown(guide.state.dispose);
+      guide.state.value =
+          guide.state.value.copyWith(step: GuideStep.changeSpeech);
+      final original = EventModel(
+        id: 'saved-event',
+        userId: 'user-1',
+        title: '일정',
+        startAt:
+            planflowLocalDateTimeToUtc(DateTime(_voiceFixtureYear, 5, 29, 14)),
+        endAt:
+            planflowLocalDateTimeToUtc(DateTime(_voiceFixtureYear, 5, 29, 15)),
+      );
+      final router = GoRouter(initialLocation: AppRoutes.home, routes: [
+        GoRoute(
+          path: '/voice',
+          builder: (_, __) => VoiceConversationScreen(
+            sttService: _FakeSttService(),
+            guideRouteRecovery:
+                GuideRouteRecovery(guide, guide.state.value, original),
+            repository: _FakeEventRepository([original]),
+            groupRepository: _FakeGroupRepository(const []),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (_, __) => const Scaffold(body: Text('Home')),
+        ),
+      ]);
+      addTearDown(router.dispose);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide)],
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (_, child) => RootGuideScope(
+            uid: 'user-1',
+            bindRuntime: (_) => Object(),
+            unbindRuntime: (_) {},
+            backButtonDispatcher: router.backButtonDispatcher,
+            child: child!,
+          ),
+        ),
+      ));
+      await tester.pump();
+      unawaited(router.push<void>('/voice'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.byType(RealUiGuideCoachmark), findsOneWidget);
+      expect(find.text('안내 건너뛰기'), findsNothing);
+      await tester.enterText(
+        find.byType(TextField),
+        '첫 번째 일정을 오후 5시로 변경해줘',
+      );
+      await tester.tap(find.text('전송'));
+      await tester.pump();
+      final host = find.byType(GuideSaveFeedbackHost);
+      final feedback = find.byKey(const ValueKey('guide-step2-save-feedback'));
+      expect(find.descendant(of: host, matching: feedback), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(GuideScope), matching: feedback),
+        findsNothing,
+      );
+      expect(find.text('마이크로 다시 말한 뒤 전송을 눌러 주세요.'), findsOneWidget);
+      expect(guide.charges, isEmpty);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      final conversation = tester.element(find.byType(VoiceConversationScreen));
+      expect(GuideScope.maybeOf(conversation), same(guide));
+      expect(GuideScope.allowBackSkipOf(conversation), isTrue);
+      expect(GuideScope.isActiveBackSkippableOf(conversation), isTrue);
+      expect(ModalRoute.of(conversation)?.isCurrent, isTrue);
+      switch (trigger) {
+        case 'AppBar Back':
+          final appBarBack = find.widgetWithIcon(IconButton, Icons.arrow_back);
+          expect(appBarBack.hitTestable(), findsOneWidget);
+          await tester.tap(appBarBack);
+        case '종료':
+          final exit = find.widgetWithText(TextButton, '종료');
+          expect(exit.hitTestable(), findsOneWidget);
+          await tester.tap(exit);
+        default:
+          await tester.binding.handlePopRoute();
+      }
+      for (var frame = 0; frame < 6; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(guide.exits, [GuideExit.skip]);
+      expect(guide.state.value.run, GuideRun.terminal);
+      expect(find.text('Home'), findsOneWidget);
+      expect(find.byType(RealUiGuideCoachmark), findsNothing);
+      expect(feedback, findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('AI 일정 대화는 STT partial을 입력창에 즉시 보여준다', (tester) async {
     final stt = _FakeSttService();

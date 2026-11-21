@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../services/feature_tour_service.dart';
 import '../../widgets/guided_anchor.dart';
 
@@ -46,6 +48,8 @@ class _LegacyIntroScreenState extends State<LegacyIntroScreen> {
   final PageController _pageController = PageController();
   int _pageIndex = 0;
   bool _isCompleting = false;
+  bool _allowBackPop = false;
+  bool _leavingFromBack = false;
   String? _errorMessage;
 
   static const List<_LegacyPageData> _pages = <_LegacyPageData>[
@@ -62,7 +66,8 @@ class _LegacyIntroScreenState extends State<LegacyIntroScreen> {
     _LegacyPageData(
       icon: Icons.directions_walk_outlined,
       title: '출발과 브리핑을 챙겨드려요',
-      description: '장소가 확인된 일정은 예상 이동 시간과 준비·출발 시점을 알려드려요. 하루 일정은 브리핑으로 정리해드려요.',
+      description:
+          '장소가 확인된 일정은 예상 이동 시간과 준비·출발 시점을 알려드려요. 하루 일정은 브리핑으로 정리해드려요.',
     ),
   ];
 
@@ -134,15 +139,63 @@ class _LegacyIntroScreenState extends State<LegacyIntroScreen> {
     );
   }
 
+  Future<void> _handleBack() async {
+    if (_leavingFromBack) return;
+    final route = ModalRoute.of(context);
+    final coordinator = GuideScope.maybeOf(context);
+    final captured = coordinator?.state.value;
+    _leavingFromBack = true;
+    final skipped = await skipActiveGuideOnBackAsync(context);
+    _leavingFromBack = false;
+    if (!mounted || route?.isCurrent != true) return;
+    if (!skipped) {
+      final current = GuideScope.maybeOf(context)?.state.value;
+      final alreadySkippedByRootBack = widget.requireFinalConfirmation &&
+          GuideScope.allowBackSkipOf(context) &&
+          current?.run == GuideRun.terminal &&
+          current?.step == GuideStep.skipped;
+      if (alreadySkippedByRootBack) {
+        setState(() => _allowBackPop = true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && route?.isCurrent == true) {
+            Navigator.of(context).maybePop();
+          }
+        });
+        return;
+      }
+      if (!widget.requireFinalConfirmation) await _complete();
+      return;
+    }
+    bool ownsRoute() {
+      if (!mounted || route?.isCurrent != true) return false;
+      final current =
+          context.getInheritedWidgetOfExactType<GuideScope>()?.coordinator;
+      final snapshot = current?.state.value;
+      return identical(current, coordinator) &&
+          snapshot?.uid == captured?.uid &&
+          snapshot?.sessionId == captured?.sessionId;
+    }
+
+    if (!ownsRoute()) return;
+    setState(() => _allowBackPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ownsRoute()) {
+        Navigator.of(context).maybePop();
+      } else if (mounted) {
+        setState(() => _allowBackPop = false);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLastPage = _pageIndex == _pages.length - 1;
     final intro = PopScope(
-      canPop: !widget.requireFinalConfirmation,
+      canPop: _allowBackPop ||
+          (!widget.requireFinalConfirmation &&
+              !GuideScope.isActiveBackSkippableOf(context)),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !widget.requireFinalConfirmation) {
-          _complete();
-        }
+        if (!didPop) _handleBack();
       },
       child: Scaffold(
         backgroundColor: PlanFlowColors.background,
@@ -204,13 +257,11 @@ class _LegacyIntroScreenState extends State<LegacyIntroScreen> {
                           Text(
                             item.description,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyLarge
-                                ?.copyWith(
-                                  height: 1.5,
-                                  color: PlanFlowColors.textSecondary,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      height: 1.5,
+                                      color: PlanFlowColors.textSecondary,
+                                    ),
                           ),
                         ],
                       );

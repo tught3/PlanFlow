@@ -72,8 +72,7 @@ void main() {
     final tourStore = _FeatureTourStore();
     final navigator = GlobalKey<NavigatorState>();
     final showMic = ValueNotifier(false);
-    final missingTarget =
-        find.byKey(const ValueKey('guide-missing-target-skip'));
+    final missingTarget = find.textContaining('안내할 실제 화면을 기다리고 있어요');
     final next = find.byKey(const ValueKey('legacy-intro-next-button'));
     await tester.pumpWidget(MaterialApp(
       navigatorKey: navigator,
@@ -181,7 +180,7 @@ void main() {
         ]))));
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.textContaining('1/7'), findsNothing);
-    expect(find.text('안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
+    expect(find.text('안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 뒤로가기로 안내를 닫을 수 있어요.'),
         findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('visible-real-control')));
     expect(realControlTaps, 1);
@@ -200,8 +199,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('target')));
     expect(realControlTaps, 2);
     expect(guide.dispatches, 0);
-    await tester.tap(find.text('안내 건너뛰기'));
-    expect(skips, 1);
+    expect(find.text('안내 건너뛰기'), findsNothing);
+    expect(skips, 0);
     expect(guide.dispatches, 0);
     await tester.pumpWidget(const SizedBox.shrink());
     guide.state.dispose();
@@ -314,7 +313,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.textContaining('1/7'), findsNothing);
-    expect(find.text('안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
+    expect(find.text('안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 뒤로가기로 안내를 닫을 수 있어요.'),
         findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     guide.state.dispose();
@@ -357,10 +356,10 @@ void main() {
         lessThan(
             tester.view.physicalSize.height / tester.view.devicePixelRatio));
     expect(find.textContaining('1/7'), findsNothing);
-    expect(find.text('안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 안내를 건너뛸 수 있어요.'),
+    expect(find.text('안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 뒤로가기로 안내를 닫을 수 있어요.'),
         findsOneWidget);
-    await tester.tap(find.text('안내 건너뛰기'));
-    expect(skips, 1);
+    expect(find.text('안내 건너뛰기'), findsNothing);
+    expect(skips, 0);
     expect(guide.dispatches, 0);
     await tester.pumpWidget(const SizedBox.shrink());
     guide.state.dispose();
@@ -443,8 +442,8 @@ void main() {
     expect(micStarts, 1);
     expect(submits, 1);
     expect(guide.dispatches, 0);
-    await tester.tap(find.text('안내 건너뛰기'));
-    expect(skips, 1);
+    expect(find.text('안내 건너뛰기'), findsNothing);
+    expect(skips, 0);
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);

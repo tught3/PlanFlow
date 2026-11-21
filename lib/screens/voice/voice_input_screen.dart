@@ -840,6 +840,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _handleBackNavigation() async {
+    skipActiveGuideOnBack(context);
     await _exitVoiceInput(() => context.go(AppRoutes.home));
   }
 
@@ -1888,10 +1889,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: Text(l10n.voiceInputTitle),
-          leading: IconButton(
-            tooltip: '뒤로가기',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => unawaited(_handleBackNavigation()),
+          leading: GuidedAnchor(
+            id: 'guide.back',
+            registry: realUiGuideAnchorRegistry,
+            child: IconButton(
+              tooltip: '뒤로가기',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => unawaited(_handleBackNavigation()),
+            ),
           ),
         ),
         bottomNavigationBar: AbsorbPointer(

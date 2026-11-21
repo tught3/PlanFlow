@@ -14,6 +14,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/app.dart'
@@ -29,8 +30,9 @@ import 'package:planflow/core/startup_route_gate.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_host.dart'
-    show GuideSyncChoiceStore;
+    show GuideSyncChoiceStore, RootGuideScope;
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/onboarding/legacy_intro_screen.dart';
 import 'package:planflow/screens/onboarding/permission_onboarding_screen.dart';
@@ -102,6 +104,8 @@ Future<_Harness> _pump(
   required String? user,
   required _QueuedTourStore store,
   GuideCoordinator? guide,
+  bool allowBackSkip = false,
+  bool mountRootGuide = false,
 }) async {
   final auth = AuthProvider()..start();
   if (user != null) auth.setUser(user);
@@ -190,6 +194,17 @@ Future<_Harness> _pump(
   });
   final app = MaterialApp.router(
     routerConfig: router,
+    builder: !mountRootGuide
+        ? null
+        : (_, child) => RootGuideScope(
+              uid: user,
+              router: router,
+              backButtonDispatcher: router.backButtonDispatcher,
+              isGuideQa: !allowBackSkip,
+              bindRuntime: (_) => Object(),
+              unbindRuntime: (_) {},
+              child: child!,
+            ),
     locale: const Locale('ko', 'KR'),
     supportedLocales: const <Locale>[Locale('ko', 'KR'), Locale('en', 'US')],
     localizationsDelegates: const <LocalizationsDelegate<Object>>[
@@ -199,9 +214,18 @@ Future<_Harness> _pump(
       GlobalWidgetsLocalizations.delegate,
     ],
   );
-  await tester.pumpWidget(guide == null
-      ? TestGuideScope(auth: auth, child: app)
-      : GuideScope(coordinator: guide, child: app));
+  await tester.pumpWidget(mountRootGuide
+      ? ProviderScope(
+          overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide!)],
+          child: app,
+        )
+      : guide == null
+          ? TestGuideScope(auth: auth, child: app)
+          : GuideScope(
+              coordinator: guide,
+              allowBackSkip: allowBackSkip,
+              child: app,
+            ));
   return h;
 }
 
@@ -221,7 +245,11 @@ class _CompletingGuide with WidgetsBindingObserver implements GuideCoordinator {
   @override
   final ValueNotifier<GuideSnapshot> state;
   final syncChoices = <SyncChoiceClosed>[];
+  final exits = <GuideExit>[];
   int resumes = 0;
+
+  @override
+  Future<GuideSnapshot> start({required String uid}) async => state.value;
 
   @override
   Future<GuideSnapshot> dispatch(GuideSignal signal) async {
@@ -238,9 +266,10 @@ class _CompletingGuide with WidgetsBindingObserver implements GuideCoordinator {
     }
     if (signal is SyncChoiceClosed) {
       syncChoices.add(signal);
-      if (current.step == GuideStep.syncChoice && current.run == GuideRun.active) {
-        state.value = current.copyWith(
-            step: GuideStep.completed, run: GuideRun.terminal);
+      if (current.step == GuideStep.syncChoice &&
+          current.run == GuideRun.active) {
+        state.value =
+            current.copyWith(step: GuideStep.completed, run: GuideRun.terminal);
       }
     }
     return state.value;
@@ -263,6 +292,15 @@ class _CompletingGuide with WidgetsBindingObserver implements GuideCoordinator {
           pauseReason: reason,
           revision: current.revision + 1);
     }
+  }
+
+  @override
+  Future<void> terminate(GuideExit exit) async {
+    exits.add(exit);
+    state.value = state.value.copyWith(
+      run: GuideRun.terminal,
+      step: GuideStep.skipped,
+    );
   }
 
   @override
@@ -369,14 +407,16 @@ void main() {
       await _pumpUntil(
           tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
       final detail = '${AppRoutes.eventDetail}/updated';
-      h.router.go(detail); // 6/7 save replaces the previous shell in production.
+      h.router
+          .go(detail); // 6/7 save replaces the previous shell in production.
       await _pumpUntil(tester, () => h.currentUri.path == detail);
       expect(h.currentUri.path, detail);
       await _pumpFor(tester, 10); // Finish the underlying route transition.
 
       guide.state.value =
           guide.state.value.copyWith(step: GuideStep.syncChoice);
-      h.router.go(AppRoutes.home); // The real 7/7 button does this after dispatch.
+      h.router
+          .go(AppRoutes.home); // The real 7/7 button does this after dispatch.
       await _pumpUntil(
           tester, () => find.text('외부 캘린더 동기화 안내').evaluate().isNotEmpty);
       const completion = '모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.';
@@ -385,7 +425,8 @@ void main() {
       expect(find.text(completion), findsNothing);
       await _pumpFor(tester, 10); // Allow the dialog route to finish entering.
       await tester.tap(find.text(settings ? '동기화 설정' : '동기화 안 함'));
-      await _pumpUntil(tester, () => find.text(completion).evaluate().isNotEmpty);
+      await _pumpUntil(
+          tester, () => find.text(completion).evaluate().isNotEmpty);
       expect(find.text(completion), findsOneWidget);
       expect(h.currentUri.path, AppRoutes.home);
       expect(guide.state.value.step, GuideStep.completed);
@@ -429,14 +470,147 @@ void main() {
     const completion = '모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.';
     expect(guide.state.value.step, GuideStep.syncChoice);
     expect(find.text(completion), findsNothing);
-    await _pumpUntil(
-        tester, () => find.text('동기화 안 함').evaluate().isNotEmpty);
+    await _pumpUntil(tester, () => find.text('동기화 안 함').evaluate().isNotEmpty);
     await tester.tap(find.text('동기화 안 함'));
     await _pumpUntil(tester, () => find.text(completion).evaluate().isNotEmpty);
     expect(guide.state.value.step, GuideStep.completed);
     expect(find.text(completion), findsOneWidget);
     expect(h.currentUri.path, AppRoutes.home);
   });
+
+  for (final (destination, step) in [
+    (AppRoutes.home, GuideStep.homeMic),
+    (AppRoutes.calendar, GuideStep.savedDetail),
+    (AppRoutes.home, GuideStep.queryMic),
+  ]) {
+    testWidgets('system Back exits $step on the single $destination route',
+        (tester) async {
+      try {
+        seedPrefs();
+        final guide = _CompletingGuide();
+        addTearDown(guide.state.dispose);
+        final h = await _pump(
+          tester,
+          user: 'a',
+          store: _QueuedTourStore(autoAnswer: false),
+          guide: guide,
+          allowBackSkip: true,
+          mountRootGuide: true,
+        );
+        await _pumpUntil(
+            tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
+        guide.state.value = guide.state.value.copyWith(
+          step: step,
+          // banned-ok: this stable fixture tests route/Back behavior, not date expiry; the calendar route matches it below.
+          savedLocalDate: DateTime(2030, 1, 2),
+        );
+        if (destination == AppRoutes.calendar) {
+          h.router.go('$destination?date=2030-01-02');
+        }
+        final expectedSurface = switch (step) {
+          GuideStep.homeMic => '1/7 · 음성으로 입력 시작',
+          GuideStep.savedDetail => '저장 중…',
+          _ => '4/7 · 음성으로 조회',
+        };
+        bool isGuideSurfaceReady() =>
+            find.text(expectedSurface).evaluate().isNotEmpty &&
+            find.textContaining('안내할 실제 화면을 기다리고 있어요').evaluate().isEmpty;
+        await _pumpUntil(tester, isGuideSurfaceReady);
+        expect(h.currentUri.path, destination);
+        expect(h.router.canPop(), isFalse);
+        expect(find.text(expectedSurface), findsOneWidget);
+        expect(find.textContaining('안내할 실제 화면을 기다리고 있어요'), findsNothing);
+        expect(guide.exits, isEmpty);
+
+        expect(await tester.binding.handlePopRoute(), isTrue);
+        await _pumpFor(tester, 10);
+        expect(h.currentUri.path, AppRoutes.home);
+        expect(find.text(expectedSurface), findsNothing);
+        expect(guide.state.value.run, GuideRun.terminal);
+        expect(guide.state.value.step, GuideStep.skipped);
+        expect(guide.exits, [GuideExit.skip]);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+  }
+
+  for (final (paused, stale) in [
+    (false, false),
+    (true, false),
+    (false, true),
+    (true, true),
+  ]) {
+    testWidgets(
+        'Back closes ${paused ? "paused" : "active"} sync choice '
+        'through Router, RootGuideScope and Shell${stale ? " after ownership changes" : ""}',
+        (tester) async {
+      seedPrefs(closedGuideChoices: {});
+      final guide = _CompletingGuide();
+      addTearDown(guide.state.dispose);
+      final h = await _pump(
+        tester,
+        user: 'a',
+        store: _QueuedTourStore(autoAnswer: false),
+        guide: guide,
+        allowBackSkip: true,
+        mountRootGuide: true,
+      );
+      await _pumpUntil(
+          tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
+      guide.state.value =
+          guide.state.value.copyWith(step: GuideStep.syncChoice);
+      final dialog = find.text('외부 캘린더 동기화 안내');
+      await _pumpUntil(tester, () => dialog.evaluate().isNotEmpty);
+      await _pumpFor(tester, 10);
+      if (paused) {
+        _backgroundApp(tester);
+        _foregroundApp(tester);
+        await _pumpFor(tester, 10);
+        expect(dialog, findsOneWidget);
+        expect(guide.state.value.run, GuideRun.paused);
+        expect(guide.state.value.pauseReason, GuidePauseReason.background);
+        expect(guide.resumes, 0);
+        expect(guide.exits, isEmpty);
+      }
+      if (stale) {
+        final current = guide.state.value;
+        guide.state.value = paused
+            ? current.copyWith(
+                sessionId: 'replacement-guide-session',
+                revision: current.revision + 1,
+              )
+            : current.copyWith(
+                step: GuideStep.queryMic,
+                revision: current.revision + 1,
+              );
+        await _pumpFor(tester, 4);
+        expect(dialog, findsOneWidget);
+      }
+      final beforeBack = guide.state.value;
+      expect(h.gate.calendarSyncHeldFor('a'), isTrue);
+      expect(await GuideSyncChoiceStore().isClosed('a'), isFalse);
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await _pumpFor(tester, 10);
+
+      expect(dialog, findsNothing);
+      expect(guide.syncChoices, isEmpty);
+      expect(h.currentUri.path, AppRoutes.home);
+      if (stale) {
+        expect(guide.state.value, same(beforeBack));
+        expect(guide.exits, isEmpty);
+        expect(guide.resumes, 0);
+        expect(await GuideSyncChoiceStore().isClosed('a'), isFalse);
+        expect(h.gate.calendarSyncHeldFor('a'), isTrue);
+      } else {
+        expect(guide.exits, [GuideExit.skip]);
+        expect(guide.state.value.run, GuideRun.terminal);
+        expect(guide.state.value.step, GuideStep.skipped);
+        expect(await GuideSyncChoiceStore().isClosed('a'), isTrue);
+        expect(h.gate.calendarSyncHeldFor('a'), isFalse);
+      }
+    });
+  }
 
   for (final alreadyShowing in [false, true]) {
     testWidgets(
@@ -453,10 +627,12 @@ void main() {
       final syncTitle = find.text('외부 캘린더 동기화 안내');
       if (!alreadyShowing) {
         unawaited(h.router.push(AppRoutes.featureTour));
-        await _pumpUntil(tester, () => h.currentUri.path == AppRoutes.featureTour);
+        await _pumpUntil(
+            tester, () => h.currentUri.path == AppRoutes.featureTour);
         await _pumpFor(tester, 10);
       }
-      guide.state.value = guide.state.value.copyWith(step: GuideStep.syncChoice);
+      guide.state.value =
+          guide.state.value.copyWith(step: GuideStep.syncChoice);
       if (alreadyShowing) {
         await _pumpUntil(tester, () => syncTitle.evaluate().isNotEmpty);
         expect(syncTitle, findsOneWidget);
@@ -501,7 +677,8 @@ void main() {
           user: 'a', store: _QueuedTourStore(autoAnswer: false), guide: guide);
       await _pumpUntil(
           tester, () => find.byType(ShellScreen).evaluate().isNotEmpty);
-      guide.state.value = guide.state.value.copyWith(step: GuideStep.syncChoice);
+      guide.state.value =
+          guide.state.value.copyWith(step: GuideStep.syncChoice);
       final syncTitle = find.text('외부 캘린더 동기화 안내');
       await _pumpUntil(tester, () => syncTitle.evaluate().isNotEmpty);
       expect(syncTitle, findsOneWidget);
@@ -510,7 +687,8 @@ void main() {
       if (switchAccount) {
         h.auth.setUser('b');
       } else {
-        guide.state.value = guide.state.value.copyWith(sessionId: 'other-guide');
+        guide.state.value =
+            guide.state.value.copyWith(sessionId: 'other-guide');
       }
       _foregroundApp(tester);
       await _pumpFor(tester, 10);

@@ -8,6 +8,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/onboarding/legacy_intro_screen.dart';
 import 'package:planflow/services/feature_tour_service.dart';
 
@@ -50,20 +52,79 @@ Widget _harness({
   required FeatureTourStore store,
   VoidCallback? onCompleted,
   bool requireFinalConfirmation = true,
+  GuideCoordinator? guide,
+  bool allowBackSkip = false,
+  bool pushIntroRoute = false,
 }) {
-  return MaterialApp(
-    home: Builder(
-      builder: (context) {
-        return Scaffold(
-          body: LegacyIntroScreen(
-            store: store,
-            onCompleted: onCompleted,
-            requireFinalConfirmation: requireFinalConfirmation,
-          ),
-        );
-      },
-    ),
+  final intro = LegacyIntroScreen(
+    store: store,
+    onCompleted: onCompleted,
+    requireFinalConfirmation: requireFinalConfirmation,
   );
+  final app = MaterialApp(
+    home: !pushIntroRoute
+        ? Scaffold(body: intro)
+        : Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  key: const ValueKey('open-intro-route'),
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => Scaffold(body: intro),
+                    ),
+                  ),
+                  child: const Text('Previous screen'),
+                ),
+              ),
+            ),
+          ),
+  );
+  return guide == null
+      ? app
+      : GuideScope(
+          coordinator: guide,
+          allowBackSkip: allowBackSkip,
+          child: app,
+        );
+}
+
+class _BackGuide implements GuideCoordinator {
+  _BackGuide(GuideRun run)
+      : state = ValueNotifier(GuideSnapshot(
+          uid: 'guide-user',
+          version: 'real_ui_v1',
+          sessionId: 'guide-session',
+          revision: 1,
+          serverRevision: 1,
+          step: GuideStep.intro,
+          run: run,
+          pauseReason:
+              run == GuideRun.paused ? GuidePauseReason.background : null,
+        ));
+
+  @override
+  final ValueNotifier<GuideSnapshot> state;
+  final exits = <GuideExit>[];
+
+  @override
+  Future<void> terminate(GuideExit exit) async {
+    exits.add(exit);
+    state.value = state.value.copyWith(
+      run: GuideRun.terminal,
+      step: GuideStep.skipped,
+      revision: state.value.revision + 1,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<void> _openIntroRoute(WidgetTester tester, Widget app) async {
+  await tester.pumpWidget(app);
+  await tester.tap(find.byKey(const ValueKey('open-intro-route')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _advanceToLastPage(WidgetTester tester) async {
@@ -77,6 +138,85 @@ Future<void> _advanceToLastPage(WidgetTester tester) async {
 
 void main() {
   group('LegacyIntroScreen', () {
+    testWidgets('Back skips an active guide and exits the required intro',
+        (tester) async {
+      final store = _FakeFeatureTourStore();
+      final guide = _BackGuide(GuideRun.active);
+      await _openIntroRoute(
+        tester,
+        _harness(
+          store: store,
+          guide: guide,
+          allowBackSkip: true,
+          pushIntroRoute: true,
+        ),
+      );
+
+      expect(find.byType(LegacyIntroScreen), findsOneWidget);
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LegacyIntroScreen), findsNothing);
+      expect(find.text('Previous screen'), findsOneWidget);
+      expect(guide.exits, [GuideExit.skip]);
+      expect(store.markCompletedCalls, 0);
+    });
+
+    testWidgets('QA mode blocks Back from skipping the required intro',
+        (tester) async {
+      final store = _FakeFeatureTourStore();
+      final guide = _BackGuide(GuideRun.active);
+      await _openIntroRoute(
+        tester,
+        _harness(
+          store: store,
+          guide: guide,
+          allowBackSkip: false,
+          pushIntroRoute: true,
+        ),
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LegacyIntroScreen), findsOneWidget);
+      expect(find.text('Previous screen'), findsNothing);
+      expect(guide.exits, isEmpty);
+      expect(store.markCompletedCalls, 0);
+    });
+
+    testWidgets(
+        'Back exits intro after root Back already skipped a paused guide',
+        (tester) async {
+      final store = _FakeFeatureTourStore();
+      final guide = _BackGuide(GuideRun.paused);
+      await _openIntroRoute(
+        tester,
+        _harness(
+          store: store,
+          guide: guide,
+          allowBackSkip: true,
+          pushIntroRoute: true,
+        ),
+      );
+
+      // RootGuideScope consumes the first Back while dismissing its recovery
+      // overlay and leaves this intro route underneath in terminal/skipped.
+      await guide.terminate(GuideExit.skip);
+      await tester.pump();
+      expect(guide.state.value.run, GuideRun.terminal);
+      expect(guide.state.value.step, GuideStep.skipped);
+      expect(find.byType(LegacyIntroScreen), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LegacyIntroScreen), findsNothing);
+      expect(find.text('Previous screen'), findsOneWidget);
+      expect(guide.exits, [GuideExit.skip]);
+      expect(store.markCompletedCalls, 0);
+    });
+
     testWidgets(
       'renders the three original pages in order with 시작하기 on the last',
       (tester) async {
