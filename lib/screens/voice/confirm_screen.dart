@@ -2780,8 +2780,19 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (!mounted) {
       return;
     }
-    // 저장 후 일정탭으로 이동 (음성입력 화면으로 돌아가지 않음)
-    context.go(AppRoutes.calendar);
+    final owner = _confirmGuideOwner;
+    if (owner == null) {
+      context.go(AppRoutes.calendar);
+      return;
+    }
+    if (!_sameGuideOwner(owner)) return;
+    final current = GuideScope.maybeOf(context)!.state.value;
+    if (current.version == owner.version &&
+        current.step == GuideStep.savedDetail &&
+        current.createdEventId?.isNotEmpty == true &&
+        current.savedCreateOperationId == _confirmOperationId) {
+      context.go(AppRoutes.home);
+    }
   }
 
   // ---- Real UI guide integration ----

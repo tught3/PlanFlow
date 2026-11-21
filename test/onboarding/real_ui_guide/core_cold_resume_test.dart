@@ -35,8 +35,8 @@ class ColdBackend implements GuideBackendPort {
     final result = await responder?.call(uid);
     return result == null
         ? const GuideBeginFailed(
-        GuideFailureDiagnostic(GuideFailureKind.backendUnavailable),
-      )
+            GuideFailureDiagnostic(GuideFailureKind.backendUnavailable),
+          )
         : GuideBeginGranted(result);
   }
 
@@ -54,9 +54,9 @@ class ColdBackend implements GuideBackendPort {
       throw StateError('unexpected quota');
   @override
   Future<void> finish(
-          {required GuideSnapshot snapshot,
-          required GuideExit exit,
-          required String requestId}) async {
+      {required GuideSnapshot snapshot,
+      required GuideExit exit,
+      required String requestId}) async {
     finishes.add((snapshot.sessionId, exit));
   }
 }
@@ -260,7 +260,8 @@ void main() {
     expect(coordinator.state.value, same(recovered));
   });
 
-  testWidgets('timed-out preview refresh persists the failure and allows a fresh retry',
+  testWidgets(
+      'timed-out preview refresh persists the failure and allows a fresh retry',
       (tester) async {
     final progress = ColdProgress();
     const initial = GuideBackendState(
@@ -328,47 +329,59 @@ void main() {
     ('newer server revision', 'old', 'bound', 4, false, false),
     ('explicit invalid time', 'old', 'bound', 3, true, false),
   ]) {
-    test('legacy updated reply reconciles sync choice with $label', () async {
-      final saved = local(step: GuideStep.syncChoice, created: 'bound');
-      final progress = ColdProgress()..value = saved;
-      final backend = SupabaseRealUiGuideGrantService.forTesting(
-        currentUid: () => saved.uid,
-        rpc: (name, _) async {
-          expect(name, kRpcBegin);
-          return <String, Object?>{
-            'status': 'granted',
-            'session_id': sessionId,
-            'phase': 'updated',
-            'event_id': eventId,
-            'revision': revision,
-            'expires_at': DateTime.now()
-                .toUtc()
-                .add(const Duration(minutes: 2))
-                .toIso8601String(),
-            if (explicitInvalid) 'expected_start_at': 'invalid',
-          };
-        },
-      );
-      final coordinator = RealUiGuideCoordinator(
-          backend: backend, progress: progress, version: saved.version);
-      final restored = await coordinator.start(uid: saved.uid);
+    for (final (step, expectedPhase) in [
+      (GuideStep.syncChoice, GuideStep.completionConfirm),
+      (GuideStep.completionConfirm, GuideStep.completionConfirm),
+      (GuideStep.syncChoiceConfirmed, GuideStep.syncChoiceConfirmed),
+    ]) {
+      test('legacy updated reply reconciles ${step.name} with $label',
+          () async {
+        final saved = local(step: step, created: 'bound');
+        final progress = ColdProgress()..value = saved;
+        final backend = SupabaseRealUiGuideGrantService.forTesting(
+          currentUid: () => saved.uid,
+          rpc: (name, _) async {
+            expect(name, kRpcBegin);
+            return <String, Object?>{
+              'status': 'granted',
+              'session_id': sessionId,
+              'phase': 'updated',
+              'event_id': eventId,
+              'revision': revision,
+              'expires_at': DateTime.now()
+                  .toUtc()
+                  .add(const Duration(minutes: 2))
+                  .toIso8601String(),
+              if (explicitInvalid) 'expected_start_at': 'invalid',
+            };
+          },
+        );
+        final coordinator = RealUiGuideCoordinator(
+            backend: backend, progress: progress, version: saved.version);
+        final restored = await coordinator.start(uid: saved.uid);
 
-      expect(restored.sessionId, saved.sessionId);
-      expect(restored.createdEventId, saved.createdEventId);
-      expect(restored.run, blocked ? GuideRun.blocked : GuideRun.active);
-      if (blocked) {
-        expect(restored.step, GuideStep.syncChoice);
-        expect(restored.serverRevision, saved.serverRevision);
-        expect(GuideRouteRecovery.supports(restored), isFalse);
-      } else {
-        expect(restored.step, GuideStep.updatedDetail);
-        expect(restored.serverRevision, revision);
-        expect(restored.expectedUpdatedStartLocal,
-            revision == saved.serverRevision && !explicitInvalid
-                ? saved.expectedUpdatedStartLocal?.toUtc()
-                : null);
-      }
-    });
+        expect(restored.sessionId, saved.sessionId);
+        expect(restored.createdEventId, saved.createdEventId);
+        expect(restored.run, blocked ? GuideRun.blocked : GuideRun.active);
+        if (blocked) {
+          expect(restored.step, step);
+          expect(restored.serverRevision, saved.serverRevision);
+          expect(GuideRouteRecovery.supports(restored), isFalse);
+        } else {
+          expect(
+              restored.step,
+              revision == saved.serverRevision && !explicitInvalid
+                  ? expectedPhase
+                  : GuideStep.updatedDetail);
+          expect(restored.serverRevision, revision);
+          expect(
+              restored.expectedUpdatedStartLocal,
+              revision == saved.serverRevision && !explicitInvalid
+                  ? saved.expectedUpdatedStartLocal?.toUtc()
+                  : null);
+        }
+      });
+    }
   }
 
   test('explicit missing preview refresh does not reopen voice change',
@@ -481,8 +494,8 @@ void main() {
       expect(snapshot.sessionId, saved.sessionId);
       expect(snapshot.createdEventId, saved.createdEventId);
       expect(snapshot.serverRevision, saved.serverRevision);
-      expect(snapshot.expectedUpdatedStartLocal,
-          saved.expectedUpdatedStartLocal);
+      expect(
+          snapshot.expectedUpdatedStartLocal, saved.expectedUpdatedStartLocal);
       expect(GuideRouteRecovery.supports(snapshot), isFalse);
     });
   }
@@ -614,7 +627,8 @@ void main() {
   test('offline cold start normalizes an unbound create checkpoint to home mic',
       () async {
     final p = ColdProgress()
-      ..value = local(step: GuideStep.correctAndSave).copyWith(sessionId: 'actual');
+      ..value =
+          local(step: GuideStep.correctAndSave).copyWith(sessionId: 'actual');
     final b = ColdBackend()..responder = (_) async => null;
     final c = RealUiGuideCoordinator(backend: b, progress: p, version: 'v');
     final s = await c.start(uid: 'u');
@@ -816,7 +830,8 @@ void main() {
       expect(resumed.mayListenContinuously, isFalse);
       expect(b.begins, begins + 1);
       expect(p.saves, saves + 1);
-      expect(resumed.failureDiagnostic?.kind, GuideFailureKind.backendUnavailable);
+      expect(
+          resumed.failureDiagnostic?.kind, GuideFailureKind.backendUnavailable);
     });
   }
 }

@@ -37,7 +37,8 @@ void main() {
 
   test('full flow and cold resume preserve bound and local-only steps',
       () async {
-    final flow = _Flow();
+    final progress = _FailNextSave(LocalGuideProgressStore());
+    final flow = _Flow(progress: progress);
     await flow.reopen(GuideStep.intro);
     await flow.createSpeech();
     await flow.correctAndSave();
@@ -63,13 +64,48 @@ void main() {
     expect(flow.state.serverRevision, 5);
     expect(flow.boundEventReads, List.filled(4, (_uid, _eventId)));
 
-    await flow.dispatch(SyncChoicePresented(
+    await flow.dispatch(UpdatedDetailAcknowledged(
       uid: _uid,
       sessionId: flow.state.sessionId,
       expectedRevision: flow.state.revision,
     ));
-    expect(flow.state.step, GuideStep.syncChoice);
-    await flow.reopen(GuideStep.syncChoice);
+    expect(flow.state.step, GuideStep.completionConfirm);
+    await flow.reopen(GuideStep.completionConfirm);
+    final beforeUpgrade = flow.state;
+    await flow.progress
+        .save(beforeUpgrade.copyWith(step: GuideStep.syncChoice));
+    await flow.reopen(GuideStep.completionConfirm);
+    expect(flow.state.sessionId, beforeUpgrade.sessionId);
+    expect(flow.state.createdEventId, beforeUpgrade.createdEventId);
+    expect(flow.state.expectedUpdatedStartLocal, _updatedAt);
+    GuideCompletionConfirmed confirm() => GuideCompletionConfirmed(
+          uid: _uid,
+          sessionId: flow.state.sessionId,
+          expectedRevision: flow.state.revision,
+        );
+    final publications = <GuideStep>[];
+    void readPublishedStep() => publications.add(flow.state.step);
+    flow.coordinator.state.addListener(readPublishedStep);
+    progress.failNext = true;
+    await flow.dispatch(confirm());
+    final failed = flow.state;
+    expect(failed.step, GuideStep.completionConfirm);
+    expect(failed.run, GuideRun.blocked);
+    expect(failed.failureDiagnostic?.kind, GuideFailureKind.progressSaveFailed);
+    expect(publications, isNot(contains(GuideStep.syncChoiceConfirmed)));
+    await flow.dispatch(ResumeRequested(
+      uid: _uid,
+      sessionId: failed.sessionId,
+      expectedRevision: failed.revision,
+    ));
+    expect(flow.state.run, GuideRun.active);
+    expect(flow.state.step, GuideStep.completionConfirm);
+    await flow.dispatch(confirm());
+    expect(publications.where((step) => step == GuideStep.syncChoiceConfirmed),
+        hasLength(1));
+    flow.coordinator.state.removeListener(readPublishedStep);
+    expect(flow.state.step, GuideStep.syncChoiceConfirmed);
+    await flow.reopen(GuideStep.syncChoiceConfirmed);
     await flow.dispatch(SyncChoiceClosed(
       uid: _uid,
       sessionId: flow.state.sessionId,
@@ -154,7 +190,12 @@ void main() {
       flow.boundEvent = updated;
       await flow.updateObserved(event: updated);
       expect(flow.state.step, GuideStep.updatedDetail);
-      await flow.dispatch(SyncChoicePresented(
+      await flow.dispatch(UpdatedDetailAcknowledged(
+        uid: _uid,
+        sessionId: flow.state.sessionId,
+        expectedRevision: flow.state.revision,
+      ));
+      await flow.dispatch(GuideCompletionConfirmed(
         uid: _uid,
         sessionId: flow.state.sessionId,
         expectedRevision: flow.state.revision,

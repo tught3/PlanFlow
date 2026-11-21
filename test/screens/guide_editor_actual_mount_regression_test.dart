@@ -717,7 +717,8 @@ void main() {
     expect(repo.writes, 0);
   });
 
-  testWidgets('both guide runs save once and complete without remounting the app',
+  testWidgets(
+      'both guide runs save once and complete without remounting the app',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final progress = LocalGuideProgressStore();
@@ -768,7 +769,9 @@ void main() {
     final started = await coordinator.start(uid: uid);
     expect(started.step, GuideStep.intro);
     await tester.pumpWidget(ProviderScope(
-      overrides: [realUiGuideCoordinatorProvider.overrideWithValue(coordinator)],
+      overrides: [
+        realUiGuideCoordinatorProvider.overrideWithValue(coordinator)
+      ],
       child: GuideScope(
         coordinator: coordinator,
         child: MaterialApp.router(routerConfig: router),
@@ -829,8 +832,14 @@ void main() {
 
       await tester.tap(find.text('변경된 시간 확인'));
       await tester.pumpAndSettle();
-      final sync = coordinator.state.value;
-      expect(sync.step, GuideStep.syncChoice);
+      final completion = coordinator.state.value;
+      expect(completion.step, GuideStep.completionConfirm);
+      final sync = await coordinator.dispatch(GuideCompletionConfirmed(
+        uid: uid,
+        sessionId: completion.sessionId,
+        expectedRevision: completion.revision,
+      ));
+      expect(sync.step, GuideStep.syncChoiceConfirmed);
       final completed = await coordinator.dispatch(SyncChoiceClosed(
         uid: uid,
         sessionId: sync.sessionId,
