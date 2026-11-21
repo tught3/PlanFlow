@@ -152,7 +152,8 @@ class SupabaseRealUiGuideGrantService
       final phase = row?['phase'];
       final reason = row?['reason_code'];
       GuideFailureDiagnostic diagnostic(GuideFailureKind kind) =>
-          GuideFailureDiagnostic.fromWire(kind, reasonCode: reason, phase: phase);
+          GuideFailureDiagnostic.fromWire(kind,
+              reasonCode: reason, phase: phase);
 
       if (status != 'granted') {
         _wireState = null;
@@ -206,8 +207,8 @@ class SupabaseRealUiGuideGrantService
     return null;
   }
 
-  static GuideBeginFailed _beginUidFailure(String? uid) => GuideBeginFailed(
-      GuideFailureDiagnostic(uid == null
+  static GuideBeginFailed _beginUidFailure(String? uid) =>
+      GuideBeginFailed(GuideFailureDiagnostic(uid == null
           ? GuideFailureKind.authError
           : GuideFailureKind.localUidMismatch));
 
@@ -223,7 +224,12 @@ class SupabaseRealUiGuideGrantService
     };
     final statusCode = int.tryParse(code ?? '');
     final kind = switch (code) {
-      '401' || '403' || '42501' || 'PGRST301' || 'PGRST302' || 'PGRST303' =>
+      '401' ||
+      '403' ||
+      '42501' ||
+      'PGRST301' ||
+      'PGRST302' ||
+      'PGRST303' =>
         GuideFailureKind.authError,
       '408' || '504' => GuideFailureKind.timeout,
       '502' || '503' => GuideFailureKind.network,
@@ -623,7 +629,9 @@ String wirePhase(GuideStep step) {
     case GuideStep.editPreview:
       return 'edit';
     case GuideStep.updatedDetail:
+    case GuideStep.completionConfirm:
     case GuideStep.syncChoice:
+    case GuideStep.syncChoiceConfirmed:
       return 'updated';
     case GuideStep.completed:
       return 'terminal';
@@ -871,9 +879,9 @@ class GuideBackendJson {
     return null;
   }
 
-  static final _previewStartPattern = RegExp(
-      r'^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d'
-      r'(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$');
+  static final _previewStartPattern =
+      RegExp(r'^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d'
+          r'(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$');
 
   static DateTime? _readPreviewStart(Object? raw) {
     if (raw is! String) return null;
@@ -882,7 +890,8 @@ class GuideBackendJson {
     final date = match.group(1)!;
     final civilDay = DateTime.tryParse('${date}T00:00:00Z');
     // DateTime.parse normalizes invalid calendar dates such as February 30.
-    if (civilDay == null || !civilDay.toIso8601String().startsWith('${date}T')) {
+    if (civilDay == null ||
+        !civilDay.toIso8601String().startsWith('${date}T')) {
       return null;
     }
     return DateTime.tryParse(raw)?.toUtc();
@@ -907,9 +916,8 @@ class GuideBackendJson {
       case 'preview':
         return GuideStep.editPreview;
       case 'updated':
-        return GuideStep.updatedDetail;
       case 'syncChoice':
-        return GuideStep.syncChoice;
+        return GuideStep.updatedDetail;
       case 'terminal':
         return GuideStep.completed;
       case 'intro':

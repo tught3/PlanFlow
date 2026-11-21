@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 import '../../core/diag_logger.dart';
 import 'guide_contract.dart';
 
-class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator {
+class RealUiGuideCoordinator
+    implements GuideCoordinator, GuideReplayCoordinator {
   RealUiGuideCoordinator(
       {required GuideBackendPort backend,
       required GuideProgressStore progress,
@@ -195,12 +196,14 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
   }) =>
       before.copyWith(
           run: run,
-          errorCode: _isBindingCheckpoint(before) ? before.errorCode : failure.code,
+          errorCode:
+              _isBindingCheckpoint(before) ? before.errorCode : failure.code,
           failureDiagnostic: failure,
           mayListenContinuously: false);
 
   GuideSnapshot _afterBeginFailure(
-      GuideSnapshot before, GuideBeginFailed failure, {bool retry = false}) {
+      GuideSnapshot before, GuideBeginFailed failure,
+      {bool retry = false}) {
     final predecessor = failure.terminalPredecessor;
     if (failure.failure.kind == GuideFailureKind.terminal &&
         predecessor != null &&
@@ -215,7 +218,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
     final transient = switch (failure.failure.kind) {
       GuideFailureKind.timeout ||
       GuideFailureKind.network ||
-      GuideFailureKind.backendUnavailable => true,
+      GuideFailureKind.backendUnavailable =>
+        true,
       _ => false,
     };
     final bindingCheckpoint = _isBindingCheckpoint(before);
@@ -257,7 +261,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
     try {
       await _progress.save(snapshot);
     } catch (_) {
-      _logFailure(const GuideFailureDiagnostic(GuideFailureKind.progressSaveFailed));
+      _logFailure(
+          const GuideFailureDiagnostic(GuideFailureKind.progressSaveFailed));
     }
   }
 
@@ -273,7 +278,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
         uid.isEmpty ||
         before.uid != uid ||
         before.run != GuideRun.terminal ||
-        (before.step != GuideStep.completed && before.step != GuideStep.skipped) ||
+        (before.step != GuideStep.completed &&
+            before.step != GuideStep.skipped) ||
         previous == null ||
         previous.isEmpty) {
       return false;
@@ -291,6 +297,7 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
           GuideBeginFailed(:final terminalPredecessor) => terminalPredecessor,
         };
       }
+
       var remote = await currentServerSession();
       if (!_current(before, epoch) || remote == null) return false;
 
@@ -348,9 +355,19 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
   // event/operation/session fence rather than manufacture or replay a bind.
   GuideSnapshot _reconcile(GuideSnapshot local, GuideBackendState remote,
       {bool allowUnboundConflictRecovery = false}) {
+    // The local backend projects its stored UI checkpoint in begin replies.
+    // These UI-only phases have the same authority as the durable update.
+    final serverStep = switch (remote.step) {
+      GuideStep.syncChoice ||
+      GuideStep.completionConfirm ||
+      GuideStep.syncChoiceConfirmed =>
+        GuideStep.updatedDetail,
+      final step => step,
+    };
     if ((remote.isReplay || local.isReplay) &&
         local.sessionId != null &&
-        (local.sessionId != remote.sessionId || local.isReplay != remote.isReplay)) {
+        (local.sessionId != remote.sessionId ||
+            local.isReplay != remote.isReplay)) {
       return local.copyWith(
           run: GuideRun.blocked,
           errorCode: 'guide_session_changed',
@@ -369,8 +386,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
           clearFailureDiagnostic: true,
           mayListenContinuously: false);
     }
-    final boundPreview = remote.step == GuideStep.editPreview ||
-        remote.step == GuideStep.updatedDetail;
+    final boundPreview = serverStep == GuideStep.editPreview ||
+        serverStep == GuideStep.updatedDetail;
     final sameBoundSession = local.sessionId == remote.sessionId &&
         localId != null &&
         localId.isNotEmpty &&
@@ -379,7 +396,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
       return _withFailure(
           local,
           GuideFailureDiagnostic.fromWire(GuideFailureKind.boundEventMissing,
-              phase: remote.step == GuideStep.editPreview ? 'preview' : 'updated'));
+              phase:
+                  serverStep == GuideStep.editPreview ? 'preview' : 'updated'));
     }
     if (boundPreview &&
         ((local.sessionId != null && local.sessionId != remote.sessionId) ||
@@ -392,7 +410,7 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
           mayListenContinuously: false);
     }
     if (local.step == GuideStep.editPreview &&
-        remote.step == GuideStep.changeSpeech &&
+        serverStep == GuideStep.changeSpeech &&
         (local.expectedUpdatedStartLocal != null ||
             local.sessionId == null ||
             local.sessionId != remote.sessionId ||
@@ -413,8 +431,7 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
           local.errorCode == 'guide_session_changed' ||
           local.errorCode == 'guide_bound_event_missing' ||
           local.failureDiagnostic?.kind == GuideFailureKind.sessionChanged ||
-          local.failureDiagnostic?.kind ==
-              GuideFailureKind.boundEventMissing;
+          local.failureDiagnostic?.kind == GuideFailureKind.boundEventMissing;
       final preserveFailure = protectedFailure ||
           (!transientFailure &&
               (local.errorCode != null || local.failureDiagnostic != null));
@@ -466,30 +483,38 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
         local.sessionId != null &&
         local.sessionId == remote.sessionId &&
         remote.createdEventId == null &&
-        remote.step == GuideStep.intro &&
+        serverStep == GuideStep.intro &&
         (local.step == GuideStep.createSpeech ||
             local.step == GuideStep.correctAndSave);
-    final retainLocalStep = remote.step == GuideStep.intro &&
+    final localFinalStep = switch (local.step) {
+      GuideStep.syncChoice ||
+      GuideStep.completionConfirm =>
+        GuideStep.completionConfirm,
+      GuideStep.syncChoiceConfirmed => GuideStep.syncChoiceConfirmed,
+      _ => null,
+    };
+    final awaitingFinalChoice = localFinalStep != null;
+    final retainLocalStep = serverStep == GuideStep.intro &&
+        !awaitingFinalChoice &&
         (local.step == GuideStep.homeMic ||
             (localId != null &&
                 (local.sessionId == remote.sessionId ||
                     localId == remote.createdEventId)));
-    final step = sameSessionUnboundCreate
+    final remoteStep = sameSessionUnboundCreate
         ? GuideStep.homeMic
         : retainLocalStep
             ? local.step
-            : remote.step;
-    final done = step == GuideStep.completed || step == GuideStep.skipped;
+            : serverStep;
     // Older deployments omit the accepted start. Only a local checkpoint
     // from the exact same bound revision can fill that omission.
     final keepLocalPreview = !remote.expectedStartAtReported &&
         sameBoundSession &&
         remote.serverRevision == local.serverRevision &&
-        (step == GuideStep.editPreview || step == GuideStep.updatedDetail) &&
+        (remoteStep == GuideStep.editPreview ||
+            remoteStep == GuideStep.updatedDetail) &&
         (local.step == GuideStep.editPreview ||
             local.step == GuideStep.updatedDetail ||
-            (local.step == GuideStep.syncChoice &&
-                remote.step == GuideStep.updatedDetail));
+            (awaitingFinalChoice && serverStep == GuideStep.updatedDetail));
     final expectedStart = boundPreview && remote.expectedStartAt != null
         ? _plainDateTime(remote.expectedStartAt!.toUtc())
         : keepLocalPreview
@@ -497,6 +522,17 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
                 ? null
                 : _plainDateTime(local.expectedUpdatedStartLocal!.toUtc())
             : null;
+    // Final prompts are local stages of the verified server update. Restore a
+    // prompt only if the server still confirms its exact update checkpoint.
+    final retainFinalChoice = awaitingFinalChoice &&
+        serverStep == GuideStep.updatedDetail &&
+        sameBoundSession &&
+        remote.serverRevision == local.serverRevision &&
+        expectedStart != null &&
+        local.expectedUpdatedStartLocal?.isAtSameMomentAs(expectedStart) ==
+            true;
+    final step = (retainFinalChoice ? localFinalStep : null) ?? remoteStep;
+    final done = step == GuideStep.completed || step == GuideStep.skipped;
     return local.copyWith(
         sessionId: remote.sessionId,
         serverRevision: remote.serverRevision,
@@ -746,12 +782,20 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
                   serverRevision: r.serverRevision);
             }
           }
-        case SyncChoicePresented():
-          if (before.step == GuideStep.updatedDetail) {
-            next = before.copyWith(step: GuideStep.syncChoice);
+        case UpdatedDetailAcknowledged():
+          if (before.step == GuideStep.updatedDetail &&
+              before.createdEventId?.isNotEmpty == true &&
+              before.expectedUpdatedStartLocal != null) {
+            next = before.copyWith(step: GuideStep.completionConfirm);
+          }
+        case GuideCompletionConfirmed():
+          if (before.step == GuideStep.completionConfirm &&
+              before.createdEventId?.isNotEmpty == true &&
+              before.expectedUpdatedStartLocal != null) {
+            next = before.copyWith(step: GuideStep.syncChoiceConfirmed);
           }
         case SyncChoiceClosed():
-          if (before.step == GuideStep.syncChoice) {
+          if (before.step == GuideStep.syncChoiceConfirmed) {
             next = before.copyWith(
                 step: GuideStep.completed,
                 run: GuideRun.terminal,
@@ -826,8 +870,15 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
           _logFailure(failure);
         }
         published = next;
-        _set(next);
-        await _progress.save(next);
+        if (signal is GuideCompletionConfirmed) {
+          // Sync may open only after the completion confirmation is durable.
+          await _progress.save(next);
+          if (!_current(before, epoch)) return _state.value;
+          _set(next);
+        } else {
+          _set(next);
+          await _progress.save(next);
+        }
         if (signal is SyncChoiceClosed && _current(next, epoch)) {
           unawaited(_finishServerSession(next, GuideExit.completed));
         }
@@ -870,7 +921,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
     final s = _state.value;
     if (!_live ||
         (s.run == GuideRun.paused &&
-            (s.pauseReason == reason || reason == GuidePauseReason.background))) {
+            (s.pauseReason == reason ||
+                reason == GuidePauseReason.background))) {
       return;
     }
     _set(s.copyWith(
@@ -898,7 +950,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
     if (_current(terminal, epoch)) await _finishServerSession(s, exit);
   }
 
-  Future<void> _finishServerSession(GuideSnapshot snapshot, GuideExit exit) async {
+  Future<void> _finishServerSession(
+      GuideSnapshot snapshot, GuideExit exit) async {
     final sessionId = snapshot.sessionId;
     if (sessionId == null) return;
     try {
@@ -927,7 +980,8 @@ class RealUiGuideCoordinator implements GuideCoordinator, GuideReplayCoordinator
     }
     if (s.isReplay) {
       return const GuideAccess(
-          status: GuideAccessStatus.denied, reasonCode: 'ordinary_quota_required');
+          status: GuideAccessStatus.denied,
+          reasonCode: 'ordinary_quota_required');
     }
     final allowed = switch ((context.operation, context.kind)) {
       (GuideOperation.createParse, GuideChargeKind.scheduleParse) =>

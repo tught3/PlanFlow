@@ -88,6 +88,7 @@ const double _shellTabSwipeEdgeWidth = 24;
 enum _ExternalCalendarGuideAction {
   skipGuide,
   dismissStale,
+  confirmTutorial,
   decline,
   openSettings
 }
@@ -409,6 +410,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _pendingDepartureTimer?.cancel();
     _routeGate.completeStartupWorkDeferral();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _guideHomeStateChanged?.call();
   }
 
   @override
@@ -856,8 +863,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     final coordinator = GuideScope.maybeOf(context);
     if (coordinator == null) throw StateError('Root guide scope unavailable');
     _clearOnboardingGate();
-    // No time-based Next: only actual detail acknowledgement or explicit Skip
-    // can open the existing calendar choice. Auth changes cancel this waiter.
+    // The final prompts can start only after the actual detail
+    // acknowledgement. Auth changes cancel this waiter.
     Future<void> waitUntil(bool Function(GuideSnapshot) ready) =>
         waitForGuideState(
             coordinator: coordinator,
@@ -874,7 +881,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     await waitUntil((s) =>
         s.uid == uid &&
-        (s.step == GuideStep.syncChoice || s.run == GuideRun.terminal));
+        (_isGuideFinalPrompt(s, uid) || s.run == GuideRun.terminal));
   }
 
   Future<void> _maybeRecalculateAllAlarms() async {
@@ -1126,26 +1133,35 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   bool _guideChoicePendingFor(String uid) {
     final snapshot = GuideScope.maybeOf(context)?.state.value;
-    return snapshot != null && _isGuideSyncChoice(snapshot, uid);
+    return snapshot != null && _isGuideFinalPrompt(snapshot, uid);
   }
 
-  bool _isGuideSyncChoice(GuideSnapshot snapshot, String uid) =>
+  bool _completionNeedsRetry(GuideSnapshot snapshot) =>
+      snapshot.step == GuideStep.completionConfirm &&
+      snapshot.run == GuideRun.blocked &&
+      snapshot.failureDiagnostic?.kind == GuideFailureKind.progressSaveFailed;
+
+  bool _isGuideFinalPrompt(GuideSnapshot snapshot, String uid) =>
       snapshot.uid == uid &&
       snapshot.sessionId?.isNotEmpty == true &&
-      snapshot.step == GuideStep.syncChoice &&
+      (snapshot.step == GuideStep.completionConfirm ||
+          snapshot.step == GuideStep.syncChoiceConfirmed) &&
       (snapshot.run == GuideRun.active ||
           (snapshot.run == GuideRun.paused &&
-              snapshot.pauseReason == GuidePauseReason.background));
+              snapshot.pauseReason == GuidePauseReason.background) ||
+          _completionNeedsRetry(snapshot));
 
   Future<bool> _waitForGuideHome(
-      GoRouter router, bool Function() sameAccount) async {
+      GoRouter router, bool Function() stillOwnsPrompt,
+      {bool Function()? guideReady}) async {
     _clearOnboardingGate();
     final waiter = Completer<bool>();
     void checkRoute() {
       if (waiter.isCompleted) return;
-      if (!sameAccount()) {
+      if (!stillOwnsPrompt()) {
         waiter.complete(false);
       } else if (_currentIndex == 0 &&
+          (guideReady?.call() ?? true) &&
           _visibleShellRoute(router).path == AppRoutes.home) {
         final lifecycle = WidgetsBinding.instance.lifecycleState;
         if (lifecycle == null || lifecycle == AppLifecycleState.resumed) {
@@ -1188,9 +1204,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     final router = GoRouter.of(context);
     final coordinator = GuideScope.maybeOf(context);
     final snapshot = coordinator?.state.value;
-    final guideChoice = snapshot != null && _isGuideSyncChoice(snapshot, userId)
-        ? snapshot
-        : null;
+    final guideChoice =
+        snapshot != null && _isGuideFinalPrompt(snapshot, userId)
+            ? snapshot
+            : null;
     final syncStore = GuideSyncChoiceStore();
     bool ownsGuide() =>
         sameAccount() &&
@@ -1203,30 +1220,48 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         current.uid == userId &&
         current.version == guideChoice.version &&
         current.sessionId == guideChoice.sessionId &&
+        current.createdEventId == guideChoice.createdEventId &&
         current.isReplay == guideChoice.isReplay;
 
-    Future<GuideSnapshot?> readyGuideChoice() async {
-      if (!await _waitForGuideHome(router, sameAccount)) return null;
-      final current = coordinator!.state.value;
-      if (!ownsGuide() ||
-          !sameGuideSession(current) ||
-          !_isGuideSyncChoice(current, userId)) {
-        return null;
+    Future<GuideSnapshot?> readyGuidePrompt(GuideStep step) async {
+      final guide = coordinator!;
+      bool stillOwnsStep() {
+        final current = guide.state.value;
+        return ownsGuide() &&
+            sameGuideSession(current) &&
+            current.step == step &&
+            current.run != GuideRun.terminal;
       }
-      if (current.run == GuideRun.active) return current;
-      await coordinator.dispatch(ResumeRequested(
-          uid: userId,
-          sessionId: current.sessionId!,
-          expectedRevision: current.revision));
-      if (!await _waitForGuideHome(router, sameAccount)) return null;
-      final resumed = coordinator.state.value;
-      if (!ownsGuide() ||
-          !sameGuideSession(resumed) ||
-          resumed.step != GuideStep.syncChoice ||
-          resumed.run != GuideRun.active) {
-        return null;
+
+      // After an unsuccessful retry, the existing recovery UI can restore the
+      // same checkpoint. Keep observing it without initiating another retry.
+      bool guideReady() {
+        final current = guide.state.value;
+        return step != GuideStep.completionConfirm ||
+            current.run != GuideRun.blocked ||
+            !const {
+              GuideFailureKind.timeout,
+              GuideFailureKind.network,
+              GuideFailureKind.backendUnavailable,
+            }.contains(current.failureDiagnostic?.kind);
       }
-      return resumed;
+
+      while (await _waitForGuideHome(router, stillOwnsStep,
+          guideReady: guideReady)) {
+        if (!stillOwnsStep()) return null;
+        final current = guide.state.value;
+        if (!guideReady()) continue;
+        if (!_isGuideFinalPrompt(current, userId)) return null;
+        if (current.run == GuideRun.active || _completionNeedsRetry(current)) {
+          return current;
+        }
+        await guide.dispatch(ResumeRequested(
+            uid: userId,
+            sessionId: current.sessionId!,
+            expectedRevision: current.revision));
+        if (identical(guide.state.value, current)) return null;
+      }
+      return null;
     }
 
     if (guideChoice != null) {
@@ -1246,115 +1281,210 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       if (!shouldShow || !sameAccount()) return sameAccount();
     }
 
-    _ExternalCalendarGuideAction? choice;
-    do {
-      if (guideChoice != null && await readyGuideChoice() == null) {
-        _checkedExternalCalendarGuide = false;
-        return false;
-      }
-      if (!mounted || !sameAccount()) return false;
+    Widget syncDialog(NavigatorState navigator) => AlertDialog(
+          title: const Text('외부 캘린더 동기화 안내'),
+          content: const Text(
+            '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
+            '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          actions: [
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '동기화 안 함',
+                  onPressed: () =>
+                      navigator.pop(_ExternalCalendarGuideAction.decline),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '동기화 설정',
+                  onPressed: () =>
+                      navigator.pop(_ExternalCalendarGuideAction.openSettings),
+                  type: ActionButtonType.primary,
+                  flex: 1,
+                ),
+              ],
+            ),
+          ],
+        );
+
+    bool isCurrentGuidePrompt(GuideSnapshot current, GuideStep step) =>
+        ownsGuide() &&
+        sameGuideSession(current) &&
+        current.step == step &&
+        _isGuideFinalPrompt(current, userId);
+
+    Future<_ExternalCalendarGuideAction?> presentPrompt(
+      GuideStep step, {
+      bool needsRetry = false,
+    }) async {
       final scope = context.getInheritedWidgetOfExactType<GuideScope>();
       final allowGuideBack =
           guideChoice != null && scope?.allowBackSkip == true;
       final navigator = Navigator.of(context, rootNavigator: true);
-      bool isCurrentGuideChoice(GuideSnapshot current) =>
-          ownsGuide() &&
-          GuideScope.allowBackSkipOf(context) &&
-          sameGuideSession(current) &&
-          _isGuideSyncChoice(current, userId);
       final route = DialogRoute<_ExternalCalendarGuideAction>(
         context: context,
         themes: InheritedTheme.capture(from: context, to: navigator.context),
         barrierDismissible: guideChoice == null,
         builder: (dialogContext) {
-          final dialog = AlertDialog(
-            title: const Text('외부 캘린더 동기화 안내'),
-            content: const Text(
-              '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
-              '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
-            ),
-            actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-            actions: [
-              PlanFlowActionButtons(
-                buttons: [
-                  PlanFlowActionButton(
-                    label: '동기화 안 함',
-                    onPressed: () =>
-                        navigator.pop(_ExternalCalendarGuideAction.decline),
-                    type: ActionButtonType.secondary,
-                    flex: 1,
-                  ),
-                  PlanFlowActionButton(
-                    label: '동기화 설정',
-                    onPressed: () => navigator
-                        .pop(_ExternalCalendarGuideAction.openSettings),
-                    type: ActionButtonType.primary,
-                    flex: 1,
-                  ),
-                ],
-              ),
-            ],
-          );
+          final dialog = step == GuideStep.completionConfirm
+              ? AlertDialog(
+                  icon: const Icon(Icons.celebration_outlined),
+                  title: const Text('튜토리얼 완료'),
+                  content: needsRetry
+                      ? const Text('완료 확인을 저장하지 못했어요. 다시 시도해 주세요.')
+                      : const Text('모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.'),
+                  actions: [
+                    FilledButton(
+                      onPressed: () {
+                        if (ModalRoute.isCurrentOf(dialogContext) != true) {
+                          return;
+                        }
+                        navigator
+                            .pop(_ExternalCalendarGuideAction.confirmTutorial);
+                      },
+                      child: Text(needsRetry ? '다시 시도' : '확인'),
+                    ),
+                  ],
+                )
+              : syncDialog(navigator);
           if (!allowGuideBack) return dialog;
           return PopScope<_ExternalCalendarGuideAction>(
             canPop: false,
             onPopInvokedWithResult: (didPop, _) {
               if (!didPop && ModalRoute.isCurrentOf(dialogContext) == true) {
-                navigator.pop(isCurrentGuideChoice(coordinator!.state.value)
-                    ? _ExternalCalendarGuideAction.skipGuide
-                    : _ExternalCalendarGuideAction.dismissStale);
+                navigator.pop(
+                  GuideScope.allowBackSkipOf(context) &&
+                          isCurrentGuidePrompt(coordinator!.state.value, step)
+                      ? _ExternalCalendarGuideAction.skipGuide
+                      : _ExternalCalendarGuideAction.dismissStale,
+                );
               }
             },
             child: dialog,
           );
         },
       );
-      final unregisterBack =
-          allowGuideBack ? scope?.registerSyncChoiceRoute?.call(route) : null;
+      final unregisterBack = guideChoice != null
+          ? scope?.registerSyncChoiceRoute?.call(route)
+          : null;
       try {
-        choice = await _presentInteractive(() => navigator.push(route));
+        return await _presentInteractive(() => navigator.push(route));
       } finally {
         unregisterBack?.call();
       }
-      if (!mounted || !sameAccount()) return false;
+    }
+
+    Future<bool> leaveGuide(GuideStep step) async {
+      final current = coordinator!.state.value;
+      if (!GuideScope.allowBackSkipOf(context) ||
+          !isCurrentGuidePrompt(current, step)) {
+        _checkedExternalCalendarGuide = false;
+        return false;
+      }
+      try {
+        await coordinator.terminate(GuideExit.skip);
+      } catch (_) {
+        // Still check whether the coordinator reached the exit checkpoint.
+      }
+      bool ownsExit() {
+        final latest = coordinator.state.value;
+        return ownsGuide() &&
+            sameGuideSession(latest) &&
+            latest.run == GuideRun.terminal &&
+            latest.step == GuideStep.skipped;
+      }
+
+      if (!ownsExit()) return false;
+      try {
+        await syncStore.close(userId);
+      } catch (_) {
+        // Release the route gate for this process if prefs are unavailable.
+      }
+      if (!ownsExit()) return false;
+      _routeGate.closeGuideChoice(userId);
+      return true;
+    }
+
+    if (guideChoice?.step == GuideStep.completionConfirm) {
+      const step = GuideStep.completionConfirm;
+      while (sameAccount()) {
+        final before = await readyGuidePrompt(step);
+        if (before == null) {
+          _checkedExternalCalendarGuide = false;
+          return false;
+        }
+        final action = await presentPrompt(step,
+            needsRetry: _completionNeedsRetry(before));
+        if (!sameAccount()) return false;
+        if (action == _ExternalCalendarGuideAction.skipGuide) {
+          return leaveGuide(step);
+        }
+        final current = coordinator!.state.value;
+        if (action == _ExternalCalendarGuideAction.dismissStale ||
+            !isCurrentGuidePrompt(current, step)) {
+          _checkedExternalCalendarGuide = false;
+          return false;
+        }
+        if (action != _ExternalCalendarGuideAction.confirmTutorial ||
+            current.revision != before.revision ||
+            _visibleShellRoute(router).path != AppRoutes.home) {
+          continue;
+        }
+        if (_completionNeedsRetry(current)) {
+          await coordinator.dispatch(ResumeRequested(
+            uid: userId,
+            sessionId: current.sessionId!,
+            expectedRevision: current.revision,
+          ));
+          continue;
+        }
+        if (current.run != GuideRun.active) continue;
+        final confirmed = await coordinator.dispatch(GuideCompletionConfirmed(
+          uid: userId,
+          sessionId: before.sessionId!,
+          expectedRevision: before.revision,
+        ));
+        final latest = coordinator.state.value;
+        if (latest.revision != before.revision &&
+            isCurrentGuidePrompt(latest, step)) {
+          // A failed or suspended write may leave the same completion
+          // checkpoint. Show a new prompt rather than replaying its action.
+          continue;
+        }
+        if (!isCurrentGuidePrompt(confirmed, GuideStep.syncChoiceConfirmed) ||
+            !identical(latest, confirmed)) {
+          _checkedExternalCalendarGuide = false;
+          return false;
+        }
+        break;
+      }
+    }
+
+    _ExternalCalendarGuideAction? choice;
+    do {
+      if (guideChoice != null &&
+          await readyGuidePrompt(GuideStep.syncChoiceConfirmed) == null) {
+        _checkedExternalCalendarGuide = false;
+        return false;
+      }
+      if (!sameAccount()) return false;
+      choice = await presentPrompt(GuideStep.syncChoiceConfirmed);
+      if (!sameAccount()) return false;
       if (choice == _ExternalCalendarGuideAction.dismissStale) {
         _checkedExternalCalendarGuide = false;
         return false;
       }
       if (choice == _ExternalCalendarGuideAction.skipGuide) {
-        final current = coordinator!.state.value;
-        if (!isCurrentGuideChoice(current)) {
-          _checkedExternalCalendarGuide = false;
-          return false;
-        }
-        try {
-          await coordinator.terminate(GuideExit.skip);
-        } catch (_) {
-          // Still check whether the coordinator reached the exit checkpoint.
-        }
-        bool ownsExit() {
-          final latest = coordinator.state.value;
-          return ownsGuide() &&
-              sameGuideSession(latest) &&
-              latest.run == GuideRun.terminal &&
-              latest.step == GuideStep.skipped;
-        }
-
-        if (!ownsExit()) return false;
-        try {
-          await syncStore.close(userId);
-        } catch (_) {
-          // Release the route gate for this process if prefs are unavailable.
-        }
-        if (!ownsExit()) return false;
-        _routeGate.closeGuideChoice(userId);
-        return true;
+        return leaveGuide(GuideStep.syncChoiceConfirmed);
       }
     } while (guideChoice != null && choice == null);
 
     if (!sameAccount()) return false;
     if (guideChoice != null) {
-      final current = await readyGuideChoice();
+      final current = await readyGuidePrompt(GuideStep.syncChoiceConfirmed);
       if (current == null || !sameAccount()) {
         _checkedExternalCalendarGuide = false;
         return false;
@@ -1380,28 +1510,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         );
     if (!mounted || !sameAccount()) {
       return false;
-    }
-
-    if (guideChoice != null) {
-      if (!await _waitForGuideHome(router, sameAccount) ||
-          !mounted ||
-          !sameAccount()) {
-        return false;
-      }
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.celebration_outlined),
-          title: const Text('튜토리얼 완료'),
-          content: const Text('모든 튜토리얼이 끝났습니다. 이제 자유롭게 사용해보세요.'),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('확인'),
-            ),
-          ],
-        ),
-      );
     }
 
     if (sameAccount() && choice == _ExternalCalendarGuideAction.openSettings) {

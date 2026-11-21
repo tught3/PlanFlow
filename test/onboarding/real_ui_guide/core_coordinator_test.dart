@@ -89,7 +89,8 @@ class ReplayBackend extends FakeBackend implements GuideReplayBackendPort {
   }) async {
     final reply = currentReply;
     final result = reply != null ? await reply : current;
-    if (result?.step == GuideStep.completed || result?.step == GuideStep.skipped) {
+    if (result?.step == GuideStep.completed ||
+        result?.step == GuideStep.skipped) {
       return GuideBeginFailed(
         const GuideFailureDiagnostic(GuideFailureKind.terminal),
         terminalPredecessor: result,
@@ -97,8 +98,8 @@ class ReplayBackend extends FakeBackend implements GuideReplayBackendPort {
     }
     return result == null
         ? const GuideBeginFailed(
-        GuideFailureDiagnostic(GuideFailureKind.backendUnavailable),
-      )
+            GuideFailureDiagnostic(GuideFailureKind.backendUnavailable),
+          )
         : GuideBeginGranted(result);
   }
 
@@ -139,7 +140,10 @@ void main() {
     expect(await c.restartCompletedGuide(uid: 'u'), isFalse);
     expect(backend.requests, ['u:real_ui_v1:old:restart:old']);
     backend.response.complete(const GuideBackendState(
-        sessionId: 'new', serverRevision: 0, step: GuideStep.intro, isReplay: true));
+        sessionId: 'new',
+        serverRevision: 0,
+        step: GuideStep.intro,
+        isReplay: true));
     expect(await restart, isTrue);
     final replay = c.state.value;
     expect(replay, same(progress.value));
@@ -168,7 +172,10 @@ void main() {
     expect(access.reasonCode, 'ordinary_quota_required');
     expect(backend.chargeCalls, 0);
     backend.current = const GuideBackendState(
-        sessionId: 'new', serverRevision: 0, step: GuideStep.intro, isReplay: true);
+        sessionId: 'new',
+        serverRevision: 0,
+        step: GuideStep.intro,
+        isReplay: true);
     final reopened = RealUiGuideCoordinator(
         backend: backend, progress: progress, version: 'real_ui_v1');
     expect((await reopened.start(uid: 'u')).isReplay, isTrue);
@@ -279,19 +286,24 @@ void main() {
     expect(restored, same(progress.value));
     final restart = c.restartCompletedGuide(uid: 'u');
     backend.response.complete(const GuideBackendState(
-        sessionId: 'new', serverRevision: 0, step: GuideStep.intro, isReplay: true));
+        sessionId: 'new',
+        serverRevision: 0,
+        step: GuideStep.intro,
+        isReplay: true));
     expect(await restart, isTrue);
     expect(c.state.value.step, GuideStep.homeMic);
   });
 
-  test('sync choice saves locally before finishing the same session remotely',
+  test('completion confirmation precedes sync and finishing the same session',
       () async {
     final backend = FakeBackend()
-      ..current = const GuideBackendState(
+      ..current = GuideBackendState(
         sessionId: 's',
         serverRevision: 6,
         step: GuideStep.updatedDetail,
         createdEventId: 'bound',
+        // banned-ok: Fixed accepted start time for guide test.
+        expectedStartAt: DateTime.utc(2031, 6, 12, 8),
       );
     final progress = FakeProgress();
     final finishRequests = <String>[];
@@ -309,9 +321,27 @@ void main() {
     final c = RealUiGuideCoordinator(
         backend: backend, progress: progress, version: 'real_ui_v1');
     final updated = await c.start(uid: 'u');
-    final choice = await c.dispatch(SyncChoicePresented(
+    expect(
+        await c.dispatch(SyncChoiceClosed(
+            uid: 'u', sessionId: 's', expectedRevision: updated.revision)),
+        same(updated));
+    expect(
+        await c.dispatch(GuideCompletionConfirmed(
+            uid: 'u', sessionId: 's', expectedRevision: updated.revision)),
+        same(updated));
+    final completion = await c.dispatch(UpdatedDetailAcknowledged(
         uid: 'u', sessionId: 's', expectedRevision: updated.revision));
-    expect(choice.step, GuideStep.syncChoice);
+    expect(completion.step, GuideStep.completionConfirm);
+    expect(completion.run, GuideRun.active);
+    expect(progress.value, same(completion));
+    expect(finishRequests, isEmpty);
+    expect(
+        await c.dispatch(GuideCompletionConfirmed(
+            uid: 'u', sessionId: 's', expectedRevision: updated.revision)),
+        same(completion));
+    final choice = await c.dispatch(GuideCompletionConfirmed(
+        uid: 'u', sessionId: 's', expectedRevision: completion.revision));
+    expect(choice.step, GuideStep.syncChoiceConfirmed);
     expect(finishRequests, isEmpty);
 
     final close = SyncChoiceClosed(

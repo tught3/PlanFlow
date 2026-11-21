@@ -132,6 +132,9 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
 
   VoidCallback _registerSyncChoiceRoute(ModalRoute<dynamic> route) {
     _syncChoiceRoute = route;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(_syncChoiceRoute, route)) setState(() {});
+    });
     return () {
       if (identical(_syncChoiceRoute, route)) {
         _syncChoiceRoute = null;
@@ -140,8 +143,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
     };
   }
 
-  bool get _syncChoiceRouteIsCurrent =>
-      !widget.isGuideQa && _syncChoiceRoute?.isCurrent == true;
+  bool get _syncChoiceRouteIsCurrent => _syncChoiceRoute?.isCurrent == true;
 
   Future<bool> _handleRootBackButton() async {
     final uid = widget.uid;
@@ -605,7 +607,8 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
                     !syncChoiceRouteIsCurrent &&
                     s.run == GuideRun.active &&
                     s.step != GuideStep.intro &&
-                    s.step != GuideStep.syncChoice;
+                    s.step != GuideStep.completionConfirm &&
+                    s.step != GuideStep.syncChoiceConfirmed;
                 if (!coaching) _waitingPanelVisible = false;
                 return Stack(fit: StackFit.expand, children: [
                   IgnorePointer(
@@ -1116,12 +1119,12 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       if (_targetIsCurrent(summary)) return 'saved.summary';
       final detail = _resolveAnchor('saved.departure').context;
       if (_targetIsCurrent(detail)) return 'saved.departure';
-      final row = _resolveAnchor('calendar.saved').context;
-      if (_targetIsCurrent(row)) return 'calendar.saved';
-      final loading = _resolveAnchor('calendar.loading').context;
-      if (_targetIsCurrent(loading)) return 'calendar.loading';
-      final retry = _resolveAnchor('calendar.retry').context;
-      return _targetIsCurrent(retry) ? 'calendar.retry' : 'calendar.saved';
+      final row = _resolveAnchor('home.saved').context;
+      if (_targetIsCurrent(row)) return 'home.saved';
+      final loading = _resolveAnchor('home.saved.loading').context;
+      if (_targetIsCurrent(loading)) return 'home.saved.loading';
+      final retry = _resolveAnchor('home.saved.retry').context;
+      return _targetIsCurrent(retry) ? 'home.saved.retry' : 'home.saved';
     }
     if (s.step == GuideStep.querySpeech) {
       final input = _resolveAnchor('voice.review').context;
@@ -1170,10 +1173,9 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
         ),
       GuideStep.savedDetail => (
           '3/7 · 저장된 일정 확인',
-          id == 'calendar.saved'
-              ? '일정이 저장됐어요. 홈의 ‘오늘 일정’에는 오늘 일정만 보여요. '
-                  '‘일정’ 탭에서 저장한 날짜의 일정을 눌러 주세요.'
-              : id == 'calendar.retry'
+          id == 'home.saved'
+              ? '홈 탭에서 강조된 일정을 눌러 주세요.'
+              : id == 'home.saved.retry'
                   ? '저장한 일정을 찾지 못했어요. ‘다시 확인’으로 기존 목록만 새로 불러와요. 새 일정은 만들지 않아요.'
                   : '‘저장된 일정 확인’에서 제목, 날짜·시간과 장소를 확인한 뒤, 화면 아래의 ‘준비·출발 안내 확인’ 버튼을 눌러 주세요.'
         ),
@@ -1205,10 +1207,11 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
           '7/7 · 변경 완료',
           '변경된 시작 시간과 종료 시간을 확인하고 화면 아래의 ‘변경된 시간 확인’ 버튼을 눌러 주세요. 마지막으로 동기화를 선택해요.'
         ),
-      GuideStep.syncChoice || GuideStep.completed => (
-          '마무리',
-          '이것 말고도 더 많은 기능들이 있으니 확인해보세요.'
-        ),
+      GuideStep.completionConfirm ||
+      GuideStep.syncChoice ||
+      GuideStep.syncChoiceConfirmed ||
+      GuideStep.completed =>
+        ('마무리', '이것 말고도 더 많은 기능들이 있으니 확인해보세요.'),
       _ => ('실전 안내', '화면의 실제 내용을 확인해주세요.'),
     };
   }
@@ -1250,7 +1253,7 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
               onSkip: null);
         }
         final id = _targetId(s);
-        if (id == 'calendar.loading') return const SizedBox.shrink();
+        if (id == 'home.saved.loading') return const SizedBox.shrink();
         final ({
           GuidedAnchorRegistry registry,
           BuildContext? context
@@ -1467,8 +1470,8 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                         ? const <String>['voice.start', 'voice.submit']
                         : const <String>{
                             'home.mic',
-                            'calendar.saved',
-                            'calendar.retry',
+                            'home.saved',
+                            'home.saved.retry',
                             'saved.confirm',
                             'query.mic',
                             'query.retryMic',
@@ -1486,8 +1489,8 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                 (conversationComposer && s.step == GuideStep.querySpeech) ||
                 id == 'query.retryMic' ||
                 id == 'query.retry' ||
-                id == 'calendar.saved' ||
-                id == 'calendar.retry',
+                id == 'home.saved' ||
+                id == 'home.saved.retry',
             preferBubbleBetweenTargets:
                 id == 'saved.confirm' || id == 'updated.confirm',
             preferLowerBubbleSlot:

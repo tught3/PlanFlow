@@ -34,6 +34,7 @@ import '../../widgets/planflow_logo.dart';
 import '../../widgets/guided_anchor.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
+import '../../onboarding/real_ui_guide/guide_route_recovery.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 part 'home_widgets.dart';
 
@@ -111,6 +112,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final GroupContextProvider _groupContextProvider;
   late final bool _ownsGroupContextProvider;
   late final HomeWidgetService _homeWidgetService;
+  List<EventModel> _loadedEvents = const <EventModel>[];
+  String? _loadedEventsUid;
   List<EventModel> _pastTodayEvents = const <EventModel>[];
   List<EventModel> _recentPastEvents = const <EventModel>[];
   List<EventModel> _todayEvents = const <EventModel>[];
@@ -471,6 +474,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (mounted) {
       setState(() {
+        _loadedEvents = allEvents;
+        _loadedEventsUid = userId;
         _pastTodayEvents = visiblePastTodayEvents;
         _recentPastEvents = recentPastEvents;
         _todayEvents = currentTodayEvents;
@@ -617,6 +622,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _clearHomeContent() {
+    _loadedEvents = const <EventModel>[];
+    _loadedEventsUid = null;
     _pastTodayEvents = const <EventModel>[];
     _recentPastEvents = const <EventModel>[];
     _todayEvents = const <EventModel>[];
@@ -665,10 +672,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  String? _guideHomeUid() =>
+      widget.userIdOverride != null || AppEnv.isSupabaseReady
+          ? _resolveUserId()
+          : null;
+
   @override
   Widget build(BuildContext context) {
+    final coordinator = GuideScope.maybeOf(context);
+    if (coordinator == null) return _buildHome(context, null);
+    return ValueListenableBuilder<GuideSnapshot>(
+      valueListenable: coordinator.state,
+      builder: (context, snapshot, _) => _buildHome(
+        context,
+        snapshot.step == GuideStep.savedDetail &&
+                GuideRouteRecovery.supports(snapshot) &&
+                snapshot.uid == _guideHomeUid()
+            ? coordinator
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildHome(BuildContext context, GuideCoordinator? savedGuide) {
     final theme = Theme.of(context);
     final isLoading = _loadState == _HomeLoadState.loading;
+    final snapshot = savedGuide?.state.value;
+    final matches = snapshot == null || _loadedEventsUid != snapshot.uid
+        ? const <EventModel>[]
+        : _loadedEvents
+            .where((event) => event.id == snapshot.createdEventId)
+            .toList(growable: false);
+    final boundEvent = matches.length == 1 ? matches.single : null;
+    final rejectedBinding = matches.length > 1 ||
+        (boundEvent != null &&
+            (boundEvent.userId != snapshot?.uid ||
+                !GuideRouteRecovery.isCanonicalPersonalEvent(boundEvent)));
+    final listedSaved = !rejectedBinding &&
+            boundEvent != null &&
+            [..._pastTodayEvents, ..._todayEvents, ..._upcomingEvents]
+                .any((event) => identical(event, boundEvent))
+        ? boundEvent
+        : null;
+
+    Widget withSavedAnchor(EventModel event, Widget card) =>
+        identical(event, listedSaved)
+            ? _HomeSavedGuideAnchor(child: card)
+            : card;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -720,6 +770,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (savedGuide != null && listedSaved == null) ...[
+                      if (isLoading)
+                        _homeSavedGuideLoading()
+                      else if (rejectedBinding)
+                        _homeSavedGuideRetry(_loadTodayEvents)
+                      else
+                        _HomeSavedGuideEvent(
+                          key: ObjectKey(snapshot),
+                          coordinator: savedGuide,
+                          currentUid: _guideHomeUid,
+                          repository: widget.eventRepository,
+                        ),
+                      const SizedBox(height: 12),
+                    ],
                     if (_groupContextProvider.hasGroups) ...[
                       _HomeGroupsRow(
                         groups: _groupContextProvider.groups,
@@ -837,14 +901,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ..._pastTodayEvents.map(
                           (event) => Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: _TodayEventCard(
-                              event: event,
-                              isPast: true,
-                              hasSmartPrepAlarm:
-                                  _smartPreparationEventIds.contains(event.id),
-                              onTap: () => context.push(
-                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                                extra: event,
+                            child: withSavedAnchor(
+                              event,
+                              _TodayEventCard(
+                                event: event,
+                                isPast: true,
+                                hasSmartPrepAlarm: _smartPreparationEventIds
+                                    .contains(event.id),
+                                onTap: () => context.push(
+                                  '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                  extra: event,
+                                ),
                               ),
                             ),
                           ),
@@ -863,13 +930,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ..._todayEvents.map(
                           (event) => Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: _TodayEventCard(
-                              event: event,
-                              hasSmartPrepAlarm:
-                                  _smartPreparationEventIds.contains(event.id),
-                              onTap: () => context.push(
-                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                                extra: event,
+                            child: withSavedAnchor(
+                              event,
+                              _TodayEventCard(
+                                event: event,
+                                hasSmartPrepAlarm: _smartPreparationEventIds
+                                    .contains(event.id),
+                                onTap: () => context.push(
+                                  '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                  extra: event,
+                                ),
                               ),
                             ),
                           ),
@@ -964,11 +1034,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ..._upcomingEvents.map(
                         (event) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: _UpcomingEventCard(
-                            event: event,
-                            onTap: () => context.push(
-                              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                              extra: event,
+                          child: withSavedAnchor(
+                            event,
+                            _UpcomingEventCard(
+                              event: event,
+                              onTap: () => context.push(
+                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                extra: event,
+                              ),
                             ),
                           ),
                         ),
@@ -1107,3 +1180,120 @@ List<EventModel> homeVisiblePastTodayEvents(Iterable<EventModel> pastEvents) {
       .map((e) => e.event)
       .toList(growable: false);
 }
+
+/// Reveals the existing Home card when 3/7 first points to it.
+class _HomeSavedGuideAnchor extends StatefulWidget {
+  const _HomeSavedGuideAnchor({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_HomeSavedGuideAnchor> createState() => _HomeSavedGuideAnchorState();
+}
+
+class _HomeSavedGuideAnchorState extends State<_HomeSavedGuideAnchor> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || ModalRoute.isCurrentOf(context) != true) return;
+      unawaited(Scrollable.ensureVisible(context, alignment: 0.15));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => GuidedAnchor(
+        id: 'home.saved',
+        registry: realUiGuideAnchorRegistry,
+        child: widget.child,
+      );
+}
+
+/// Home's ordinary lists can omit the bound event (for example, the fourth
+/// upcoming event). Read that exact event and display the same Home card.
+class _HomeSavedGuideEvent extends StatefulWidget {
+  const _HomeSavedGuideEvent({
+    super.key,
+    required this.coordinator,
+    required this.currentUid,
+    required this.repository,
+  });
+
+  final GuideCoordinator coordinator;
+  final String? Function() currentUid;
+  final EventRepository? repository;
+
+  @override
+  State<_HomeSavedGuideEvent> createState() => _HomeSavedGuideEventState();
+}
+
+class _HomeSavedGuideEventState extends State<_HomeSavedGuideEvent> {
+  late Future<GuideRouteRecovery?> _request = _read();
+
+  Future<GuideRouteRecovery?> _read() => GuideRouteRecovery.load(
+        coordinator: widget.coordinator,
+        currentUid: widget.currentUid,
+        attachedToRoute: () =>
+            mounted &&
+            identical(
+              context.getInheritedWidgetOfExactType<GuideScope>()?.coordinator,
+              widget.coordinator,
+            ),
+        read: (uid, id) async {
+          final repository = widget.repository ?? EventRepository.supabase();
+          final event = await repository
+              .fetchEvent(id, userId: uid)
+              .timeout(const Duration(seconds: 15));
+          return event == null ? [] : [event];
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<GuideRouteRecovery?>(
+        future: _request,
+        builder: (context, snapshot) {
+          final recovery = snapshot.data;
+          if (recovery != null &&
+              recovery.isCurrent(widget.coordinator, widget.currentUid())) {
+            final event = recovery.event;
+            return _HomeSavedGuideAnchor(
+              child: _UpcomingEventCard(
+                event: event,
+                onTap: () {
+                  if (ModalRoute.isCurrentOf(context) != true ||
+                      !recovery.isCurrent(
+                          widget.coordinator, widget.currentUid())) {
+                    return;
+                  }
+                  context.push(
+                    '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                    extra: event,
+                  );
+                },
+              ),
+            );
+          }
+          if (snapshot.connectionState != ConnectionState.done) {
+            return _homeSavedGuideLoading();
+          }
+          return _homeSavedGuideRetry(() => setState(() => _request = _read()));
+        },
+      );
+}
+
+Widget _homeSavedGuideLoading() => GuidedAnchor(
+      id: 'home.saved.loading',
+      registry: realUiGuideAnchorRegistry,
+      child: const Center(
+        child: CircularProgressIndicator(semanticsLabel: '저장한 일정 불러오는 중'),
+      ),
+    );
+
+Widget _homeSavedGuideRetry(VoidCallback onRetry) => GuidedAnchor(
+      id: 'home.saved.retry',
+      registry: realUiGuideAnchorRegistry,
+      child: OutlinedButton(
+        onPressed: onRetry,
+        child: const Text('저장한 일정 다시 확인'),
+      ),
+    );

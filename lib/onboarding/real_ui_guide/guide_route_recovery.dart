@@ -13,21 +13,40 @@ class GuideRouteRecovery {
   bool isCurrent(GuideCoordinator? current, String? uid) {
     if (!identical(current, coordinator) || uid != snapshot.uid) return false;
     final s = current!.state.value;
-    return s.uid == snapshot.uid && s.version == snapshot.version &&
-        s.sessionId == snapshot.sessionId && s.revision == snapshot.revision &&
+    return s.uid == snapshot.uid &&
+        s.version == snapshot.version &&
+        s.sessionId == snapshot.sessionId &&
+        s.revision == snapshot.revision &&
         s.serverRevision == snapshot.serverRevision &&
         s.createdEventId == snapshot.createdEventId &&
         s.expectedUpdatedStartLocal == snapshot.expectedUpdatedStartLocal &&
-        s.step == snapshot.step && s.run == GuideRun.active;
+        s.step == snapshot.step &&
+        s.run == GuideRun.active;
   }
 
-  static bool supports(GuideSnapshot s) => s.run == GuideRun.active &&
-      s.sessionId != null && (s.createdEventId?.isNotEmpty ?? false) &&
-      const {GuideStep.savedDetail, GuideStep.queryMic, GuideStep.querySpeech,
-        GuideStep.queryResults, GuideStep.changeSpeech, GuideStep.editPreview,
-        GuideStep.updatedDetail}.contains(s.step);
+  static bool supports(GuideSnapshot s) =>
+      s.run == GuideRun.active &&
+      s.sessionId != null &&
+      (s.createdEventId?.isNotEmpty ?? false) &&
+      const {
+        GuideStep.savedDetail,
+        GuideStep.queryMic,
+        GuideStep.querySpeech,
+        GuideStep.queryResults,
+        GuideStep.changeSpeech,
+        GuideStep.editPreview,
+        GuideStep.updatedDetail
+      }.contains(s.step);
 
-  bool get restoresResults => snapshot.step == GuideStep.queryResults ||
+  static bool isCanonicalPersonalEvent(EventModel event) =>
+      event.parentEventId == null &&
+      event.externalCalendarId == null &&
+      event.groupEventId == null &&
+      event.externalId == null &&
+      event.recurrenceRule == null;
+
+  bool get restoresResults =>
+      snapshot.step == GuideStep.queryResults ||
       snapshot.step == GuideStep.changeSpeech;
 
   bool get _alreadySaved {
@@ -42,11 +61,7 @@ class GuideRouteRecovery {
   String get location {
     switch (snapshot.step) {
       case GuideStep.savedDetail:
-        final savedLocalDate = snapshot.savedLocalDate;
-        if (savedLocalDate == null) throw StateError('missing_saved_date');
-        final localDate =
-            savedLocalDate.isUtc ? savedLocalDate.toLocal() : savedLocalDate;
-        return '${AppRoutes.calendar}?date=${localDate.year.toString().padLeft(4, '0')}-${localDate.month.toString().padLeft(2, '0')}-${localDate.day.toString().padLeft(2, '0')}';
+        return AppRoutes.home;
       case GuideStep.queryMic:
       case GuideStep.querySpeech:
         return AppRoutes.voice;
@@ -78,18 +93,25 @@ class GuideRouteRecovery {
     required Future<List<EventModel>> Function(String uid, String id) read,
   }) async {
     final s = coordinator.state.value;
-    if (!supports(s) || currentUid() != s.uid || !attachedToRoute()) return null;
+    if (!supports(s) || currentUid() != s.uid || !attachedToRoute()) {
+      return null;
+    }
     // A temporary fence uses no fabricated event identity.
     bool current() {
       final now = coordinator.state.value;
-      return attachedToRoute() && currentUid() == s.uid &&
-          now.uid == s.uid && now.version == s.version &&
-          now.sessionId == s.sessionId && now.revision == s.revision &&
-          now.serverRevision == s.serverRevision && now.step == s.step &&
+      return attachedToRoute() &&
+          currentUid() == s.uid &&
+          now.uid == s.uid &&
+          now.version == s.version &&
+          now.sessionId == s.sessionId &&
+          now.revision == s.revision &&
+          now.serverRevision == s.serverRevision &&
+          now.step == s.step &&
           now.createdEventId == s.createdEventId &&
           now.expectedUpdatedStartLocal == s.expectedUpdatedStartLocal &&
           now.run == GuideRun.active;
     }
+
     final events = await read(s.uid, s.createdEventId!);
     if (!current()) return null;
     final binding = GuideResultOrder.bind(guide: s, results: events);
@@ -98,7 +120,7 @@ class GuideRouteRecovery {
       throw StateError('bound_event_missing_duplicate_or_foreign');
     }
     final event = binding.ordered.first;
-    if (event.parentEventId != null || event.externalCalendarId != null) {
+    if (!isCanonicalPersonalEvent(event)) {
       throw StateError('bound_event_not_canonical_personal');
     }
     final request = GuideRouteRecovery(coordinator, s, event);

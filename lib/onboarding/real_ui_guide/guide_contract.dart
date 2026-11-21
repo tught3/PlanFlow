@@ -13,7 +13,9 @@ enum GuideStep {
   changeSpeech,
   editPreview,
   updatedDetail,
-  syncChoice,
+  completionConfirm,
+  syncChoice, // Persisted by versions that presented sync first.
+  syncChoiceConfirmed,
   completed,
   skipped
 }
@@ -43,8 +45,7 @@ enum GuideBackendAction {
 /// SaveObserved 의 서버 바인딩이 실패했을 때 남는 체크포인트 코드.
 /// 이 상태는 "일정은 저장됐지만 서버 바인딩 확인이 아직 없다"는 사실만
 /// 담고 있으며, 재시도 근거로만 쓰인다.
-const String guideCreatedCheckpointPendingCode =
-    'created_checkpoint_pending';
+const String guideCreatedCheckpointPendingCode = 'created_checkpoint_pending';
 
 /// QA 격리 빌드 전용: 실제 저장 응답은 확인됐지만 서버 바인딩 확인은
 /// 아직 없는 상태. 서버 영수증을 만들지 않으며, 이후 DetailObserved 에서
@@ -575,8 +576,15 @@ class UpdateObserved extends GuideSignal {
   final String operationId;
 }
 
-class SyncChoicePresented extends GuideSignal {
-  const SyncChoicePresented(
+class UpdatedDetailAcknowledged extends GuideSignal {
+  const UpdatedDetailAcknowledged(
+      {required super.uid,
+      required super.sessionId,
+      required super.expectedRevision});
+}
+
+class GuideCompletionConfirmed extends GuideSignal {
+  const GuideCompletionConfirmed(
       {required super.uid,
       required super.sessionId,
       required super.expectedRevision});

@@ -837,7 +837,12 @@ void main() {
         operationId: 'replay-update',
         persistedEvent: updatedEvent,
       ));
-      await guide.dispatch(SyncChoicePresented(
+      await guide.dispatch(UpdatedDetailAcknowledged(
+        uid: uid,
+        sessionId: replaySession,
+        expectedRevision: current().revision,
+      ));
+      await guide.dispatch(GuideCompletionConfirmed(
         uid: uid,
         sessionId: replaySession,
         expectedRevision: current().revision,

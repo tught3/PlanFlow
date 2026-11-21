@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
@@ -72,8 +73,17 @@ const _baseTexts = <String>{
 
 // Words a user must never see in a guide message.
 const _techTerms = <String>[
-  'revision', 'uid', 'session', 'StateError', 'Exception', 'null', 'fence',
-  'bound_event', 'QA', 'coordinator', 'recovery',
+  'revision',
+  'uid',
+  'session',
+  'StateError',
+  'Exception',
+  'null',
+  'fence',
+  'bound_event',
+  'QA',
+  'coordinator',
+  'recovery',
 ];
 
 Future<http.Response> Function(http.Request)? _handler;
@@ -202,7 +212,8 @@ void main() {
     final fresh = _newTexts(tester);
     final snack = find.byType(SnackBar).evaluate().isNotEmpty;
     expect(fresh.isNotEmpty || snack, isTrue,
-        reason: 'no visible feedback after tapping resume; texts=${_texts(tester)}');
+        reason:
+            'no visible feedback after tapping resume; texts=${_texts(tester)}');
     for (final t in fresh) {
       for (final term in _techTerms) {
         expect(t.contains(term), isFalse,
@@ -211,8 +222,7 @@ void main() {
     }
   }
 
-  testWidgets('(a) normal path navigates to /calendar?date=2026-10-20',
-      (tester) async {
+  testWidgets('(a) the bound read keeps saved detail on Home', (tester) async {
     final c = _Coordinator(_snapshot());
     addTearDown(c.state.dispose);
     _handler = (_) async => _ok();
@@ -221,8 +231,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(router.routeInformationProvider.value.uri.toString(),
-        '/calendar?date=2026-10-20');
+    expect(
+        router.routeInformationProvider.value.uri.toString(), AppRoutes.home);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -234,7 +244,8 @@ void main() {
       final expected = DateTime.utc(2026, 10, 20, 9);
       final c = _PreviewCoordinator(
           _snapshot().copyWith(
-              step: GuideStep.editPreview, clearExpectedUpdatedStartLocal: true),
+              step: GuideStep.editPreview,
+              clearExpectedUpdatedStartLocal: true),
           (before) => before.copyWith(
               expectedUpdatedStartLocal: expected,
               revision: before.revision + 1));
@@ -360,14 +371,14 @@ void main() {
     // Release the pending request so nothing leaks past the test.
     never.complete(http.Response('{}', 500));
     expect(enabled, isTrue,
-        reason: 'resume button still disabled 60s after tap (read has no timeout)');
+        reason:
+            'resume button still disabled 60s after tap (read has no timeout)');
     expect(fresh.isNotEmpty, isTrue,
         reason: 'no visible feedback 60s after tap; texts=$fresh');
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets(
-      '(d) isCurrent false after load: visible feedback and retry',
+  testWidgets('(d) isCurrent false after load: visible feedback and retry',
       (tester) async {
     final c = _FlipCoordinator(_snapshot());
     addTearDown(c.state.dispose);

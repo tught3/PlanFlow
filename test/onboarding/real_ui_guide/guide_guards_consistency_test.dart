@@ -1,3 +1,4 @@
+import 'package:planflow/core/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
@@ -113,16 +114,19 @@ void main() {
           findsOneWidget);
     });
 
-    test('recovery side: same multi-day row must not be rejected as identity '
+    test(
+        'recovery side: same multi-day row must not be rejected as identity '
         'issue (calendar accepts it)', () async {
       // Expected: consistent with calendar -> recovery request is produced.
       // Actual (H4): StateError bound_event_missing_duplicate_or_foreign.
       Object? error;
       GuideRouteRecovery? r;
       try {
-        r = await _load(_snap(GuideStep.savedDetail,
-            // banned-ok: Pinned date for a calendar boundary assertion.
-            savedLocalDate: DateTime(2030, 1, 2)), [multiDay]);
+        r = await _load(
+            _snap(GuideStep.savedDetail,
+                // banned-ok: Pinned date for a calendar boundary assertion.
+                savedLocalDate: DateTime(2030, 1, 2)),
+            [multiDay]);
       } catch (e) {
         error = e;
       }
@@ -144,7 +148,8 @@ void main() {
       expect(_kstYmd(eventInstant), expectedDate);
     });
 
-    test('local-saved path: savedLocalDate = EventModel.startAt parsed from '
+    test(
+        'local-saved path: savedLocalDate = EventModel.startAt parsed from '
         'offset string (guide_coordinator.dart:255 uses persistedEvent.startAt)',
         () async {
       final persisted = EventModel.fromJson({
@@ -154,16 +159,17 @@ void main() {
         'start_at': kstIso,
       });
       final r = GuideRouteRecovery(
-          _ReadOnlyCoordinator(_snap(GuideStep.savedDetail,
-              savedLocalDate: persisted.startAt)),
+          _ReadOnlyCoordinator(
+              _snap(GuideStep.savedDetail, savedLocalDate: persisted.startAt)),
           _snap(GuideStep.savedDetail, savedLocalDate: persisted.startAt),
           persisted);
-      expect(r.location, '/calendar?date=$expectedDate',
+      expect(r.location, AppRoutes.home,
           reason: 'H5(local): startAt isUtc=${persisted.startAt?.isUtc} '
               'value=${persisted.startAt}');
     });
 
-    test('server path: saved_local_date offset and UTC strings via '
+    test(
+        'server path: saved_local_date offset and UTC strings via '
         'DateTime.tryParse (grant service _readDate)', () {
       for (final input in [kstIso, utcIso]) {
         final parsed = DateTime.tryParse(input)!;
@@ -173,8 +179,7 @@ void main() {
           s,
           const EventModel(id: 'saved', userId: 'u', title: 't'),
         );
-        expect(r.location, '/calendar?date=$expectedDate',
-            reason: 'H5(server): input=$input');
+        expect(r.location, AppRoutes.home, reason: 'H5(server): input=$input');
       }
     });
 
@@ -182,9 +187,9 @@ void main() {
         () {
       final parsed = DateTime.tryParse(expectedDate)!;
       final s = _snap(GuideStep.savedDetail, savedLocalDate: parsed);
-      final r = GuideRouteRecovery(
-          _ReadOnlyCoordinator(s), s, const EventModel(id: 'saved', userId: 'u', title: 't'));
-      expect(r.location, '/calendar?date=$expectedDate');
+      final r = GuideRouteRecovery(_ReadOnlyCoordinator(s), s,
+          const EventModel(id: 'saved', userId: 'u', title: 't'));
+      expect(r.location, AppRoutes.home);
     });
   });
 }

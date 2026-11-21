@@ -1,183 +1,208 @@
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
-import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_route_recovery.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
-import 'package:planflow/screens/calendar/calendar_screen.dart';
+import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
 import 'package:planflow/widgets/guided_anchor.dart';
 import 'package:planflow/widgets/guided_coachmark_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// H1 reproduction: the guide navigates to `/calendar?date=YYYY-MM-DD` from the
-// saved detail. router.dart builds ShellScreen(initialCalendarDate) and
-// shell_screen.dart builds CalendarScreen(initialDate: ...) WITHOUT
-// suppressInitialDaySheet (default false), so CalendarScreen opens the
-// day-events modal sheet after the first load. The sheet makes the main route
-// non-current, which withdraws the `calendar.saved` anchor.
-//
-// Harness limits (reported, not hidden): ShellScreen itself needs Supabase/auth
-// and is not instantiated. Instead the exact CalendarScreen constructor call
-// that ShellScreen._buildTabChild makes (initialDate only, suppress default,
-// briefingIsMorning null) is placed behind a real GoRouter `/calendar?date=`
-// route that mirrors router.dart. Data comes from an injected fake repository.
-// Synthetic injected ports only, not native or cloud evidence.
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _Guide implements GuideCoordinator {
+  _Guide(EventModel saved)
+      : state = ValueNotifier(GuideSnapshot(
+          uid: 'u',
+          revision: 1,
+          serverRevision: 1,
+          version: 'v',
+          sessionId: 's',
+          run: GuideRun.active,
+          step: GuideStep.savedDetail,
+          createdEventId: saved.id,
+          savedLocalDate: saved.startAt,
+        ));
+
   @override
-  final state = ValueNotifier(GuideSnapshot(
-      uid: 'u',
-      revision: 1,
-      serverRevision: 1,
-      version: 'v',
-      sessionId: 's',
-      run: GuideRun.active,
-      step: GuideStep.savedDetail,
-      createdEventId: 'saved',
-      // banned-ok: Fixed event fixture for the guide assertion.
-      savedLocalDate: DateTime(2030, 1, 2)));
+  final ValueNotifier<GuideSnapshot> state;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _Repo extends EventRepository {
   _Repo(this.rows);
+
   final List<EventModel> rows;
+  final reads = <(String?, String)>[];
+
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => rows;
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    reads.add((userId, eventId));
+    return rows.singleWhere((event) => event.id == eventId);
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-EventModel _saved() => EventModel(
-    id: 'saved',
-    userId: 'u',
-    title: 'Actual saved row',
-    // banned-ok: Fixed event fixture for the guide assertion.
-    startAt: DateTime(2030, 1, 2, 10),
-    // banned-ok: Fixed event fixture for the guide assertion.
-    endAt: DateTime(2030, 1, 2, 11));
-
-Finder _sheet() =>
-    find.byKey(const ValueKey('calendar-day-events-draggable-sheet'));
-Finder _savedAnchor() => find.byWidgetPredicate(
-    (w) => w is GuidedAnchor && w.id == 'calendar.saved',
-    skipOffstage: false);
-Finder _overlay() => find.byType(GuidedCoachmarkOverlay);
-Finder _waitingPanel() => find.textContaining('안내할 실제 화면을 기다리고 있어요');
-
-DateTime? _parse(String? raw) =>
-    raw == null || raw.trim().isEmpty ? null : DateTime.tryParse(raw.trim());
-
-/// Expected behavior: after the guide lands on the calendar day, either no day
-/// sheet covers the calendar, or (if a sheet is shown) the `calendar.saved`
-/// anchor is still current/visible in the registry and the coachmark renders.
-void _expectGuideStillCoaches(WidgetTester tester, String label) {
-  final sheetOpen = _sheet().evaluate().isNotEmpty;
-  final anchorMounted = _savedAnchor().evaluate().isNotEmpty;
-  final anchorContext =
-      realUiGuideAnchorRegistry.keyFor('calendar.saved')?.currentContext;
-  final anchorIsCurrent = anchorContext != null &&
-      anchorContext.mounted &&
-      ModalRoute.of(anchorContext)?.isCurrent == true;
-  final overlayRendered = _overlay().evaluate().isNotEmpty;
-  final waitingPanel = _waitingPanel().evaluate().isNotEmpty;
-  // Not vacuous: the saved row must really be on screen (guards against a
-  // load failure / empty screen passing), and the anchor must be mounted,
-  // current, with the coachmark rendered and no "waiting" fallback panel,
-  // whether or not a day sheet is open.
-  expect(find.text('Actual saved row', skipOffstage: false), findsWidgets,
-      reason: '$label: saved row is not on screen (load failed/empty screen)');
-  expect(anchorMounted, isTrue,
-      reason: '$label: calendar.saved anchor is not mounted '
-          '(sheetOpen=$sheetOpen)');
-  expect(anchorIsCurrent, isTrue,
-      reason: '$label: calendar.saved anchor is not current/visible in the '
-          'registry (sheetOpen=$sheetOpen, anchorMounted=$anchorMounted)');
-  expect(overlayRendered, isTrue,
-      reason: '$label: no GuidedCoachmarkOverlay is rendered '
-          '(sheetOpen=$sheetOpen, waitingPanel=$waitingPanel)');
-  expect(waitingPanel, isFalse,
-      reason: '$label: guide fell back to the missing-target waiting panel');
-}
+EventModel _event(String id, DateTime start) => EventModel(
+      id: id,
+      userId: 'u',
+      title: 'Schedule $id',
+      startAt: start,
+      endAt: start.add(const Duration(hours: 1)),
+    );
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://qa.example',
+      anonKey: 'test-only-key',
+      httpClient: MockClient(
+          (request) async => http.Response('[]', 200, request: request)),
+    );
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     EventPrefetchService().invalidate();
   });
 
-  Widget hosted(_Guide guide, Widget? child) => Stack(fit: StackFit.expand, children: [
-        if (child != null) child,
-        RealUiGuideCoachmark(coordinator: guide),
+  for (final (beyondTopThree, recurring, duplicate) in [
+    (false, false, false),
+    (true, false, false),
+    (false, true, false),
+    (false, false, true),
+  ]) {
+    final position = beyondTopThree ? 'fourth upcoming' : 'listed today';
+    final description = duplicate
+        ? 'a hidden duplicate ID rules out the otherwise visible Home card'
+        : recurring
+            ? 'a recurring saved ID never receives the Home guide anchor'
+            : 'saved detail reveals and opens the exact $position Home card';
+    testWidgets(description, (tester) async {
+      // banned-ok: Fixed clock for today and upcoming schedule fixtures.
+      final now = DateTime(2030, 1, 2, 9);
+      final soon = now.add(const Duration(hours: 1));
+      final saved = _event(
+        'saved',
+        beyondTopThree ? soon.add(const Duration(days: 2)) : soon,
+      ).copyWith(recurrenceRule: recurring ? 'FREQ=DAILY' : null);
+      final repo = _Repo([
+        ...List.generate(3, (i) {
+          final lead = beyondTopThree ? 24 + i : 1 + i;
+          return _event('other-$i', soon.add(Duration(hours: lead)));
+        }),
+        saved,
+        if (duplicate)
+          _event(saved.id, soon.subtract(const Duration(days: 45))),
       ]);
+      final guide = _Guide(saved);
+      addTearDown(guide.state.dispose);
 
-  testWidgets(
-      'CalendarScreen(initialDate) with default suppressInitialDaySheet keeps '
-      'the saved coachmark', (tester) async {
-    final guide = _Guide();
-    final repo = _Repo([_saved()]);
-    try {
-      await tester.pumpWidget(GuideScope(
-          coordinator: guide,
-          child: MaterialApp(
-            builder: (context, child) => hosted(guide, child),
-            home: CalendarScreen(
-                // Same arguments ShellScreen passes: initialDate only.
-                // banned-ok: Fixed event fixture for the guide assertion.
-                initialDate: DateTime(2030, 1, 2),
-                eventRepository: repo,
-                userId: 'u'),
-          )));
-      await tester.pumpAndSettle();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pumpAndSettle();
-      _expectGuideStillCoaches(tester, 'direct');
-    } finally {
-      await tester.pumpWidget(const SizedBox.shrink());
-    }
-  });
+      final router = GoRouter(initialLocation: AppRoutes.calendar, routes: [
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (_, __) => const Scaffold(body: Text('Calendar')),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (_, __) => HomeScreen(
+            eventRepository: repo,
+            userIdOverride: 'u',
+            loadHeaderSummary: false,
+            nowProvider: () => now,
+          ),
+        ),
+        GoRoute(
+          path: '${AppRoutes.eventDetail}/:id',
+          builder: (_, state) => Scaffold(
+            body: Text('Detail ${state.pathParameters['id']}'),
+          ),
+        ),
+      ]);
+      addTearDown(router.dispose);
 
-  testWidgets(
-      'real GoRouter go(/calendar?date=) from saved detail keeps the saved '
-      'coachmark', (tester) async {
-    final guide = _Guide();
-    final repo = _Repo([_saved()]);
-    final router = GoRouter(initialLocation: '/', routes: [
-      GoRoute(
-          path: '/',
-          builder: (context, state) =>
-              const Scaffold(body: Text('saved detail placeholder'))),
-      // Mirrors router.dart:166-172 + shell_screen.dart:1235-1242.
-      GoRoute(
-          path: '/calendar',
-          builder: (context, state) => CalendarScreen(
-                key: ValueKey<String>('calendar-${state.uri.query}'),
-                initialDate: _parse(state.uri.queryParameters['date']),
-                eventRepository: repo,
-                userId: 'u',
-              )),
-    ]);
-    try {
       await tester.pumpWidget(GuideScope(
+        coordinator: guide,
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (_, child) => Stack(fit: StackFit.expand, children: [
+            child!,
+            RealUiGuideCoachmark(coordinator: guide),
+          ]),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      if (recurring || duplicate) {
+        router.go(AppRoutes.home);
+      } else {
+        final recovery = await GuideRouteRecovery.load(
           coordinator: guide,
-          child: MaterialApp.router(
-            routerConfig: router,
-            builder: (context, child) => hosted(guide, child),
-          )));
-      await tester.pumpAndSettle();
-      router.go('/calendar?date=2030-01-02');
-      await tester.pumpAndSettle();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pumpAndSettle();
-      expect(find.byType(CalendarScreen), findsOneWidget);
-      _expectGuideStillCoaches(tester, 'router');
-    } finally {
+          currentUid: () => 'u',
+          attachedToRoute: () => true,
+          read: (_, __) async => [saved],
+        );
+        router.go(recovery!.location);
+      }
+      // The highlighted card pulses while the guide remains on this step.
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(router.routeInformationProvider.value.uri.path, AppRoutes.home);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      final anchor = find.byWidgetPredicate(
+        (widget) => widget is GuidedAnchor && widget.id == 'home.saved',
+      );
+      if (recurring || duplicate) {
+        expect(anchor, findsNothing);
+        expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is GuidedAnchor && widget.id == 'home.saved.retry',
+            ),
+            findsOneWidget);
+        expect(guide.state.value.step, GuideStep.savedDetail);
+        expect(repo.reads, isEmpty);
+        await tester.pumpWidget(const SizedBox.shrink());
+        return;
+      }
+      final anchoredTitle =
+          find.descendant(of: anchor, matching: find.text(saved.title));
+      expect(anchor, findsOneWidget);
+      expect(anchoredTitle.hitTestable(), findsOneWidget);
+      expect(find.text(saved.title), findsOneWidget);
+      expect(
+        tester
+            .widget<GuidedCoachmarkOverlay>(
+              find.byType(GuidedCoachmarkOverlay),
+            )
+            .targetId,
+        'home.saved',
+      );
+      if (beyondTopThree) expect(repo.reads, [('u', saved.id)]);
+
+      await tester.tap(anchoredTitle);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Detail saved'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
-    }
-  });
+    });
+  }
 }

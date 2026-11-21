@@ -122,6 +122,37 @@ void main() {
     }
   });
 
+  testWidgets('recurring bound event cannot acknowledge saved detail',
+      (tester) async {
+    final saved = EventModel(
+      id: 'saved-guide',
+      userId: 'guide-owner',
+      title: 'Recurring schedule',
+      // banned-ok: Fixed fixture for the guide assertion.
+      startAt: DateTime(2030, 1, 2, 10),
+      recurrenceRule: 'FREQ=DAILY',
+    );
+    final guide = _DetailGuide(savedEventId: saved.id, uid: saved.userId);
+    await tester.pumpWidget(MaterialApp(
+      home: GuideScope(
+        coordinator: guide,
+        child: EventDetailScreen(
+          event: saved,
+          eventRepository: _DetailReadbackRepository(saved),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text(saved.title), findsWidgets);
+    expect(
+        find.byWidgetPredicate(
+          (widget) => widget is GuidedAnchor && widget.id == 'saved.confirm',
+        ),
+        findsNothing);
+    expect(guide.ackCalls, 0);
+    expect(guide.state.value.step, GuideStep.savedDetail);
+  });
+
   testWidgets('unconfirmed readback does not claim saved detail',
       (tester) async {
     final saved = EventModel(
@@ -237,7 +268,7 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(guide.syncChoiceCalls, 1);
-      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(guide.state.value.step, GuideStep.completionConfirm);
       expect(find.text('변경된 시간 확인'), findsNothing);
       expect(find.text('Home tab'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -365,7 +396,7 @@ void main() {
       await tester.tap(find.text('변경된 시간 확인'));
       await tester.pump();
       expect(guide.syncChoiceCalls, 1);
-      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(guide.state.value.step, GuideStep.completionConfirm);
       expect(find.text('Home tab'), findsNothing);
       binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -388,7 +419,7 @@ void main() {
           replacement == null ? findsOneWidget : findsNothing);
       expect(find.byType(EventDetailScreen),
           replacement == null ? findsNothing : findsOneWidget);
-      expect(guide.state.value.step, GuideStep.syncChoice);
+      expect(guide.state.value.step, GuideStep.completionConfirm);
       expect(guide.syncChoiceCalls, 1);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -999,11 +1030,11 @@ class _DetailGuide with WidgetsBindingObserver implements GuideCoordinator {
   @override
   Future<GuideSnapshot> dispatch(GuideSignal signal) async {
     if (signal is DetailObserved) ackCalls++;
-    if (signal is SyncChoicePresented) {
+    if (signal is UpdatedDetailAcknowledged) {
       syncChoiceCalls++;
       final current = state.value;
       state.value = current.copyWith(
-        step: GuideStep.syncChoice,
+        step: GuideStep.completionConfirm,
         revision: current.revision + 1,
       );
       await syncChoiceSave;

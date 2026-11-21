@@ -2695,7 +2695,8 @@ void registerConfirmScreenGuideSaveStageTests({
           gptService: gptService,
           backend: _FakeConfirmBackend(),
           eventRepository: eventRepository ?? _FakeEventRepository(),
-          notificationService: notificationService ?? _FakeNotificationService(),
+          notificationService:
+              notificationService ?? _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
           locationLookupService: _EmptyLocationLookupService(),
           permissionService: permissionService ?? _DeniedPermissionService(),
@@ -2708,8 +2709,7 @@ void registerConfirmScreenGuideSaveStageTests({
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final coordinator =
-          await save_stage_fixture.bootGuideAtCorrectAndSave();
+      final coordinator = await save_stage_fixture.bootGuideAtCorrectAndSave();
       await tester.pumpWidget(
           _testApp(screen(_parsedSchedule()), guideCoordinator: coordinator));
       await _pumpGuideFrames(tester);
@@ -2722,15 +2722,16 @@ void registerConfirmScreenGuideSaveStageTests({
       // 준비된 폼은 확인할 제목을 강조하되, 저장 동작은 스크롤 전에는
       // 강조하지 않고 안내가 목록을 대신 스크롤하지 않는다.
       expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget);
-      final initialOverlay =
-          tester.widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      final initialOverlay = tester
+          .widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
       expect(initialOverlay.targetId, 'confirm.title');
       expect(initialOverlay.pulseTargetIds, isEmpty,
-          reason: 'action controls stay unhighlighted until a real user scroll');
+          reason:
+              'action controls stay unhighlighted until a real user scroll');
       expect(
           initialOverlay.additionalTargetIds,
-          isNot(contains(anyOf(
-              'confirm.critical', 'confirm.strong', 'confirm.save'))));
+          isNot(contains(
+              anyOf('confirm.critical', 'confirm.strong', 'confirm.save'))));
       _expectGuideHoleOn(tester, 'confirm.title');
       expect(_confirmScrollOffset(tester), 0);
 
@@ -2767,15 +2768,16 @@ void registerConfirmScreenGuideSaveStageTests({
       // Review fields are emphasized when parsing is ready. Action controls
       // remain unhighlighted until the user scrolls the list by hand.
       expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget);
-      final initialOverlay =
-          tester.widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      final initialOverlay = tester
+          .widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
       expect(initialOverlay.targetId, 'confirm.title');
       expect(initialOverlay.pulseTargetIds, isEmpty,
-          reason: 'action controls stay unhighlighted until a real user scroll');
+          reason:
+              'action controls stay unhighlighted until a real user scroll');
       expect(
           initialOverlay.additionalTargetIds,
-          isNot(contains(anyOf(
-              'confirm.critical', 'confirm.strong', 'confirm.save'))));
+          isNot(contains(
+              anyOf('confirm.critical', 'confirm.strong', 'confirm.save'))));
       _expectGuideHoleOn(tester, 'confirm.title');
       expect(_confirmScrollOffset(tester), 0,
           reason: 'the guide must not scroll the list for the user');
@@ -2935,15 +2937,16 @@ void registerConfirmScreenGuideSaveStageTests({
       expect(find.text('AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.'), findsNothing);
       expect(find.byType(GuidedCoachmarkOverlay), findsOneWidget,
           reason: 'ready review fields should be highlighted before action');
-      final initialOverlay =
-          tester.widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
+      final initialOverlay = tester
+          .widget<GuidedCoachmarkOverlay>(find.byType(GuidedCoachmarkOverlay));
       expect(initialOverlay.targetId, 'confirm.title');
       expect(initialOverlay.pulseTargetIds, isEmpty,
-          reason: 'action controls stay unhighlighted until a real user scroll');
+          reason:
+              'action controls stay unhighlighted until a real user scroll');
       expect(
           initialOverlay.additionalTargetIds,
-          isNot(contains(anyOf(
-              'confirm.critical', 'confirm.strong', 'confirm.save'))));
+          isNot(contains(
+              anyOf('confirm.critical', 'confirm.strong', 'confirm.save'))));
       _expectGuideHoleOn(tester, 'confirm.title');
       expect(_confirmScrollOffset(tester), 0,
           reason: 'the guide must never scroll the list for the user');
@@ -3040,6 +3043,7 @@ void registerConfirmScreenGuideSaveStageTests({
       expect(persisted.locationLng, isNull);
       expect(coordinator.state.value.createdEventId, 'event-1');
       expect(coordinator.state.value.step, GuideStep.savedDetail);
+      expect(find.text('홈'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -3107,8 +3111,7 @@ void registerConfirmScreenGuideSaveStageTests({
       await tester.pump();
     });
 
-    testWidgets('guide save requires a nonempty place name',
-        (tester) async {
+    testWidgets('guide save requires a nonempty place name', (tester) async {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);

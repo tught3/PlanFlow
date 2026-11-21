@@ -33,6 +33,7 @@ import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/location_resolution_status.dart';
 import '../../widgets/guided_anchor.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
+import '../../onboarding/real_ui_guide/guide_route_recovery.dart';
 import '../../onboarding/real_ui_guide/guide_instruction_text.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
@@ -402,13 +403,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final coordinator = GuideScope.maybeOf(context)!;
     final state = coordinator.state.value;
     if (state.step != GuideStep.updatedDetail) return;
-    await coordinator.dispatch(SyncChoicePresented(
+    await coordinator.dispatch(UpdatedDetailAcknowledged(
       uid: state.uid,
       sessionId: state.sessionId!,
       expectedRevision: state.revision,
     ));
     if (!mounted) return;
-    // The Home shell resumes a sync choice paused while this write was pending.
+    // Home can resume the completion step after a background pause.
     final current = coordinator.state.value;
     if (ModalRoute.of(context)?.isCurrent == true &&
         identical(GuideScope.maybeOf(context), coordinator) &&
@@ -417,7 +418,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         current.sessionId == state.sessionId &&
         current.createdEventId == state.createdEventId &&
         current.isReplay == state.isReplay &&
-        current.step == GuideStep.syncChoice &&
+        current.step == GuideStep.completionConfirm &&
         (current.run == GuideRun.active ||
             (current.run == GuideRun.paused &&
                 current.pauseReason == GuidePauseReason.background))) {
@@ -442,24 +443,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         state.createdEventId == event.id &&
         event.id.trim().isNotEmpty &&
         event.userId == state.uid &&
+        GuideRouteRecovery.isCanonicalPersonalEvent(event) &&
         _guideReadbackReady &&
         !_isLoading;
   }
 
   Future<void> _handleGuideDepartureAck() async {
     final event = _event;
-    if (event == null || !mounted) return;
+    if (event == null || !mounted || !_guideAckVisible()) return;
     final coordinator = GuideScope.maybeOf(context);
     if (coordinator == null) return;
     final state = coordinator.state.value;
-    if (state.uid.isEmpty ||
-        state.sessionId == null ||
-        state.run != GuideRun.active ||
-        state.step != GuideStep.savedDetail ||
-        state.createdEventId == null ||
-        state.createdEventId != event.id) {
-      return;
-    }
+    if (state.sessionId == null) return;
     final preparationResolved = _smartPreparationAlarms.isNotEmpty;
     // The departure prompt only resolves if the user actually answers it;
     // we don't fabricate an ETA. Until the existing departure dialog runs
