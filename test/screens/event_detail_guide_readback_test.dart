@@ -1,14 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/models/pre_action_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_instruction_text.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/screens/event/event_detail_screen.dart';
+import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/widgets/guided_anchor.dart';
+import 'package:planflow/widgets/guided_coachmark_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -92,6 +102,83 @@ void main() {
     );
     expect(_anchor('saved.departure'), findsOneWidget);
     expect(find.text('최신 정보 확인'), findsNothing);
+  });
+
+  testWidgets('saved detail shows guidance on its first frame', (tester) async {
+    final saved = _saved();
+    final readback = Completer<EventModel?>();
+    final guide = _Guide(savedEventId: saved.id, uid: saved.userId);
+    addTearDown(guide.state.dispose);
+    final router = GoRouter(initialLocation: AppRoutes.home, routes: [
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (_, __) => HomeScreen(
+          userIdOverride: saved.userId,
+          eventRepository: _Repo.value(saved),
+          smartPreparationAlarmService:
+              const _EmptySmartPreparationAlarmService(),
+          loadHeaderSummary: false,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.eventDetailWithId,
+        builder: (_, state) => EventDetailScreen(
+          event: state.extra as EventModel,
+          eventId: state.pathParameters['eventId'],
+          eventRepository: _Repo.pending(readback.future),
+          smartPreparationAlarmService:
+              const _EmptySmartPreparationAlarmService(),
+        ),
+      ),
+    ]);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide)],
+      child: MaterialApp.router(
+        routerConfig: router,
+        builder: (_, child) => RootGuideScope(
+          uid: saved.userId,
+          router: router,
+          backButtonDispatcher: router.backButtonDispatcher,
+          bindRuntime: (_) => Object(),
+          unbindRuntime: (_) {},
+          child: child!,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final savedCard = find.descendant(
+      of: _anchor('home.saved'),
+      matching: find.text(saved.title),
+    );
+    expect(savedCard.hitTestable(), findsOneWidget);
+    await tester.tap(savedCard);
+    await tester.pump();
+
+    final detail = find.byType(EventDetailScreen);
+    // Allow Navigator to insert the new route without advancing its animation.
+    if (detail.evaluate().isEmpty) await tester.pump(Duration.zero);
+    expect(detail, findsOneWidget);
+    final route = ModalRoute.of(tester.element(detail))!;
+    expect(route.settings, isA<MaterialPage<dynamic>>());
+    expect(route.transitionDuration, greaterThan(Duration.zero));
+    expect(route.animation!.status, AnimationStatus.forward);
+
+    final coachmark = find.byType(GuidedCoachmarkOverlay);
+    expect(coachmark, findsOneWidget);
+    expect(find.text(savedDetailGuideTitle), findsOneWidget);
+    expect(find.descendant(of: coachmark, matching: find.byType(AbsorbPointer)),
+        findsOneWidget);
+    expect(_anchor('saved.confirm'), findsNothing);
+
+    readback.complete(saved);
+    await tester.pumpAndSettle();
+    expect(coachmark, findsOneWidget);
+    expect(find.text(savedDetailGuideTitle), findsOneWidget);
+    expect(find.text('준비·출발 안내 확인').hitTestable(), findsOneWidget);
+    expect(find.descendant(of: coachmark, matching: find.byType(AbsorbPointer)),
+        findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   group('(b) fetchEvent throws', () {
@@ -181,21 +268,37 @@ class _Guide implements GuideCoordinator {
   Future<GuideSnapshot> dispatch(GuideSignal signal) async => state.value;
 
   @override
+  Future<GuideSnapshot> start({required String uid}) async => state.value;
+
+  @override
+  void suspend(GuidePauseReason reason) {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _Repo extends EventRepository {
-  _Repo.value(this._value) : _throws = false;
+  _Repo.value(this._value)
+      : _throws = false,
+        _pending = null;
+  _Repo.pending(this._pending)
+      : _throws = false,
+        _value = null;
   _Repo.throwing()
       : _value = null,
-        _throws = true;
+        _throws = true,
+        _pending = null;
   final EventModel? _value;
   final bool _throws;
+  final Future<EventModel?>? _pending;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async => const [];
 
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
     if (_throws) throw StateError('readback failed');
-    return _value;
+    return _pending == null ? _value : await _pending;
   }
 
   @override

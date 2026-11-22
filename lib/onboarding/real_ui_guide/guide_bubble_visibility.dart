@@ -1,6 +1,29 @@
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/widgets.dart';
 
+import 'guide_contract.dart';
+
+/// A visible route is handling progress feedback for this coordinator.
+final guideSaveProgress = ValueNotifier<GuideSaveProgress?>(null);
+
+class GuideSaveProgress {
+  const GuideSaveProgress(this.coordinator, this.route);
+
+  final GuideCoordinator coordinator;
+  final ModalRoute<dynamic> route;
+}
+
+VoidCallback beginGuideSaveProgress(
+    GuideCoordinator coordinator, ModalRoute<dynamic> route) {
+  final progress = GuideSaveProgress(coordinator, route);
+  guideSaveProgress.value = progress;
+  return () {
+    if (identical(guideSaveProgress.value, progress)) {
+      guideSaveProgress.value = null;
+    }
+  };
+}
+
 /// 말하기 연습 중에는 안내 말풍선이 음성 원문을 가리지 않도록 잠시 숨긴다.
 ///
 /// 사용자가 실제로 말하는 동안 무엇이 인식되고 지워지는지 확인할 수 있어야

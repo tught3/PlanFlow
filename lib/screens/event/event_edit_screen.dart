@@ -49,8 +49,11 @@ import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 import '../../widgets/schedule_save_scope_card.dart';
 import '../../widgets/guided_anchor.dart';
+import '../../widgets/schedule_progress_overlay.dart';
+import '../../onboarding/real_ui_guide/guide_bubble_visibility.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_guards.dart';
+import '../../onboarding/real_ui_guide/guide_instruction_text.dart';
 import '../../onboarding/real_ui_guide/guide_providers.dart';
 import '../../onboarding/real_ui_guide/guide_scope.dart';
 
@@ -371,6 +374,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   EventModel? _loadedEvent;
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _isSavingGuideEdit = false;
   bool _guideAlarmPermissionInFlight = false;
   bool _isLookingUpLocation = false;
   bool _endEditedByUser = false;
@@ -1817,7 +1821,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _guideAlarmPermissionInFlight = false;
     }
     if (!checkBeforeWrite(snapshot)) return;
-    setState(() => _isSaving = true);
+    final editorRoute = ModalRoute.of(context);
+    final endGuideSaveProgress = editorRoute == null
+        ? null
+        : beginGuideSaveProgress(coordinator, editorRoute);
+    setState(() {
+      _isSaving = true;
+      _isSavingGuideEdit = true;
+    });
 
     Future<void> saveWithCurrentGuide() async {
       if (widget.eventRepository == null && !AppEnv.isSupabaseReady) {
@@ -1998,7 +2009,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
         }
       });
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      endGuideSaveProgress?.call();
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _isSavingGuideEdit = false;
+        });
+      }
     }
   }
 
@@ -2922,18 +2939,40 @@ class _EventEditScreenState extends State<EventEditScreen> {
       );
 
   Widget _buildContent(BuildContext context) {
-    if (widget.initialGuideStartLocal != null) {
-      return _buildEditor(context, guidedEdit: true);
-    }
+    final guideRoute = widget.initialGuideStartLocal != null;
     if (context.getInheritedWidgetOfExactType<UncontrolledProviderScope>() ==
         null) {
-      return _buildEditor(context, guidedEdit: false);
+      return _buildEditor(context, guidedEdit: guideRoute);
     }
     return Consumer(
       builder: (context, ref, child) => ValueListenableBuilder<GuideSnapshot>(
         valueListenable: ref.watch(realUiGuideCoordinatorProvider).state,
-        builder: (context, state, child) => _buildEditor(context,
-            guidedEdit: state.step == GuideStep.editPreview),
+        builder: (context, state, child) {
+          final isCurrent = ModalRoute.isCurrentOf(context) != false;
+          final preview = _guideEditPreviewState(state);
+          final showsInlineGuide = isCurrent &&
+              GuideScope.maybeOf(context) != null &&
+              preview?.createdEventId != null &&
+              preview?.createdEventId == _persistedEventId;
+          return Stack(fit: StackFit.expand, children: [
+            _buildEditor(context,
+                guidedEdit: guideRoute || state.step == GuideStep.editPreview),
+            if (showsInlineGuide)
+              GuidedAnchor(
+                id: 'edit.inlineGuide',
+                registry: realUiGuideAnchorRegistry,
+                child: _isSavingGuideEdit
+                    ? const ScheduleProgressOverlay(
+                        dark: true, message: '일정을 저장하고 있어요.')
+                    : GuideEditPreviewCoachmark(
+                        registry: realUiGuideAnchorRegistry,
+                        protectBeforeTargetReady: true),
+              )
+            else if (_isSavingGuideEdit && isCurrent)
+              const ScheduleProgressOverlay(
+                  dark: true, message: '일정을 저장하고 있어요.'),
+          ]);
+        },
       ),
     );
   }
