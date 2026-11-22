@@ -15,8 +15,10 @@ import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart'
 import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_local_backend.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
+import 'package:planflow/services/app_feedback_service.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/guide_quota_adapter.dart';
@@ -27,6 +29,7 @@ import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/real_ui_guide_grant_service.dart';
 import 'package:planflow/widgets/guided_anchor.dart';
 import 'package:planflow/widgets/guided_coachmark_overlay.dart';
+import 'package:planflow/widgets/schedule_progress_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _uid = 'guide-step2-user';
@@ -92,6 +95,42 @@ void main() {
     _expectVisibleNotice(tester, '반복하지 않는 개인 일정만', coachmark: true);
     await recurring.expectNoWrite();
     await recurring.unmount(tester);
+
+    final ordinary = await _SaveFixture.mount(tester, guided: false);
+    await tester.ensureVisible(ordinary.saveButton);
+    await tester.pump();
+    await tester.tap(ordinary.saveButton);
+    await _pumpUntil(tester, () => find.text('테스트 일정 목록').evaluate().isNotEmpty,
+        'Ordinary saves still navigate to the calendar');
+    expect(ordinary.calendarBuilds, greaterThan(0));
+    expect(ordinary.repository.savedEvents, hasLength(1));
+    await ordinary.unmount(tester);
+
+    final ended = _EndedSaveGuide();
+    addTearDown(ended.dispose);
+    for (final coordinator in <GuideCoordinator?>[null, ended]) {
+      final pending = await _SaveFixture.mount(
+        tester,
+        guided: false,
+        pending: true,
+        pendingCoordinator: coordinator,
+      );
+      await tester.ensureVisible(pending.saveButton);
+      await tester.pump();
+      await tester.tap(pending.saveButton);
+      await _pumpUntil(tester, () => _notice.evaluate().isNotEmpty,
+          'A lost guide must display the save recovery message');
+      _expectVisibleNotice(tester, '로그인 또는 안내 세션이 바뀌어 저장하지 않았어요.',
+          coachmark: false);
+      expect(pending.repository.createCalls, 0);
+      expect(pending.repository.savedEvents, isEmpty);
+      expect(pending.calendarBuilds, 0);
+      await pending.unmount(tester);
+    }
+
+    final interrupted = await _SaveFixture.mount(tester, pending: true);
+    await _verifyPendingRetryAfterTermination(tester, interrupted);
+    await interrupted.unmount(tester);
   });
 }
 
@@ -105,9 +144,16 @@ Future<void> _verifySave(WidgetTester tester, _SaveFixture fixture) async {
   await tester.tapAt(buttonCenter);
   await _pumpUntil(tester, () => fixture.repository.createCalls > 0,
       'The actual save tap should reach the repository');
+  await tester.pump();
   expect(fixture.repository.createCalls, 1);
   expect(fixture.repository.savedEvents, hasLength(1));
   expect(fixture.guide.state.value.step, GuideStep.correctAndSave);
+  expect(
+      tester
+          .widget<ScheduleProgressOverlay>(find.byType(ScheduleProgressOverlay))
+          .dark,
+      isTrue);
+  expect(fixture.calendarBuilds, 0);
 
   // The write has happened, but the repository has not returned its ID yet.
   await tester.tapAt(buttonCenter);
@@ -119,8 +165,11 @@ Future<void> _verifySave(WidgetTester tester, _SaveFixture fixture) async {
       tester,
       () => fixture.guide.state.value.step == GuideStep.savedDetail,
       'The real local backend should accept the saved event');
-  await _pumpUntil(tester, () => find.text('테스트 일정 목록').evaluate().isNotEmpty,
-      'ConfirmScreen should leave the create form after accepting the save');
+  await _pumpUntil(tester, () => find.text('테스트 홈').evaluate().isNotEmpty,
+      'ConfirmScreen should go directly Home after accepting the guide save');
+  expect(fixture.calendarBuilds, 0,
+      reason: 'The calendar must not build even during the transition');
+  expect(find.byType(ScheduleProgressOverlay), findsNothing);
 
   final event = fixture.repository.savedEvents.single;
   final checkpoint = await fixture.readProgress();
@@ -250,6 +299,32 @@ Future<void> _verifyChangedSaveContext(
   await fixture.expectNoWrite();
 }
 
+Future<void> _verifyPendingRetryAfterTermination(
+    WidgetTester tester, _SaveFixture fixture) async {
+  final createReply = fixture.repository.createReply = Completer<void>();
+  await tester.tap(fixture.saveButton);
+  await _pumpUntil(tester, () => fixture.repository.createCalls == 1,
+      'The repository writes before it returns the event ID');
+  expect(fixture.repository.savedEvents, hasLength(1));
+
+  await fixture.guide.terminate(GuideExit.skip);
+  expect(fixture.guide.state.value.run, GuideRun.terminal);
+  createReply.complete();
+  await _pumpUntil(tester, () => _notice.evaluate().isNotEmpty,
+      'Ending the guide while saving leaves the result uncertain');
+  await tester.pump(const Duration(seconds: 6));
+  expect(_notice, findsNothing);
+
+  expect(fixture.saveButton.hitTestable(), findsOneWidget);
+  await tester.tap(fixture.saveButton);
+  await _pumpUntil(tester, () => _notice.evaluate().isNotEmpty,
+      'A retry must warn that the first write may have succeeded');
+  _expectVisibleNotice(tester, '일정이 이미 저장됐을 수 있어요.', coachmark: false);
+  expect(fixture.repository.createCalls, 1);
+  expect(fixture.repository.savedEvents, hasLength(1));
+  expect(fixture.calendarBuilds, 0);
+}
+
 final _notice = find.byKey(const ValueKey('guide-step2-save-feedback'));
 
 void _expectVisibleNotice(WidgetTester tester, String message,
@@ -317,6 +392,7 @@ class _SaveFixture {
   final _ConfirmBackend backend;
   final List<EventModel> calendarExports;
   final _DeferredDepartureAlarms departureAlarms;
+  int calendarBuilds = 0;
 
   GuideCoordinator get guide => container.read(realUiGuideCoordinatorProvider);
 
@@ -328,8 +404,11 @@ class _SaveFixture {
 
   static Future<_SaveFixture> mount(
     WidgetTester tester, {
+    bool guided = true,
     bool hasCoordinates = true,
     bool recurring = false,
+    bool pending = false,
+    GuideCoordinator? pendingCoordinator,
     String location = '강남역',
   }) async {
     SharedPreferences.setMockInitialValues({});
@@ -350,6 +429,7 @@ class _SaveFixture {
     ]);
     final now = DateTime.now();
     final startAt = DateTime(now.year, now.month, now.day + 1, 14);
+    late final _SaveFixture fixture;
     final router = GoRouter(
       initialLocation: AppRoutes.home,
       routes: [
@@ -361,6 +441,13 @@ class _SaveFixture {
           path: AppRoutes.confirm,
           builder: (_, __) => ConfirmScreen(
             userId: _uid,
+            pendingGuideConfirm: pending
+                ? PendingGuideConfirm(
+                    parsedSchedule: const {},
+                    authorize: (isCurrent, beginTransition) async =>
+                        isCurrent() && beginTransition(),
+                  )
+                : null,
             parsedSchedule: {
               'title': '강남역 일정',
               'start_at': startAt.toIso8601String(),
@@ -387,25 +474,42 @@ class _SaveFixture {
         ),
         GoRoute(
           path: AppRoutes.calendar,
-          builder: (_, __) => const Scaffold(body: Text('테스트 일정 목록')),
+          builder: (_, __) {
+            fixture.calendarBuilds++;
+            return const Scaffold(body: Text('테스트 일정 목록'));
+          },
         ),
       ],
     );
-    final fixture = _SaveFixture(container, router, repository, locationLookup,
+    fixture = _SaveFixture(container, router, repository, locationLookup,
         notifications, backend, calendarExports, departureAlarms);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
       child: MaterialApp.router(
         routerConfig: router,
-        builder: (_, child) => RootGuideScope(
-          uid: _uid,
-          isGuideQa: _isolatedQa,
-          bindRuntime: (guide) => GuideQuotaRuntime.bind(guide, uid: _uid),
-          unbindRuntime: GuideQuotaRuntime.unbind,
-          child: child!,
-        ),
+        builder: (_, child) => guided
+            ? RootGuideScope(
+                uid: _uid,
+                isGuideQa: _isolatedQa,
+                bindRuntime: (guide) =>
+                    GuideQuotaRuntime.bind(guide, uid: _uid),
+                unbindRuntime: GuideQuotaRuntime.unbind,
+                child: child!,
+              )
+            : GuideSaveFeedbackHost(
+                child: pendingCoordinator == null
+                    ? child!
+                    : GuideScope(
+                        coordinator: pendingCoordinator, child: child!),
+              ),
       ),
     ));
+    if (!guided) {
+      router.go(AppRoutes.confirm);
+      await _pumpUntil(tester, () => fixture.saveButton.evaluate().isNotEmpty,
+          'The ordinary ConfirmScreen should mount');
+      return fixture;
+    }
     await _pumpUntil(tester, () => fixture.guide.state.value.sessionId != null,
         'Guide start');
     final guide = fixture.guide;
@@ -469,6 +573,23 @@ class _SaveFixture {
     guideConfirmReady.value = false;
     guideConfirmUserScrolled.value = false;
   }
+}
+
+class _EndedSaveGuide implements GuideCoordinator {
+  @override
+  final ValueNotifier<GuideSnapshot> state = ValueNotifier(const GuideSnapshot(
+    uid: _uid,
+    version: realUiGuideVersion,
+    revision: 2,
+    serverRevision: 2,
+    run: GuideRun.terminal,
+    step: GuideStep.completed,
+  ));
+
+  void dispose() => state.dispose();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _EventStore extends EventRepository {

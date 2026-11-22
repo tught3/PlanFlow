@@ -22,6 +22,7 @@ class GuidedCoachmarkOverlay extends StatefulWidget {
       this.preferBubbleBetweenTargets = false,
       this.preferLowerBubbleSlot = false,
       this.alignBubbleAboveTarget = false,
+      this.protectBeforeTargetReady = false,
       this.skipLabel = 'Skip'});
   final GuidedAnchorRegistry registry;
   final String targetId;
@@ -49,6 +50,9 @@ class GuidedCoachmarkOverlay extends StatefulWidget {
 
   /// Align the bubble immediately above the target, within the safe area.
   final bool alignBubbleAboveTarget;
+
+  /// Show the instruction and block background taps before layout measures the CTA.
+  final bool protectBeforeTargetReady;
   final String skipLabel;
   @override
   State<GuidedCoachmarkOverlay> createState() => _GuidedCoachmarkOverlayState();
@@ -265,6 +269,7 @@ class _GuidedCoachmarkOverlayState extends State<GuidedCoachmarkOverlay>
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         final rect = _targetRects[widget.targetId];
+        final awaitingTarget = widget.protectBeforeTargetReady && rect == null;
         // Anchors can move after an implicit scroll or an ancestor rebuild
         // without changing the target ID (for example critical -> save).
         // Refresh after each layout; setState is only issued when geometry
@@ -354,10 +359,10 @@ class _GuidedCoachmarkOverlayState extends State<GuidedCoachmarkOverlay>
                       constraints:
                           BoxConstraints(maxHeight: guideRegion.height),
                       child: _scrollableGuideBubble(context))));
-        } else if (widget.preferBubbleBetweenTargets) {
+        } else if (!awaitingTarget && widget.preferBubbleBetweenTargets) {
           // No safe vertical space exists outside the visible targets yet.
           bubblePositioned = const SizedBox.shrink();
-        } else if (widget.alignBubbleAboveTarget) {
+        } else if (!awaitingTarget && widget.alignBubbleAboveTarget) {
           final top = safe.top + gap;
           final bottom = hole == null ? top : hole.top - gap;
           bubblePositioned = bottom <= top
@@ -372,7 +377,7 @@ class _GuidedCoachmarkOverlayState extends State<GuidedCoachmarkOverlay>
                       child: ConstrainedBox(
                           constraints: BoxConstraints(maxHeight: bottom - top),
                           child: _scrollableGuideBubble(context))));
-        } else if (hole == null) {
+        } else if (hole == null || awaitingTarget) {
           // No rect yet (or offstage): place the bubble near the top of the
           // safe area using only `top` so the Positioned always has a
           // non-negative intrinsic height even before the target is laid out.
@@ -417,7 +422,9 @@ class _GuidedCoachmarkOverlayState extends State<GuidedCoachmarkOverlay>
         return Stack(fit: StackFit.expand, children: [
           // 구멍이 아직 없으면(대상이 화면 밖/미측정) 덮지 않는다.
           // 덮으면 화면 전체가 어두워져 아무것도 할 수 없다.
-          if (holes.isNotEmpty && widget.blockOutsideTaps) ...[
+          if (awaitingTarget)
+            const AbsorbPointer(child: ColoredBox(color: Color(0x99000000)))
+          else if (holes.isNotEmpty && widget.blockOutsideTaps) ...[
             IgnorePointer(
                 child: ClipPath(
                     clipper: _HoleClipper(holes),

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -55,6 +54,7 @@ import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 import '../../widgets/rewarded_ad_dialog.dart';
 import '../../widgets/schedule_save_scope_card.dart';
+import '../../widgets/schedule_progress_overlay.dart';
 import '../../services/ad_service.dart';
 import '../../services/ad_reward_state.dart';
 import '../../services/guide_quota_adapter.dart';
@@ -2182,8 +2182,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _dismissGuideSaveFeedback?.call();
     _dismissGuideSaveFeedback = null;
     _confirmSaveInFlight = true;
+    VoidCallback? endGuideSaveProgress;
     try {
-      final current = GuideScope.maybeOf(context)?.state.value;
+      final coordinator = GuideScope.maybeOf(context);
+      final current = coordinator?.state.value;
       if (_confirmGuideOwner != null && !_sameGuideOwner(_confirmGuideOwner!)) {
         final mayHaveSaved = _confirmCreateAttempted ||
             _confirmPersistedEvent != null ||
@@ -2194,6 +2196,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               ? _guideSaveUncertainMessage
               : _guideSaveOwnerChangedMessage,
         );
+        return;
+      }
+      if (widget.pendingGuideConfirm != null &&
+          (current == null || current.run == GuideRun.terminal)) {
+        _showGuideSaveBlocked('owner_changed', _guideSaveOwnerChangedMessage);
         return;
       }
       if (current != null && current.run != GuideRun.terminal) {
@@ -2207,6 +2214,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               'guide_session_unavailable', '안내 로그인 상태를 확인해 주세요.');
           return;
         }
+        final route = ModalRoute.of(context);
+        if (route != null && coordinator != null) {
+          endGuideSaveProgress = beginGuideSaveProgress(coordinator, route);
+        }
+        setState(() {});
         // A real saved ID must never re-enter createEvent, even after remount.
         if (_confirmPersistedEvent != null || current.createdEventId != null) {
           _confirmOperationId ??= current.savedCreateOperationId;
@@ -2295,6 +2307,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
     } finally {
       _confirmSaveInFlight = false;
+      endGuideSaveProgress?.call();
+      if (mounted && _confirmGuideOwner != null) setState(() {});
     }
   }
 
@@ -4285,59 +4299,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       },
       child: scaffold,
     );
-    if (!showParsePendingLoader) {
-      return editor;
-    }
+    final showGuideSaveLoader = _confirmSaveInFlight &&
+        _confirmGuideOwner != null &&
+        ModalRoute.isCurrentOf(context) != false;
     return Stack(
       children: [
         editor,
-        Positioned.fill(
-          child: AbsorbPointer(
-            absorbing: true,
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.12),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    child: IntrinsicWidth(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 20,
-                        ),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const CircularProgressIndicator(),
-                            const SizedBox(height: 16),
-                            Text(
-                              'AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+        if (showParsePendingLoader || showGuideSaveLoader)
+          Positioned.fill(
+            child: ScheduleProgressOverlay(
+              dark: showGuideSaveLoader,
+              message: showGuideSaveLoader
+                  ? '일정을 저장하고 있어요.'
+                  : 'AI가 입력 내용을 정리하고 있습니다. 잠시 기다려 주세요.',
             ),
           ),
-        ),
       ],
     );
   }

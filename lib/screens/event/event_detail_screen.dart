@@ -32,6 +32,8 @@ import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/location_resolution_status.dart';
 import '../../widgets/guided_anchor.dart';
+import '../../widgets/guided_coachmark_overlay.dart';
+import '../../widgets/schedule_progress_overlay.dart';
 import '../../onboarding/real_ui_guide/guide_contract.dart';
 import '../../onboarding/real_ui_guide/guide_route_recovery.dart';
 import '../../onboarding/real_ui_guide/guide_instruction_text.dart';
@@ -93,6 +95,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _isLoading = false;
   bool _guideReadbackReady = false;
   bool _guideUpdateDispatching = false;
+  bool _guideUpdateObservationFinished = false;
   bool _isDeleting = false;
   bool _isSavingSupplies = false;
   bool _departurePromptShown = false;
@@ -206,6 +209,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     setState(() {
       _isLoading = true;
+      _guideUpdateObservationFinished = false;
       _loadError = null;
     });
 
@@ -394,7 +398,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       ));
     } finally {
       _guideUpdateDispatching = false;
-      if (mounted) setState(() {});
+      if (mounted) setState(() => _guideUpdateObservationFinished = true);
     }
   }
 
@@ -804,8 +808,71 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             _handleBackNavigation();
           }
         },
-        child: _buildDetail(context),
+        child: Stack(fit: StackFit.expand, children: [
+          _buildDetail(context),
+          _guideDetailOverlay(context),
+        ]),
       );
+
+  Widget _guideDetailOverlay(BuildContext context) {
+    final state = GuideScope.maybeOf(context)?.state.value;
+    final event = _event;
+    if (ModalRoute.isCurrentOf(context) == false ||
+        state == null ||
+        state.run != GuideRun.active ||
+        state.uid.isEmpty ||
+        (state.sessionId?.isEmpty ?? true) ||
+        state.createdEventId == null ||
+        state.createdEventId != _resolvedEventId ||
+        (event != null &&
+            (event.userId != state.uid ||
+                !GuideRouteRecovery.isCanonicalPersonalEvent(event)))) {
+      return const SizedBox.shrink();
+    }
+
+    if (state.step == GuideStep.editPreview &&
+        (_isLoading ||
+            _guideUpdateDispatching ||
+            (!_guideUpdateObservationFinished && _updatedGuideMatches()))) {
+      return GuidedAnchor(
+        id: 'detail.guideSaveProgress',
+        registry: realUiGuideAnchorRegistry,
+        child:
+            const ScheduleProgressOverlay(message: '일정을 저장하고 있어요.', dark: true),
+      );
+    }
+
+    final saved = state.step == GuideStep.savedDetail &&
+        (_isLoading || _guideAckVisible());
+    final updated = state.step == GuideStep.updatedDetail &&
+        (_isLoading || _updatedGuideMatches());
+    if (!saved && !updated) {
+      return const SizedBox.shrink();
+    }
+    return GuidedAnchor(
+      id: 'detail.inlineGuide',
+      registry: realUiGuideAnchorRegistry,
+      child: GuidedCoachmarkOverlay(
+        registry: realUiGuideAnchorRegistry,
+        targetId: saved ? 'saved.confirm' : 'updated.confirm',
+        additionalTargetIds:
+            saved ? const ['saved.summary'] : const ['updated.time'],
+        pulseTargetIds: saved
+            ? const ['saved.confirm']
+            : const ['updated.confirm', 'updated.time'],
+        blockOutsideTaps: false,
+        preferBubbleBetweenTargets: true,
+        preferLowerBubbleSlot: true,
+        alignBubbleAboveTarget: true,
+        protectBeforeTargetReady: true,
+        bubble: saved
+            ? const GuideInstructionText(savedDetailGuideBody)
+            : const GuideInstructionText(updatedDetailGuideBody),
+        progressLabel: saved ? savedDetailGuideTitle : updatedDetailGuideTitle,
+        onSkip: null,
+      ),
+    );
+  }
 
   Widget _buildDetail(BuildContext context) {
     final theme = Theme.of(context);

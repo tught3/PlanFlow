@@ -17,6 +17,8 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_coordinator.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_guards.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_instruction_text.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_local_backend.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
@@ -31,6 +33,9 @@ import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:planflow/widgets/guided_anchor.dart';
+import 'package:planflow/widgets/guided_coachmark_overlay.dart';
+import 'package:planflow/widgets/schedule_progress_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -414,6 +419,100 @@ class _RecordingDayAlarmBatch extends LocalAlarmResyncBatch {
 }
 
 void main() {
+  testWidgets('root guide protects the first frame of the edit preview',
+      (tester) async {
+    // banned-ok: Fixed appointment fixture for the editor mount assertion.
+    final requested = DateTime.utc(2026, 10, 20, 8);
+    final owned = EventModel(
+      id: 'created-1',
+      userId: 'u',
+      title: 'Practice event',
+      // banned-ok: Fixed appointment fixture for the editor mount assertion.
+      startAt: DateTime.utc(2026, 10, 20, 5),
+    );
+    final repository = _CountingRepo(owned);
+    final guide = _FirstFrameEditGuide(owned, requested);
+    addTearDown(guide.state.dispose);
+    final router = GoRouter(initialLocation: AppRoutes.home, routes: [
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (context, _) => Scaffold(
+          body: TextButton(
+            onPressed: () => context.push(
+              '${AppRoutes.eventEdit}/${owned.id}',
+            ),
+            child: const Text('Open edit preview'),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.eventEditWithId,
+        builder: (_, state) => EventEditScreen(
+          event: owned,
+          eventId: state.pathParameters['eventId'],
+          eventRepository: repository,
+          permissionService: _ReadyEditorPermissions(),
+          initialGuideStartLocal: requested,
+        ),
+      ),
+    ]);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [realUiGuideCoordinatorProvider.overrideWithValue(guide)],
+      child: MaterialApp.router(
+        routerConfig: router,
+        builder: (_, child) => RootGuideScope(
+          uid: owned.userId,
+          router: router,
+          backButtonDispatcher: router.backButtonDispatcher,
+          bindRuntime: (_) => Object(),
+          unbindRuntime: (_) {},
+          child: child!,
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(guide.state.value.step, GuideStep.editPreview);
+    await tester.tap(find.text('Open edit preview'));
+    await tester.pump();
+
+    final editor = find.byType(EventEditScreen);
+    // Allow Navigator to insert the new route without advancing its animation.
+    if (editor.evaluate().isEmpty) await tester.pump(Duration.zero);
+    expect(editor, findsOneWidget);
+    final route = ModalRoute.of(tester.element(editor))!;
+    expect(route.settings, isA<MaterialPage<dynamic>>());
+    expect(route.transitionDuration, greaterThan(Duration.zero));
+    expect(route.animation!.status, AnimationStatus.forward);
+
+    final coachmark = find.descendant(
+      of: editor,
+      matching: find.byType(GuidedCoachmarkOverlay),
+    );
+    final tapShield = find.descendant(
+      of: coachmark,
+      matching: find.byType(AbsorbPointer),
+    );
+    final saveButton = find.descendant(
+      of: find.byWidgetPredicate(
+        (widget) => widget is GuidedAnchor && widget.id == 'edit.save',
+      ),
+      matching: find.text('저장'),
+    );
+    expect(coachmark, findsOneWidget);
+    expect(find.text(editPreviewGuideTitle), findsOneWidget);
+    expect(tapShield, findsOneWidget);
+    expect(saveButton.hitTestable(), findsNothing);
+
+    await tester.pumpAndSettle();
+    expect(find.text(editPreviewGuideTitle), findsOneWidget);
+    expect(tapShield, findsNothing);
+    expect(saveButton.hitTestable(), findsOneWidget);
+    expect(repository.writes, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
       'real EventEditScreen mounts under GuideScope at editPreview '
       'without dispatch/writes', (tester) async {
@@ -963,11 +1062,18 @@ void main() {
     repo.overlaps = overlapLookup.future;
     await tester.tap(find.text('저장'));
     await tester.pump();
+    expect(
+        tester
+            .widget<ScheduleProgressOverlay>(
+                find.byType(ScheduleProgressOverlay))
+            .dark,
+        isTrue);
     guideState.value = before.copyWith(revision: before.revision + 1);
     overlapLookup.complete([]);
     await tester.pumpAndSettle();
     expect(repo.writes, 0);
     expect(find.byType(EventEditScreen), findsOneWidget);
+    expect(find.byType(ScheduleProgressOverlay), findsNothing);
 
     guideState.value = before;
     advances = 0;
@@ -1004,7 +1110,18 @@ void main() {
     expect(location.started.isCompleted, isTrue);
     expect(repo.current?.locationLat, isNull);
 
+    final saveCenter = tester.getCenter(find.text('저장'));
     await tester.tap(find.text('저장'));
+    await tester.pump();
+    final progressOverlay = find.byType(ScheduleProgressOverlay);
+    expect(
+        tester.widget<ScheduleProgressOverlay>(progressOverlay).dark, isTrue);
+    expect(
+        find.descendant(
+            of: progressOverlay, matching: find.byType(BackdropFilter)),
+        findsOneWidget);
+    expect(find.text('저장').hitTestable(), findsNothing);
+    await tester.tapAt(saveCenter);
     await tester.pump();
     expect(repo.timeWrites, 0,
         reason: 'The time CAS waits for the delayed create fallback');
@@ -1029,6 +1146,8 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.byType(EventDetailScreen), findsOneWidget);
+    expect(
+        tester.widget<ScheduleProgressOverlay>(progressOverlay).dark, isTrue);
     expect(find.text('변경된 시간 확인'), findsNothing);
     expect(backend.previewCalls, previewBefore);
     expect(backend.lastAdvanceAction, GuideBackendAction.editPreview);
@@ -1065,6 +1184,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    expect(progressOverlay, findsNothing);
+    expect(find.text('7/7 · 변경 완료'), findsOneWidget);
     expect(find.text('변경된 시간 확인'), findsOneWidget);
     expect(backend.previewCalls, previewBefore);
     expect(backend.verifiedCalls, verifiedBefore + 1);
@@ -1080,4 +1201,31 @@ void main() {
     expect(after.expectedUpdatedStartLocal, requested);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+}
+
+class _FirstFrameEditGuide implements GuideCoordinator {
+  _FirstFrameEditGuide(EventModel event, DateTime requested)
+      : state = ValueNotifier(GuideSnapshot(
+          uid: event.userId,
+          version: 'real_ui_v1',
+          sessionId: 'first-frame-session',
+          createdEventId: event.id,
+          revision: 1,
+          serverRevision: 1,
+          run: GuideRun.active,
+          step: GuideStep.editPreview,
+          expectedUpdatedStartLocal: requested,
+        ));
+
+  @override
+  final ValueNotifier<GuideSnapshot> state;
+
+  @override
+  Future<GuideSnapshot> start({required String uid}) async => state.value;
+
+  @override
+  void suspend(GuidePauseReason reason) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

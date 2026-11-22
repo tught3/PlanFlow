@@ -620,6 +620,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
                     RealUiGuideCoachmark(
                         key: ObjectKey(coordinator),
                         coordinator: coordinator,
+                        router: widget.router,
                         isGuideQa: widget.isGuideQa,
                         onWaitingPanelVisibilityChanged: (visible) {
                           _waitingPanelVisible = visible;
@@ -723,10 +724,12 @@ class RealUiGuideCoachmark extends StatefulWidget {
   const RealUiGuideCoachmark(
       {super.key,
       required this.coordinator,
+      this.router,
       this.onSkip,
       this.onWaitingPanelVisibilityChanged,
       this.isGuideQa = false});
   final GuideCoordinator coordinator;
+  final GoRouter? router;
   final VoidCallback? onSkip;
   final ValueChanged<bool>? onWaitingPanelVisibilityChanged;
   final bool isGuideQa;
@@ -751,6 +754,42 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   Timer? _routeCheck;
   bool _recoveringRoute = false;
   String? _routeRecoveryError;
+  bool _firstInlineRouteFrame = false;
+
+  bool _isInlineGuideDestination(GuideSnapshot snapshot) {
+    final matches = widget.router?.routerDelegate.currentConfiguration;
+    final id = snapshot.createdEventId;
+    if (snapshot.run != GuideRun.active ||
+        id == null ||
+        matches == null ||
+        matches.isEmpty) {
+      return false;
+    }
+    final location = matches.last.matchedLocation;
+    final eventId = Uri.encodeComponent(id);
+    final isDetail = location == '${AppRoutes.eventDetail}/$eventId';
+    return switch (snapshot.step) {
+      GuideStep.savedDetail || GuideStep.updatedDetail => isDetail,
+      GuideStep.editPreview =>
+        isDetail || location == '${AppRoutes.eventEdit}/$eventId',
+      _ => false,
+    };
+  }
+
+  // The destination supplies its own guide before its anchors are measured.
+  void _holdRootCoachmarkForRouteFrame() {
+    _firstInlineRouteFrame = _isInlineGuideDestination(coordinator.state.value);
+    if (!_firstInlineRouteFrame) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _firstInlineRouteFrame) {
+        setState(() => _firstInlineRouteFrame = false);
+      }
+    });
+  }
+
+  void _onRouterChanged() {
+    if (mounted) setState(_holdRootCoachmarkForRouteFrame);
+  }
 
   bool _atHome() {
     if (!mounted) return false;
@@ -874,6 +913,8 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   @override
   void initState() {
     super.initState();
+    widget.router?.routerDelegate.addListener(_onRouterChanged);
+    _holdRootCoachmarkForRouteFrame();
     final initial = coordinator.state.value;
     _saveStageResetDone = initial.run == GuideRun.active &&
         initial.step == GuideStep.correctAndSave;
@@ -886,6 +927,7 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
     // 저장 화면의 파싱 완료/사용자 스크롤 신호는 안내를 다시 그려야 한다.
     guideConfirmReady.addListener(_onConfirmGateChanged);
     guideConfirmUserScrolled.addListener(_onConfirmGateChanged);
+    guideSaveProgress.addListener(_onSaveStageChanged);
     coordinator.state.addListener(_onGuideStateForSaveStage);
     // Registry mounting and Navigator popup changes do not emit guide signals.
     _routeCheck = Timer.periodic(const Duration(milliseconds: 100), (_) {
@@ -926,13 +968,25 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   }
 
   @override
+  void didUpdateWidget(RealUiGuideCoachmark oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.router != widget.router) {
+      oldWidget.router?.routerDelegate.removeListener(_onRouterChanged);
+      widget.router?.routerDelegate.addListener(_onRouterChanged);
+      _holdRootCoachmarkForRouteFrame();
+    }
+  }
+
+  @override
   void dispose() {
+    widget.router?.routerDelegate.removeListener(_onRouterChanged);
     _routeCheck?.cancel();
     _confirmScrollCueTimer?.cancel();
     coordinator.state.removeListener(_onGuideStateForSaveStage);
     guideSaveStage.removeListener(_onSaveStageChanged);
     guideConfirmReady.removeListener(_onConfirmGateChanged);
     guideConfirmUserScrolled.removeListener(_onConfirmGateChanged);
+    guideSaveProgress.removeListener(_onSaveStageChanged);
     super.dispose();
   }
 
@@ -1108,6 +1162,11 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
   }
 
   String? _targetId(GuideSnapshot s) {
+    if ((s.step == GuideStep.savedDetail ||
+            s.step == GuideStep.updatedDetail) &&
+        _targetIsCurrent(_resolveAnchor('detail.inlineGuide').context)) {
+      return 'detail.inlineGuide';
+    }
     if (s.step == GuideStep.savedDetail) {
       final confirm = _resolveAnchor('saved.confirm').context;
       if (_targetIsCurrent(confirm) && _targetIsVisible(confirm)) {
@@ -1125,6 +1184,15 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
       if (_targetIsCurrent(loading)) return 'home.saved.loading';
       final retry = _resolveAnchor('home.saved.retry').context;
       return _targetIsCurrent(retry) ? 'home.saved.retry' : 'home.saved';
+    }
+    if (s.step == GuideStep.editPreview) {
+      if (_targetIsCurrent(_resolveAnchor('edit.inlineGuide').context)) {
+        return 'edit.inlineGuide';
+      }
+      if (_targetIsCurrent(
+          _resolveAnchor('detail.guideSaveProgress').context)) {
+        return 'detail.guideSaveProgress';
+      }
     }
     if (s.step == GuideStep.querySpeech) {
       final input = _resolveAnchor('voice.review').context;
@@ -1172,12 +1240,12 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
           'AI가 시간·제목·장소를 알아서 분류했어요. 틀리면 직접 고칠 수 있어요.\n아래로 내려가 ‘중요한 일정으로 표시’와 ‘강한 알람’을 눌러보고, ‘일정 저장’을 눌러주세요.'
         ),
       GuideStep.savedDetail => (
-          '3/7 · 저장된 일정 확인',
+          savedDetailGuideTitle,
           id == 'home.saved'
               ? '홈 탭에서 강조된 일정을 눌러 주세요.'
               : id == 'home.saved.retry'
                   ? '저장한 일정을 찾지 못했어요. ‘다시 확인’으로 기존 목록만 새로 불러와요. 새 일정은 만들지 않아요.'
-                  : '‘저장된 일정 확인’에서 제목, 날짜·시간과 장소를 확인한 뒤, 화면 아래의 ‘준비·출발 안내 확인’ 버튼을 눌러 주세요.'
+                  : savedDetailGuideBody
         ),
       GuideStep.queryMic || GuideStep.querySpeech => (
           '4/7 · 음성으로 조회',
@@ -1199,13 +1267,10 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
           '5/7 · 음성으로 변경',
           '방금 저장한 일정이 첫 번째로 보여요. “첫 번째 일정을 오후 5시로 변경해줘”라고 말해 보세요.'
         ),
-      GuideStep.editPreview => (
-          '6/7 · 변경 내용 확인·저장',
-          '밝게 표시된 시작 시간과 종료 시간을 확인하고 저장 버튼을 눌러 주세요.'
-        ),
+      GuideStep.editPreview => (editPreviewGuideTitle, editPreviewGuideBody),
       GuideStep.updatedDetail => (
-          '7/7 · 변경 완료',
-          '변경된 시작 시간과 종료 시간을 확인하고 화면 아래의 ‘변경된 시간 확인’ 버튼을 눌러 주세요. 마지막으로 동기화를 선택해요.'
+          updatedDetailGuideTitle,
+          updatedDetailGuideBody
         ),
       GuideStep.completionConfirm ||
       GuideStep.syncChoice ||
@@ -1230,6 +1295,12 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
         if (guideSaveStageActive.value != saveStageActive) {
           guideSaveStageActive.value = saveStageActive;
         }
+        final saveProgress = guideSaveProgress.value;
+        if (saveProgress != null &&
+            identical(saveProgress.coordinator, coordinator) &&
+            saveProgress.route.isCurrent) {
+          return const SizedBox.shrink();
+        }
         // The feature intro has its own buttons. Its route may appear before
         // the current guide target mounts, so suppress the waiting card too.
         if (legacyIntroCurrent ||
@@ -1253,7 +1324,13 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
               onSkip: null);
         }
         final id = _targetId(s);
-        if (id == 'home.saved.loading') return const SizedBox.shrink();
+        if ((_firstInlineRouteFrame && _isInlineGuideDestination(s)) ||
+            id == 'home.saved.loading' ||
+            id == 'detail.inlineGuide' ||
+            id == 'edit.inlineGuide' ||
+            id == 'detail.guideSaveProgress') {
+          return const SizedBox.shrink();
+        }
         final ({
           GuidedAnchorRegistry registry,
           BuildContext? context
@@ -1432,29 +1509,10 @@ class _RealUiGuideCoachmarkState extends State<RealUiGuideCoachmark> {
                                         : '안내할 실제 화면을 기다리고 있어요. 화면을 확인하거나 뒤로가기로 안내를 닫을 수 있어요.'),
                                   ]))))));
         }
-        final copy = _copy(s, id);
         if (s.step == GuideStep.editPreview) {
-          return GuidedCoachmarkOverlay(
-              registry: resolved.registry,
-              targetId: id,
-              additionalTargetIds: const <String>[
-                'edit.title',
-                'edit.dateTime',
-                'edit.location',
-                'edit.save.footer',
-              ],
-              pulseTargetIds: const <String>[
-                'edit.dateTime',
-                'edit.save',
-                'edit.save.footer',
-              ],
-              preferBubbleBetweenTargets: true,
-              preferLowerBubbleSlot: true,
-              blockOutsideTaps: false,
-              bubble: GuideInstructionText(copy.$2),
-              progressLabel: copy.$1,
-              onSkip: null);
+          return GuideEditPreviewCoachmark(registry: resolved.registry);
         }
+        final copy = _copy(s, id);
         final conversationComposer = id == 'query.composer';
         final allowToolbarBack = !widget.isGuideQa &&
             (id.startsWith('voice.') || id.startsWith('query.')) &&
