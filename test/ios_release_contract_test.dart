@@ -803,7 +803,7 @@ echo AVFoundation.framework
     expect(
         workflow,
         contains(
-            'TestFlight transport gate: upload accepted by App Store Connect.'));
+            'Apple transport gate: upload accepted by App Store Connect.'));
     expect(workflow, contains('TESTFLIGHT_TRANSPORT_UPLOAD_PASS: PASS'));
     expect(workflow, contains('python3 scripts/verify-app-store-build.py'));
     expect(workflow, contains('--timeout-seconds 900'));

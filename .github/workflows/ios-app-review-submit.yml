@@ -8,7 +8,7 @@ on:
         type: string
         required: true
       build_number:
-        description: Exact valid App Store Connect build number to attach.
+        description: Exact App Store Connect build number to attach, cancel, or verify.
         type: string
         required: true
       dry_run:
@@ -27,7 +27,42 @@ on:
         required: false
         default: ''
       confirm_replace:
-        description: For a real replacement cancel enter REPLACE_PLANFLOW_IOS_REVIEW; otherwise verification-only.
+        description: Enter REPLACE_PLANFLOW_IOS_REVIEW to cancel or recover metadata after cancellation.
+        type: string
+        required: false
+        default: ''
+      cancel_only:
+        description: Cancel review of build_number and optionally update metadata without submitting.
+        type: boolean
+        required: false
+        default: false
+      metadata_only:
+        description: Recover metadata for an editable version and build_number after cancellation.
+        type: boolean
+        required: false
+        default: false
+      verify_metadata:
+        description: Verify the submitted version, build, and requested metadata with dry_run enabled.
+        type: boolean
+        required: false
+        default: false
+      app_name:
+        description: Localized App Store app name.
+        type: string
+        required: false
+        default: ''
+      subtitle:
+        description: Localized App Store subtitle.
+        type: string
+        required: false
+        default: ''
+      keywords:
+        description: Localized App Store keywords, up to 100 UTF-8 bytes.
+        type: string
+        required: false
+        default: ''
+      metadata_locale:
+        description: Existing App Store locale. When omitted, uniquely match ko or ko-KR.
         type: string
         required: false
         default: ''
@@ -54,6 +89,13 @@ jobs:
       INPUT_CONFIRM: ${{ inputs.confirm }}
       INPUT_REPLACE_EXISTING_BUILD: ${{ inputs.replace_existing_build }}
       INPUT_CONFIRM_REPLACE: ${{ inputs.confirm_replace }}
+      INPUT_CANCEL_ONLY: ${{ inputs.cancel_only }}
+      INPUT_METADATA_ONLY: ${{ inputs.metadata_only }}
+      INPUT_VERIFY_METADATA: ${{ inputs.verify_metadata }}
+      INPUT_APP_NAME: ${{ inputs.app_name }}
+      INPUT_SUBTITLE: ${{ inputs.subtitle }}
+      INPUT_KEYWORDS: ${{ inputs.keywords }}
+      INPUT_METADATA_LOCALE: ${{ inputs.metadata_locale }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,8 +115,20 @@ jobs:
             echo "::error title=BLOCKED_DRY_RUN_AMBIGUOUS::dry_run must be an explicit boolean."
             exit 1
           fi
-          if [[ "$INPUT_DRY_RUN" == "false" && "$INPUT_CONFIRM" != "SUBMIT_PLANFLOW_IOS_REVIEW" ]]; then
+          if [[ ( "$INPUT_CANCEL_ONLY" != "true" && "$INPUT_CANCEL_ONLY" != "false" ) || ( "$INPUT_METADATA_ONLY" != "true" && "$INPUT_METADATA_ONLY" != "false" ) || ( "$INPUT_VERIFY_METADATA" != "true" && "$INPUT_VERIFY_METADATA" != "false" ) ]]; then
+            echo "::error title=BLOCKED_INPUT::cancel_only, metadata_only and verify_metadata must be booleans."
+            exit 1
+          fi
+          if [[ "$INPUT_DRY_RUN" == "false" && "$INPUT_CANCEL_ONLY" != "true" && "$INPUT_METADATA_ONLY" != "true" && "$INPUT_CONFIRM" != "SUBMIT_PLANFLOW_IOS_REVIEW" ]]; then
             echo "::error title=BLOCKED_CONFIRMATION::Live manual submission requires SUBMIT_PLANFLOW_IOS_REVIEW."
+            exit 1
+          fi
+          if [[ "$INPUT_DRY_RUN" == "false" && "$INPUT_CANCEL_ONLY" == "true" && "$INPUT_CONFIRM_REPLACE" != "REPLACE_PLANFLOW_IOS_REVIEW" ]]; then
+            echo "::error title=BLOCKED_CONFIRMATION::Live cancellation requires REPLACE_PLANFLOW_IOS_REVIEW."
+            exit 1
+          fi
+          if [[ "$INPUT_DRY_RUN" == "false" && "$INPUT_METADATA_ONLY" == "true" && "$INPUT_CONFIRM_REPLACE" != "REPLACE_PLANFLOW_IOS_REVIEW" ]]; then
+            echo "::error title=BLOCKED_CONFIRMATION::Live metadata recovery requires REPLACE_PLANFLOW_IOS_REVIEW."
             exit 1
           fi
           args=(--bundle-id "$BUNDLE_ID" --version "$INPUT_APP_STORE_VERSION" --build "$INPUT_BUILD_NUMBER" --whats-new-file config/store/ios-release-notes.json --marketing-url https://fluxstudio.co.kr)
@@ -92,8 +146,17 @@ jobs:
             if [[ "$INPUT_CONFIRM_REPLACE" == "REPLACE_PLANFLOW_IOS_REVIEW" ]]; then
               args+=(--confirm-replace "REPLACE_PLANFLOW_IOS_REVIEW")
             fi
+          elif [[ ( "$INPUT_CANCEL_ONLY" == "true" || "$INPUT_METADATA_ONLY" == "true" ) && "$INPUT_CONFIRM_REPLACE" == "REPLACE_PLANFLOW_IOS_REVIEW" ]]; then
+            args+=(--confirm-replace "REPLACE_PLANFLOW_IOS_REVIEW")
           elif [[ -n "$INPUT_CONFIRM_REPLACE" ]]; then
-            echo "::error title=BLOCKED_INPUT::confirm_replace requires replace_existing_build."
+            echo "::error title=BLOCKED_INPUT::confirm_replace requires replace_existing_build, cancel_only or metadata_only."
             exit 1
           fi
+          if [[ "$INPUT_CANCEL_ONLY" == "true" ]]; then args+=(--cancel-only); fi
+          if [[ "$INPUT_METADATA_ONLY" == "true" ]]; then args+=(--metadata-only); fi
+          if [[ "$INPUT_VERIFY_METADATA" == "true" ]]; then args+=(--verify-metadata); fi
+          if [[ -n "$INPUT_APP_NAME" ]]; then args+=(--app-name="$INPUT_APP_NAME"); fi
+          if [[ -n "$INPUT_SUBTITLE" ]]; then args+=(--subtitle="$INPUT_SUBTITLE"); fi
+          if [[ -n "$INPUT_KEYWORDS" ]]; then args+=(--keywords="$INPUT_KEYWORDS"); fi
+          if [[ -n "$INPUT_METADATA_LOCALE" ]]; then args+=(--metadata-locale="$INPUT_METADATA_LOCALE"); fi
           python3 scripts/asc-submit-review.py "${args[@]}"

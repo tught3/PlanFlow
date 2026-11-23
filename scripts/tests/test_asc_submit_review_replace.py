@@ -440,5 +440,212 @@ class ReplaceBlankDraftTests(ReplacementTestBase):
         self.assertEqual(fake.writes, [])
 
 
+class MetadataAsc(ReplacementAsc):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.app_info_localizations = [
+            {"type": "appInfoLocalizations", "id": "localized-ko", "attributes": {
+                "locale": "ko-KR", "name": "Previous Name", "subtitle": "Previous subtitle",
+                "privacyPolicyUrl": "https://example.com/privacy"}},
+            {"type": "appInfoLocalizations", "id": "localized-en", "attributes": {
+                "locale": "en-US", "name": "English App", "subtitle": "English subtitle"}},
+        ]
+        self.localization["attributes"].update(whatsNew="fixture release notes", marketingUrl="https://fluxstudio.co.kr")
+        self.ignore_keyword_write = False
+
+    def __call__(self, method, path, body):
+        route = urlsplit(path).path
+        if method == "GET" and route == f"/apps/{APP_ID}/appInfos":
+            return {"data": [
+                {"type": "appInfos", "id": "live", "attributes": {"appStoreState": "READY_FOR_SALE"}},
+                {"type": "appInfos", "id": "next", "attributes": {
+                    "appStoreState": self.version["attributes"]["appStoreState"]}},
+            ]}
+        if method == "GET" and route == "/appInfos/next/appInfoLocalizations":
+            return {"data": self.app_info_localizations}
+        if method == "PATCH" and route in {"/appInfoLocalizations/localized-ko", "/appStoreVersionLocalizations/l1"}:
+            if self.version["attributes"]["appStoreState"] != "DEVELOPER_REJECTED":
+                raise AssertionError("metadata patched before the version became editable")
+            if route == "/appInfoLocalizations/localized-ko":
+                self._write(method, route, body)
+                self.app_info_localizations[0]["attributes"].update(body["data"]["attributes"])
+                return {"data": self.app_info_localizations[0]}
+            if self.ignore_keyword_write:
+                self._write(method, route, body)
+                return {"data": self.localization}
+        return super().__call__(method, path, body)
+
+
+class CancelMetadataTests(ReplacementTestBase):
+    requested = {
+        "app_name": "PlanFlow - AI 음성 일정관리",
+        "subtitle": "플랜플로우 · 말하는 캘린더 출발 알림",
+        "keywords": "스케줄,플래너,리마인더,공유캘린더,가족일정,출발시간,음성인식,자동등록",
+    }
+
+    def cancel(self, fake, *, confirm=CONFIRM, **kwargs):
+        return self.run_submit(fake, build=OLD_BUILD, confirm=confirm, cancel_only=True,
+                               **(self.requested | kwargs))
+
+    def recover(self, fake, *, confirm=CONFIRM, **kwargs):
+        return self.run_submit(fake, build=OLD_BUILD, confirm=confirm, metadata_only=True,
+                               **(self.requested | kwargs))
+
+    def test_cancel_preflight_reads_both_localizations_without_mutation(self):
+        fake = MetadataAsc()
+        client, result = self.cancel(fake, dry_run=True)
+        self.assertEqual(result["marker"], "REPLACE_VERIFIED")
+        self.assertEqual(result["replace"]["old_build"], OLD_BUILD)
+        self.assertIsNone(result["replace"]["new_build"])
+        self.assertEqual(client.writes, 0)
+        self.assertEqual(fake.writes, [])
+
+    def test_cancel_then_patch_only_requested_korean_fields_and_read_back(self):
+        fake = MetadataAsc()
+        expected_untouched = fake.localization["attributes"].copy()
+        app_untouched = [item["attributes"].copy() for item in fake.app_info_localizations]
+        self.assertEqual(len(self.requested["keywords"].encode("utf-8")), 100)
+        client, result = self.cancel(fake)
+        self.assertEqual(result["marker"], "STORE_METADATA_VERIFIED")
+        self.assertEqual(result["build"], OLD_BUILD)
+        self.assertEqual(result["state"], "DEVELOPER_REJECTED")
+        self.assertEqual(result["metadata"], {
+            "name": {"locale": "ko-KR", "value": self.requested["app_name"]},
+            "subtitle": {"locale": "ko-KR", "value": self.requested["subtitle"]},
+            "keywords": {"locale": "ko", "value": self.requested["keywords"]},
+        })
+        self.assertEqual(fake.writes, [
+            ("PATCH", f"/reviewSubmissions/{SUBMISSION_ID}"),
+            ("PATCH", "/appInfoLocalizations/localized-ko"),
+            ("PATCH", "/appStoreVersionLocalizations/l1"),
+        ])
+        self.assertEqual(client.writes, 3)
+        self.assertEqual(fake.localization["attributes"], expected_untouched | {"keywords": self.requested["keywords"]})
+        self.assertEqual(fake.app_info_localizations[0]["attributes"], app_untouched[0] | {
+            "name": self.requested["app_name"], "subtitle": self.requested["subtitle"],
+        })
+        self.assertEqual(fake.app_info_localizations[1]["attributes"], app_untouched[1])
+
+    def test_extra_korean_locale_or_unknown_old_build_blocks_before_cancel(self):
+        fake = MetadataAsc()
+        fake.app_info_localizations.append(
+            {"type": "appInfoLocalizations", "id": "duplicate", "attributes": {"locale": "ko"}})
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_METADATA_LOCALE"):
+            self.cancel(fake)
+        self.assertEqual(fake.writes, [])
+        fake = MetadataAsc(linked_build=NEW_BUILD_ID)
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_REPLACE_VERSION_BUILD"):
+            self.cancel(fake)
+        self.assertEqual(fake.writes, [])
+
+    def test_overlong_keywords_and_missing_confirmation_block_before_cancel(self):
+        fake = MetadataAsc()
+        with self.assertRaisesRegex(asc.SubmissionError, "101 UTF-8 bytes"):
+            self.cancel(fake, keywords=self.requested["keywords"] + "x")
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_CONFIRMATION"):
+            self.cancel(fake, confirm=None)
+        self.assertEqual(fake.writes, [])
+
+    def test_existing_release_note_or_marketing_conflict_blocks_before_cancel(self):
+        for field, code in (("whatsNew", "RELEASE_NOTES"), ("marketingUrl", "MARKETING_URL")):
+            with self.subTest(field=field):
+                fake = MetadataAsc()
+                fake.localization["attributes"][field] = "different"
+                with self.assertRaisesRegex(asc.SubmissionError, f"BLOCKED_{code}_MISMATCH"):
+                    self.cancel(fake)
+                self.assertEqual(fake.writes, [])
+
+    def test_failed_keyword_readback_does_not_report_success(self):
+        fake = MetadataAsc()
+        fake.ignore_keyword_write = True
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_METADATA_READBACK: keywords"):
+            self.cancel(fake)
+        self.assertEqual(fake.version["attributes"]["appStoreState"], "DEVELOPER_REJECTED")
+
+    def test_metadata_recovery_after_partial_update_is_idempotent(self):
+        fake = MetadataAsc()
+        fake.ignore_keyword_write = True
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_METADATA_READBACK: keywords"):
+            self.cancel(fake)
+        fake.ignore_keyword_write = False
+        writes_before = len(fake.writes)
+
+        client, result = self.recover(fake)
+        self.assertEqual(result["marker"], "STORE_METADATA_VERIFIED")
+        self.assertEqual(result["metadata"]["keywords"]["value"], self.requested["keywords"])
+        self.assertEqual(client.writes, 1)
+        self.assertEqual(fake.writes[writes_before:], [("PATCH", "/appStoreVersionLocalizations/l1")])
+
+        client, result = self.recover(fake)
+        self.assertEqual(result["marker"], "STORE_METADATA_VERIFIED")
+        self.assertEqual(client.writes, 0)
+        self.assertEqual(len(fake.writes), writes_before + 1)
+
+    def test_metadata_recovery_requires_exact_build_and_confirmation(self):
+        fake = MetadataAsc()
+        self.cancel(fake, app_name=None, subtitle=None, keywords=None)
+        writes_before = fake.writes.copy()
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_CONFIRMATION"):
+            self.recover(fake, confirm=None)
+        fake.linked_build = NEW_BUILD_ID
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_METADATA_RECOVERY"):
+            self.recover(fake)
+        self.assertEqual(fake.writes, writes_before)
+
+    def test_metadata_recovery_blocks_never_submitted_draft_without_writes(self):
+        fake = MetadataAsc(version_state="PREPARE_FOR_SUBMISSION", submissions=[])
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_METADATA_RECOVERY: .*DEVELOPER_REJECTED"):
+            self.recover(fake)
+        self.assertEqual(fake.writes, [])
+
+    def test_metadata_writes_block_if_attached_build_changes_during_cancellation(self):
+        class BuildChanges(MetadataAsc):
+            def __call__(self, method, path, body):
+                response = super().__call__(method, path, body)
+                if (method == "GET" and urlsplit(path).path == f"/reviewSubmissions/{SUBMISSION_ID}"
+                        and response["data"]["attributes"]["state"] == "COMPLETE"):
+                    self.linked_build = NEW_BUILD_ID
+                return response
+
+        fake = BuildChanges()
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_METADATA_RECOVERY: .*requested build"):
+            self.cancel(fake)
+        self.assertEqual(fake.writes, [("PATCH", f"/reviewSubmissions/{SUBMISSION_ID}")])
+
+    def test_metadata_recovery_blocks_when_version_locks_after_localization_read(self):
+        class VersionLocks(MetadataAsc):
+            def __call__(self, method, path, body):
+                response = super().__call__(method, path, body)
+                if method == "GET" and urlsplit(path).path == "/appInfos/next/appInfoLocalizations":
+                    self.version["attributes"]["appStoreState"] = "WAITING_FOR_REVIEW"
+                return response
+
+        fake = VersionLocks(version_state="DEVELOPER_REJECTED", submission_state="COMPLETE")
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_STORE_METADATA"):
+            self.recover(fake)
+        self.assertEqual(fake.writes, [])
+
+    def test_metadata_recovery_blocks_active_review_for_same_editable_version(self):
+        fake = MetadataAsc(version_state="DEVELOPER_REJECTED", submission_state="WAITING_FOR_REVIEW")
+        with self.assertRaisesRegex(asc.SubmissionError, "BLOCKED_ACTIVE_SUBMISSION"):
+            self.recover(fake)
+        self.assertEqual(fake.writes, [])
+
+    def test_post_submission_verification_reads_exact_new_build_and_metadata(self):
+        fake = MetadataAsc()
+        self.cancel(fake)
+        fake.linked_build = NEW_BUILD_ID
+        fake.version["attributes"]["appStoreState"] = "WAITING_FOR_REVIEW"
+        writes_before = fake.writes.copy()
+        client, result = self.run_submit(fake, dry_run=True, verify_metadata=True, **self.requested)
+        self.assertEqual(result["marker"], "STORE_METADATA_VERIFIED")
+        self.assertEqual(result["build"], NEW_BUILD)
+        self.assertEqual(result["state"], "WAITING_FOR_REVIEW")
+        self.assertEqual(client.writes, 0)
+        with self.assertRaisesRegex(asc.SubmissionError, "not linked to the requested build"):
+            self.run_submit(fake, build=OLD_BUILD, dry_run=True, verify_metadata=True, **self.requested)
+        self.assertEqual(fake.writes, writes_before)
+
+
 if __name__ == "__main__":
     unittest.main()

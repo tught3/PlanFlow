@@ -32,6 +32,23 @@ def _load_workflow_text():
     return WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
+class ManualReviewMetadataContractTests(unittest.TestCase):
+    def test_manual_workflow_passes_metadata_through_environment_and_quoted_arguments(self):
+        workflow = WORKFLOW_PATH.with_name("ios-app-review-submit.yml").read_text(encoding="utf-8")
+        for field in ("app_name", "subtitle", "keywords", "metadata_locale"):
+            env = "INPUT_" + field.upper()
+            option = field.replace("_", "-")
+            self.assertIn(f"{env}: ${{{{ inputs.{field} }}}}", workflow)
+            self.assertIn(f'args+=(--{option}="${env}")', workflow)
+        self.assertIn('args+=(--cancel-only)', workflow)
+        self.assertIn('INPUT_METADATA_ONLY: ${{ inputs.metadata_only }}', workflow)
+        self.assertIn('args+=(--metadata-only)', workflow)
+        self.assertIn('args+=(--verify-metadata)', workflow)
+        self.assertIn("Live cancellation requires REPLACE_PLANFLOW_IOS_REVIEW", workflow)
+        self.assertIn("Live metadata recovery requires REPLACE_PLANFLOW_IOS_REVIEW", workflow)
+        self.assertIn("Live manual submission requires SUBMIT_PLANFLOW_IOS_REVIEW", workflow)
+
+
 class WorkflowTextTests(unittest.TestCase):
     """Assertions against the raw YAML text (style matches
     test_collect_asc_beta_crash_feedback.py's workflow-text assertions)."""

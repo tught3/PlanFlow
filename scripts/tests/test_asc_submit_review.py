@@ -270,6 +270,13 @@ class SubmissionTests(unittest.TestCase):
             self.run_submit(fake)
         self.assertEqual(fake.writes, [])
 
+    def test_normal_submit_cannot_silently_accept_metadata_options(self):
+        fake = FakeAsc(target_state="PREPARE_FOR_SUBMISSION")
+        client = asc.AscClient("fixture-token", fake)
+        with self.assertRaisesRegex(asc.SubmissionError, "metadata fields require cancel-only, metadata-only or verify-metadata"):
+            asc.submit(client, "com.example.app", "1.1.3", "55", app_name="New name")
+        self.assertEqual(fake.writes, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,10 @@ it cancels that submission (PATCH canceled=true), waits a bounded time for an
 editable version state, and only then submits the new build through the normal
 path. Without the confirmation phrase the replacement is verification-only and
 performs zero mutations.
+
+The separate cancel-only path can update explicitly requested store metadata
+after cancellation. Its readback mode verifies the metadata on the submitted
+version and build without writing to App Store Connect.
 """
 
 from __future__ import annotations
@@ -326,7 +330,8 @@ def _review_submission(client: AscClient, app_id: str, version_id: str, *, dry_r
     return sid
 
 
-def _assert_no_foreign_active_submissions(client: AscClient, app_id: str, target_version_id: str | None) -> None:
+def _assert_no_foreign_active_submissions(client: AscClient, app_id: str, target_version_id: str | None,
+                                          *, allow_active_target: bool = True) -> None:
     active_states = {"WAITING_FOR_REVIEW", "IN_REVIEW"}
     submissions = client.pages(f"/apps/{app_id}/reviewSubmissions?limit=200")
     for submission in submissions:
@@ -348,9 +353,9 @@ def _assert_no_foreign_active_submissions(client: AscClient, app_id: str, target
             raise SubmissionError(f"BLOCKED_REVIEW_SUBMISSION_STATE: existing {state} submission requires manual resolution")
         if (target_version_id and len(items) == 1
                 and _relationship_id(items[0], "appStoreVersion") == target_version_id):
-            if state in active_states:
+            if state in active_states and allow_active_target:
                 continue
-            if state == "READY_FOR_REVIEW":
+            if state == "READY_FOR_REVIEW" and allow_active_target:
                 continue
         code = "BLOCKED_ACTIVE_SUBMISSION" if state in active_states else "BLOCKED_REVIEW_SUBMISSION"
         raise SubmissionError(f"{code}: existing submission is unrelated or cannot be reused")
@@ -373,15 +378,15 @@ def _assert_marketing_url_readback(client: AscClient, version_id: str, expected_
 
 
 def _plan_replacement(client: AscClient, app_id: str, version: dict | None, version_string: str,
-                      new_build: dict, old_build_number: str) -> dict:
-    """Read-only proof that the old active submission can be canceled and replaced.
+                      new_build: dict | None, old_build_number: str) -> dict:
+    """Read-only proof that the old active submission can be canceled.
 
     Every precondition is checked against freshly fetched App Store Connect
     state. There is no generic force flag: any mismatch fails closed before
     the cancellation mutation happens.
     """
-    new_build_number = str(_attrs(new_build).get("version"))
-    if new_build_number == old_build_number or int(new_build_number) <= int(old_build_number):
+    new_build_number = str(_attrs(new_build).get("version")) if new_build else None
+    if new_build_number is not None and int(new_build_number) <= int(old_build_number):
         raise SubmissionError(
             f"BLOCKED_REPLACE_BUILD: replacement build {new_build_number} must be greater than old build {old_build_number}")
     if version is None or not version.get("id"):
@@ -390,7 +395,8 @@ def _plan_replacement(client: AscClient, app_id: str, version: dict | None, vers
     version_state = _attrs(version).get("appStoreState")
     if version_state == "READY_FOR_SALE":
         raise SubmissionError("BLOCKED_VERSION_LIVE: this version is already released; create a new marketing version")
-    if version_state not in ACTIVE_VERSION_STATES:
+    allowed_states = ACTIVE_VERSION_STATES if new_build else CANCELABLE_SUBMISSION_STATES
+    if version_state not in allowed_states:
         raise SubmissionError(
             f"BLOCKED_REPLACE_TARGET: version state {version_state or 'unknown'} is not in an active review; "
             "replacement does not apply")
@@ -400,7 +406,7 @@ def _plan_replacement(client: AscClient, app_id: str, version: dict | None, vers
         raise SubmissionError(f"BLOCKED_REPLACE_OLD_BUILD: {error}") from None
     linked = client.request("GET", f"/appStoreVersions/{version_id}/relationships/build")
     linked_build_id = (linked.get("data") or {}).get("id")
-    if linked_build_id != old_build.get("id"):
+    if not old_build.get("id") or linked_build_id != old_build.get("id"):
         raise SubmissionError(
             f"BLOCKED_REPLACE_VERSION_BUILD: version {version_string} is linked to build id {linked_build_id or 'unknown'}, "
             f"not old build {old_build_number}")
@@ -493,21 +499,308 @@ def _replacement_report(marker: str, plan: dict, writes: int, **extra: Any) -> s
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
 
+def _version_localizations(client: AscClient, version_id: str) -> list[dict]:
+    return client.pages(
+        f"/appStoreVersions/{version_id}/appStoreVersionLocalizations"
+        + _query({
+            "fields[appStoreVersionLocalizations]": "locale,description,keywords,supportUrl,whatsNew,marketingUrl",
+            "limit": "200",
+        })
+    )
+
+
+def _release_localization_updates(localizations: list[dict], version_string: str,
+                                  whats_new: dict | None, marketing_url: str | None,
+                                  keyword_target_id: str | None = None) -> list[tuple[str, dict[str, str]]]:
+    if not localizations:
+        raise SubmissionError("BLOCKED_STORE_METADATA: no App Store version localization exists; complete the App Store product page")
+    if not isinstance(whats_new, dict) or whats_new.get("version") != version_string or not isinstance(whats_new.get("localizations"), dict):
+        raise SubmissionError("BLOCKED_RELEASE_NOTES: provide version-matched localized release notes")
+    notes_by_locale = whats_new["localizations"]
+    if marketing_url is not None and (not isinstance(marketing_url, str)
+            or not re.fullmatch(r"https://[^\s]+", marketing_url)):
+        raise SubmissionError("BLOCKED_STORE_METADATA: marketing URL must be an HTTPS URL")
+    missing_localizations = []
+    note_updates: list[tuple[str, dict[str, str]]] = []
+    metadata_updates: list[tuple[str, dict[str, str]]] = []
+    observed_locales: set[str] = set()
+    for localization in localizations:
+        localization_attrs = _attrs(localization)
+        locale = localization_attrs.get("locale")
+        localization_id = localization.get("id")
+        if not isinstance(locale, str):
+            raise SubmissionError("BLOCKED_STORE_METADATA: localization has no locale")
+        observed_locales.add(locale)
+        required = ["description", "supportUrl"]
+        if not keyword_target_id or localization_id != keyword_target_id:
+            required.insert(1, "keywords")
+        absent = [field for field in required if not str(localization_attrs.get(field) or "").strip()]
+        if absent:
+            missing_localizations.append(f"{locale}: {', '.join(absent)}")
+        note = notes_by_locale.get(locale)
+        if not isinstance(note, str) or not note.strip():
+            raise SubmissionError(f"BLOCKED_RELEASE_NOTES: provide non-empty release notes for locale {locale}")
+        existing_note = str(localization_attrs.get("whatsNew") or "").strip()
+        if existing_note and existing_note != note.strip():
+            raise SubmissionError(f"BLOCKED_RELEASE_NOTES_MISMATCH: {locale} already has different release notes; refusing to overwrite")
+        if not existing_note:
+            note_updates.append((localization_id, {"whatsNew": note.strip()}))
+        if marketing_url is not None:
+            existing_marketing_url = str(localization_attrs.get("marketingUrl") or "").strip()
+            if existing_marketing_url and existing_marketing_url != marketing_url:
+                raise SubmissionError(f"BLOCKED_MARKETING_URL_MISMATCH: {locale} already has a different marketing URL; refusing to overwrite")
+            if not existing_marketing_url:
+                metadata_updates.append((localization_id, {"marketingUrl": marketing_url}))
+    if set(notes_by_locale) != observed_locales:
+        raise SubmissionError("BLOCKED_RELEASE_NOTES: release-notes locales must exactly match App Store localizations")
+    if missing_localizations:
+        raise SubmissionError("BLOCKED_STORE_METADATA: complete required localized fields: " + "; ".join(missing_localizations))
+    for localization_id, attributes in note_updates + metadata_updates:
+        if not localization_id:
+            label = "RELEASE_NOTES" if "whatsNew" in attributes else "STORE_METADATA"
+            raise SubmissionError(f"BLOCKED_{label}: localization id is missing")
+    return note_updates + metadata_updates
+
+
+def _patch_localization(client: AscClient, resource_type: str, localization_id: str,
+                        attributes: dict[str, str]) -> None:
+    client.request("PATCH", f"/{resource_type}/{localization_id}", {
+        "data": {"type": resource_type, "id": localization_id, "attributes": attributes}
+    })
+
+
+def _metadata_input(app_name: str | None, subtitle: str | None, keywords: str | None,
+                    metadata_locale: str | None) -> tuple[dict[str, str], set[str]]:
+    if metadata_locale is not None and not re.fullmatch(r"[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", metadata_locale):
+        raise SubmissionError("BLOCKED_METADATA_LOCALE: expected an explicit App Store locale such as ko or ko-KR")
+    requested = {}
+    for field, value, minimum, maximum in (
+        ("name", app_name, 2, 30), ("subtitle", subtitle, 1, 30), ("keywords", keywords, 1, 100),
+    ):
+        if value is None:
+            continue
+        if not isinstance(value, str) or value != value.strip() or any(ord(c) < 32 for c in value):
+            raise SubmissionError(f"BLOCKED_STORE_METADATA_INPUT: {field} must be non-empty text on one line")
+        size = len(value.encode("utf-8")) if field == "keywords" else len(value)
+        if not minimum <= size <= maximum:
+            unit = "UTF-8 bytes" if field == "keywords" else "characters"
+            raise SubmissionError(f"BLOCKED_STORE_METADATA_INPUT: {field} is {size} {unit}; expected {minimum} to {maximum}")
+        requested[field] = value
+    if metadata_locale is not None and not requested:
+        raise SubmissionError("BLOCKED_METADATA_LOCALE: metadata-locale requires a metadata field")
+    return requested, {metadata_locale} if metadata_locale else {"ko", "ko-KR"}
+
+
+def _metadata_localization(resources: list[dict], resource_type: str, locales: set[str]) -> dict:
+    matches = [item for item in resources if _attrs(item).get("locale") in locales]
+    target = _one(matches, "METADATA_LOCALE")
+    if target.get("type") != resource_type or not isinstance(target.get("id"), str) or not target["id"]:
+        raise SubmissionError("BLOCKED_STORE_METADATA: target localization identity is missing or malformed")
+    return target
+
+
+def _metadata_targets(client: AscClient, app_id: str, version_localizations: list[dict],
+                      app_info_states: set[str], requested: dict[str, str],
+                      locales: set[str]) -> list[tuple[dict, dict[str, str]]]:
+    targets: list[tuple[dict, dict[str, str]]] = []
+    app_fields = {field: requested[field] for field in ("name", "subtitle") if field in requested}
+    if app_fields:
+        app_infos = client.pages(
+            f"/apps/{app_id}/appInfos" + _query({"fields[appInfos]": "appStoreState", "limit": "200"})
+        )
+        app_info = _one([item for item in app_infos if _attrs(item).get("appStoreState") in app_info_states], "APP_INFO")
+        app_info_id = app_info.get("id")
+        if app_info.get("type") != "appInfos" or not isinstance(app_info_id, str) or not app_info_id:
+            raise SubmissionError("BLOCKED_APP_INFO: target app info identity is missing or malformed")
+        localizations = client.pages(
+            f"/appInfos/{app_info_id}/appInfoLocalizations"
+            + _query({"fields[appInfoLocalizations]": "locale,name,subtitle", "limit": "200"})
+        )
+        targets.append((_metadata_localization(localizations, "appInfoLocalizations", locales), app_fields))
+    if "keywords" in requested:
+        target = _metadata_localization(version_localizations, "appStoreVersionLocalizations", locales)
+        targets.append((target, {"keywords": requested["keywords"]}))
+    return targets
+
+
+def _metadata_readback(targets: list[tuple[dict, dict[str, str]]], version: str,
+                       build: str, state: str, writes: int) -> dict:
+    observed = {}
+    for target, expected in targets:
+        attrs = _attrs(target)
+        for field, value in expected.items():
+            if attrs.get(field) != value:
+                raise SubmissionError(f"BLOCKED_METADATA_READBACK: {field} differs for locale {attrs['locale']}")
+            observed[field] = {"locale": attrs["locale"], "value": attrs[field]}
+    result = {
+        "marker": "STORE_METADATA_VERIFIED", "version": version, "build": build, "state": state,
+        "metadata": observed, "writes": writes,
+    }
+    print("STORE_METADATA_VERIFIED: PASS " + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    return result
+
+
+def _require_version_build(client: AscClient, version_id: str, build_id: str | None,
+                           *, error_code: str) -> None:
+    relationship = client.request("GET", f"/appStoreVersions/{version_id}/relationships/build")
+    if not build_id or (relationship.get("data") or {}).get("id") != build_id:
+        raise SubmissionError(f"{error_code}: the selected version is not linked to the requested build")
+
+
+def _require_editable_metadata_version(client: AscClient, app_id: str, version_id: str,
+                                       version_string: str, allowed_states: set[str]) -> str:
+    version = _find_version(client, app_id, version_string)
+    state = _attrs(version or {}).get("appStoreState")
+    if not version or version.get("id") != version_id or state not in allowed_states:
+        raise SubmissionError("BLOCKED_STORE_METADATA: the selected version is no longer editable")
+    return state
+
+
+def _write_editable_metadata(
+    client: AscClient, app_id: str, version_id: str, version_string: str, build_number: str,
+    requested: dict[str, str], locales: set[str], *, whats_new: dict | None,
+    marketing_url: str | None, required_build_id: str, allowed_states: set[str], dry_run: bool = False,
+) -> dict:
+    _require_editable_metadata_version(client, app_id, version_id, version_string, allowed_states)
+    current = _version_localizations(client, version_id)
+    targets = _metadata_targets(client, app_id, current, EDITABLE_VERSION_STATES, requested, locales)
+    keyword_target_id = next((target["id"] for target, attrs in targets if "keywords" in attrs), None)
+    _release_localization_updates(current, version_string, whats_new, marketing_url, keyword_target_id)
+
+    def revalidate_target() -> str:
+        _require_version_build(client, version_id, required_build_id, error_code="BLOCKED_METADATA_RECOVERY")
+        state = _require_editable_metadata_version(client, app_id, version_id, version_string, allowed_states)
+        _assert_no_foreign_active_submissions(client, app_id, version_id, allow_active_target=False)
+        return state
+
+    updates = [
+        (target, {field: value for field, value in expected.items() if _attrs(target).get(field) != value})
+        for target, expected in targets
+    ]
+    updates = [(target, changed) for target, changed in updates if changed]
+    state = revalidate_target()
+    if dry_run:
+        print(f"DRY_RUN_PLAN: metadata-only version={version_string} build={build_number} state={state}")
+        return {"marker": "DRY_RUN_PASS", "version": version_string, "build": build_number, "writes": client.writes}
+
+    for index, (target, changed) in enumerate(updates):
+        if index:
+            state = revalidate_target()
+        _patch_localization(client, target["type"], target["id"], changed)
+    readback = _metadata_targets(
+        client, app_id, _version_localizations(client, version_id), EDITABLE_VERSION_STATES, requested, locales)
+    if [target["id"] for target, _ in readback] != [target["id"] for target, _ in targets]:
+        raise SubmissionError("BLOCKED_METADATA_READBACK: the localization target changed after the update")
+    _require_version_build(client, version_id, required_build_id, error_code="BLOCKED_METADATA_RECOVERY")
+    return _metadata_readback(readback, version_string, build_number, state, client.writes)
+
+
+def _cancel_review(client: AscClient, app_id: str, version: dict | None, version_string: str,
+                   build_number: str, requested: dict[str, str], locales: set[str], *,
+                   whats_new: dict | None, marketing_url: str | None, dry_run: bool,
+                   replace_confirm: str | None, sleep: Callable[[float], None],
+                   replace_max_polls: int, replace_poll_interval: float) -> dict:
+    if not dry_run and replace_confirm != REPLACE_CONFIRMATION_PHRASE:
+        raise SubmissionError(f"BLOCKED_CONFIRMATION: live cancellation requires {REPLACE_CONFIRMATION_PHRASE}")
+    plan = _plan_replacement(client, app_id, version, version_string, None, build_number)
+    version_id = plan["version_id"]
+    before = _version_localizations(client, version_id)
+    targets = _metadata_targets(
+        client, app_id, before, EDITABLE_VERSION_STATES | CANCELABLE_SUBMISSION_STATES, requested, locales)
+    keyword_target_id = next((target["id"] for target, attrs in targets if "keywords" in attrs), None)
+    # Catch existing release-note and marketing URL conflicts before withdrawing a valid review.
+    _release_localization_updates(before, version_string, whats_new, marketing_url, keyword_target_id)
+    if dry_run:
+        print(_replacement_report("REPLACE_VERIFIED", plan, client.writes,
+                                  confirmed=False, metadata_fields=sorted(requested)))
+        return {"marker": "REPLACE_VERIFIED", "replace": plan, "writes": client.writes}
+
+    recent_version = _find_version(client, app_id, version_string)
+    recent_plan = _plan_replacement(client, app_id, recent_version, version_string, None, build_number)
+    for field in ("version_id", "old_build_id", "submission_id"):
+        if recent_plan[field] != plan[field]:
+            raise SubmissionError("BLOCKED_REPLACE_TARGET: the proven review target changed during preflight")
+    canceled = _cancel_and_wait(client, recent_plan, sleep=sleep, max_polls=replace_max_polls,
+                               poll_interval=replace_poll_interval)
+    print(_replacement_report("REPLACE_CANCELED", canceled, client.writes))
+    result = {"marker": "REPLACE_CANCELED", "replace": canceled, "writes": client.writes}
+    if not requested:
+        return result
+    return _write_editable_metadata(
+        client, app_id, version_id, version_string, build_number, requested, locales,
+        whats_new=whats_new, marketing_url=marketing_url, required_build_id=canceled["old_build_id"],
+        allowed_states=EDITABLE_VERSION_STATES,
+    )
+
+
+def _verify_submitted_metadata(client: AscClient, app_id: str, version: dict | None,
+                               version_string: str, build_number: str,
+                               requested: dict[str, str], locales: set[str]) -> dict:
+    state = _attrs(version or {}).get("appStoreState")
+    version_id = (version or {}).get("id")
+    if not version_id or state not in ACCEPTED_SUBMISSION_STATES:
+        raise SubmissionError("BLOCKED_METADATA_READBACK: the selected version is not submitted")
+    build = _get_build(client, app_id, version_string, build_number)
+    _require_version_build(client, version_id, build.get("id"), error_code="BLOCKED_METADATA_READBACK")
+    states = {"READY_FOR_SALE"} if state == "READY_FOR_SALE" else EDITABLE_VERSION_STATES | ACTIVE_VERSION_STATES
+    targets = _metadata_targets(client, app_id, _version_localizations(client, version_id), states, requested, locales)
+    return _metadata_readback(targets, version_string, build_number, state, client.writes)
+
+
 def submit(client: AscClient, bundle_id: str, version_string: str, build_number: str, *, whats_new: dict[str, str] | None = None, marketing_url: str | None = None, dry_run: bool = False,
            replace_existing_build: str | None = None, replace_confirm: str | None = None,
            sleep: Callable[[float], None] = time.sleep, max_polls: int = MAX_POLLS,
            replace_max_polls: int = REPLACE_MAX_POLLS,
-           replace_poll_interval: float = REPLACE_POLL_INTERVAL_SECONDS) -> dict:
+           replace_poll_interval: float = REPLACE_POLL_INTERVAL_SECONDS,
+           cancel_only: bool = False, metadata_only: bool = False, verify_metadata: bool = False,
+           app_name: str | None = None, subtitle: str | None = None, keywords: str | None = None,
+           metadata_locale: str | None = None) -> dict:
     target_version = _version_tuple(version_string)
     if not re.fullmatch(r"[1-9][0-9]{0,9}", build_number):
         raise SubmissionError("BLOCKED_INPUT: build number must be 1 to 10 digits without leading zeroes")
     if replace_existing_build is not None and not re.fullmatch(r"[1-9][0-9]{0,9}", replace_existing_build):
         raise SubmissionError("BLOCKED_INPUT: replace-existing-build must be 1 to 10 digits without leading zeroes")
+    requested, locales = _metadata_input(app_name, subtitle, keywords, metadata_locale)
+    if sum((cancel_only, metadata_only, verify_metadata)) > 1:
+        raise SubmissionError("BLOCKED_INPUT: cancel-only, metadata-only and verify-metadata are mutually exclusive")
+    if verify_metadata and (not requested or not dry_run or replace_existing_build or replace_confirm):
+        raise SubmissionError("BLOCKED_INPUT: verify-metadata requires dry-run and metadata fields without replacement options")
+    if metadata_only:
+        if not requested or replace_existing_build is not None:
+            raise SubmissionError("BLOCKED_INPUT: metadata-only requires metadata fields and no replacement build")
+        if not dry_run and replace_confirm != REPLACE_CONFIRMATION_PHRASE:
+            raise SubmissionError(f"BLOCKED_CONFIRMATION: live metadata recovery requires {REPLACE_CONFIRMATION_PHRASE}")
+    if cancel_only and replace_existing_build is not None and replace_existing_build != build_number:
+        raise SubmissionError("BLOCKED_INPUT: cancel-only must identify the same old build in both build options")
+    if requested and not (cancel_only or metadata_only or verify_metadata):
+        raise SubmissionError("BLOCKED_INPUT: metadata fields require cancel-only, metadata-only or verify-metadata")
     apps = client.pages("/apps" + _query({"filter[bundleId]": bundle_id, "limit": "200"}))
     app = _one([a for a in apps if _attrs(a).get("bundleId") == bundle_id], "APP")
     app_id = app.get("id")
-    builds = _get_build(client, app_id, version_string, build_number)
+    if not app_id:
+        raise SubmissionError("BLOCKED_APP: target app identity is missing")
     version = _find_version(client, app_id, version_string)
+    if verify_metadata:
+        return _verify_submitted_metadata(client, app_id, version, version_string, build_number, requested, locales)
+    if metadata_only:
+        if not version or not version.get("id") or _attrs(version).get("appStoreState") != "DEVELOPER_REJECTED":
+            raise SubmissionError("BLOCKED_METADATA_RECOVERY: the selected version must be DEVELOPER_REJECTED")
+        old_build = _find_build(client, app_id, version_string, build_number)
+        old_build_id = old_build.get("id")
+        if not old_build_id:
+            raise SubmissionError("BLOCKED_METADATA_RECOVERY: the selected build has no verifiable identity")
+        return _write_editable_metadata(
+            client, app_id, version["id"], version_string, build_number, requested, locales,
+            whats_new=whats_new, marketing_url=marketing_url, dry_run=dry_run, required_build_id=old_build_id,
+            allowed_states={"DEVELOPER_REJECTED"},
+        )
+    if cancel_only:
+        return _cancel_review(
+            client, app_id, version, version_string, build_number, requested, locales,
+            whats_new=whats_new, marketing_url=marketing_url, dry_run=dry_run, replace_confirm=replace_confirm,
+            sleep=sleep, replace_max_polls=replace_max_polls, replace_poll_interval=replace_poll_interval,
+        )
+    builds = _get_build(client, app_id, version_string, build_number)
     replace_plan: dict | None = None
     if replace_existing_build is not None:
         replace_plan = _plan_replacement(client, app_id, version, version_string, builds, replace_existing_build)
@@ -586,53 +879,8 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
     if missing:
         raise SubmissionError("BLOCKED_REVIEW_METADATA: fill required App Store Connect review fields: " + ", ".join(missing))
 
-    localization_params = {
-        "fields[appStoreVersionLocalizations]": "locale,description,keywords,supportUrl,whatsNew,marketingUrl",
-        "limit": "200",
-    }
-    localizations = client.pages(
-        f"/appStoreVersions/{version_id}/appStoreVersionLocalizations" + _query(localization_params)
-    )
-    if not localizations:
-        raise SubmissionError("BLOCKED_STORE_METADATA: no App Store version localization exists; complete the App Store product page")
-    if not isinstance(whats_new, dict) or whats_new.get("version") != version_string or not isinstance(whats_new.get("localizations"), dict):
-        raise SubmissionError("BLOCKED_RELEASE_NOTES: provide version-matched localized release notes")
-    notes_by_locale = whats_new["localizations"]
-    if marketing_url is not None and (not isinstance(marketing_url, str)
-            or not re.fullmatch(r"https://[^\s]+", marketing_url)):
-        raise SubmissionError("BLOCKED_STORE_METADATA: marketing URL must be an HTTPS URL")
-    missing_localizations = []
-    note_updates: list[tuple[str, str]] = []
-    metadata_updates: list[tuple[str, dict[str, str]]] = []
-    observed_locales: set[str] = set()
-    for localization in localizations:
-        localization_attrs = _attrs(localization)
-        locale = localization_attrs.get("locale")
-        if not isinstance(locale, str):
-            raise SubmissionError("BLOCKED_STORE_METADATA: localization has no locale")
-        observed_locales.add(locale)
-        absent = [field for field in ("description", "keywords", "supportUrl")
-                  if not str(localization_attrs.get(field) or "").strip()]
-        if absent:
-            missing_localizations.append(f"{locale}: {', '.join(absent)}")
-        note = notes_by_locale.get(locale)
-        if not isinstance(note, str) or not note.strip():
-            raise SubmissionError(f"BLOCKED_RELEASE_NOTES: provide non-empty release notes for locale {locale}")
-        existing_note = str(localization_attrs.get("whatsNew") or "").strip()
-        if existing_note and existing_note != note.strip():
-            raise SubmissionError(f"BLOCKED_RELEASE_NOTES_MISMATCH: {locale} already has different release notes; refusing to overwrite")
-        if not existing_note:
-            note_updates.append((localization.get("id"), note.strip()))
-        if marketing_url is not None:
-            existing_marketing_url = str(localization_attrs.get("marketingUrl") or "").strip()
-            if existing_marketing_url and existing_marketing_url != marketing_url:
-                raise SubmissionError(f"BLOCKED_MARKETING_URL_MISMATCH: {locale} already has a different marketing URL; refusing to overwrite")
-            if not existing_marketing_url:
-                metadata_updates.append((localization.get("id"), {"marketingUrl": marketing_url}))
-    if set(notes_by_locale) != observed_locales:
-        raise SubmissionError("BLOCKED_RELEASE_NOTES: release-notes locales must exactly match App Store localizations")
-    if missing_localizations:
-        raise SubmissionError("BLOCKED_STORE_METADATA: complete required localized fields: " + "; ".join(missing_localizations))
+    metadata_updates = _release_localization_updates(
+        _version_localizations(client, version_id), version_string, whats_new, marketing_url)
 
     # Inspect editable submission contents before binding or changing release options.
     _review_submission(client, app_id, version_id, dry_run=True)
@@ -641,23 +889,11 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
     current = client.request("GET", f"/appStoreVersions/{version_id}/relationships/build")
     current_build_id = ((current.get("data") or {}).get("id"))
     if dry_run:
-        print(f"DRY_RUN_PLAN: version={version_string} state={version_state} currentBuild={'same' if current_build_id == builds.get('id') else 'different'} targetBuild={build_number} releaseOption=AFTER_APPROVAL metadataUpdates={len(note_updates) + len(metadata_updates)}")
+        print(f"DRY_RUN_PLAN: version={version_string} state={version_state} currentBuild={'same' if current_build_id == builds.get('id') else 'different'} targetBuild={build_number} releaseOption=AFTER_APPROVAL metadataUpdates={len(metadata_updates)}")
         return {"marker": "DRY_RUN_PASS", "version": version_string, "build": build_number, "writes": client.writes}
 
-    for localization_id, note in note_updates:
-        if not localization_id:
-            raise SubmissionError("BLOCKED_RELEASE_NOTES: localization id is missing")
-        client.request("PATCH", f"/appStoreVersionLocalizations/{localization_id}", {
-            "data": {"type": "appStoreVersionLocalizations", "id": localization_id,
-                     "attributes": {"whatsNew": note}}
-        })
     for localization_id, attributes in metadata_updates:
-        if not localization_id:
-            raise SubmissionError("BLOCKED_STORE_METADATA: localization id is missing")
-        client.request("PATCH", f"/appStoreVersionLocalizations/{localization_id}", {
-            "data": {"type": "appStoreVersionLocalizations", "id": localization_id,
-                     "attributes": attributes}
-        })
+        _patch_localization(client, "appStoreVersionLocalizations", localization_id, attributes)
 
     if current_build_id != builds.get("id"):
         client.request("PATCH", f"/appStoreVersions/{version_id}/relationships/build", {
@@ -708,10 +944,10 @@ def submit(client: AscClient, bundle_id: str, version_string: str, build_number:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--bundle-id", required=True)
     parser.add_argument("--version", required=True, help="Exact App Store marketing version, X.Y.Z")
-    parser.add_argument("--build", required=True, help="Exact valid App Store Connect build number")
+    parser.add_argument("--build", required=True, help="Exact App Store Connect build number (old build for cancel-only)")
     parser.add_argument("--whats-new-file", required=True, help="Version-bound JSON release notes by locale")
     parser.add_argument("--marketing-url", help="HTTPS marketing URL to set on each App Store localization")
     parser.add_argument("--dry-run", action="store_true", help="Read-only validation and plan")
@@ -721,6 +957,17 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--confirm-replace", default=None,
                         help=f"Real cancellation requires exactly {REPLACE_CONFIRMATION_PHRASE}; any other value "
                              "keeps the run verification-only with zero mutations")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--cancel-only", action="store_true",
+                      help="Cancel the exact review of --build and optionally update localized metadata")
+    mode.add_argument("--metadata-only", action="store_true",
+                      help="Recover metadata on an editable version still linked to the exact old build")
+    mode.add_argument("--verify-metadata", action="store_true",
+                      help="Read back expected metadata on the submitted version and build (requires --dry-run)")
+    parser.add_argument("--app-name", help="Expected localized App Store app name")
+    parser.add_argument("--subtitle", help="Expected localized App Store subtitle")
+    parser.add_argument("--keywords", help="Expected localized App Store keywords (up to 100 UTF-8 bytes)")
+    parser.add_argument("--metadata-locale", help="Exact existing App Store locale; defaults to unique ko or ko-KR")
     return parser
 
 
@@ -739,11 +986,18 @@ def main(argv: list[str] | None = None) -> int:
         notes = {"version": notes_doc.get("version"), "localizations": notes_doc.get("whatsNew")}
         result = submit(AscClient(token), args.bundle_id, args.version, args.build, whats_new=notes,
                         marketing_url=args.marketing_url, dry_run=args.dry_run,
-                        replace_existing_build=args.replace_existing_build, replace_confirm=args.confirm_replace)
+                        replace_existing_build=args.replace_existing_build, replace_confirm=args.confirm_replace,
+                        cancel_only=args.cancel_only, metadata_only=args.metadata_only,
+                        verify_metadata=args.verify_metadata,
+                        app_name=args.app_name, subtitle=args.subtitle, keywords=args.keywords,
+                        metadata_locale=args.metadata_locale)
         if args.dry_run:
             suffix = " METADATA=DEFERRED" if result.get("marker") == "DRY_RUN_PLAN_ONLY" else ""
             print(f"DRY_RUN=PASS{suffix}")
-        return 0 if result.get("marker") in {"APP_STORE_SUBMITTED", "DRY_RUN_PASS", "DRY_RUN_PLAN_ONLY", "REPLACE_VERIFIED"} else 1
+        return 0 if result.get("marker") in {
+            "APP_STORE_SUBMITTED", "DRY_RUN_PASS", "DRY_RUN_PLAN_ONLY",
+            "REPLACE_VERIFIED", "REPLACE_CANCELED", "STORE_METADATA_VERIFIED",
+        } else 1
     except SubmissionError as error:
         print(str(error), file=sys.stderr)
         return 1
