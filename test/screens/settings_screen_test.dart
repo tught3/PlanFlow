@@ -125,7 +125,8 @@ void main() {
           onTutorialRestarted: presented.add,
           groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(
-            fetched: const UserSettingsModel(id: 'settings-1', userId: 'user-1'),
+            fetched:
+                const UserSettingsModel(id: 'settings-1', userId: 'user-1'),
           ),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -241,11 +242,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('버전 1.1.1 (빌드 48)'), findsOneWidget);
-      final featureTourButton = find.byKey(
-        const ValueKey('settings-feature-tour-button'),
+      expect(
+        find.byKey(const ValueKey('settings-feature-tour-button')),
+        findsNothing,
       );
-      await _scrollUntilHitTestable(tester, featureTourButton);
-      expect(featureTourButton, findsOneWidget);
+      expect(find.text('사용 방법 다시 보기'), findsNothing);
       expect(settingsRepository.fetchUserIds.single, 'user-1');
     },
   );
@@ -1325,7 +1326,8 @@ void main() {
     },
   );
 
-  testWidgets('account withdrawal warns about permanent backup deletion and cancels', (
+  testWidgets(
+      'account withdrawal warns about permanent backup deletion and cancels', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -1362,15 +1364,20 @@ void main() {
 
     final dialog = find.byType(AlertDialog);
     expect(dialog, findsOneWidget);
-    final backup = find.descendant(
-      of: dialog,
-      matching: find.text('• 백업·그룹 백업 스냅샷'),
-    ).evaluate().length;
+    final backup = find
+        .descendant(
+          of: dialog,
+          matching: find.text('• 백업·그룹 백업 스냅샷'),
+        )
+        .evaluate()
+        .length;
     const warning = '탈퇴하면 위 데이터가 모두 영구 삭제되며, 어떤 방법으로도 복구하거나 되돌릴 수 없습니다.';
-    final warningTexts = tester.widgetList<Text>(find.descendant(
-      of: dialog,
-      matching: find.text(warning),
-    )).toList();
+    final warningTexts = tester
+        .widgetList<Text>(find.descendant(
+          of: dialog,
+          matching: find.text(warning),
+        ))
+        .toList();
     expect(find.text('• 그룹 공유 일정 (다른 멤버 권리)'), findsOneWidget);
 
     final cancel = find.descendant(of: dialog, matching: find.text('취소'));

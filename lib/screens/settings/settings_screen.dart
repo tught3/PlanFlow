@@ -62,8 +62,7 @@ enum SettingsInitialAction { calendarSync, naverCalDav, openBetaSurvey }
 
 @visibleForTesting
 String disconnectPolicyMessage({required bool mentionsIcsKept}) {
-  const base =
-      '가져온 일정을 PlanFlow에 남겨둘지, 해당 공급자 일정과 함께 정리할지 선택해 주세요.';
+  const base = '가져온 일정을 PlanFlow에 남겨둘지, 해당 공급자 일정과 함께 정리할지 선택해 주세요.';
   if (!mentionsIcsKept) {
     return base;
   }
@@ -239,7 +238,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('튜토리얼을 다시 시작할까요?'),
-          content: const Text('연습 일정이 새로 저장되며, 안내 중에는 광고와 무료 사용 횟수가 차감되지 않습니다.'),
+          content:
+              const Text('연습 일정이 새로 저장되며, 안내 중에는 광고와 무료 사용 횟수가 차감되지 않습니다.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -280,7 +280,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     final snapshot = coordinator.state.value;
     if (snapshot.uid != user) return const SizedBox.shrink();
     final canRestart = snapshot.run == GuideRun.terminal &&
-        (snapshot.step == GuideStep.completed || snapshot.step == GuideStep.skipped) &&
+        (snapshot.step == GuideStep.completed ||
+            snapshot.step == GuideStep.skipped) &&
         snapshot.sessionId?.isNotEmpty == true;
     return ListTile(
       key: const ValueKey('settings-tutorial-replay-button'),
@@ -293,6 +294,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           : null,
     );
   }
+
   bool get _isFeedbackAdmin {
     if (!AppEnv.isSupabaseReady) {
       return false;
@@ -3892,17 +3894,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                 child: Column(
                   children: [
                     _buildTutorialReplayTile(),
-                    ListTile(
-                      key: const ValueKey('settings-feature-tour-button'),
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.tips_and_updates_outlined,
-                        color: PlanFlowColors.primary,
-                      ),
-                      title: const Text('사용 방법 다시 보기'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => context.push(AppRoutes.featureTour),
-                    ),
                   ],
                 ),
               ),
