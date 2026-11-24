@@ -677,7 +677,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                       checkColor: Colors.white,
                       activeColor: const Color(0xFFE53935),
                       title: const Text('중요한 일정으로 표시'),
-                      subtitle: const Text('캘린더에서 빨간색으로 표시됩니다.'),
+                      subtitle: const Text('캘린더에서 굵게 표시됩니다.'),
                       value: widget.isCritical,
                       onChanged: (v) {
                         widget.onCriticalChanged(v ?? false);

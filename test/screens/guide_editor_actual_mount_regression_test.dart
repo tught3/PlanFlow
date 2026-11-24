@@ -933,16 +933,10 @@ void main() {
       await tester.pumpAndSettle();
       final completion = coordinator.state.value;
       expect(completion.step, GuideStep.completionConfirm);
-      final sync = await coordinator.dispatch(GuideCompletionConfirmed(
+      final completed = await coordinator.dispatch(GuideCompletionConfirmed(
         uid: uid,
         sessionId: completion.sessionId,
         expectedRevision: completion.revision,
-      ));
-      expect(sync.step, GuideStep.syncChoiceConfirmed);
-      final completed = await coordinator.dispatch(SyncChoiceClosed(
-        uid: uid,
-        sessionId: sync.sessionId,
-        expectedRevision: sync.revision,
       ));
       expect(completed.step, GuideStep.completed);
       expect(completed.run, GuideRun.terminal);

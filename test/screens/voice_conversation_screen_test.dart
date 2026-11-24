@@ -1333,6 +1333,23 @@ void main() {
     expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsOneWidget);
   });
 
+  testWidgets('음성으로 다 지우기가 입력창의 누적 문장을 비운다', (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(tester, VoiceConversationScreen(sttService: stt));
+    await tester.tap(find.text('음성으로 명령하기'));
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    stt.emitPartial('내일 일정 보여줘');
+    await tester.pump();
+    expect(field.controller?.text, '내일 일정 보여줘');
+    stt.emitPartial('');
+    await tester.pump();
+    expect(field.controller?.text, isEmpty);
+    stt.emitPartial('내일 일정 보여줘');
+    await tester.pump();
+    expect(field.controller?.text, isEmpty);
+  });
+
   testWidgets('AI 일정 대화는 STT 성공 후 사용자 말과 응답을 표시한다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(

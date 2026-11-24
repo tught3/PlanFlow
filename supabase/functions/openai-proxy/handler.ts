@@ -24,6 +24,24 @@ const ANON_GLOBAL_BUCKET = "all";
 const BEARER_PREFIX = "bearer ";
 const encoder = new TextEncoder();
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const DEFAULT_MODEL = "gpt-6-luna";
+const FALLBACK_MODEL = "gpt-5.6-luna";
+const REASONING_EFFORT = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+function usesMaxCompletionTokens(model: string): boolean {
+  return /^(?:gpt-5|gpt-6|o[1-9])(?:$|-|\.)/i.test(model);
+}
+
+function isLunaModel(model: string): boolean {
+  return /^(?:gpt-6-luna|gpt-5\.6-luna)(?:$|-)/i.test(model);
+}
 const MESSAGE_ROLES = new Set(["system", "developer", "user", "assistant"]);
 
 type Env = (name: string) => string | undefined;
@@ -165,10 +183,24 @@ function normalizePayload(
       payload[field] = Math.min(tokens, maxTokens);
     }
   }
-  if (
+  const modernModel = usesMaxCompletionTokens(payload.model);
+  if (modernModel) {
+    // banned-ok: This is the provider's schema field name, not a secret value.
+    payload.max_completion_tokens = payload.max_completion_tokens ??
+      payload.max_tokens ?? maxTokens;
+    delete payload.max_tokens;
+  } else if (
     payload.max_tokens === undefined &&
     payload.max_completion_tokens === undefined
   ) payload.max_tokens = maxTokens;
+  if (value.reasoning_effort !== undefined) {
+    if (
+      typeof value.reasoning_effort !== "string" ||
+      !REASONING_EFFORT.has(value.reasoning_effort) ||
+      (isLunaModel(payload.model) && value.reasoning_effort === "minimal")
+    ) return invalid("invalid_reasoning_effort");
+    if (modernModel) payload.reasoning_effort = value.reasoning_effort;
+  }
   for (const [field, upper] of [["temperature", 2], ["top_p", 1]] as const) {
     if (value[field] !== undefined) {
       const number = value[field];
@@ -176,7 +208,7 @@ function normalizePayload(
         typeof number !== "number" || !Number.isFinite(number) || number < 0 ||
         number > upper
       ) return invalid("invalid_sampling_parameter");
-      payload[field] = number;
+      if (!modernModel) payload[field] = number;
     }
   }
   const responseFormat = value.response_format;
@@ -296,9 +328,10 @@ export function createHandler(dependencies: ProxyDependencies) {
   const maxMessages = positiveInteger(env, "OPENAI_PROXY_MAX_MESSAGES", 20);
   const origins = allowedOrigins(env);
   const models = new Set(
-    (env("OPENAI_PROXY_ALLOWED_MODELS") ?? "gpt-4o-mini").split(",").map((
-      value,
-    ) => value.trim()).filter((value) => MODEL_IDENTIFIER.test(value)),
+    (env("OPENAI_PROXY_ALLOWED_MODELS") ??
+      DEFAULT_MODEL + "," + FALLBACK_MODEL + ",gpt-4o-mini").split(",").map((
+        value,
+      ) => value.trim()).filter((value) => MODEL_IDENTIFIER.test(value)),
   );
   const enforceModels =
     env("OPENAI_PROXY_MODEL_ENFORCE")?.trim().toLowerCase() === "true";
@@ -440,15 +473,35 @@ export function createHandler(dependencies: ProxyDependencies) {
 
     const signal = AbortSignal.timeout(upstreamTimeoutMs);
     try {
-      const response = await fetchUpstream(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        signal,
-      });
+      const sendCompletion = (requestPayload: Payload) =>
+        fetchUpstream(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(requestPayload),
+          signal,
+        });
+      let response = await sendCompletion(payload);
+      if (
+        payload.model === DEFAULT_MODEL && models.has(FALLBACK_MODEL) &&
+        (response.status === 400 || response.status === 404)
+      ) {
+        // One retry for an explicit upstream model rejection, using the same
+        // authorization, timeout budget and quota reservation as the first call.
+        const rejected = await response.json().catch(() => null);
+        if (
+          rejected?.error?.code === "model_not_found" ||
+          rejected?.error?.code === "unsupported_model"
+        ) {
+          response = await sendCompletion({
+            ...payload,
+            model: FALLBACK_MODEL,
+            reasoning_effort: "none",
+          });
+        }
+      }
       if (!response.ok) {
         await response.body?.cancel().catch(() => {});
         return error("upstream_error", response.status);

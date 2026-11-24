@@ -339,14 +339,13 @@ void main() {
         await c.dispatch(GuideCompletionConfirmed(
             uid: 'u', sessionId: 's', expectedRevision: updated.revision)),
         same(completion));
-    final choice = await c.dispatch(GuideCompletionConfirmed(
+    final completed = await c.dispatch(GuideCompletionConfirmed(
         uid: 'u', sessionId: 's', expectedRevision: completion.revision));
-    expect(choice.step, GuideStep.syncChoiceConfirmed);
-    expect(finishRequests, isEmpty);
+    expect(completed.step, GuideStep.completed);
+    expect(progress.value, same(completed));
 
     final close = SyncChoiceClosed(
-        uid: 'u', sessionId: 's', expectedRevision: choice.revision);
-    final completed = await c.dispatch(close);
+        uid: 'u', sessionId: 's', expectedRevision: completed.revision);
     expect(completed.run, GuideRun.terminal);
     expect(completed.calendarSyncHeld, isFalse);
     expect(finishReply.isCompleted, isFalse);

@@ -70,6 +70,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
   ChildBackButtonDispatcher? _guideBackDispatcher;
   ModalRoute<dynamic>? _syncChoiceRoute;
   _SessionOnlyGuideProgressStore? _recoveryProgress;
+  _PermissionSettingsReturnFence? _permissionSettingsReturn;
   @override
   void initState() {
     super.initState();
@@ -176,6 +177,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
 
   void _start({bool retry = false}) {
     _epoch = Object();
+    _permissionSettingsReturn = null;
     _retrying = retry;
     _switchingQaAccount = false;
     _retryRequiresStart = false;
@@ -246,12 +248,43 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
     // Only a real background transition may pause the guide. Android emits
     // `inactive` while a permission dialog is on top of a still-visible,
     // still-interactive app, so pausing there would strand an active ASR run.
-    // `resumed` stays a no-op: recovery is always an explicit user action.
+    // Only a return from an explicitly opened settings screen may resume.
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _coordinator?.suspend(GuidePauseReason.background);
+    } else if (state == AppLifecycleState.resumed) {
+      final fence = _permissionSettingsReturn;
+      _permissionSettingsReturn = null;
+      final coordinator = _coordinator;
+      final current = coordinator?.state.value;
+      if (fence != null &&
+          current != null &&
+          current.uid == widget.uid &&
+          fence.matches(current, DateTime.now())) {
+        unawaited(coordinator!.dispatch(ResumeRequested(
+          uid: current.uid,
+          sessionId: current.sessionId!,
+          expectedRevision: current.revision,
+        )));
+      }
     }
+  }
+
+  VoidCallback? _beginPermissionSettingsReturn() {
+    final current = _coordinator?.state.value;
+    if (current == null || current.uid != widget.uid ||
+        current.run != GuideRun.active ||
+        current.sessionId?.isNotEmpty != true) {
+      return null;
+    }
+    final fence = _PermissionSettingsReturnFence(current, DateTime.now());
+    _permissionSettingsReturn = fence;
+    return () {
+      if (identical(_permissionSettingsReturn, fence)) {
+        _permissionSettingsReturn = null;
+      }
+    };
   }
 
   @override
@@ -593,6 +626,7 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
       content = GuideScope(
           coordinator: coordinator,
           allowBackSkip: !widget.isGuideQa,
+          beginPermissionSettingsReturn: _beginPermissionSettingsReturn,
           registerSyncChoiceRoute: _registerSyncChoiceRoute,
           child: ValueListenableBuilder<GuideSnapshot>(
               valueListenable: coordinator.state,
@@ -645,6 +679,32 @@ class _RootGuideScopeState extends ConsumerState<RootGuideScope>
       ], child: content);
     }
     return content;
+  }
+}
+
+class _PermissionSettingsReturnFence {
+  _PermissionSettingsReturnFence(GuideSnapshot snapshot, this.armedAt)
+      : uid = snapshot.uid,
+        sessionId = snapshot.sessionId!,
+        step = snapshot.step,
+        armedRevision = snapshot.revision;
+
+  final String uid;
+  final String sessionId;
+  final GuideStep step;
+  final int armedRevision;
+  final DateTime armedAt;
+
+  bool matches(GuideSnapshot current, DateTime now) {
+    final age = now.difference(armedAt);
+    return !age.isNegative &&
+        age <= const Duration(minutes: 3) &&
+        current.uid == uid &&
+        current.sessionId == sessionId &&
+        current.step == step &&
+        current.run == GuideRun.paused &&
+        current.pauseReason == GuidePauseReason.background &&
+        current.revision == armedRevision + 1;
   }
 }
 

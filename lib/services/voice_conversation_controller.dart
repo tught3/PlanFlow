@@ -6,6 +6,7 @@ import '../core/recurrence_expansion.dart';
 import '../data/models/event_model.dart';
 import 'event_range_utils.dart';
 import 'gpt_service.dart';
+import 'voice_command_pipeline.dart';
 import 'voice_command_router.dart';
 import 'voice_date_range_parser.dart';
 import 'voice_text_cleanup_service.dart';
@@ -590,7 +591,7 @@ class VoiceConversationController {
       );
       if (hasAdditionalChanges) {
         final locationText = _isLocationIntent(text, route: route)
-            ? _extractLocationText(text)
+            ? (route.requestedFieldValues['location'] ?? _extractLocationText(text))
             : null;
         final draftEvent = _draftEventForRequestedChanges(
           target,
@@ -622,7 +623,9 @@ class VoiceConversationController {
           inputText: input,
           targetEvent: target,
           criticalValue: criticalValue,
-          assistantMessage: criticalValue
+          assistantMessage: strongAlarmCommandPattern.hasMatch(text)
+              ? (criticalValue ? '강한 알람으로 설정했어요.' : '강한 알람을 해제했어요.')
+              : criticalValue
               ? '"${target.title}" 일정을 중요한 일정으로 표시할게요.'
               : '"${target.title}" 일정을 중요한 일정으로 표시하지 않을게요.',
         ),
@@ -660,7 +663,8 @@ class VoiceConversationController {
         state,
         editTargetText: editTargetText,
       );
-      final locationText = _extractLocationText(text);
+      final locationText =
+          route.requestedFieldValues['location'] ?? _extractLocationText(text);
       if (target != null && locationText != null) {
         state
           ..focusedEvent = target
@@ -1596,16 +1600,12 @@ class VoiceConversationController {
   }
 
   bool _isCriticalFalseCommand(String text) {
-    return RegExp(
-      r'(일반\s*(알람|알림|일정|경보)|보통\s*(알람|알림|일정|경보)|'
-      r'중요(?:한)?\s*(일정|알림|알람|경보|표시)?\s*'
-      r'(해제|꺼\s*줘|꺼줘|꺼|끄\s*어|끄고|끄기|풀어|풀\s*어))',
-    ).hasMatch(text);
+    return isVoiceAlarmOffCommand(text);
   }
 
   bool _isCriticalTrueCommand(String text) {
-    return RegExp(
-      r'(중요하게\s*표시|강한\s*알림|강한알림|강한\s*알람|강한알람|'
+    return strongAlarmCommandPattern.hasMatch(text) || RegExp(
+      r'(중요하게\s*표시|'
       r'중요한\s*일정|중요\s*일정|중요\s*표시|'
       r'중요한\s*알림|중요\s*알림|중요한\s*알람|중요\s*알람|긴급|급한|critical)',
     ).hasMatch(text);
@@ -2451,7 +2451,8 @@ class VoiceConversationController {
     var hasChange = draft != null;
     draft ??= event;
 
-    final requestedLocation = locationText?.trim();
+    final requestedLocation =
+        (locationText ?? resolvedRoute.requestedFieldValues['location'])?.trim();
     if (resolvedRoute.requestedChanges.contains('location') &&
         requestedLocation != null &&
         requestedLocation.isNotEmpty) {
@@ -2462,10 +2463,20 @@ class VoiceConversationController {
       );
       hasChange = true;
     }
+    final requestedTitle = resolvedRoute.requestedFieldValues['title'];
+    if (requestedTitle != null && requestedTitle.isNotEmpty) {
+      draft = draft.copyWith(title: requestedTitle);
+      hasChange = true;
+    }
 
     final criticalValue = _criticalValueFromText(text);
     if (criticalValue != null) {
-      draft = draft.copyWith(isCritical: criticalValue);
+      draft = strongAlarmCommandPattern.hasMatch(text)
+          ? draft.copyWith(
+              isCritical: criticalValue ? true : draft.isCritical,
+              useStrongAlarm: criticalValue,
+            )
+          : draft.copyWith(isCritical: criticalValue);
       hasChange = true;
     }
     return hasChange ? draft : null;
@@ -2915,7 +2926,9 @@ class VoiceConversationController {
   }
 
   String? _extractLocationText(String text) {
-    var cleaned = text;
+    final fieldFirst = extractVoiceLocationField(text);
+    if (fieldFirst != null) return fieldFirst;
+    var cleaned = text.split(RegExp(r'(?:해\s*주고|바꾸고)\s*')).last;
     cleaned = cleaned.replaceFirst(
       RegExp(r'^\s*\d+\s*(?:번째|번\s*째|번)\s*(?:일정)?(?:에|으로|을|를)?\s*'),
       ' ',
@@ -2941,22 +2954,19 @@ class VoiceConversationController {
       RegExp(r'(오전|오후|아침|저녁|밤)?\s*\d{1,2}\s*시\s*일정(?:에|으로|을|를)?'),
       ' ',
     );
-    final fieldFirst = RegExp(
-      r'^\s*(?:장소|위치)(?:를|을|는)?\s*(.+?)\s*(?:으로|로)?\s*(?:추가|변경|바꿔|넣어)',
-    ).firstMatch(cleaned);
-    if (fieldFirst != null) {
-      cleaned = fieldFirst.group(1) ?? cleaned;
-    }
     cleaned = cleaned.replaceAll(
-      RegExp(r'(장소|위치)(를|을|에|로|으로)?\s*(추가|변경|바꿔|넣어).*'),
+      RegExp(r'(장소|위치|주소)(를|을|은|는|에|로|으로)?\s*(추가|변경|바꿔|넣어|수정|고쳐|설정|등록|입력).*'),
       ' ',
     );
-    cleaned = cleaned.replaceAll(RegExp(r'(장소|위치)(를|을|에)?'), ' ');
-    cleaned = cleaned.replaceAll(RegExp(r'(추가|변경|바꿔|넣어)(해줘|줘|해)?'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r'(장소|위치|주소)(를|을|은|는|에)?'), ' ');
+    cleaned = cleaned.replaceAll(
+      RegExp(r'(추가|변경|바꿔|넣어|수정|고쳐|설정|등록|입력)(해줘|줘|해)?'),
+      ' ',
+    );
     cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
     cleaned = cleaned.replaceFirst(RegExp(r'^(을|를|은|는)\s*'), '');
     cleaned = cleaned.replaceFirst(RegExp(r'^(으로|로|에)\s*'), '');
-    cleaned = cleaned.replaceFirst(RegExp(r'\s*(으로|로)$'), '');
+    cleaned = stripVoiceLocationParticle(cleaned);
     return cleaned.isEmpty ? null : cleaned;
   }
 

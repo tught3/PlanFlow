@@ -2,6 +2,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/korean_clock_time.dart';
 
 void main() {
+  test('a floor or session number is not a minute', () {
+    expect(koreanClockTimeParts('3시 2차 회의').single.minute, 0);
+    expect(koreanClockTimeParts('2시 3층 회의실').single.minute, 0);
+  });
+
+  test('bare minutes before a particle keep the minute', () {
+    for (final particle in [
+      '에', '부터', '까지', '쯤', '경', '전', '후', '으로',
+      '로', '만', '이나', '나', '도', '은', '는', '이', '가',
+    ]) {
+      expect(koreanClockTimeParts('8시 10$particle 일정').single.minute, 10,
+          reason: particle);
+    }
+  });
+
+  test('bare minutes cannot end inside a unit or word', () {
+    for (final suffix in ['월', '명', '이상', '가족']) {
+      expect(koreanClockTimeParts('8시 10$suffix 일정').single.minute, 0,
+          reason: suffix);
+    }
+  });
+
+  test('relative time accepts Korean hours, half and Sino-Korean minutes', () {
+    expect(koreanRelativeTimeOffset('한 시간 뒤'), const Duration(hours: 1));
+    expect(koreanRelativeTimeOffset('1시간 반 뒤'), const Duration(minutes: 90));
+    expect(koreanRelativeTimeOffset('십분 후'), const Duration(minutes: 10));
+  });
+
+
   group('resolveKoreanClockTime', () {
     for (final (period, hour, minute, expected, nextDay) in [
       ('밤', 12, 0, 0, true),

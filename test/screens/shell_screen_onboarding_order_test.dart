@@ -14,7 +14,9 @@ void main() {
     final sequenceEnd =
         shellSource.indexOf('presentationTimeout:', sequenceStart);
     expect(sequenceEnd, greaterThan(sequenceStart));
-    final startupSequence = shellSource.substring(sequenceStart, sequenceEnd);
+    final startupSequence = shellSource
+        .substring(sequenceStart, sequenceEnd)
+        .replaceAll(RegExp(r'\s+'), ' ');
     // Execution order is covered by startup_sequence_test.dart; named
     // argument order at this call site does not determine execution order.
     expect(startupSequence, contains('intro: _maybeOpenFeatureTour'));
@@ -31,6 +33,18 @@ void main() {
       startupSequence,
       contains('() async { await _maybeShowExternalCalendarSyncGuide(); }'),
     );
+    final finalFlow = shellSource.substring(shellSource.indexOf(
+        'Future<bool> _maybeShowExternalCalendarSyncGuide()'));
+    final confirmed = finalFlow.indexOf('GuideCompletionConfirmed(');
+    final terminal = finalFlow.indexOf('confirmed.run != GuideRun.terminal');
+    final released = finalFlow.indexOf('_routeGate.closeGuideChoice(userId)', terminal);
+    final probe = finalFlow.indexOf('.shouldShowForUser(userId)', released);
+    final optional = finalFlow.indexOf('showDialog<_ExternalCalendarGuideAction>', probe);
+    expect(confirmed, greaterThan(-1));
+    expect(terminal, greaterThan(confirmed));
+    expect(released, greaterThan(terminal));
+    expect(probe, greaterThan(released));
+    expect(optional, greaterThan(probe));
     expect(shellSource, contains('_routeGate.beginStartupWorkDeferral()'));
     expect(shellSource, contains('_routeGate.completeStartupWorkDeferral()'));
     expect(shellSource, contains('_sessionOnboardingUserId'));

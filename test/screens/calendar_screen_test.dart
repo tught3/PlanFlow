@@ -180,6 +180,26 @@ void main() {
     },
   );
 
+  testWidgets('calendar save route focuses its date without opening a sheet',
+      (tester) async {
+    // banned-ok: Fixed event date makes this widget fixture deterministic.
+    final date = DateTime(2027, 2, 3, 9);
+    final repository = _AsyncEventRepository([
+      Future.value([_event('new-1', '방금 저장한 일정', date)]),
+    ]);
+    await tester.pumpWidget(MaterialApp(home: CalendarScreen(
+      eventRepository: repository,
+      userId: 'user-1',
+      initialDate: date,
+      suppressInitialDaySheet: true,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('방금 저장한 일정'), findsWidgets);
+    expect(find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
+        findsNothing);
+  });
+
   testWidgets('CalendarScreen opens selected day sheet from initialDate', (
     tester,
   ) async {

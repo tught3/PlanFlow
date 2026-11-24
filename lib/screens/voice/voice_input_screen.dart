@@ -1029,7 +1029,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
           return;
         case _AmbiguousFieldAdditionChoice.createNew:
           await _openAddConfirmFromText(
-            normalizedText,
+            rawText,
             preparedDraft,
             submitGeneration: submitGeneration,
             guideOrigin: guideOrigin,
@@ -1046,7 +1046,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     }
     if (commandAction == _VoiceCommandAction.add) {
       await _openAddConfirmFromText(
-        normalizedText,
+        rawText,
         preparedDraft,
         submitGeneration: submitGeneration,
         guideOrigin: guideOrigin,
@@ -1290,7 +1290,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   Future<void> _openAddConfirmFromText(
-      String normalizedText, Map<String, dynamic>? preparedDraft,
+      String sourceText, Map<String, dynamic>? preparedDraft,
       {required int submitGeneration,
       ({
         GuideCoordinator coordinator,
@@ -1304,7 +1304,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
           // A partial draft is only an optimistic preview. Always run the
           // final AI parse on the submitted text so the confirm screen owns
           // the authoritative fields and blocking loader.
-          'raw_text': normalizedText,
+          'raw_text': sourceText,
           'parse_pending': true,
           if (_manualEditOriginalTranscript?.trim().isNotEmpty == true)
             'stt_original_text': _manualEditOriginalTranscript!.trim(),
@@ -1316,7 +1316,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       return;
     }
 
-    final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
+    final cleanup = await _cleanupVoiceTextForRouting(sourceText);
     if (!mounted || submitGeneration != _submitGeneration) {
       return;
     }

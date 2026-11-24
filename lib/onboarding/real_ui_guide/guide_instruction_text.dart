@@ -10,7 +10,7 @@ const editPreviewGuideTitle = '6/7 · 변경 내용 확인·저장';
 const editPreviewGuideBody = '밝게 표시된 시작 시간과 종료 시간을 확인하고 저장 버튼을 눌러 주세요.';
 const updatedDetailGuideTitle = '7/7 · 변경 완료';
 const updatedDetailGuideBody =
-    '변경된 시작 시간과 종료 시간을 확인하고 화면 아래의 ‘변경된 시간 확인’ 버튼을 눌러 주세요. 마지막으로 동기화를 선택해요.';
+    '변경된 시작 시간과 종료 시간을 확인하고 화면 아래의 ‘변경된 시간 확인’ 버튼을 눌러 주세요.';
 
 /// Shared typography for the guide's instructional body copy.
 class GuideInstructionText extends StatelessWidget {

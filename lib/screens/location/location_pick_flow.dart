@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../onboarding/real_ui_guide/guide_scope.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
@@ -224,7 +225,7 @@ Future<void> _showLocationPermissionGuide(
 ) {
   return showDialog<void>(
     context: context,
-    builder: (context) {
+    builder: (dialogContext) {
       return AlertDialog(
         title: const Text('위치 권한이 필요해요'),
         content: const Text(
@@ -233,11 +234,13 @@ Future<void> _showLocationPermissionGuide(
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
           planflowCancelConfirmButtons(
-            onCancel: () => Navigator.of(context).pop(),
+            onCancel: () => Navigator.of(dialogContext).pop(),
             onConfirm: () async {
-              await permissions.openAppSettings();
-              if (context.mounted) {
-                Navigator.of(context).pop();
+              if (!context.mounted) return;
+              await GuideScope.openPermissionSettings(
+                  context, permissions.openAppSettings);
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
               }
             },
             cancelLabel: '계속 선택',

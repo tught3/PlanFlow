@@ -6,6 +6,7 @@ import 'package:planflow/core/startup_route_gate.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_contract.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_host.dart';
 import 'package:planflow/onboarding/real_ui_guide/guide_providers.dart';
+import 'package:planflow/onboarding/real_ui_guide/guide_scope.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Component-only synthetic ports: the real RootGuideScope widget with a fake
@@ -26,6 +27,7 @@ class _RecordingGuide implements GuideCoordinator {
   int starts = 0;
   int suspends = 0;
   int dispatches = 0;
+  final resumes = <ResumeRequested>[];
   final List<GuidePauseReason> reasons = <GuidePauseReason>[];
 
   @override
@@ -47,6 +49,13 @@ class _RecordingGuide implements GuideCoordinator {
   @override
   Future<GuideSnapshot> dispatch(GuideSignal signal) async {
     dispatches++;
+    if (signal is ResumeRequested) {
+      resumes.add(signal);
+      notifier.value = notifier.value.copyWith(
+        run: GuideRun.active,
+        revision: notifier.value.revision + 1,
+      );
+    }
     return notifier.value;
   }
 
@@ -55,9 +64,10 @@ class _RecordingGuide implements GuideCoordinator {
     suspends++;
     reasons.add(reason);
     final s = notifier.value;
-    if (s.run == GuideRun.terminal) return;
+    if (s.run != GuideRun.active) return;
     notifier.value = s.copyWith(
         run: GuideRun.paused,
+        pauseReason: reason,
         mayListenContinuously: false,
         revision: s.revision + 1);
   }
@@ -223,4 +233,49 @@ void main() {
     expect(actions, 0, reason: 'paused guide must keep blocking actions');
     await tester.pumpWidget(const SizedBox.shrink());
   });
+}
+
+void registerPermissionReturnTests() {
+  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+  tearDown(() {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    startupRouteGate.closeGuideChoice(kUid);
+  });
+
+  for (final opened in [true, false]) {
+    testWidgets('permission-settings return revalidates the guide (opened: $opened)',
+        (tester) async {
+      final guide = _RecordingGuide();
+      late BuildContext routeContext;
+      await tester.pumpWidget(_tree(guide, child: Builder(builder: (context) {
+        routeContext = context;
+        return const Scaffold(body: Text('Guide route'));
+      })));
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(guide.state.value.run, GuideRun.active);
+
+      expect(await GuideScope.openPermissionSettings(
+        routeContext,
+        () async => opened,
+      ), opened);
+      await _emit(tester, AppLifecycleState.paused);
+      final paused = guide.state.value;
+      expect(paused.run, GuideRun.paused);
+      await _emit(tester, AppLifecycleState.resumed);
+
+      if (opened) {
+        expect(guide.resumes.single.expectedRevision, paused.revision);
+        expect(guide.resumes.single.sessionId, paused.sessionId);
+        expect(guide.state.value.run, GuideRun.active);
+        await _emit(tester, AppLifecycleState.paused);
+        await _emit(tester, AppLifecycleState.resumed);
+        expect(guide.resumes, hasLength(1));
+      } else {
+        expect(guide.resumes, isEmpty);
+      }
+      expect(guide.state.value.run, GuideRun.paused);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 }

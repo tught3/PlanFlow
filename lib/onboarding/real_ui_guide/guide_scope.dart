@@ -11,10 +11,31 @@ class GuideScope extends InheritedNotifier<ValueListenable<GuideSnapshot>> {
     required super.child,
     this.allowBackSkip = false,
     this.registerSyncChoiceRoute,
+    this.beginPermissionSettingsReturn,
   }) : super(notifier: coordinator.state);
   final GuideCoordinator coordinator;
   final bool allowBackSkip;
   final VoidCallback Function(ModalRoute<dynamic>)? registerSyncChoiceRoute;
+  final VoidCallback? Function()? beginPermissionSettingsReturn;
+
+  static VoidCallback? beginPermissionSettingsReturnOf(BuildContext context) =>
+      context
+          .getInheritedWidgetOfExactType<GuideScope>()
+          ?.beginPermissionSettingsReturn
+          ?.call();
+
+  static Future<bool> openPermissionSettings(
+    BuildContext context,
+    Future<bool> Function() open,
+  ) async {
+    final cancel = beginPermissionSettingsReturnOf(context);
+    var opened = false;
+    try {
+      return opened = await open();
+    } finally {
+      if (!opened) cancel?.call();
+    }
+  }
 
   static GuideCoordinator? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<GuideScope>()?.coordinator;
@@ -63,6 +84,7 @@ class GuideScope extends InheritedNotifier<ValueListenable<GuideSnapshot>> {
       coordinator != oldWidget.coordinator ||
       allowBackSkip != oldWidget.allowBackSkip ||
       registerSyncChoiceRoute != oldWidget.registerSyncChoiceRoute ||
+      beginPermissionSettingsReturn != oldWidget.beginPermissionSettingsReturn ||
       super.updateShouldNotify(oldWidget);
 }
 

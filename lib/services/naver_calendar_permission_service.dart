@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -34,17 +35,73 @@ class NaverCalendarPermissionResult {
 
 typedef NaverAccessTokenProvider = Future<String?> Function();
 
+/// Credentials issued to a verified Naver OAuth attempt, keyed by PlanFlow UID.
+class NaverCalendarOAuthTokenStore {
+  const NaverCalendarOAuthTokenStore({
+    FlutterSecureStorage storage = const FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    ),
+  }) : _storage = storage;
+
+  final FlutterSecureStorage _storage;
+  static Future<void> _operations = Future<void>.value();
+
+  static String _key(String userId) => 'planflow_naver_calendar_oauth_v1:$userId';
+
+  static Future<T> _serialize<T>(Future<T> Function() operation) {
+    final result = _operations.then((_) => operation());
+    _operations = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return result;
+  }
+
+  Future<String?> readForUser(String userId) =>
+      _serialize(() => _storage.read(key: _key(userId)));
+
+  Future<void> deleteForUser(String userId) =>
+      _serialize(() => _storage.delete(key: _key(userId)));
+
+  Future<bool> saveVerifiedCallbackToken({
+    required String userId,
+    required String? token,
+    required bool Function() stillCurrent,
+    required bool replaceExisting,
+  }) async {
+    final value = token?.trim();
+    if (userId.isEmpty || value == null || value.isEmpty) return false;
+
+    return _serialize(() async {
+      if (!stillCurrent()) return false;
+      final key = _key(userId);
+      final previous = await _storage.read(key: key);
+      if (!stillCurrent()) return false;
+      if (!replaceExisting && previous != null) return true;
+
+      await _storage.write(key: key, value: value);
+      if (stillCurrent()) return true;
+
+      if (previous == null) {
+        await _storage.delete(key: key);
+      } else {
+        await _storage.write(key: key, value: previous);
+      }
+      return false;
+    });
+  }
+}
+
 class NaverCalendarPermissionService {
   NaverCalendarPermissionService({
     SupabaseClient? supabaseClient,
     http.Client? httpClient,
     SharedPreferencesAsync? preferences,
     NaverAccessTokenProvider? accessTokenProvider,
+    NaverCalendarOAuthTokenStore tokenStore = const NaverCalendarOAuthTokenStore(),
     Uri? probeUri,
   })  : _supabaseClient = supabaseClient,
         _httpClient = httpClient ?? http.Client(),
         _preferences = preferences ?? SharedPreferencesAsync(),
         _accessTokenProvider = accessTokenProvider,
+        _tokenStore = tokenStore,
         _probeUri = probeUri ??
             Uri.parse('https://openapi.naver.com/calendar/findSchedules.json');
 
@@ -56,6 +113,7 @@ class NaverCalendarPermissionService {
   final http.Client _httpClient;
   final SharedPreferencesAsync _preferences;
   final NaverAccessTokenProvider? _accessTokenProvider;
+  final NaverCalendarOAuthTokenStore _tokenStore;
   final Uri _probeUri;
 
   Future<NaverCalendarPermissionStatus> loadStatus() async {
@@ -63,8 +121,16 @@ class NaverCalendarPermissionService {
     return _parseStatus(value);
   }
 
-  Future<void> saveStatus(NaverCalendarPermissionStatus status) async {
+  Future<void> saveStatus(NaverCalendarPermissionStatus status) =>
+      _saveStatus(status);
+
+  Future<void> _saveStatus(
+    NaverCalendarPermissionStatus status, {
+    bool Function()? ownsSession,
+  }) async {
+    if (ownsSession?.call() == false) return;
     await _preferences.setString(_statusKey, status.name);
+    if (ownsSession?.call() == false) return;
     await _preferences.setString(
       _lastCheckedAtKey,
       DateTime.now().toUtc().toIso8601String(),
@@ -77,62 +143,65 @@ class NaverCalendarPermissionService {
   }
 
   Future<void> clearStoredToken() async {
-    final client = _clientOrNull;
-    final userId = client?.auth.currentUser?.id;
-    if (client == null || userId == null || userId.trim().isEmpty) {
-      return;
-    }
-
+    final userId = _clientOrNull?.auth.currentSession?.user.id;
+    if (userId == null || userId.isEmpty) return;
     try {
-      await client.from('user_settings').upsert(
-        <String, dynamic>{
-          'user_id': userId,
-          'naver_calendar_token': null,
-        },
-        onConflict: 'user_id',
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Naver calendar token clear skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      await _tokenStore.deleteForUser(userId);
+    } catch (error) {
+      debugPrint('Naver calendar token clear skipped: ${error.runtimeType}');
     }
   }
 
   Future<void> clearConnectionState() async {
-    await clearStatus();
     await clearStoredToken();
+    await clearStatus();
   }
 
-  Future<bool> captureCurrentProviderToken({
-    bool allowWithoutNaverIdentity = false,
-  }) {
-    return _persistCurrentProviderToken(
-      allowWithoutNaverIdentity: allowWithoutNaverIdentity,
+  /// Compatibility for auth listeners. Generic session tokens have no issuer
+  /// provenance. The PKCE callback is responsible for capturing Naver tokens.
+  Future<bool> captureCurrentProviderToken() async => false;
+
+  Future<String?> resolveAccessTokenForCalendar() async {
+    final client = _clientOrNull;
+    final session = client?.auth.currentSession;
+    final token = await _resolveAccessToken(session);
+    return _ownsSession(client, session) ? token : null;
+  }
+
+  Future<NaverCalendarPermissionResult> refreshStatus() =>
+      _checkStatus(persistResult: true);
+
+  Future<NaverCalendarPermissionResult> probeStatus() =>
+      _checkStatus(persistResult: false);
+
+  Future<NaverCalendarPermissionResult> _checkStatus({
+    required bool persistResult,
+  }) async {
+    final client = _clientOrNull;
+    final session = client?.auth.currentSession;
+    bool ownsSession() => _ownsSession(client, session);
+    const sessionChanged = NaverCalendarPermissionResult(
+      status: NaverCalendarPermissionStatus.unknown,
+      message: '로그인 세션이 변경되어 네이버 캘린더 권한을 확인하지 못했습니다.',
     );
-  }
 
-  Future<bool> captureProviderToken(
-    String token, {
-    bool allowWithoutNaverIdentity = false,
-  }) {
-    return _persistProviderToken(
-      token,
-      allowWithoutNaverIdentity: allowWithoutNaverIdentity,
-    );
-  }
+    Future<NaverCalendarPermissionResult> finish(
+      NaverCalendarPermissionResult result,
+    ) async {
+      if (!ownsSession()) return sessionChanged;
+      if (persistResult) {
+        await _saveStatus(result.status, ownsSession: ownsSession);
+      }
+      return ownsSession() ? result : sessionChanged;
+    }
 
-  Future<String?> resolveAccessTokenForCalendar() {
-    return _resolveAccessToken();
-  }
-
-  Future<NaverCalendarPermissionResult> refreshStatus() async {
-    final accessToken = await _resolveAccessToken();
+    final accessToken = await _resolveAccessToken(session);
+    if (!ownsSession()) return sessionChanged;
     if (accessToken == null || accessToken.trim().isEmpty) {
-      const result = NaverCalendarPermissionResult(
+      return finish(const NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.unknown,
         message: '네이버 로그인 토큰을 확인하지 못했습니다.',
-      );
-      await saveStatus(result.status);
-      return result;
+      ));
     }
 
     try {
@@ -156,39 +225,31 @@ class NaverCalendarPermissionService {
         },
       ).timeout(const Duration(seconds: 8));
 
+      if (!ownsSession()) return sessionChanged;
       final result = _classifyResponse(response);
       debugPrint(
         'Naver calendar permission probe: status=${response.statusCode} result=${result.status.name}',
       );
-      if (result.isGranted) {
-        await _persistCurrentProviderToken();
-      }
-      await saveStatus(result.status);
-      return result;
+      return finish(result);
     } on TimeoutException catch (error) {
-      final result = NaverCalendarPermissionResult(
+      if (!ownsSession()) return sessionChanged;
+      return NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.networkError,
         message: '네이버 캘린더 권한 확인 중 연결 시간이 초과되었습니다.',
         error: error,
       );
-      await saveStatus(result.status);
-      return result;
     } on SocketException catch (error) {
-      final result = NaverCalendarPermissionResult(
+      return finish(NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.networkError,
         message: '네이버 캘린더 권한 확인 중 네트워크 문제가 발생했습니다.',
         error: error,
-      );
-      await saveStatus(result.status);
-      return result;
+      ));
     } catch (error) {
-      final result = NaverCalendarPermissionResult(
+      return finish(NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.unknown,
         message: '네이버 캘린더 권한 상태를 확인하지 못했습니다.',
         error: error,
-      );
-      await saveStatus(result.status);
-      return result;
+      ));
     }
   }
 
@@ -206,111 +267,25 @@ class NaverCalendarPermissionService {
     });
   }
 
-  Future<String?> _resolveAccessToken() async {
+  Future<String?> _resolveAccessToken(Session? session) async {
     final provider = _accessTokenProvider;
     if (provider != null) {
       return provider();
     }
 
-    final providerToken = _currentProviderToken();
-    if (providerToken != null && providerToken.trim().isNotEmpty) {
-      return providerToken;
-    }
-
-    return _storedNaverCalendarToken();
-  }
-
-  String? _currentProviderToken() {
-    return _clientOrNull?.auth.currentSession?.providerToken;
-  }
-
-  Future<String?> _storedNaverCalendarToken() async {
-    final client = _clientOrNull;
-    final userId = client?.auth.currentUser?.id;
-    if (client == null || userId == null || userId.trim().isEmpty) {
-      return null;
-    }
-
+    final userId = session?.user.id;
+    if (userId == null || userId.isEmpty) return null;
     try {
-      final row = await client
-          .from('user_settings')
-          .select('naver_calendar_token')
-          .eq('user_id', userId)
-          .maybeSingle();
-      if (row == null) {
-        return null;
-      }
-      return row['naver_calendar_token']?.toString();
-    } catch (error, stackTrace) {
-      debugPrint('Stored Naver calendar token lookup failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      return await _tokenStore.readForUser(userId);
+    } catch (error) {
+      debugPrint('Naver calendar token read skipped: ${error.runtimeType}');
       return null;
     }
   }
 
-  Future<bool> _persistCurrentProviderToken({
-    bool allowWithoutNaverIdentity = false,
-  }) async {
-    final token = _currentProviderToken();
-    final client = _clientOrNull;
-    final userId = client?.auth.currentUser?.id;
-    if (client == null ||
-        userId == null ||
-        userId.trim().isEmpty ||
-        (!allowWithoutNaverIdentity && !isNaverSignedIn()) ||
-        token == null ||
-        token.trim().isEmpty) {
-      return false;
-    }
-
-    try {
-      await client.from('user_settings').upsert(
-        <String, dynamic>{
-          'user_id': userId,
-          'naver_calendar_token': token,
-        },
-        onConflict: 'user_id',
-      );
-      debugPrint('Naver calendar provider token captured.');
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint('Naver calendar token persistence skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
-  }
-
-  Future<bool> _persistProviderToken(
-    String? token, {
-    bool allowWithoutNaverIdentity = false,
-  }) async {
-    final client = _clientOrNull;
-    final userId = client?.auth.currentUser?.id;
-    if (client == null ||
-        userId == null ||
-        userId.trim().isEmpty ||
-        (!allowWithoutNaverIdentity && !isNaverSignedIn()) ||
-        token == null ||
-        token.trim().isEmpty) {
-      return false;
-    }
-
-    try {
-      await client.from('user_settings').upsert(
-        <String, dynamic>{
-          'user_id': userId,
-          'naver_calendar_token': token.trim(),
-        },
-        onConflict: 'user_id',
-      );
-      debugPrint('Naver calendar provider token captured.');
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint('Naver calendar token persistence skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
-  }
+  bool _ownsSession(SupabaseClient? client, Session? session) =>
+      identical(_clientOrNull, client) &&
+      identical(client?.auth.currentSession, session);
 
   SupabaseClient? get _clientOrNull {
     if (_supabaseClient != null) {

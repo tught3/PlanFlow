@@ -3,6 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/voice_text_cleanup_service.dart';
 
 void main() {
+  test('normalization keeps dates and ordinary similar-sounding words', () {
+    expect(VoiceTextCleanupService.normalizeBasic('3.1절 1.5배 수영 후배랑'),
+        '3.1절 1.5배 수영 후배랑');
+  });
+
+
   group('VoiceTextCleanupService', () {
     test('repairs split location particles only when a candidate supports it',
         () {

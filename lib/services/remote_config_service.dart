@@ -116,6 +116,7 @@ class RemoteConfigService {
   static bool _lastFetchSucceeded = false;
 
   static const String _kGptModel = 'gpt_model';
+  static const String _defaultGptModel = 'gpt-6-luna';
   static const String _kBriefingEnabled = 'briefing_enabled';
   static const String _kEarlyBirdBannerVisible = 'early_bird_banner_visible';
   static const String _kEarlyBirdMessage = 'early_bird_message';
@@ -199,7 +200,7 @@ class RemoteConfigService {
 
       await remoteConfig.setDefaults(
         <String, Object>{
-          _kGptModel: 'gpt-4o-mini',
+          _kGptModel: _defaultGptModel,
           _kBriefingEnabled: true,
           _kEarlyBirdBannerVisible: true,
           _kEarlyBirdMessage: '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.',
@@ -363,8 +364,19 @@ class RemoteConfigService {
     return _lastFetchSucceeded;
   }
 
-  static String get gptModel =>
-      _remoteConfig?.getString(_kGptModel) ?? 'gpt-4o-mini';
+  static String get gptModel {
+    final configured = _remoteConfig?.getString(_kGptModel).trim();
+    return configured == null || configured.isEmpty
+        ? _defaultGptModel
+        : configured;
+  }
+
+  static bool usesCompletionTokenLimit(String model) =>
+      RegExp(r'^(?:gpt-5|gpt-6|o[1-9])(?:$|[-.])').hasMatch(model);
+
+  static bool usesLunaReasoning(String model) =>
+      model == 'gpt-6-luna' || model.startsWith('gpt-6-luna-') ||
+      model == 'gpt-5.6-luna' || model.startsWith('gpt-5.6-luna-');
 
   static bool get briefingEnabled =>
       _remoteConfig?.getBool(_kBriefingEnabled) ?? true;

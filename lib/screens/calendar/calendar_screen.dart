@@ -619,7 +619,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
-    final initialDate = widget.initialDate ?? DateTime.now();
+    final requestedDate = _localCalendarDate(widget.initialDate);
+    final initialDate = requestedDate ?? planflowNow();
     _selectedDate = initialDate;
     _focusedMonth = DateTime(initialDate.year, initialDate.month);
     _miniMonthCellsCache = buildCalendarMiniMonthCells(
@@ -629,16 +630,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _pendingOpenDaySheetDate =
         widget.suppressInitialDaySheet || widget.briefingIsMorning != null
             ? null
-            : widget.initialDate;
+            : requestedDate;
     if (widget.briefingIsMorning != null) {
       _briefingRunning.value = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _briefingSheetShown || widget.initialDate == null) {
+        if (!mounted || _briefingSheetShown || requestedDate == null) {
           return;
         }
         _briefingSheetShown = true;
         _showDayEventsSheet(
-          widget.initialDate!,
+          requestedDate,
           briefingIsMorning: widget.briefingIsMorning,
         );
         unawaited(_runBriefing());
@@ -650,8 +651,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     _searchController.addListener(_handleSearchChanged);
     _seedPrefetchedEvents();
-    _loadEvents(focusDate: widget.initialDate);
+    _loadEvents(focusDate: requestedDate);
   }
+
+  // Route dates represent calendar wall days. Refresh messages can carry UTC
+  // event instants, which need conversion before choosing a month or day.
+  DateTime? _localCalendarDate(DateTime? value) => value == null
+      ? null
+      : DateUtils.dateOnly(value.isUtc ? planflowLocal(value) : value);
 
   void _seedPrefetchedEvents() {
     final userId = _resolveCalendarUserId();
@@ -670,12 +677,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void didUpdateWidget(covariant CalendarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final nextDate = widget.initialDate;
-    if (oldWidget.initialDate == nextDate) {
+    final nextDate = _localCalendarDate(widget.initialDate);
+    if (oldWidget.initialDate == widget.initialDate &&
+        oldWidget.suppressInitialDaySheet == widget.suppressInitialDaySheet) {
       return;
     }
     if (nextDate == null) {
-      final today = DateTime.now();
+      final today = planflowNow();
       setState(() {
         _selectedDate = today;
         _focusedMonth = DateTime(today.year, today.month);
@@ -928,6 +936,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadEvents({DateTime? focusDate}) async {
+    focusDate = _localCalendarDate(focusDate);
     if (_isRefreshing) {
       _hasPendingRefresh = true;
       _pendingFocusDate = focusDate ?? _pendingFocusDate;

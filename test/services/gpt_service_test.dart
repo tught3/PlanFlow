@@ -327,7 +327,8 @@ void main() {
         expect(request.headers['apikey'], AppEnv.supabaseAnonKey);
 
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['model'], 'gpt-4o-mini');
+        expect(body['model'], 'gpt-6-luna');
+      expect(body['reasoning_effort'], 'none');
 
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -873,16 +874,46 @@ void main() {
       expect(result['time_period_ambiguous'], isTrue);
     });
 
-    // ── 회귀 테스트(P3~P6, "8시 반"이 "8시 30분"이 아니라 "8시"로 잘못
-    // 파싱되는 회귀 방지 + P6 정책 보정): 오전/오후 미표시 + 7~12시 + 원문에
-    // 분 표현이 있는데 GPT가 리터럴(오전) 시를 그대로 반환하면, 시는
-    // "무표기 시각은 PM 기본"이라는 정책에 따라 12시간을 더해 GPT의 AM
-    // 응답을 보정하고(Option B, _applyAmbiguousMeridiemHourCorrection), 분은
-    // 원문 파싱값으로 보정해야 한다. 분 표현이 없으면 GPT의 분값을 그대로
-    // 신뢰한다. time_period_ambiguous는 기존대로 유지한다.
-    test(
-        '오전/오후 미표시 7~12시 발화에 반이 있으면 무표기 시각은 PM 기본이므로 '
-        'GPT의 AM 응답을 보정하고, 분은 로컬파싱값을 쓴다(P3, P6)', () async {
+    for (final (utterance, title, startHour, endHour) in [
+      ('8시 출근', '출근', 8, 9),
+      ('9시 위내시경', '위내시경', 9, 10),
+      ('10시부터 2시까지 회의', '회의', 10, 14),
+    ]) {
+      test('schedule normalization preserves $utterance', () async {
+        // banned-ok: Fixed calendar values are parser fixture inputs, not clock-relative behavior.
+        final start = DateTime(2026, 5, 18, startHour);
+        // banned-ok: Fixed calendar values are parser fixture inputs, not clock-relative behavior.
+        final end = DateTime(2026, 5, 18, endHour);
+        final client = MockClient((_) async => http.Response(
+              jsonEncode({
+                'choices': [
+                  {
+                    'message': {
+                      'content': jsonEncode({
+                        'title': title,
+                        'start_at': start.toIso8601String(),
+                        'end_at': end.toIso8601String(),
+                      }),
+                    },
+                  },
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ));
+        final service = GptService(
+          client: client,
+          endpoint: Uri.parse(_proxyEndpoint),
+          // banned-ok: Fixed injected clock keeps this parsing contract deterministic.
+          now: () => DateTime(2026, 5, 18, 6),
+        );
+        final result = await service.parseSchedule(utterance);
+        expect(DateTime.parse(result['start_at'] as String), start);
+        expect(DateTime.parse(result['end_at'] as String), end);
+      });
+    }
+
+    test('무표기 8시 반은 모델의 오전 판단을 유지하고 분만 보정한다', () async {
       final client = MockClient((request) async {
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -919,7 +950,7 @@ void main() {
       final result = await service.parseSchedule('8시 반에 회의');
       final parsedStartAt = DateTime.parse(result['start_at'] as String);
 
-      expect(parsedStartAt.hour, 20);
+      expect(parsedStartAt.hour, 8);
       expect(parsedStartAt.minute, 30);
       expect(result['time_period_ambiguous'], isTrue);
     });
@@ -1380,6 +1411,34 @@ void main() {
       );
     });
 
+    test('keeps a morning event in the morning after the time has passed', () {
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        // banned-ok: Fixed injected clock verifies day-boundary inference deterministically.
+        now: () => DateTime(2026, 5, 7, 19, 55),
+      );
+      // banned-ok: Fixed expected dates pin relative-date parsing to the injected fixture clock.
+      expect(service.inferStartAtFromRawText('8시 출근'), DateTime(2026, 5, 8, 8));
+      expect(service.inferStartAtFromRawText('9시 위내시경'),
+      // banned-ok: Fixed expected date pins next-day inference to the injected fixture clock.
+      DateTime(2026, 5, 8, 9));
+    });
+
+    test('distinguishes day tokens from duration products and offsets', () {
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        // banned-ok: Fixed injected clock verifies date inference deterministically.
+        now: () => DateTime(2026, 5, 7, 9, 30),
+      );
+      expect(service.inferStartAtFromRawText('1일권 구입'), isNull);
+      // banned-ok: Fixed expected dates pin relative-date parsing to the injected fixture clock.
+      expect(service.inferStartAtFromRawText('1일 회의'), DateTime(2026, 6, 1, 9));
+      // banned-ok: Fixed expected dates pin relative-date parsing to the injected fixture clock.
+      expect(service.inferStartAtFromRawText('1일에 회의'), DateTime(2026, 6, 1, 9));
+      // banned-ok: Fixed expected dates pin relative-date parsing to the injected fixture clock.
+      expect(service.inferStartAtFromRawText('1일 뒤 회의'), DateTime(2026, 5, 8, 9));
+    });
+
     test('오전/오후를 명시하면 기존처럼 다음날로 넘긴다(반대 해석 우선 안 함)', () {
       final now = DateTime(2026, 5, 7, 19, 55);
       final service = GptService(
@@ -1420,12 +1479,8 @@ void main() {
     // 각 케이스는 "이미 지났다" 롤오버 분기(967행 근처)에 우연히 걸리지
     // 않도록 now를 신중히 골랐다(각 서브케이스 주석 참고).
 
-    test(
-        'P8(i) 앞에 오늘/내일/모레/글피 같은 날짜 앵커가 없는 무표기 1~11시도 '
-        '오후로 기본 해석된다', () {
-      // now=09:30이면 아래 모든 후보 시각(12:00 이후)이 아직 지나지
-      // 않았으므로 967행 근처의 "이미 지났으면 다음날로" 분기에 걸리지 않는다.
-      final now = DateTime(2026, 5, 18, 9, 30); // banned-ok: 결정론적 now 주입값, 실제 시계 아님(P8)
+    test('local inference defaults 1–6 to afternoon and keeps upcoming 7–11', () {
+      final now = DateTime(2026, 5, 18, 6, 30); // banned-ok: fixed test clock
       final service = GptService(
         endpoint: Uri.parse(_proxyEndpoint),
         now: () => now,
@@ -1460,7 +1515,7 @@ void main() {
 
       expect(
         service.inferStartAtFromRawText('7시 40분까지 모란역 가기'),
-        DateTime(2026, 5, 18, 19, 40), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
+        DateTime(2026, 5, 18, 7, 40), // banned-ok: 위 주입된 now 기준 결정론적 기대값(P8)
       );
     });
 
@@ -1847,7 +1902,8 @@ void main() {
       final briefing = await service.generateMorningBriefing('today schedule');
 
       expect(briefing, 'Good morning.');
-      expect(body['model'], 'gpt-4o-mini');
+      expect(body['model'], 'gpt-6-luna');
+      expect(body['reasoning_effort'], 'none');
       expect(
         (body['messages'] as List).first['content'] as String,
         contains('오늘 일정을 시간순으로, 실제 비서가 말하듯'),
@@ -1888,7 +1944,8 @@ void main() {
       final briefing = await service.generateEveningBriefing('today schedule');
 
       expect(briefing, 'Good evening.');
-      expect(body['model'], 'gpt-4o-mini');
+      expect(body['model'], 'gpt-6-luna');
+      expect(body['reasoning_effort'], 'none');
       expect(
         (body['messages'] as List).first['content'] as String,
         contains('내일 일정을 시간순으로, 실제 비서가 말하듯'),
@@ -2023,8 +2080,8 @@ void main() {
 
       final prompt = (body['messages'] as List).first['content'] as String;
       expect(prompt, contains('오후'));
-      expect(prompt, contains('default that hour to PM'));
-      expect(prompt, contains('hour 12'));
+      expect(prompt, contains('7–11'));
+      expect(prompt, contains('use_strong_alarm'));
       expect(prompt, contains('"4시에 미팅"'));
     });
 

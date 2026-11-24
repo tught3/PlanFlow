@@ -128,7 +128,10 @@ void main() {
       );
 
       expect(requestCount, 1);
-      expect(body['model'], 'gpt-4o-mini');
+      expect(body['model'], 'gpt-6-luna');
+      expect(body['reasoning_effort'], 'none');
+      expect(body['max_completion_tokens'], 1500);
+      expect(body.containsKey('max_tokens'), isFalse);
       expect(first.method, VoiceCommandAnalysisMethod.ai);
       expect(first.intent, VoiceCommandIntent.add);
       expect(first.normalizedText, '내일 오전 10시 프로젝트 회의');
@@ -190,7 +193,8 @@ void main() {
       );
 
       final parsed = result.toParsedScheduleMap();
-      expect(body['model'], 'gpt-4o-mini');
+      expect(body['model'], 'gpt-6-luna');
+      expect(body['reasoning_effort'], 'none');
       expect(result.method, VoiceCommandAnalysisMethod.ai);
       expect(result.scheduleFields['title'], '우리회사 월례 조회');
       expect(result.scheduleFields['location'], '우리회사');
@@ -687,7 +691,8 @@ void main() {
       );
 
       final parsed = result.toParsedScheduleMap();
-      expect(body['model'], 'gpt-4o-mini');
+      expect(body['model'], 'gpt-6-luna');
+      expect(body['reasoning_effort'], 'none');
       expect(result.intent, VoiceCommandIntent.edit);
       expect(result.normalizedText, '내일 오전 10시 프로젝트 회의 장소 바꿔줘');
       expect(result.uncertainFields, contains('location'));
@@ -812,7 +817,8 @@ void main() {
       () async {
         final service = VoiceCommandAnalysisService(
           endpoint: Uri.parse(_proxyEndpoint),
-          now: () => DateTime(DateTime.now().year + 1, 5, 7, 9, 0),
+          // banned-ok: Fixed injected clock makes weekday parsing deterministic.
+          now: () => DateTime(2027, 5, 7, 9, 0),
           maxAiRequests: 0,
         );
 
@@ -827,7 +833,8 @@ void main() {
         expect(parsed['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=MO');
         expect(
           parsed['start_at'],
-          '${DateTime.now().year + 1}-05-11T09:00:00.000',
+          // banned-ok: Expected weekday is fixed to the injected clock's calendar.
+          DateTime(2027, 5, 10, 9).toIso8601String(),
         );
         expect(parsed['is_critical'], isTrue);
         expect(parsed['use_strong_alarm'], isFalse);

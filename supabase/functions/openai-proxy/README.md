@@ -34,7 +34,7 @@ No settings are changed by this implementation.
 | Name                                  | Default / purpose                                                                      |
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | `OPENAI_PROXY_MAX_BODY_BYTES`         | `65536`                                                                                |
-| `OPENAI_PROXY_ALLOWED_MODELS`         | `gpt-4o-mini`, comma separated                                                         |
+| `OPENAI_PROXY_ALLOWED_MODELS`         | `gpt-6-luna,gpt-5.6-luna,gpt-4o-mini`, comma separated                                 |
 | `OPENAI_PROXY_MODEL_ENFORCE`          | `false`; only the value `true` enables rejection                                       |
 | `OPENAI_PROXY_MAX_TOKENS`             | `1500`, used for the default and cap                                                   |
 | `OPENAI_PROXY_MAX_MESSAGES`           | `20`                                                                                   |
@@ -120,3 +120,8 @@ without downloading them. No OpenAI or Supabase API request is needed.
 The previously observed production v17 body lacks the repository's user
 authentication gate. Review client impact before deployment and preserve the
 prior deployed v17 for rollback.
+
+Luna requests use the provider completion-token limit. The proxy may try
+`gpt-5.6-luna` once when the allowlist includes it and the primary provider
+explicitly rejects `gpt-6-luna` with `model_not_found` or `unsupported_model`
+(HTTP 400 or 404). Both attempts share the request quota and timeout.

@@ -1295,3 +1295,48 @@ Deno.test("S2 missing or invalid upstream timeout settings use 30 seconds", asyn
     AbortSignal.timeout = timeout;
   }
 });
+
+Deno.test("Luna uses one completion token limit and supported reasoning effort", async () => {
+  const h = harness({ env: { OPENAI_PROXY_MODEL_ENFORCE: "true" } });
+  const payload = { ...basePayload(), model: "gpt-6-luna", max_tokens: 48 };
+  equal(
+    (await h.request({ ...payload, reasoning_effort: "none" })).status,
+    200,
+  );
+  equal(h.calls[0].payload.max_completion_tokens, 48);
+  equal(h.calls[0].payload.reasoning_effort, "none");
+  assert(!("max_tokens" in h.calls[0].payload));
+  equal(
+    (await h.request({ ...payload, reasoning_effort: "minimal" })).status,
+    400,
+  );
+  equal(h.calls.length, 1);
+});
+
+Deno.test("only an explicit model error uses the Luna fallback", async () => {
+  for (
+    const [status, code, attempts] of [
+      [404, "model_not_found", 2],
+      [400, "invalid_request_error", 1],
+      [429, "rate_limit_exceeded", 1],
+      [401, "invalid_api_key", 1],
+    ] as const
+  ) {
+    let count = 0;
+    const h = harness({
+      fetch: () =>
+        Promise.resolve(
+          ++count === 1
+            ? Response.json({ error: { code } }, { status })
+            : Response.json({ choices: [{ message: { content: "ok" } }] }),
+        ),
+    });
+    const response = await h.request({ ...basePayload(), model: "gpt-6-luna" });
+    equal(h.calls.length, attempts);
+    equal(response.status, attempts === 2 ? 200 : status);
+    if (attempts === 2) {
+      equal(h.calls[1].payload.model, "gpt-5.6-luna");
+      equal(h.calls[1].init.signal, h.calls[0].init.signal);
+    }
+  }
+});

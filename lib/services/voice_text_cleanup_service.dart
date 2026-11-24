@@ -111,7 +111,7 @@ class VoiceTextCleanupService {
 
   static String normalizeBasic(String text) {
     final normalized = text
-        .replaceAll(RegExp(r'[,\.\!\?\(\)\[\]\{\}]+'), ' ')
+        .replaceAll(RegExp(r'[,!?\(\)\[\]{}]+|(?<!\d)\.|\.(?!\d)'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return normalizeKoreanSttRepetitions(normalized);
@@ -250,7 +250,8 @@ class VoiceTextCleanupService {
     final shouldMerge = overlap >= 2 ||
         (overlap == 1 &&
             normalizedLeft.length <= 4 &&
-            _hasKoreanSttJoinSuffix(normalizedRight));
+            RegExp(r'^(?:한테|에게|랑|하고|께|을|를|이|가|은|는|에)$')
+                .hasMatch(normalizedRight.substring(1)));
     if (!shouldMerge) {
       return null;
     }

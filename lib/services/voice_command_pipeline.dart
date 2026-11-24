@@ -1,6 +1,58 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/korean_clock_time.dart';
 import 'voice_text_cleanup_service.dart';
+
+final strongAlarmCommandPattern = RegExp(r'강한\s*(?:알림|알람)');
+final _alarmOffPattern = RegExp(
+  r'(?:일반|보통)\s*(?:알림|알람|일정|경보)|'
+  r'(?:중요(?:한)?\s*(?:일정|알림|알람|경보|표시)?|강한\s*(?:알림|알람))'
+  r'\s*(?:을|를|은|는)?\s*(?:해제|꺼|끄|풀\s*어)',
+);
+const _fieldChangeVerb = r'(?:변경|바꿔|바꾸|수정|고쳐|설정|등록|입력|추가|넣어)';
+const _locationFieldName = r'(?:장소|위치|주소)';
+final _locationField = RegExp(
+  r'(?:^|[\s,])' '$_locationFieldName'
+  r'\s*(?:를|을|는|은)?\s*(?!\s|(?:를|을|는|은)(?=\s|$|'
+  '$_fieldChangeVerb)|'
+  '$_fieldChangeVerb' r'(?:해|줘|고|\s|$))'
+  r'(.+?)\s*'
+  '$_fieldChangeVerb',
+);
+final _locationOrdinalTarget = RegExp(
+  r'^(?:\d+\s*(?:번째|번\s*째|번)|(?:첫|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열)\s*(?:번째|째|번))'
+  r'(?:\s*일정)?(?:에|을|를)?\s+',
+);
+final _titleField = RegExp(
+  r'(?:^|[\s,])(?:제목|이름|명칭)\s*(?:를|을|는|은)?\s*(.+?)\s*(?:으로|로)\s*' +
+      _fieldChangeVerb,
+);
+
+bool isVoiceAlarmOffCommand(String text) => _alarmOffPattern.hasMatch(text);
+
+String? extractVoiceLocationField(String text) {
+  final raw = _locationField.firstMatch(text)?.group(1)?.trim();
+  if (raw == null || raw.isEmpty || const {'를', '을', '는', '은'}.contains(raw)) {
+    return null;
+  }
+  final location = stripVoiceLocationParticle(raw).trim();
+  return location.isEmpty ? null : location;
+}
+
+String stripVoiceLocationParticle(String location) {
+  if (location.endsWith('으로')) {
+    return location.substring(0, location.length - 2).trimRight();
+  }
+  if (!location.endsWith('로') || location.length < 2) return location;
+  final previous = location.codeUnitAt(location.length - 2);
+  if (previous >= 0xAC00 && previous <= 0xD7A3) {
+    final consonant = (previous - 0xAC00) % 28;
+    // After a final consonant other than ㄹ, an instrumental particle would
+    // be "으로". Keep the "로" that belongs to a road name like 테헤란로.
+    if (consonant != 0 && consonant != 8) return location;
+  }
+  return location.substring(0, location.length - 1).trimRight();
+}
 
 enum VoiceCommandPipelineIntent {
   add,
@@ -74,7 +126,7 @@ class VoiceCommandPipeline {
         intent ?? resolveIntent(cleanedText, context: context);
     final requestedChanges = extractRequestedChanges(cleanedText);
     final split = splitCommand(
-      normalizedText,
+      VoiceTextCleanupService.normalizeBasic(cleanedText),
       intent: resolvedIntent,
       requestedChanges: requestedChanges,
     );
@@ -136,6 +188,27 @@ class VoiceCommandPipeline {
     if (_hasDeleteIntentCue(normalized)) {
       return VoiceCommandPipelineIntent.delete;
     }
+    final hasOrdinalTarget = RegExp(
+      r'(?:첫\s*번째|두\s*번째|세\s*번째|네\s*번째|\d+\s*(?:번째|번))',
+    ).hasMatch(normalized);
+    if (hasOrdinalTarget &&
+        (extractVoiceLocationField(normalized) != null ||
+            _titleField.hasMatch(normalized))) {
+      return VoiceCommandPipelineIntent.edit;
+    }
+    final explicitlyEditing = hasOrdinalTarget || RegExp(
+      r'(?:(?:이|그|해당|방금)\s*일정|(?:일정|약속|스케줄)\s*(?:을|를|은|는)|'
+      r'(?:제목|장소|시간|위치|주소|시각)\s*(?:을|를|은|는))',
+    ).hasMatch(normalized);
+    final creationEnds = RegExp(
+      r'(?:추가|등록|저장|기록|만들어)(?:\s*(?:해\s*)?(?:줘|주세요)|해)?\s*$',
+    ).hasMatch(normalized);
+    if (creationEnds &&
+        !explicitlyEditing &&
+        !_isClearLocationFieldAddition(normalized) &&
+        !isAmbiguousFieldAddition(normalized)) {
+      return VoiceCommandPipelineIntent.add;
+    }
     if (RegExp(r'(수정|변경|바꿔|미뤄|밀어|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)')
         .hasMatch(normalized)) {
       return VoiceCommandPipelineIntent.edit;
@@ -188,8 +261,8 @@ class VoiceCommandPipeline {
     }
 
     if (intent == VoiceCommandPipelineIntent.edit) {
-      if (requestedChanges.contains('location') &&
-          requestedChanges.contains('start_at')) {
+      if (requestedChanges.contains('location') ||
+          requestedChanges.contains('title')) {
         final split = _splitMultiFieldChange(normalizedText);
         if (split != null) {
           return split;
@@ -288,6 +361,12 @@ class VoiceCommandPipeline {
         values['location'] = location;
       }
     }
+    if (requestedChanges.contains('title')) {
+      final title = _titleField.firstMatch(split.changeText.isEmpty
+          ? split.targetText
+          : split.changeText)?.group(1)?.trim();
+      if (title != null && title.isNotEmpty) values['title'] = title;
+    }
     if (requestedChanges.contains('is_critical_true')) {
       values['is_critical'] = 'true';
     } else if (requestedChanges.contains('is_critical_false')) {
@@ -297,17 +376,12 @@ class VoiceCommandPipeline {
   }
 
   bool _isCriticalFalseCommand(String text) {
-    return RegExp(
-      r'(일반\s*(알림|알람|일정|경보)|보통\s*(알림|알람|일정|경보)|'
-      r'중요(?:한)?\s*(일정|알림|알람|경보|표시)?\s*'
-      r'(해제|꺼\s*줘|꺼줘|꺼|끄\s*어|끄고|끄기|풀어|풀\s*어))',
-    ).hasMatch(text);
+    return isVoiceAlarmOffCommand(text);
   }
 
   bool _isCriticalTrueCommand(String text) {
-    return RegExp(
+    return strongAlarmCommandPattern.hasMatch(text) || RegExp(
       r'(중요하게\s*표시|중요한\s*일정|중요\s*일정|중요\s*표시|'
-      r'강한\s*알림|강한알림|강한\s*알람|강한알람|'
       r'중요한\s*알림|중요\s*알림|중요한\s*알람|중요\s*알람|긴급|급한|critical)',
     ).hasMatch(text);
   }
@@ -459,15 +533,19 @@ class VoiceCommandPipeline {
 
     final beforeOperation = normalizedText.substring(0, operation.start).trim();
     final operationText = normalizedText.substring(operation.start).trim();
-    var targetText = beforeOperation;
-    var changePrefix = beforeOperation;
-
     final boundaries =
         RegExp(r'(?:일정|스케줄|약속)에\s+').allMatches(beforeOperation).toList();
+    final String targetText;
+    final String changePrefix;
     if (boundaries.isNotEmpty) {
       final boundary = boundaries.last;
       targetText = beforeOperation.substring(0, boundary.start + 2).trim();
       changePrefix = beforeOperation.substring(boundary.end).trim();
+    } else {
+      final ordinal = _locationOrdinalTarget.firstMatch(beforeOperation);
+      if (ordinal == null) return null;
+      targetText = beforeOperation.substring(0, ordinal.end).trim();
+      changePrefix = beforeOperation.substring(ordinal.end).trim();
     }
 
     final changeText = [changePrefix, operationText]
@@ -480,36 +558,27 @@ class VoiceCommandPipeline {
     return VoiceCommandSplit(targetText: targetText, changeText: changeText);
   }
 
-  /// 장소와 시간 변경이 한 발화에 함께 있으면 첫 변경 필드 앞부분만
+  /// 여러 필드 변경이 한 발화에 함께 있으면 첫 변경 필드 앞부분만
   /// 대상으로 남긴다. 이후 파서는 [changeText] 전체에서 각 필드 값을
   /// 독립적으로 읽으므로 "장소를 ...로 바꾸고 시간을 ...로" 순서도 보존된다.
   VoiceCommandSplit? _splitMultiFieldChange(String normalizedText) {
-    final fieldStarts = <RegExpMatch>[];
-    final location = RegExp(
-      r'(?:장소|위치|주소)\s*(?:를|을)?\s*.+?\s*(?:으로|로)\s*(?:변경|바꿔|수정)',
-    ).firstMatch(normalizedText);
-    if (location != null) {
-      fieldStarts.add(location);
-    }
-    final time = RegExp(
-      r'(?:시작\s*시간|시작시간|시간|시각)\s*(?:을|를)?\s*'
-      r'(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*'
-      r'(?:[0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:[0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*반)?'
-      r'\s*(?:으로|로)?\s*(?:변경|바꿔|수정)',
-    ).firstMatch(normalizedText);
-    if (time != null) {
-      fieldStarts.add(time);
-    }
-    if (fieldStarts.isEmpty) {
-      return null;
-    }
-    fieldStarts.sort((left, right) => left.start.compareTo(right.start));
+    final location = _locationField.firstMatch(normalizedText);
+    final title = _titleField.firstMatch(normalizedText);
+    if (location == null && title == null) return null;
+    final destination = koreanClockEditDestinationText(normalizedText);
+    final fieldStarts = <int>[
+      if (location != null) location.start,
+      if (title != null) title.start,
+      if (destination != null) normalizedText.length - destination.length,
+    ]..sort();
     final firstField = fieldStarts.first;
     final targetText = normalizedText
-        .substring(0, firstField.start)
-        .replaceFirst(RegExp(r'(?:에|은|는|을|를)\s*$'), '')
+        .substring(0, firstField)
+        .trimRight()
+        .replaceFirst(RegExp(r'(?:일정|약속|스케줄)\s*(?:에|은|는|을|를)$'), '일정')
+        .replaceFirst(RegExp(r'\s*(?:시작\s*)?(?:시간|시각)\s*(?:을|를|은|는)?$'), '')
         .trim();
-    final changeText = normalizedText.substring(firstField.start).trim();
+    final changeText = normalizedText.substring(firstField).trim();
     if (targetText.isEmpty || changeText.isEmpty) {
       return null;
     }
@@ -589,18 +658,16 @@ class VoiceCommandPipeline {
     if (text.isEmpty) {
       return null;
     }
+    final fieldValue = extractVoiceLocationField(text);
+    if (fieldValue != null) return fieldValue;
     final match = RegExp(
-      r'(?:장소|위치|주소)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)|(.+?)(?:로|으로)?\s*(?:장소|위치|주소)\s*(?:추가|넣어|입력|설정|등록)',
-    ).firstMatch(text);
-    final prefixLocation = match?.group(1)?.trim();
-    final suffixLocation = match?.group(2)?.trim();
-    final location = prefixLocation == null || prefixLocation.isEmpty
-        ? suffixLocation
-        : prefixLocation;
+      r'(.+?)\s*(?:장소|위치|주소)\s*(?:추가|넣어|입력|설정|등록)',
+    ).firstMatch(text.split(RegExp(r'(?:해주고|해\s*주고|바꾸고)\s*')).last);
+    final location = match?.group(1)?.trim();
     if (location == null || location.isEmpty) {
       return null;
     }
-    return location
+    return stripVoiceLocationParticle(location)
         .replaceAll(RegExp(r'\s+'), ' ')
         .replaceAll(RegExp(r'^(?:에|로|으로)\s+'), '')
         .trim();
@@ -741,20 +808,6 @@ class VoiceCommandPipeline {
       r'(?:장소|위치|주소)\s*(?:를|을|으로|로)?\s*(?:추가|넣어|입력|설정|등록).*?$',
     ).firstMatch(normalized);
     if (operation == null) {
-      return false;
-    }
-
-    final beforeOperation = normalized.substring(0, operation.start).trim();
-    final boundaries =
-        RegExp(r'(?:일정|스케줄|약속)에\s+').allMatches(beforeOperation).toList();
-    if (boundaries.isEmpty) {
-      return false;
-    }
-
-    final boundary = boundaries.last;
-    final target = beforeOperation.substring(0, boundary.start + 2).trim();
-    final locationPrefix = beforeOperation.substring(boundary.end).trim();
-    if (target.isEmpty || locationPrefix.isEmpty) {
       return false;
     }
 

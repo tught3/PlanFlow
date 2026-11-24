@@ -792,7 +792,10 @@ class RealUiGuideCoordinator
           if (before.step == GuideStep.completionConfirm &&
               before.createdEventId?.isNotEmpty == true &&
               before.expectedUpdatedStartLocal != null) {
-            next = before.copyWith(step: GuideStep.syncChoiceConfirmed);
+            next = before.copyWith(
+                step: GuideStep.completed,
+                run: GuideRun.terminal,
+                calendarSyncHeld: false);
           }
         case SyncChoiceClosed():
           if (before.step == GuideStep.syncChoiceConfirmed) {
@@ -871,7 +874,7 @@ class RealUiGuideCoordinator
         }
         published = next;
         if (signal is GuideCompletionConfirmed) {
-          // Sync may open only after the completion confirmation is durable.
+          // Publish completion only after its checkpoint is durable.
           await _progress.save(next);
           if (!_current(before, epoch)) return _state.value;
           _set(next);
@@ -879,7 +882,8 @@ class RealUiGuideCoordinator
           _set(next);
           await _progress.save(next);
         }
-        if (signal is SyncChoiceClosed && _current(next, epoch)) {
+        if ((signal is GuideCompletionConfirmed || signal is SyncChoiceClosed) &&
+            _current(next, epoch)) {
           unawaited(_finishServerSession(next, GuideExit.completed));
         }
       }

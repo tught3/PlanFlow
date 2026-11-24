@@ -180,6 +180,7 @@ class VoiceCommandAnalysisService {
   final Map<String, VoiceCommandAnalysisResult> _aiCache =
       <String, VoiceCommandAnalysisResult>{};
   static const VoiceCommandRouter _router = VoiceCommandRouter();
+  static const int _analysisCompletionTokenLimit = 1500;
   static const VoiceScheduleStructureService _voiceScheduleStructureService =
       VoiceScheduleStructureService();
 
@@ -1171,6 +1172,7 @@ class VoiceCommandAnalysisService {
         debugPrint('VoiceCommandAnalysisService stage=anon_fallback');
         accessToken = AppEnv.supabaseAnonKey; // banned-ok: AppEnv accessor reference
       }
+      final model = RemoteConfigService.gptModel;
       final response = await client.post(
         _endpoint,
         headers: <String, String>{
@@ -1179,14 +1181,18 @@ class VoiceCommandAnalysisService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode(<String, dynamic>{
-          'model': RemoteConfigService.gptModel,
+          'model': model,
+          if (RemoteConfigService.usesCompletionTokenLimit(model))
+            'max_completion_tokens': _analysisCompletionTokenLimit,
+          if (RemoteConfigService.usesLunaReasoning(model))
+            'reasoning_effort': 'none',
           'messages': <Map<String, String>>[
             <String, String>{'role': 'system', 'content': systemPrompt},
             <String, String>{'role': 'user', 'content': userPrompt},
           ],
           if (responseFormat != null) 'response_format': responseFormat,
         }),
-      );
+      ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;

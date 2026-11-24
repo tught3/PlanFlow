@@ -2,6 +2,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/voice_schedule_structure_service.dart';
 
 void main() {
+  test('a clock anywhere in a dated utterance keeps it timed', () {
+    const service = VoiceScheduleStructureService();
+    for (final text in [
+      '7월 1일 강남역에서 오후 3시 회의',
+      '7월 1일 오후 세시 회의',
+    ]) {
+      final result = service.analyze(text);
+      // banned-ok: Fixed clock makes the date-range extraction fixture deterministic.
+      expect(service.extractDateRange(text, now: DateTime(2026, 6, 30)),
+          isNull, reason: text);
+      expect(result.titleCandidate, contains('회의'));
+    }
+  });
+
+  test('creation preserves a title containing a management verb', () {
+    const service = VoiceScheduleStructureService();
+    expect(service.analyze('기획서 수정 회의 등록해줘').titleCandidate,
+        '기획서 수정 회의');
+  });
+
+
+  test('leaves 1일권 in titles and still recognizes dates with particles', () {
+    const service = VoiceScheduleStructureService();
+    // banned-ok: Fixed clock makes this relative-date parser fixture deterministic.
+    final now = DateTime(2026, 5, 7);
+    expect(service.extractDateRange('1일권 구입', now: now), isNull);
+    expect(service.normalizeLocalVoiceTitle('1일권 구입'), '1일권 구입');
+    expect(service.normalizeLocalVoiceTitle('내일 오후 2시 제휴 1일권 구입'),
+        '제휴 1일권 구입');
+    for (final date in ['1일', '1일에']) {
+      expect(service.extractDateRange('$date 회의', now: now)?.startAt,
+      // banned-ok: Fixed expected date is tied to the fixture clock above.
+      DateTime(2026, 6, 1));
+      expect(service.normalizeLocalVoiceTitle('$date 회의'), '회의');
+    }
+    expect(service.extractDateRange('1일 뒤 회의', now: now), isNull);
+  });
+
   group('VoiceScheduleStructureService', () {
     const service = VoiceScheduleStructureService();
 
@@ -459,7 +497,7 @@ void main() {
         title: '방문',
       );
 
-      expect(location, '대장동 해링턴플레이스');
+      expect(location, '판교 대장동 해링턴플레이스');
     });
 
     test('drops standalone particle left after location extraction (에서)', () {

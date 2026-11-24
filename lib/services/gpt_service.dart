@@ -319,7 +319,6 @@ class GptService {
       systemPrompt: systemPrompt,
       userPrompt: candidate.trim(),
       // 단답 분류이므로 경량 모델 고정, 토큰 최소화
-      model: 'gpt-4o-mini',
       maxTokens: 20,
       throwOnFailure: throwOnFailure,
     );
@@ -367,6 +366,11 @@ class GptService {
         debugPrint('GptService parse_completion stage=anon_fallback');
         accessToken = AppEnv.supabaseAnonKey; // banned-ok: AppEnv accessor reference
       }
+      final requestModel = model ?? _model;
+      // banned-ok: This names an API payload field; it is not a credential or token value.
+      final tokenLimitField = RemoteConfigService.usesCompletionTokenLimit(requestModel)
+          ? 'max_completion_tokens'
+          : 'max_tokens';
       final response = await client
           .post(
             _endpoint,
@@ -376,7 +380,9 @@ class GptService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode(<String, dynamic>{
-              'model': model ?? _model,
+              'model': requestModel,
+              if (RemoteConfigService.usesLunaReasoning(requestModel))
+                'reasoning_effort': 'none',
               'messages': <Map<String, String>>[
                 <String, String>{
                   'role': 'system',
@@ -388,7 +394,7 @@ class GptService {
                 },
               ],
               if (responseFormat != null) 'response_format': responseFormat,
-              if (maxTokens != null) 'max_tokens': maxTokens,
+              if (maxTokens != null) tokenLimitField: maxTokens,
             }),
           )
           .timeout(_completionTimeout);
@@ -606,16 +612,8 @@ class GptService {
     return normalized;
   }
 
-  /// (Option B, 결정적 로컬 보정) 원문에 오전/오후 등 명시 표기가 없고
-  /// 로컬 파서가 읽은 리터럴 시(hour)가 1~11 범위인데, GPT가 반환한
-  /// start_at의 시(hour)가 그 리터럴 시 그대로(즉 GPT가 오후로 보정하지
-  /// 않고 오전 그대로 반환)라면, "무표기 시각은 오후로 기본 해석한다"는
-  /// 정책에 맞춰 12시간을 더해 오후로 보정한다. GPT가 이미 오후로 응답했다면
-  /// (hour가 리터럴 값과 다르면) 손대지 않는다 — 프롬프트 지시만으로는
-  /// 정책이 항상 지켜진다는 보장이 없으므로, 이 보정이 정책을 최종적으로
-  /// 강제한다. hour 0/12/13~23이거나 명시 표기가 있으면(= localClock이
-  /// null이거나 범위 밖) 건드리지 않는다. 시(hour) 보정은 분(minute) 보정보다
-  /// 먼저 실행해, 분 보정이 이미 정확한 hour 위에서만 분을 조정하게 한다.
+  /// Only early bare hours have a fixed PM default. For 7–11, keep the
+  /// model's interpretation of the event context and any spoken time range.
   void _applyAmbiguousMeridiemHourCorrection(
     Map<String, dynamic> schedule,
     String rawText,
@@ -627,7 +625,7 @@ class GptService {
     if (localClock == null) {
       return;
     }
-    if (localClock.hour < 1 || localClock.hour > 11) {
+    if (localClock.hour < 1 || localClock.hour > 6) {
       return;
     }
     final startAt = _parseDateTime(schedule['start_at']);
@@ -1013,32 +1011,18 @@ class GptService {
     );
 
     if (date == null && time != null && candidate.isBefore(now)) {
-      // P2/P3 도입 이후 `time`(따라서 `candidate`)은 이미 "명시 표기가 없는
-      // 1~11시는 오후로 기본 해석한다"는 정책이 적용된 값이다
-      // (_clockTimeFromParts의 applyUnmarkedPmDefault, 기본 true). 즉 이
-      // 분기에 들어왔다는 것 자체가 "이미 오후로 해석한 후보 시각도 이미
-      // 지났다"는 뜻이며, 더 이상 candidate가 오전 후보라고 가정할 수 없다.
-      //
-      // - hour 1~6처럼 `_hasAmbiguousMeridiemTime`(리터럴 hour 7~12 판정,
-      //   명시 표기 없을 때만 true)이 false인 경우: 이제는 AM/PM 두 후보
-      //   중 하나를 고르는 게 아니라, 이미 오후로 확정된 candidate를 그대로
-      //   다음날 같은 시각으로 미루기만 한다("이미 지난 오후 후보 ->
-      //   다음날로 이월"). 예: 지금이 17:00인데 "4시"라고 하면 다음날
-      //   16:00(오후)이지 다음날 04:00(오전)이 아니다.
-      // - hour 7~12처럼 `_hasAmbiguousMeridiemTime`이 true인 경우: candidate는
-      //   여전히(root에서 이미 적용된) 오후 후보이고, 아래 분기가 거기서
-      //   다시 +12시간을 더해 지금(now) 이후로 넘어가는지 확인한다. 두 번의
-      //   +12시간(=+24시간=+1일)이 결과적으로 "오전 후보를 다음날로 이월"한
-      //   것과 수치상 동일해, 기존에 관측되던 결과(다음날 같은 오전 시각)는
-      //   그대로 유지된다.
-      if (_hasAmbiguousMeridiemTime(dateTimeText)) {
-        final pmCandidate = candidate.add(const Duration(hours: 12));
-        candidate = pmCandidate.isBefore(now)
-            ? candidate.add(const Duration(days: 1))
-            : pmCandidate;
-      } else {
-        candidate = candidate.add(const Duration(days: 1));
+      final evening = candidate.add(const Duration(hours: 12));
+      final bareClock = _extractAmbiguousMeridiemClock(dateTimeText);
+      final expectsMorning =
+          RegExp(r'출근|등교|등원|내시경|건강\s*검진').hasMatch(dateTimeText);
+      if (bareClock != null &&
+          bareClock.hour >= 7 &&
+          bareClock.hour <= 11 &&
+          !expectsMorning &&
+          !evening.isBefore(now)) {
+        return evening;
       }
+      candidate = candidate.add(const Duration(days: 1));
     }
 
     return candidate;
@@ -1046,7 +1030,7 @@ class GptService {
 
   bool _hasExplicitTimeCue(String text) {
     return _extractTimeFromText(text) != null ||
-        RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)').hasMatch(text);
+        koreanRelativeTimeOffset(text) != null;
   }
 
   DateTime? _extractMonthlyRecurringDateFromText(String text, DateTime now) {
@@ -1262,7 +1246,7 @@ $_scheduleSystemPrompt
     }
 
     final explicitTime = _extractTimeFromText(text) != null ||
-        RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)').hasMatch(text);
+        koreanRelativeTimeOffset(text) != null;
     if (!explicitTime &&
         RegExp(r'(종일|하루\s*종일|하루종일|온종일|휴가|연차|기념일|생일)').hasMatch(text)) {
       normalized['is_all_day'] = true;
@@ -1489,29 +1473,10 @@ $_scheduleSystemPrompt
   }
 
   DateTime? _extractRelativeOffsetFromText(String text, DateTime now) {
-    final hourMinuteMatch = RegExp(
-      r'(?:(?<hours>\d{1,2})\s*시간)\s*(?:(?<minutes>\d{1,2})\s*분)?\s*(뒤|후|있다가|이따)',
-    ).firstMatch(text);
-    if (hourMinuteMatch != null) {
-      final hours = int.tryParse(hourMinuteMatch.namedGroup('hours') ?? '');
-      final minutes =
-          int.tryParse(hourMinuteMatch.namedGroup('minutes') ?? '') ?? 0;
-      if (hours != null && hours >= 0 && minutes >= 0 && minutes < 60) {
-        return now.add(Duration(hours: hours, minutes: minutes));
-      }
-    }
-
-    final minuteMatch = RegExp(
-      r'(?<minutes>\d{1,3})\s*분\s*(뒤|후|있다가|이따)',
-    ).firstMatch(text);
-    if (minuteMatch != null) {
-      final minutes = int.tryParse(minuteMatch.namedGroup('minutes') ?? '');
-      if (minutes != null && minutes >= 0) {
-        return now.add(Duration(minutes: minutes));
-      }
-    }
-
-    return null;
+    final offset = koreanRelativeTimeOffset(text);
+    return offset == null && !RegExp(r'(?<![가-힣])반\s*(?:뒤|후)(?![가-힣])').hasMatch(text)
+        ? null
+        : now.add(offset ?? const Duration(minutes: 30));
   }
 
   DateTime? _extractDateFromText(String text, DateTime now) {
@@ -1581,23 +1546,12 @@ $_scheduleSystemPrompt
       }
     }
 
-    // "한 달 뒤"(순우리말 "한"=1)는 숫자 정규식(monthOffset)이 못 잡으므로 먼저 처리.
-    if (RegExp(r'한\s*달\s*(?:뒤|후)').hasMatch(text)) {
-      return DateTime(today.year, today.month + 1, today.day);
-    }
-
-    final monthOffset = RegExp(
-      r'(?:지금으로부터\s*)?(?<months>\d{1,2})\s*(?:개월|달|월)\s*(?:뒤|후)',
-    ).firstMatch(text);
-    if (monthOffset != null) {
-      final months = int.tryParse(monthOffset.namedGroup('months') ?? '');
-      if (months != null && months >= 0) {
-        return DateTime(today.year, today.month + months, today.day);
-      }
-    }
+    final monthOffset = koreanRelativeWeekMonthDate(text, today);
+    if (monthOffset != null) return monthOffset;
 
     final explicitDate = RegExp(
-      r'(?:(?<year>\d{4})년\s*)?(?<month>\d{1,2})월\s*(?<day>\d{1,2})일',
+      r'(?<![가-힣a-zA-Z0-9])(?:(?<year>\d{4})년\s*)?(?<month>\d{1,2})월\s*(?<day>\d{1,2})일'
+      '$koreanCalendarDateEnd',
     ).firstMatch(text);
     if (explicitDate != null) {
       final yearText = explicitDate.namedGroup('year');
@@ -1617,8 +1571,10 @@ $_scheduleSystemPrompt
       }
     }
 
-    final dayOnly =
-        RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?').firstMatch(text);
+    final dayOnly = RegExp(
+      r'(?<![가-힣a-zA-Z0-9])(?<day>\d{1,2})\s*일'
+      '$koreanCalendarDateEnd',
+    ).firstMatch(text);
     if (dayOnly != null) {
       final day = int.tryParse(dayOnly.namedGroup('day') ?? '');
       if (day != null && day >= 1) {
@@ -1720,7 +1676,9 @@ $_scheduleSystemPrompt
 
   KoreanClockTime? _extractTimeFromText(String text) {
     final parts = koreanClockTimeParts(text).firstOrNull;
-    return parts == null ? null : _clockTimeFromParts(parts);
+    return parts == null
+        ? null
+        : _clockTimeFromParts(parts, applyUnmarkedPmDefault: (parts.hour ?? 0) <= 6);
   }
 
   KoreanClockTime? _clockTimeFromParts(
@@ -1747,13 +1705,13 @@ const String _scheduleSystemPrompt = '''
 You are a Korean schedule parser.
 Return only a valid JSON object.
 Use these keys:
-title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, participants, targets, is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
+title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, participants, targets, is_critical, use_strong_alarm, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
 Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 Location names must be kept in the title even when extracted into the location field. Never remove a place name from the title — only remove date, time, recurrence, reminder, and filler words (e.g. "만들어줘", "해줘").
 Always put the location name at the very front of the title in natural Korean word order, even when the user mentions the location after the event/action word in speech. Example: if the user says the event first and the location afterward ("회의 있어 원주세브란스병원에서"), the title must reorder to place the location first ("원주세브란스병원 회의"), not leave the location trailing at the end.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
-When an hour is spoken WITHOUT any explicit meridiem marker (오전, 아침, 새벽, 오후, 저녁, 밤), default that hour to PM, not AM: a bare hour 1 through 11 must be interpreted as 13:00 through 23:00 (hour + 12), never as 01:00-11:00. This is because a normal user schedule falls between 오전 6시 and 오후 11시, and dawn/early-morning scheduling without an explicit "오전" or "새벽" marker is rare — so treat unmarked hours as afternoon/evening unless the user says 오전, 아침, or 새벽. The single exception is hour 12 spoken without a marker: it stays 12:00 noon, never midnight (00:00). Hour 0 and hours 13-23 are already unambiguous and must not be changed. Any hour spoken WITH an explicit marker (오전/아침/새벽 or 오후/저녁/밤) keeps its normal meaning and is never affected by this default.
+For an hour without a meridiem, default 1–6 to PM, keep 12 as noon, and infer 7–11 using the event and the rest of the range. For example, "8시 출근" is 08:00, "9시 위내시경" is 09:00, and "10시부터 2시까지" is 10:00–14:00. Explicit AM/PM markers take priority. Set use_strong_alarm to true only when the user asks for a strong alarm.
 "내일" means tomorrow (today + 1 day). "모레" and "내일모레" mean the day after tomorrow (today + 2 days); STT often mishears "모레" as "모래", so "내일모래" also means today + 2 days. "글피" means today + 3 days. Resolve "모레"/"내일모레"/"내일모래" to today + 2 days, never to tomorrow.
 For day-only expressions like "28일" or "28일로", resolve to the 28th of the current month. If that date has already passed, use the 28th of the next month instead. Always output the full date in ISO-8601 format.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.

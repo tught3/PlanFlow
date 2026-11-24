@@ -92,7 +92,7 @@ void main() {
     expect(failed.step, GuideStep.completionConfirm);
     expect(failed.run, GuideRun.blocked);
     expect(failed.failureDiagnostic?.kind, GuideFailureKind.progressSaveFailed);
-    expect(publications, isNot(contains(GuideStep.syncChoiceConfirmed)));
+    expect(publications, isNot(contains(GuideStep.completed)));
     await flow.dispatch(ResumeRequested(
       uid: _uid,
       sessionId: failed.sessionId,
@@ -101,16 +101,10 @@ void main() {
     expect(flow.state.run, GuideRun.active);
     expect(flow.state.step, GuideStep.completionConfirm);
     await flow.dispatch(confirm());
-    expect(publications.where((step) => step == GuideStep.syncChoiceConfirmed),
+    expect(publications.where((step) => step == GuideStep.completed),
         hasLength(1));
     flow.coordinator.state.removeListener(readPublishedStep);
-    expect(flow.state.step, GuideStep.syncChoiceConfirmed);
-    await flow.reopen(GuideStep.syncChoiceConfirmed);
-    await flow.dispatch(SyncChoiceClosed(
-      uid: _uid,
-      sessionId: flow.state.sessionId,
-      expectedRevision: flow.state.revision,
-    ));
+    expect(flow.state.step, GuideStep.completed);
     await flow.reopen(GuideStep.completed, run: GuideRun.terminal);
     final firstSession = flow.state.sessionId;
     final reply = await flow.backend.begin(
@@ -196,11 +190,6 @@ void main() {
         expectedRevision: flow.state.revision,
       ));
       await flow.dispatch(GuideCompletionConfirmed(
-        uid: _uid,
-        sessionId: flow.state.sessionId,
-        expectedRevision: flow.state.revision,
-      ));
-      await flow.dispatch(SyncChoiceClosed(
         uid: _uid,
         sessionId: flow.state.sessionId,
         expectedRevision: flow.state.revision,

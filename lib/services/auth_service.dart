@@ -134,21 +134,39 @@ class AuthService implements AuthSessionClient {
     if (provider == PlanFlowOAuthProvider.apple && !kIsWeb && Platform.isIOS) {
       return _signInWithAppleNativeIos();
     }
-    final uri = await buildOAuthSignInUri(
-      provider,
-      forceConsent: forceConsent,
-      forCalendar: forCalendar,
-    );
     final queryParams = oauthQueryParamsFor(
       provider,
       forceConsent: forceConsent,
     );
+    ({int revision, String challenge})? naverAttempt;
+    final Uri uri;
     if (provider == PlanFlowOAuthProvider.naver) {
+      final initiatingSession = _client.auth.currentSession;
+      naverAttempt = await OAuthCallbackHandler.prepareNaverOAuthAttempt(
+        forCalendar: forCalendar,
+        initiatingSession: initiatingSession,
+      );
+      if (naverAttempt == null ||
+          !identical(_client.auth.currentSession, initiatingSession)) {
+        return false;
+      }
+      uri = buildNaverOAuthAuthorizeUri(
+        projectUrl: AppEnv.supabaseUrl,
+        challenge: naverAttempt.challenge,
+        forCalendar: forCalendar,
+        queryParams: queryParams,
+      );
       _logNaverCalendarAuth(
         'signInWithOAuth built uri host=${uri.host} path=${uri.path} '
         'queryKeys=${uri.queryParameters.keys.join(',')} '
         'scopes=${oauthScopesFor(provider, forCalendar: forCalendar) ?? 'default'} '
         'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    } else {
+      uri = await _buildOAuthSignInUri(
+        provider,
+        forceConsent: forceConsent,
+        forCalendar: forCalendar,
       );
     }
     return _launchOAuthUrl(
@@ -157,6 +175,7 @@ class AuthService implements AuthSessionClient {
       supabaseProvider: _oauthProvider(provider),
       queryParams: queryParams,
       purpose: forCalendar ? 'calendar-link' : 'sign-in',
+      naverAttempt: naverAttempt,
     );
   }
 
@@ -241,7 +260,29 @@ class AuthService implements AuthSessionClient {
     }
   }
 
-  Future<Uri> buildOAuthSignInUri(
+  @visibleForTesting
+  static Uri buildNaverOAuthAuthorizeUri({
+    required String projectUrl,
+    required String challenge,
+    required bool forCalendar,
+    Map<String, String>? queryParams,
+  }) =>
+      Uri.parse(projectUrl).resolve('/auth/v1/authorize').replace(
+        queryParameters: {
+          ...?queryParams,
+          'provider': OAuthCallbackHandler.naverProviderId,
+          'redirect_to': AppEnv.authRedirectUrl,
+          'scopes': oauthScopesFor(
+            PlanFlowOAuthProvider.naver,
+            forCalendar: forCalendar,
+          ),
+          'flow_type': 'pkce',
+          'code_challenge': challenge,
+          'code_challenge_method': 's256',
+        },
+      );
+
+  Future<Uri> _buildOAuthSignInUri(
     PlanFlowOAuthProvider provider, {
     bool forceConsent = false,
     bool forCalendar = false,
@@ -296,8 +337,7 @@ class AuthService implements AuthSessionClient {
       );
     }
 
-    // Naver 캘린더: getLinkIdentityUrl은 provider_token을 콜백 URL에 포함하지 않음.
-    // full OAuth(signInWithOAuth)만 provider_token을 제공하므로 항상 이 경로 사용.
+    // 네이버 캘린더 연결은 기존 앱 세션을 유지하는 별도 PKCE 교환을 사용한다.
     if (provider == PlanFlowOAuthProvider.naver) {
       _logNaverCalendarAuth(
         'connectCalendarProvider naver -> signInWithOAuth forceConsent=true forCalendar=true',
@@ -365,6 +405,7 @@ class AuthService implements AuthSessionClient {
     required OAuthProvider supabaseProvider,
     required Map<String, String>? queryParams,
     required String purpose,
+    ({int revision, String challenge})? naverAttempt,
   }) async {
     // externalApplication(구글)은 별도 Chrome 태스크를 띄우는데, 리다이렉트로
     // 앱이 포그라운드로 돌아온 뒤에도 그 Chrome 태스크가 백그라운드에 남아있어
@@ -400,12 +441,19 @@ class AuthService implements AuthSessionClient {
         'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
       );
     }
-    final pendingRevision =
+    final pendingRevision = naverAttempt?.revision ??
         _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
     final callbackPurpose = forCalendar
         ? OAuthCallbackPurpose.calendarLink
         : OAuthCallbackPurpose.login;
-    await OAuthCallbackHandler.persistCurrentPendingCallback();
+    if (naverAttempt == null) {
+      await OAuthCallbackHandler.persistCurrentPendingCallback();
+    } else if (!OAuthCallbackHandler.isCurrentNaverOAuthAttempt(
+      pendingRevision,
+      naverAttempt.challenge,
+    )) {
+      return false;
+    }
     if (!OAuthCallbackHandler.isPendingCallbackAttempt(
       revision: pendingRevision,
       purpose: callbackPurpose,
@@ -423,10 +471,16 @@ class AuthService implements AuthSessionClient {
       if (appProvider == PlanFlowOAuthProvider.naver) {
         _logNaverCalendarAuth('launchOAuthUrl failed launched=false');
       }
-      OAuthCallbackHandler.clearPendingCallbackForAttempt(
-        revision: pendingRevision,
-        purpose: callbackPurpose,
-      );
+      if (naverAttempt == null ||
+          OAuthCallbackHandler.isCurrentNaverOAuthAttempt(
+            pendingRevision,
+            naverAttempt.challenge,
+          )) {
+        OAuthCallbackHandler.clearPendingCallbackForAttempt(
+          revision: pendingRevision,
+          purpose: callbackPurpose,
+        );
+      }
     }
     if (appProvider == PlanFlowOAuthProvider.naver) {
       _logNaverCalendarAuth('launchOAuthUrl result launched=$launched');
@@ -593,7 +647,7 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.google => OAuthProvider.google,
       PlanFlowOAuthProvider.kakao => OAuthProvider.kakao,
       PlanFlowOAuthProvider.naver =>
-        const OAuthProvider('custom:planflow-naver'),
+        const OAuthProvider(OAuthCallbackHandler.naverProviderId),
       PlanFlowOAuthProvider.apple => OAuthProvider.apple,
     };
   }

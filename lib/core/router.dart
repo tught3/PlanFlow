@@ -171,6 +171,8 @@ GoRouter createAppRouter({
           initialCalendarDate: _parseRouteDate(
             state.uri.queryParameters['date'],
           ),
+          suppressInitialCalendarDaySheet:
+              state.uri.queryParameters['openSheet'] == '0',
           authProvider: authProviderOverride,
           startupRouteGate: startupRouteGateOverride,
           featureTourStore: featureTourStore,
@@ -478,6 +480,7 @@ ShellScreen _buildShell({
   Key? key,
   required int initialIndex,
   DateTime? initialCalendarDate,
+  bool suppressInitialCalendarDaySheet = false,
   SettingsInitialAction? initialSettingsAction,
   bool? briefingIsMorning,
   AuthProvider? authProvider,
@@ -490,6 +493,7 @@ ShellScreen _buildShell({
       key: key,
       initialIndex: initialIndex,
       initialCalendarDate: initialCalendarDate,
+      suppressInitialCalendarDaySheet: suppressInitialCalendarDaySheet,
       initialSettingsAction: initialSettingsAction,
       briefingIsMorning: briefingIsMorning,
       authProviderOverride: authProvider,

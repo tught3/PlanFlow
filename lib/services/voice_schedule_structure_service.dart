@@ -1,3 +1,4 @@
+import '../core/korean_clock_time.dart';
 import 'voice_text_cleanup_service.dart';
 
 class VoiceScheduleStructure {
@@ -238,9 +239,25 @@ class VoiceScheduleStructureService {
     r'본부장님|본부장|센터장님|센터장|선생님|교수님|님)$',
   );
 
+  static const _dateStart = r'(?<![가-힣a-zA-Z0-9])';
+  static const _dateEnd = koreanCalendarDateEnd;
+  static final _dayToken = RegExp('$_dateStart'
+      r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*일' '$_dateEnd');
+  static final _monthDayToken = RegExp('$_dateStart'
+      r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일' '$_dateEnd');
+  static final _leadingRelativeDate = RegExp(
+    r'^(?:(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)|오늘|내일|모레|글피)'
+    '$_dateEnd',
+  );
+  static final _timeParticle = RegExp(r'(?:부터|까지|에)(?![가-힣])');
+  static final _trailingCreationCommand = RegExp(
+    r'(?:^|\s+)(?:일정(?:으로)?\s+)?(?:추가|등록|기록|저장|만들어)'
+    r'(?:\s*(?:해\s*)?(?:줘|주세요)|해)?\s*$',
+  );
+
   static final List<RegExp> _cuePatterns = <RegExp>[
-    RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
-    RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*일'),
+    _monthDayToken,
+    _dayToken,
     RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
     RegExp(r'(?:오늘|내일|모레|글피)'),
     RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
@@ -266,17 +283,17 @@ class VoiceScheduleStructureService {
     final leadingCue = _leadingTimeCue(titleBase);
     final afterCue = leadingCue == null
         ? titleBase
-        : titleBase.substring(leadingCue.end).trim();
+        : titleBase.substring(leadingCue.length).trim();
     final explicitClauses = _extractExplicitFieldClauses(afterCue);
     final contentText = _stripExplicitFieldClauses(afterCue);
     return VoiceScheduleStructure(
       sourceText: source,
       contentText: contentText,
-      leadingTimeCue: leadingCue?.group(0)?.trim(),
-      titleCandidate: contentText,
+      leadingTimeCue: leadingCue,
+      titleCandidate: contentText.replaceFirst(_trailingCreationCommand, ''),
       hasLeadingTimeCue: leadingCue != null,
       explicitFieldClauses: explicitClauses,
-      startAtCandidate: leadingCue?.group(0)?.trim(),
+      startAtCandidate: leadingCue,
     );
   }
 
@@ -432,7 +449,9 @@ class VoiceScheduleStructureService {
     DateTime reference,
   ) {
     final match = RegExp(
-      r'(?:(?<year>\d{4})\s*년\s*)?(?<month>\d{1,2})\s*월\s*(?<day>\d{1,2})\s*일(?:에|부터|까지)?',
+      '$_dateStart'
+      r'(?:(?<year>\d{4})\s*년\s*)?(?<month>\d{1,2})\s*월\s*(?<day>\d{1,2})\s*일'
+      '$_dateEnd',
     ).firstMatch(source);
     if (match == null) {
       return null;
@@ -447,10 +466,8 @@ class VoiceScheduleStructureService {
     if (start.year != year || start.month != month || start.day != day) {
       return null;
     }
-    final remainder = source.substring(match.end);
-    if (RegExp(
-      r'^\s*(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
-    ).hasMatch(remainder)) {
+    if (koreanClockTimeParts(source).isNotEmpty ||
+        koreanRelativeTimeOffset(source) != null) {
       return null;
     }
     return VoiceScheduleDateRange(
@@ -468,8 +485,9 @@ class VoiceScheduleStructureService {
   ) {
     // "3일 뒤/후"는 날짜의 일(day-of-month)이 아니라 상대 날짜(오늘로부터
     // N일 뒤)이므로 여기서 걸러내고 별도 상대 날짜 처리 경로로 넘긴다.
-    final match = RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?(?!\s*(?:뒤|후))')
-        .firstMatch(source);
+    final match = RegExp('$_dateStart'
+      r'(?<day>\d{1,2})\s*일' '$_dateEnd' r'(?!\s*(?:뒤|후))',
+    ).firstMatch(source);
     if (match == null) {
       return null;
     }
@@ -481,10 +499,8 @@ class VoiceScheduleStructureService {
     if (RegExp(r'\d{1,2}\s*월\s*$').hasMatch(prefix)) {
       return null;
     }
-    final remainder = source.substring(match.end);
-    if (RegExp(
-      r'^\s*(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
-    ).hasMatch(remainder)) {
+    if (koreanClockTimeParts(source).isNotEmpty ||
+        koreanRelativeTimeOffset(source) != null) {
       return null;
     }
     final today = DateTime(reference.year, reference.month, reference.day);
@@ -623,7 +639,7 @@ class VoiceScheduleStructureService {
   }) {
     var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
     final patterns = <RegExp>[
-      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      _monthDayToken,
       RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
       RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
@@ -768,10 +784,12 @@ class VoiceScheduleStructureService {
     final structure = structured ?? analyze(referenceText ?? text);
     var title = normalizeText(stripExplicitMemoClause(text), '');
     title = _stripLeadingRecurrenceExpression(title);
-    title = title
+    title = stripKoreanClockExpressions(title)
         .replaceAll(
           RegExp(
-            r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)',
+            r'(?:\s+|^)(?:(?:일정(?:으로)?\s+)?'
+            r'(?:추가|등록|기록|저장|만들어|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)'
+            r'\s*(?:해\s*)?(?:줘|주세요)|해\s*(?:줘|주세요))\s*$',
           ),
           ' ',
         )
@@ -782,21 +800,14 @@ class VoiceScheduleStructureService {
         .replaceAll(RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)'), ' ')
         .replaceAll(
           RegExp(
-            r'(?:(?:\d{4})년\s*)?(?:\d{1,2}|[가-힣]{1,8})월\s*(?:\d{1,2}|[가-힣]{1,8})일',
+            '$_dateStart'
+            r'(?:(?:\d{4})년\s*)?(?:\d{1,2}|[가-힣]{1,8})월\s*(?:\d{1,2}|[가-힣]{1,8})일'
+            '$_dateEnd',
           ),
           ' ',
         )
-        .replaceAll(
-          RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}\s*일'),
-          ' ',
-        )
-        .replaceAll(
-          RegExp(
-            r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?[가-힣0-9]{1,8}\s*시(?:\s*[가-힣0-9]{1,8}\s*분?|\s*반)?',
-          ),
-          ' ',
-        )
-        .replaceAll(RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)'), ' ')
+        .replaceAll(_dayToken, ' ')
+        .replaceAll(koreanRelativeTimePattern, ' ')
         // 숫자 없는 고아 시간 조사 제거:
         // "2시간 뒤에" -> GPT가 "2시간"만 떼고 "뒤에"만 남긴 경우 등 처리.
         // 단어 경계(공백/문자열 시작·끝)로만 매칭해 "뒤풀이" 등 일반 단어 오제거 방지.
@@ -935,9 +946,7 @@ class VoiceScheduleStructureService {
       RegExp(
         r'^\s*매년\s*\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s+|$)',
       ),
-      RegExp(
-        r'^\s*(?:\d{4}\s*년\s*)?\d{1,2}\s*일(?:\s*(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?)?(?:에|부터)?\s*',
-      ),
+      RegExp('^(?:${_dayToken.pattern})'),
       RegExp(
         r'^\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)(?:\s+|$)',
       ),
@@ -1193,7 +1202,7 @@ class VoiceScheduleStructureService {
       return normalized;
     }
 
-    final stripped = normalized.substring(leadingCue.end).trim();
+    final stripped = normalized.substring(leadingCue.length).trim();
     return stripped.isEmpty ? normalized : stripped;
   }
 
@@ -1814,30 +1823,15 @@ class VoiceScheduleStructureService {
     return content.replaceFirst(RegExp(r'^[.。,\s]+'), '').trim();
   }
 
-  RegExpMatch? _leadingTimeCue(String text) {
-    final patterns = <RegExp>[
-      RegExp(
-        r'^\s*(?:(?:오늘|내일|모레|글피)\s*)?(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?(?:에|부터)?\s*',
-      ),
-      RegExp(
-        r'^\s*(?:오늘|내일|모레|글피)\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?(?:에|부터)?\s*',
-      ),
-      RegExp(
-        r'^\s*(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s*(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?)?(?:에|부터)?\s*',
-      ),
-      RegExp(
-        r'^\s*(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)(?:부터)?\s*',
-      ),
-      RegExp(r'^\s*(?:오늘|내일|모레|글피)(?:에|부터)?\s+'),
-    ];
-
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(text);
-      if (match != null && (match.group(0)?.trim().isNotEmpty ?? false)) {
-        return match;
-      }
-    }
-    return null;
+  String? _leadingTimeCue(String text) {
+    final date = _monthDayToken.matchAsPrefix(text) ??
+        _leadingRelativeDate.matchAsPrefix(text);
+    final afterDate = text.substring(date?.end ?? 0).trimLeft();
+    final clockEnd = leadingKoreanClockTimeEnd(afterDate);
+    if (clockEnd == null) return date?.group(0);
+    final end = text.length - afterDate.length + clockEnd;
+    final particle = _timeParticle.matchAsPrefix(text, end);
+    return text.substring(0, particle?.end ?? end);
   }
 
   Map<String, String> _extractExplicitFieldClauses(String text) {

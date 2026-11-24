@@ -3,6 +3,7 @@ import 'package:planflow/services/calendar_auto_sync_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/external_calendar_sync_guide_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
+import 'package:planflow/services/naver_open_api_calendar_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -80,6 +81,37 @@ void main() {
     );
   });
 
+  for (final provider in ['device', 'Naver Open API']) {
+    test('skip sync prompt with configured $provider', () async {
+      final preferences = await SharedPreferences.getInstance();
+      if (provider == 'device') {
+        await preferences.setBool(
+          ExternalCalendarSyncGuideService.deviceCalendarSyncedPrefsKey,
+          true,
+        );
+      }
+      final service = ExternalCalendarSyncGuideService(
+        preferences: preferences,
+        calendarSyncService: _FakeCalendarSyncService(
+          googleStatus:
+              CalendarIntegrationResult.signedOut(CalendarProvider.google),
+        ),
+        naverCalDavService: _FakeNaverCalDavService(hasSavedCredentials: false),
+        naverOpenApiCalendarService: _FakeNaverOpenApiCalendarService(
+          connected: provider == 'Naver Open API',
+        ),
+        calendarAutoSyncService: _FakeCalendarAutoSyncService(
+          snapshot: _snapshot(),
+        ),
+      );
+
+      expect(await service.shouldShowForUser('user-1'), isFalse);
+      expect(preferences.getBool(
+        ExternalCalendarSyncGuideService.guideSeenKey('user-1'),
+      ), isTrue);
+    });
+  }
+
   test('skips and marks seen when a device calendar sync snapshot is healthy',
       () async {
     final preferences = await SharedPreferences.getInstance();
@@ -155,4 +187,13 @@ class _FakeNaverCalDavService extends NaverCalDavService {
 
   @override
   Future<bool> hasCredentials() async => hasSavedCredentials;
+}
+
+class _FakeNaverOpenApiCalendarService extends NaverOpenApiCalendarService {
+  _FakeNaverOpenApiCalendarService({required this.connected});
+
+  final bool connected;
+
+  @override
+  Future<bool> hasCalendarAccess() async => connected;
 }

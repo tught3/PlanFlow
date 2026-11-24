@@ -2046,13 +2046,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       bool opened = false;
       if (action == _ConfirmAlarmPermissionAction.exactAlarmSettings) {
-        opened = await _permissionService.openAlarmSettings();
-        if (!opened) {
-          opened = await _permissionService.requestExactAlarmPermission();
+        opened = await GuideScope.openPermissionSettings(
+            context, _permissionService.openAlarmSettings);
+        if (!opened && mounted) {
+          final cancel = GuideScope.beginPermissionSettingsReturnOf(context);
+          try {
+            opened = await _permissionService.requestExactAlarmPermission();
+          } finally {
+            if (!opened && WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed) {
+              cancel?.call();
+            }
+          }
         }
       } else if (action ==
           _ConfirmAlarmPermissionAction.batteryOptimizationSettings) {
-        opened = await _permissionService.requestIgnoreBatteryOptimizations();
+        opened = await GuideScope.openPermissionSettings(
+            context, _permissionService.requestIgnoreBatteryOptimizations);
       }
 
       if (mounted && _confirmGuideOwner != null) {
@@ -2678,7 +2688,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     final alarmWarning = postSaveResult?.alarmWarningMessage;
     if (alarmWarning != null) _showMessage(alarmWarning);
-    _navigateAfterSave();
+    _navigateAfterSave(savedStartAt: savedEvent?.startAt ?? groupStartAt);
   }
 
   String _messageForSaveStateError(StateError error) {
@@ -2790,13 +2800,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return _startAt.hour == resolvedHour;
   }
 
-  void _navigateAfterSave() {
+  void _navigateAfterSave({DateTime? savedStartAt}) {
     if (!mounted) {
       return;
     }
     final owner = _confirmGuideOwner;
     if (owner == null) {
-      context.go(AppRoutes.calendar);
+      final local = savedStartAt == null ? _startAt : planflowLocal(savedStartAt);
+      final date = local.toIso8601String().split('T').first;
+      context.go('${AppRoutes.calendar}?date=$date&openSheet=0');
       return;
     }
     if (!_sameGuideOwner(owner)) return;

@@ -240,6 +240,7 @@ class ShellScreen extends StatefulWidget {
     super.key,
     this.initialIndex = 0,
     this.initialCalendarDate,
+    this.suppressInitialCalendarDaySheet = false,
     this.initialSettingsAction,
     this.briefingIsMorning,
     this.authProviderOverride,
@@ -251,6 +252,7 @@ class ShellScreen extends StatefulWidget {
 
   final int initialIndex;
   final DateTime? initialCalendarDate;
+  final bool suppressInitialCalendarDaySheet;
   final SettingsInitialAction? initialSettingsAction;
 
   /// When set, the calendar tab runs the briefing inline instead of opening a
@@ -1004,11 +1006,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         }
       });
     }
-    if (oldWidget.initialCalendarDate != widget.initialCalendarDate &&
-        widget.initialCalendarDate != null &&
-        _currentIndex != 1) {
+    if (oldWidget.initialCalendarDate != widget.initialCalendarDate ||
+        oldWidget.suppressInitialCalendarDaySheet !=
+            widget.suppressInitialCalendarDaySheet) {
       setState(() {
-        _currentIndex = 1;
+        if (widget.initialCalendarDate != null) _currentIndex = 1;
+        if (_currentIndex == 1 || _tabChildren[1] != null) {
+          _tabChildren[1] = _buildTabChild(1);
+        }
       });
     }
     _guideHomeStateChanged?.call();
@@ -1269,16 +1274,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       // Home. Let that route build before placing either dialog over it.
       await SchedulerBinding.instance.endOfFrame;
       if (!sameAccount()) return false;
-    } else {
-      // The ordinary welcome prompt keeps honoring its per-account history.
-      final pending = _routeGate.calendarSyncHeldFor(userId) ||
-          !await syncStore.isClosed(userId);
-      if (!sameAccount()) return false;
-      final shouldShow = pending ||
-          await _externalCalendarGuideService
-              .shouldShowForUser(userId)
-              .timeout(_onboardingProbeTimeout, onTimeout: () => false);
-      if (!shouldShow || !sameAccount()) return sameAccount();
     }
 
     Widget syncDialog(NavigatorState navigator) => AlertDialog(
@@ -1327,7 +1322,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       final route = DialogRoute<_ExternalCalendarGuideAction>(
         context: context,
         themes: InheritedTheme.capture(from: context, to: navigator.context),
-        barrierDismissible: guideChoice == null,
+        barrierDismissible: step != GuideStep.completionConfirm,
         builder: (dialogContext) {
           final dialog = step == GuideStep.completionConfirm
               ? AlertDialog(
@@ -1454,7 +1449,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           // checkpoint. Show a new prompt rather than replaying its action.
           continue;
         }
-        if (!isCurrentGuidePrompt(confirmed, GuideStep.syncChoiceConfirmed) ||
+        if (!ownsGuide() ||
+            !sameGuideSession(confirmed) ||
+            confirmed.step != GuideStep.completed ||
+            confirmed.run != GuideRun.terminal ||
             !identical(latest, confirmed)) {
           _checkedExternalCalendarGuide = false;
           return false;
@@ -1463,27 +1461,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       }
     }
 
-    _ExternalCalendarGuideAction? choice;
-    do {
-      if (guideChoice != null &&
-          await readyGuidePrompt(GuideStep.syncChoiceConfirmed) == null) {
-        _checkedExternalCalendarGuide = false;
-        return false;
-      }
-      if (!sameAccount()) return false;
-      choice = await presentPrompt(GuideStep.syncChoiceConfirmed);
-      if (!sameAccount()) return false;
-      if (choice == _ExternalCalendarGuideAction.dismissStale) {
-        _checkedExternalCalendarGuide = false;
-        return false;
-      }
-      if (choice == _ExternalCalendarGuideAction.skipGuide) {
-        return leaveGuide(GuideStep.syncChoiceConfirmed);
-      }
-    } while (guideChoice != null && choice == null);
-
     if (!sameAccount()) return false;
-    if (guideChoice != null) {
+    // Recover checkpoints created by older versions before offering sync.
+    if (guideChoice?.step == GuideStep.syncChoiceConfirmed) {
       final current = await readyGuidePrompt(GuideStep.syncChoiceConfirmed);
       if (current == null || !sameAccount()) {
         _checkedExternalCalendarGuide = false;
@@ -1501,18 +1481,50 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         throw StateError('Guide completion not confirmed');
       }
     }
+    final completedGuide = coordinator?.state.value;
     await syncStore.close(userId);
     if (!sameAccount()) return false;
     _routeGate.closeGuideChoice(userId);
+
+    bool ownsOptionalSync() {
+      if (!ownsGuide()) return false;
+      final current = coordinator?.state.value;
+      if (current == null || completedGuide == null) {
+        return current == null && completedGuide == null;
+      }
+      return current.uid == userId &&
+          current.run == GuideRun.terminal &&
+          !current.isReplay &&
+          current.step == completedGuide.step &&
+          current.version == completedGuide.version &&
+          current.sessionId == completedGuide.sessionId &&
+          current.createdEventId == completedGuide.createdEventId;
+    }
+
+    if (!ownsOptionalSync()) return sameAccount();
+    final shouldShow = await _externalCalendarGuideService
+        .shouldShowForUser(userId)
+        .timeout(_onboardingProbeTimeout, onTimeout: () => false);
+    if (!shouldShow ||
+        !ownsOptionalSync() ||
+        !await _waitForGuideHome(router, ownsOptionalSync) ||
+        !ownsOptionalSync()) {
+      return sameAccount();
+    }
+
+    final choice = await _presentInteractive(
+      () => showDialog<_ExternalCalendarGuideAction>(
+        context: context,
+        builder: (dialogContext) =>
+            syncDialog(Navigator.of(dialogContext, rootNavigator: true)),
+      ),
+    );
+    if (!ownsOptionalSync()) return sameAccount();
     await _externalCalendarGuideService.markSeen(userId).timeout(
           _onboardingProbeTimeout,
           onTimeout: () {},
         );
-    if (!mounted || !sameAccount()) {
-      return false;
-    }
-
-    if (sameAccount() && choice == _ExternalCalendarGuideAction.openSettings) {
+    if (ownsOptionalSync() && choice == _ExternalCalendarGuideAction.openSettings) {
       router.go('${AppRoutes.settings}?open=naver-caldav');
     }
     return sameAccount();
@@ -1594,6 +1606,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         final briefingIsMorning = widget.briefingIsMorning;
         final calendar = CalendarScreen(
           initialDate: widget.initialCalendarDate,
+          suppressInitialDaySheet: widget.suppressInitialCalendarDaySheet,
           // The briefing route opens the selected-day agenda sheet itself;
           // the loader lives inside that sheet rather than over the month
           // grid. Normal CalendarScreen callers may still use

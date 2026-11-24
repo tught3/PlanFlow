@@ -69,6 +69,13 @@ final _calendarDateCue = RegExp(
 bool hasKoreanCalendarDateCue(String text) => _calendarDateCue.hasMatch(text);
 
 const _clockPeriod = r'오전|오후|아침|낮|점심|저녁|밤|새벽';
+const _boundedClockParticle =
+    r'(?:에|부터|까지|쯤|경|전|후|으로|로|만|이나|나|도|은|는|이|가)(?![a-zA-Z0-9가-힣])';
+const koreanCalendarDateEnd =
+    r'(?:으로|로|에|부터|까지)?(?=$|[^가-힣a-zA-Z0-9]|'
+    '$_clockPeriod'
+    r'|(?:자정|정오)(?:으로|로|에|부터|까지)?(?![가-힣])|'
+    '$_koreanNumber' r'\s*시(?!간)|\d{1,2}\s*시(?!간))';
 const _clockPatternSource =
     '(?<![0-9])(?:($_clockPeriod)'
     r'\s*|(?<![가-힣])|(?=[0-9]))'
@@ -77,7 +84,8 @@ const _clockPatternSource =
     '(?:\\s*([0-9]+|$_koreanNumber)\\s*분'
     // Allow ordinary endings (반이야, 반인데, 반도), and exclude words such as 반려.
     r'|\s*(반)(?!려|대|드|응|찬|말|복|장|죽|지|품|납|영|면|짝|상|환|차|나|바|팔|성)'
-    r'|\s*([0-9]+)(?![0-9]|\s*[시일월년주]))?'
+    r'|\s*([0-9]+)(?![0-9]|\s*[시일월년주차층호번개명원동회건](?![가-힣0-9]))'
+    r'(?=$|[^a-zA-Z0-9가-힣]|' '$_boundedClockParticle))?'
     // A known calendar date can join a fixed time even without a space.
     r'|(?<![가-힣0-9])(?:'
     '$_calendarDateQualifier'
@@ -92,9 +100,10 @@ final _compactClock = RegExp(r'(?<![\d:])(\d{1,2})(\d{2})(?![\d:])');
 final _clockPeriodAtEnd = RegExp('(?:$_clockPeriod)\\s*\$');
 // The final lookahead applies to the fixed-time branch (자정 or 정오).
 // The edit pattern also accepts conjunctions there and has a separate 24:00 branch.
-final _clockPattern = RegExp('$_clockPatternSource(?=$_clockEnding)');
+final _clockPattern =
+    RegExp('$_clockPatternSource(?=$_clockEnding|$_boundedClockParticle)');
 final _editClockPattern = RegExp(
-    '$_clockPatternSource(?=$_clockEnding|$_clockLink)|$_displayMidnight');
+    '$_clockPatternSource(?=$_clockEnding|$_boundedClockParticle|$_clockLink)|$_displayMidnight');
 
 // An unmarked hour written in Korean needs a word boundary or a time particle.
 // Otherwise words such as "오시는", "한시라도", and "세시풍속" look like hours.
@@ -357,6 +366,48 @@ Iterable<KoreanClockTimeParts> koreanClockTimeParts(String text) sync* {
       hasExplicitMinute: hasHalfHour || minuteText != null,
     );
   }
+}
+
+int? leadingKoreanClockTimeEnd(String text) {
+  for (final match in _validClockMatches(text, _clockPattern)) {
+    return match.start == 0 ? match.end : null;
+  }
+  return null;
+}
+
+String stripKoreanClockExpressions(String text) {
+  final output = StringBuffer();
+  var end = 0;
+  for (final match in _validClockMatches(text, _clockPattern)) {
+    output
+      ..write(text.substring(end, match.start))
+      ..write(' ');
+    end = match.end;
+  }
+  return (output..write(text.substring(end))).toString();
+}
+
+final koreanRelativeTimePattern = RegExp(
+  r'(?<![가-힣0-9])(?:(?<hours>\d{1,2}|한|두|세|네|다섯|여섯)\s*시간'
+  r'\s*(?:(?<minutesAfterHours>\d{1,2}|[일이삼사오육륙칠팔구십]{1,3})\s*분|(?<half>반))?'
+  r'|(?<minutes>\d{1,3}|[일이삼사오육륙칠팔구십]{1,3})\s*분)'
+  r'\s*(?:뒤|후|있다가|이따)(?:에)?(?![가-힣])',
+);
+
+Duration? koreanRelativeTimeOffset(String text) {
+  final match = koreanRelativeTimePattern.firstMatch(text);
+  if (match == null) return null;
+  final hours = parseKoreanClockNumber(match.namedGroup('hours')) ?? 0;
+  final minutesAfterHours =
+      parseKoreanClockNumber(match.namedGroup('minutesAfterHours')) ?? 0;
+  final minutes = parseKoreanClockNumber(match.namedGroup('minutes')) ?? 0;
+  if (minutesAfterHours >= 60) return null;
+  return Duration(
+    hours: hours,
+    minutes: match.namedGroup('half') == null
+        ? minutes + minutesAfterHours
+        : 30,
+  );
 }
 
 int? parseKoreanClockNumber(String? rawText) {

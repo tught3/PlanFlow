@@ -37,6 +37,7 @@ import '../../services/manual_event_side_effect_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_ad_gate.dart';
 import '../../services/voice_conversation_controller.dart';
+import '../../services/voice_command_pipeline.dart';
 import '../../services/voice_conversation_entitlement.dart';
 import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/planflow_action_buttons.dart';
@@ -1541,6 +1542,38 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     _guidedCaptureSettled = guidedCapture;
     final listenGeneration = ++_listenGeneration;
     final inputGeneration = _inputTurnGeneration;
+    String? clearedVoiceText;
+    void clearVoiceDraft({required bool resetRecognizer}) {
+      if (!mounted ||
+          listenGeneration != _listenGeneration ||
+          inputGeneration != _inputTurnGeneration) {
+        return;
+      }
+      if (_inputController.text.isNotEmpty) {
+        clearedVoiceText = _inputController.text;
+      }
+      _guidedVoiceDraft = null;
+      _setConversationInputText('');
+      if (resetRecognizer) unawaited(widget.sttService.clearActiveTranscript());
+    }
+
+    String normalizeVoiceDraft(String text, {bool partial = false}) {
+      var hasClearCommand = false;
+      final normalized = SttService.normalizeVoiceTranscript(
+        text,
+        onCommand: (command) {
+          if (command == SttVoiceCommand.clearAll) hasClearCommand = true;
+        },
+      );
+      // STT also emits an empty partial after handling the command itself.
+      if (hasClearCommand || (partial && text.trim().isEmpty)) {
+        clearVoiceDraft(resetRecognizer: hasClearCommand);
+      }
+      if (normalized == clearedVoiceText) return '';
+      if (partial && normalized.isNotEmpty) clearedVoiceText = null;
+      return normalized;
+    }
+
     var shouldRetryEarlyFailure = false;
     debugPrint('VoiceConversationScreen STT start');
     setState(() {
@@ -1558,7 +1591,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
     try {
       final result = await widget.sttService.listen(
         onPartialResult: (text) {
-          final normalized = SttService.normalizeVoiceTranscript(text);
+          final normalized = normalizeVoiceDraft(text, partial: true);
           debugPrint('VoiceConversationScreen STT partial: $normalized');
           if (!mounted || normalized.isEmpty) {
             return;
@@ -1606,7 +1639,7 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
         return;
       }
       _conversationWatchdogTimer?.cancel();
-      final finalText = SttService.normalizeVoiceTranscript(result.text ?? '');
+      final finalText = normalizeVoiceDraft(result.text ?? '');
       final submitText = _conversation.normalizePendingDeleteReply(finalText);
       debugPrint(
         'VoiceConversationScreen STT final: '
@@ -2436,14 +2469,17 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
       );
     }
     final criticalValue = result.criticalValue;
-    if (criticalValue != null) {
-      edited = _copyEventWithCritical(edited, isCritical: criticalValue);
+    final strongAlarmRequested =
+        strongAlarmCommandPattern.hasMatch(result.inputText);
+    if (criticalValue != null && strongAlarmRequested) {
+      edited = edited.copyWith(
+        isCritical: criticalValue ? true : edited.isCritical,
+        useStrongAlarm: criticalValue,
+      );
+    } else if (criticalValue != null) {
+      edited = edited.copyWith(isCritical: criticalValue);
     }
-    final strongAlarmRequested = RegExp(
-      r'강한\\s*(알림|알람)|강한알림|강한알람',
-    ).hasMatch(result.inputText);
-    if (strongAlarmRequested) {
-      edited = edited.copyWith(isCritical: true, useStrongAlarm: true);
+    if (strongAlarmRequested && criticalValue == true && !event.useStrongAlarm) {
       // 음성 명령으로 강한 알람을 켠 경우에도 편집 화면과 같은 권한 요청을
       // 즉시 수행한다. 사용자가 거부하면 저장은 유지하고 OS 설정에서 재허용할 수 있다.
       final permissionService =
@@ -3282,6 +3318,11 @@ class VoiceConversationScreenState extends State<VoiceConversationScreen>
           return '$title 일정의 날짜를 옮겼어요.';
         }
         if (result.criticalValue != null) {
+          if (strongAlarmCommandPattern.hasMatch(result.inputText)) {
+            return result.criticalValue!
+                ? '강한 알람으로 설정했어요.'
+                : '강한 알람을 해제했어요.';
+          }
           return result.criticalValue!
               ? '$title 일정을 중요한 일정으로 표시했어요.'
               : '$title 일정을 중요한 일정으로 표시하지 않을게요.';
@@ -4237,69 +4278,12 @@ EventModel _copyEventWithLocation(
   double? locationLat,
   double? locationLng,
 }) {
-  return EventModel(
-    id: event.id,
-    userId: event.userId,
-    title: event.title,
-    startAt: event.startAt,
-    endAt: event.endAt,
+  return event.copyWith(
     location: location,
     locationLat: locationLat,
+    clearLocationLat: locationLat == null,
     locationLng: locationLng,
-    memo: event.memo,
-    supplies: event.supplies,
-    suppliesChecked: event.suppliesChecked,
-    participants: event.participants,
-    targets: event.targets,
-    isCritical: event.isCritical,
-    recurrenceRule: event.recurrenceRule,
-    isAllDay: event.isAllDay,
-    isMultiDay: event.isMultiDay,
-    parentEventId: event.parentEventId,
-    category: event.category,
-    source: event.source,
-    externalId: event.externalId,
-    externalCalendarId: event.externalCalendarId,
-    externalEtag: event.externalEtag,
-    externalUpdatedAt: event.externalUpdatedAt,
-    lastSyncedAt: event.lastSyncedAt,
-    createdAt: event.createdAt,
-    updatedAt: event.updatedAt,
-  );
-}
-
-EventModel _copyEventWithCritical(
-  EventModel event, {
-  required bool isCritical,
-}) {
-  return EventModel(
-    id: event.id,
-    userId: event.userId,
-    title: event.title,
-    startAt: event.startAt,
-    endAt: event.endAt,
-    location: event.location,
-    locationLat: event.locationLat,
-    locationLng: event.locationLng,
-    memo: event.memo,
-    supplies: event.supplies,
-    suppliesChecked: event.suppliesChecked,
-    participants: event.participants,
-    targets: event.targets,
-    isCritical: isCritical,
-    recurrenceRule: event.recurrenceRule,
-    isAllDay: event.isAllDay,
-    isMultiDay: event.isMultiDay,
-    parentEventId: event.parentEventId,
-    category: event.category,
-    source: event.source,
-    externalId: event.externalId,
-    externalCalendarId: event.externalCalendarId,
-    externalEtag: event.externalEtag,
-    externalUpdatedAt: event.externalUpdatedAt,
-    lastSyncedAt: event.lastSyncedAt,
-    createdAt: event.createdAt,
-    updatedAt: event.updatedAt,
+    clearLocationLng: locationLng == null,
   );
 }
 

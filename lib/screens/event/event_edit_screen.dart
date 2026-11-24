@@ -449,10 +449,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       switch (action) {
         case _AlarmPermissionGuardAction.exactAlarmSettings:
-          await _permissionService.openAlarmSettings();
+          await GuideScope.openPermissionSettings(
+              context, _permissionService.openAlarmSettings);
           return action;
         case _AlarmPermissionGuardAction.batteryOptimizationSettings:
-          await _permissionService.requestIgnoreBatteryOptimizations();
+          await GuideScope.openPermissionSettings(
+              context, _permissionService.requestIgnoreBatteryOptimizations);
           return action;
         case _AlarmPermissionGuardAction.none:
           return action;
@@ -746,16 +748,34 @@ class _EventEditScreenState extends State<EventEditScreen> {
         await _permissionService.requestNotificationPermissions();
     final notificationsGranted =
         notificationStatus.notificationsEnabled == true;
+    if (!mounted) return false;
     final exactAlarmsGranted = notificationStatus.exactAlarmsEnabled == true ||
-        await _permissionService.requestExactAlarmPermission();
+        await _requestPermissionWithGuideReturn(
+            _permissionService.requestExactAlarmPermission);
+    if (!mounted) return false;
     final fullScreenIntentGranted = notificationStatus.fullScreenIntentStatus ==
             PermissionCheckState.granted ||
-        await _permissionService.requestFullScreenIntentPermission();
+        await _requestPermissionWithGuideReturn(
+            _permissionService.requestFullScreenIntentPermission);
     final latest = await _permissionService.checkAll();
     return notificationsGranted &&
         exactAlarmsGranted &&
         fullScreenIntentGranted &&
         _criticalAlarmPermissionsReady(latest);
+  }
+
+  Future<bool> _requestPermissionWithGuideReturn(
+      Future<bool> Function() request) async {
+    final cancel = GuideScope.beginPermissionSettingsReturnOf(context);
+    var granted = false;
+    try {
+      return granted = await request();
+    } finally {
+      if (!granted &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        cancel?.call();
+      }
+    }
   }
 
   @override
@@ -1646,7 +1666,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 '${AppRoutes.eventDetail}/${Uri.encodeComponent(savedEvent.id)}',
                 extra: savedEvent);
           } else {
-            context.go(AppRoutes.calendar);
+            final startAt = savedEvent?.startAt ?? updatedEvent.startAt;
+            final local = startAt == null ? _startAt : planflowLocal(startAt);
+            final date = local.toIso8601String().split('T').first;
+            context.go('${AppRoutes.calendar}?date=$date&openSheet=0');
           }
         }
       }

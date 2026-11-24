@@ -1950,6 +1950,26 @@ void main() {
       expect(result.requiresEditScreenNavigation, isTrue);
     });
 
+    test('순번, 오전 시간, 장소가 들어간 편집을 하나의 초안으로 연다', () {
+      final controller = VoiceConversationController(
+        events: [
+          _event('meeting', '회의', DateTime(_fixtureYear, 7, 14, 15)),
+        ],
+        now: () => DateTime(_fixtureYear, 7, 13, 9),
+      );
+      controller.handle('내일 일정 보여줘');
+
+      final result = controller.handle(
+        '첫 번째 일정을 오전7시40분으로 변경해주고 장소를 인천 그랜드cc로 변경해줘',
+      );
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'meeting');
+      expect(result.draftEvent?.location, '인천 그랜드cc');
+      final start = planflowLocal(result.draftEvent!.startAt!);
+      expect((start.hour, start.minute, start.day), (7, 40, 14));
+    });
+
     test('중요도와 시간 변경도 하나의 편집 초안에 함께 반영한다', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

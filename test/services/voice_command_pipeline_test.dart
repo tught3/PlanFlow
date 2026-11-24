@@ -3,6 +3,53 @@ import 'package:planflow/services/voice_command_pipeline.dart';
 import 'package:planflow/services/voice_text_cleanup_service.dart';
 
 void main() {
+  const pipeline = VoiceCommandPipeline();
+
+  test('ordinal compound edit separates the new time and location', () {
+    final result = pipeline.analyze(
+      '첫 번째 일정을 오전7시40분으로 변경해주고 장소를 인천 그랜드cc로 변경해줘',
+    );
+    expect(result.intent, VoiceCommandPipelineIntent.edit);
+    expect(result.targetText, contains('첫 번째 일정'));
+    expect(result.requestedChanges, containsAll(['start_at', 'location']));
+    expect(result.requestedFieldValues['location'], '인천 그랜드cc');
+  });
+
+  test('location edits preserve the name of a road', () {
+    final result = pipeline.analyze('첫 번째 일정 장소는 테헤란로로 설정해줘');
+    expect(result.intent, VoiceCommandPipelineIntent.edit);
+    expect(result.targetText, '첫 번째 일정');
+    expect(result.requestedFieldValues['location'], '테헤란로');
+  });
+
+  test('an ordinal location addition keeps its destination separate', () {
+    final result = pipeline.analyze('4번에 강릉 건도리횟집 장소추가');
+    expect(result.intent, VoiceCommandPipelineIntent.edit);
+    expect(result.targetText, '4번에');
+    expect(result.requestedFieldValues['location'], '강릉 건도리횟집');
+  });
+
+  test('uses an ordinal target for a title setting without changing creation', () {
+    final edit = pipeline.analyze('두 번째 일정 제목을 팀 회의로 설정해줘');
+    expect(edit.intent, VoiceCommandPipelineIntent.edit);
+    expect(edit.requestedFieldValues['title'], '팀 회의');
+    expect(pipeline.analyze('내일 오후 2시 환경 설정 회의 등록해줘').intent,
+        VoiceCommandPipelineIntent.add);
+  });
+
+  test('the final registration request overrides a title verb', () {
+    expect(pipeline.analyze('기획서 수정 회의 등록해줘').intent,
+        VoiceCommandPipelineIntent.add);
+  });
+
+  test('strong alarm edits distinguish activation and deactivation', () {
+    expect(pipeline.analyze('첫 번째 일정 강한 알람 켜줘').requestedChanges,
+        contains('is_critical_true'));
+    expect(pipeline.analyze('첫 번째 일정 강한 알람 꺼줘').requestedChanges,
+        contains('is_critical_false'));
+  });
+
+
   group('수정 명령 우선 분류', () {
     const pipeline = VoiceCommandPipeline();
 
