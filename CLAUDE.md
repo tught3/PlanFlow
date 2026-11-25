@@ -20,11 +20,11 @@
 - 결정 로그: `05_Decisions/planflow-decisions.md`
 
 ## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 101개). 작업과 관련 있어 보이면 열람할 것.
+전체 목록: `04_Memory/Preference/` (status: confirmed, 총 13개). 작업과 관련 있어 보이면 열람할 것.
 
 최근 확정 5건:
-- **Finalize_now_using_evidence_already_available_Do**: Finalize now using evidence already available. Do not perform more exploration or wait. Re... (`04_Memory/Preference/Finalize_now_using_evidence_already_available_Do.md`)
-- **The_timeout_validation_logic_is_duplicated_in_co**: The timeout validation logic is duplicated in config.py and policy.py. Remove that duplica... (`04_Memory/Preference/The_timeout_validation_logic_is_duplicated_in_co.md`)
-- **desktop_commander_continuity_and_stale_cleanup**: Desktop Commander를 사용하는 모든 ChatGPT 세션은 중간 연결 단절이나 응답 중단 뒤 사용자가 `계속`, `이어줘`, `resume` 등을 말했... (`04_Memory/Preference/desktop_commander_continuity_and_stale_cleanup.md`)
-- **최종_검토를_지금_종료하고_수행한_명령_exit_code_판정_남은_blocker를_간**: 최종 검토를 지금 종료하고 수행한 명령·exit code·판정·남은 blocker를 간결하게 보고하세요. 추가 작업/대기는 하지 마세요. (`04_Memory/Preference/최종_검토를_지금_종료하고_수행한_명령_exit_code_판정_남은_blocker를_간.md`)
-- **계속해**: 계속해 (`04_Memory/Preference/계속해.md`)
+- **escalation_and_ai_handoff**:  (`04_Memory/Preference/escalation_and_ai_handoff.md`)
+- **보고양식맞춰서_완료보고해줘**: 모든 구현 작업이 끝나면 사용자가 요청한 항목별 결과를 빠짐없이 대조한 완료보고를 즉시 제공한다. 보고서는 한 번에 복사해 붙여넣기 쉽도록 하나의 자기완결형 Ma... (`04_Memory/Preference/보고양식맞춰서_완료보고해줘.md`)
+- **production_app_emulator_test**:  (`04_Memory/Preference/production_app_emulator_test.md`)
+- **instruction_md_auto_optimize**: 모든 세션·모든 도구에서 AGENTS.md·CLAUDE.md·preference 등 지시 문서를 추가/변경/삭제할 때, CEO에게 요청받지 않아도 자동으로 최적화... (`04_Memory/Preference/instruction_md_auto_optimize.md`)
+- **auto-finish-after-main-merge**:  (`04_Memory/Preference/auto-finish-after-main-merge.md`)
