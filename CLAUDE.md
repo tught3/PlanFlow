@@ -6,6 +6,7 @@
 # planflow (Claude Code)
 
 ## 참조 문서 (원본 위치 — 필요 시 직접 Read)
+- AI_WIKI common rules: E:/AI_WIKI/00_Constitution/global-common-rules.md
 - Developer Profile: `00_Constitution/profile.md`
 - Coding Standards: `00_Constitution/coding-standards.md`
 - Codex Common Rules: `00_Constitution/agents-common.md`

@@ -9,15 +9,7 @@
 - Anti-Patterns: `00_Constitution/anti-patterns.md`
 - 프로젝트 노트 (PlanFlow): `03_Projects/FLUXSTUDIO/planflow.md`
 
-## 확정 선호 (CEO 승인)
-전체 목록: `04_Memory/Preference/` (status: confirmed, 총 13개). 작업과 관련 있어 보이면 열람할 것.
-
-최근 확정 5건:
-- **escalation_and_ai_handoff**:  (`04_Memory/Preference/escalation_and_ai_handoff.md`)
-- **보고양식맞춰서_완료보고해줘**: 모든 구현 작업이 끝나면 사용자가 요청한 항목별 결과를 빠짐없이 대조한 완료보고를 즉시 제공한다. 보고서는 한 번에 복사해 붙여넣기 쉽도록 하나의 자기완결형 Ma... (`04_Memory/Preference/보고양식맞춰서_완료보고해줘.md`)
-- **production_app_emulator_test**:  (`04_Memory/Preference/production_app_emulator_test.md`)
-- **instruction_md_auto_optimize**: 모든 세션·모든 도구에서 AGENTS.md·CLAUDE.md·preference 등 지시 문서를 추가/변경/삭제할 때, CEO에게 요청받지 않아도 자동으로 최적화... (`04_Memory/Preference/instruction_md_auto_optimize.md`)
-- **auto-finish-after-main-merge**:  (`04_Memory/Preference/auto-finish-after-main-merge.md`)
+- AI_WIKI common rules: E:/AI_WIKI/00_Constitution/global-common-rules.md
 
 <!-- [WIKI:END] -->
 
